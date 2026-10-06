@@ -1,44 +1,109 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { getSocket, type LatLng } from "./client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type LatLng } from "./client";
 
-export type GeoState = { pos: LatLng | null; accuracy: number | null; error: string | null; simulated: boolean };
+export type GeoError = "insecure" | "unsupported" | "denied" | "unavailable" | "timeout";
+export type GeoState = {
+  pos: LatLng | null;
+  accuracy: number | null;
+  error: GeoError | null;
+  simulated: boolean;
+  retry: () => void;
+  /** Make sure the server has our latest position before a location-checked action. */
+  flush: () => Promise<void>;
+};
 
 /**
  * Tracks the device GPS and streams it to the server. When `simPos` is set
  * (dev/admin "GPS simulator"), that position is used and flagged as simulated.
+ *
+ * Strategy: a fast coarse fix (wifi/cell) first so the map appears quickly, then
+ * a high-accuracy watch. If high accuracy keeps failing (common on laptops and
+ * indoors) we fall back to a low-accuracy watch instead of hanging forever.
  */
 export function useLocation(simPos: LatLng | null): GeoState {
-  const [gps, setGps] = useState<{ pos: LatLng | null; accuracy: number | null; error: string | null }>({ pos: null, accuracy: null, error: null });
-  const lastSent = useRef(0);
+  const [gps, setGps] = useState<{ pos: LatLng | null; accuracy: number | null; error: GeoError | null }>({ pos: null, accuracy: null, error: null });
+  const [attempt, setAttempt] = useState(0);
+  const hasFix = useRef(false);
 
   useEffect(() => {
-    if (!("geolocation" in navigator)) {
-      setGps((g) => ({ ...g, error: "This device has no GPS" }));
+    // Browsers only expose GPS on https:// or localhost.
+    if (!window.isSecureContext) {
+      setGps((g) => ({ ...g, error: "insecure" }));
       return;
     }
-    const id = navigator.geolocation.watchPosition(
-      (p) => setGps({ pos: { lat: p.coords.latitude, lng: p.coords.longitude }, accuracy: p.coords.accuracy, error: null }),
-      (e) => setGps((g) => ({ ...g, error: e.code === e.PERMISSION_DENIED ? "Location permission denied" : "Waiting for GPS…" })),
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 },
-    );
-    return () => navigator.geolocation.clearWatch(id);
-  }, []);
+    if (!("geolocation" in navigator)) {
+      setGps((g) => ({ ...g, error: "unsupported" }));
+      return;
+    }
+    const geo = navigator.geolocation;
+    let watchId: number | null = null;
+    let cancelled = false;
+
+    const ok = (p: GeolocationPosition) => {
+      if (cancelled) return;
+      hasFix.current = true;
+      setGps({ pos: { lat: p.coords.latitude, lng: p.coords.longitude }, accuracy: p.coords.accuracy, error: null });
+    };
+    const fail = (e: GeolocationPositionError) => {
+      if (cancelled) return;
+      const error: GeoError = e.code === e.PERMISSION_DENIED ? "denied" : e.code === e.TIMEOUT ? "timeout" : "unavailable";
+      // Keep showing the last good position on transient errors.
+      setGps((g) => ({ ...g, error: g.pos && error !== "denied" ? null : error }));
+      return error;
+    };
+    const watch = (highAccuracy: boolean) => {
+      if (watchId !== null) geo.clearWatch(watchId);
+      watchId = geo.watchPosition(ok, (e) => {
+        const err = fail(e);
+        if (highAccuracy && err !== "denied") watch(false); // degrade gracefully
+      }, { enableHighAccuracy: highAccuracy, maximumAge: highAccuracy ? 3000 : 30_000, timeout: highAccuracy ? 15_000 : 30_000 });
+    };
+
+    setGps((g) => ({ ...g, error: null }));
+    geo.getCurrentPosition(ok, () => {}, { enableHighAccuracy: false, maximumAge: 60_000, timeout: 10_000 });
+    watch(true);
+
+    return () => {
+      cancelled = true;
+      if (watchId !== null) geo.clearWatch(watchId);
+    };
+  }, [attempt]);
+
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
   const pos = simPos ?? gps.pos;
   const simulated = !!simPos;
 
+  // Report position to the server: on movement (throttled) plus a heartbeat.
+  const sent = useRef<{ lat: number; lng: number; sim: boolean; at: number } | null>(null);
+  const latest = useRef<{ pos: LatLng | null; sim: boolean }>({ pos: null, sim: false });
+  latest.current = { pos, sim: simulated };
+
+  const send = useCallback(async () => {
+    const { pos: p, sim } = latest.current;
+    if (!p) return;
+    sent.current = { ...p, sim, at: Date.now() };
+    await fetch("/api/loc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lat: p.lat, lng: p.lng, sim }) }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!pos) return;
-    const send = () => {
-      lastSent.current = Date.now();
-      getSocket().emit("loc", { lat: pos.lat, lng: pos.lng, sim: simulated });
+    const last = sent.current;
+    const moved = !last || last.sim !== simulated || Math.abs(last.lat - pos.lat) > 1e-5 || Math.abs(last.lng - pos.lng) > 1e-5;
+    const t = setTimeout(send, moved && (!last || Date.now() - last.at > 3000) ? 0 : 3000);
+    const hb = setInterval(send, 20_000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(hb);
     };
-    send();
-    // Heartbeat so the server's "last known position" stays fresh while standing still.
-    const t = setInterval(send, 20_000);
-    return () => clearInterval(t);
-  }, [pos?.lat, pos?.lng, simulated]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pos?.lat, pos?.lng, simulated, send]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { pos, accuracy: simulated ? 5 : gps.accuracy, error: simulated ? null : gps.error, simulated };
+  const flush = useCallback(async () => {
+    const { pos: p, sim } = latest.current;
+    const last = sent.current;
+    if (p && (!last || last.lat !== p.lat || last.lng !== p.lng || last.sim !== sim || Date.now() - last.at > 60_000)) await send();
+  }, [send]);
+
+  return { pos, accuracy: simulated ? 5 : gps.accuracy, error: simulated ? null : gps.error, simulated, retry, flush };
 }

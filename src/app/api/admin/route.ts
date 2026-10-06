@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { ITEM_BY_KEY } from "@/lib/catalog";
 import { levelForXp } from "@/lib/progression";
 import { requireAdmin } from "@/server/auth";
-import { hub, notify } from "@/server/hub";
+import { isOnline, notify, onlineSince } from "@/server/hub";
 import { body, HttpError, route } from "@/server/http";
 import { grant } from "@/server/rewards";
 
@@ -52,7 +52,7 @@ export const GET = route(async (req) => {
   return {
     stats: {
       users,
-      online: [...hub.presence.values()].filter((p) => p.sockets > 0).length,
+      online: await prisma.user.count({ where: { lastSeenAt: { gt: onlineSince() } } }),
       signups7,
       claims24,
       upcomingEvents,
@@ -63,7 +63,7 @@ export const GET = route(async (req) => {
     bySource: bySource.map((s) => ({ source: s.utmSource ?? "organic", count: s._count })),
     byCampaign: byCampaign.map((s) => ({ campaign: s.utmCampaign, count: s._count })),
     series,
-    users: userList.map((x) => ({ ...x, level: levelForXp(x.xp), online: (hub.presence.get(x.id)?.sockets ?? 0) > 0 })),
+    users: userList.map((x) => ({ ...x, level: levelForXp(x.xp), online: isOnline(x.lastSeenAt) })),
     deliveries: deliveries.map(({ dropoffCode: _c, ...d }) => d),
     notes,
     missions,
@@ -107,14 +107,13 @@ export const POST = route(async (req) => {
     case "ban":
       if (d.userId === admin.id) throw new HttpError(400, "You can't ban yourself");
       await prisma.user.update({ where: { id: d.userId }, data: { banned: d.banned } });
-      if (d.banned) hub.io?.in(`user:${d.userId}`).disconnectSockets(true);
       break;
     case "role":
       await prisma.user.update({ where: { id: d.userId }, data: { role: d.role } });
       break;
     case "grant":
       await grant(d.userId, { coins: d.coins, xp: d.xp });
-      notify(d.userId, { kind: "reward", title: "🎁 Gift from HQ", body: `${d.coins} coins, ${d.xp} XP` });
+      await notify(d.userId, { kind: "reward", title: "🎁 Gift from HQ", body: `${d.coins} coins, ${d.xp} XP` });
       break;
     case "createMission": {
       const { action: _a, ...data } = d;
@@ -147,12 +146,16 @@ export const POST = route(async (req) => {
       if (!del || del.status === "DELIVERED" || del.status === "CANCELLED") throw new HttpError(400, "Can't cancel");
       await prisma.delivery.update({ where: { id: d.id }, data: { status: "CANCELLED" } });
       await grant(del.senderId, { coins: del.reward });
-      notify(del.senderId, { kind: "delivery", title: "Delivery cancelled by admin", body: "Your coins were refunded" });
-      if (del.courierId) notify(del.courierId, { kind: "delivery", title: "Delivery cancelled by admin", body: del.title });
+      await notify(del.senderId, { kind: "delivery", title: "Delivery cancelled by admin", body: "Your coins were refunded" });
+      if (del.courierId) await notify(del.courierId, { kind: "delivery", title: "Delivery cancelled by admin", body: del.title });
       break;
     }
     case "broadcast":
-      hub.io?.emit("notify", { kind: "info", title: d.title, body: d.body });
+    {
+      // Everyone active in the last 15 minutes gets it on their next poll.
+      const active = await prisma.user.findMany({ where: { lastSeenAt: { gt: new Date(Date.now() - 15 * 60_000) } }, select: { id: true } });
+      await prisma.notification.createMany({ data: active.map((a) => ({ userId: a.id, kind: "info", title: d.title, body: d.body })) });
+    }
       break;
   }
   return { ok: true };

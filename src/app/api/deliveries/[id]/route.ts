@@ -31,7 +31,7 @@ export const POST = route(async (req, ctx) => {
       const active = await prisma.delivery.count({ where: { courierId: u.id, status: { in: ["ACCEPTED", "PICKED_UP"] } } });
       if (active >= 2) throw new HttpError(400, "You can carry at most 2 packages at once");
       await move("OPEN", { status: "ACCEPTED", courierId: u.id, acceptedAt: new Date() });
-      notify(del.senderId, { kind: "delivery", title: "📦 Courier assigned", body: `${u.username} accepted "${del.title}"` });
+      await notify(del.senderId, { kind: "delivery", title: "📦 Courier assigned", body: `${u.username} accepted "${del.title}"` });
       return { message: "Job accepted — head to the pickup point" };
     }
     case "pickup": {
@@ -39,7 +39,7 @@ export const POST = route(async (req, ctx) => {
       const here = await lastKnownLocation(u.id);
       if (distanceM(here, { lat: del.pickupLat, lng: del.pickupLng }) > CHECKIN_M) throw new HttpError(400, "You must be at the pickup point");
       await move("ACCEPTED", { status: "PICKED_UP", pickedUpAt: new Date() });
-      notify(del.senderId, { kind: "delivery", title: "📦 Package picked up", body: `${u.username} has "${del.title}"` });
+      await notify(del.senderId, { kind: "delivery", title: "📦 Package picked up", body: `${u.username} has "${del.title}"` });
       return { message: "Package picked up — get it to the drop-off" };
     }
     case "deliver": {
@@ -54,7 +54,7 @@ export const POST = route(async (req, ctx) => {
       const done = await prisma.delivery.count({ where: { courierId: u.id, status: "DELIVERED" } });
       await unlock(u.id, "courier_1");
       if (done >= 10) await unlock(u.id, "courier_10");
-      notify(del.senderId, { kind: "delivery", title: "✅ Delivered!", body: `"${del.title}" was handed over by ${u.username}` });
+      await notify(del.senderId, { kind: "delivery", title: "✅ Delivered!", body: `"${del.title}" was handed over by ${u.username}` });
       return { message: `Delivered! +${del.reward} coins` };
     }
     case "cancel": {
@@ -65,7 +65,7 @@ export const POST = route(async (req, ctx) => {
       }
       if (isCourier && del.status === "ACCEPTED") {
         await move("ACCEPTED", { status: "OPEN", courierId: null, acceptedAt: null });
-        notify(del.senderId, { kind: "delivery", title: "Courier dropped your job", body: `"${del.title}" is open again` });
+        await notify(del.senderId, { kind: "delivery", title: "Courier dropped your job", body: `"${del.title}" is open again` });
         return { message: "You dropped the job" };
       }
       throw new HttpError(400, "Can't cancel at this stage — contact support");

@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
-import { api, fmtTime, getSocket, type LatLng, type Me, type Selected, type World } from "./client";
+import { api, fmtTime, type LatLng, type Me, type Selected, type World } from "./client";
 import { Lockpick, TapRush } from "./MiniGames";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
 import { Ctx, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
-import { useLocation } from "./useLocation";
+import { useLocation, type GeoError } from "./useLocation";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 
@@ -65,9 +65,11 @@ export default function Game() {
     setTimeout(() => loadWorld(true), 150);
   }, [loadMe, loadWorld]);
 
+  const flush = geo.flush;
   const act = useCallback<GameCtx["act"]>(
     async (fn) => {
       try {
+        await flush();
         const r = await fn();
         if (r?.message) toast({ kind: "reward", title: r.message });
         navigator.vibrate?.([40, 30, 40]);
@@ -78,7 +80,7 @@ export default function Game() {
         return false;
       }
     },
-    [toast, refresh],
+    [toast, refresh, flush],
   );
 
   useEffect(() => {
@@ -96,26 +98,29 @@ export default function Game() {
     return () => clearInterval(t);
   }, [loadWorld]);
 
-  // ---- realtime
+  // ---- "realtime" via polling (works on serverless hosts like Vercel)
+  const syncSince = useRef(Date.now());
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
   useEffect(() => {
-    const s = getSocket();
-    const onNotify = (n: Toast) => {
-      toast(n);
-      if (n.kind === "reward" || n.kind === "delivery" || n.kind === "social") loadMe();
+    let stop = false;
+    const tick = async () => {
+      if (document.hidden) return;
+      try {
+        const r = await api<{ now: number; unread: number; notifications: Toast[] }>(`/api/sync?since=${syncSince.current}`);
+        if (stop) return;
+        syncSince.current = r.now;
+        for (const n of r.notifications) toast(n);
+        if (r.notifications.some((n) => n.kind === "reward" || n.kind === "delivery" || n.kind === "social")) loadMe();
+        if (r.unread && panelRef.current !== "crew") setUnread((u) => u + r.unread);
+      } catch {}
     };
-    const onMsg = (m: { author: { id: string } }) => {
-      if (m.author.id !== me?.id) setUnread((u) => u + 1);
-    };
-    const onConnect = () => pos && s.emit("loc", { ...pos, sim: geo.simulated });
-    s.on("notify", onNotify);
-    s.on("chat:msg", onMsg);
-    s.on("connect", onConnect);
+    const t = setInterval(tick, 4000);
     return () => {
-      s.off("notify", onNotify);
-      s.off("chat:msg", onMsg);
-      s.off("connect", onConnect);
+      stop = true;
+      clearInterval(t);
     };
-  }, [toast, loadMe, me?.id, pos, geo.simulated]);
+  }, [toast, loadMe]);
 
   useEffect(() => {
     if (panel === "crew") setUnread(0);
@@ -268,20 +273,7 @@ export default function Game() {
           </div>
         )}
 
-        {!pos && (
-          <div className="modal-bg" style={{ zIndex: 900 }}>
-            <div className="modal">
-              <div style={{ fontSize: 50 }}>📡</div>
-              <h2>Finding you…</h2>
-              <p className="muted">{geo.error ?? "Allow location access so the city can become your game map."}</p>
-              {me.canSimulate && (
-                <button className="btn yellow" onClick={toggleSim}>
-                  Use GPS simulator
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {!pos && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} />}
 
         {/* Floating buttons */}
         <div className="fab-col">
@@ -359,6 +351,67 @@ export default function Game() {
         )}
       </div>
     </Ctx.Provider>
+  );
+}
+
+// ---------------------------------------------------------------- "where are you?" screen
+const GEO_HELP: Record<GeoError, { title: string; body: React.ReactNode }> = {
+  insecure: {
+    title: "Location needs a secure link",
+    body: (
+      <>
+        Phones only share GPS with <b>https://</b> sites (or <b>localhost</b>). You opened <span className="mono">{typeof location !== "undefined" ? location.origin : ""}</span>.
+        Open the game through its https link instead.
+      </>
+    ),
+  },
+  unsupported: { title: "No location on this device", body: "This browser can't share a location. Try Chrome or Safari on your phone." },
+  denied: {
+    title: "Location is blocked",
+    body: (
+      <>
+        Allow location for this site, then tap Retry.
+        <br />
+        <b>iPhone:</b> Settings → Privacy → Location Services → Safari Websites → While Using.
+        <br />
+        <b>Android/Chrome:</b> tap the 🔒 next to the address → Permissions → Location → Allow.
+        <br />
+        <b>Mac:</b> System Settings → Privacy &amp; Security → Location Services → turn on your browser.
+      </>
+    ),
+  },
+  unavailable: {
+    title: "Can't get a GPS fix",
+    body: "Your device couldn't find its position. Turn on Location/GPS (and Wi-Fi helps), step near a window, then retry. On a Mac, check that Location Services is on for your browser.",
+  },
+  timeout: { title: "GPS is taking a while", body: "Still searching for satellites. Moving outdoors or near a window usually helps." },
+};
+
+function LocationGate({ error, onRetry, onSimulate }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void }) {
+  const help = error ? GEO_HELP[error] : null;
+  return (
+    <div className="modal-bg" style={{ zIndex: 900 }}>
+      <div className="modal">
+        <div style={{ fontSize: 50 }}>{help ? "⚠️" : "📡"}</div>
+        <h2>{help?.title ?? "Finding you…"}</h2>
+        <p className="muted small" style={{ lineHeight: 1.6, textAlign: help && error === "denied" ? "left" : "center" }}>
+          {help?.body ?? "Allow location access when your browser asks — the city around you becomes the game map."}
+        </p>
+        <div className="row wrap" style={{ justifyContent: "center" }}>
+          {error && error !== "insecure" && error !== "unsupported" && (
+            <button className="btn cyan" onClick={onRetry}>
+              Retry
+            </button>
+          )}
+          {onSimulate && (
+            <button className="btn yellow" onClick={onSimulate}>
+              Play without GPS
+            </button>
+          )}
+        </div>
+        {onSimulate && <p className="small muted" style={{ marginTop: 10 }}>Simulator: tap the map to move (dev &amp; admins only).</p>}
+      </div>
+    </div>
   );
 }
 

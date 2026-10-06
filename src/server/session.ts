@@ -1,4 +1,4 @@
-// JWT session helpers with no Next.js imports, so the socket server can use them.
+// JWT session helpers with no Next.js imports (usable from any runtime).
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "sq_session";

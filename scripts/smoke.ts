@@ -1,8 +1,8 @@
 // End-to-end smoke test against a running dev server: `npx tsx scripts/smoke.ts`
-import { io, type Socket } from "socket.io-client";
+export {};
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
-type Client = { cookie: string; sock?: Socket; name: string };
+type Client = { cookie: string; name: string };
 
 async function call(c: Client, path: string, body?: unknown, method?: string) {
   const r = await fetch(BASE + path, {
@@ -21,18 +21,12 @@ function check(label: string, ok: boolean, extra?: unknown) {
   console.log(`${ok ? "✅" : "❌"} ${label}`, ok ? "" : JSON.stringify(extra));
   if (!ok) fails++;
 }
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function connect(c: Client) {
-  c.sock = io(BASE, { path: "/rt", transports: ["websocket"], extraHeaders: { cookie: c.cookie } });
-  await new Promise<void>((res, rej) => {
-    c.sock!.on("connect", () => res());
-    c.sock!.on("connect_error", rej);
-  });
-}
 async function goTo(c: Client, p: { lat: number; lng: number }) {
-  c.sock!.emit("loc", { ...p, sim: true });
-  await wait(150);
+  await call(c, "/api/loc", { ...p, sim: true });
+}
+async function notifications(c: Client, since: number) {
+  return (await call(c, `/api/sync?since=${since}`)).data.notifications as { title: string }[];
 }
 
 const start = { lat: 51.5079, lng: -0.0877 };
@@ -49,8 +43,6 @@ check("timezone stored", r.data.timezone === "Asia/Tehran");
 check("login B", (await call(B, "/api/auth/login", { login: "KaiNight", password: "password123" })).status === 200);
 check("login admin", (await call(ADMIN, "/api/auth/login", { login: "admin", password: "password123" })).status === 200);
 
-await connect(A);
-await connect(B);
 await goTo(A, start);
 
 r = await call(A, "/api/world?lat=" + start.lat + "&lng=" + start.lng);
@@ -116,9 +108,9 @@ const before = (await call(A, "/api/me")).data.coins;
 r = await call(A, "/api/deliveries", { title: "Book for Sam", description: "small", pickupLabel: "Cafe", pickupLat: pickup.lat, pickupLng: pickup.lng, dropoffLabel: "Library", dropoffLat: drop.lat, dropoffLng: drop.lng, reward: 40 });
 check("create delivery (escrow)", r.status === 200 && (await call(A, "/api/me")).data.coins === before - 40, r);
 const del = r.data.delivery;
-const notified = new Promise((res) => A.sock!.once("notify", res));
+const t0 = Date.now() - 1;
 check("B accepts", (await call(B, `/api/deliveries/${del.id}`, { action: "accept" })).status === 200);
-check("A notified in realtime", !!(await Promise.race([notified, wait(2000)])));
+check("A notified via sync", (await notifications(A, t0)).some((n) => n.title.includes("Courier assigned")));
 check("pickup rejected when away", (await call(B, `/api/deliveries/${del.id}`, { action: "pickup" })).status === 400);
 await goTo(B, pickup);
 check("pickup at point", (await call(B, `/api/deliveries/${del.id}`, { action: "pickup" })).status === 200);
@@ -138,9 +130,10 @@ check("friend shows online", fl.find((f: { username: string }) => f.username ===
 const meA = (await call(A, "/api/me")).data;
 const meB = (await call(B, "/api/me")).data;
 const room = `dm:${[meA.id, meB.id].sort().join(":")}`;
-const got = new Promise((res) => B.sock!.once("chat:msg", res));
-A.sock!.emit("chat:send", { room, body: "yo" });
-check("DM delivered realtime", ((await Promise.race([got, wait(2000)])) as { body?: string })?.body === "yo");
+const t1 = Date.now() - 1;
+check("DM send", (await call(A, "/api/chat", { room, body: "yo" })).status === 200);
+check("DM unread badge for B", (await call(B, `/api/sync?since=${t1}`)).data.unread >= 1);
+check("chat rate limit", (await call(A, "/api/chat", { room, body: "spam" })).status === 429);
 check("DM history", (await call(B, `/api/chat?room=${room}`)).data.messages?.length >= 1);
 check("stranger blocked from DM", (await call(ADMIN, `/api/chat?room=${room}`)).status === 403);
 
@@ -166,13 +159,11 @@ r = await call(ADMIN, "/api/admin");
 check("admin dashboard", r.status === 200 && r.data.stats.users >= 5, r.data.error);
 check("admin sees referral source", r.data.bySource.some((s: { source: string }) => s.source === "referral"));
 
-// anti-cheat: non-admin teleport in production is blocked; in dev sim is allowed, so just check unauth socket
-const bad = io(BASE, { path: "/rt", transports: ["websocket"] });
-const rej = await new Promise((res) => { bad.on("connect_error", () => res(true)); bad.on("connect", () => res(false)); });
-check("unauthenticated socket rejected", rej === true);
-bad.close();
+// anti-cheat: a non-admin player can't use the simulator flag in production; unauthenticated calls rejected
+check("unauthenticated location rejected", (await call({ cookie: "", name: "anon" }, "/api/loc", start)).status === 401);
+const t2 = Date.now() - 1;
+check("admin broadcast", (await call(ADMIN, "/api/admin", { action: "broadcast", title: "Test push" })).status === 200);
+check("broadcast reaches active player", (await notifications(B, t2)).some((n) => n.title === "Test push"));
 
-A.sock!.close();
-B.sock!.close();
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASSED");
 process.exit(fails ? 1 : 0);

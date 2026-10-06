@@ -21,7 +21,7 @@ export const GET = route(async () => {
     avatar: x.avatar,
     level: levelForXp(x.xp),
     lastSeenAt: x.lastSeenAt,
-    online: isOnline(x.id),
+    online: isOnline(x.lastSeenAt),
   });
   return {
     friends: rows.filter((r) => r.status === "ACCEPTED").map((r) => ({ friendshipId: r.id, ...shape(r.requesterId === u.id ? r.addressee : r.requester) })),
@@ -52,7 +52,7 @@ export const POST = route(async (req) => {
       await prisma.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED" } });
     } else if (!existing) {
       await prisma.friendship.create({ data: { requesterId: u.id, addresseeId: other.id } });
-      notify(other.id, { kind: "social", title: "Friend request", body: `${u.username} wants to join your crew` });
+      await notify(other.id, { kind: "social", title: "Friend request", body: `${u.username} wants to join your crew` });
       return { message: "Request sent" };
     } else return { message: "Request already pending" };
   } else {
@@ -62,7 +62,7 @@ export const POST = route(async (req) => {
     if (d.action === "accept") {
       if (f.addresseeId !== u.id) throw new HttpError(400, "Can't accept your own request");
       await prisma.friendship.update({ where: { id: f.id }, data: { status: "ACCEPTED" } });
-      notify(f.requesterId, { kind: "social", title: "New crew member", body: `${u.username} accepted your request` });
+      await notify(f.requesterId, { kind: "social", title: "New crew member", body: `${u.username} accepted your request` });
     } else {
       await prisma.friendship.delete({ where: { id: f.id } });
       return { message: d.action === "decline" ? "Declined" : "Removed" };

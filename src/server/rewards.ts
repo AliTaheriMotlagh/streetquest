@@ -1,7 +1,7 @@
 import { prisma } from "../lib/db";
 import { ACHIEVEMENT_BY_KEY, levelForXp, titleForLevel } from "../lib/progression";
 import { ITEM_BY_KEY } from "../lib/catalog";
-import { hub, notify } from "./hub";
+import { notify } from "./hub";
 import { HttpError } from "./http";
 
 export type Grant = { xp?: number; coins?: number; items?: Record<string, number> };
@@ -22,9 +22,7 @@ export async function grant(userId: string, g: Grant) {
   const oldLevel = levelForXp(before.xp);
   const newLevel = levelForXp(user.xp);
   if (newLevel > oldLevel) {
-    const p = hub.presence.get(userId);
-    if (p) p.level = newLevel;
-    notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `You're now a ${titleForLevel(newLevel)}` });
+    await notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `You're now a ${titleForLevel(newLevel)}` });
   }
   return user;
 }
@@ -35,7 +33,7 @@ export async function unlock(userId: string, key: string) {
   const exists = await prisma.userAchievement.findUnique({ where: { userId_key: { userId, key } } });
   if (exists) return;
   await prisma.userAchievement.create({ data: { userId, key } });
-  notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP` });
+  await notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP` });
   await grant(userId, { xp: def.xp });
 }
 
@@ -66,12 +64,10 @@ export const itemLabel = (key: string) => {
   return i ? `${i.emoji} ${i.name}` : key;
 };
 
-/** Server-trusted player position: live socket presence first, then last DB fix. */
+/** Server-trusted player position: the last fix accepted by /api/loc (must be recent). */
 export async function lastKnownLocation(userId: string) {
-  const p = hub.presence.get(userId);
-  if (p && Date.now() - p.at < 5 * 60_000) return { lat: p.lat, lng: p.lng };
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { lastLat: true, lastLng: true, lastSeenAt: true } });
-  if (u?.lastLat == null || u.lastLng == null || !u.lastSeenAt || Date.now() - u.lastSeenAt.getTime() > 5 * 60_000) {
+  if (u?.lastLat == null || u.lastLng == null || !u.lastSeenAt || Date.now() - u.lastSeenAt.getTime() > 2 * 60_000) {
     throw new HttpError(400, "No recent GPS fix — enable location and try again");
   }
   return { lat: u.lastLat, lng: u.lastLng };

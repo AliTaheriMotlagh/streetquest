@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
-import { api, fmtTime, getSocket, type LatLng, type WorldDelivery, type WorldEvent } from "./client";
+import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent } from "./client";
 import { Sheet, Tabs, useGame } from "./ui";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
@@ -306,26 +306,48 @@ function Chat({ room }: { room: string }) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
+  const newest = useRef<string | null>(null);
   useEffect(() => {
     setMsgs([]);
-    api<{ messages: Msg[] }>(`/api/chat?room=${encodeURIComponent(room)}`)
-      .then((r) => setMsgs(r.messages))
-      .catch((e) => toast({ kind: "error", title: e.message }));
-    const s = getSocket();
-    const on = (m: Msg) => m.room === room && setMsgs((x) => [...x, m]);
-    s.on("chat:msg", on);
+    newest.current = null;
+    let stop = false;
+    const pull = async (first = false) => {
+      try {
+        const q = newest.current && !first ? `&after=${encodeURIComponent(newest.current)}` : "";
+        const r = await api<{ messages: Msg[] }>(`/api/chat?room=${encodeURIComponent(room)}${q}`);
+        if (stop || !r.messages.length) return;
+        newest.current = r.messages[r.messages.length - 1].createdAt;
+        setMsgs((x) => {
+          const seen = new Set(x.map((m) => m.id));
+          return [...x, ...r.messages.filter((m) => !seen.has(m.id))];
+        });
+      } catch (e) {
+        if (first) toast({ kind: "error", title: (e as Error).message });
+      }
+    };
+    pull(true);
+    const t = setInterval(() => !document.hidden && pull(), 3000);
     return () => {
-      s.off("chat:msg", on);
+      stop = true;
+      clearInterval(t);
     };
   }, [room]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
 
-  const send = (e: React.FormEvent) => {
+  const send = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    getSocket().emit("chat:send", { room, body: text }, (r: { error?: string }) => r.error && toast({ kind: "error", title: r.error }));
+    const body = text.trim();
+    if (!body) return;
     setText("");
+    try {
+      const r = await api<{ message: Msg }>("/api/chat", { body: { room, body } });
+      newest.current = r.message.createdAt;
+      setMsgs((x) => (x.some((m) => m.id === r.message.id) ? x : [...x, r.message]));
+    } catch (err) {
+      toast({ kind: "error", title: (err as Error).message });
+      setText(body);
+    }
   };
 
   return (
@@ -365,11 +387,8 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
   useEffect(() => {
     load();
     api<{ events: WorldEvent[] }>("/api/events").then((r) => setEvents(r.events.filter((e) => e.joined))).catch(() => {});
-    const s = getSocket();
-    s.on("presence", load);
-    return () => {
-      s.off("presence", load);
-    };
+    const t = setInterval(load, 15_000); // refresh online dots
+    return () => clearInterval(t);
   }, [load]);
   useEffect(() => {
     if (chat) setTab("chat");

@@ -22,7 +22,7 @@ export const POST = route(async (req, ctx) => {
     if (me) return { message: "Already in" };
     if (ev._count.participants >= ev.maxPlayers) throw new HttpError(400, "Event is full");
     await prisma.eventParticipant.create({ data: { eventId: id, userId: u.id } });
-    if (ev.creatorId !== u.id) notify(ev.creatorId, { kind: "event", title: "Squad growing", body: `${u.username} joined ${ev.title}` });
+    if (ev.creatorId !== u.id) await notify(ev.creatorId, { kind: "event", title: "Squad growing", body: `${u.username} joined ${ev.title}` });
     return { message: "You're in! Be there on time." };
   }
   if (action === "leave") {
@@ -45,6 +45,6 @@ export const POST = route(async (req, ctx) => {
   const xp = Math.round(ev.rewardXp * mult);
   await grant(u.id, { xp, coins: ev.rewardCoins });
   await unlock(u.id, "event_1");
-  for (const o of others) notify(o.userId, { kind: "event", title: `${u.username} arrived`, body: ev.title });
+  for (const o of others) await notify(o.userId, { kind: "event", title: `${u.username} arrived`, body: ev.title });
   return { message: `Checked in! +${xp} XP (×${mult.toFixed(1)} squad bonus)` };
 });

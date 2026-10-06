@@ -47,7 +47,7 @@ export const POST = route(async (req) => {
   });
   if (referrer) {
     await prisma.user.update({ where: { id: referrer.id }, data: { coins: { increment: REFERRAL_BONUS } } });
-    notify(referrer.id, { kind: "reward", title: "Referral bonus!", body: `${user.username} joined with your code: +${REFERRAL_BONUS} coins` });
+    await notify(referrer.id, { kind: "reward", title: "Referral bonus!", body: `${user.username} joined with your code: +${REFERRAL_BONUS} coins` });
   }
   await track("signup", { userId: user.id, source: user.utmSource ?? undefined, campaign: user.utmCampaign ?? undefined });
   await setSessionCookie(user.id);

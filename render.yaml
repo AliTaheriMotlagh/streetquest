@@ -1,0 +1,25 @@
+# Render Blueprint: New → Blueprint → pick this repo. Creates the web app + Postgres.
+services:
+  - type: web
+    name: streetquest
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npx prisma db push --skip-generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /robots.txt
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase: { name: streetquest-db, property: connectionString }
+      - key: DATABASE_URL_UNPOOLED
+        fromDatabase: { name: streetquest-db, property: connectionString }
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false # set to https://<your-service>.onrender.com (or your domain)
+
+databases:
+  - name: streetquest-db
+    plan: free
+    databaseName: streetquest

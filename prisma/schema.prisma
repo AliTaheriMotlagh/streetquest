@@ -1,12 +1,12 @@
-// SQLite for local dev. For production switch provider to "postgresql"
-// and set DATABASE_URL — no other schema changes needed.
+// PostgreSQL everywhere: Docker locally (docker compose up -d), Neon/Vercel Postgres in production.
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
@@ -44,6 +44,23 @@ model User {
   deliveriesIn  Delivery[]         @relation("courier")
   eventsCreated Event[]
   eventsJoined  EventParticipant[]
+  notifications Notification[]
+
+  @@index([lastSeenAt])
+  @@index([lastLat, lastLng])
+}
+
+// In-app notifications, delivered to clients by polling /api/sync.
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String   @default("info")
+  title     String
+  body      String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model InventoryItem {

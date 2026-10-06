@@ -1,28 +1,14 @@
-// Process-wide realtime state. Stored on globalThis because the custom server
-// (tsx) and Next's bundled route handlers load separate module instances.
-import type { Server } from "socket.io";
-
-export type Presence = {
-  userId: string;
-  username: string;
-  avatar: string;
-  level: number;
-  lat: number;
-  lng: number;
-  at: number; // ms of last location fix
-  sockets: number;
-};
+// Serverless-friendly "realtime": everything lives in Postgres and clients poll
+// /api/sync. Works on Vercel (no long-lived sockets) and anywhere else.
+import { prisma } from "../lib/db";
 
 export type Notice = { title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" };
 
-type Hub = { io?: Server; presence: Map<string, Presence> };
-const g = globalThis as unknown as { __sqHub?: Hub };
-export const hub: Hub = (g.__sqHub ??= { presence: new Map() });
+/** A player counts as online if their client pinged within this window. */
+export const ONLINE_MS = 90_000;
+export const onlineSince = () => new Date(Date.now() - ONLINE_MS);
+export const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && Date.now() - lastSeenAt.getTime() < ONLINE_MS;
 
-export function notify(userId: string, n: Notice) {
-  hub.io?.to(`user:${userId}`).emit("notify", n);
+export async function notify(userId: string, n: Notice) {
+  await prisma.notification.create({ data: { userId, kind: n.kind ?? "info", title: n.title, body: n.body } }).catch(() => {});
 }
-export function emitTo(room: string, event: string, payload: unknown) {
-  hub.io?.to(room).emit(event, payload);
-}
-export const isOnline = (userId: string) => (hub.presence.get(userId)?.sockets ?? 0) > 0;

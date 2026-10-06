@@ -1,5 +1,4 @@
 "use client";
-import { io, type Socket } from "socket.io-client";
 import type { ItemDef } from "@/lib/catalog";
 import type { Spawn } from "@/lib/spawns";
 
@@ -13,12 +12,6 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
   if (res.status === 401) window.location.href = "/login?next=/play";
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data as T;
-}
-
-let socket: Socket | null = null;
-export function getSocket() {
-  socket ??= io({ path: "/rt", transports: ["websocket", "polling"] });
-  return socket;
 }
 
 export type LatLng = { lat: number; lng: number };
