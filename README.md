@@ -29,8 +29,9 @@ npm run dev                 # http://localhost:3000
 players can rename their callsign in Profile. To become admin, set `ADMIN_KEY` and open
 `/admin?key=<ADMIN_KEY>` once in a browser that has played.
 
-**Testing at your desk:** in dev (or as an admin) tap 🕹️ on the map to turn on the GPS
-simulator, then tap the map to teleport.
+**Test mode (no walking needed):** anyone can tap 🕹️ (or "Test mode — no GPS" when location is off).
+Then tap the map to move, and every "Get closer" button becomes **Teleport here**. It's remembered in the
+browser until you switch it off. Set `TEST_MODE=off` in production to limit it to admins once the game is live.
 
 **Faster timers for testing:** `GAME_SPEED=600 npm run dev` makes construction and training 600× faster
 (ignored in production). Jump straight into a live fight with `/play?match=<id>`.

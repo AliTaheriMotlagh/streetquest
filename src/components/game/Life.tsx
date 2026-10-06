@@ -33,7 +33,7 @@ export function NeedsHud({ onClick }: { onClick: () => void }) {
 }
 
 export function LifeTab() {
-  const { me, pos, world, act } = useGame();
+  const { me, pos, world, act, teleport } = useGame();
   const needs = useLiveNeeds(me);
   const mood = moodOf(needs);
   const food = me.inventory.filter((i) => i.def.food);
@@ -82,7 +82,17 @@ export function LifeTab() {
       <button className="btn cyan small" disabled={!atHome || restLeft > 0} onClick={() => act(() => api("/api/sims", { body: { action: "rest" } }))}>
         😴 {restLeft > 0 ? `Rested — ${Math.ceil(restLeft / 60000)} min` : "Sleep at base"}
       </button>
-      {!me.base ? <span className="small muted"> Plant a base first.</span> : !atHome && home != null && <span className="small muted"> Home is {formatDistance(home)} away.</span>}
+      {!me.base ? (
+        <span className="small muted"> Plant a base first.</span>
+      ) : (
+        !atHome &&
+        home != null &&
+        (teleport ? (
+          <button className="btn yellow small" style={{ marginLeft: 6 }} onClick={() => teleport(me.base!)}>🕹️ Go home</button>
+        ) : (
+          <span className="small muted"> Home is {formatDistance(home)} away.</span>
+        ))
+      )}
 
       <label>Hang out (players within 150 m)</label>
       {near.length ? (

@@ -22,5 +22,9 @@ export async function verifySession(token: string | undefined): Promise<string |
   }
 }
 
-/** Simulated GPS (click-to-move) is allowed in development and for admins. */
-export const canSimulate = (role: string) => process.env.NODE_ENV !== "production" || role === "ADMIN";
+/**
+ * Test mode (simulated GPS, tap-to-move) is open to everyone so the game can be tried
+ * without walking around. Set TEST_MODE=off in production to limit it to admins.
+ */
+export const testModeOpen = () => process.env.TEST_MODE !== "off";
+export const canSimulate = (role: string) => process.env.NODE_ENV !== "production" || role === "ADMIN" || testModeOpen();

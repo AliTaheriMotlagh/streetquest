@@ -16,6 +16,8 @@ export type GameCtx = {
   pick: (label: string, cb: (p: LatLng) => void) => void;
   openChat: (room: string, label: string) => void;
   setPanel: (p: PanelId | null) => void;
+  /** Test mode only: jump straight to a spot instead of walking there. */
+  teleport: ((p: LatLng) => void) | null;
   /** Drop into a first-person fight. */
   enterMatch: (matchId: string) => void;
 };

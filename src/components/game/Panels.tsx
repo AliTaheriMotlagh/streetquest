@@ -112,20 +112,26 @@ type MyDeliveries = {
   carrying: (WorldDelivery & { sender: { username: string } })[];
 };
 
+/** "navigate" opens maps; in test mode it just jumps you there. */
+function GoTo({ lat, lng, label = "navigate" }: { lat: number; lng: number; label?: string }) {
+  const { teleport } = useGame();
+  return teleport ? (
+    <a href="#" onClick={(e) => (e.preventDefault(), teleport({ lat, lng }))}>🕹️ teleport</a>
+  ) : (
+    <a href={navUrl(lat, lng)} target="_blank" rel="noreferrer">{label}</a>
+  );
+}
+
 function DeliveryRoute({ d }: { d: WorldDelivery }) {
   return (
     <div className="small" style={{ margin: "6px 0" }}>
       <div>
         🟢 <b>Pickup:</b> {d.pickupLabel}{" "}
-        <a href={navUrl(d.pickupLat, d.pickupLng)} target="_blank" rel="noreferrer">
-          navigate
-        </a>
+        <GoTo lat={d.pickupLat} lng={d.pickupLng} />
       </div>
       <div>
         🔴 <b>Drop-off:</b> {d.dropoffLabel}{" "}
-        <a href={navUrl(d.dropoffLat, d.dropoffLng)} target="_blank" rel="noreferrer">
-          navigate
-        </a>
+        <GoTo lat={d.dropoffLat} lng={d.dropoffLng} />
       </div>
     </div>
   );

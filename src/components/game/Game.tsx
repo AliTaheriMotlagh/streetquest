@@ -25,6 +25,8 @@ const NAV: [PanelId, string, string][] = [
   ["me", "🎒", "Me"],
 ];
 
+const TEST_MODE_KEY = "sq_test_mode";
+
 const PHASE_ICON = { night: "🌙", dawn: "🌅", day: "☀️", dusk: "🌇" } as const;
 
 export default function Game() {
@@ -158,15 +160,33 @@ export default function Game() {
     if (simMode) setSimPos(p);
   };
 
+  // Test mode: no GPS or walking needed. Tap the map (or "Teleport here") to move.
+  // Remembered in this browser so a reload keeps you where you were.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TEST_MODE_KEY) ?? "null");
+      if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lng)) {
+        setSimMode(true);
+        setSimPos(saved);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (simMode && simPos) localStorage.setItem(TEST_MODE_KEY, JSON.stringify(simPos));
+      else if (!simMode) localStorage.removeItem(TEST_MODE_KEY);
+    } catch {}
+  }, [simMode, simPos]);
+
   const toggleSim = () => {
     if (simMode) {
       setSimMode(false);
       setSimPos(null);
-      toast({ title: "GPS simulator off", body: "Using your real location" });
+      toast({ title: "Test mode off", body: "Using your real GPS location" });
     } else {
       setSimMode(true);
       setSimPos(pos ?? { lat: 51.5079, lng: -0.0877 });
-      toast({ title: "GPS simulator on", body: "Tap the map to teleport" });
+      toast({ title: "🕹️ Test mode on", body: "No walking needed — tap the map or use “Teleport here”" });
     }
   };
 
@@ -187,13 +207,14 @@ export default function Game() {
           setPanel("crew");
         },
         setPanel,
+        teleport: simMode ? (p) => setSimPos({ lat: p.lat, lng: p.lng }) : null,
         enterMatch: (id) => {
           setSelected(null);
           setPanel(null);
           setMatch(id);
         },
       },
-    [me, pos, world, toast, act, refresh],
+    [me, pos, world, toast, act, refresh, simMode],
   );
 
   if (!me || !ctx) return <div className="game" style={{ display: "grid", placeItems: "center" }}><div className="big-num">LOADING…</div></div>;
@@ -250,7 +271,11 @@ export default function Game() {
                 {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>2× XP</span>}
               </div>
             )}
-            {geo.simulated && <div className="chip small" style={{ color: "var(--yellow)" }}>🕹️ SIM GPS</div>}
+            {geo.simulated && (
+              <button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title="Turn test mode off">
+                🕹️ TEST MODE
+              </button>
+            )}
           </div>
         </div>
 
@@ -276,6 +301,11 @@ export default function Game() {
             <div className={`t ${runLeft < 30 ? "low" : ""}`}>
               {Math.floor(runLeft / 60)}:{String(runLeft % 60).padStart(2, "0")}
             </div>
+            {simMode && !atRunTarget && runLeft > 0 && (
+              <button className="btn yellow small" onClick={() => setSimPos({ lat: run.targetLat, lng: run.targetLng })}>
+                🕹️ Jump
+              </button>
+            )}
             {runLeft === 0 ? (
               <button className="btn ghost small" onClick={() => act(() => api("/api/runs", { body: { runId: run.id, action: "complete" } }))}>
                 Failed
@@ -303,7 +333,7 @@ export default function Game() {
         {/* Floating buttons */}
         <div className="fab-col">
           {me.canSimulate && (
-            <button className="fab" title="GPS simulator (dev/admin)" onClick={toggleSim} style={{ outline: simMode ? "2px solid var(--yellow)" : undefined }}>
+            <button className="fab" title={simMode ? "Test mode on — tap to use real GPS" : "Test mode: play without walking"} onClick={toggleSim} style={{ outline: simMode ? "2px solid var(--yellow)" : undefined }}>
               🕹️
             </button>
           )}
@@ -451,11 +481,11 @@ function LocationGate({ error, onRetry, onSimulate }: { error: GeoError | null; 
           )}
           {onSimulate && (
             <button className="btn yellow" onClick={onSimulate}>
-              Play without GPS
+              🕹️ Test mode — no GPS
             </button>
           )}
         </div>
-        {onSimulate && <p className="small muted" style={{ marginTop: 10 }}>Simulator: tap the map to move (dev &amp; admins only).</p>}
+        {onSimulate && <p className="small muted" style={{ marginTop: 10 }}>Test mode: no walking needed — tap the map to move anywhere. Switch it off any time with 🕹️.</p>}
       </div>
     </div>
   );
@@ -473,11 +503,19 @@ function InfoCard({
   onClaim: (spawnId: string, score?: number) => void;
   onMini: (m: { kind: "chest" | "arcade"; spawnId: string }) => void;
 }) {
-  const { pos, act, me, world, openChat, setPanel, enterMatch } = useGame();
+  const { pos, act, me, world, openChat, setPanel, enterMatch, teleport } = useGame();
   const target = sel.type === "delivery" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
-  const tooFar = <button className="btn block" disabled>Get closer · {formatDistance(dist)}</button>;
+  const tooFar = teleport ? (
+    <button className="btn yellow block" onClick={() => teleport(target)}>🕹️ Teleport here · {formatDistance(dist)}</button>
+  ) : (
+    <button className="btn block" disabled>Get closer · {formatDistance(dist)}</button>
+  );
+  // Bases and bosses can be fought from up to BREACH_RANGE_M away.
+  const jump = teleport && dist > BREACH_RANGE_M && (
+    <button className="btn yellow" onClick={() => teleport(target)}>🕹️ Teleport next to it</button>
+  );
   const startMatch = async (kind: "breach" | "raid", targetId: string) => {
     let id = "";
     const ok = await act(async () => {
@@ -611,6 +649,7 @@ function InfoCard({
         {b.mine || b.friend ? (
           <div className="row wrap">
             {b.mine && <button className="btn cyan" onClick={() => setPanel("base")}>Open base</button>}
+            {teleport && dist > 60 && <button className="btn yellow" onClick={() => teleport(b)}>🕹️ Go home</button>}
             {b.liveMatch && <button className="btn" onClick={() => startMatch("breach", b.id)}>🛡️ Defend it (FPS)</button>}
             {!b.mine && !b.liveMatch && <p className="small muted">Your crew&apos;s base. If it&apos;s breached while you&apos;re close, you can jump in to defend.</p>}
           </div>
@@ -624,6 +663,7 @@ function InfoCard({
               >
                 🎖️ Siege with army
               </button>
+              {jump}
               {b.liveMatch ? (
                 <button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("breach", b.id)}>⚔️ Join the firefight</button>
               ) : (
@@ -654,6 +694,7 @@ function InfoCard({
           {b.hp.toLocaleString()} / {b.maxHp.toLocaleString()} HP · shared by every player · leaves in {Math.max(0, Math.round((b.expiresAt - Date.now()) / 60000))} min · {formatDistance(dist)}
         </p>
         <div className="row wrap">
+          {jump}
           <button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("raid", b.id)}>
             ⚔️ {b.liveMatch ? "Join the raid" : "Raid (FPS)"}
           </button>
