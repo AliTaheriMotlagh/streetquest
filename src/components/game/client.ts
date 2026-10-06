@@ -1,6 +1,9 @@
 "use client";
 import type { ItemDef } from "@/lib/catalog";
 import type { Spawn } from "@/lib/spawns";
+import type { BossDef } from "@/lib/bosses";
+import type { Army, FactionKey } from "@/lib/rts";
+import type { Mood, Needs } from "@/lib/sims";
 
 export async function api<T = { message?: string }>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const res = await fetch(path, {
@@ -37,6 +40,13 @@ export type Me = {
   achievements: string[];
   activeRun: { id: string; title: string; targetLat: number; targetLng: number; deadline: string; rewardXp: number; rewardCoins: number } | null;
   pendingFriends: number;
+  faction: FactionKey | null;
+  base: { id: string; name: string; lat: number; lng: number } | null;
+  needs: Needs;
+  needsAt: number;
+  mood: Mood;
+  restedAt: string | null;
+  socialAt: string | null;
 };
 
 export type WorldSpawn = Spawn & { claimed: boolean };
@@ -45,6 +55,44 @@ export type WorldNote = { id: string; lat: number; lng: number; radiusM: number;
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
 export type WorldDelivery = { id: string; title: string; description: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; reward: number; status: string; sender?: { username: string }; distanceM?: number };
 export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; lat: number; lng: number };
+
+export type WorldBase = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  hp: number;
+  mine: boolean;
+  friend: boolean;
+  shielded: boolean;
+  hq: number;
+  turrets: number;
+  owner: { id: string; username: string; avatar: string; online: boolean };
+  faction: FactionKey | null;
+  liveMatch: string | null;
+};
+export type WorldBoss = { id: string; lat: number; lng: number; expiresAt: number; def: BossDef; maxHp: number; hp: number; liveMatch: string | null };
+
+export type BaseView = {
+  faction: FactionKey | null;
+  base: {
+    id: string;
+    name: string;
+    lat: number;
+    lng: number;
+    hp: number;
+    shieldUntil: string | null;
+    buildings: { type: string; level: number; readyAt: string }[];
+    power: { made: number; used: number; ok: boolean };
+    pending: number;
+    defense: { atk: number; hp: number };
+  } | null;
+  army: Army;
+  attack: { atk: number; hp: number; count: number };
+  queue: { id: string; unitType: string; qty: number; readyAt: string }[];
+  battles: { id: string; kind: string; targetName: string; won: boolean; loot: number; createdAt: string; side: "attack" | "defend" }[];
+  defended: BaseView["battles"];
+};
 
 export type World = {
   serverTime: number;
@@ -56,6 +104,9 @@ export type World = {
   events: WorldEvent[];
   deliveries: WorldDelivery[];
   players: WorldPlayer[];
+  bases: WorldBase[];
+  bosses: WorldBoss[];
+  onlineNearby: number;
 };
 
 export type Selected =
@@ -64,7 +115,9 @@ export type Selected =
   | { type: "note"; data: WorldNote }
   | { type: "event"; data: WorldEvent }
   | { type: "delivery"; data: WorldDelivery }
-  | { type: "player"; data: WorldPlayer };
+  | { type: "player"; data: WorldPlayer }
+  | { type: "base"; data: WorldBase }
+  | { type: "boss"; data: WorldBoss };
 
 export const fmtTime = (iso: string | number | Date) =>
   new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));

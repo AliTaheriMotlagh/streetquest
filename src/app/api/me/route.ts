@@ -4,16 +4,20 @@ import { prisma } from "@/lib/db";
 import { DAILY_REWARD, dayKey, levelProgress, titleForLevel } from "@/lib/progression";
 import { requireUser } from "@/server/auth";
 import { canSimulate } from "@/server/session";
+import { needsOf } from "@/server/needs";
+import { moodOf } from "@/lib/sims";
 import { body, route } from "@/server/http";
 
 export const GET = route(async () => {
   const u = await requireUser();
-  const [inventory, achievements, runs, pendingFriends] = await Promise.all([
+  const [inventory, achievements, runs, pendingFriends, base] = await Promise.all([
     prisma.inventoryItem.findMany({ where: { userId: u.id, qty: { gt: 0 } } }),
     prisma.userAchievement.findMany({ where: { userId: u.id } }),
     prisma.missionRun.findMany({ where: { userId: u.id, status: "ACTIVE" } }),
     prisma.friendship.count({ where: { addresseeId: u.id, status: "PENDING" } }),
+    prisma.base.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, lat: true, lng: true } }),
   ]);
+  const needs = needsOf(u);
   const prog = levelProgress(u.xp);
   const today = dayKey(u.timezone);
   return {
@@ -37,6 +41,13 @@ export const GET = route(async () => {
     achievements: achievements.map((a) => a.key),
     activeRun: runs[0] ?? null,
     pendingFriends,
+    faction: u.faction,
+    base,
+    needs,
+    needsAt: Date.now(),
+    mood: moodOf(needs),
+    restedAt: u.restedAt,
+    socialAt: u.socialAt,
   };
 });
 

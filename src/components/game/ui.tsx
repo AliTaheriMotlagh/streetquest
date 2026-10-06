@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 import type { LatLng, Me, World } from "./client";
 
 export type Toast = { id?: number; title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error" };
-export type PanelId = "nearby" | "jobs" | "crew" | "events" | "me";
+export type PanelId = "nearby" | "base" | "jobs" | "crew" | "events" | "me";
 
 export type GameCtx = {
   me: Me;
@@ -16,6 +16,8 @@ export type GameCtx = {
   pick: (label: string, cb: (p: LatLng) => void) => void;
   openChat: (room: string, label: string) => void;
   setPanel: (p: PanelId | null) => void;
+  /** Drop into a first-person fight. */
+  enterMatch: (matchId: string) => void;
 };
 
 export const Ctx = createContext<GameCtx | null>(null);

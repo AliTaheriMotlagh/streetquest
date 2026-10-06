@@ -3,16 +3,20 @@ import { ACHIEVEMENT_BY_KEY, levelForXp, titleForLevel } from "../lib/progressio
 import { ITEM_BY_KEY } from "../lib/catalog";
 import { notify } from "./hub";
 import { HttpError } from "./http";
+import { moodOfUser } from "./needs";
 
 export type Grant = { xp?: number; coins?: number; items?: Record<string, number> };
 
+/** Give rewards. Earned XP is scaled by the commander's mood (life-sim layer). */
 export async function grant(userId: string, g: Grant) {
-  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true } });
+  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, hunger: true, energy: true, social: true, fun: true, needsAt: true } });
+  const xp = g.xp && g.xp > 0 ? Math.round(g.xp * moodOfUser(before).xpMult) : (g.xp ?? 0);
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { xp: { increment: g.xp ?? 0 }, coins: { increment: g.coins ?? 0 } },
+    data: { xp: { increment: xp }, coins: { increment: g.coins ?? 0 } },
   });
   for (const [itemKey, qty] of Object.entries(g.items ?? {})) {
+    if (!qty) continue;
     await prisma.inventoryItem.upsert({
       where: { userId_itemKey: { userId, itemKey } },
       create: { userId, itemKey, qty },

@@ -6,6 +6,7 @@ import { INTERACT_RADIUS_M, resolveSpawn } from "@/lib/spawns";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "@/server/rewards";
+import { bumpNeeds } from "@/server/needs";
 
 const Schema = z.object({ spawnId: z.string().max(80), score: z.number().min(0).max(1000).optional() });
 
@@ -41,6 +42,8 @@ export const POST = route(async (req) => {
   if (!s) throw new HttpError(410, "This spawn has expired");
   if (distanceM(here, s) > reach) throw new HttpError(400, `Get within ${INTERACT_RADIUS_M} m to interact`);
 
+  if (s.kind === "derrick") throw new HttpError(400, "Derricks are guarded — capture it with your army");
+
   if (s.kind === "run") {
     const active = await prisma.missionRun.findFirst({ where: { userId: u.id, status: "ACTIVE" } });
     if (active) throw new HttpError(400, "Finish or abandon your current run first");
@@ -70,6 +73,7 @@ export const POST = route(async (req) => {
   if (s.kind === "arcade") coins = Math.min(80, Math.round(score * 2));
 
   await grant(u.id, { xp: s.rewardXp, coins, items });
+  if (s.kind === "chest" || s.kind === "arcade") await bumpNeeds(u.id, { fun: 12 });
   await checkClaimAchievements(u.id, s.phase);
   await track("claim", { userId: u.id });
   const loot = Object.keys(items).map(itemLabel).join(", ");

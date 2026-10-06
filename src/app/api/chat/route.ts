@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { roomAudience } from "@/server/rooms";
+import { bumpNeeds } from "@/server/needs";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -31,6 +32,7 @@ export const POST = route(async (req) => {
     data: { room: d.room, authorId: u.id, body: d.body },
     include: { author: { select: { id: true, username: true, avatar: true } } },
   });
+  await bumpNeeds(u.id, { social: 2 });
   const { authorId: _a, ...msg } = m;
   return { message: msg };
 });

@@ -32,6 +32,18 @@ model User {
   utmCampaign  String?
   createdAt    DateTime @default(now())
 
+  // Strategy layer
+  faction      String? // coalition | dragon | insurgency
+
+  // Life-sim layer: needs (0-100) as of needsAt; they decay in real time.
+  hunger       Float    @default(80)
+  energy       Float    @default(80)
+  social       Float    @default(60)
+  fun          Float    @default(60)
+  needsAt      DateTime @default(now())
+  restedAt     DateTime?
+  socialAt     DateTime?
+
   inventory     InventoryItem[]
   claims        Claim[]
   runs          MissionRun[]
@@ -45,6 +57,11 @@ model User {
   eventsCreated Event[]
   eventsJoined  EventParticipant[]
   notifications Notification[]
+  base          Base?
+  units         UnitStack[]
+  trainOrders   TrainOrder[]
+  battles       Battle[]
+  bossHits      BossHit[]
 
   @@index([lastSeenAt])
   @@index([lastLat, lastLng])
@@ -250,4 +267,131 @@ model Metric {
   createdAt DateTime @default(now())
 
   @@index([name, createdAt])
+}
+
+// ---------------------------------------------------------------- Strategy layer
+// One base per player, planted at a real location.
+model Base {
+  id            String     @id @default(cuid())
+  ownerId       String     @unique
+  name          String
+  lat           Float
+  lng           Float
+  hp            Int        @default(1000)
+  lastCollectAt DateTime   @default(now())
+  shieldUntil   DateTime?
+  createdAt     DateTime   @default(now())
+  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  buildings     Building[]
+
+  @@index([lat, lng])
+}
+
+model Building {
+  id      String   @id @default(cuid())
+  baseId  String
+  type    String
+  level   Int      @default(1)
+  readyAt DateTime // construction / upgrade finishes at this time
+  base    Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
+
+  @@unique([baseId, type])
+}
+
+model UnitStack {
+  id       String @id @default(cuid())
+  userId   String
+  unitType String
+  qty      Int    @default(0)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, unitType])
+}
+
+model TrainOrder {
+  id       String   @id @default(cuid())
+  userId   String
+  unitType String
+  qty      Int
+  readyAt  DateTime
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readyAt])
+}
+
+// Auto-resolved fights (sieges, derrick raids, boss bombardments) and finished FPS matches.
+model Battle {
+  id         String   @id @default(cuid())
+  attackerId String
+  kind       String // siege | derrick | boss | breach | raid
+  targetId   String
+  targetName String
+  won        Boolean
+  loot       Int      @default(0)
+  log        Json
+  createdAt  DateTime @default(now())
+  attacker   User     @relation(fields: [attackerId], references: [id], onDelete: Cascade)
+
+  @@index([attackerId, createdAt])
+  @@index([targetId, createdAt])
+}
+
+// ---------------------------------------------------------------- FPS layer
+// A live first-person fight. Clients poll /api/match/:id ~7x/s. The host client
+// (first live human) simulates bots/boss; the server owns HP and the outcome.
+model Match {
+  id        String        @id @default(cuid())
+  kind      String // breach | raid
+  targetId  String // baseId | bossId
+  seed      Int
+  hostKey   String?
+  status    String        @default("LIVE") // LIVE | ENDED
+  winner    String? // A (attackers) | D (defenders/boss)
+  capture   Float         @default(0) // seconds attackers have held the objective
+  feed      Json          @default("[]") // kill feed: [{t, text}]
+  endsAt    DateTime
+  createdAt DateTime      @default(now())
+  players   MatchPlayer[]
+
+  @@index([targetId, status])
+}
+
+model MatchPlayer {
+  id         String   @id @default(cuid())
+  matchId    String
+  key        String // userId, or "bot:N" / "boss"
+  userId     String?
+  team       String // A | D
+  name       String
+  x          Float    @default(0)
+  z          Float    @default(0)
+  yaw        Float    @default(0)
+  hp         Int      @default(100)
+  maxHp      Int      @default(100)
+  kills      Int      @default(0)
+  damage     Int      @default(0)
+  lastShotAt DateTime?
+  updatedAt  DateTime @default(now())
+  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, key])
+}
+
+// World bosses are deterministic (like spawns); only damage taken is stored.
+model BossState {
+  bossId     String    @id
+  damage     Int       @default(0)
+  defeatedAt DateTime?
+  hits       BossHit[]
+}
+
+model BossHit {
+  id     String    @id @default(cuid())
+  bossId String
+  userId String
+  damage Int       @default(0)
+  boss   BossState @relation(fields: [bossId], references: [bossId], onDelete: Cascade)
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bossId, userId])
 }

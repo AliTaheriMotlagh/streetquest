@@ -11,11 +11,15 @@ export type ItemDef = {
   value: number; // coin value when sold
   phases?: DayPhase[]; // undefined = any time
   blurb: string;
+  food?: number; // hunger restored when eaten
+
 };
 
 export const ITEMS: ItemDef[] = [
   { key: "cash", name: "Cash Stack", emoji: "💵", rarity: "common", value: 10, blurb: "Crumpled bills. Spend them well." },
-  { key: "donut", name: "Glazed Donut", emoji: "🍩", rarity: "common", value: 5, blurb: "Fuel for long runs." },
+  { key: "donut", name: "Glazed Donut", emoji: "🍩", rarity: "common", value: 5, blurb: "Fuel for long runs.", food: 20 },
+  { key: "burger", name: "Street Burger", emoji: "🍔", rarity: "common", value: 8, blurb: "Greasy. Glorious. Fills you up.", food: 35 },
+  { key: "ration", name: "Field Ration", emoji: "🥫", rarity: "rare", value: 15, blurb: "Military issue. Keeps forever.", food: 50 },
   { key: "spraycan", name: "Spray Can", emoji: "🎨", rarity: "common", value: 8, blurb: "Tag the city." },
   { key: "keycard", name: "Keycard", emoji: "💳", rarity: "rare", value: 30, blurb: "Opens doors you shouldn't." },
   { key: "compass", name: "Old Compass", emoji: "🧭", rarity: "rare", value: 35, blurb: "Always points to trouble." },

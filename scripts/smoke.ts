@@ -165,5 +165,97 @@ const t2 = Date.now() - 1;
 check("admin broadcast", (await call(ADMIN, "/api/admin", { action: "broadcast", title: "Test push" })).status === 200);
 check("broadcast reaches active player", (await notifications(B, t2)).some((n) => n.title === "Test push"));
 
+// ---------------------------------------------------------------- strategy layer
+// Run the dev server with GAME_SPEED=600 so construction/training finish in a blink.
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+// Each run plays on fresh ground so bases from earlier runs don't collide.
+const so = { lat: start.lat + 0.02 + ((Date.now() / 1000) % 300) * 0.003, lng: start.lng };
+const C: Client = { cookie: "", name: `rival${Date.now() % 100000}` };
+check("signup rival", (await call(C, "/api/auth/signup", { username: C.name, email: `${C.name}@test.dev`, password: "password123" })).status === 200);
+const meC = (await call(C, "/api/me")).data;
+await goTo(A, so);
+check("build blocked without faction", (await call(A, "/api/base", { action: "found", name: "Nope" })).status === 400);
+check("pick faction", (await call(A, "/api/base", { action: "faction", faction: "insurgency" })).status === 200);
+r = await call(A, "/api/base", { action: "found", name: "Fort Test" });
+check("plant base", r.status === 200, r);
+await goTo(C, { lat: so.lat + 0.0005, lng: so.lng });
+check("rival picks faction", (await call(C, "/api/base", { action: "faction", faction: "coalition" })).status === 200);
+check("second base too close is rejected", (await call(C, "/api/base", { action: "found", name: "Too Close" })).status === 400);
+r = await call(A, "/api/base", { action: "build", type: "barracks" });
+check("build barracks", r.status === 200, r);
+check("dozer busy", (await call(A, "/api/base", { action: "build", type: "turret" })).status === 400);
+await sleep(1200);
+r = await call(A, "/api/base", { action: "train", unit: "ranger", qty: 2 });
+check("train rangers", r.status === 200, r);
+await sleep(600);
+let bv = (await call(A, "/api/base")).data;
+check("rangers trained", bv.army.ranger === 2, bv.army);
+check("base view has power + defense", bv.base?.power && bv.base?.defense, bv.base);
+
+const bPos = { lat: so.lat + 0.004, lng: so.lng };
+await goTo(C, bPos);
+r = await call(C, "/api/base", { action: "found", name: "Rival Keep" });
+check("rival plants base 450 m away", r.status === 200, r);
+w = (await call(A, `/api/world?lat=${so.lat}&lng=${so.lng}`)).data;
+const rivalBase = w.bases.find((b: { owner: { id: string } }) => b.owner.id === meC.id);
+check("world shows bases", !!rivalBase && w.bases.some((b: { mine: boolean }) => b.mine), w.bases);
+r = await call(A, "/api/battle", { kind: "siege", targetId: rivalBase.id });
+check("siege auto-resolves", r.status === 200 && typeof r.data.won === "boolean" && r.data.result?.rounds?.length > 0, r);
+check("siege cooldown", (await call(A, "/api/battle", { kind: "siege", targetId: rivalBase.id })).status >= 400);
+
+// ---------------------------------------------------------------- life-sim layer
+await goTo(A, so);
+let needs = (await call(A, "/api/me")).data;
+check("me has needs + mood", typeof needs.needs?.hunger === "number" && needs.mood?.label, needs.mood);
+r = await call(A, "/api/sims", { action: "rest" });
+check("rest at base", r.status === 200, r);
+check("rest cooldown", (await call(A, "/api/sims", { action: "rest" })).status === 429);
+check("can't eat a diamond", (await call(A, "/api/sims", { action: "eat", itemKey: "diamond" })).status === 400);
+await goTo(C, { lat: so.lat + 0.0005, lng: so.lng });
+r = await call(A, "/api/sims", { action: "socialize", userId: meC.id });
+check("hang out with nearby player", r.status === 200, r);
+
+// ---------------------------------------------------------------- FPS layer: breach
+await goTo(A, { lat: bPos.lat - 0.001, lng: bPos.lng });
+await goTo(C, bPos);
+r = await call(A, "/api/match", { kind: "breach", targetId: rivalBase.id });
+const breachOk = r.status === 200 && !!r.data.matchId;
+check("breach opens when owner is online", breachOk || r.data.error?.includes("shield"), r);
+if (breachOk) {
+  const mid = r.data.matchId;
+  check("defender joins as D", (await call(C, "/api/match", { kind: "breach", targetId: rivalBase.id })).data.matchId === mid);
+  let mv = (await call(A, `/api/match/${mid}`)).data;
+  check("match has garrison bots", mv.players.filter((p: { bot: boolean }) => p.bot).length >= 2, mv.players);
+  const meRow = (v: typeof mv, key: string) => v.players.find((p: { key: string }) => p.key === key);
+  const aRow = meRow(mv, meA.id);
+  await sleep(300);
+  mv = (await call(A, `/api/match/${mid}`, { x: aRow.x, z: aRow.z, yaw: 0, hits: [{ key: "bot:0", dmg: 9999 }] })).data;
+  check("hit damage capped at headshot max", meRow(mv, "bot:0").hp === 70 - 40, meRow(mv, "bot:0"));
+  check("first poller becomes host", mv.host === true);
+  const cRow = meRow(mv, meC.id);
+  for (let i = 0; i < 4 && mv.status === "LIVE"; i++) {
+    await sleep(500);
+    mv = (await call(C, `/api/match/${mid}`, { x: cRow.x, z: cRow.z, yaw: Math.PI, hits: [{ key: meA.id, dmg: 40 }, { key: meA.id, dmg: 40 }] })).data;
+  }
+  check("defender wins when attackers are wiped", mv.status === "ENDED" && mv.winner === "D", { status: mv.status, winner: mv.winner, a: meRow(mv, meA.id) });
+}
+
+// ---------------------------------------------------------------- bosses
+w = (await call(A, `/api/world?lat=${so.lat}&lng=${so.lng}`)).data;
+const boss = w.bosses[0];
+if (boss) {
+  await goTo(A, boss);
+  r = await call(A, "/api/match", { kind: "raid", targetId: boss.id });
+  check("boss raid opens", r.status === 200, r);
+  const rid = r.data.matchId;
+  let rv = (await call(A, `/api/match/${rid}`)).data;
+  const me2 = rv.players.find((p: { key: string }) => p.key === meA.id);
+  await sleep(300);
+  rv = (await call(A, `/api/match/${rid}`, { x: me2.x, z: me2.z, yaw: 0, hits: [{ key: "boss", dmg: 40 }] })).data;
+  const w2 = (await call(A, `/api/world?lat=${so.lat}&lng=${so.lng}`)).data;
+  check("boss damage is shared world state", w2.bosses.find((b: { id: string }) => b.id === boss.id)?.hp === boss.hp - 40, { before: boss.hp, after: w2.bosses.find((b: { id: string }) => b.id === boss.id)?.hp });
+  check("raid shows as live on map", w2.bosses.find((b: { id: string }) => b.id === boss.id)?.liveMatch === rid);
+} else console.log("(no boss in range this window — skipped boss checks)");
+
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASSED");
 process.exit(fails ? 1 : 0);

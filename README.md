@@ -1,7 +1,17 @@
-# StreetQuest — real-world GPS game
+# StreetQuest — real-world GPS war game
 
+Three games stacked on one real-world map:
 
-GTA-style missions on real streets, Pokémon-GO-style spawns, real package deliveries,
+- **Strategy (Generals: Zero Hour style)** — pick a faction, plant a base where you stand, build power /
+  supply / barracks / factory / airfield / turrets on real timers, train an army, capture oil derricks
+  and siege rival bases. Battles are auto-resolved.
+- **Life sim (The Sims style)** — your commander has Hunger, Energy, Social and Fun that drain in real time.
+  Eat food you find, sleep at your base, hang out with nearby players. Mood scales XP and combat HP.
+- **FPS (Counter-Strike / CoD style)** — walk within 200 m of an enemy base while other players are online and
+  you can *breach* it: a live first-person match (capture the zone or wipe the defenders + garrison bots,
+  no respawns). World **bosses** roam the map with shared HP — raid them in first person or bombard them.
+
+Plus the original layer: Pokémon-GO-style spawns, GTA-style timed runs, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
 
 ## Run locally
@@ -21,7 +31,10 @@ The first account ever created also becomes admin.
 **Testing at your desk:** in dev (or as an admin) tap 🕹️ on the map to turn on the GPS
 simulator, then tap the map to teleport.
 
-End-to-end test (needs the dev server running): `npm run test:smoke`
+**Faster timers for testing:** `GAME_SPEED=600 npm run dev` makes construction and training 600× faster
+(ignored in production). Jump straight into a live fight with `/play?match=<id>`.
+
+End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke`
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.
@@ -30,6 +43,10 @@ End-to-end test (needs the dev server running): `npm run test:smoke`
 
 | Area | Where |
 |---|---|
+| Strategy rules: factions, buildings, power, units, auto-resolved battles (pure, shared client/server) | `src/lib/rts.ts`, `src/app/api/{base,battle}` |
+| Life sim: needs decay computed from a stored snapshot + timestamp, so no background jobs; mood multiplies XP in `grant()` | `src/lib/sims.ts`, `src/server/needs.ts`, `src/app/api/sims` |
+| World bosses: deterministic per ~1.3 km region and 2 h window like spawns; only damage is stored. The killing hit pays every contributor | `src/lib/bosses.ts`, `src/server/boss.ts` |
+| FPS: the arena is generated from the match seed on every client. Clients POST position + hits ~7×/s; the server owns HP, kills, capture and the result. The first live human is the *host* and runs bot/boss AI; if it goes quiet the next player takes over | `src/lib/arena.ts`, `src/server/match.ts`, `src/components/fps/Fps.tsx` |
 | Spawns: deterministic per ~450 m cell and 20-min window, so everyone sees the same world with zero storage; the server rebuilds a spawn from its id to verify claims | `src/lib/spawns.ts` |
 | Time of day: local *solar* time decides night/dawn/day/dusk items and golden-hour 2× XP anywhere on Earth; daily streaks reset at the player's own midnight | `src/lib/geo.ts`, `src/lib/progression.ts` |
 | Anti-cheat: claims use the server's trusted position, GPS jumps faster than 250 km/h are rejected | `src/app/api/loc`, `src/server/rewards.ts` |
@@ -63,4 +80,7 @@ After the first deploy, sign up — **the first account becomes admin**. Don't r
   `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia.
 - Chat/notifications poll every few seconds. For instant delivery at scale, plug in a hosted
   realtime service (Ably, Pusher, Supabase Realtime) behind `notify()` and the chat route.
+- The FPS netcode is HTTP polling (~7 requests/s per player in a match). Fine for small fights; for real
+  scale move `/api/match/:id` to WebSockets or a realtime service. Hit detection is client-reported with
+  server-side caps (damage, fire rate, movement speed), so it's casual-grade anti-cheat, not competitive.
 - Switch `prisma db push` in the build to `prisma migrate deploy` once you have real data.

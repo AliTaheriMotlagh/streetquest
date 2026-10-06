@@ -5,6 +5,7 @@ import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent } from "./client";
 import { Sheet, Tabs, useGame } from "./ui";
+import { LifeTab } from "./Life";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -51,10 +52,10 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
           spawns.map((s) => (
             <div key={s.id} className="card list-item">
               <div className="icon-tile" style={{ boxShadow: s.item ? `inset 0 0 0 2px ${RARITY_COLOR[s.item.rarity]}` : undefined }}>
-                {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.item?.emoji}
+                {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji}
               </div>
               <div className="grow">
-                <b>{s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade: Tap Rush" : s.item?.name}</b>
+                <b>{s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade: Tap Rush" : s.kind === "derrick" ? "Oil Derrick" : s.item?.name}</b>
                 <div className="small muted">
                   {formatDistance(d(s))} · +{s.rewardXp} XP {s.goldenHour && "· ✨2×"}
                 </div>
@@ -617,9 +618,9 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
 // ---------------------------------------------------------------- Profile
 const AVATARS = ["🕶️", "😎", "🦊", "🐺", "🐯", "🤖", "👽", "🥷", "🧛", "🦸", "🐉", "💀"];
 
-export function ProfilePanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
+export function ProfilePanel({ onClose, peek, initialTab = "stats" }: { onClose: () => void; peek: boolean; initialTab?: "stats" | "life" }) {
   const { me, act, refresh } = useGame();
-  const [tab, setTab] = useState<"stats" | "bag" | "awards">("stats");
+  const [tab, setTab] = useState<"stats" | "life" | "bag" | "awards">(initialTab);
   const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
 
   return (
@@ -657,7 +658,7 @@ export function ProfilePanel({ onClose, peek }: { onClose: () => void; peek: boo
         </div>
       )}
 
-      <Tabs value={tab} onChange={setTab} tabs={[["stats", "Stats"], ["bag", `Bag (${me.inventory.reduce((s, i) => s + i.qty, 0)})`], ["awards", `Awards (${me.achievements.length})`]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["stats", "Stats"], ["life", `${me.mood.emoji} Life`], ["bag", `Bag (${me.inventory.reduce((s, i) => s + i.qty, 0)})`], ["awards", `Awards (${me.achievements.length})`]]} />
 
       {tab === "stats" && (
         <>
@@ -704,6 +705,8 @@ export function ProfilePanel({ onClose, peek }: { onClose: () => void; peek: boo
           </div>
         </>
       )}
+
+      {tab === "life" && <LifeTab />}
 
       {tab === "bag" &&
         (me.inventory.length ? (

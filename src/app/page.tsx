@@ -6,6 +6,11 @@ import { SITE } from "@/lib/site";
 export const dynamic = "force-dynamic";
 
 const FEATURES = [
+  ["🏰", "Build a base on your street", "Pick a faction, plant your base where you really are, then build power, supply lines, barracks, factories and turrets on real timers."],
+  ["🎖️", "Command an army", "Train rangers, tanks, artillery and jets. Capture oil derricks in person and siege rival bases up to 5 km away."],
+  ["🔫", "Drop into first person", "Walk up to an enemy base while players are online and the fight turns into a live FPS breach — capture their Command Center."],
+  ["💀", "World bosses", "Mechs and warlords roam the map with shared HP. Raid them in first person with your crew or bombard them with your army."],
+  ["🛏️", "A life to look after", "Your commander gets hungry, tired and lonely. Eat, sleep at base and hang out with nearby players — a good mood means more XP."],
   ["🗺️", "Your streets, your map", "Real GPS, real places. Missions, items and chests spawn around you wherever you are on Earth."],
   ["🏁", "GTA-style timed runs", "Getaways, street races and dead drops — reach the target before the clock hits zero."],
   ["🔓", "Chests & mini-games", "Crack locks, win arcade challenges and score rare loot — some only appear at night."],
@@ -21,7 +26,8 @@ const FAQ = [
   ["Does it work in my city?", "Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns."],
   ["How do real package deliveries work?", "A player posts a request with pickup and drop-off points and a coin reward held in escrow. A courier accepts, checks in at the pickup with GPS, and completes the delivery by entering a secret handover code the recipient receives from the sender."],
   ["Is my location shared?", "Only friends see your precise position while you are online. Other players see an approximate location, and you can stop sharing anytime by closing the game."],
-  ["How is this different from Pokémon GO?", "StreetQuest mixes collectible spawns with GTA-style timed missions, real-world courier jobs, location messages, mini-games and player-created events."],
+  ["How is this different from Pokémon GO?", "StreetQuest is a strategy war game on real streets: you build a base, train an army and siege rivals, fight live first-person battles when players meet near a base, raid world bosses together, and keep your commander fed, rested and happy."],
+  ["When does a fight turn first-person?", "When you're within 200 m of an enemy base or a boss and other players are online nearby. Otherwise battles are auto-resolved with your army, Generals-style."],
 ];
 
 export default async function Home() {
@@ -70,14 +76,14 @@ export default async function Home() {
         <section className="hero">
           <div>
             <span className="tag" style={{ background: "rgba(255,46,136,.2)", color: "var(--pink)" }}>
-              Real-world GPS game
+              Real-world GPS war game
             </span>
             <h1 style={{ margin: "14px 0" }}>
               Your city is <em>the game map.</em>
             </h1>
             <p>
-              Run missions on your actual streets, crack chests, deliver real packages for coins, leave messages at secret spots and
-              squad up with friends at live events — anywhere on Earth.
+              Build a base on your actual street, train an army and siege your rivals. Get close while they&apos;re online and it turns
+              into a first-person firefight. Hunt world bosses with your crew, and keep your commander fed, rested and happy.
             </p>
             <div className="row wrap" style={{ marginTop: 24 }}>
               <Link href="/signup" className="btn" style={{ fontSize: 16, padding: "16px 26px" }}>

@@ -2,10 +2,12 @@
 import { prisma } from "@/lib/db";
 import { bbox, dayPhase, distanceM, solarHour } from "@/lib/geo";
 import { spawnsAround } from "@/lib/spawns";
+import { bossesAround } from "@/lib/bosses";
+import { factionOf, levelOf } from "@/lib/rts";
 import { ITEM_BY_KEY } from "@/lib/catalog";
 import { levelForXp } from "@/lib/progression";
 import { requireUser } from "@/server/auth";
-import { onlineSince } from "@/server/hub";
+import { isOnline, onlineSince } from "@/server/hub";
 import { HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
 
@@ -30,7 +32,8 @@ export const GET = route(async (req) => {
     [`${prefix}lng`]: { gte: b.minLng, lte: b.maxLng },
   });
 
-  const [missions, notes, events, deliveries, friends, nearbyUsers] = await Promise.all([
+  const bosses = bossesAround(here);
+  const [missions, notes, events, deliveries, friends, nearbyUsers, bases, bossStates] = await Promise.all([
     prisma.adminMission.findMany({ where: { ...inBox(near), activeFrom: { lte: now }, activeTo: { gte: now } } }),
     prisma.geoNote.findMany({
       where: { ...inBox(near), hidden: false, expiresAt: { gt: now } },
@@ -54,7 +57,19 @@ export const GET = route(async (req) => {
       select: { id: true, username: true, avatar: true, xp: true, lastLat: true, lastLng: true },
       take: 200,
     }),
+    prisma.base.findMany({
+      where: { lat: { gte: wide.minLat, lte: wide.maxLat }, lng: { gte: wide.minLng, lte: wide.maxLng } },
+      include: { buildings: true, owner: { select: { id: true, username: true, avatar: true, faction: true, lastSeenAt: true } } },
+      take: 150,
+    }),
+    prisma.bossState.findMany({ where: { bossId: { in: bosses.map((b) => b.id) } } }),
   ]);
+  const liveMatches = await prisma.match.findMany({
+    where: { status: "LIVE", endsAt: { gt: now }, targetId: { in: [...bases.map((b) => b.id), ...bosses.map((b) => b.id)] } },
+    select: { id: true, targetId: true },
+  });
+  const liveBy = new Map(liveMatches.map((m) => [m.targetId, m.id]));
+  const bossBy = new Map(bossStates.map((s) => [s.bossId, s]));
   const missionClaims = new Set(
     (await prisma.claim.findMany({ where: { userId: u.id, spawnId: { in: missions.map((m) => `m:${m.id}`) } } })).map((c) => c.spawnId),
   );
@@ -100,5 +115,27 @@ export const GET = route(async (req) => {
       .filter((d) => d.senderId !== u.id)
       .map(({ dropoffCode: _c, ...d }) => ({ ...d, distanceM: Math.round(distanceM(here, { lat: d.pickupLat, lng: d.pickupLng })) })),
     players,
+    bases: bases.map((b) => ({
+      id: b.id,
+      name: b.name,
+      lat: b.lat,
+      lng: b.lng,
+      hp: b.hp,
+      mine: b.ownerId === u.id,
+      friend: friendSet.has(b.ownerId),
+      shielded: !!b.shieldUntil && b.shieldUntil > now,
+      hq: levelOf(b.buildings, "hq"),
+      turrets: levelOf(b.buildings, "turret"),
+      owner: { id: b.owner.id, username: b.owner.username, avatar: b.owner.avatar, online: isOnline(b.owner.lastSeenAt) },
+      faction: factionOf(b.owner.faction)?.key ?? null,
+      liveMatch: liveBy.get(b.id) ?? null,
+    })),
+    bosses: bosses
+      .map((b) => {
+        const st = bossBy.get(b.id);
+        return { id: b.id, lat: b.lat, lng: b.lng, expiresAt: b.expiresAt, def: b.def, maxHp: b.maxHp, hp: Math.max(0, b.maxHp - (st?.damage ?? 0)), defeated: !!st?.defeatedAt, liveMatch: liveBy.get(b.id) ?? null };
+      })
+      .filter((b) => !b.defeated),
+    onlineNearby: nearbyUsers.length,
   };
 });

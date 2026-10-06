@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
 import type { LatLng, Me, Selected, World } from "./client";
 
 // Default: public OSM tiles, darkened with CSS. For production traffic set
@@ -72,8 +73,8 @@ export default function GameMap({ pos, world, me, follow, picking, onUnfollow, o
         ))}
 
         {world?.spawns.map((s) => {
-          const color = s.item ? RARITY_COLOR[s.item.rarity] : "#22e3ff";
-          const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.item?.emoji ?? "❔";
+          const color = s.kind === "derrick" ? "#ffd23f" : s.item ? RARITY_COLOR[s.item.rarity] : "#22e3ff";
+          const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji ?? "❔";
           const cls = `${s.kind} ${s.item?.rarity ?? ""} ${s.claimed ? "claimed" : ""}`;
           return (
             <Marker
@@ -104,6 +105,40 @@ export default function GameMap({ pos, world, me, follow, picking, onUnfollow, o
 
         {world?.deliveries.map((d) => (
           <Marker key={d.id} position={[d.pickupLat, d.pickupLng]} icon={icon("📦", "")} eventHandlers={{ click: () => onSelect({ type: "delivery", data: d }) }} />
+        ))}
+
+        {world?.bases.map((b) => {
+          const f = b.faction ? FACTION_BY_KEY[b.faction] : null;
+          const color = b.mine ? "#22e3ff" : b.friend ? "#3dff8f" : (f?.color ?? "#ff4d4d");
+          return (
+            <Marker
+              key={b.id}
+              position={[b.lat, b.lng]}
+              zIndexOffset={500}
+              icon={icon(
+                `<span class="ring" style="color:${color}"></span>🏰<span class="nm" style="color:${color}">${esc(b.name)} · ${b.hq}</span>${b.liveMatch ? '<span class="fight">⚔️</span>' : ""}${b.shielded ? '<span class="shield">🛡️</span>' : ""}`,
+                `base ${b.mine ? "mine" : ""} ${b.owner.online ? "online" : ""}`,
+                48,
+              )}
+              eventHandlers={{ click: () => onSelect({ type: "base", data: b }) }}
+            />
+          );
+        })}
+
+        {me?.base && <Circle center={[me.base.lat, me.base.lng]} radius={SIEGE_RANGE_M} pathOptions={{ color: "#22e3ff", weight: 1, opacity: 0.25, fill: false, dashArray: "2 10" }} />}
+
+        {world?.bosses.map((b) => (
+          <Marker
+            key={b.id}
+            position={[b.lat, b.lng]}
+            zIndexOffset={600}
+            icon={icon(
+              `<span class="ring" style="color:${b.def.color}"></span>${b.def.emoji}<span class="hpbar"><i style="width:${(b.hp / b.maxHp) * 100}%"></i></span>${b.liveMatch ? '<span class="fight">⚔️</span>' : ""}`,
+              "boss",
+              60,
+            )}
+            eventHandlers={{ click: () => onSelect({ type: "boss", data: b }) }}
+          />
         ))}
 
         {world?.players.map((p) => (

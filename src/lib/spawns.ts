@@ -20,7 +20,7 @@ import {
 export const BUCKET_MS = 20 * 60 * 1000;
 export const INTERACT_RADIUS_M = 40;
 
-export type SpawnKind = "item" | "chest" | "run" | "arcade";
+export type SpawnKind = "item" | "chest" | "run" | "arcade" | "derrick";
 
 export type Spawn = {
   id: string;
@@ -33,6 +33,7 @@ export type Spawn = {
   goldenHour: boolean; // dawn/dusk => double XP
   item?: ItemDef;
   run?: { title: string; brief: string; target: LatLng; distanceM: number; timeLimitS: number };
+  guard?: number; // derrick: strength of the neutral militia guarding it
   rewardXp: number;
   rewardCoins: number;
 };
@@ -42,6 +43,7 @@ const KINDS: { kind: SpawnKind; weight: number }[] = [
   { kind: "chest", weight: 20 },
   { kind: "run", weight: 15 },
   { kind: "arcade", weight: 10 },
+  { kind: "derrick", weight: 9 }, // oil derrick: capture it with your army
 ];
 
 const RUN_TEMPLATES = [
@@ -87,6 +89,9 @@ export function spawnsForCell(cx: number, cy: number, bucket: number): Spawn[] {
       out.push({ ...base, item, rewardXp: 20 * mult, rewardCoins: 0 });
     } else if (kind === "chest") {
       out.push({ ...base, item, rewardXp: 50 * mult, rewardCoins: 20 + Math.floor(rand() * 40) });
+    } else if (kind === "derrick") {
+      const guard = 40 + Math.floor(rand() * 160);
+      out.push({ ...base, guard, rewardXp: Math.round(guard * 0.6) * mult, rewardCoins: 60 + guard });
     } else if (kind === "arcade") {
       out.push({ ...base, rewardXp: 40 * mult, rewardCoins: 30 });
     } else {

@@ -48,5 +48,26 @@ if (!(await prisma.adminMission.count()))
     data: { title: "The Vault Job", description: "A sponsor left a diamond near here. First come, first served.", lat: lat - 0.0008, lng: lng + 0.0006, itemKey: "diamond", rewardXp: 500, rewardCoins: 200, activeFrom: new Date(), activeTo: new Date(Date.now() + 30 * 86400_000), sponsor: "Demo Brand" },
   });
 
+// Strategy layer demo: two rival bases with some buildings and troops.
+await prisma.user.update({ where: { id: vee.id }, data: { faction: "coalition", coins: 1500 } });
+await prisma.user.update({ where: { id: kai.id }, data: { faction: "insurgency", coins: 1200 } });
+for (const [owner, name, dLat, dLng, units] of [
+  [vee, "Fox Den", 0.0035, -0.002, { ranger: 8, tank: 2 }],
+  [kai, "Night Market Keep", -0.003, 0.0035, { ranger: 12, rocket: 3 }],
+] as const) {
+  if (await prisma.base.findUnique({ where: { ownerId: owner.id } })) continue;
+  await prisma.base.create({
+    data: {
+      ownerId: owner.id,
+      name,
+      lat: lat + dLat,
+      lng: lng + dLng,
+      buildings: { create: ["hq", "power", "supply", "barracks", "turret", "quarters"].map((type) => ({ type, level: type === "hq" ? 2 : 1, readyAt: new Date() })) },
+    },
+  });
+  for (const [unitType, qty] of Object.entries(units))
+    await prisma.unitStack.upsert({ where: { userId_unitType: { userId: owner.id, unitType } }, update: {}, create: { userId: owner.id, unitType, qty } });
+}
+
 console.log(`Seeded around ${lat},${lng}. Logins: admin / VeeRunner / KaiNight / Lola — password: password123`);
 await prisma.$disconnect();

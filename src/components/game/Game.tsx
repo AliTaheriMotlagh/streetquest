@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { BREACH_RANGE_M, FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
+import { BasePanel } from "./BasePanel";
+import { NeedsHud } from "./Life";
 import { api, fmtTime, type LatLng, type Me, type Selected, type World } from "./client";
 import { Lockpick, TapRush } from "./MiniGames";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
@@ -11,9 +14,11 @@ import { Ctx, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./u
 import { useLocation, type GeoError } from "./useLocation";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
+const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <div className="fps" /> });
 
 const NAV: [PanelId, string, string][] = [
   ["nearby", "🎯", "Nearby"],
+  ["base", "🏰", "Base"],
   ["jobs", "📦", "Jobs"],
   ["crew", "🤝", "Crew"],
   ["events", "🎉", "Events"],
@@ -39,6 +44,8 @@ export default function Game() {
   const [unread, setUnread] = useState(0);
   const [announce, setAnnounce] = useState<{ id: string; title: string; body: string; ctaLabel: string | null; ctaUrl: string | null } | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [match, setMatch] = useState<string | null>(null);
+  const [meTab, setMeTab] = useState<"stats" | "life">("stats");
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
 
   // ---- data loading
@@ -126,9 +133,16 @@ export default function Game() {
     if (panel === "crew") setUnread(0);
   }, [panel, unread]);
 
-  // Deep link from a public event page: /play?event=<id>
+  // Deep links: /play?match=<id> drops straight into a live fight; /play?event=<id> joins an event.
   useEffect(() => {
-    const id = new URLSearchParams(location.search).get("event");
+    const sp = new URLSearchParams(location.search);
+    const fight = sp.get("match");
+    if (fight && me) {
+      history.replaceState(null, "", "/play");
+      setMatch(fight);
+      return;
+    }
+    const id = sp.get("event");
     if (!id || !me) return;
     history.replaceState(null, "", "/play");
     act(() => api(`/api/events/${id}`, { body: { action: "join" } })).then(() => setPanel("events"));
@@ -173,6 +187,11 @@ export default function Game() {
           setPanel("crew");
         },
         setPanel,
+        enterMatch: (id) => {
+          setSelected(null);
+          setPanel(null);
+          setMatch(id);
+        },
       },
     [me, pos, world, toast, act, refresh],
   );
@@ -217,6 +236,12 @@ export default function Game() {
               </div>
             </div>
           </div>
+          <NeedsHud
+            onClick={() => {
+              setMeTab("life");
+              setPanel("me");
+            }}
+          />
           <div className="hud-right">
             <div className="chip">🪙 {me.coins.toLocaleString()}</div>
             {world && (
@@ -306,22 +331,43 @@ export default function Game() {
         {selected && !panel && <InfoCard sel={selected} onClose={() => setSelected(null)} onClaim={claim} onMini={setMini} />}
 
         {panel === "nearby" && <NearbyPanel onClose={close} peek={peek} />}
+        {panel === "base" && <BasePanel onClose={close} peek={peek} />}
         {panel === "jobs" && <JobsPanel onClose={close} peek={peek} />}
         {panel === "crew" && <CrewPanel onClose={close} peek={peek} chat={chat} setChat={setChat} />}
         {panel === "events" && <EventsPanel onClose={close} peek={peek} />}
-        {panel === "me" && <ProfilePanel onClose={close} peek={peek} />}
+        {panel === "me" && (
+          <ProfilePanel
+            key={meTab}
+            initialTab={meTab}
+            onClose={() => {
+              close();
+              setMeTab("stats");
+            }}
+            peek={peek}
+          />
+        )}
 
         {!panel && !selected && (
           <nav className="nav">
             {NAV.map(([id, ic, label]) => (
-              <button key={id} onClick={() => setPanel(id)}>
+              <button key={id} onClick={() => setPanel(id)} className={id === "base" && !me.base ? "pulse" : ""}>
                 <span className="ic">{ic}</span>
                 {label}
                 {id === "crew" && unread + me.pendingFriends > 0 && <span className="badge">{unread + me.pendingFriends}</span>}
-                {id === "me" && me.dailyAvailable && <span className="badge">!</span>}
+                {id === "me" && (me.dailyAvailable || me.mood.score < 30) && <span className="badge">!</span>}
               </button>
             ))}
           </nav>
+        )}
+
+        {match && (
+          <Fps
+            matchId={match}
+            onExit={() => {
+              setMatch(null);
+              refresh();
+            }}
+          />
         )}
 
         {mini && (
@@ -427,18 +473,29 @@ function InfoCard({
   onClaim: (spawnId: string, score?: number) => void;
   onMini: (m: { kind: "chest" | "arcade"; spawnId: string }) => void;
 }) {
-  const { pos, act, me, openChat, setPanel } = useGame();
+  const { pos, act, me, world, openChat, setPanel, enterMatch } = useGame();
   const target = sel.type === "delivery" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = <button className="btn block" disabled>Get closer · {formatDistance(dist)}</button>;
+  const startMatch = async (kind: "breach" | "raid", targetId: string) => {
+    let id = "";
+    const ok = await act(async () => {
+      id = (await api<{ matchId: string }>("/api/match", { body: { kind, targetId } })).matchId;
+      return {};
+    });
+    if (ok && id) enterMatch(id);
+  };
+  const fromBase = me.base ? distanceM(me.base, target) : Infinity;
 
   if (sel.type === "spawn") {
     const s = sel.data;
-    const title = s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade Machine" : s.item!.name;
-    const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.item!.emoji;
+    const title = s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade Machine" : s.kind === "derrick" ? "Oil Derrick" : s.item!.name;
+    const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item!.emoji;
     const desc =
-      s.kind === "run"
+      s.kind === "derrick"
+        ? `Neutral militia (strength ${s.guard}) guards this derrick. Lead your army here in person and take it: +${s.rewardCoins} 🪙.`
+        : s.kind === "run"
         ? `${s.run!.brief} Target is ${formatDistance(s.run!.distanceM)} away — you have ${Math.round(s.run!.timeLimitS / 60)} min.`
         : s.kind === "chest"
           ? `Pick the lock to grab what's inside (maybe ${s.item!.emoji}). Flawless pick = double loot.`
@@ -450,7 +507,7 @@ function InfoCard({
         <div className="row" style={{ marginBottom: 10 }}>
           <div className="icon-tile" style={{ width: 70, height: 70, fontSize: 42, boxShadow: s.item ? `0 0 24px ${RARITY_COLOR[s.item.rarity]}` : undefined }}>{emoji}</div>
           <div className="grow">
-            {s.item && <span className="tag" style={{ color: RARITY_COLOR[s.item.rarity] }}>{s.item.rarity}</span>}
+            {s.item && s.kind !== "derrick" && <span className="tag" style={{ color: RARITY_COLOR[s.item.rarity] }}>{s.item.rarity}</span>}
             <p className="small" style={{ margin: "6px 0" }}>{desc}</p>
             <div className="small muted">
               +{s.rewardXp} XP {s.rewardCoins ? `· +${s.rewardCoins} 🪙` : ""} {s.goldenHour && "· ✨ golden hour 2×"} · despawns in{" "}
@@ -462,6 +519,10 @@ function InfoCard({
           <button className="btn block" disabled>Already collected</button>
         ) : !inRange ? (
           tooFar
+        ) : s.kind === "derrick" ? (
+          <button className="btn yellow block" disabled={!me.faction} onClick={() => act(() => api("/api/battle", { body: { kind: "derrick", targetId: s.id } })).then((ok) => ok && onClose())}>
+            {me.faction ? "🎖️ Attack with your army" : "Join a faction first (Base tab)"}
+          </button>
         ) : s.kind === "chest" || s.kind === "arcade" ? (
           <button className="btn yellow block" onClick={() => onMini({ kind: s.kind as "chest" | "arcade", spawnId: s.id })}>
             {s.kind === "chest" ? "🔓 Crack it" : "▶ Play"}
@@ -527,6 +588,80 @@ function InfoCard({
         <button className="btn green block" onClick={() => act(() => api(`/api/deliveries/${d.id}`, { body: { action: "accept" } })).then((ok) => ok && onClose())}>
           Accept job
         </button>
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "base") {
+    const b = sel.data;
+    const f = b.faction ? FACTION_BY_KEY[b.faction] : null;
+    const humansOnline = b.owner.online || (world?.onlineNearby ?? 0) > 0;
+    const breachable = dist <= BREACH_RANGE_M && humansOnline && !b.shielded;
+    return (
+      <Sheet title={`🏰 ${b.name}`} onClose={onClose}>
+        <div className="small muted" style={{ marginBottom: 8 }}>
+          <span className={`dot ${b.owner.online ? "on" : ""}`} /> {b.owner.avatar} {b.owner.username} {f && <span style={{ color: f.color }}>· {f.emoji} {f.name}</span>} · {formatDistance(dist)}
+        </div>
+        <div className="grid3" style={{ marginBottom: 10 }}>
+          <div className="stat"><b>{b.hq}</b><span>HQ level</span></div>
+          <div className="stat"><b>🗼 {b.turrets}</b><span>Turrets</span></div>
+          <div className="stat"><b>{b.hp}</b><span>Integrity</span></div>
+        </div>
+        {b.shielded && <p className="small" style={{ color: "var(--cyan)" }}>🛡️ Cease-fire shield is up.</p>}
+        {b.mine || b.friend ? (
+          <div className="row wrap">
+            {b.mine && <button className="btn cyan" onClick={() => setPanel("base")}>Open base</button>}
+            {b.liveMatch && <button className="btn" onClick={() => startMatch("breach", b.id)}>🛡️ Defend it (FPS)</button>}
+            {!b.mine && !b.liveMatch && <p className="small muted">Your crew&apos;s base. If it&apos;s breached while you&apos;re close, you can jump in to defend.</p>}
+          </div>
+        ) : (
+          <>
+            <div className="row wrap">
+              <button
+                className="btn yellow"
+                disabled={!me.base || fromBase > SIEGE_RANGE_M || b.shielded}
+                onClick={() => confirm(`Send your whole army to siege ${b.name}?`) && act(() => api("/api/battle", { body: { kind: "siege", targetId: b.id } }))}
+              >
+                🎖️ Siege with army
+              </button>
+              {b.liveMatch ? (
+                <button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("breach", b.id)}>⚔️ Join the firefight</button>
+              ) : (
+                <button className="btn" disabled={!breachable} onClick={() => startMatch("breach", b.id)}>⚔️ Breach (FPS)</button>
+              )}
+            </div>
+            <p className="small muted">
+              {!me.base
+                ? "Plant your own base to send armies."
+                : fromBase > SIEGE_RANGE_M
+                  ? `Out of siege range (${formatDistance(fromBase)} from your base, max ${SIEGE_RANGE_M / 1000} km).`
+                  : "Siege is auto-resolved: your army vs their garrison and turrets."}{" "}
+              {dist > BREACH_RANGE_M ? `Walk within ${BREACH_RANGE_M} m to breach it in first person.` : !humansOnline ? "Breach unlocks when players are online nearby." : "You're close — breach it in first person!"}
+            </p>
+          </>
+        )}
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "boss") {
+    const b = sel.data;
+    return (
+      <Sheet title={`${b.def.emoji} ${b.def.name}`} onClose={onClose}>
+        <p className="small" style={{ margin: "0 0 8px" }}>{b.def.blurb}</p>
+        <div className="need-bar boss"><i style={{ width: `${(b.hp / b.maxHp) * 100}%` }} /></div>
+        <p className="small muted">
+          {b.hp.toLocaleString()} / {b.maxHp.toLocaleString()} HP · shared by every player · leaves in {Math.max(0, Math.round((b.expiresAt - Date.now()) / 60000))} min · {formatDistance(dist)}
+        </p>
+        <div className="row wrap">
+          <button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("raid", b.id)}>
+            ⚔️ {b.liveMatch ? "Join the raid" : "Raid (FPS)"}
+          </button>
+          <button className="btn yellow" disabled={!me.base || fromBase > SIEGE_RANGE_M} onClick={() => act(() => api("/api/battle", { body: { kind: "bombard", targetId: b.id } }))}>
+            💥 Bombard with army
+          </button>
+        </div>
+        <p className="small muted">Everyone who damages it shares the loot when it falls; top damage gets a 👑. {dist > BREACH_RANGE_M && `Walk within ${BREACH_RANGE_M} m to fight it in first person.`}</p>
       </Sheet>
     );
   }
