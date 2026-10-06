@@ -667,6 +667,19 @@ export function ProfilePanel({ onClose, peek, initialTab = "stats" }: { onClose:
             <div className="stat"><b>🔥 {me.streak}</b><span>Streak</span></div>
             <div className="stat"><b>{me.achievements.length}</b><span>Awards</span></div>
           </div>
+          <label>Callsign</label>
+          <form
+            className="row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const username = String(new FormData(e.currentTarget).get("username") ?? "").trim();
+              if (username && username !== me.username) act(() => api("/api/me", { method: "PATCH", body: { username } }).then(() => ({ message: `You're now ${username}` })));
+            }}
+          >
+            <input name="username" defaultValue={me.username} maxLength={20} minLength={3} pattern="[A-Za-z0-9_]+" />
+            <button className="btn ghost small">Save</button>
+          </form>
+          <p className="small muted">No account needed — your progress is saved in this browser.</p>
           <label>Avatar</label>
           <div className="row wrap">
             {AVATARS.map((a) => (
@@ -699,9 +712,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "stats" }: { onClose:
                 Admin panel
               </a>
             )}
-            <button className="btn ghost small" onClick={() => api("/api/auth/logout", { body: {} }).then(() => (location.href = "/"))}>
-              Log out
-            </button>
+
           </div>
         </>
       )}

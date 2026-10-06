@@ -35,7 +35,20 @@ const A: Client = { cookie: "sq_ref=VEERUNNER", name };
 const B: Client = { cookie: "", name: "KaiNight" };
 const ADMIN: Client = { cookie: "", name: "admin" };
 
-let r = await call(A, "/api/auth/signup", { username: name, email: `${name}@test.dev`, password: "password123", timezone: "Asia/Tehran" });
+// No-login guest flow
+const G: Client = { cookie: "", name: "guest" };
+check("no session → 401", (await call(G, "/api/me")).status === 401);
+let r = await call(G, "/api/auth/guest", {});
+check("guest account created", r.status === 200 && G.cookie.startsWith("sq_session="), r);
+const gName = r.data.username;
+check("guest can play", (await call(G, "/api/me")).data.username === gName);
+check("guest call is idempotent", (await call(G, "/api/auth/guest", {})).data.username === gName);
+const newName = `cmdr${Date.now() % 100000}`;
+check("rename callsign", (await call(G, "/api/me", { username: newName }, "PATCH")).status === 200 && (await call(G, "/api/me")).data.username === newName);
+check("guest is not admin", (await call(G, "/api/admin")).status === 403);
+check("health check", (await call(G, "/api/health")).data.ok === true);
+
+r = await call(A, "/api/auth/signup", { username: name, email: `${name}@test.dev`, password: "password123", timezone: "Asia/Tehran" });
 check("signup with referral", r.status === 200, r);
 r = await call(A, "/api/me");
 check("referral bonus coins (250)", r.data.coins === 250, r.data.coins);

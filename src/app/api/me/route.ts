@@ -6,7 +6,7 @@ import { requireUser } from "@/server/auth";
 import { canSimulate } from "@/server/session";
 import { needsOf } from "@/server/needs";
 import { moodOf } from "@/lib/sims";
-import { body, route } from "@/server/http";
+import { body, HttpError, route } from "@/server/http";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -52,6 +52,7 @@ export const GET = route(async () => {
 });
 
 const Patch = z.object({
+  username: z.string().trim().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, "letters, numbers and _ only").optional(),
   avatar: z.string().min(1).max(8).optional(),
   timezone: z.string().max(64).optional(),
 });
@@ -66,6 +67,7 @@ export const PATCH = route(async (req) => {
       delete d.timezone;
     }
   }
+  if (d.username && d.username !== u.username && (await prisma.user.findUnique({ where: { username: d.username } }))) throw new HttpError(409, "That callsign is taken");
   await prisma.user.update({ where: { id: u.id }, data: d });
   return { ok: true };
 });

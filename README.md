@@ -25,8 +25,9 @@ npm run db:seed             # demo data (SEED_LAT=.. SEED_LNG=.. to seed near yo
 npm run dev                 # http://localhost:3000
 ```
 
-Demo logins (password `password123`): `admin`, `VeeRunner`, `KaiNight`, `Lola`.
-The first account ever created also becomes admin.
+**No login:** opening `/play` creates a guest commander automatically (saved in a 1-year cookie);
+players can rename their callsign in Profile. To become admin, set `ADMIN_KEY` and open
+`/admin?key=<ADMIN_KEY>` once in a browser that has played.
 
 **Testing at your desk:** in dev (or as an admin) tap 🕹️ on the map to turn on the GPS
 simulator, then tap the map to teleport.
@@ -54,7 +55,7 @@ End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `
 | Deliveries: coins in escrow → courier accepts → GPS check-in at pickup → handover code at drop-off | `src/app/api/deliveries` |
 | Admin: KPIs, 7-day funnel, players (ban/role/gift), sponsored mission drops, banners, live push, moderation, UTM link builder | `/admin` |
 | SEO: SSR landing with VideoGame + FAQ JSON-LD, public event pages with Event JSON-LD, sitemap, robots, OG image, PWA manifest | `src/app` |
-| Marketing: `?ref=` referrals (+150 coins each), UTM attribution stored at signup, first-party page-view/share tracking | `src/middleware.ts`, `/api/track` |
+| Marketing: `?ref=` referrals (+150 coins each), UTM attribution stored when the guest account is created, first-party page-view/share tracking | `src/middleware.ts`, `/api/track` |
 
 ## Deploy
 
@@ -62,9 +63,11 @@ End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `
 1. Push this repo to GitHub, then on vercel.com: **Add New → Project → import the repo**.
 2. In the project: **Storage → Create Database → Neon (Postgres)** and connect it. That sets
    `DATABASE_URL` and `DATABASE_URL_UNPOOLED` automatically.
-3. **Settings → Environment Variables**: add `AUTH_SECRET` (`openssl rand -base64 32`) and
-   `NEXT_PUBLIC_SITE_URL` (e.g. `https://your-app.vercel.app`).
-4. **Deployments → Redeploy**. The `vercel-build` script creates/updates the tables on every deploy.
+3. **Settings → Environment Variables**: add `AUTH_SECRET` (`openssl rand -base64 32`),
+   `NEXT_PUBLIC_SITE_URL` (e.g. `https://your-app.vercel.app`) and `ADMIN_KEY` (any long secret).
+4. **Deployments → Redeploy**. Every build runs `scripts/db-sync.mjs`, which creates/updates the tables
+   (and fails the build with a clear message if no database is connected).
+5. Open `https://your-app.vercel.app/api/health` — it says exactly what's missing if anything is wrong.
 
 ### Render
 1. Push to GitHub, then on render.com: **New → Blueprint** and pick the repo. `render.yaml` creates
@@ -72,7 +75,8 @@ End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `
 2. Set `NEXT_PUBLIC_SITE_URL` to your `https://….onrender.com` URL when prompted.
 3. Note: free web services sleep after 15 min idle (slow first load), and free Postgres expires after 30 days.
 
-After the first deploy, sign up — **the first account becomes admin**. Don't run the demo seed in production.
+After the first deploy, play once, then open `/admin?key=<ADMIN_KEY>` to make yourself admin.
+Don't run the demo seed in production.
 
 ## Before going big
 

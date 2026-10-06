@@ -86,8 +86,8 @@ export default async function Home() {
               into a first-person firefight. Hunt world bosses with your crew, and keep your commander fed, rested and happy.
             </p>
             <div className="row wrap" style={{ marginTop: 24 }}>
-              <Link href="/signup" className="btn" style={{ fontSize: 16, padding: "16px 26px" }}>
-                ▶ Start playing free
+              <Link href="/play" className="btn" style={{ fontSize: 16, padding: "16px 26px" }}>
+                ▶ Play now — no sign-up
               </Link>
               <Link href="/events" className="btn ghost">
                 Browse events
@@ -150,7 +150,7 @@ export default async function Home() {
 
         <section className="section center">
           <h2>The streets are waiting.</h2>
-          <Link href="/signup" className="btn yellow" style={{ marginTop: 10 }}>
+          <Link href="/play" className="btn yellow" style={{ marginTop: 10 }}>
             Create your player
           </Link>
         </section>

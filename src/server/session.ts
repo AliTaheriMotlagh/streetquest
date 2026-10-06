@@ -1,11 +1,15 @@
 // JWT session helpers with no Next.js imports (usable from any runtime).
+import { createHash } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "sq_session";
-const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-secret");
+// If AUTH_SECRET is missing, derive one from the (private) database URL rather than a
+// public default, so sessions can't be forged. /api/health warns about it.
+const raw = process.env.AUTH_SECRET || createHash("sha256").update(`sq|${process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "dev"}`).digest("hex");
+const secret = () => new TextEncoder().encode(raw);
 
 export async function signSession(userId: string) {
-  return new SignJWT({ sub: userId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("30d").sign(secret());
+  return new SignJWT({ sub: userId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("365d").sign(secret());
 }
 
 export async function verifySession(token: string | undefined): Promise<string | null> {

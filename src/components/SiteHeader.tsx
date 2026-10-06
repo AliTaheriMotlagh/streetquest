@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { currentUser } from "@/server/auth";
 
-export async function SiteHeader() {
-  const user = await currentUser().catch(() => null);
+export function SiteHeader() {
   return (
     <header className="wrap topbar">
       <Link href="/" className="logo">
@@ -12,20 +10,9 @@ export async function SiteHeader() {
         <Link href="/events" className="btn ghost small hide-sm">
           Events
         </Link>
-        {user ? (
-          <Link href="/play" className="btn small">
-            Play
-          </Link>
-        ) : (
-          <>
-            <Link href="/login" className="btn ghost small">
-              Log in
-            </Link>
-            <Link href="/signup" className="btn small">
-              Play free
-            </Link>
-          </>
-        )}
+        <Link href="/play" className="btn small">
+          Play now
+        </Link>
       </nav>
     </header>
   );

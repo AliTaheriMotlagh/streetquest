@@ -11,7 +11,7 @@ export async function setSessionCookie(userId: string) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: 60 * 60 * 24 * 365, // guests have no password, so the cookie *is* the account
   });
 }
 
