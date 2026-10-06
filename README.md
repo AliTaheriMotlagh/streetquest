@@ -1,5 +1,6 @@
 # StreetQuest — real-world GPS game
 
+
 GTA-style missions on real streets, Pokémon-GO-style spawns, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
 
