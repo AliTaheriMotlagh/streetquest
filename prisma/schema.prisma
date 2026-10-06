@@ -1,0 +1,236 @@
+// SQLite for local dev. For production switch provider to "postgresql"
+// and set DATABASE_URL — no other schema changes needed.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  role         String   @default("PLAYER") // PLAYER | ADMIN
+  banned       Boolean  @default(false)
+  avatar       String   @default("🕶️")
+  xp           Int      @default(0)
+  coins        Int      @default(100)
+  timezone     String   @default("UTC")
+  lastLat      Float?
+  lastLng      Float?
+  lastSeenAt   DateTime?
+  streak       Int      @default(0)
+  lastDailyKey String? // YYYY-MM-DD in the user's own timezone
+  referralCode String   @unique
+  referredById String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  createdAt    DateTime @default(now())
+
+  inventory     InventoryItem[]
+  claims        Claim[]
+  runs          MissionRun[]
+  achievements  UserAchievement[]
+  sentFriends   Friendship[]       @relation("requester")
+  recvFriends   Friendship[]       @relation("addressee")
+  messages      Message[]
+  geoNotes      GeoNote[]
+  deliveriesOut Delivery[]         @relation("sender")
+  deliveriesIn  Delivery[]         @relation("courier")
+  eventsCreated Event[]
+  eventsJoined  EventParticipant[]
+}
+
+model InventoryItem {
+  id      String @id @default(cuid())
+  userId  String
+  itemKey String
+  qty     Int    @default(0)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemKey])
+}
+
+// One row per (player, spawn) — everyone sees the same spawns, each can claim once.
+model Claim {
+  id        String   @id @default(cuid())
+  userId    String
+  spawnId   String
+  kind      String
+  cell      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, spawnId])
+  @@index([userId, createdAt])
+}
+
+// GTA-style timed run: start at A, reach B before the deadline.
+model MissionRun {
+  id          String   @id @default(cuid())
+  userId      String
+  spawnId     String
+  title       String
+  targetLat   Float
+  targetLng   Float
+  deadline    DateTime
+  rewardXp    Int
+  rewardCoins Int
+  status      String   @default("ACTIVE") // ACTIVE | DONE | FAILED
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model UserAchievement {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+model Friendship {
+  id          String   @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      String   @default("PENDING") // PENDING | ACCEPTED
+  createdAt   DateTime @default(now())
+  requester   User     @relation("requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee   User     @relation("addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+}
+
+// room: "global" | "local:<cell>" | "dm:<idA>:<idB>" (ids sorted) | "event:<id>"
+model Message {
+  id        String   @id @default(cuid())
+  room      String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([room, createdAt])
+}
+
+// A message pinned to a real place — only readable when you stand there.
+model GeoNote {
+  id        String   @id @default(cuid())
+  authorId  String
+  lat       Float
+  lng       Float
+  radiusM   Int      @default(50)
+  body      String
+  hidden    Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
+}
+
+// Real-world package transfer requested by a player, fulfilled by a courier.
+model Delivery {
+  id            String    @id @default(cuid())
+  senderId      String
+  courierId     String?
+  title         String
+  description   String
+  pickupLabel   String
+  pickupLat     Float
+  pickupLng     Float
+  dropoffLabel  String
+  dropoffLat    Float
+  dropoffLng    Float
+  reward        Int // coins held in escrow from the sender
+  dropoffCode   String // sender gives this to the recipient; courier enters it on handover
+  status        String    @default("OPEN") // OPEN | ACCEPTED | PICKED_UP | DELIVERED | CANCELLED
+  createdAt     DateTime  @default(now())
+  acceptedAt    DateTime?
+  pickedUpAt    DateTime?
+  deliveredAt   DateTime?
+  sender        User      @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  courier       User?     @relation("courier", fields: [courierId], references: [id])
+
+  @@index([status, pickupLat, pickupLng])
+}
+
+model Event {
+  id           String             @id @default(cuid())
+  slug         String             @unique
+  title        String
+  description  String
+  lat          Float
+  lng          Float
+  radiusM      Int                @default(80)
+  startsAt     DateTime
+  endsAt       DateTime
+  creatorId    String
+  official     Boolean            @default(false)
+  isPublic     Boolean            @default(true)
+  maxPlayers   Int                @default(50)
+  rewardXp     Int                @default(200)
+  rewardCoins  Int                @default(50)
+  createdAt    DateTime           @default(now())
+  creator      User               @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  participants EventParticipant[]
+}
+
+model EventParticipant {
+  id          String    @id @default(cuid())
+  eventId     String
+  userId      String
+  checkedInAt DateTime?
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+// Hand-placed missions from the admin panel (sponsored drops, campaigns...).
+model AdminMission {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  lat         Float
+  lng         Float
+  itemKey     String
+  rewardXp    Int      @default(150)
+  rewardCoins Int      @default(50)
+  activeFrom  DateTime
+  activeTo    DateTime
+  sponsor     String?
+  createdAt   DateTime @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  ctaLabel  String?
+  ctaUrl    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// Lightweight first-party analytics for marketing funnels.
+model Metric {
+  id        String   @id @default(cuid())
+  name      String // page_view | signup | claim | delivery_created ...
+  userId    String?
+  path      String?
+  source    String?
+  campaign  String?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+}

@@ -1,0 +1,725 @@
+"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ACHIEVEMENTS } from "@/lib/progression";
+import { RARITY_COLOR } from "@/lib/catalog";
+import { distanceM, formatDistance, regionKey } from "@/lib/geo";
+import { api, fmtTime, getSocket, type LatLng, type WorldDelivery, type WorldEvent } from "./client";
+import { Sheet, Tabs, useGame } from "./ui";
+
+const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+function LocationField({ label, value, onChange }: { label: string; value: LatLng | null; onChange: (p: LatLng) => void }) {
+  const { pos, pick } = useGame();
+  return (
+    <>
+      <label>{label}</label>
+      <div className="row">
+        <div className="grow small mono muted">{value ? `${value.lat.toFixed(5)}, ${value.lng.toFixed(5)}` : "not set"}</div>
+        <button type="button" className="btn ghost small" onClick={() => pos && onChange(pos)}>
+          📍 Here
+        </button>
+        <button type="button" className="btn ghost small" onClick={() => pick(`Tap the map: ${label}`, onChange)}>
+          🗺️ Pick
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- Nearby
+export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
+  const { world, pos, act } = useGame();
+  const [tab, setTab] = useState<"spawns" | "notes">("spawns");
+  const [note, setNote] = useState("");
+  const [radius, setRadius] = useState(50);
+  const d = (p: LatLng) => (pos ? distanceM(pos, p) : 0);
+
+  const spawns = (world?.spawns ?? []).filter((s) => !s.claimed).sort((a, b) => d(a) - d(b));
+  const phaseInfo = world && {
+    night: "🌙 Night — Moon Shards & Street Crowns are out",
+    dawn: "🌅 Dawn — golden hour, double XP!",
+    day: "☀️ Daytime — Sun Stones are spawning",
+    dusk: "🌇 Dusk — golden hour, double XP!",
+  }[world.phase];
+
+  return (
+    <Sheet title="Nearby" onClose={onClose} peek={peek}>
+      {phaseInfo && <div className="card small">{phaseInfo}</div>}
+      <Tabs value={tab} onChange={setTab} tabs={[["spawns", `Spawns (${spawns.length})`], ["notes", `Messages (${world?.notes.length ?? 0})`]]} />
+      {tab === "spawns" &&
+        (spawns.length ? (
+          spawns.map((s) => (
+            <div key={s.id} className="card list-item">
+              <div className="icon-tile" style={{ boxShadow: s.item ? `inset 0 0 0 2px ${RARITY_COLOR[s.item.rarity]}` : undefined }}>
+                {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.item?.emoji}
+              </div>
+              <div className="grow">
+                <b>{s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade: Tap Rush" : s.item?.name}</b>
+                <div className="small muted">
+                  {formatDistance(d(s))} · +{s.rewardXp} XP {s.goldenHour && "· ✨2×"}
+                </div>
+              </div>
+              <span className="small muted">{Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000))}m</span>
+            </div>
+          ))
+        ) : (
+          <div className="empty">Nothing left nearby. Walk a few blocks or wait for the next spawn wave.</div>
+        ))}
+      {tab === "notes" && (
+        <>
+          <div className="card">
+            <b>Drop a message here</b>
+            <p className="small muted" style={{ margin: "4px 0 8px" }}>
+              Only players who physically come within the radius can read it. Costs 5 coins.
+            </p>
+            <textarea rows={2} maxLength={280} value={note} onChange={(e) => setNote(e.target.value)} placeholder="The best tacos in town are behind this wall…" />
+            <div className="row" style={{ marginTop: 8 }}>
+              <select value={radius} onChange={(e) => setRadius(Number(e.target.value))} style={{ width: "auto" }}>
+                {[20, 50, 100, 200].map((r) => (
+                  <option key={r} value={r}>
+                    {r} m radius
+                  </option>
+                ))}
+              </select>
+              <span className="grow" />
+              <button
+                className="btn small"
+                disabled={!note.trim()}
+                onClick={async () => (await act(() => api("/api/notes", { body: { body: note, radiusM: radius } }))) && setNote("")}
+              >
+                Drop it
+              </button>
+            </div>
+          </div>
+          {world?.notes.map((n) => (
+            <div key={n.id} className="card">
+              <div className="small muted">
+                {n.author.avatar} {n.author.username} · {formatDistance(d(n))} away
+              </div>
+              <div style={{ marginTop: 4 }}>{n.unlocked ? n.body : <i className="muted">🔒 Walk within {n.radiusM} m to read</i>}</div>
+            </div>
+          ))}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Jobs (real deliveries)
+type MyDeliveries = {
+  sent: (WorldDelivery & { dropoffCode: string; courier: { username: string } | null })[];
+  carrying: (WorldDelivery & { sender: { username: string } })[];
+};
+
+function DeliveryRoute({ d }: { d: WorldDelivery }) {
+  return (
+    <div className="small" style={{ margin: "6px 0" }}>
+      <div>
+        🟢 <b>Pickup:</b> {d.pickupLabel}{" "}
+        <a href={navUrl(d.pickupLat, d.pickupLng)} target="_blank" rel="noreferrer">
+          navigate
+        </a>
+      </div>
+      <div>
+        🔴 <b>Drop-off:</b> {d.dropoffLabel}{" "}
+        <a href={navUrl(d.dropoffLat, d.dropoffLng)} target="_blank" rel="noreferrer">
+          navigate
+        </a>
+      </div>
+    </div>
+  );
+}
+
+export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
+  const { world, act, me } = useGame();
+  const [tab, setTab] = useState<"open" | "carrying" | "sent" | "new">("open");
+  const [mine, setMine] = useState<MyDeliveries>({ sent: [], carrying: [] });
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  const [f, setF] = useState({ title: "", description: "", pickupLabel: "", dropoffLabel: "", reward: 50 });
+  const [pickup, setPickup] = useState<LatLng | null>(null);
+  const [dropoff, setDropoff] = useState<LatLng | null>(null);
+
+  const load = useCallback(() => api<MyDeliveries>("/api/deliveries").then(setMine).catch(() => {}), []);
+  useEffect(() => {
+    load();
+  }, [load, tab]);
+
+  const doAct = async (id: string, action: string, code?: string) => {
+    if (await act(() => api(`/api/deliveries/${id}`, { body: { action, code } }))) load();
+  };
+
+  const create = async () => {
+    if (!pickup || !dropoff) return;
+    const ok = await act(() =>
+      api("/api/deliveries", {
+        body: { ...f, pickupLat: pickup.lat, pickupLng: pickup.lng, dropoffLat: dropoff.lat, dropoffLng: dropoff.lng },
+      }),
+    );
+    if (ok) {
+      setF({ title: "", description: "", pickupLabel: "", dropoffLabel: "", reward: 50 });
+      setTab("sent");
+    }
+  };
+
+  const STATUS: Record<string, string> = { OPEN: "🟡 Waiting for courier", ACCEPTED: "🔵 Courier on the way", PICKED_UP: "🟣 In transit", DELIVERED: "✅ Delivered", CANCELLED: "⚫ Cancelled" };
+
+  return (
+    <Sheet title="Courier Jobs" onClose={onClose} peek={peek}>
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          ["open", `Open (${world?.deliveries.length ?? 0})`],
+          ["carrying", "Carrying"],
+          ["sent", "My requests"],
+          ["new", "+ Request"],
+        ]}
+      />
+      {tab === "open" &&
+        (world?.deliveries.length ? (
+          [...world.deliveries]
+            .sort((a, b) => (a.distanceM ?? 0) - (b.distanceM ?? 0))
+            .map((d) => (
+              <div key={d.id} className="card">
+                <div className="row">
+                  <b className="grow">📦 {d.title}</b>
+                  <span className="tag" style={{ color: "var(--yellow)" }}>
+                    {d.reward} 🪙
+                  </span>
+                </div>
+                <div className="small muted">
+                  by {d.sender?.username} · pickup {formatDistance(d.distanceM ?? 0)} away ·{" "}
+                  {formatDistance(distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng }))} trip
+                </div>
+                {d.description && <p className="small">{d.description}</p>}
+                <DeliveryRoute d={d} />
+                <button className="btn green small" onClick={() => doAct(d.id, "accept")}>
+                  Accept job
+                </button>
+              </div>
+            ))
+        ) : (
+          <div className="empty">No open delivery requests near you.</div>
+        ))}
+
+      {tab === "carrying" &&
+        (mine.carrying.length ? (
+          mine.carrying.map((d) => (
+            <div key={d.id} className="card">
+              <div className="row">
+                <b className="grow">{d.title}</b>
+                <span className="tag">{STATUS[d.status]}</span>
+              </div>
+              <div className="small muted">for {d.sender.username} · reward {d.reward} 🪙</div>
+              <DeliveryRoute d={d} />
+              {d.status === "ACCEPTED" && (
+                <div className="row">
+                  <button className="btn cyan small" onClick={() => doAct(d.id, "pickup")}>
+                    I&apos;m at pickup
+                  </button>
+                  <button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
+                    Drop job
+                  </button>
+                </div>
+              )}
+              {d.status === "PICKED_UP" && (
+                <div className="row">
+                  <input
+                    className="grow"
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="Handover code"
+                    value={codes[d.id] ?? ""}
+                    onChange={(e) => setCodes({ ...codes, [d.id]: e.target.value })}
+                  />
+                  <button className="btn green small" onClick={() => doAct(d.id, "deliver", codes[d.id])}>
+                    Deliver
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="empty">You aren&apos;t carrying anything. Grab an open job!</div>
+        ))}
+
+      {tab === "sent" &&
+        (mine.sent.length ? (
+          mine.sent.map((d) => (
+            <div key={d.id} className="card">
+              <div className="row">
+                <b className="grow">{d.title}</b>
+                <span className="tag">{STATUS[d.status]}</span>
+              </div>
+              <div className="small muted">
+                Reward {d.reward} 🪙 {d.courier && `· courier: ${d.courier.username}`}
+              </div>
+              <DeliveryRoute d={d} />
+              {d.status !== "DELIVERED" && d.status !== "CANCELLED" && (
+                <div className="card hl small">
+                  Handover code: <b className="mono" style={{ fontSize: 18 }}>{d.dropoffCode}</b> — give this only to the recipient.
+                </div>
+              )}
+              {d.status === "OPEN" && (
+                <button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
+                  Cancel & refund
+                </button>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="empty">You haven&apos;t requested any deliveries.</div>
+        ))}
+
+      {tab === "new" && (
+        <div>
+          <div className="card small">
+            ⚠️ Only legal, safe items. No cash, valuables, weapons, drugs, food that can spoil or anything you wouldn&apos;t hand to a stranger.
+            The reward is held in escrow and paid when the courier enters the handover code.
+          </div>
+          <label>What is it?</label>
+          <input value={f.title} maxLength={60} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Book for my friend" />
+          <label>Details (size, how to find you…)</label>
+          <textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
+          <LocationField label="Pickup point" value={pickup} onChange={setPickup} />
+          <input value={f.pickupLabel} onChange={(e) => setF({ ...f, pickupLabel: e.target.value })} placeholder="e.g. Café entrance, 12 Main St" style={{ marginTop: 6 }} />
+          <LocationField label="Drop-off point" value={dropoff} onChange={setDropoff} />
+          <input value={f.dropoffLabel} onChange={(e) => setF({ ...f, dropoffLabel: e.target.value })} placeholder="e.g. Library front desk" style={{ marginTop: 6 }} />
+          <label>Reward (coins) — you have {me.coins}</label>
+          <input type="number" min={10} value={f.reward} onChange={(e) => setF({ ...f, reward: Number(e.target.value) })} />
+          <button className="btn block" style={{ marginTop: 14 }} disabled={!pickup || !dropoff || f.title.length < 3} onClick={create}>
+            Post request
+          </button>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Crew (friends, chat, ranks)
+type Friend = { friendshipId: string; id: string; username: string; avatar: string; level: number; online: boolean; lastSeenAt: string | null };
+type Msg = { id: string; room: string; body: string; createdAt: string; author: { id: string; username: string; avatar: string } };
+
+function Chat({ room }: { room: string }) {
+  const { me, toast } = useGame();
+  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [text, setText] = useState("");
+  const end = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMsgs([]);
+    api<{ messages: Msg[] }>(`/api/chat?room=${encodeURIComponent(room)}`)
+      .then((r) => setMsgs(r.messages))
+      .catch((e) => toast({ kind: "error", title: e.message }));
+    const s = getSocket();
+    const on = (m: Msg) => m.room === room && setMsgs((x) => [...x, m]);
+    s.on("chat:msg", on);
+    return () => {
+      s.off("chat:msg", on);
+    };
+  }, [room]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
+
+  const send = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    getSocket().emit("chat:send", { room, body: text }, (r: { error?: string }) => r.error && toast({ kind: "error", title: r.error }));
+    setText("");
+  };
+
+  return (
+    <div className="chat">
+      <div className="chat-log">
+        {msgs.length === 0 && <div className="empty">No messages yet. Say hi 👋</div>}
+        {msgs.map((m) => (
+          <div key={m.id} className={`msg ${m.author.id === me.id ? "me" : ""}`}>
+            {m.author.id !== me.id && (
+              <div className="who">
+                {m.author.avatar} {m.author.username}
+              </div>
+            )}
+            {m.body}
+          </div>
+        ))}
+        <div ref={end} />
+      </div>
+      <form className="row" onSubmit={send} style={{ paddingTop: 8 }}>
+        <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Message…" />
+        <button className="btn small">Send</button>
+      </form>
+    </div>
+  );
+}
+
+export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => void; peek: boolean; chat: { room: string; label: string } | null; setChat: (c: { room: string; label: string } | null) => void }) {
+  const { act, pos, me } = useGame();
+  const [tab, setTab] = useState<"friends" | "chat" | "ranks">(chat ? "chat" : "friends");
+  const [data, setData] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }>({ friends: [], incoming: [], outgoing: [] });
+  const [name, setName] = useState("");
+  const [scope, setScope] = useState<"global" | "friends">("global");
+  const [board, setBoard] = useState<{ top: { id: string; username: string; avatar: string; level: number; xp: number; me: boolean }[]; myRank: number } | null>(null);
+  const [events, setEvents] = useState<WorldEvent[]>([]);
+
+  const load = useCallback(() => api<typeof data>("/api/friends").then(setData).catch(() => {}), []);
+  useEffect(() => {
+    load();
+    api<{ events: WorldEvent[] }>("/api/events").then((r) => setEvents(r.events.filter((e) => e.joined))).catch(() => {});
+    const s = getSocket();
+    s.on("presence", load);
+    return () => {
+      s.off("presence", load);
+    };
+  }, [load]);
+  useEffect(() => {
+    if (chat) setTab("chat");
+  }, [chat]);
+  useEffect(() => {
+    if (tab === "ranks") api<NonNullable<typeof board>>(`/api/leaderboard?scope=${scope}`).then(setBoard).catch(() => {});
+  }, [tab, scope]);
+
+  const fr = async (body: object) => (await act(() => api("/api/friends", { body }))) && load();
+  const dm = (f: Friend) => setChat({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` });
+
+  const rooms: { room: string; label: string }[] = [
+    { room: "global", label: "🌍 Global" },
+    ...(pos ? [{ room: `local:${regionKey(pos)}`, label: "📡 Local" }] : []),
+    ...events.map((e) => ({ room: `event:${e.id}`, label: `🎉 ${e.title}` })),
+    ...data.friends.map((f) => ({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` })),
+  ];
+  const active = chat ?? rooms[0];
+
+  return (
+    <Sheet title="Crew" onClose={onClose} peek={peek}>
+      <Tabs value={tab} onChange={setTab} tabs={[["friends", `Friends${data.incoming.length ? ` (${data.incoming.length})` : ""}`], ["chat", "Chat"], ["ranks", "Ranks"]]} />
+
+      {tab === "friends" && (
+        <>
+          <form
+            className="row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              fr({ action: "request", username: name }).then(() => setName(""));
+            }}
+          >
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add by player name" />
+            <button className="btn small" disabled={!name.trim()}>
+              Add
+            </button>
+          </form>
+          {data.incoming.length > 0 && <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>Requests</h3>}
+          {data.incoming.map((f) => (
+            <div key={f.friendshipId} className="card list-item">
+              <div className="icon-tile">{f.avatar}</div>
+              <b className="grow">{f.username}</b>
+              <button className="btn green small" onClick={() => fr({ action: "accept", friendshipId: f.friendshipId })}>
+                ✓
+              </button>
+              <button className="btn ghost small" onClick={() => fr({ action: "decline", friendshipId: f.friendshipId })}>
+                ✕
+              </button>
+            </div>
+          ))}
+          <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>
+            Friends · {data.friends.filter((f) => f.online).length} online
+          </h3>
+          {data.friends.length === 0 && <div className="empty">No crew yet. Add players you meet on the map!</div>}
+          {[...data.friends]
+            .sort((a, b) => Number(b.online) - Number(a.online))
+            .map((f) => (
+              <div key={f.friendshipId} className="card list-item">
+                <div className="icon-tile">{f.avatar}</div>
+                <div className="grow">
+                  <b>{f.username}</b> <span className="small muted">Lv {f.level}</span>
+                  <div className="small muted">
+                    <span className={`dot ${f.online ? "on" : ""}`} /> {f.online ? "Online" : f.lastSeenAt ? `Seen ${fmtTime(f.lastSeenAt)}` : "Offline"}
+                  </div>
+                </div>
+                <button className="btn cyan small" onClick={() => dm(f)}>
+                  💬
+                </button>
+                <button className="btn ghost small" onClick={() => confirm(`Remove ${f.username}?`) && fr({ action: "remove", friendshipId: f.friendshipId })}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          {data.outgoing.length > 0 && <p className="small muted">Pending: {data.outgoing.map((f) => f.username).join(", ")}</p>}
+        </>
+      )}
+
+      {tab === "chat" && (
+        <>
+          <div className="tabs">
+            {rooms.map((r) => (
+              <button key={r.room} className={active.room === r.room ? "on" : ""} onClick={() => setChat(r)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <Chat room={active.room} />
+        </>
+      )}
+
+      {tab === "ranks" && (
+        <>
+          <Tabs value={scope} onChange={setScope} tabs={[["global", "🌍 World"], ["friends", "🤝 Crew"]]} />
+          {board && <p className="small muted">Your rank: #{board.myRank}</p>}
+          {board?.top.map((p, i) => (
+            <div key={p.id} className={`card list-item ${p.me ? "hl" : ""}`}>
+              <b style={{ width: 28, fontFamily: "var(--display)", color: i < 3 ? "var(--yellow)" : undefined }}>{i + 1}</b>
+              <span style={{ fontSize: 22 }}>{p.avatar}</span>
+              <b className="grow">{p.username}</b>
+              <span className="small muted">Lv {p.level}</span>
+              <span className="small">{p.xp.toLocaleString()} XP</span>
+            </div>
+          ))}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Events
+export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
+  const { world, act, pos, openChat } = useGame();
+  const [tab, setTab] = useState<"nearby" | "mine" | "new">("nearby");
+  const [mine, setMine] = useState<WorldEvent[]>([]);
+  const [loc, setLoc] = useState<LatLng | null>(null);
+  const [f, setF] = useState({ title: "", description: "", start: "", hours: 2, maxPlayers: 20, isPublic: true });
+
+  const load = useCallback(() => api<{ events: WorldEvent[] }>("/api/events").then((r) => setMine(r.events)).catch(() => {}), []);
+  useEffect(() => {
+    load();
+  }, [load, tab]);
+
+  const evAct = async (id: string, action: string) => (await act(() => api(`/api/events/${id}`, { body: { action } }))) && load();
+  const joined = new Map(mine.map((e) => [e.id, e]));
+
+  const create = async () => {
+    if (!loc || !f.start) return;
+    const startsAt = new Date(f.start); // datetime-local is interpreted in the player's timezone
+    const endsAt = new Date(startsAt.getTime() + f.hours * 3_600_000);
+    const ok = await act(() =>
+      api("/api/events", { body: { title: f.title, description: f.description, lat: loc.lat, lng: loc.lng, startsAt, endsAt, maxPlayers: f.maxPlayers, isPublic: f.isPublic } }),
+    );
+    if (ok) setTab("mine");
+  };
+
+  const Card = ({ e }: { e: WorldEvent }) => {
+    const j = joined.get(e.id);
+    const live = new Date(e.startsAt).getTime() - 15 * 60_000 < Date.now();
+    return (
+      <div className={`card ${e.official ? "hl" : ""}`}>
+        <div className="row">
+          <b className="grow">
+            {e.official ? "⭐" : "🎉"} {e.title}
+          </b>
+          {live && <span className="tag" style={{ color: "var(--green)" }}>LIVE</span>}
+        </div>
+        <div className="small muted">
+          {fmtTime(e.startsAt)} – {fmtTime(e.endsAt)} · {e.participants}/{e.maxPlayers} going {pos && `· ${formatDistance(distanceM(pos, e))}`}
+        </div>
+        {e.description && <p className="small">{e.description}</p>}
+        <div className="row wrap">
+          {!j && (
+            <button className="btn small" onClick={() => evAct(e.id, "join")}>
+              Join
+            </button>
+          )}
+          {j && !j.checkedIn && live && (
+            <button className="btn green small" onClick={() => evAct(e.id, "checkin")}>
+              Check in
+            </button>
+          )}
+          {j?.checkedIn && <span className="tag" style={{ color: "var(--green)" }}>✓ Checked in</span>}
+          {j && (
+            <button className="btn cyan small" onClick={() => openChat(`event:${e.id}`, `🎉 ${e.title}`)}>
+              Squad chat
+            </button>
+          )}
+          <a className="btn ghost small" href={navUrl(e.lat, e.lng)} target="_blank" rel="noreferrer">
+            Navigate
+          </a>
+          <button
+            className="btn ghost small"
+            onClick={() => {
+              const url = `${location.origin}/e/${e.slug}`;
+              if (navigator.share) navigator.share({ title: e.title, url }).catch(() => {});
+              else navigator.clipboard.writeText(url);
+            }}
+          >
+            Share
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Sheet title="Events" onClose={onClose} peek={peek}>
+      <Tabs value={tab} onChange={setTab} tabs={[["nearby", "Nearby"], ["mine", `My events (${mine.length})`], ["new", "+ Create"]]} />
+      {tab === "nearby" && (world?.events.length ? world.events.map((e) => <Card key={e.id} e={e} />) : <div className="empty">No events within 8 km. Start one!</div>)}
+      {tab === "mine" && (mine.length ? mine.map((e) => <Card key={e.id} e={e} />) : <div className="empty">You haven&apos;t joined any events.</div>)}
+      {tab === "new" && (
+        <div>
+          <label>Title</label>
+          <input value={f.title} maxLength={80} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Saturday night chest hunt" />
+          <label>Description</label>
+          <textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Meet at the fountain, we sweep downtown together." />
+          <LocationField label="Meeting point" value={loc} onChange={setLoc} />
+          <div className="form-grid">
+            <div>
+              <label>Starts (your local time)</label>
+              <input type="datetime-local" value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} />
+            </div>
+            <div>
+              <label>Duration (hours)</label>
+              <input type="number" min={1} max={24} value={f.hours} onChange={(e) => setF({ ...f, hours: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label>Max players</label>
+              <input type="number" min={2} value={f.maxPlayers} onChange={(e) => setF({ ...f, maxPlayers: Number(e.target.value) })} />
+            </div>
+          </div>
+          <label className="row" style={{ textTransform: "none" }}>
+            <input type="checkbox" checked={f.isPublic} onChange={(e) => setF({ ...f, isPublic: e.target.checked })} style={{ width: "auto" }} />
+            Public (listed on the map & website)
+          </label>
+          <p className="small muted">Checked-in players get a squad bonus: +10% XP for every other player who shows up.</p>
+          <button className="btn block" disabled={!loc || !f.start || f.title.length < 3} onClick={create}>
+            Create event
+          </button>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Profile
+const AVATARS = ["🕶️", "😎", "🦊", "🐺", "🐯", "🤖", "👽", "🥷", "🧛", "🦸", "🐉", "💀"];
+
+export function ProfilePanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
+  const { me, act, refresh } = useGame();
+  const [tab, setTab] = useState<"stats" | "bag" | "awards">("stats");
+  const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
+
+  return (
+    <Sheet title="Profile" onClose={onClose} peek={peek}>
+      <div className="row" style={{ marginBottom: 12 }}>
+        <div className="avatar" style={{ width: 64, height: 64, fontSize: 36 }}>
+          {me.avatar}
+          <span className="lvl">{me.level}</span>
+        </div>
+        <div className="grow">
+          <h2 style={{ fontSize: 22 }}>{me.username}</h2>
+          <div className="small" style={{ color: "var(--yellow)" }}>
+            {me.title}
+          </div>
+          <div className="xpbar" style={{ width: "100%" }}>
+            <i style={{ width: `${me.levelPct * 100}%` }} />
+          </div>
+          <div className="small muted">
+            {me.xp.toLocaleString()} / {me.nextLevelXp.toLocaleString()} XP
+          </div>
+        </div>
+      </div>
+
+      {me.dailyAvailable && (
+        <div className="card hl row">
+          <div className="grow">
+            <b>🎁 Daily drop ready</b>
+            <div className="small muted">
+              Streak {me.streak} → +{me.dailyReward.coins} coins, +{me.dailyReward.xp} XP
+            </div>
+          </div>
+          <button className="btn yellow small" onClick={() => act(() => api("/api/daily", { body: {} }))}>
+            Claim
+          </button>
+        </div>
+      )}
+
+      <Tabs value={tab} onChange={setTab} tabs={[["stats", "Stats"], ["bag", `Bag (${me.inventory.reduce((s, i) => s + i.qty, 0)})`], ["awards", `Awards (${me.achievements.length})`]]} />
+
+      {tab === "stats" && (
+        <>
+          <div className="grid3">
+            <div className="stat"><b>{me.coins.toLocaleString()}</b><span>Coins</span></div>
+            <div className="stat"><b>🔥 {me.streak}</b><span>Streak</span></div>
+            <div className="stat"><b>{me.achievements.length}</b><span>Awards</span></div>
+          </div>
+          <label>Avatar</label>
+          <div className="row wrap">
+            {AVATARS.map((a) => (
+              <button
+                key={a}
+                className="btn ghost small"
+                style={{ fontSize: 20, outline: a === me.avatar ? "2px solid var(--pink)" : undefined }}
+                onClick={() => api("/api/me", { method: "PATCH", body: { avatar: a } }).then(refresh)}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+          <label>Invite friends — you both get 150 coins</label>
+          <div className="row">
+            <input readOnly value={refLink} className="mono small" onFocus={(e) => e.target.select()} />
+            <button
+              className="btn cyan small"
+              onClick={() => (navigator.share ? navigator.share({ title: "Play StreetQuest with me", url: refLink }).catch(() => {}) : navigator.clipboard.writeText(refLink))}
+            >
+              Share
+            </button>
+          </div>
+          <p className="small muted">
+            Timezone: {me.timezone} (daily reset at your local midnight)
+          </p>
+          <div className="row wrap" style={{ marginTop: 10 }}>
+            {me.role === "ADMIN" && (
+              <a className="btn yellow small" href="/admin">
+                Admin panel
+              </a>
+            )}
+            <button className="btn ghost small" onClick={() => api("/api/auth/logout", { body: {} }).then(() => (location.href = "/"))}>
+              Log out
+            </button>
+          </div>
+        </>
+      )}
+
+      {tab === "bag" &&
+        (me.inventory.length ? (
+          <>
+            <p className="small muted">Tap an item to sell one.</p>
+            <div className="inv">
+              {me.inventory.map((i) => (
+                <div
+                  key={i.key}
+                  className="inv-item"
+                  style={{ borderColor: RARITY_COLOR[i.def.rarity] }}
+                  title={i.def.blurb}
+                  onClick={() => confirm(`Sell 1 ${i.def.name} for ${i.def.value} coins?`) && act(() => api("/api/inventory", { body: { action: "sell", itemKey: i.key, qty: 1 } }))}
+                >
+                  <span className="q">×{i.qty}</span>
+                  <div className="e">{i.def.emoji}</div>
+                  <div className="n">{i.def.name}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="empty">Your bag is empty. Go collect something!</div>
+        ))}
+
+      {tab === "awards" && (
+        <div className="ach">
+          {ACHIEVEMENTS.map((a) => (
+            <div key={a.key} className={me.achievements.includes(a.key) ? "" : "locked"} title={a.desc}>
+              <b>{a.emoji}</b>
+              {a.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
