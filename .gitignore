@@ -5,3 +5,5 @@ prisma/*.db*
 next-env.d.ts
 *.tsbuildinfo
 /.next-test
+.vercel
+.env*.local
