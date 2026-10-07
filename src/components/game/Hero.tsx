@@ -9,6 +9,7 @@ import { ATTRS, CLASSES, classOf, fmtMod, RESPEC_COST, type ModKey } from "@/lib
 import { cooldownMs, MAX_POWER_RANK, POWERS } from "@/lib/powers";
 import { api, type HeroView } from "./client";
 import { useGame } from "./ui";
+import { askConfirm } from "@/components/Dialogs";
 
 export function useHero() {
   const [h, setH] = useState<HeroView | null>(null);
@@ -62,7 +63,7 @@ export function HeroTab() {
       </div>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <label style={{ margin: "6px 0" }}>Attributes {h.freePoints > 0 && <span style={{ color: "var(--yellow)" }}>· {h.freePoints} points to spend</span>}</label>
-        <button className="btn ghost small" onClick={() => confirm(`Reset all attribute points for ${RESPEC_COST} coins?`) && doAct({ action: "respec" })}>Respec</button>
+        <button className="btn ghost small" onClick={() => askConfirm(`Reset all attribute points for ${RESPEC_COST} coins?`, { ok: "Reset", danger: true }).then((ok) => ok && doAct({ action: "respec" }))}>Respec</button>
       </div>
       {ATTRS.map((a) => (
         <div key={a.key} className="card list-item">
@@ -127,7 +128,7 @@ export function GearTab() {
               )}
               <button className="btn ghost small" disabled={h.scrap < cost.scrap || h.coins < cost.coins} onClick={() => doAct({ action: "forge", gearId: g.id })}>🔨 Forge {cost.scrap}🔩 {cost.coins}🪙</button>
               {!g.equipped && (
-                <button className="btn ghost small" onClick={() => confirm(`Salvage ${g.name} for scrap?`) && doAct({ action: "salvage", gearId: g.id })}>♻️ +{SALVAGE_SCRAP[g.rarity] + Math.floor(g.level / 2)}🔩</button>
+                <button className="btn ghost small" onClick={() => askConfirm(`Salvage ${g.name} for scrap?`, { ok: "Salvage", danger: true }).then((ok) => ok && doAct({ action: "salvage", gearId: g.id }))}>♻️ +{SALVAGE_SCRAP[g.rarity] + Math.floor(g.level / 2)}🔩</button>
               )}
             </div>
           </div>

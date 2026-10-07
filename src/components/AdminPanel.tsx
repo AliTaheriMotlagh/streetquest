@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { askConfirm, askText } from "@/components/Dialogs";
 
 type Data = {
   stats: { users: number; online: number; signups7: number; claims24: number; upcomingEvents: number; pageViews7: number; conversion7: number; deliveries: Record<string, number> };
@@ -47,6 +48,7 @@ export function AdminPanel() {
   const [data, setData] = useState<Data | null>(null);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
   const [mission, setMission] = useState({ title: "", description: "", lat: "", lng: "", itemKey: "diamond", rewardXp: 300, rewardCoins: 100, activeFrom: toLocalInput(new Date()), activeTo: toLocalInput(new Date(Date.now() + 7 * 86400000)), sponsor: "" });
   const [ann, setAnn] = useState({ title: "", body: "", ctaLabel: "", ctaUrl: "" });
   const [push, setPush] = useState({ title: "", body: "" });
@@ -64,7 +66,7 @@ export function AdminPanel() {
   const post = async (body: object) => {
     const r = await fetch("/api/admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json();
-    if (!r.ok) alert(d.error);
+    setNotice(r.ok ? null : d.error ?? "Request failed");
     load();
     return r.ok;
   };
@@ -77,6 +79,12 @@ export function AdminPanel() {
 
   return (
     <main className="page">
+      {notice && (
+        <div className="announce" role="alert" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--red)", marginBottom: 10 }}>
+          <b className="grow small" style={{ color: "var(--red)" }}>⚠️ {notice}</b>
+          <button className="close" onClick={() => setNotice(null)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
       <div className="wrap admin">
         <div className="topbar">
           <Link href="/" className="logo">STREET<span>QUEST</span></Link>
@@ -133,7 +141,7 @@ export function AdminPanel() {
                       <td className="row">
                         <button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? "Unban" : "Ban"}</button>
                         <button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? "Demote" : "Make admin"}</button>
-                        <button className="btn ghost small" onClick={() => { const c = prompt("Coins to grant (negative to remove)", "100"); if (c) post({ action: "grant", userId: u.id, coins: Number(c), xp: 0 }); }}>Gift</button>
+                        <button className="btn ghost small" onClick={() => askText(`Coins to grant ${u.username}`, "100", { body: "Use a negative number to remove coins.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Number(c), xp: 0 }); })}>Gift</button>
                       </td>
                     </tr>
                   ))}
@@ -178,7 +186,7 @@ export function AdminPanel() {
                     <td className="mono small">{m.lat.toFixed(4)}, {m.lng.toFixed(4)}</td>
                     <td className="small muted">{fmt(m.activeFrom)} → {fmt(m.activeTo)}</td>
                     <td>{m.itemKey} · {m.rewardXp} XP · {m.rewardCoins} 🪙</td>
-                    <td><button className="btn ghost small" onClick={() => confirm("Delete mission?") && post({ action: "deleteMission", id: m.id })}>Delete</button></td>
+                    <td><button className="btn ghost small" onClick={() => askConfirm("Delete mission?", { ok: "Delete", danger: true }).then((ok) => ok && post({ action: "deleteMission", id: m.id }))}>Delete</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -282,7 +290,7 @@ export function AdminPanel() {
                   <td>{d.reward}</td>
                   <td><span className="tag">{d.status}</span></td>
                   <td className="muted small">{fmt(d.createdAt)}</td>
-                  <td>{!["DELIVERED", "CANCELLED"].includes(d.status) && <button className="btn ghost small" onClick={() => confirm("Cancel and refund sender?") && post({ action: "cancelDelivery", id: d.id })}>Cancel</button>}</td>
+                  <td>{!["DELIVERED", "CANCELLED"].includes(d.status) && <button className="btn ghost small" onClick={() => askConfirm("Cancel and refund sender?", { ok: "Cancel delivery", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelDelivery", id: d.id }))}>Cancel</button>}</td>
                 </tr>
               ))}
             </tbody>

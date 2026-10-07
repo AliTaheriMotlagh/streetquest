@@ -13,9 +13,14 @@ import type { HeroTabId } from "./Panels";
 import { NeedsHud } from "./Life";
 import { api, fmtTime, type LatLng, type LobbyView, type Me, type Selected, type World } from "./client";
 import { BombDefuse } from "./MiniGames";
+import { NoteCard } from "./Panels";
+import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
+import { askConfirm, askText } from "@/components/Dialogs";
+import { BOUNTY_DAYS, BOUNTY_MAX, BOUNTY_MIN, CAPTURE_SECONDS, FLAG_RADIUS_M } from "@/lib/flags";
+import { SUPER_RANGE_M, SUPERWEAPONS } from "@/lib/superweapons";
 import { LobbyModal } from "./Lobby";
 import { useLiveWaves } from "./waves";
-import { creepPos, PINGS, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
+import { creepPos, PINGS, SHOOT_RANGE_M, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
 import { Ctx, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { useLocation, type FireReport, type GeoError } from "./useLocation";
@@ -42,6 +47,11 @@ export default function Game() {
   const [simPos, setSimPos] = useState<LatLng | null>(null);
   const [simMode, setSimMode] = useState(false);
   const [fire, setFire] = useState<(FireReport & { at: number }) | null>(null);
+  const [shake, setShake] = useState(0);
+  const quake = useCallback(() => {
+    setShake(Date.now());
+    setTimeout(() => setShake(0), 650);
+  }, []);
   const geo = useLocation(simPos, (f) => setFire({ ...f, at: Date.now() }));
   const pos = geo.pos;
   const [follow, setFollow] = useState(true);
@@ -103,11 +113,13 @@ export default function Game() {
         await flush();
         const r = await fn();
         if (r?.message) toast({ kind: "reward", title: r.message });
+        sfx("reward");
         navigator.vibrate?.([40, 30, 40]);
         refresh();
         return true;
       } catch (e) {
         toast({ kind: "error", title: (e as Error).message });
+        sfx("error");
         return false;
       }
     },
@@ -133,11 +145,14 @@ export default function Game() {
   useEffect(() => {
     if (!fire) return;
     if (fire.downed) {
+      sfx("down");
+      quake();
       toast({ kind: "error", title: `☠️ DOWNED by ${fire.downed.by}'s defenses`, body: `Lost ${fire.downed.coins} 🪙 · patching up for 3 min — move out of tower range` });
       navigator.vibrate?.([300, 100, 300]);
       loadMe();
     } else if (fire.hits.length) {
       const total = fire.hits.reduce((a, h) => a + h.dmg, 0);
+      sfx("hurt");
       toast({ kind: "error", title: `${fire.hits.map((h) => h.emoji).join("")} Under fire! −${total} HP`, body: `${[...new Set(fire.hits.map((h) => h.by))].join(", ")}'s defenses — get out of the red rings` });
       navigator.vibrate?.([80, 40, 80]);
     }
@@ -166,6 +181,40 @@ export default function Game() {
     return () => clearInterval(t);
   }, [waveLive, loadWorld]);
 
+  // ---- sound cues for things happening on the map
+  const heard = useRef(new Set<string>());
+  useEffect(() => {
+    if (!world) return;
+    for (const x of world.strikes) {
+      const k = `sw${x.id}`;
+      if (x.impactAt <= now && now - x.impactAt < 4000 && !heard.current.has(k)) {
+        heard.current.add(k);
+        sfx(x.kind === "particle" ? "explode" : "nuke");
+        quake();
+        navigator.vibrate?.([400, 100, 400]);
+      }
+    }
+    if (myWave && now >= myWave.w.startAt && !heard.current.has(`wv${myWave.w.id}`)) {
+      heard.current.add(`wv${myWave.w.id}`);
+      sfx("alarm");
+    }
+  }, [now, world, myWave]);
+
+  // A crisp tap on every game button.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest?.(".btn, .nav button, .fab, .tabs button, .close")) sfx("tap");
+    };
+    document.addEventListener("pointerdown", onDown, { passive: true });
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, []);
+
+  const [muted, setMutedState] = useState(false);
+  useEffect(() => {
+    setMutedState(isMuted());
+    return onMuteChange(setMutedState);
+  }, []);
+
   // ---- "realtime" via polling (works on serverless hosts like Vercel)
   const syncSince = useRef(Date.now());
   const panelRef = useRef(panel);
@@ -179,6 +228,12 @@ export default function Game() {
         if (stop) return;
         syncSince.current = r.now;
         for (const n of r.notifications) toast(n);
+        const titles = r.notifications.map((n) => n.title).join(" ");
+        if (/INCOMING/.test(titles)) sfx("siren");
+        else if (/LEVEL UP/.test(titles)) sfx("levelup");
+        else if (/shot you|took you down|DOWN/.test(titles)) sfx("hurt");
+        else if (r.notifications.some((n) => n.kind === "reward")) sfx("coin");
+        else if (r.notifications.length) sfx("beep");
         if (r.notifications.some((n) => n.kind === "reward" || n.kind === "delivery" || n.kind === "social")) loadMe();
         if (r.unread && panelRef.current !== "crew") setUnread((u) => u + r.unread);
       } catch {}
@@ -226,6 +281,15 @@ export default function Game() {
     }
     if (simMode) setSimPos(p);
   };
+  // Stable handlers so the (memoized) map doesn't re-render on every 1 s HUD tick.
+  const mapClickRef = useRef(onMapClick);
+  mapClickRef.current = onMapClick;
+  const handleMapClick = useCallback((p: LatLng) => mapClickRef.current(p), []);
+  const handleUnfollow = useCallback(() => setFollow(false), []);
+  const handleSelect = useCallback((s: Selected) => {
+    setSelected(s);
+    setPanel(null);
+  }, []);
 
   // Test mode: no GPS or walking needed. Tap the map (or "Teleport here") to move.
   // Remembered in this browser so a reload keeps you where you were.
@@ -308,7 +372,7 @@ export default function Game() {
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className="game">
+      <div className={`game ${shake ? "shake" : ""}`}>
         <GameMap
           pos={pos}
           world={world}
@@ -317,12 +381,9 @@ export default function Game() {
           picking={!!picker}
           runners={runners}
           strikeMode={!!strike}
-          onUnfollow={() => setFollow(false)}
-          onMapClick={onMapClick}
-          onSelect={(s) => {
-            setSelected(s);
-            setPanel(null);
-          }}
+          onUnfollow={handleUnfollow}
+          onMapClick={handleMapClick}
+          onSelect={handleSelect}
         />
 
         {/* HUD */}
@@ -352,13 +413,13 @@ export default function Game() {
             <div className="chip small">💎 {me.gems} · {me.league.emoji} {me.trophies}</div>
             {world && (
               <div className="chip phase">
-                {PHASE_ICON[world.phase]} {world.phase.toUpperCase()}
+                {PHASE_ICON[world.phase]} <span className="hide-sm">{world.phase.toUpperCase()}</span>
                 {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>2× XP</span>}
               </div>
             )}
             {geo.simulated && (
               <button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title="Turn test mode off">
-                🕹️ TEST MODE
+                🕹️ <span className="hide-sm">TEST MODE</span><span className="show-sm">TEST</span>
               </button>
             )}
           </div>
@@ -413,7 +474,7 @@ export default function Game() {
                 Finish
               </button>
             )}
-            <button className="close" title="Abandon" onClick={() => confirm("Abandon this run?") && act(() => api("/api/runs", { body: { runId: run.id, action: "abandon" } }))}>
+            <button className="close" title="Abandon" onClick={() => askConfirm("Abandon this run?", { ok: "Abandon run", danger: true }).then((ok) => ok && act(() => api("/api/runs", { body: { runId: run.id, action: "abandon" } })))}>
               ✕
             </button>
           </div>
@@ -465,6 +526,30 @@ export default function Game() {
               🎁<span className="badge">!</span>
             </button>
           )}
+          {me.superweapon && (
+            <SuperweaponFab
+              sw={me.superweapon}
+              now={now}
+              onFire={() =>
+                setPicker({
+                  label: `${me.superweapon!.emoji} Tap the target (within ${SUPER_RANGE_M / 1000} km of your base)`,
+                  cb: (p) =>
+                    askConfirm(`Launch the ${me.superweapon!.name}?`, { body: "Everyone near the target gets a countdown warning. You can't call it back.", ok: "LAUNCH", danger: true }).then((ok) => {
+                      if (ok)
+                        act(() => api("/api/superweapon", { body: p })).then((done) => {
+                          if (done) {
+                            sfx("siren");
+                            loadWorld(true);
+                          }
+                        });
+                    }),
+                })
+              }
+            />
+          )}
+          <button className="fab" title={muted ? "Sound off" : "Sound on"} aria-label={muted ? "Turn sound on" : "Turn sound off"} onClick={() => setMuted(!muted)}>
+            {muted ? "🔇" : "🔊"}
+          </button>
           <button className="fab" title="Ping your crew" onClick={() => setPingMenu(!pingMenu)} style={{ outline: pingMenu ? "2px solid var(--yellow)" : undefined }}>
             📣
           </button>
@@ -676,12 +761,26 @@ function InfoCard({
     if (ok && id) enterMatch(id);
   };
   const fromBase = me.base ? distanceM(me.base, target) : Infinity;
+  // Street combat: shoot it yourself (players, towers, squads within range).
+  const shoot = (kind: "player" | "tower" | "squad", id: string, label = "🔫 Shoot") => (
+    <button
+      className="btn"
+      disabled={!!me.downedUntil || me.rookie}
+      title={me.rookie ? "Reach level 3 to fight" : undefined}
+      onClick={() => {
+        sfx("shot");
+        act(() => api("/api/attack", { body: { kind, id } }));
+      }}
+    >
+      {label}
+    </button>
+  );
   // RTS on the map: march your home army out as a squad against this target.
   const marchOn = (kind: "tower" | "squad" | "base" | "outpost", id: string, label: string) => (
     <button
       className="btn cyan"
       disabled={!me.base || fromBase > SIEGE_RANGE_M}
-      onClick={() => confirm(`March your home army to ${label}? Everyone will see it coming.`) && act(() => api("/api/squads", { body: { action: "deploy", target: { kind, id } } })).then((ok) => ok && onClose())}
+      onClick={() => askConfirm(`March your home army to ${label}? Everyone will see it coming.`, { ok: "March" }).then((ok) => ok && act(() => api("/api/squads", { body: { action: "deploy", target: { kind, id } } })).then((ok) => ok && onClose()))}
     >
       🎖️ March a squad
     </button>
@@ -758,13 +857,10 @@ function InfoCard({
   }
 
   if (sel.type === "note") {
-    const n = sel.data;
     return (
-      <Sheet title="Message at this spot" onClose={onClose}>
-        <div className="small muted">
-          {n.author.avatar} {n.author.username} · {fmtTime(n.createdAt)}
-        </div>
-        <p style={{ fontSize: 18 }}>{n.unlocked ? n.body : <i className="muted">🔒 Walk within {n.radiusM} m to read this message ({formatDistance(dist)} away)</i>}</p>
+      <Sheet title={sel.data.hasPhoto ? "📸 Photo at this spot" : "💬 Post at this spot"} onClose={onClose}>
+        <NoteCard n={sel.data} dist={dist} />
+        {!sel.data.unlocked && teleport && <button className="btn yellow block" onClick={() => teleport(sel.data)}>🕹️ Teleport here</button>}
       </Sheet>
     );
   }
@@ -828,7 +924,7 @@ function InfoCard({
               <button
                 className="btn yellow"
                 disabled={!me.base || fromBase > SIEGE_RANGE_M || b.shielded}
-                onClick={() => confirm(`Send your whole army to siege ${b.name}?`) && act(() => api("/api/battle", { body: { kind: "siege", targetId: b.id } }))}
+                onClick={() => askConfirm(`Send your whole army to siege ${b.name}?`, { ok: "Attack" }).then((ok) => ok && act(() => api("/api/battle", { body: { kind: "siege", targetId: b.id } })))}
               >
                 🎖️ Siege with army
               </button>
@@ -923,7 +1019,7 @@ function InfoCard({
               <button
                 className="btn yellow"
                 disabled={!me.base || fromBase > SIEGE_RANGE_M || o.shielded}
-                onClick={() => confirm(`Send your whole army to assault ${o.name}?`) && act(() => api("/api/outposts", { body: { action: "assault", outpostId: o.id } }))}
+                onClick={() => askConfirm(`Send your whole army to assault ${o.name}?`, { ok: "Attack" }).then((ok) => ok && act(() => api("/api/outposts", { body: { action: "assault", outpostId: o.id } })))}
               >
                 🎖️ Assault with army
               </button>
@@ -966,6 +1062,7 @@ function InfoCard({
         ) : hostile ? (
           <>
             <div className="row wrap">
+              {shoot("tower", t.id)}
               <button className="btn yellow" disabled={dist > st.range + 15 || !!me.downedUntil} onClick={() => onC4(t.id)}>💣 Plant C4</button>
               {marchOn("tower", t.id, `${t.owner}'s ${st.def.name}`)}
               <OrderSquads kind="tower" id={t.id} />
@@ -1002,6 +1099,7 @@ function InfoCard({
         ) : !q.friend ? (
           <>
             <div className="row wrap">
+              {shoot("squad", q.id)}
               {!marching && marchOn("squad", q.id, `${q.owner}'s squad`)}
               {!marching && <OrderSquads kind="squad" id={q.id} />}
             </div>
@@ -1022,14 +1120,94 @@ function InfoCard({
     );
   }
 
+  if (sel.type === "flag") {
+    const f = sel.data;
+    const capLeft = f.capture ? Math.max(0, Math.ceil((f.capture.endsAt - Date.now()) / 1000)) : 0;
+    const inRange = dist <= FLAG_RADIUS_M;
+    const ours = f.mine || f.friend;
+    const doFlag = (action: string) => act(() => api("/api/flags", { body: { action, flagId: f.id } })).then((ok) => {
+        if (ok) sfx(action === "capture" ? "capture" : "reward");
+      });
+    return (
+      <Sheet title={`🚩 ${f.name}`} onClose={onClose}>
+        <p className="small muted">
+          {f.mine ? "Your flag" : `${f.ownerAvatar} ${f.owner}${f.friend ? " (crew)" : ""}`} · held {Math.max(1, Math.round((Date.now() - f.heldSince) / 60000))} min · captured {f.captures}× · {formatDistance(dist)}
+        </p>
+        {f.capture && <div className="card small" style={{ borderColor: "var(--red)" }}>⚔️ {f.capture.mine ? "You are" : `${f.capture.by} is`} capturing it — {capLeft}s left</div>}
+        {f.shielded && <p className="small" style={{ color: "var(--cyan)" }}>🛡️ Just captured — can&apos;t be flipped for a few minutes</p>}
+        <div className="row wrap">
+          {ours ? (
+            <>
+              {f.capture && <button className="btn green" disabled={!inRange} onClick={() => doFlag("defend")}>🛡️ Defend</button>}
+              {f.mine && <button className="btn yellow" onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>🪙 Collect tribute</button>}
+              {f.mine && <button className="btn ghost" onClick={() => askConfirm(`Abandon "${f.name}"?`, { ok: "Abandon", danger: true }).then((ok) => { if (ok) doFlag("abandon").then(() => onClose()); })}>🏳️</button>}
+            </>
+          ) : (
+            <button className="btn" disabled={!inRange || f.shielded || !!me.downedUntil} onClick={() => doFlag("capture")}>
+              🚩 {f.capture?.mine ? (capLeft > 0 ? `Hold… ${capLeft}s` : "Claim it!") : "Capture"}
+            </button>
+          )}
+          {teleport && !inRange && <button className="btn yellow" onClick={() => teleport(f)}>🕹️ Go there</button>}
+        </div>
+        <p className="small muted">
+          {ours
+            ? `Rivals capture it by standing within ${FLAG_RADIUS_M} m for ${CAPTURE_SECONDS}s. Being there yourself stops them.`
+            : inRange
+              ? `Stay within ${FLAG_RADIUS_M} m for ${CAPTURE_SECONDS}s, then tap again to claim it. Defenders standing here block you — shoot them first.`
+              : `Walk within ${FLAG_RADIUS_M} m to capture it.`}
+        </p>
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "strike") {
+    const x = sel.data;
+    const def = SUPERWEAPONS[x.kind];
+    const left = Math.ceil((x.impactAt - Date.now()) / 1000);
+    return (
+      <Sheet title={`${def.emoji} ${def.name}`} onClose={onClose}>
+        <p>
+          {left > 0
+            ? <b style={{ color: "var(--red)" }}>Impact in {left}s! {dist <= x.radius ? "You're inside the blast — RUN!" : "You're outside the blast."}</b>
+            : x.hazardUntil && x.hazardUntil > Date.now()
+              ? <>☣️ {def.hazard?.label} — dangerous for another {Math.ceil((x.hazardUntil - Date.now()) / 60000)} min. Stay out of the circle.</>
+              : "The dust has settled."}
+        </p>
+        <p className="small muted">Launched by {x.mine ? "you" : x.owner} · {x.radius} m radius · {def.blurb}</p>
+      </Sheet>
+    );
+  }
+
   const p = sel.data;
   return (
     <Sheet title={`${p.avatar} ${p.username}`} onClose={onClose}>
-      <p className="muted">Level {p.level} · {p.friend ? "In your crew" : "~ approximate location"}</p>
+      <p className="muted">
+        Level {p.level} · {p.friend ? "In your crew" : "~ approximate location"}
+        {p.bounty > 0 && <span style={{ color: "var(--yellow)" }}> · 💀 WANTED {p.bounty.toLocaleString()} 🪙</span>}
+      </p>
       {p.friend ? (
         <button className="btn cyan block" onClick={() => openChat(`dm:${[me.id, p.id].sort().join(":")}`, p.username)}>💬 Message</button>
       ) : (
-        <button className="btn block" onClick={() => act(() => api("/api/friends", { body: { action: "request", username: p.username } }))}>➕ Add to crew</button>
+        <>
+          <div className="row wrap">
+            {shoot("player", p.id, `🔫 Attack`)}
+            <button className="btn ghost" onClick={() => act(() => api("/api/friends", { body: { action: "request", username: p.username } }))}>➕ Add to crew</button>
+            <button
+              className="btn ghost"
+              onClick={() =>
+                askText(`Bounty on ${p.username}`, "200", { body: `Coins are held until someone downs them (refunded after ${BOUNTY_DAYS} days). ${BOUNTY_MIN}–${BOUNTY_MAX} 🪙.`, ok: "Place bounty" }).then((v) => {
+                  const amount = Math.round(Number(v));
+                  if (v && Number.isFinite(amount)) act(() => api("/api/bounties", { body: { targetId: p.id, amount } }));
+                })
+              }
+            >
+              💀 Bounty
+            </button>
+          </div>
+          <p className="small muted">
+            {me.rookie ? "Reach level 3 to fight other commanders." : `Shots land within ${SHOOT_RANGE_M} m (their map position is approximate — get close). Downing them steals some coins and 5 🏆.`}
+          </p>
+        </>
       )}
     </Sheet>
   );
@@ -1104,3 +1282,16 @@ function WaveBanner({ wave, now, meId, dist, striking, onStrike, onGo }: { wave:
 }
 
 const creepPosOrNull = (def: ReturnType<typeof useLiveWaves>[number]["def"], i: number, now: number) => creepPos(def, def.creeps[i], now);
+
+function SuperweaponFab({ sw, now, onFire }: { sw: NonNullable<Me["superweapon"]>; now: number; onFire: () => void }) {
+  const ready = !sw.readyAt || sw.readyAt <= now;
+  const left = sw.readyAt ? Math.max(0, sw.readyAt - now) : 0;
+  const h = Math.floor(left / 3_600_000);
+  const m = Math.ceil((left % 3_600_000) / 60_000);
+  return (
+    <button className={`fab sw-fab ${ready ? "ready" : ""}`} title={ready ? `Launch ${sw.name}` : `${sw.name} charging`} disabled={!ready} onClick={onFire}>
+      {sw.emoji}
+      {!ready && <span className="sw-charge">{h ? `${h}h` : `${m}m`}</span>}
+    </button>
+  );
+}

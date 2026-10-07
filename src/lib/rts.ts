@@ -27,7 +27,7 @@ export const FACTION_BY_KEY = Object.fromEntries(FACTIONS.map((f) => [f.key, f])
 export const factionOf = (key: string | null | undefined) => (key && key in FACTION_BY_KEY ? FACTION_BY_KEY[key as FactionKey] : null);
 
 // ---------------------------------------------------------------- buildings
-export type BuildingKey = "hq" | "power" | "supply" | "barracks" | "factory" | "airfield" | "turret" | "quarters" | "camp" | "builder" | "vault" | "walls";
+export type BuildingKey = "hq" | "power" | "supply" | "barracks" | "factory" | "airfield" | "turret" | "quarters" | "camp" | "builder" | "vault" | "walls" | "superweapon";
 export type BuildingDef = {
   key: BuildingKey;
   name: string;
@@ -52,7 +52,10 @@ export const BUILDINGS: BuildingDef[] = [
   { key: "walls", name: "Walls", emoji: "🧱", blurb: "+300 structure HP per level. Raiders have to chew through them.", cost: 120, minutes: 1, power: 0, hqLevel: 1 },
   { key: "factory", name: "War Factory", emoji: "🏭", blurb: "Builds tanks. Level 2 unlocks artillery.", cost: 500, minutes: 4, power: -4, hqLevel: 2 },
   { key: "airfield", name: "Airfield", emoji: "✈️", blurb: "Launches strike jets.", cost: 800, minutes: 6, power: -5, hqLevel: 3 },
+  { key: "superweapon", name: "Superweapon", emoji: "☢️", blurb: "Your faction's doomsday weapon: Nuclear Missile, Particle Cannon or SCUD Storm. Charges for hours, hits anywhere within 5 km.", cost: 4000, minutes: 20, power: -10, hqLevel: 4 },
 ];
+/** Some buildings cap below MAX_LEVEL. */
+export const LEVEL_CAP: Partial<Record<BuildingKey, number>> = { superweapon: 3 };
 export const BUILDING_BY_KEY = Object.fromEntries(BUILDINGS.map((b) => [b.key, b])) as Record<BuildingKey, BuildingDef>;
 export const MAX_LEVEL = 5;
 

@@ -7,6 +7,7 @@ import { UNITS, type Army, type UnitKey } from "@/lib/rts";
 import { maxTowers, PROVOKE_DELAY_MS, squadPos, TOWER_MAX_LEVEL, TOWER_TERRITORY_M, TOWERS, towerCost, towerStats, unitCount, type TowerKey } from "@/lib/td";
 import { api } from "./client";
 import { useGame } from "./ui";
+import { askConfirm } from "@/components/Dialogs";
 
 type TowerRow = { id: string; type: string; level: number; lat: number; lng: number; hp: number; kills: number; readyAt: string };
 type SquadRow = { id: string; units: Army; fromLat: number; fromLng: number; toLat: number; toLng: number; departAt: string; arriveAt: string; order: string; status: string; targetKind: string | null };
@@ -77,7 +78,7 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
                   : `⚠️ Wave in progress! ${fmtLeft(wave.endAt - now)} left`}
             </div>
           </div>
-          <button className="btn yellow small" disabled={!!wave && now >= wave.startAt - PROVOKE_DELAY_MS} onClick={() => confirm("Provoke a raider wave against your base in 60 s? Bounties ×1.5, but leaked raiders still steal coins.") && doAct("/api/waves", { action: "provoke" })}>
+          <button className="btn yellow small" disabled={!!wave && now >= wave.startAt - PROVOKE_DELAY_MS} onClick={() => askConfirm("Provoke a raider wave against your base in 60 s? Bounties ×1.5, but leaked raiders still steal coins.", { ok: "Provoke" }).then((ok) => ok && doAct("/api/waves", { action: "provoke" }))}>
             📯 Provoke
           </button>
         </div>
@@ -132,7 +133,7 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
               {up && left <= 0 && <button className="btn small" onClick={() => doAct("/api/towers", { action: "upgrade", towerId: t.id })}>↑ {up.coins}🪙</button>}
               {t.hp < st.maxHp && <button className="btn ghost small" onClick={() => doAct("/api/towers", { action: "repair", towerId: t.id })}>🔧 {Math.ceil((st.maxHp - t.hp) * 0.4)}</button>}
               {teleport && d != null && d > 30 && <button className="btn ghost small" onClick={() => teleport(t)}>🕹️</button>}
-              <button className="btn ghost small" onClick={() => confirm(`Demolish this ${st.def.name}? You get 30% back.`) && doAct("/api/towers", { action: "demolish", towerId: t.id })}>🏚️</button>
+              <button className="btn ghost small" onClick={() => askConfirm(`Demolish this ${st.def.name}? You get 30% back.`, { ok: "Demolish", danger: true }).then((ok) => ok && doAct("/api/towers", { action: "demolish", towerId: t.id }))}>🏚️</button>
             </div>
           </div>
         );

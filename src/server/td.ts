@@ -30,12 +30,13 @@ import {
   type Strike,
   type TowerKey,
 } from "../lib/td";
+import { SUPERWEAPONS, type SuperKey } from "../lib/superweapons";
 import { addUnits, fmtLosses, loadBase } from "./army";
 import { bonusOf, heroOf } from "./hero";
 import { HttpError } from "./http";
 import { notify } from "./hub";
 import { questEvent } from "./quests";
-import { grant } from "./rewards";
+import { grant, unlock } from "./rewards";
 import { friendIds } from "./rooms";
 import { assaultOutpost, clean, siegeBase, squadForce } from "./warfare";
 
@@ -70,9 +71,14 @@ export async function takeFire(u: User, pos: LatLng, dtSec: number): Promise<Fir
     ...towers.map((t) => ({ t, s: towerStats(t) })).filter(({ t, s }) => distanceM(pos, t) <= s.range).map(({ t, s }) => ({ ownerId: t.ownerId, name: t.owner.username, emoji: s.def.emoji, dps: s.dps * s.def.vsPlayer, towerId: t.id as string | null })),
     ...guards.filter((g) => distanceM(pos, { lat: g.toLat, lng: g.toLng }) <= GUARD_RANGE_M).map((g) => ({ ownerId: g.ownerId, name: g.owner.username, emoji: "🪖", dps: Math.min(8, squadDps(g.units as Army) / 4), towerId: null })),
   ];
-  if (!inRange.length) return null;
+  // Superweapon fallout (radiation / toxins) hurts everyone but the launcher.
+  const zones = await prisma.superstrike.findMany({ where: { ...box(pos, 250), hazardUntil: { gt: new Date() }, ownerId: { not: u.id } }, include: { owner: { select: { username: true } } } });
+  const fallout = zones
+    .filter((z) => distanceM(pos, z) <= z.radius && SUPERWEAPONS[z.kind as SuperKey]?.hazard)
+    .map((z) => ({ ownerId: z.ownerId, name: `${z.owner.username}'s ${SUPERWEAPONS[z.kind as SuperKey].hazard!.label}`, emoji: "☣️", dps: SUPERWEAPONS[z.kind as SuperKey].hazard!.dps, towerId: null as string | null }));
+  if (!inRange.length && !fallout.length) return null;
   const friends = new Set(await friendIds(u.id));
-  const hostile = inRange.filter((x) => !friends.has(x.ownerId));
+  const hostile = [...inRange.filter((x) => !friends.has(x.ownerId)), ...fallout];
   if (!hostile.length) return null;
 
   const maxHp = await maxHpOf(u.id);
@@ -91,12 +97,48 @@ export async function takeFire(u: User, pos: LatLng, dtSec: number): Promise<Fir
 
   // Downed: the heaviest hitter's owner takes the bounty.
   const top = hostile.sort((a, b) => b.dps - a.dps)[0];
-  const coins = Math.min(300, Math.floor(u.coins * DOWNED_COIN_LOSS));
-  await prisma.user.update({ where: { id: u.id }, data: { hp: maxHp, hpAt: new Date(now + DOWNED_MS), downedUntil: new Date(now + DOWNED_MS), coins: { decrement: Math.min(coins, u.coins) } } });
-  if (coins > 0) await grant(top.ownerId, { coins, xp: 40 });
+  const coins = await knockDown(u, maxHp, top.ownerId);
   if (top.towerId) await prisma.tower.updateMany({ where: { id: top.towerId }, data: { kills: { increment: 1 } } });
   await notify(top.ownerId, { kind: "reward", title: `${top.emoji} Your defenses downed ${u.username}`, body: `+${coins} 🪙 bounty` });
   return { hp: 0, maxHp, hits, downed: { by: top.name, coins } };
+}
+
+/** Put a commander down: 3 min out, HP refilled for later, a cut of their coins to whoever did it. */
+export async function knockDown(u: Pick<User, "id" | "coins">, maxHp: number, byUserId: string) {
+  const now = Date.now();
+  const coins = Math.min(300, Math.floor(u.coins * DOWNED_COIN_LOSS));
+  const took = await prisma.user.updateMany({
+    where: { id: u.id, OR: [{ downedUntil: null }, { downedUntil: { lt: new Date(now) } }] },
+    data: { hp: maxHp, hpAt: new Date(now + DOWNED_MS), downedUntil: new Date(now + DOWNED_MS), coins: { decrement: Math.min(coins, Math.max(0, u.coins)) } },
+  });
+  if (!took.count) return 0; // someone else got there first
+  if (coins > 0) await grant(byUserId, { coins, xp: 40 });
+  if (byUserId !== u.id) await claimBounties(u.id, byUserId);
+  return coins;
+}
+
+/** Whoever downs a wanted commander collects every open bounty on them. */
+export async function claimBounties(targetId: string, byUserId: string) {
+  const open = await prisma.bounty.findMany({ where: { targetId, claimedAt: null, posterId: { not: byUserId } } });
+  let total = 0;
+  for (const b of open) {
+    const ok = await prisma.bounty.updateMany({ where: { id: b.id, claimedAt: null }, data: { claimedAt: new Date(), claimedById: byUserId } });
+    if (ok.count) total += b.amount;
+  }
+  if (!total) return 0;
+  await grant(byUserId, { coins: total, xp: Math.min(500, Math.round(total / 5)) });
+  const target = await prisma.user.findUnique({ where: { id: targetId }, select: { username: true } });
+  await notify(byUserId, { kind: "reward", title: `💀 Bounty collected on ${target?.username}!`, body: `+${total} 🪙` });
+  await unlock(byUserId, "bounty_hunter");
+  return total;
+}
+
+/** Can this commander be shot right now? Returns the reason if not. */
+export function shotProtection(u: Pick<User, "xp" | "downedUntil">, now = Date.now()) {
+  if (levelForXp(u.xp) < ROOKIE_LEVEL) return "is a rookie (below level 3)";
+  if (u.downedUntil && now < u.downedUntil.getTime()) return "is already down";
+  if (u.downedUntil && now < u.downedUntil.getTime() + RESPAWN_IMMUNE_MS) return "just respawned";
+  return null;
 }
 
 export async function assertNotDowned(u: Pick<User, "downedUntil">) {
@@ -308,6 +350,7 @@ export async function resolveWaves(baseIds: string[]) {
     }
     const result = { killed, leaked, total: def.creeps.length, stolen, baseDmg: out.baseDmg, kills: out.kills, bounty: out.bounty };
     await prisma.wave.update({ where: { id: w.id }, data: { result } });
+    if (!leaked && killed > 0) await unlock(owner.id, "wave_clear");
     await prisma.battle.create({ data: { attackerId: owner.id, kind: "wave", targetId: base.id, targetName: base.name, won: leaked === 0, loot: (out.bounty[owner.id] ?? 0) - stolen, log: result } });
     await notify(owner.id, {
       kind: leaked ? "event" : "reward",

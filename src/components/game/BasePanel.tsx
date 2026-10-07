@@ -11,6 +11,7 @@ import {
   FACTIONS,
   levelOf,
   MAX_LEVEL,
+  LEVEL_CAP,
   RELOCATE_COST,
   RESEARCH,
   rushCost,
@@ -23,6 +24,7 @@ import { distanceM, formatDistance } from "@/lib/geo";
 import { api, fmtTime, type BaseView } from "./client";
 import { Sheet, Tabs, useGame } from "./ui";
 import { DefenseTab } from "./Defense";
+import { askConfirm } from "@/components/Dialogs";
 
 const fmtLeft = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -147,7 +149,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
             const building = left > 0;
             const next = lvl + 1;
             const locked = hq < def.hqLevel;
-            const capped = next > MAX_LEVEL || (def.key !== "hq" && next > hq);
+            const cap = LEVEL_CAP[def.key] ?? MAX_LEVEL;
+            const capped = next > cap || (def.key !== "hq" && next > hq);
             return (
               <div key={def.key} className={`card list-item ${building ? "hl" : ""}`} style={{ opacity: locked ? 0.5 : 1 }}>
                 <div className="icon-tile">{def.emoji}</div>
@@ -161,7 +164,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 ) : building ? (
                   rush("build", left, def.key)
                 ) : capped ? (
-                  <span className="small muted">{next > MAX_LEVEL ? "MAX" : "HQ ↑"}</span>
+                  <span className="small muted">{next > cap ? "MAX" : "HQ ↑"}</span>
                 ) : (
                   <button className="btn small" disabled={busy >= v.builders} onClick={() => doAct({ action: "build", type: def.key })} title={`${Math.max(1, Math.round((buildSeconds(def, next) * v.timeMult.build) / 60))} min`}>
                     {lvl ? "↑" : "Build"} {buildCost(def, next, f)}🪙
@@ -171,7 +174,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
             );
           })}
           <p className="small muted">{busy >= v.builders ? "All builders busy — rush with 💎 or build a Builder's Hut." : `${v.builders - busy} builder${v.builders - busy > 1 ? "s" : ""} free.`} {f.needsPower ? "Keep power positive or everything slows down." : ""}</p>
-          <button className="btn ghost small" onClick={() => confirm(`Move ${b.name} to where you're standing for ${RELOCATE_COST} coins?`) && doAct({ action: "found", name: b.name })}>🚚 Move base here ({RELOCATE_COST} 🪙)</button>
+          <button className="btn ghost small" onClick={() => askConfirm(`Move ${b.name} to where you're standing for ${RELOCATE_COST} coins?`, { ok: "Move base" }).then((ok) => ok && doAct({ action: "found", name: b.name }))}>🚚 Move base here ({RELOCATE_COST} 🪙)</button>
         </>
       )}
 
@@ -300,7 +303,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 </div>
               </div>
               {r.side === "defend" && !r.won && r.revengeBaseId && (
-                <button className="btn small" onClick={() => confirm(`Send your army for revenge on ${r.targetName}?`) && doAct({ kind: "siege", targetId: r.revengeBaseId }, "/api/battle")}>⚔️ Revenge</button>
+                <button className="btn small" onClick={() => askConfirm(`Send your army for revenge on ${r.targetName}?`, { ok: "Attack" }).then((ok) => ok && doAct({ kind: "siege", targetId: r.revengeBaseId }, "/api/battle"))}>⚔️ Revenge</button>
               )}
             </div>
           ))}

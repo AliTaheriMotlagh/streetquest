@@ -11,7 +11,7 @@ import { heroOf } from "@/server/hero";
 import { body, HttpError, route } from "@/server/http";
 import { notify } from "@/server/hub";
 import { questEvent } from "@/server/quests";
-import { grant, lastKnownLocation, spendCoins } from "@/server/rewards";
+import { grant, lastKnownLocation, spendCoins, unlock } from "@/server/rewards";
 import { areFriends } from "@/server/rooms";
 import { assertNotDowned, SPEED } from "@/server/td";
 
@@ -61,6 +61,7 @@ export const POST = route(async (req) => {
     await spendScrap(u.id, c.scrap, c.coins);
     await prisma.tower.create({ data: { ownerId: u.id, type: def.key, lat: here.lat, lng: here.lng, hp: towerStats({ type: def.key, level: 1 }).maxHp, readyAt: new Date(Date.now() + (c.seconds * 1000) / SPEED) } });
     await questEvent(u.id, "tower");
+    await unlock(u.id, "tower_builder");
     return { message: `${def.emoji} ${def.name} going up here (−${c.coins} 🪙${c.scrap ? `, −${c.scrap} 🔩` : ""})` };
   }
 

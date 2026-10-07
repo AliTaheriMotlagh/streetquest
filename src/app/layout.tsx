@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@/components/Analytics";
+import { DialogHost } from "@/components/Dialogs";
 import { SITE } from "@/lib/site";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
+        <DialogHost />
         <Analytics />
       </body>
     </html>

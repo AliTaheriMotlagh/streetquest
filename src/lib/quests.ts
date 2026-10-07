@@ -6,7 +6,7 @@ import { hashStr, rng } from "./geo";
 export type QuestKind =
   | "collect" | "chest" | "derrick" | "train" | "build" | "research" | "siege_win" | "breach_win" | "kills"
   | "boss_dmg" | "eat" | "rest" | "socialize" | "outpost" | "power" | "run" | "class" | "base" | "equip" | "forge"
-  | "arcade" | "duel_win" | "squad_run" | "tower" | "tower_down" | "raiders" | "squad";
+  | "arcade" | "duel_win" | "squad_run" | "tower" | "tower_down" | "raiders" | "squad" | "post";
 
 export type Reward = { xp: number; coins: number; scrap?: number; gear?: Rarity };
 export type QuestDef = { kind: QuestKind; target: number; title: string; desc: string; reward: Reward; lore?: string };
@@ -49,6 +49,7 @@ const DAILY_POOL: QuestDef[] = [
   { kind: "raiders", target: 8, title: "Hold the Line", desc: "Kill 8 raiders with towers, squads or airstrikes", reward: { xp: 200, coins: 150, scrap: 4 } },
   { kind: "tower_down", target: 1, title: "Demolition", desc: "Destroy an enemy tower", reward: { xp: 250, coins: 150, gear: "rare" } },
   { kind: "squad", target: 1, title: "Boots on the Map", desc: "Deploy a squad onto the map", reward: { xp: 100, coins: 60 } },
+  { kind: "post", target: 1, title: "Leave Your Mark", desc: "Pin a message or photo somewhere", reward: { xp: 80, coins: 40 } },
 ];
 
 export function dailyQuests(userId: string, day: string): (QuestDef & { key: string })[] {

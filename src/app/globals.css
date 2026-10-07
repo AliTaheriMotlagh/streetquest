@@ -16,6 +16,8 @@
   --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -62,9 +64,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .leaflet-control-attribution a { color: #999 !important; }
 .map.picking { cursor: crosshair; }
 /* Light OSM tiles turned into a neon-night city; tint shifts with the local time of day. */
-.darken .leaflet-tile-pane { filter: invert(1) hue-rotate(200deg) brightness(.85) contrast(1.1) saturate(.5); }
-.darken.night-tint .leaflet-tile-pane { filter: invert(1) hue-rotate(220deg) brightness(.65) contrast(1.15) saturate(.7); }
-.darken.dawn-tint .leaflet-tile-pane, .darken.dusk-tint .leaflet-tile-pane { filter: invert(1) hue-rotate(160deg) brightness(.85) contrast(1.1) saturate(.9) sepia(.25); }
+.darken .leaflet-tile { filter: invert(1) hue-rotate(200deg) brightness(.85) contrast(1.1) saturate(.5); }
+.darken.night-tint .leaflet-tile { filter: invert(1) hue-rotate(220deg) brightness(.65) contrast(1.15) saturate(.7); }
+.darken.dawn-tint .leaflet-tile, .darken.dusk-tint .leaflet-tile { filter: invert(1) hue-rotate(160deg) brightness(.85) contrast(1.1) saturate(.9) sepia(.25); }
 
 /* HUD */
 .hud { position: absolute; top: calc(10px + var(--safe-t)); left: 10px; right: 10px; z-index: 500; display: flex; gap: 8px; align-items: flex-start; pointer-events: none; }
@@ -104,7 +106,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .sheet-grip { width: 44px; height: 5px; background: rgba(255,255,255,.2); border-radius: 4px; margin: 8px auto 0; }
 .sheet-body { overflow-y: auto; padding: 0 16px 20px; -webkit-overflow-scrolling: touch; }
 .close { background: rgba(255,255,255,.08); border: 0; border-radius: 12px; width: 36px; height: 36px; cursor: pointer; font-size: 16px; }
-@keyframes up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes up { from { transform: perspective(1200px) translateY(60%) rotateX(22deg); opacity: 0; } to { transform: perspective(1200px) translateY(0) rotateX(0); opacity: 1; } }
 
 .tabs { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; }
 .tabs button { background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--muted); padding: 7px 12px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px; white-space: nowrap; }
@@ -146,7 +148,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .toast.error { border-left-color: var(--red); }
 .toast.social { border-left-color: var(--pink); }
 .toast b { display: block; font-family: var(--display); font-weight: 400; }
-@keyframes pop { from { transform: scale(.7) translateY(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes pop { from { transform: perspective(800px) rotateX(-28deg) scale(.8) translateY(-16px); opacity: 0; } 60% { transform: perspective(800px) rotateX(6deg) scale(1.03); opacity: 1; } to { transform: none; opacity: 1; } }
 
 /* Run banner */
 .run-banner { position: absolute; top: calc(68px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 550; background: linear-gradient(135deg, #2a0016, #170025); border: 2px solid var(--pink); border-radius: 18px; padding: 8px 14px; display: flex; gap: 12px; align-items: center; box-shadow: 0 0 30px rgba(255,46,136,.5); width: max-content; max-width: calc(100% - 20px); }
@@ -156,8 +158,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .pick-banner { position: absolute; top: calc(68px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 800; background: var(--yellow); color: #000; font-weight: 800; padding: 10px 16px; border-radius: 14px; display: flex; gap: 10px; align-items: center; }
 
 /* Map markers */
-.mk { position: relative; display: grid; place-items: center; font-size: 26px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.6)); animation: bob 2.4s ease-in-out infinite; }
-.mk.claimed { opacity: .25; filter: grayscale(1); animation: none; }
+.mk { position: relative; display: grid; place-items: center; font-size: 26px; text-shadow: 0 3px 6px rgba(0,0,0,.7); }
+.mk.legendary, .mk.epic, .mk.chest, .mk.arcade { animation: bob 2.4s ease-in-out infinite; will-change: transform; }
+.mk.claimed { opacity: .25; animation: none; }
 .mk .ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid currentColor; opacity: .7; }
 .mk.legendary .ring, .mk.epic .ring { animation: glow 1.6s infinite; }
 .mk.chest { font-size: 30px; }
@@ -169,10 +172,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .mk.player .nm { position: absolute; top: 30px; white-space: nowrap; font-size: 10px; font-weight: 800; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 6px; }
 .mk.player.friend .nm { color: var(--green); }
 @keyframes bob { 50% { transform: translateY(-5px); } }
-@keyframes glow { 0%,100% { box-shadow: 0 0 6px currentColor; } 50% { box-shadow: 0 0 20px currentColor; } }
+@keyframes glow { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
 @keyframes pulse { 50% { transform: scale(1.2); } }
-.me-marker { width: 22px; height: 22px; border-radius: 50%; background: var(--cyan); border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(34,227,255,.6); animation: me 2s infinite; }
-@keyframes me { 0% { box-shadow: 0 0 0 0 rgba(34,227,255,.6); } 100% { box-shadow: 0 0 0 26px rgba(34,227,255,0); } }
+.me-marker { position: relative; width: 22px; height: 22px; border-radius: 50%; background: var(--cyan); border: 3px solid #fff; box-shadow: 0 0 10px rgba(34,227,255,.8); }
+.me-marker::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; background: rgba(34,227,255,.5); animation: me 2s ease-out infinite; will-change: transform, opacity; }
+@keyframes me { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(3.4); opacity: 0; } }
 
 /* Mini-games */
 .modal-bg { position: absolute; inset: 0; z-index: 1500; background: rgba(0,0,0,.75); display: grid; place-items: center; padding: 16px; backdrop-filter: blur(4px); }
@@ -385,11 +389,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .mk.tower .hpbar i { display: block; height: 100%; }
 .mk.tower.enemy .ring { animation: glow 1.2s infinite; }
 .mk.squad { font-size: 22px; animation: none; }
-.mk.squad.moving { animation: bob .6s ease-in-out infinite; }
+.mk.squad.moving { animation: bob .6s ease-in-out infinite; will-change: transform; }
 .mk.squad .cnt { position: absolute; top: -8px; right: -10px; font-size: 10px; font-weight: 900; color: #000; border-radius: 8px; padding: 0 4px; line-height: 15px; }
 .mk.squad .ord { position: absolute; bottom: -8px; left: -8px; font-size: 12px; }
-.mk.creep { font-size: 18px; animation: bob .5s ease-in-out infinite; filter: drop-shadow(0 0 4px rgba(255,0,0,.8)); }
-.mk.creep.dead { animation: pop .3s; filter: none; }
+.mk.creep { font-size: 18px; text-shadow: 0 0 6px rgba(255,0,0,.9); }
+.mk.creep.dead { animation: pop .3s; }
 .mk.raidcamp { font-size: 26px; animation: pulse 1.4s infinite; }
 .mk.raidcamp .nm, .mk.strike .nm, .mk.ping .nm, .mk.runner .nm { position: absolute; top: 34px; white-space: nowrap; font-size: 10px; font-weight: 800; background: rgba(0,0,0,.75); padding: 1px 5px; border-radius: 6px; }
 .mk.strike { font-size: 26px; animation: pop .4s; }
@@ -409,3 +413,157 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .wave-banner.live { border-color: var(--red); animation: glow 1.4s infinite; color: inherit; }
 .ping-menu { position: absolute; right: 60px; top: 0; display: flex; flex-direction: column; gap: 6px; }
 .ping-menu button { background: var(--panel-solid); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 8px 12px; font-weight: 700; white-space: nowrap; cursor: pointer; text-align: left; }
+
+/* ---------- In-app dialogs (replace window.confirm / prompt) ---------- */
+.dialog-bg { z-index: 5000; }
+.dialog { text-align: left; max-width: 360px; }
+
+/* ---------- Performance on phones/tablets ----------
+   Backdrop blur over a moving map is recomputed every frame; on touch devices use
+   solid panels instead. Respect reduced-motion too. */
+@media (hover: none), (pointer: coarse) {
+  .chip, .player-card, .fab, .nav, .needs-hud, .quest-hud, .modal-bg { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  :root { --panel: rgba(16, 16, 28, 0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* =====================================================================
+   Game feel: 3D depth, juicy feedback. Transform/opacity only, so it stays
+   on the GPU compositor and smooth on phones.
+   ===================================================================== */
+.btn { transition: transform .08s ease-out, box-shadow .08s ease-out, filter .15s; will-change: transform; -webkit-tap-highlight-color: transparent; }
+.btn:not(:disabled):active { transform: perspective(500px) translateY(3px) rotateX(8deg) scale(.97); }
+.fab { transition: transform .12s cubic-bezier(.3,1.6,.5,1); -webkit-tap-highlight-color: transparent; }
+.fab:active { transform: perspective(400px) translateZ(-20px) scale(.92); }
+.nav button { transition: transform .15s cubic-bezier(.3,1.6,.5,1); -webkit-tap-highlight-color: transparent; }
+.nav button:active { transform: perspective(400px) rotateX(18deg) scale(.94); }
+.nav button:active .ic { transform: translateY(-4px) scale(1.25); }
+.card { transition: transform .15s; }
+.card.list-item:active { transform: perspective(700px) rotateX(4deg) scale(.99); }
+.modal { animation: pop .38s cubic-bezier(.2,1.2,.4,1); transform-origin: 50% 0; }
+.sheet { transform-origin: 50% 100%; }
+.toast { animation: toastIn .45s cubic-bezier(.2,1.3,.4,1); transform-origin: 50% 0; }
+@keyframes toastIn { from { transform: perspective(600px) rotateX(-70deg) translateY(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
+.icon-tile { transition: transform .2s; }
+.card.list-item:hover .icon-tile { transform: perspective(300px) rotateY(-14deg) scale(1.06); }
+.tabs button { transition: transform .12s; }
+.tabs button:active { transform: scale(.94); }
+.tabs button.on { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+
+/* Markers drop onto the map once, with a little bounce (one-shot, not a loop). */
+.leaflet-marker-icon .mk { animation: drop .45s cubic-bezier(.3,1.5,.5,1) backwards; }
+.leaflet-marker-icon .mk.legendary, .leaflet-marker-icon .mk.epic, .leaflet-marker-icon .mk.chest, .leaflet-marker-icon .mk.arcade { animation: drop .45s cubic-bezier(.3,1.5,.5,1) backwards, bob 2.4s ease-in-out .45s infinite; }
+@keyframes drop { from { transform: translateY(-26px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Flags, wanted players, superweapons */
+.mk.flag { font-size: 26px; }
+.mk.flag .nm, .mk.sw-target .nm { position: absolute; top: 36px; white-space: nowrap; font-size: 10px; font-weight: 800; background: rgba(0,0,0,.75); padding: 1px 6px; border-radius: 6px; }
+.mk.flag .cap { position: absolute; top: -10px; right: -12px; font-size: 16px; animation: pulse .8s infinite; }
+.mk.flag.contested .ring { animation: glow .5s infinite; }
+.mk.flag-timer .cap-timer { font-family: var(--display); font-size: 15px; color: #fff; background: var(--red); border-radius: 10px; padding: 0 6px; transform: translateY(-34px); box-shadow: 0 0 12px var(--red); }
+.mk.player .wanted { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 900; color: #000; background: var(--yellow); border-radius: 6px; padding: 0 4px; white-space: nowrap; }
+.mk.player.is-wanted { animation: glow 1.2s infinite; }
+.mk.sw-target { font-size: 40px; }
+.mk.sw-target::before { content: ""; position: absolute; inset: -18px; border-radius: 50%; border: 3px solid #ff2e2e; animation: target 1s linear infinite; }
+@keyframes target { from { transform: scale(1.4); opacity: 0; } 50% { opacity: 1; } to { transform: scale(.6); opacity: 0; } }
+.mk.sw-target .sw-count { position: absolute; bottom: -24px; font-family: var(--display); font-size: 20px; color: #fff; background: #c40000; border-radius: 10px; padding: 0 8px; box-shadow: 0 0 16px #ff2e2e; }
+.mk.sw-blast { font-size: 90px; animation: blast 4.5s ease-out forwards; }
+.mk.sw-blast::before, .mk.sw-blast::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 6px solid rgba(255,200,80,.9); animation: shock 1.4s ease-out forwards; }
+.mk.sw-blast::after { border-color: rgba(255,80,20,.8); animation-delay: .25s; }
+.mk.sw-blast.particle::before, .mk.sw-blast.particle::after { border-color: rgba(120,220,255,.95); }
+@keyframes blast { 0% { transform: scale(.2); opacity: 0; } 8% { transform: scale(1.3); opacity: 1; } 30% { transform: scale(1); } 100% { transform: scale(1.6) translateY(-30px); opacity: 0; } }
+@keyframes shock { from { transform: scale(.3); opacity: 1; } to { transform: scale(5); opacity: 0; } }
+.mk.sw-hazard { font-size: 28px; animation: glow 1.4s infinite; }
+.sw-fab { font-size: 24px; }
+.sw-fab.ready { border-color: #ff2e2e; animation: pulse 1.2s infinite; box-shadow: 0 0 18px rgba(255,46,46,.6); }
+.sw-fab .sw-charge { position: absolute; bottom: -4px; right: -4px; font-size: 10px; font-weight: 900; background: #222; border: 1px solid var(--line); border-radius: 6px; padding: 0 4px; }
+.game.shake { animation: screenshake .6s; }
+@keyframes screenshake { 10%, 50%, 90% { transform: translate(-6px, 3px); } 30%, 70% { transform: translate(6px, -3px); } }
+
+/* Posts with photos */
+.photo-preview { position: relative; margin-top: 8px; }
+.photo-preview img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; display: block; }
+.photo-preview .close { position: absolute; top: 6px; right: 6px; }
+.note-photo { width: 100%; max-height: 340px; object-fit: cover; border-radius: 14px; margin-top: 8px; display: block; background: #111; }
+.note-card { animation: pop .3s; }
+
+/* =====================================================================
+   Devices: iPhone (notch, home bar, landscape), iPad / tablets, desktop.
+   ===================================================================== */
+.hud { left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r)); }
+.fab-col { right: calc(12px + var(--safe-r)); }
+html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+.game { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.game input, .game textarea, .chat-log, .msg { -webkit-user-select: text; user-select: text; }
+/* iOS zooms into inputs under 16px — keep them at 16px on touch screens. */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+  .btn.small { min-height: 38px; }
+  .close { min-width: 36px; min-height: 36px; }
+}
+
+/* Small phones (iPhone SE / mini) */
+@media (max-width: 380px) {
+  .fab { width: 44px; height: 44px; font-size: 19px; }
+  .chip { font-size: 12px; padding: 5px 9px; }
+  .player-card .avatar { transform: scale(.9); }
+  .nav button { font-size: 9px; }
+}
+
+/* Phones in landscape: short screens — slimmer sheet, compact HUD */
+@media (orientation: landscape) and (max-height: 500px) {
+  .sheet { max-height: 92vh; left: auto; right: calc(8px + var(--safe-r)); width: min(440px, 60vw); bottom: 8px; border-radius: 22px; }
+  .nav { max-width: 460px; padding: 4px; }
+  .nav button .ic { font-size: 18px; }
+  .quest-hud, .wave-banner { display: none; }
+  .fab-col { bottom: calc(70px + var(--safe-b)); gap: 6px; }
+  .fab { width: 42px; height: 42px; }
+}
+
+/* iPad / tablets: panels float on the right so the map stays in view */
+@media (min-width: 768px) and (min-height: 600px) {
+  .sheet {
+    left: auto; right: calc(16px + var(--safe-r)); top: calc(16px + var(--safe-t)); bottom: calc(16px + var(--safe-b));
+    width: 420px; max-height: none; margin: 0; border-radius: 26px; border: 1px solid var(--line);
+    animation: slideSide .32s cubic-bezier(.2,1,.3,1); transform-origin: 100% 50%;
+  }
+  .sheet.peek { transform: translateX(calc(100% - 40px)); }
+  .sheet-grip { display: none; }
+  @keyframes slideSide { from { transform: perspective(1400px) translateX(40%) rotateY(-18deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* When a panel is open, keep floating buttons and banners clear of it. */
+  .game:has(.sheet) .fab-col { right: calc(452px + var(--safe-r)); }
+  .game:has(.sheet) .wave-banner { right: calc(460px + var(--safe-r)); }
+  .nav { max-width: 620px; bottom: calc(16px + var(--safe-b)); }
+  .nav button { font-size: 11px; padding: 8px 6px; }
+  .nav button .ic { font-size: 26px; }
+  .fab { width: 56px; height: 56px; font-size: 24px; }
+  .modal { max-width: 460px; padding: 26px; }
+  .modal.dialog { max-width: 400px; }
+  .facade { gap: 14px; padding: 18px; }
+  .window .who { font-size: 48px; }
+  .wire { height: 42px; }
+  .toasts { top: calc(20px + var(--safe-t)); }
+  .tower-shop { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Large iPad / desktop: a touch more room */
+@media (min-width: 1100px) {
+  .sheet { width: 460px; }
+  .game:has(.sheet) .fab-col { right: calc(492px + var(--safe-r)); }
+}
+
+/* Phones (iPhone 12–16 and smaller): keep the whole HUD on screen */
+@media (max-width: 440px) {
+  .hud { gap: 6px; }
+  .player-card { min-width: 0; flex: 0 1 auto; padding: 5px 10px 5px 5px; gap: 8px; }
+  .player-card > div:last-child { min-width: 0; }
+  .player-card > div:last-child > div:first-child { max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .needs-hud { flex: 0 0 auto; padding: 5px 6px; height: 50px; }
+  .hud-right { min-width: 0; flex: 0 1 auto; }
+  .hud-right .chip { font-size: 12px; padding: 5px 9px; max-width: 100%; }
+  .hud-right .chip .hide-sm { display: none; }
+  .hud-right .chip .show-sm { display: inline; }
+}
+.show-sm { display: none; }

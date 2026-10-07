@@ -11,7 +11,7 @@ import { HttpError } from "./http";
 import { notify, onlineSince } from "./hub";
 import { bumpNeeds } from "./needs";
 import { questEvent } from "./quests";
-import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "./rewards";
+import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track, unlock } from "./rewards";
 import { assertNotDowned } from "./td";
 
 const GRACE_MS = 8_000; // slow phones still get their score in
@@ -47,6 +47,9 @@ export async function openOrJoin(u: User, spawnId: string, mode?: "race" | "coop
     return open.id;
   }
 
+  // Each new lobby pings nearby players, so hosting is rate-limited.
+  const recentHost = await prisma.lobby.findFirst({ where: { hostId: u.id, createdAt: { gt: new Date(Date.now() - 15_000) } } });
+  if (recentHost) throw new HttpError(429, "You just opened a game — give it a few seconds");
   const info = LOBBY_INFO[kind];
   const lobby = await prisma.lobby.create({
     data: {
@@ -160,6 +163,7 @@ async function payMini(userId: string, s: Spawn, kind: LobbyKind, score: number,
     await questEvent(userId, "collect");
     await questEvent(userId, "chest");
     if (won) await questEvent(userId, "duel_win");
+    if (won) await unlock(userId, "duel_champ");
     await maybeGear(userId, (rounds >= 3 ? 0.4 : 0.2) + (won ? 0.3 : 0), { source: "a supply crate" });
     await checkClaimAchievements(userId, s.phase);
     await track("claim", { userId });
@@ -172,6 +176,7 @@ async function payMini(userId: string, s: Spawn, kind: LobbyKind, score: number,
   await grant(userId, { xp: s.rewardXp + (won ? 50 : 0), coins });
   await questEvent(userId, "collect");
   if (won) await questEvent(userId, "duel_win");
+  if (won) await unlock(userId, "duel_champ");
   await checkClaimAchievements(userId, s.phase);
   await track("claim", { userId });
   return `+${coins} 🪙${won ? " · 🏆 winner bonus" : ""}`;

@@ -1,6 +1,6 @@
 "use client";
 import L from "leaflet";
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
@@ -47,14 +47,16 @@ type Props = {
   onSelect: (s: Selected) => void;
 };
 
-export default function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode }: Props) {
+export default memo(GameMap);
+
+function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode }: Props) {
   const center = pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
   const tint = world ? `${world.phase}-tint` : "";
 
   return (
     <div className={`map ${DARKEN ? "darken" : ""} ${tint} ${picking || strikeMode ? "picking" : ""} ${strikeMode ? "striking" : ""}`}>
-      <MapContainer center={[center.lat, center.lng]} zoom={17} minZoom={3} maxZoom={19} zoomControl={false} style={{ width: "100%", height: "100%" }}>
+      <MapContainer preferCanvas center={[center.lat, center.lng]} zoom={17} minZoom={3} maxZoom={19} zoomControl={false} style={{ width: "100%", height: "100%" }}>
         <TileLayer
           url={TILE_URL}
           attribution={TILE_ATTRIBUTION}
@@ -213,11 +215,40 @@ export default function GameMap({ pos, world, me, follow, picking, onUnfollow, o
           />
         ))}
 
+        {/* King-of-the-hill flags */}
+        {world?.flags.map((f) => {
+          const color = f.mine ? "#22e3ff" : f.friend ? "#3dff8f" : "#ff4d4d";
+          return (
+            <Marker
+              key={`fl${f.id}`}
+              position={[f.lat, f.lng]}
+              zIndexOffset={480}
+              icon={icon(
+                `<span class="ring" style="color:${color}"></span>🚩<span class="nm" style="color:${color}">${esc(f.name)}</span>${f.capture ? '<span class="cap">⚔️</span>' : ""}`,
+                `flag ${f.capture ? "contested" : ""}`,
+                40,
+              )}
+              eventHandlers={{ click: () => onSelect({ type: "flag", data: f }) }}
+            />
+          );
+        })}
+
+        {/* Superweapon strikes: public target circle + countdown, then the fallout zone */}
+        {world?.strikes.map((x) => (
+          <Circle
+            key={`sw${x.id}`}
+            center={[x.lat, x.lng]}
+            radius={x.radius}
+            pathOptions={{ color: x.resolved ? "#a3e635" : "#ff2e2e", weight: 3, dashArray: x.resolved ? "4 8" : undefined, fillOpacity: x.resolved ? 0.12 : 0.18 }}
+            eventHandlers={{ click: () => onSelect({ type: "strike", data: x }) }}
+          />
+        ))}
+
         {world?.players.map((p) => (
           <Marker
             key={p.id}
             position={[p.lat, p.lng]}
-            icon={icon(`${esc(p.avatar)}<span class="nm">${esc(p.username)} · ${p.level}</span>`, `player ${p.friend ? "friend" : ""}`, 34)}
+            icon={icon(`${esc(p.avatar)}<span class="nm">${esc(p.username)} · ${p.level}</span>${p.bounty ? `<span class="wanted">💀${p.bounty}</span>` : ""}`, `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""}`, 34)}
             eventHandlers={{ click: () => onSelect({ type: "player", data: p }) }}
           />
         ))}

@@ -62,6 +62,14 @@ export function currentHp(hp: number, hpAt: Date | string | number, maxHp: numbe
   return Math.min(maxHp, hp + Math.floor((now - new Date(hpAt).getTime()) / 1000 / HP_REGEN_S));
 }
 
+// ---------------------------------------------------------------- street combat (PvP)
+// Commanders shoot each other, enemy towers and enemy squads directly with their gun.
+export const SHOOT_RANGE_M = 60;
+export const SHOOT_COOLDOWN_MS = 6_000;
+export const SHOOT_DMG = 16; // × the hero's FPS damage bonus
+export const SHOOT_CRIT = 0.15; // chance of a ×2 headshot
+export const SHOOT_ASSET_MULT = 2.5; // a commander's gun vs structures and squads
+
 // ---------------------------------------------------------------- squads
 export const MAX_SQUADS = 4;
 export const GUARD_RANGE_M = 55;

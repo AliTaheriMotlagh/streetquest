@@ -6,6 +6,7 @@ import { LOBBY_INFO } from "@/lib/minigames";
 import { api, type LobbyView } from "./client";
 import { BombDefuse, ShootingRange } from "./MiniGames";
 import { useGame } from "./ui";
+import { sfx } from "./sfx";
 
 type Resp = { now: number; lobby: LobbyView };
 const MEDAL = ["🥇", "🥈", "🥉"];
@@ -49,7 +50,12 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
       refresh();
       onClose();
     }
-    if (status === "ENDED") refresh();
+    if (status === "ENDED") {
+      refresh();
+      const mine = l?.players.find((p) => p.userId === me.id);
+      if ((l?.players.length ?? 0) > 1) sfx(mine?.place === 1 ? "win" : "lose");
+      else sfx("reward");
+    }
   }, [isRun, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = useCallback(

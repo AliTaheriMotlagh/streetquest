@@ -14,6 +14,7 @@ import {
 } from "@/lib/td";
 import type { LobbyView, Me, Selected, World } from "./client";
 import { useLiveWaves } from "./waves";
+import { SUPERWEAPONS } from "@/lib/superweapons";
 import { esc, icon } from "./mapIcons";
 
 const squadColor = (s: { mine: boolean; friend: boolean }) => (s.mine ? "#22e3ff" : s.friend ? "#3dff8f" : "#ff4d4d");
@@ -21,12 +22,19 @@ const squadColor = (s: { mine: boolean; friend: boolean }) => (s.mine ? "#22e3ff
 export function LiveLayer({ world, me, runners, onSelect }: { world: World | null; me: Me | null; runners?: LobbyView["players"]; onSelect: (s: Selected) => void }) {
   const [now, setNow] = useState(Date.now());
   const live = useLiveWaves(world);
-  const active = world && (world.squads.some((s) => s.status === "MARCH") || live.some(({ w }) => now >= w.startAt - 600_000 && now <= w.endAt + 3000) || runners?.length);
+  // Tick fast only while something is actually fighting; marching squads are fine at 1 Hz.
+  const fighting =
+    !!world &&
+    (live.some(({ w }) => now >= w.startAt - 5000 && now <= w.endAt + 3000) ||
+      world.strikes.some((x) => !x.resolved || now - x.impactAt < 5000) ||
+      world.flags.some((f) => f.capture && f.capture.endsAt > now - 2000));
+  const moving = !!world && (world.squads.some((s) => s.status === "MARCH" && s.arriveAt > now) || !!runners?.length || live.some(({ w }) => now < w.startAt && w.startAt - now < 600_000));
+  const every = fighting ? 250 : moving ? 1000 : 0;
   useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => setNow(Date.now()), 250);
+    if (!every) return;
+    const t = setInterval(() => setNow(Date.now()), every);
     return () => clearInterval(t);
-  }, [active]);
+  }, [every]);
   if (!world) return null;
 
   return (
@@ -94,6 +102,32 @@ export function LiveLayer({ world, me, runners, onSelect }: { world: World | nul
           </span>
         );
       })}
+
+      {/* ---------- superweapons: countdown over the target, then the blast */}
+      {world.strikes.map((x) => {
+        const def = SUPERWEAPONS[x.kind];
+        const left = Math.ceil((x.impactAt - now) / 1000);
+        if (left > 0)
+          return (
+            <Marker
+              key={`swc${x.id}`}
+              position={[x.lat, x.lng]}
+              zIndexOffset={2000}
+              icon={icon(`${def.emoji}<span class="sw-count">${left}</span><span class="nm">${esc(x.owner)}</span>`, `sw-target ${x.kind}`, 64)}
+              interactive={false}
+            />
+          );
+        if (now - x.impactAt < 4500) return <Marker key={`swb${x.id}`} position={[x.lat, x.lng]} zIndexOffset={2000} icon={icon(x.kind === "particle" ? "🔆" : "💥", `sw-blast ${x.kind}`, 140)} interactive={false} />;
+        if (x.hazardUntil && x.hazardUntil > now) return <Marker key={`swh${x.id}`} position={[x.lat, x.lng]} zIndexOffset={300} icon={icon("☣️", "sw-hazard", 40)} interactive={false} />;
+        return null;
+      })}
+
+      {/* ---------- flags being captured: live timer */}
+      {world.flags
+        .filter((f) => f.capture && f.capture.endsAt > now)
+        .map((f) => (
+          <Marker key={`flc${f.id}`} position={[f.lat, f.lng]} zIndexOffset={1500} icon={icon(`<span class="cap-timer">${Math.ceil((f.capture!.endsAt - now) / 1000)}</span>`, "flag-timer", 30)} interactive={false} />
+        ))}
 
       {/* ---------- squadmates on a squad run (exact positions) */}
       {runners

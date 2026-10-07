@@ -13,6 +13,7 @@ import { questView } from "@/server/quests";
 import { body, HttpError, route } from "@/server/http";
 import { currentHp, ROOKIE_LEVEL } from "@/lib/td";
 import { maxHpOf } from "@/server/td";
+import { superStatus } from "@/server/superweapons";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -26,6 +27,7 @@ export const GET = route(async () => {
     prisma.gear.count({ where: { userId: u.id, equipped: true } }),
   ]);
   const maxHp = await maxHpOf(u.id);
+  const sw = base ? await superStatus(u) : null;
   const quests = await questView(u.id, { heroClass: !!u.heroClass, base: !!base, equipped: equipped > 0 });
   const needs = needsOf(u);
   const prog = levelProgress(u.xp);
@@ -71,6 +73,7 @@ export const GET = route(async () => {
     maxHp,
     downedUntil: u.downedUntil && u.downedUntil.getTime() > Date.now() ? u.downedUntil.getTime() : null,
     rookie: prog.level < ROOKIE_LEVEL,
+    superweapon: sw?.def && sw.level > 0 ? { key: sw.def.key, name: sw.def.name, emoji: sw.def.emoji, level: sw.level, readyAt: sw.readyAt, radius: sw.def.radius } : null,
   };
 });
 

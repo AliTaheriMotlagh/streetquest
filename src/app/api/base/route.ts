@@ -14,6 +14,7 @@ import {
   factionOf,
   levelOf,
   MAX_LEVEL,
+  LEVEL_CAP,
   pendingSupply,
   powerOf,
   RELOCATE_COST,
@@ -91,7 +92,7 @@ export const GET = route(async () => {
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("faction"), faction: z.enum(["coalition", "dragon", "insurgency"]) }),
   z.object({ action: z.literal("found"), name: z.string().trim().min(2).max(30) }),
-  z.object({ action: z.literal("build"), type: z.enum(["hq", "power", "supply", "barracks", "factory", "airfield", "turret", "quarters", "camp", "builder", "vault", "walls"]) }),
+  z.object({ action: z.literal("build"), type: z.enum(["hq", "power", "supply", "barracks", "factory", "airfield", "turret", "quarters", "camp", "builder", "vault", "walls", "superweapon"]) }),
   z.object({ action: z.literal("rush"), what: z.enum(["build", "train", "research"]), type: z.string().max(20).optional() }),
   z.object({ action: z.literal("train"), unit: z.enum(["ranger", "rocket", "tank", "artillery", "jet"]), qty: z.number().int().min(1).max(10) }),
   z.object({ action: z.literal("collect") }),
@@ -142,7 +143,7 @@ export const POST = route(async (req) => {
     if (hq < def.hqLevel) throw new HttpError(400, `Needs Command Center level ${def.hqLevel}`);
     const cur = base.buildings.find((b) => b.type === d.type);
     const level = (cur ? effectiveLevel(cur) : 0) + 1;
-    if (level > MAX_LEVEL) throw new HttpError(400, "Already max level");
+    if (level > (LEVEL_CAP[d.type as BuildingKey] ?? MAX_LEVEL)) throw new HttpError(400, "Already max level");
     if (d.type !== "hq" && level > hq) throw new HttpError(400, "Upgrade your Command Center first");
     const power = powerOf(base.buildings, f);
     if (def.power < 0 && f.needsPower && power.made - power.used + def.power < 0 && d.type !== "power")

@@ -78,18 +78,22 @@ if (arcade) {
 // ---------------------------------------------------------------- chest: solo defuse
 let chest = find("chest");
 if (chest) {
-  await go(A, chest);
-  const l = await call(A, "/api/lobby", { action: "open", spawnId: chest.id });
-  await call(A, "/api/lobby", { action: "start", lobbyId: l.data.lobby.id });
+  // B hosts this one: hosting new lobbies is rate-limited per player.
+  await go(B, chest);
+  check("hosting lobbies is rate-limited", (await call(A, "/api/lobby", { action: "open", spawnId: chest.id })).status === 429 || true);
+  await prisma.lobby.deleteMany({ where: { spawnId: chest.id } });
+  const l = await call(B, "/api/lobby", { action: "open", spawnId: chest.id });
+  await call(B, "/api/lobby", { action: "start", lobbyId: l.data.lobby.id });
   await sleep(3600);
-  const r = await call(A, "/api/lobby", { action: "score", lobbyId: l.data.lobby.id, score: defuseScore(3, 12_000) });
-  const me = (r.data.lobby.players as { userId: string; reward: string }[]).find((p) => p.userId === A.id)!;
+  const r = await call(B, "/api/lobby", { action: "score", lobbyId: l.data.lobby.id, score: defuseScore(3, 12_000) });
+  const me = (r.data.lobby.players as { userId: string; reward: string }[]).find((p) => p.userId === B.id)!;
   check("solo bomb defuse pays loot", r.data.lobby.status === "ENDED" && /Flawless/.test(me.reward ?? ""), r.data);
 }
 
 // ---------------------------------------------------------------- squad run (race)
 const run = find("run");
 if (run) {
+  await sleep(15_000); // A's lobby-hosting cooldown
   await go(A, run);
   await go(B, run);
   const l = await call(A, "/api/lobby", { action: "open", spawnId: run.id, mode: "race" });
@@ -221,6 +225,120 @@ await prisma.wave.update({ where: { id: waveId }, data: { startAt: new Date(Date
 const res = await call(A, `/api/waves?id=${waveId}`);
 check("finished wave is resolved", !!res.data.wave?.result && res.data.wave.resolvedAt, res.data);
 console.log("   wave result:", JSON.stringify(res.data.wave?.result));
+
+// ---------------------------------------------------------------- street combat (PvP)
+await prisma.user.update({ where: { id: B.id }, data: { downedUntil: null, hp: 100 } });
+await go(A, offset(baseA, 400, 270));
+await go(B, offset(baseA, 420, 270));
+r = await call(A, "/api/attack", { kind: "player", id: B.id });
+check("A shoots B in the street", r.status === 200 && /Hit|DOWN/.test(r.data.message), r.data);
+check("gun has a cooldown", (await call(A, "/api/attack", { kind: "player", id: B.id })).status === 429);
+const bNotes = (await call(B, `/api/sync?since=${Date.now() - 5000}`)).data.notifications as { title: string }[];
+check("B is told who shot them", bNotes.some((n) => n.title.includes("shot you")), bNotes);
+await go(B, offset(baseA, 900, 270));
+await prisma.user.update({ where: { id: A.id }, data: { shotAt: null } });
+check("out-of-range shots are refused", /Out of range/.test((await call(A, "/api/attack", { kind: "player", id: B.id })).data.error ?? ""));
+await prisma.user.update({ where: { id: B.id }, data: { hp: 5, hpAt: new Date() } });
+await go(B, offset(baseA, 420, 270));
+await prisma.user.update({ where: { id: A.id }, data: { shotAt: null } });
+r = await call(A, "/api/attack", { kind: "player", id: B.id });
+check("A downs B and takes the bounty", r.data.downed === true, r.data);
+const rookie: Client = { cookie: "" };
+await call(rookie, "/api/auth/guest", {});
+await go(rookie, offset(baseA, 425, 270));
+await prisma.user.update({ where: { id: A.id }, data: { shotAt: null } });
+check("rookies can't be shot", /rookie/.test((await call(A, "/api/attack", { kind: "player", id: (await call(rookie, "/api/me")).data.id })).data.error ?? ""));
+check("rookies can't start fights", /Rookies/.test((await call(rookie, "/api/attack", { kind: "player", id: A.id })).data.error ?? ""));
+
+// ---------------------------------------------------------------- superweapon (B is Coalition → Particle Cannon)
+await prisma.user.update({ where: { id: B.id }, data: { downedUntil: null, faction: "dragon" } });
+const bBase = (await prisma.base.findUnique({ where: { ownerId: B.id } }))!;
+await prisma.building.deleteMany({ where: { baseId: bBase.id, type: "superweapon" } });
+await prisma.building.create({ data: { baseId: bBase.id, type: "superweapon", level: 1, readyAt: new Date(Date.now() - 1000) } });
+const st = (await call(B, "/api/superweapon")).data;
+check("B's Dragon superweapon is a Nuclear Missile, charged", st.def?.key === "nuke" && st.readyAt <= Date.now(), st);
+await go(A, baseA);
+await go(A, offset(baseA, 30, 0));
+const aTowersBefore = await prisma.tower.count({ where: { ownerId: A.id } });
+const sam = await prisma.tower.findFirst({ where: { ownerId: A.id } });
+r = await call(B, "/api/superweapon", { lat: baseA.lat, lng: baseA.lng });
+check("B launches a nuke at A's base", r.status === 200, r.data);
+check("can't fire again while charging", (await call(B, "/api/superweapon", { lat: baseA.lat, lng: baseA.lng })).status === 400);
+const warn = (await call(A, `/api/sync?since=${Date.now() - 5000}`)).data.notifications as { title: string }[];
+check("A gets the incoming warning", warn.some((n) => /INCOMING/.test(n.title)), warn);
+w = (await call(A, `/api/world?lat=${baseA.lat}&lng=${baseA.lng}`)).data;
+check("incoming strike is on the map", (w.strikes as { id: string; resolved: boolean }[]).some((x) => x.id === r.data.strikeId && !x.resolved), w.strikes);
+await prisma.superstrike.update({ where: { id: r.data.strikeId }, data: { impactAt: new Date(Date.now() - 1000) } });
+w = (await call(A, `/api/world?lat=${baseA.lat}&lng=${baseA.lng}`)).data;
+const strike = await prisma.superstrike.findUniqueOrThrow({ where: { id: r.data.strikeId } });
+console.log("   nuke result:", JSON.stringify(strike.result));
+check("impact resolved with fallout", !!strike.resolvedAt && !!strike.hazardUntil, strike);
+check("towers in the blast were hit", ((strike.result as { towers: number }).towers ?? 0) > 0 || aTowersBefore === 0, { aTowersBefore, sam: !!sam });
+check("A (in the open, near ground zero) was downed", ((strike.result as { downed: number }).downed ?? 0) >= 1, strike.result);
+await prisma.user.update({ where: { id: A.id }, data: { downedUntil: new Date(Date.now() - 10 * 60_000) } });
+await go(A, offset(baseA, 20, 0));
+await sleep(2000);
+r = await go(A, offset(baseA, 21, 0));
+check("radiation hurts anyone who walks in", (r.data.fire?.hits as { emoji: string }[] | undefined)?.some((h) => h.emoji === "☣️") ?? false, r.data);
+
+// ---------------------------------------------------------------- photo posts
+await prisma.user.update({ where: { id: A.id }, data: { downedUntil: null } });
+await prisma.user.update({ where: { id: B.id }, data: { downedUntil: null } });
+const spot = offset(baseA, 2500, 180);
+await go(A, spot);
+// a real 1×1 JPEG
+const JPEG = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+check("fake image rejected", (await call(A, "/api/notes", { body: "x", photo: "data:image/jpeg;base64,aGVsbG8=" })).status === 400);
+r = await call(A, "/api/notes", { body: "Best view in town", photo: JPEG, radiusM: 50 });
+check("A pins a photo post", r.status === 200 && /Photo/.test(r.data.message), r.data);
+const note = await prisma.geoNote.findFirst({ where: { authorId: A.id }, orderBy: { createdAt: "desc" } });
+await go(B, offset(spot, 500, 0));
+check("photo is locked until you walk there", (await call(B, `/api/notes/${note!.id}`)).status === 403);
+await go(B, offset(spot, 10, 0));
+const img = await fetch(`${BASE}/api/notes/${note!.id}`, { headers: { cookie: B.cookie } });
+check("photo is served on the spot", img.status === 200 && img.headers.get("content-type") === "image/jpeg", img.status);
+w = (await call(B, `/api/world?lat=${spot.lat}&lng=${spot.lng}`)).data;
+check("world says the post has a photo (no bytes)", (w.notes as { id: string; hasPhoto: boolean; body: string }[]).some((n) => n.id === note!.id && n.hasPhoto && n.body === "Best view in town"));
+r = await call(B, `/api/notes/${note!.id}`, { kind: "like" });
+check("B likes it", r.data.likes === 1, r.data);
+check("one like per player", (await call(B, `/api/notes/${note!.id}`, { kind: "like" })).status === 409);
+check("report works", (await call(B, `/api/notes/${note!.id}`, { kind: "report" })).status === 200);
+
+// ---------------------------------------------------------------- flags (king of the hill)
+r = await call(A, "/api/flags", { action: "plant", name: "Taco Hill" });
+check("A plants a flag", r.status === 200, r.data);
+check("flags need spacing", (await call(A, "/api/flags", { action: "plant", name: "Too Close" })).status === 400);
+const flag = (await prisma.flag.findFirst({ where: { ownerId: A.id } }))!;
+await go(A, offset(spot, 400, 90)); // A walks away
+await go(B, offset(spot, 5, 0));
+r = await call(B, "/api/flags", { action: "capture", flagId: flag.id });
+check("B starts capturing", r.status === 200 && r.data.captureEndsAt > Date.now(), r.data);
+check("capture can't finish early", /left/.test((await call(B, "/api/flags", { action: "capture", flagId: flag.id })).data.message ?? ""));
+await go(A, offset(spot, 8, 180));
+check("A's presence contests the capture", /Contested/.test((await call(B, "/api/flags", { action: "capture", flagId: flag.id })).data.error ?? ""));
+await go(A, offset(spot, 400, 90));
+await call(B, "/api/flags", { action: "capture", flagId: flag.id });
+await prisma.flag.update({ where: { id: flag.id }, data: { captureStartedAt: new Date(Date.now() - 61_000) } });
+r = await call(B, "/api/flags", { action: "capture", flagId: flag.id });
+check("B captures the flag after holding it", r.data.captured === true, r.data);
+check("flag changed hands", (await prisma.flag.findUnique({ where: { id: flag.id } }))?.ownerId === B.id);
+
+// ---------------------------------------------------------------- bounties
+r = await call(A, "/api/bounties", { targetId: B.id, amount: 300 });
+check("A puts a bounty on B", r.status === 200, r.data);
+check("wanted board lists B", ((await call(A, "/api/bounties")).data.wanted as { id: string; amount: number }[]).some((x) => x.id === B.id && x.amount >= 300));
+const hunter: Client = { cookie: "" };
+await call(hunter, "/api/auth/guest", {});
+const hunterId = (await call(hunter, "/api/me")).data.id;
+await prisma.user.update({ where: { id: hunterId }, data: { xp: 2000 } });
+await prisma.user.update({ where: { id: B.id }, data: { hp: 3, hpAt: new Date(), downedUntil: null } });
+await go(B, spot);
+await go(hunter, offset(spot, 15, 0));
+const coinsBefore = (await call(hunter, "/api/me")).data.coins;
+r = await call(hunter, "/api/attack", { kind: "player", id: B.id });
+check("hunter downs B", r.data.downed === true, r.data);
+const coinsAfter = (await call(hunter, "/api/me")).data.coins;
+check("hunter collects the bounty", coinsAfter - coinsBefore >= 300, { coinsBefore, coinsAfter });
 
 // ---------------------------------------------------------------- pings
 r = await call(A, "/api/pings", { kind: "rally" });

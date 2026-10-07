@@ -6,6 +6,8 @@ import { bossesAround } from "@/lib/bosses";
 import { effectiveLevel, factionOf, levelOf, type Army } from "@/lib/rts";
 import { squadIcon } from "@/lib/td";
 import { resolveWaves, scheduleWaves, settleSquads } from "@/server/td";
+import { resolveStrikes } from "@/server/superweapons";
+import { CAPTURE_SECONDS } from "@/lib/flags";
 import { outpostsAround } from "@/lib/outposts";
 import { researchDone } from "@/server/hero";
 import { ITEM_BY_KEY } from "@/lib/catalog";
@@ -38,13 +40,15 @@ export const GET = route(async (req) => {
 
   // Lazy settlement: squads that arrived, raider waves that finished.
   await settleSquads({ near: here });
+  await resolveStrikes({ near: here });
   const bosses = bossesAround(here);
   const sites = outpostsAround(here);
   const [missions, notes, events, deliveries, friends, nearbyUsers, bases, bossStates, outpostRows, research] = await Promise.all([
     prisma.adminMission.findMany({ where: { ...inBox(near), activeFrom: { lte: now }, activeTo: { gte: now } } }),
     prisma.geoNote.findMany({
       where: { ...inBox(near), hidden: false, expiresAt: { gt: now } },
-      include: { author: { select: { username: true, avatar: true } } },
+      // never load photo bytes here — they're served separately to players on the spot
+      select: { id: true, authorId: true, lat: true, lng: true, radiusM: true, body: true, photoType: true, likes: true, createdAt: true, expiresAt: true, author: { select: { username: true, avatar: true } } },
       take: 100,
     }),
     prisma.event.findMany({
@@ -78,6 +82,16 @@ export const GET = route(async (req) => {
   await scheduleWaves(nearBases);
   await resolveWaves(nearBases.map((b) => b.id));
   const sq = bbox(here, 5000);
+  const strikes = await prisma.superstrike.findMany({
+    where: { ...inBox(wide), OR: [{ resolvedAt: null }, { hazardUntil: { gt: now } }, { resolvedAt: { gt: new Date(Date.now() - 20_000) } }] },
+    include: { owner: { select: { username: true } } },
+    take: 20,
+  });
+  const [flags, bounties] = await Promise.all([
+    prisma.flag.findMany({ where: inBox(bbox(here, 3000)), include: { owner: { select: { username: true, avatar: true, faction: true } } }, take: 100 }),
+    prisma.bounty.groupBy({ by: ["targetId"], where: { claimedAt: null, targetId: { in: nearbyUsers.map((x) => x.id) } }, _sum: { amount: true } }),
+  ]);
+  const wanted = new Map(bounties.map((b) => [b.targetId, b._sum.amount ?? 0]));
   const [towers, squads, waves, pings, lobbies] = await Promise.all([
     prisma.tower.findMany({ where: inBox(bbox(here, 3000)), include: { owner: { select: { username: true, faction: true } } }, take: 300 }),
     prisma.squad.findMany({
@@ -117,7 +131,7 @@ export const GET = route(async (req) => {
       // Strangers are shown with ~150m of fuzz for privacy.
       const fuzz = friend ? 0 : 0.0013;
       const r = (s: string) => ((parseInt(s.slice(-4), 36) % 1000) / 1000 - 0.5) * 2 * fuzz;
-      return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, lat: x.lat + r(x.id), lng: x.lng + r(x.id + "x") };
+      return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, bounty: wanted.get(x.id) ?? 0, lat: x.lat + r(x.id), lng: x.lng + r(x.id + "x") };
     });
 
   return {
@@ -138,6 +152,9 @@ export const GET = route(async (req) => {
         expiresAt: n.expiresAt,
         unlocked,
         body: unlocked ? n.body : null,
+        hasPhoto: !!n.photoType,
+        likes: n.likes,
+        mine: n.authorId === u.id,
       };
     }),
     events: events.map((e) => ({ ...e, participants: e._count.participants })),
@@ -209,6 +226,22 @@ export const GET = route(async (req) => {
       const b = bases.find((x) => x.id === w.baseId)!;
       return { id: w.id, baseId: w.baseId, ownerId: b.ownerId, baseLat: b.lat, baseLng: b.lng, seed: w.seed, hq: w.hq, boost: w.boost, startAt: w.startAt.getTime(), endAt: w.endAt.getTime(), strikes: w.strikes, result: w.result, resolved: !!w.resolvedAt };
     }),
+    flags: flags.map((f) => ({
+      id: f.id,
+      name: f.name,
+      lat: f.lat,
+      lng: f.lng,
+      owner: f.owner.username,
+      ownerAvatar: f.owner.avatar,
+      faction: f.owner.faction,
+      mine: f.ownerId === u.id,
+      friend: friendSet.has(f.ownerId),
+      heldSince: f.heldSince.getTime(),
+      captures: f.captures,
+      capture: f.captureStartedAt ? { by: f.captureName, mine: f.captureById === u.id, endsAt: f.captureStartedAt.getTime() + CAPTURE_SECONDS * 1000 } : null,
+      shielded: !!f.shieldUntil && f.shieldUntil > now,
+    })),
+    strikes: strikes.map((x) => ({ id: x.id, kind: x.kind, lat: x.lat, lng: x.lng, radius: x.radius, launchAt: x.launchAt.getTime(), impactAt: x.impactAt.getTime(), hazardUntil: x.hazardUntil?.getTime() ?? null, resolved: !!x.resolvedAt, mine: x.ownerId === u.id, owner: x.owner.username })),
     pings: pings.map((p) => ({ id: p.id, kind: p.kind, lat: p.lat, lng: p.lng, expiresAt: p.expiresAt.getTime(), mine: p.userId === u.id, by: p.user.username, avatar: p.user.avatar })),
     outposts: sites.map((s) => {
       const o = opBy.get(s.id);

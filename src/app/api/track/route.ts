@@ -5,7 +5,7 @@ import { currentUser } from "@/server/auth";
 import { body, route } from "@/server/http";
 import { track } from "@/server/rewards";
 
-const Schema = z.object({ name: z.enum(["page_view", "cta_click", "share"]), path: z.string().max(200).optional() });
+const Schema = z.object({ name: z.enum(["page_view", "cta_click", "share", "client_error"]), path: z.string().max(200).optional() });
 
 export const POST = route(async (req) => {
   const d = await body(req, Schema);

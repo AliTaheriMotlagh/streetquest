@@ -10,6 +10,7 @@ import type { PowerKey } from "@/lib/powers";
 import type { Mood, Needs } from "@/lib/sims";
 import type { PingKind, Strike } from "@/lib/td";
 import type { LobbyKind } from "@/lib/minigames";
+import type { SuperKey } from "@/lib/superweapons";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
@@ -80,6 +81,7 @@ export type Me = {
   maxHp: number;
   downedUntil: number | null;
   rookie: boolean;
+  superweapon: { key: SuperKey; name: string; emoji: string; level: number; readyAt: number | null; radius: number } | null;
 };
 
 export type League = { name: string; emoji: string; bonus: number; min: number };
@@ -107,10 +109,11 @@ export type HeroView = {
 
 export type WorldSpawn = Spawn & { claimed: boolean; lobby: { id: string; kind: string; players: number; openUntil: number } | null };
 export type WorldMission = { id: string; title: string; description: string; lat: number; lng: number; item?: ItemDef; rewardXp: number; rewardCoins: number; sponsor: string | null; claimed: boolean; activeTo: string };
-export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null };
+export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null; hasPhoto: boolean; likes: number; mine: boolean };
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
 export type WorldDelivery = { id: string; title: string; description: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; reward: number; status: string; sender?: { username: string }; distanceM?: number };
-export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; lat: number; lng: number };
+export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; bounty: number; lat: number; lng: number };
+export type WorldFlag = { id: string; name: string; lat: number; lng: number; owner: string; ownerAvatar: string; faction: string | null; mine: boolean; friend: boolean; heldSince: number; captures: number; capture: { by: string | null; mine: boolean; endsAt: number } | null; shielded: boolean };
 
 export type WorldBase = {
   id: string;
@@ -179,6 +182,7 @@ export type WorldWave = {
   result: { killed: number; leaked: number; total: number; stolen: number; baseDmg: number } | null;
   resolved: boolean;
 };
+export type WorldStrike = { id: string; kind: SuperKey; lat: number; lng: number; radius: number; launchAt: number; impactAt: number; hazardUntil: number | null; resolved: boolean; mine: boolean; owner: string };
 export type WorldPing = { id: string; kind: PingKind; lat: number; lng: number; expiresAt: number; mine: boolean; by: string; avatar: string };
 
 export type LobbyView = {
@@ -243,6 +247,8 @@ export type World = {
   squads: WorldSquad[];
   waves: WorldWave[];
   pings: WorldPing[];
+  strikes: WorldStrike[];
+  flags: WorldFlag[];
 };
 
 export type Selected =
@@ -257,7 +263,9 @@ export type Selected =
   | { type: "outpost"; data: WorldOutpost }
   | { type: "tower"; data: WorldTower }
   | { type: "squad"; data: WorldSquad }
-  | { type: "ping"; data: WorldPing };
+  | { type: "ping"; data: WorldPing }
+  | { type: "flag"; data: WorldFlag }
+  | { type: "strike"; data: WorldStrike };
 
 export const fmtTime = (iso: string | number | Date) =>
   new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { sfx } from "./sfx";
 import {
   COMBO_MAX,
   COMBO_STEP,
@@ -16,9 +17,20 @@ import {
   WIRES,
 } from "@/lib/minigames";
 
-/** Milliseconds since `startAt`, re-rendering every animation frame. */
+/** Milliseconds since `startAt`, re-rendering every animation frame. Beeps 3-2-1-GO. */
 function useClock(startAt: number, running: boolean) {
   const [t, setT] = useState(() => Date.now() - startAt);
+  const beeped = useRef(new Set<number>());
+  useEffect(() => {
+    const s = Math.ceil(-t / 1000);
+    if (t < 0 && s <= 3 && !beeped.current.has(s)) {
+      beeped.current.add(s);
+      sfx("beep");
+    } else if (t >= 0 && t < 400 && !beeped.current.has(0)) {
+      beeped.current.add(0);
+      sfx("go");
+    }
+  }, [t]);
   useEffect(() => {
     if (!running) return;
     let raf = 0;
@@ -66,6 +78,7 @@ export function ShootingRange({ seed, startAt, onDone }: { seed: number; startAt
   const reload = () => {
     if (reloading || ammo === RANGE_MAG) return;
     navigator.vibrate?.(20);
+    sfx("reload");
     setReloadUntil(Date.now() + RANGE_RELOAD_MS);
   };
 
@@ -74,20 +87,24 @@ export function ShootingRange({ seed, startAt, onDone }: { seed: number; startAt
     if (reloading) return;
     if (ammo <= 0) return reload();
     setAmmo((a) => a - 1);
+    sfx("shot");
     const target = schedule.find((p) => p.slot === slot && !hit.has(p.id) && t >= p.t && t < p.t + p.dur);
     let delta = 0;
     if (!target) {
       setCombo(0);
+      sfx("miss");
     } else {
       setHit((h) => new Set(h).add(target.id));
       if (target.kind === "civilian") {
         delta = RANGE_POINTS.civilian;
         setCombo(0);
+        sfx("error");
         navigator.vibrate?.([60, 40, 60]);
       } else {
         const bonus = Math.min(COMBO_MAX, combo * COMBO_STEP);
         delta = RANGE_POINTS[target.kind] + bonus;
         setCombo((c) => c + 1);
+        sfx("hit");
         navigator.vibrate?.(15);
       }
     }
@@ -156,6 +173,7 @@ export function BombDefuse({ seed, startAt, onDone, title = "Defuse the crate" }
     if (finished.current) return;
     finished.current = true;
     setResult(how);
+    sfx(how === "boom" ? "explode" : "win");
     navigator.vibrate?.(how === "boom" ? [200, 80, 200] : [40, 30, 40]);
     setTimeout(() => onDone(score), 900);
   };
@@ -168,6 +186,7 @@ export function BombDefuse({ seed, startAt, onDone, title = "Defuse the crate" }
     if (result || showing || t < 0) return;
     const need = r.sequence[cut.length];
     if (wire === need) {
+      sfx("cut");
       navigator.vibrate?.(20);
       const next = [...cut, wire];
       if (next.length === r.sequence.length) {
@@ -179,6 +198,7 @@ export function BombDefuse({ seed, startAt, onDone, title = "Defuse the crate" }
       return;
     }
     setWrong(wire);
+    sfx("error");
     setTimeout(() => setWrong(null), 400);
     if (strikes + 1 > DEFUSE_STRIKES) return finish(defuseScore(round, 0), "boom");
     setStrikes(strikes + 1);

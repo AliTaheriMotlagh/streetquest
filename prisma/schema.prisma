@@ -64,6 +64,7 @@ model User {
   hpAt         DateTime @default(now()) // HP regenerates from this snapshot
   downedUntil  DateTime?
   sabotageAt   DateTime?
+  shotAt       DateTime? // street combat cooldown
 
   inventory     InventoryItem[]
   claims        Claim[]
@@ -92,6 +93,11 @@ model User {
   towers        Tower[]
   squads        Squad[]
   pings         Ping[]
+  superstrikes  Superstrike[]
+  flags         Flag[]
+  noteReactions NoteReaction[]
+  bountiesOn    Bounty[]           @relation("bountyTarget")
+  bountiesPosted Bounty[]          @relation("bountyPoster")
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -109,6 +115,7 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model InventoryItem {
@@ -197,6 +204,10 @@ model GeoNote {
   radiusM   Int      @default(50)
   body      String
   hidden    Boolean  @default(false)
+  photo     Bytes? // resized JPEG/WebP, ≤ 400 KB, only served to players standing there
+  photoType String?
+  likes     Int      @default(0)
+  reports   Int      @default(0)
   expiresAt DateTime
   createdAt DateTime @default(now())
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -520,6 +531,7 @@ model Lobby {
   players   LobbyPlayer[]
 
   @@index([spawnId, status])
+  @@index([status, lat, lng])
 }
 
 model LobbyPlayer {
@@ -580,6 +592,7 @@ model Squad {
   owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([toLat, toLng])
+  @@index([fromLat, fromLng])
   @@index([ownerId])
 }
 
@@ -600,6 +613,7 @@ model Wave {
 
   @@index([baseId, resolvedAt])
   @@index([startAt])
+  @@index([resolvedAt])
 }
 
 // Short-lived map markers for crew coordination.
@@ -613,5 +627,77 @@ model Ping {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([expiresAt])
   @@index([lat, lng])
+}
+
+// Faction superweapons (Generals-style): Nuclear Missile, Particle Cannon, SCUD Storm.
+// A launch is public: everyone near the target sees the countdown and can run.
+model Superstrike {
+  id          String    @id @default(cuid())
+  ownerId     String
+  kind        String // nuke | particle | scud
+  level       Int       @default(1)
+  lat         Float
+  lng         Float
+  radius      Int
+  launchAt    DateTime  @default(now())
+  impactAt    DateTime
+  hazardUntil DateTime?
+  resolvedAt  DateTime?
+  result      Json?
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
+  @@index([ownerId, launchAt])
+  @@index([impactAt])
+}
+
+// One like/report per player per post.
+model NoteReaction {
+  id     String @id @default(cuid())
+  noteId String
+  userId String
+  kind   String // like | report
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, userId, kind])
+}
+
+// King of the hill: a flag planted on a real spot. Rivals capture it by standing
+// there for a minute while no defender is around; the holder earns tribute.
+model Flag {
+  id               String    @id @default(cuid())
+  ownerId          String
+  name             String
+  lat              Float
+  lng              Float
+  plantedAt        DateTime  @default(now())
+  heldSince        DateTime  @default(now())
+  collectedAt      DateTime  @default(now())
+  captures         Int       @default(0)
+  captureById      String?
+  captureName      String?
+  captureStartedAt DateTime?
+  shieldUntil      DateTime?
+  owner            User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
+  @@index([ownerId])
+}
+
+// Coins on a rival's head; whoever downs them collects. Escrowed from the poster.
+model Bounty {
+  id          String    @id @default(cuid())
+  targetId    String
+  posterId    String
+  amount      Int
+  createdAt   DateTime  @default(now())
+  claimedById String?
+  claimedAt   DateTime?
+  target      User      @relation("bountyTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  poster      User      @relation("bountyPoster", fields: [posterId], references: [id], onDelete: Cascade)
+
+  @@index([targetId, claimedAt])
+  @@index([createdAt])
 }

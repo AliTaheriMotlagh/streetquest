@@ -38,6 +38,16 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { key: "event_1", name: "Showed Up", emoji: "🎉", desc: "Check in at an event", xp: 150 },
   { key: "streak_7", name: "Dedicated", emoji: "🔥", desc: "7-day login streak", xp: 500 },
   { key: "note_1", name: "Graffiti", emoji: "📍", desc: "Leave a message at a location", xp: 50 },
+  { key: "photo_1", name: "Street Photographer", emoji: "📸", desc: "Pin a photo to a real place", xp: 100 },
+  { key: "liked_10", name: "Local Legend", emoji: "❤️", desc: "Get 10 likes on one post", xp: 400 },
+  { key: "flag_plant", name: "Claim Staker", emoji: "🚩", desc: "Plant a flag", xp: 100 },
+  { key: "flag_capture", name: "Flag Thief", emoji: "🏴", desc: "Capture a rival's flag", xp: 300 },
+  { key: "bounty_hunter", name: "Bounty Hunter", emoji: "💀", desc: "Collect a bounty", xp: 400 },
+  { key: "first_blood", name: "First Blood", emoji: "🔫", desc: "Down a rival commander in the street", xp: 250 },
+  { key: "tower_builder", name: "Fortifier", emoji: "🗼", desc: "Build your first tower", xp: 100 },
+  { key: "wave_clear", name: "Hold the Line", emoji: "🛡️", desc: "Stop a raider wave without a single leak", xp: 400 },
+  { key: "duel_champ", name: "Top Gun", emoji: "🏆", desc: "Win a multiplayer mini-game", xp: 200 },
+  { key: "superweapon", name: "Doomsday", emoji: "☢️", desc: "Fire your faction's superweapon", xp: 500 },
 ];
 export const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.key, a])) as Record<
   string,

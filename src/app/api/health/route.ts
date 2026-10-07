@@ -14,8 +14,9 @@ export async function GET() {
   const settings = {
     database: !!(env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL),
     authSecret: !!env.AUTH_SECRET && env.AUTH_SECRET !== "change-me",
-    siteUrl: !!env.NEXT_PUBLIC_SITE_URL,
+    siteUrl: !!(env.NEXT_PUBLIC_SITE_URL || env.VERCEL_PROJECT_PRODUCTION_URL),
     adminKey: !!env.ADMIN_KEY,
+    cronSecret: !!env.CRON_SECRET,
   };
   const problems: string[] = [];
   if (!settings.database) problems.push("No database connected. Vercel: Storage → connect a Postgres (Neon) database, then redeploy.");

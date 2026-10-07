@@ -3,10 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
-import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent } from "./client";
+import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote } from "./client";
 import { Sheet, Tabs, useGame } from "./ui";
 import { LifeTab } from "./Life";
 import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
+import { askConfirm } from "@/components/Dialogs";
+import { CAPTURE_SECONDS, FLAG_COST, FLAG_INCOME_HOUR } from "@/lib/flags";
+import { resizePhoto } from "./photo";
+import { sfx } from "./sfx";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -30,9 +34,12 @@ function LocationField({ label, value, onChange }: { label: string; value: LatLn
 
 // ---------------------------------------------------------------- Nearby
 export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
-  const { world, pos, act } = useGame();
-  const [tab, setTab] = useState<"spawns" | "notes">("spawns");
+  const { world, pos, act, toast } = useGame();
+  const [tab, setTab] = useState<"spawns" | "notes" | "flags">("spawns");
   const [note, setNote] = useState("");
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [posting, setPosting] = useState(false);
+  const [flagName, setFlagName] = useState("");
   const [radius, setRadius] = useState(50);
   const d = (p: LatLng) => (pos ? distanceM(pos, p) : 0);
 
@@ -47,7 +54,7 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
   return (
     <Sheet title="Nearby" onClose={onClose} peek={peek}>
       {phaseInfo && <div className="card small">{phaseInfo}</div>}
-      <Tabs value={tab} onChange={setTab} tabs={[["spawns", `Spawns (${spawns.length})`], ["notes", `Messages (${world?.notes.length ?? 0})`]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["spawns", `Spawns (${spawns.length})`], ["notes", `Posts (${world?.notes.length ?? 0})`], ["flags", `🚩 Flags (${world?.flags.length ?? 0})`]]} />
       {tab === "spawns" &&
         (spawns.length ? (
           spawns.map((s) => (
@@ -56,7 +63,7 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
                 {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji}
               </div>
               <div className="grow">
-                <b>{s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade: Tap Rush" : s.kind === "derrick" ? "Oil Derrick" : s.item?.name}</b>
+                <b>{s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade: Shooting Range" : s.kind === "derrick" ? "Oil Derrick" : s.item?.name}</b>
                 <div className="small muted">
                   {formatDistance(d(s))} · +{s.rewardXp} XP {s.goldenHour && "· ✨2×"}
                 </div>
@@ -70,12 +77,37 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
       {tab === "notes" && (
         <>
           <div className="card">
-            <b>Drop a message here</b>
+            <b>📍 Pin a post right here</b>
             <p className="small muted" style={{ margin: "4px 0 8px" }}>
-              Only players who physically come within the radius can read it. Costs 5 coins.
+              Text and/or a photo. Only players who physically come within the radius can see it. Likes earn you XP.
             </p>
             <textarea rows={2} maxLength={280} value={note} onChange={(e) => setNote(e.target.value)} placeholder="The best tacos in town are behind this wall…" />
-            <div className="row" style={{ marginTop: 8 }}>
+            {photo && (
+              <div className="photo-preview">
+                <img src={photo} alt="Your photo" />
+                <button className="close" onClick={() => setPhoto(null)} aria-label="Remove photo">✕</button>
+              </div>
+            )}
+            <div className="row wrap" style={{ marginTop: 8 }}>
+              <label className="btn ghost small" style={{ margin: 0 }}>
+                📸 {photo ? "Change" : "Photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    try {
+                      setPhoto(await resizePhoto(f));
+                      sfx("photo");
+                    } catch (err) {
+                      toast({ kind: "error", title: (err as Error).message });
+                    }
+                  }}
+                />
+              </label>
               <select value={radius} onChange={(e) => setRadius(Number(e.target.value))} style={{ width: "auto" }}>
                 {[20, 50, 100, 200].map((r) => (
                   <option key={r} value={r}>
@@ -86,24 +118,96 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
               <span className="grow" />
               <button
                 className="btn small"
-                disabled={!note.trim()}
-                onClick={async () => (await act(() => api("/api/notes", { body: { body: note, radiusM: radius } }))) && setNote("")}
+                disabled={(!note.trim() && !photo) || posting}
+                onClick={async () => {
+                  setPosting(true);
+                  const ok = await act(() => api("/api/notes", { body: { body: note, radiusM: radius, photo: photo ?? undefined } }));
+                  setPosting(false);
+                  if (ok) {
+                    setNote("");
+                    setPhoto(null);
+                  }
+                }}
               >
-                Drop it
+                {posting ? "Posting…" : `Post · ${photo ? 15 : 5} 🪙`}
               </button>
             </div>
           </div>
           {world?.notes.map((n) => (
-            <div key={n.id} className="card">
-              <div className="small muted">
-                {n.author.avatar} {n.author.username} · {formatDistance(d(n))} away
-              </div>
-              <div style={{ marginTop: 4 }}>{n.unlocked ? n.body : <i className="muted">🔒 Walk within {n.radiusM} m to read</i>}</div>
-            </div>
+            <NoteCard key={n.id} n={n} dist={d(n)} />
           ))}
         </>
       )}
+      {tab === "flags" && (
+        <>
+          <div className="card">
+            <b>🚩 King of the hill</b>
+            <p className="small muted" style={{ margin: "4px 0 8px" }}>
+              Plant a flag where you stand ({FLAG_COST} 🪙). It pays {FLAG_INCOME_HOUR} 🪙/hour while you hold it. Rivals capture it by standing on it for {CAPTURE_SECONDS}s while nobody from your crew is there — so defend it in person!
+            </p>
+            <div className="row">
+              <input value={flagName} onChange={(e) => setFlagName(e.target.value)} maxLength={24} placeholder="Flag name, e.g. Taco Hill" />
+              <button className="btn small" disabled={flagName.trim().length < 2} onClick={async () => (await act(() => api("/api/flags", { body: { action: "plant", name: flagName } }))) && setFlagName("")}>
+                Plant
+              </button>
+            </div>
+            <button className="btn yellow small" style={{ marginTop: 8 }} onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>
+              🪙 Collect flag tribute
+            </button>
+          </div>
+          {(world?.flags ?? [])
+            .slice()
+            .sort((a, b) => d(a) - d(b))
+            .map((f) => (
+              <div key={f.id} className="card list-item">
+                <div className="icon-tile">🚩</div>
+                <div className="grow">
+                  <b style={{ color: f.mine ? "var(--cyan)" : f.friend ? "var(--green)" : "var(--red)" }}>{f.name}</b>
+                  <div className="small muted">
+                    {f.mine ? "Yours" : `${f.ownerAvatar} ${f.owner}`} · {formatDistance(d(f))}
+                    {f.capture && <span style={{ color: "var(--red)" }}> · ⚔️ being captured</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          {!world?.flags.length && <div className="empty">No flags around. Be the first — plant one at your favorite spot.</div>}
+        </>
+      )}
     </Sheet>
+  );
+}
+
+/** A pinned post: text, an optional photo (served only to players standing there), like / report. */
+export function NoteCard({ n, dist }: { n: WorldNote; dist: number }) {
+  const { act } = useGame();
+  const [likes, setLikes] = useState(n.likes);
+  return (
+    <div className="card note-card">
+      <div className="small muted">
+        {n.author.avatar} {n.author.username} · {formatDistance(dist)} away · {fmtTime(n.createdAt)}
+      </div>
+      {n.unlocked ? (
+        <>
+          {n.hasPhoto && <img className="note-photo" src={`/api/notes/${n.id}`} alt={`Photo by ${n.author.username}`} loading="lazy" />}
+          {n.body && <div style={{ marginTop: 6 }}>{n.body}</div>}
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn ghost small" disabled={n.mine} onClick={() => act(async () => { const r = await api<{ message: string; likes: number }>(`/api/notes/${n.id}`, { body: { kind: "like" } }); setLikes(r.likes); return r; })}>
+              ❤️ {likes}
+            </button>
+            <span className="grow" />
+            {!n.mine && (
+              <button className="btn ghost small" onClick={() => askConfirm("Report this post?", { body: "Posts with several reports are hidden and reviewed by moderators.", ok: "Report", danger: true }).then((ok) => ok && act(() => api(`/api/notes/${n.id}`, { body: { kind: "report" } })))}>
+                🚩
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <div style={{ marginTop: 4 }}>
+          <i className="muted">🔒 {n.hasPhoto ? "📸 A photo is pinned here." : ""} Walk within {n.radiusM} m to see it</i>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -312,7 +416,7 @@ function Chat({ room }: { room: string }) {
   const { me, toast } = useGame();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
-  const end = useRef<HTMLDivElement>(null);
+  const log = useRef<HTMLDivElement>(null);
 
   const newest = useRef<string | null>(null);
   useEffect(() => {
@@ -341,7 +445,13 @@ function Chat({ room }: { room: string }) {
     };
   }, [room]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
+  // Keep the newest message in view. Scroll only the log (scrollIntoView would also move
+  // the sheet/page), and use a block body: desktop Chrome's scroll methods return a
+  // Promise, and an effect must never return anything but a cleanup function.
+  useEffect(() => {
+    const el = log.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [msgs]);
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -360,7 +470,7 @@ function Chat({ room }: { room: string }) {
 
   return (
     <div className="chat">
-      <div className="chat-log">
+      <div className="chat-log" ref={log}>
         {msgs.length === 0 && <div className="empty">No messages yet. Say hi 👋</div>}
         {msgs.map((m) => (
           <div key={m.id} className={`msg ${m.author.id === me.id ? "me" : ""}`}>
@@ -372,7 +482,6 @@ function Chat({ room }: { room: string }) {
             {m.body}
           </div>
         ))}
-        <div ref={end} />
       </div>
       <form className="row" onSubmit={send} style={{ paddingTop: 8 }}>
         <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Message…" />
@@ -384,7 +493,8 @@ function Chat({ room }: { room: string }) {
 
 export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => void; peek: boolean; chat: { room: string; label: string } | null; setChat: (c: { room: string; label: string } | null) => void }) {
   const { act, pos, me } = useGame();
-  const [tab, setTab] = useState<"friends" | "chat" | "ranks">(chat ? "chat" : "friends");
+  const [tab, setTab] = useState<"friends" | "chat" | "ranks" | "wanted">(chat ? "chat" : "friends");
+  const [wanted, setWanted] = useState<{ id: string; username: string; avatar: string; amount: number }[] | null>(null);
   const [data, setData] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }>({ friends: [], incoming: [], outgoing: [] });
   const [name, setName] = useState("");
   const [scope, setScope] = useState<"global" | "friends">("global");
@@ -403,6 +513,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
     if (chat) setTab("chat");
   }, [chat]);
   useEffect(() => {
+    if (tab === "wanted") api<{ wanted: NonNullable<typeof wanted> }>("/api/bounties").then((r) => setWanted(r.wanted)).catch(() => {});
     if (tab === "ranks") api<NonNullable<typeof board>>(`/api/leaderboard?scope=${scope}&by=${by}`).then(setBoard).catch(() => {});
   }, [tab, scope, by]);
 
@@ -419,7 +530,21 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
 
   return (
     <Sheet title="Crew" onClose={onClose} peek={peek}>
-      <Tabs value={tab} onChange={setTab} tabs={[["friends", `Friends${data.incoming.length ? ` (${data.incoming.length})` : ""}`], ["chat", "Chat"], ["ranks", "Ranks"]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["friends", `Friends${data.incoming.length ? ` (${data.incoming.length})` : ""}`], ["chat", "Chat"], ["ranks", "Ranks"], ["wanted", "💀 Wanted"]]} />
+
+      {tab === "wanted" && (
+        <>
+          <p className="small muted">Most wanted commanders. Down one in the street (🔫), with towers or a superweapon to collect the whole bounty. Put a price on someone from their card on the map.</p>
+          {wanted?.map((w, i) => (
+            <div key={w.id} className="card list-item">
+              <div className="icon-tile">{i === 0 ? "👑" : w.avatar}</div>
+              <b className="grow">{w.username}</b>
+              <span className="tag" style={{ color: "var(--yellow)" }}>💀 {w.amount.toLocaleString()} 🪙</span>
+            </div>
+          ))}
+          {wanted && !wanted.length && <div className="empty">Nobody is wanted right now. Peace… for now.</div>}
+        </>
+      )}
 
       {tab === "friends" && (
         <>
@@ -466,7 +591,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
                 <button className="btn cyan small" onClick={() => dm(f)}>
                   💬
                 </button>
-                <button className="btn ghost small" onClick={() => confirm(`Remove ${f.username}?`) && fr({ action: "remove", friendshipId: f.friendshipId })}>
+                <button className="btn ghost small" onClick={() => askConfirm(`Remove ${f.username}?`, { ok: "Remove", danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
                   ✕
                 </button>
               </div>
@@ -751,7 +876,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
                   className="inv-item"
                   style={{ borderColor: RARITY_COLOR[i.def.rarity] }}
                   title={i.def.blurb}
-                  onClick={() => confirm(`Sell 1 ${i.def.name} for ${i.def.value} coins?`) && act(() => api("/api/inventory", { body: { action: "sell", itemKey: i.key, qty: 1 } }))}
+                  onClick={() => askConfirm(`Sell 1 ${i.def.name} for ${i.def.value} coins?`, { ok: "Sell", danger: true }).then((ok) => ok && act(() => api("/api/inventory", { body: { action: "sell", itemKey: i.key, qty: 1 } })))}
                 >
                   <span className="q">×{i.qty}</span>
                   <div className="e">{i.def.emoji}</div>

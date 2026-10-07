@@ -41,6 +41,20 @@ Three games stacked on one real-world map:
 - **Squad runs** — start a run solo, as a 🏎️ race (podium pays +50% / +25%) or a 🤝 co-op run (+20% per teammate);
   squadmates' live positions show on the map. Crew **pings** (⚔️ attack / 🆘 help / 🚩 rally / 💰 loot) coordinate it all.
 
+- **Street combat** — shoot rival commanders, enemy towers and squads within 60 m (headshots, cooldown, hero
+  damage bonus). Downing someone takes coins and trophies. Rookies (< level 3) can't fight or be shot.
+- **Superweapons** (Generals: Zero Hour) — Dragon ☢️ Nuclear Missile, Coalition 🔆 Particle Cannon, Insurgency 🚀
+  SCUD Storm. Built at HQ 4, charge for hours, hit anywhere within 5 km. Everyone near the target sees a public
+  countdown and can run; SAM sites intercept missiles; the blast hits towers, squads, bases, garrisons and
+  commanders; nukes and SCUDs leave radiation/toxins that keep hurting anyone who walks in.
+- **King of the hill flags** — plant a flag on a real spot; it pays while you hold it. Rivals capture it by
+  standing on it for 60 s while none of your crew is there.
+- **Bounties** — put coins on a rival's head; whoever downs them (gun, tower, superweapon) collects.
+- **Photo & text posts** pinned to places — only visible to players who walk there; likes pay XP, reports hide abuse.
+- **Polish** — synthesized sound effects (Web Audio, no files; mute button), 3D game-feel animations, in-app
+  dialogs instead of browser pop-ups, iPhone (notch/landscape) and iPad (side panels) layouts, achievements
+  for every system.
+
 Every layer feeds the others: hero bonuses change battle maths, build times, income and FPS stats;
 mood scales XP; loot funds research; territory funds the army.
 
@@ -117,6 +131,17 @@ End-to-end tests (need the dev server running, ideally with `GAME_SPEED=600`): `
 
 After the first deploy, play once, then open `/admin?key=<ADMIN_KEY>` to make yourself admin.
 Don't run the demo seed in production.
+
+## Production checklist
+
+- `/api/health` must say `"ok": true`.
+- Set `CRON_SECRET` on Vercel — `vercel.json` schedules `/api/cron/cleanup` daily (prunes old notifications,
+  lobbies, pings, waves, matches and superweapon launches; refunds expired bounties).
+- Use a **pooled** database URL for `DATABASE_URL` when you have one; on Vercel the app also caps each
+  instance at 1 connection (`DB_CONNECTION_LIMIT`) so a direct URL doesn't run out of connections.
+- `NEXT_PUBLIC_SITE_URL` falls back to Vercel's production domain, but set it if you use a custom domain.
+- Security headers (HSTS, nosniff, frame, referrer, permissions) and `no-store` on the API are set in
+  `next.config.ts`. Client crashes show a recover screen and are recorded as `client_error` metrics.
 
 ## Before going big
 
