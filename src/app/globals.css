@@ -941,3 +941,19 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 .phone-video.autovideo { position: absolute; inset: 0; }
 .ad-media.video.autovideo { padding: 0; height: min(56vh, 520px); aspect-ratio: 9 / 16; width: auto; }
 .video-play { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px; border-radius: 50%; border: 3px solid #fff; background: rgba(255,46,136,.85); color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: pulse 1.6s infinite; padding-left: 6px; }
+
+/* Tab rows: arrows when there are more tabs, drag cursor on desktop */
+.tabs-wrap { position: relative; margin-bottom: 12px; }
+.tabs-wrap > .tabs { margin-bottom: 0; }
+.tabs-wrap:not(.more-left) > .tabs { mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent 100%); -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent 100%); }
+.tabs-wrap:not(.more-right) > .tabs { mask-image: linear-gradient(90deg, transparent 0, #000 18px); -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px); }
+.tabs-wrap:not(.more-left):not(.more-right) > .tabs { mask-image: none; -webkit-mask-image: none; padding-right: 2px; }
+.tabs-arrow { position: absolute; top: 50%; z-index: 2; width: 30px; height: 30px; margin-top: -15px; border-radius: 50%; border: 2px solid rgba(0,0,0,.4); background: linear-gradient(180deg, #ffe27a, var(--yellow)); color: #2a2000; font-size: 20px; font-weight: 900; line-height: 1; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,.5); display: grid; place-items: center; padding: 0 0 3px; }
+.tabs-arrow.left { left: -4px; }
+.tabs-arrow.right { right: -4px; }
+.tabs-arrow:active { transform: scale(.9); }
+@media (hover: hover) and (pointer: fine) {
+  .tabs, .settings-cats, .admin-side { cursor: grab; }
+  .tabs button, .settings-cats button, .admin-side button, .admin-side a { cursor: pointer; }
+  .dragging, .dragging * { cursor: grabbing !important; user-select: none; scroll-behavior: auto !important; scroll-snap-type: none !important; }
+}

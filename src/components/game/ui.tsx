@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
 import type { LatLng, Me, World } from "./client";
 
@@ -68,13 +68,38 @@ export function Sheet({ title, onClose, children, peek, actions, help }: { title
 }
 
 export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (v: T) => void; tabs: [T, string][] }) {
+  const row = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ left: false, right: false });
+  const measure = () => {
+    const r = row.current;
+    if (r) setEdge({ left: r.scrollLeft > 2, right: r.scrollLeft < r.scrollWidth - r.clientWidth - 2 });
+  };
+  // Keep the selected tab visible, and know whether there's more to either side.
+  useEffect(() => {
+    row.current?.querySelector<HTMLElement>("button.on")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    const t = setTimeout(measure, 350);
+    return () => clearTimeout(t);
+  }, [value]);
+  useEffect(() => {
+    measure();
+    const r = row.current;
+    if (!r) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(r);
+    return () => ro.disconnect();
+  }, [tabs.length]);
+  const page = (dir: 1 | -1) => row.current?.scrollBy({ left: dir * row.current.clientWidth * 0.7, behavior: "smooth" });
   return (
-    <div className="tabs">
-      {tabs.map(([k, label]) => (
-        <button key={k} className={value === k ? "on" : ""} onClick={() => onChange(k)}>
-          {label}
-        </button>
-      ))}
+    <div className={`tabs-wrap ${edge.left ? "more-left" : ""} ${edge.right ? "more-right" : ""}`}>
+      {edge.left && <button className="tabs-arrow left" aria-label="Previous tabs" onClick={() => page(-1)}>‹</button>}
+      <div className="tabs" ref={row} onScroll={measure} role="tablist">
+        {tabs.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={value === k} className={value === k ? "on" : ""} onClick={() => onChange(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {edge.right && <button className="tabs-arrow right" aria-label="More tabs" onClick={() => page(1)}>›</button>}
     </div>
   );
 }

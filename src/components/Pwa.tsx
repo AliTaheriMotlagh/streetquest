@@ -3,10 +3,14 @@
 // is deployed, and tells the player when they're offline.
 import { useEffect, useState } from "react";
 import { swEnabled } from "./pwaClient";
+import { installHScroll } from "./hscroll";
 
 export function Pwa() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [offline, setOffline] = useState(false);
+
+  // Desktop: wheel + drag scrolling for every horizontal tab/chip row.
+  useEffect(() => installHScroll(), []);
 
   useEffect(() => {
     setOffline(!navigator.onLine);
