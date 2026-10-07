@@ -16,7 +16,7 @@ export const POST = route(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   // Play from home: positions come from tapping the map, but travel is speed-capped.
-  const remote = u.remotePlay && u.role !== "ADMIN";
+  const remote = u.remotePlay;
   const trusted = canSimulate(u.role) && !remote;
   if (d.sim && !trusted && !remote) throw new HttpError(403, "GPS simulator is not available");
   const moved = u.lastLat != null && u.lastLng != null ? distanceM({ lat: u.lastLat, lng: u.lastLng }, d) : 0;

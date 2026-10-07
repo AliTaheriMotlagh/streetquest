@@ -249,6 +249,10 @@ check("switch back to GPS", (await call(H, "/api/me", { remotePlay: false }, "PA
 r = await call(H, "/api/me");
 check("GPS mode forgets the couch position", r.data.remotePlay === false && r.data.lastPos === null, r.data);
 
+// Admins can play from home too (it used to save but never switch on for them).
+check("admin switches to play from home", (await call(ADMIN, "/api/me", { remotePlay: true }, "PATCH")).status === 200 && (await call(ADMIN, "/api/me")).data.remotePlay === true);
+await call(ADMIN, "/api/me", { remotePlay: false }, "PATCH");
+
 // Restore the admin settings this test changed.
 await call(ADMIN, "/api/admin", { action: "saveSettings", data: before });
 r = await call(A, "/api/me");

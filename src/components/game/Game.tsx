@@ -394,9 +394,17 @@ export default function Game() {
   useEffect(() => {
     try {
       if (simMode && simPos) localStorage.setItem(TEST_MODE_KEY, JSON.stringify(simPos));
-      else if (!simMode) localStorage.removeItem(TEST_MODE_KEY);
+      else if (!simMode && me) localStorage.removeItem(TEST_MODE_KEY);
     } catch {}
-  }, [simMode, simPos]);
+  }, [simMode, simPos]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Test mode saved in this browser but no longer allowed (e.g. switched off for the live
+  // game), or the player plays from home: drop it, or every position update is rejected.
+  useEffect(() => {
+    if (me && simMode && (!me.canSimulate || me.remotePlay)) {
+      setSimMode(false);
+      setSimPos(null);
+    }
+  }, [me?.canSimulate, me?.remotePlay, simMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Home mode: start where the server last saw you (or your real GPS), else let the player pick.
   useEffect(() => {
@@ -438,6 +446,14 @@ export default function Game() {
   );
 
   const toggleSim = () => {
+    // Test mode and play-from-home are exclusive: test mode teleports, home mode travels.
+    if (!simMode && me?.remotePlay) {
+      setHomeMode(false).then((ok) => ok && toggleSimOn());
+      return;
+    }
+    toggleSimOn();
+  };
+  const toggleSimOn = () => {
     if (simMode) {
       setSimMode(false);
       setSimPos(null);

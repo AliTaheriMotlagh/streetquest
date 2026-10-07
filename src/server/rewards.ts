@@ -15,9 +15,9 @@ export type Grant = { xp?: number; coins?: number; scrap?: number; gems?: number
  * Pass raw for transfers between players, refunds and sales — they're never scaled.
  */
 export async function grant(userId: string, g: Grant, opts: { raw?: boolean } = {}) {
-  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, hunger: true, energy: true, social: true, fun: true, needsAt: true, remotePlay: true, role: true } });
+  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, hunger: true, energy: true, social: true, fun: true, needsAt: true, remotePlay: true } });
   // Playing from home (not walking) earns less.
-  const home = before.remotePlay && before.role !== "ADMIN" ? S.remoteRewardMult : 1;
+  const home = before.remotePlay ? S.remoteRewardMult : 1;
   const xp = g.xp && g.xp > 0 && !opts.raw ? Math.round(g.xp * moodOfUser(before).xpMult * (await bonusOf(userId)).xp * S.xpMult * home) : (g.xp ?? 0);
   const coins = g.coins && g.coins > 0 && !opts.raw ? Math.round(g.coins * S.coinMult * home) : (g.coins ?? 0);
   const user = await prisma.user.update({

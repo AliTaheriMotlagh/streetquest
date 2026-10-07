@@ -88,7 +88,7 @@ export const GET = route(async () => {
     downedUntil: u.downedUntil && u.downedUntil.getTime() > Date.now() ? u.downedUntil.getTime() : null,
     rookie: prog.level < ROOKIE_LEVEL,
     settings,
-    remotePlay: u.remotePlay && u.role !== "ADMIN",
+    remotePlay: u.remotePlay,
     lastPos: u.lastLat != null && u.lastLng != null ? { lat: u.lastLat, lng: u.lastLng } : null,
     goalsReady: goals,
     walkedM: Math.round(u.walkedM),
