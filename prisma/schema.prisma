@@ -44,6 +44,21 @@ model User {
   restedAt     DateTime?
   socialAt     DateTime?
 
+  // RPG layer
+  heroClass    String?
+  str          Int      @default(5)
+  agi          Int      @default(5)
+  int          Int      @default(5)
+  cha          Int      @default(5)
+  scrap        Int      @default(0)
+  campaignStep Int      @default(0)
+  buffUntil    DateTime? // Battle Cry
+  buffMult     Float    @default(1)
+
+  // Clash-style progression
+  trophies     Int      @default(0)
+  gems         Int      @default(25)
+
   inventory     InventoryItem[]
   claims        Claim[]
   runs          MissionRun[]
@@ -62,8 +77,14 @@ model User {
   trainOrders   TrainOrder[]
   battles       Battle[]
   bossHits      BossHit[]
+  gear          Gear[]
+  research      Research[]
+  powers        PowerState[]
+  quests        QuestProgress[]
+  outposts      Outpost[]
 
   @@index([lastSeenAt])
+  @@index([trophies])
   @@index([lastLat, lastLng])
 }
 
@@ -303,6 +324,7 @@ model UnitStack {
   userId   String
   unitType String
   qty      Int    @default(0)
+  vet      Float  @default(0) // veterancy XP of the stack (Rookie → Heroic)
   user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, unitType])
@@ -328,12 +350,17 @@ model Battle {
   targetName String
   won        Boolean
   loot       Int      @default(0)
+  stars      Int      @default(0)
+  destruction Int     @default(0)
+  trophies   Int      @default(0) // attacker's trophy change
+  defenderId String?
   log        Json
   createdAt  DateTime @default(now())
   attacker   User     @relation(fields: [attackerId], references: [id], onDelete: Cascade)
 
   @@index([attackerId, createdAt])
   @@index([targetId, createdAt])
+  @@index([defenderId, createdAt])
 }
 
 // ---------------------------------------------------------------- FPS layer
@@ -368,6 +395,10 @@ model MatchPlayer {
   yaw        Float    @default(0)
   hp         Int      @default(100)
   maxHp      Int      @default(100)
+  weapon     String   @default("ar") // from the hero's equipped weapon
+  dmgMult    Float    @default(1)
+  headBonus  Float    @default(0)
+  speedMult  Float    @default(1)
   kills      Int      @default(0)
   damage     Int      @default(0)
   lastShotAt DateTime?
@@ -394,4 +425,67 @@ model BossHit {
   user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([bossId, userId])
+}
+
+// ---------------------------------------------------------------- RPG layer
+model Gear {
+  id        String   @id @default(cuid())
+  userId    String
+  slot      String // weapon | armor | gadget
+  base      String
+  name      String
+  rarity    String
+  level     Int
+  affixes   Json // [{ key, q }]
+  equipped  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, equipped])
+}
+
+model Research {
+  id      String   @id @default(cuid())
+  userId  String
+  key     String
+  readyAt DateTime
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+model PowerState {
+  id         String    @id @default(cuid())
+  userId     String
+  key        String
+  rank       Int       @default(1)
+  lastUsedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+// key: "c:<step>" (campaign) or "d:<YYYY-MM-DD>:<n>" (daily)
+model QuestProgress {
+  id       String  @id @default(cuid())
+  userId   String
+  key      String
+  progress Int     @default(0)
+  claimed  Boolean @default(false)
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+// Territory: outpost positions are deterministic; only who holds them is stored.
+model Outpost {
+  id          String    @id // op.<cx>_<cy>
+  ownerId     String?
+  garrison    Json      @default("{}")
+  capturedAt  DateTime?
+  collectedAt DateTime?
+  shieldUntil DateTime?
+  owner       User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
 }

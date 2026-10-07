@@ -83,8 +83,10 @@ export function useLocation(simPos: LatLng | null): GeoState {
   const send = useCallback(async () => {
     const { pos: p, sim } = latest.current;
     if (!p) return;
-    sent.current = { ...p, sim, at: Date.now() };
-    await fetch("/api/loc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lat: p.lat, lng: p.lng, sim }) }).catch(() => {});
+    const res = await fetch("/api/loc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lat: p.lat, lng: p.lng, sim }) }).catch(() => null);
+    // Only count it as delivered if the server accepted it (a brand-new guest's first
+    // ping can land before their account exists); otherwise flush() will resend.
+    if (res?.ok) sent.current = { ...p, sim, at: Date.now() };
   }, []);
 
   useEffect(() => {

@@ -11,6 +11,22 @@ Three games stacked on one real-world map:
   you can *breach* it: a live first-person match (capture the zone or wipe the defenders + garrison bots,
   no respawns). World **bosses** roam the map with shared HP — raid them in first person or bombard them.
 
+- **RPG** — your commander is a hero: pick a class (Vanguard, Marksman, Engineer, Quartermaster, Warlord),
+  spend attribute points (STR/AGI/INT/CHA) each level, and loot gear (weapon/armor/gadget, 4 rarities, random
+  affixes). The equipped weapon is your FPS gun (rifle, SMG, marksman rifle, LMG). Salvage gear for 🔩 scrap,
+  forge it higher. A 13-chapter campaign plus 3 daily quests guide you through every system.
+- **Deeper RTS** — unit counters (infantry / vehicle / air), Generals-style veterancy (Veteran → Elite →
+  Heroic), a research tree paid in coins + scrap, General's Powers bought with Command Points (Supply Drop,
+  Spy Drone, Paradrop, Artillery Barrage, Battle Cry…), and permanent **outposts** on the real map:
+  capture them, garrison troops, collect tribute, fight the faction war.
+- **Clash of Clans rules** — sieges score ★★★ by destruction %, loot scales with destruction, trophies and
+  leagues (Bronze → Legend, league bonus loot), Army Camps cap housing space, Builder's Huts add
+  concurrent builders, the Vault protects coins, Walls add HP, 💎 gems rush any timer, attacking breaks
+  your shield, and you can take revenge from your battle reports.
+
+Every layer feeds the others: hero bonuses change battle maths, build times, income and FPS stats;
+mood scales XP; loot funds research; territory funds the army.
+
 Plus the original layer: Pokémon-GO-style spawns, GTA-style timed runs, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
 
@@ -46,6 +62,8 @@ End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `
 | Area | Where |
 |---|---|
 | Strategy rules: factions, buildings, power, units, auto-resolved battles (pure, shared client/server) | `src/lib/rts.ts`, `src/app/api/{base,battle}` |
+| RPG: classes/attributes/bonus folding, gear rolls, quests, General's Powers (pure) | `src/lib/{hero,gear,quests,powers}.ts`, `src/server/{hero,quests}.ts`, `src/app/api/{hero,powers}` |
+| Territory: deterministic outposts per ~900 m cell, only ownership + garrison stored | `src/lib/outposts.ts`, `src/app/api/outposts` |
 | Life sim: needs decay computed from a stored snapshot + timestamp, so no background jobs; mood multiplies XP in `grant()` | `src/lib/sims.ts`, `src/server/needs.ts`, `src/app/api/sims` |
 | World bosses: deterministic per ~1.3 km region and 2 h window like spawns; only damage is stored. The killing hit pays every contributor | `src/lib/bosses.ts`, `src/server/boss.ts` |
 | FPS: the arena is generated from the match seed on every client. Clients POST position + hits ~7×/s; the server owns HP, kills, capture and the result. The first live human is the *host* and runs bot/boss AI; if it goes quiet the next player takes over | `src/lib/arena.ts`, `src/server/match.ts`, `src/components/fps/Fps.tsx` |

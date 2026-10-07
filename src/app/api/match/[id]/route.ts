@@ -10,7 +10,7 @@ const Schema = z.object({
   z: n,
   yaw: n,
   inZone: z.boolean().optional(),
-  hits: z.array(z.object({ key: z.string().max(40), dmg: n })).max(10).optional(),
+  hits: z.array(z.object({ key: z.string().max(40), head: z.boolean().optional() })).max(10).optional(),
   bots: z.array(z.object({ key: z.string().max(40), x: n, z: n, yaw: n })).max(12).optional(),
   botHits: z.array(z.object({ from: z.string().max(40), key: z.string().max(40), dmg: n })).max(12).optional(),
 });

@@ -2,7 +2,11 @@
 import type { ItemDef } from "@/lib/catalog";
 import type { Spawn } from "@/lib/spawns";
 import type { BossDef } from "@/lib/bosses";
-import type { Army, FactionKey } from "@/lib/rts";
+import type { Army, FactionKey, Vets } from "@/lib/rts";
+import type { Affix } from "@/lib/gear";
+import type { Bonus, Mods } from "@/lib/hero";
+import type { QuestDef } from "@/lib/quests";
+import type { PowerKey } from "@/lib/powers";
 import type { Mood, Needs } from "@/lib/sims";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
@@ -61,6 +65,38 @@ export type Me = {
   mood: Mood;
   restedAt: string | null;
   socialAt: string | null;
+  heroClass: string | null;
+  scrap: number;
+  gems: number;
+  trophies: number;
+  league: League;
+  freePoints: number;
+  commandPoints: number;
+  quest: { title: string; desc: string; progress: number; target: number; done: boolean; campaign: boolean } | null;
+  questsReady: number;
+};
+
+export type League = { name: string; emoji: string; bonus: number; min: number };
+
+export type HeroView = {
+  heroClass: string | null;
+  level: number;
+  attrs: { str: number; agi: number; int: number; cha: number };
+  freePoints: number;
+  commandPoints: number;
+  scrap: number;
+  coins: number;
+  gems: number;
+  trophies: number;
+  mods: Mods;
+  bonus: Bonus;
+  weapon: string;
+  research: string[];
+  buffUntil: string | null;
+  gear: { id: string; slot: string; base: string; name: string; rarity: "common" | "rare" | "epic" | "legendary"; level: number; affixes: Affix[]; equipped: boolean }[];
+  powers: { key: PowerKey; rank: number; lastUsedAt: string | null }[];
+  quests: (QuestDef & { key: string; campaign: boolean; progress: number; done: boolean; claimed: boolean })[];
+  campaignStep: number;
 };
 
 export type WorldSpawn = Spawn & { claimed: boolean };
@@ -85,6 +121,18 @@ export type WorldBase = {
   faction: FactionKey | null;
   liveMatch: string | null;
 };
+export type WorldOutpost = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  owner: { id: string; username: string; faction: string | null } | null;
+  mine: boolean;
+  shielded: boolean;
+  garrison: Army | null;
+  garrisonSize: string | null;
+  guard: number | null;
+};
 export type WorldBoss = { id: string; lat: number; lng: number; expiresAt: number; def: BossDef; maxHp: number; hp: number; liveMatch: string | null };
 
 export type BaseView = {
@@ -102,9 +150,19 @@ export type BaseView = {
     defense: { atk: number; hp: number };
   } | null;
   army: Army;
+  vets: Vets;
   attack: { atk: number; hp: number; count: number };
+  research: { key: string; readyAt: string }[];
+  scrap: number;
+  gems: number;
+  trophies: number;
+  league: League;
+  housing: { used: number; cap: number };
+  builders: number;
+  protection: number;
+  timeMult: { build: number; train: number; research: number };
   queue: { id: string; unitType: string; qty: number; readyAt: string }[];
-  battles: { id: string; kind: string; targetName: string; won: boolean; loot: number; createdAt: string; side: "attack" | "defend" }[];
+  battles: { id: string; kind: string; targetName: string; won: boolean; loot: number; stars: number; destruction: number; trophies: number; createdAt: string; side: "attack" | "defend"; revengeBaseId: string | null }[];
   defended: BaseView["battles"];
 };
 
@@ -120,6 +178,7 @@ export type World = {
   players: WorldPlayer[];
   bases: WorldBase[];
   bosses: WorldBoss[];
+  outposts: WorldOutpost[];
   onlineNearby: number;
 };
 
@@ -131,7 +190,8 @@ export type Selected =
   | { type: "delivery"; data: WorldDelivery }
   | { type: "player"; data: WorldPlayer }
   | { type: "base"; data: WorldBase }
-  | { type: "boss"; data: WorldBoss };
+  | { type: "boss"; data: WorldBoss }
+  | { type: "outpost"; data: WorldOutpost };
 
 export const fmtTime = (iso: string | number | Date) =>
   new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));

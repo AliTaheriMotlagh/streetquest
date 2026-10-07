@@ -4,7 +4,7 @@
 // One human client is the "host" and simulates bots/boss movement; if it goes
 // quiet, the next human to poll takes over.
 import type { Match, MatchPlayer, User } from "@prisma/client";
-import { ARENA_HALF, buildArena, CAPTURE_SECONDS, MATCH_SECONDS, MAX_HIT_DMG, RIFLE, type ArenaKind } from "../lib/arena";
+import { ARENA_HALF, buildArena, CAPTURE_SECONDS, MATCH_SECONDS, weaponOf, type ArenaKind } from "../lib/arena";
 import { resolveBoss } from "../lib/bosses";
 import { prisma } from "../lib/db";
 import { distanceM } from "../lib/geo";
@@ -16,6 +16,8 @@ import { HttpError } from "./http";
 import { moodOfUser, bumpNeeds } from "./needs";
 import { areFriends } from "./rooms";
 import { grant, lastKnownLocation } from "./rewards";
+import { heroOf, maybeGear } from "./hero";
+import { questEvent } from "./quests";
 
 const STALE_MS = 15_000; // a human who hasn't polled this long counts as gone
 const HOST_STALE_MS = 4_000;
@@ -25,7 +27,7 @@ export type Tick = {
   z: number;
   yaw: number;
   inZone?: boolean;
-  hits?: { key: string; dmg: number }[];
+  hits?: { key: string; head?: boolean }[];
   bots?: { key: string; x: number; z: number; yaw: number }[];
   botHits?: { from: string; key: string; dmg: number }[];
 };
@@ -103,8 +105,15 @@ async function join(m: Match, u: User, team: "A" | "D") {
     const arena = buildArena(m.seed, m.kind as ArenaKind);
     const n = await prisma.matchPlayer.count({ where: { matchId: m.id, team, userId: { not: null } } });
     const s = (team === "A" ? arena.spawnA : arena.spawnD)[n % 8];
-    const maxHp = Math.round(100 * moodOfUser(u).hpMult);
-    await prisma.matchPlayer.create({ data: { matchId: m.id, key: u.id, userId: u.id, team, name: `${u.avatar} ${u.username}`, x: s.x, z: s.z, yaw: team === "A" ? 0 : Math.PI, hp: maxHp, maxHp } });
+    // RPG stats carry into the fight: class, attributes and gear set HP, damage, speed and the gun.
+    const hero = await heroOf(u);
+    const maxHp = Math.round((100 + hero.bonus.fpsHp) * moodOfUser(u).hpMult);
+    await prisma.matchPlayer.create({
+      data: {
+        matchId: m.id, key: u.id, userId: u.id, team, name: `${u.avatar} ${u.username}`, x: s.x, z: s.z, yaw: team === "A" ? 0 : Math.PI, hp: maxHp, maxHp,
+        weapon: hero.weapon, dmgMult: hero.bonus.fpsDmg, headBonus: hero.bonus.headBonus, speedMult: hero.bonus.fpsSpeed,
+      },
+    });
     await pushFeed(m.id, `${u.username} joined ${team === "A" ? "the assault" : "the defense"}`);
   }
   return { matchId: m.id };
@@ -144,7 +153,7 @@ export async function tick(u: User, matchId: string, t: Tick | null) {
     const lim = ARENA_HALF;
     let { x, z } = me;
     // Movement sanity: ignore teleports faster than a sprint.
-    if (me.hp > 0 && Math.hypot(t.x - me.x, t.z - me.z) <= dt * 9 + 1.5) {
+    if (me.hp > 0 && Math.hypot(t.x - me.x, t.z - me.z) <= dt * 9 * me.speedMult + 1.5) {
       x = Math.max(-lim, Math.min(lim, t.x));
       z = Math.max(-lim, Math.min(lim, t.z));
     }
@@ -163,9 +172,11 @@ export async function tick(u: User, matchId: string, t: Tick | null) {
       if (m.kind === "breach" && me.team === "A" && t.inZone && arena.zone && Math.hypot(x - arena.zone.x, z - arena.zone.z) <= arena.zone.r + 0.5) {
         await prisma.match.update({ where: { id: matchId }, data: { capture: { increment: Math.min(0.5, dt) } } });
       }
-      // Rate-limit hits to what the rifle can physically fire since the last poll.
-      const maxHits = Math.max(1, Math.min(8, Math.ceil((dt * 1000) / RIFLE.intervalMs)));
-      for (const h of (t.hits ?? []).slice(0, maxHits)) await hit(m, me, h.key, Math.min(MAX_HIT_DMG, Math.max(0, h.dmg)));
+      // The server computes damage from the shooter's gun + hero stats, and rate-limits
+      // hits to what that gun can physically fire since the last poll.
+      const w = weaponOf(me.weapon);
+      const maxHits = Math.max(1, Math.min(8, Math.ceil((dt * 1000) / w.intervalMs)));
+      for (const h of (t.hits ?? []).slice(0, maxHits)) await hit(m, me, h.key, Math.round(w.dmg * me.dmgMult * (h.head ? w.headMult + me.headBonus : 1)));
     }
 
     if (m.hostKey === me.key) {
@@ -239,7 +250,11 @@ async function payout(m: Match, winner: "A" | "D", players: MatchPlayer[]) {
 
   for (const p of humans) {
     const won = p.team === winner;
-    await grant(p.userId!, { xp: 80 + p.kills * 40 + Math.round(p.damage / 10) + (won ? 150 : 0), coins: (won ? 50 : 10) + (p.team === "A" ? lootEach : 0) });
+    await grant(p.userId!, { xp: 80 + p.kills * 40 + Math.round(p.damage / 10) + (won ? 150 : 0), coins: (won ? 50 : 10) + (p.team === "A" ? lootEach : 0), scrap: won ? 3 : 1 });
+    if (p.kills) await questEvent(p.userId!, "kills", p.kills);
+    if (m.kind === "raid" && p.damage) await questEvent(p.userId!, "boss_dmg", p.damage);
+    if (won && m.kind === "breach") await questEvent(p.userId!, "breach_win");
+    if (won) await maybeGear(p.userId!, 0.4, { source: m.kind === "raid" ? "the raid" : "the firefight" });
     await bumpNeeds(p.userId!, { fun: 30, ...(crowd ? { social: 12 } : {}), energy: -8 });
     if (p.team === "A") {
       await prisma.battle.create({
@@ -274,6 +289,8 @@ async function view(m: Match, meKey: string) {
     serverTime: now,
     host: m.hostKey === meKey,
     me: meKey,
+    myWeapon: players.find((p) => p.key === meKey)?.weapon ?? "ar",
+    mySpeed: players.find((p) => p.key === meKey)?.speedMult ?? 1,
     boss: boss && { key: boss.def.key, name: boss.def.name, emoji: boss.def.emoji, color: boss.def.color, dmg: boss.def.dmg, speed: boss.def.speed },
     feed,
     players: players.map((p) => ({

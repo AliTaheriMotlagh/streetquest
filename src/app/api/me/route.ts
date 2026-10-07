@@ -6,17 +6,24 @@ import { requireUser } from "@/server/auth";
 import { canSimulate } from "@/server/session";
 import { needsOf } from "@/server/needs";
 import { moodOf } from "@/lib/sims";
+import { attrPointsFree } from "@/lib/hero";
+import { commandPoints } from "@/lib/powers";
+import { leagueOf } from "@/lib/rts";
+import { questView } from "@/server/quests";
 import { body, HttpError, route } from "@/server/http";
 
 export const GET = route(async () => {
   const u = await requireUser();
-  const [inventory, achievements, runs, pendingFriends, base] = await Promise.all([
+  const [inventory, achievements, runs, pendingFriends, base, powers, equipped] = await Promise.all([
     prisma.inventoryItem.findMany({ where: { userId: u.id, qty: { gt: 0 } } }),
     prisma.userAchievement.findMany({ where: { userId: u.id } }),
     prisma.missionRun.findMany({ where: { userId: u.id, status: "ACTIVE" } }),
     prisma.friendship.count({ where: { addresseeId: u.id, status: "PENDING" } }),
     prisma.base.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, lat: true, lng: true } }),
+    prisma.powerState.findMany({ where: { userId: u.id }, select: { rank: true } }),
+    prisma.gear.count({ where: { userId: u.id, equipped: true } }),
   ]);
+  const quests = await questView(u.id, { heroClass: !!u.heroClass, base: !!base, equipped: equipped > 0 });
   const needs = needsOf(u);
   const prog = levelProgress(u.xp);
   const today = dayKey(u.timezone);
@@ -48,6 +55,15 @@ export const GET = route(async () => {
     mood: moodOf(needs),
     restedAt: u.restedAt,
     socialAt: u.socialAt,
+    heroClass: u.heroClass,
+    scrap: u.scrap,
+    gems: u.gems,
+    trophies: u.trophies,
+    league: leagueOf(u.trophies),
+    freePoints: attrPointsFree(prog.level, u),
+    commandPoints: commandPoints(prog.level, powers.reduce((s, p) => s + p.rank, 0)),
+    quest: quests[0] ? { title: quests[0].title, desc: quests[0].desc, progress: quests[0].progress, target: quests[0].target, done: quests[0].done, campaign: quests[0].campaign } : null,
+    questsReady: quests.filter((q) => q.done && !q.claimed).length,
   };
 });
 

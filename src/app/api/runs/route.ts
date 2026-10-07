@@ -6,6 +6,7 @@ import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { checkClaimAchievements, grant, lastKnownLocation } from "@/server/rewards";
 import { bumpNeeds } from "@/server/needs";
+import { questEvent } from "@/server/quests";
 
 const Schema = z.object({ runId: z.string(), action: z.enum(["complete", "abandon"]) });
 
@@ -31,6 +32,7 @@ export const POST = route(async (req) => {
   const speedBonus = Math.round(run.rewardCoins * Math.min(0.5, secondsLeft / 600));
   await grant(u.id, { xp: run.rewardXp, coins: run.rewardCoins + speedBonus });
   await bumpNeeds(u.id, { energy: -10, hunger: -8, fun: 10 });
+  await questEvent(u.id, "run");
   await checkClaimAchievements(u.id, "day");
   return { message: `${run.title} complete! +${run.rewardCoins + speedBonus} coins`, xp: run.rewardXp };
 });

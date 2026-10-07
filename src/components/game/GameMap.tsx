@@ -125,6 +125,20 @@ export default function GameMap({ pos, world, me, follow, picking, onUnfollow, o
           );
         })}
 
+        {world?.outposts.map((o) => {
+          const f = o.owner?.faction ? FACTION_BY_KEY[o.owner.faction as keyof typeof FACTION_BY_KEY] : null;
+          const color = o.mine ? "#22e3ff" : f?.color ?? "#9ca3af";
+          return (
+            <Marker
+              key={o.id}
+              position={[o.lat, o.lng]}
+              zIndexOffset={400}
+              icon={icon(`<span class="ring" style="color:${color}"></span>${o.owner ? "🚩" : "🏴"}<span class="nm" style="color:${color}">${esc(o.name.replace("Outpost ", ""))}</span>`, `outpost ${o.mine ? "mine" : ""}`, 40)}
+              eventHandlers={{ click: () => onSelect({ type: "outpost", data: o }) }}
+            />
+          );
+        })}
+
         {me?.base && <Circle center={[me.base.lat, me.base.lng]} radius={SIEGE_RANGE_M} pathOptions={{ color: "#22e3ff", weight: 1, opacity: 0.25, fill: false, dashArray: "2 10" }} />}
 
         {world?.bosses.map((b) => (

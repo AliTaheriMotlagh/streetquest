@@ -4,7 +4,7 @@
 // get the whole match back. If we're the elected host we also drive the bots.
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { blocked, buildArena, collide, EYE, RIFLE, type Pt } from "@/lib/arena";
+import { blocked, buildArena, collide, EYE, weaponOf, type Pt } from "@/lib/arena";
 import type { MatchView } from "@/server/match";
 import { api } from "../game/client";
 
@@ -13,6 +13,8 @@ type Hud = {
   hp: number;
   maxHp: number;
   ammo: number;
+  mag: number;
+  weapon: string;
   reloading: boolean;
   timeLeft: number;
   capture: number;
@@ -136,7 +138,8 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
       const arena = buildArena(view.seed, view.kind);
       const mine = view.players.find((p) => p.key === view.me)!;
       const me = { x: mine.x, z: mine.z, yaw: mine.yaw, pitch: 0, hp: mine.hp, maxHp: mine.maxHp, team: mine.team };
-      const st = { ammo: RIFLE.mag, reloadUntil: 0, lastShot: 0, hitUntil: 0, hurtUntil: 0, kick: 0, hits: [] as { key: string; dmg: number }[], botHits: [] as { from: string; key: string; dmg: number }[], inflight: false, ended: false, offset: view.serverTime - Date.now() };
+      const W = weaponOf(view.myWeapon); // the equipped weapon gear
+      const st = { ammo: W.mag, reloadUntil: 0, lastShot: 0, hitUntil: 0, hurtUntil: 0, kick: 0, hits: [] as { key: string; head: boolean }[], botHits: [] as { from: string; key: string; dmg: number }[], inflight: false, ended: false, offset: view.serverTime - Date.now() };
 
       // ---- renderer / scene
       const renderer = new THREE.WebGLRenderer({ antialias: !touch, powerPreference: "high-performance" });
@@ -282,7 +285,7 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
 
       // ---- shooting
       const ray = new THREE.Raycaster();
-      ray.far = RIFLE.range;
+      ray.far = W.range;
       const ndc = new THREE.Vector2();
       const muzzle = new THREE.Vector3();
       const shoot = (now: number, moving: boolean) => {
@@ -290,21 +293,21 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
         st.ammo--;
         st.kick = 1;
         me.pitch = Math.min(1.4, me.pitch + 0.006);
-        const spread = moving ? 0.035 : 0.01;
+        const spread = (moving ? 0.035 : 0.01) * W.spread;
         ndc.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread);
         ray.setFromCamera(ndc, camera);
         const enemies = [...actors.values()].filter((a) => a.row.team !== me.team && a.row.hp > 0 && a.group.visible).flatMap((a) => a.hitboxes);
         const hit = ray.intersectObjects([...wallMeshes, ...enemies], false)[0];
         gBarrel.getWorldPosition(muzzle);
-        const end = hit ? hit.point : ray.ray.at(RIFLE.range, new THREE.Vector3());
+        const end = hit ? hit.point : ray.ray.at(W.range, new THREE.Vector3());
         tracer(muzzle, end, 0xffe08a);
         const key = hit?.object.userData.key as string | undefined;
         if (key) {
-          st.hits.push({ key, dmg: RIFLE.dmg * (hit!.object.userData.head ? RIFLE.headMult : 1) });
+          st.hits.push({ key, head: !!hit!.object.userData.head });
           st.hitUntil = now + 140;
           navigator.vibrate?.(10);
         }
-        if (st.ammo <= 0) st.reloadUntil = now + RIFLE.reloadMs;
+        if (st.ammo <= 0) st.reloadUntil = now + W.reloadMs;
       };
 
       // ---- host-side bot AI
@@ -405,6 +408,8 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
           hp: me.hp,
           maxHp: me.maxHp,
           ammo: st.ammo,
+          mag: W.mag,
+          weapon: W.name,
           reloading: st.reloadUntil > now,
           timeLeft: Math.max(0, Math.round((view.endsAt - (Date.now() + st.offset)) / 1000)),
           capture: view.capture,
@@ -445,20 +450,20 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
           strafe = (k.has("d") || k.has("arrowright") ? 1 : 0) - (k.has("a") || k.has("arrowleft") ? 1 : 0) + inp.joy.x;
           const mag = Math.hypot(fwd, strafe);
           if (mag > 1) [fwd, strafe] = [fwd / mag, strafe / mag];
-          const speed = inp.keys.has("shift") ? 7.5 : 5.5;
+          const speed = (inp.keys.has("shift") ? 7.5 : 5.5) * view.mySpeed;
           const sin = Math.sin(me.yaw);
           const cos = Math.cos(me.yaw);
           const next = collide({ x: me.x + (-sin * fwd + cos * strafe) * speed * dt, z: me.z + (-cos * fwd - sin * strafe) * speed * dt }, arena.walls);
           me.x = next.x;
           me.z = next.z;
 
-          if (inp.reload && st.ammo < RIFLE.mag && st.reloadUntil <= now) st.reloadUntil = now + RIFLE.reloadMs;
+          if (inp.reload && st.ammo < W.mag && st.reloadUntil <= now) st.reloadUntil = now + W.reloadMs;
           inp.reload = false;
           if (st.reloadUntil && st.reloadUntil <= now) {
             st.reloadUntil = 0;
-            st.ammo = RIFLE.mag;
+            st.ammo = W.mag;
           }
-          if (inp.firing && !st.reloadUntil && st.ammo > 0 && now - st.lastShot >= RIFLE.intervalMs) shoot(now, Math.hypot(fwd, strafe) > 0.1);
+          if (inp.firing && !st.reloadUntil && st.ammo > 0 && now - st.lastShot >= W.intervalMs) shoot(now, Math.hypot(fwd, strafe) > 0.1);
         }
         if (host && !st.ended) runBots(dt, now);
 
@@ -613,7 +618,10 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
               <b>{hud.hp}</b>
               <div className="fps-bar small"><i style={{ width: `${(hud.hp / hud.maxHp) * 100}%`, background: hud.hp < 30 ? "var(--red)" : "var(--green)" }} /></div>
             </div>
-            <div className="fps-ammo">{hud.reloading ? "RELOADING" : <><b>{hud.ammo}</b> / {RIFLE.mag}</>}</div>
+            <div className="fps-ammo">
+              <div className="small muted">{hud.weapon}</div>
+              {hud.reloading ? "RELOADING" : <><b>{hud.ammo}</b> / {hud.mag}</>}
+            </div>
           </div>
           <button className="fps-leave" onClick={onExit}>✕ Leave</button>
           {!hud.locked && hud.status === "LIVE" && (

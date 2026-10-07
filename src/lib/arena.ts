@@ -13,8 +13,16 @@ export const PLAYER_R = 0.4;
 export const EYE = 1.6;
 export const HEAD_Y = 1.45; // hits above this height count as headshots
 
-export const RIFLE = { dmg: 20, headMult: 2, intervalMs: 110, mag: 30, reloadMs: 1800, range: 70 };
-export const MAX_HIT_DMG = RIFLE.dmg * RIFLE.headMult;
+export type Weapon = { name: string; dmg: number; headMult: number; intervalMs: number; mag: number; reloadMs: number; range: number; spread: number };
+/** The equipped weapon gear decides which gun you carry into a fight. */
+export const WEAPONS: Record<"ar" | "smg" | "dmr" | "lmg", Weapon> = {
+  ar: { name: "Assault Rifle", dmg: 20, headMult: 2, intervalMs: 110, mag: 30, reloadMs: 1800, range: 70, spread: 1 },
+  smg: { name: "SMG", dmg: 14, headMult: 1.8, intervalMs: 70, mag: 40, reloadMs: 1500, range: 45, spread: 1.7 },
+  dmr: { name: "Marksman Rifle", dmg: 46, headMult: 2.5, intervalMs: 420, mag: 10, reloadMs: 2200, range: 90, spread: 0.3 },
+  lmg: { name: "LMG", dmg: 18, headMult: 1.8, intervalMs: 95, mag: 80, reloadMs: 3600, range: 70, spread: 1.4 },
+};
+export const weaponOf = (k: string | null | undefined) => WEAPONS[(k ?? "ar") as keyof typeof WEAPONS] ?? WEAPONS.ar;
+export const RIFLE = WEAPONS.ar;
 export const MATCH_SECONDS = 180;
 export const CAPTURE_SECONDS = 20;
 

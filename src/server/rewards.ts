@@ -4,16 +4,17 @@ import { ITEM_BY_KEY } from "../lib/catalog";
 import { notify } from "./hub";
 import { HttpError } from "./http";
 import { moodOfUser } from "./needs";
+import { bonusOf } from "./hero";
 
-export type Grant = { xp?: number; coins?: number; items?: Record<string, number> };
+export type Grant = { xp?: number; coins?: number; scrap?: number; gems?: number; items?: Record<string, number> };
 
 /** Give rewards. Earned XP is scaled by the commander's mood (life-sim layer). */
 export async function grant(userId: string, g: Grant) {
   const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, hunger: true, energy: true, social: true, fun: true, needsAt: true } });
-  const xp = g.xp && g.xp > 0 ? Math.round(g.xp * moodOfUser(before).xpMult) : (g.xp ?? 0);
+  const xp = g.xp && g.xp > 0 ? Math.round(g.xp * moodOfUser(before).xpMult * (await bonusOf(userId)).xp) : (g.xp ?? 0);
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { xp: { increment: xp }, coins: { increment: g.coins ?? 0 } },
+    data: { xp: { increment: xp }, coins: { increment: g.coins ?? 0 }, scrap: { increment: g.scrap ?? 0 }, gems: { increment: g.gems ?? 0 } },
   });
   for (const [itemKey, qty] of Object.entries(g.items ?? {})) {
     if (!qty) continue;
@@ -26,7 +27,9 @@ export async function grant(userId: string, g: Grant) {
   const oldLevel = levelForXp(before.xp);
   const newLevel = levelForXp(user.xp);
   if (newLevel > oldLevel) {
-    await notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `You're now a ${titleForLevel(newLevel)}` });
+    const gained = newLevel - oldLevel;
+    await prisma.user.update({ where: { id: userId }, data: { gems: { increment: 2 * gained } } });
+    await notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `${titleForLevel(newLevel)} · +${3 * gained} attribute points, +${gained} Command Point${gained > 1 ? "s" : ""}, +${2 * gained} 💎` });
   }
   return user;
 }
@@ -37,8 +40,8 @@ export async function unlock(userId: string, key: string) {
   const exists = await prisma.userAchievement.findUnique({ where: { userId_key: { userId, key } } });
   if (exists) return;
   await prisma.userAchievement.create({ data: { userId, key } });
-  await notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP` });
-  await grant(userId, { xp: def.xp });
+  await notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP · +5 💎` });
+  await grant(userId, { xp: def.xp, gems: 5 });
 }
 
 /** Re-evaluate claim-based achievements after a claim. */

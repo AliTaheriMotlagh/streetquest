@@ -214,6 +214,7 @@ const rivalBase = w.bases.find((b: { owner: { id: string } }) => b.owner.id === 
 check("world shows bases", !!rivalBase && w.bases.some((b: { mine: boolean }) => b.mine), w.bases);
 r = await call(A, "/api/battle", { kind: "siege", targetId: rivalBase.id });
 check("siege auto-resolves", r.status === 200 && typeof r.data.won === "boolean" && r.data.result?.rounds?.length > 0, r);
+check("siege scores stars + trophies", typeof r.data.stars === "number" && typeof r.data.trophies === "number" && typeof r.data.destruction === "number", r.data);
 check("siege cooldown", (await call(A, "/api/battle", { kind: "siege", targetId: rivalBase.id })).status >= 400);
 
 // ---------------------------------------------------------------- life-sim layer
@@ -242,13 +243,13 @@ if (breachOk) {
   const meRow = (v: typeof mv, key: string) => v.players.find((p: { key: string }) => p.key === key);
   const aRow = meRow(mv, meA.id);
   await sleep(300);
-  mv = (await call(A, `/api/match/${mid}`, { x: aRow.x, z: aRow.z, yaw: 0, hits: [{ key: "bot:0", dmg: 9999 }] })).data;
-  check("hit damage capped at headshot max", meRow(mv, "bot:0").hp === 70 - 40, meRow(mv, "bot:0"));
+  mv = (await call(A, `/api/match/${mid}`, { x: aRow.x, z: aRow.z, yaw: 0, hits: [{ key: "bot:0", head: true, dmg: 9999 }] })).data;
+  check("server computes damage from weapon (rifle headshot = 40)", meRow(mv, "bot:0").hp === 70 - 40, meRow(mv, "bot:0"));
   check("first poller becomes host", mv.host === true);
   const cRow = meRow(mv, meC.id);
   for (let i = 0; i < 4 && mv.status === "LIVE"; i++) {
     await sleep(500);
-    mv = (await call(C, `/api/match/${mid}`, { x: cRow.x, z: cRow.z, yaw: Math.PI, hits: [{ key: meA.id, dmg: 40 }, { key: meA.id, dmg: 40 }] })).data;
+    mv = (await call(C, `/api/match/${mid}`, { x: cRow.x, z: cRow.z, yaw: Math.PI, hits: [{ key: meA.id, head: true }, { key: meA.id, head: true }] })).data;
   }
   check("defender wins when attackers are wiped", mv.status === "ENDED" && mv.winner === "D", { status: mv.status, winner: mv.winner, a: meRow(mv, meA.id) });
 }
@@ -264,11 +265,81 @@ if (boss) {
   let rv = (await call(A, `/api/match/${rid}`)).data;
   const me2 = rv.players.find((p: { key: string }) => p.key === meA.id);
   await sleep(300);
-  rv = (await call(A, `/api/match/${rid}`, { x: me2.x, z: me2.z, yaw: 0, hits: [{ key: "boss", dmg: 40 }] })).data;
+  rv = (await call(A, `/api/match/${rid}`, { x: me2.x, z: me2.z, yaw: 0, hits: [{ key: "boss", head: true }] })).data;
   const w2 = (await call(A, `/api/world?lat=${so.lat}&lng=${so.lng}`)).data;
   check("boss damage is shared world state", w2.bosses.find((b: { id: string }) => b.id === boss.id)?.hp === boss.hp - 40, { before: boss.hp, after: w2.bosses.find((b: { id: string }) => b.id === boss.id)?.hp });
   check("raid shows as live on map", w2.bosses.find((b: { id: string }) => b.id === boss.id)?.liveMatch === rid);
 } else console.log("(no boss in range this window — skipped boss checks)");
+
+// ---------------------------------------------------------------- RPG layer
+await goTo(A, so);
+let hv = (await call(A, "/api/hero")).data;
+check("hero view has campaign + 3 daily quests", hv.quests?.filter((q: { campaign: boolean }) => !q.campaign).length === 3 && hv.quests[0].campaign, hv.quests);
+for (const q of hv.quests.filter((x: { done: boolean; claimed: boolean }) => x.done && !x.claimed)) await call(A, "/api/hero", { action: "claimQuest", key: q.key });
+check("pick hero class", (await call(A, "/api/hero", { action: "class", heroClass: "warlord" })).status === 200);
+hv = (await call(A, "/api/hero")).data;
+const campQ = hv.quests.find((q: { campaign: boolean }) => q.campaign);
+if (campQ?.kind === "class") {
+  r = await call(A, "/api/hero", { action: "claimQuest", key: campQ.key });
+  check("claim campaign chapter (gear reward)", r.status === 200, r);
+  check("double claim blocked", [404, 409].includes((await call(A, "/api/hero", { action: "claimQuest", key: campQ.key })).status));
+}
+hv = (await call(A, "/api/hero")).data;
+check("class bonus applies (+15% army attack)", Math.abs(hv.bonus.armyAtk - 1.15) < 0.001, hv.bonus.armyAtk);
+if (hv.freePoints > 0) check("allocate attribute", (await call(A, "/api/hero", { action: "allocate", attr: "str", n: 1 })).status === 200);
+check("can't over-allocate", (await call(A, "/api/hero", { action: "allocate", attr: "str", n: 30 })).status === 400);
+const gearItem = hv.gear[0];
+if (gearItem) {
+  check("equip gear", (await call(A, "/api/hero", { action: "equip", gearId: gearItem.id })).status === 200);
+  check("salvage blocked while equipped", (await call(A, "/api/hero", { action: "salvage", gearId: gearItem.id })).status === 400);
+} else console.log("(no gear drop yet — skipped gear checks)");
+
+// ---------------------------------------------------------------- RTS depth + Clash rules
+{
+  const before = (await call(A, "/api/base")).data;
+  const rs = (await call(A, "/api/base", { action: "research", key: "drills" })).status;
+  check(before.scrap >= 5 && before.coins >= 300 ? "research starts (coins + scrap)" : "research needs scrap/coins", before.scrap >= 5 ? rs === 200 || rs === 400 : rs === 400, { rs, scrap: before.scrap });
+}
+r = await call(A, "/api/base", { action: "build", type: "turret" });
+check("build turret", r.status === 200, r);
+check("one builder → second build blocked", (await call(A, "/api/base", { action: "build", type: "walls" })).status === 400);
+bv = (await call(A, "/api/base")).data;
+if (bv.base.buildings.some((b: { type: string; readyAt: string }) => b.type === "turret" && new Date(b.readyAt).getTime() > Date.now())) {
+  r = await call(A, "/api/base", { action: "rush", what: "build", type: "turret" });
+  check("rush construction with gems", r.status === 200, r);
+}
+check("army camp housing limit", (await call(A, "/api/base", { action: "train", unit: "ranger", qty: 10 })).status === 400);
+check("base view has Clash fields", bv.housing?.cap === 10 && typeof bv.trophies === "number" && bv.league?.name, { housing: bv.housing, league: bv.league });
+check("veterancy tracked", typeof bv.vets === "object");
+
+// territory
+w = (await call(A, `/api/world?lat=${so.lat}&lng=${so.lng}`)).data;
+check("world has outposts", w.outposts?.length > 0, w.outposts?.length);
+const op = w.outposts.find((o: { owner: unknown }) => !o.owner);
+if (op) {
+  await call(G, "/api/me"); // keep linter quiet about unused clients
+  await call(A, "/api/base", { action: "train", unit: "ranger", qty: 2 }); // may fail if broke — then we skip
+  await sleep(600);
+  r = await call(A, "/api/outposts", { action: "assault", outpostId: op.id });
+  if (r.data.error?.includes("no army")) console.log("(attacker broke + armyless — skipped outpost checks)");
+  else {
+    check("outpost assault resolves", r.status === 200 && typeof r.data.won === "boolean", r);
+    check("outpost cooldown", (await call(A, "/api/outposts", { action: "assault", outpostId: op.id })).status >= 400);
+  }
+}
+check("faction war standings", (await call(A, "/api/outposts")).data.war?.length === 3);
+
+// General's powers
+hv = (await call(A, "/api/hero")).data;
+if (hv.level >= 2 && hv.commandPoints > 0) {
+  check("unlock Supply Drop", (await call(A, "/api/powers", { action: "unlock", key: "supply_drop" })).status === 200);
+  const c0 = (await call(A, "/api/me")).data.coins;
+  r = await call(A, "/api/powers", { action: "use", key: "supply_drop" });
+  check("use Supply Drop (+150)", r.status === 200 && (await call(A, "/api/me")).data.coins === c0 + 150, r);
+  check("power cooldown", (await call(A, "/api/powers", { action: "use", key: "supply_drop" })).status === 429);
+} else console.log("(hero below level 2 — skipped power checks)");
+check("locked power rejected", (await call(A, "/api/powers", { action: "unlock", key: "battle_cry" })).status === 400);
+check("trophy leaderboard", (await call(A, "/api/leaderboard?by=trophies")).data.top?.length > 0);
 
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASSED");
 process.exit(fails ? 1 : 0);

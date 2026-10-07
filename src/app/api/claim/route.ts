@@ -7,6 +7,8 @@ import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "@/server/rewards";
 import { bumpNeeds } from "@/server/needs";
+import { maybeGear } from "@/server/hero";
+import { questEvent } from "@/server/quests";
 
 const Schema = z.object({ spawnId: z.string().max(80), score: z.number().min(0).max(1000).optional() });
 
@@ -34,6 +36,7 @@ export const POST = route(async (req) => {
     await recordClaim(u.id, spawnId, "mission", cellKey(cx, cy));
     await grant(u.id, { xp: m.rewardXp, coins: m.rewardCoins, items: { [m.itemKey]: 1 } });
     await checkClaimAchievements(u.id, dayPhase(m));
+    await questEvent(u.id, "collect");
     await track("claim", { userId: u.id, campaign: m.sponsor ?? "admin_mission" });
     return { message: `Mission complete: ${itemLabel(m.itemKey)}`, xp: m.rewardXp, coins: m.rewardCoins };
   }
@@ -74,6 +77,9 @@ export const POST = route(async (req) => {
 
   await grant(u.id, { xp: s.rewardXp, coins, items });
   if (s.kind === "chest" || s.kind === "arcade") await bumpNeeds(u.id, { fun: 12 });
+  await questEvent(u.id, "collect"); // chests and arcades pay out loot too
+  if (s.kind === "chest") await questEvent(u.id, "chest");
+  if (s.kind === "chest") await maybeGear(u.id, score >= 3 ? 0.4 : 0.2, { source: "a chest" });
   await checkClaimAchievements(u.id, s.phase);
   await track("claim", { userId: u.id });
   const loot = Object.keys(items).map(itemLabel).join(", ");

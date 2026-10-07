@@ -6,6 +6,7 @@ import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent } from "./client";
 import { Sheet, Tabs, useGame } from "./ui";
 import { LifeTab } from "./Life";
+import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -387,7 +388,8 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
   const [data, setData] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }>({ friends: [], incoming: [], outgoing: [] });
   const [name, setName] = useState("");
   const [scope, setScope] = useState<"global" | "friends">("global");
-  const [board, setBoard] = useState<{ top: { id: string; username: string; avatar: string; level: number; xp: number; me: boolean }[]; myRank: number } | null>(null);
+  const [by, setBy] = useState<"xp" | "trophies">("trophies");
+  const [board, setBoard] = useState<{ top: { id: string; username: string; avatar: string; level: number; xp: number; trophies: number; league: { emoji: string }; me: boolean }[]; myRank: number } | null>(null);
   const [events, setEvents] = useState<WorldEvent[]>([]);
 
   const load = useCallback(() => api<typeof data>("/api/friends").then(setData).catch(() => {}), []);
@@ -401,8 +403,8 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
     if (chat) setTab("chat");
   }, [chat]);
   useEffect(() => {
-    if (tab === "ranks") api<NonNullable<typeof board>>(`/api/leaderboard?scope=${scope}`).then(setBoard).catch(() => {});
-  }, [tab, scope]);
+    if (tab === "ranks") api<NonNullable<typeof board>>(`/api/leaderboard?scope=${scope}&by=${by}`).then(setBoard).catch(() => {});
+  }, [tab, scope, by]);
 
   const fr = async (body: object) => (await act(() => api("/api/friends", { body }))) && load();
   const dm = (f: Friend) => setChat({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` });
@@ -489,6 +491,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
       {tab === "ranks" && (
         <>
           <Tabs value={scope} onChange={setScope} tabs={[["global", "🌍 World"], ["friends", "🤝 Crew"]]} />
+          <Tabs value={by} onChange={setBy} tabs={[["trophies", "🏆 Trophies"], ["xp", "⭐ XP"]]} />
           {board && <p className="small muted">Your rank: #{board.myRank}</p>}
           {board?.top.map((p, i) => (
             <div key={p.id} className={`card list-item ${p.me ? "hl" : ""}`}>
@@ -496,7 +499,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
               <span style={{ fontSize: 22 }}>{p.avatar}</span>
               <b className="grow">{p.username}</b>
               <span className="small muted">Lv {p.level}</span>
-              <span className="small">{p.xp.toLocaleString()} XP</span>
+              <span className="small">{by === "trophies" ? `${p.league.emoji} ${p.trophies} 🏆` : `${p.xp.toLocaleString()} XP`}</span>
             </div>
           ))}
         </>
@@ -624,13 +627,14 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
 // ---------------------------------------------------------------- Profile
 const AVATARS = ["🕶️", "😎", "🦊", "🐺", "🐯", "🤖", "👽", "🥷", "🧛", "🦸", "🐉", "💀"];
 
-export function ProfilePanel({ onClose, peek, initialTab = "stats" }: { onClose: () => void; peek: boolean; initialTab?: "stats" | "life" }) {
+export type HeroTabId = "hero" | "gear" | "quests" | "powers" | "life" | "bag" | "awards" | "stats";
+export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: () => void; peek: boolean; initialTab?: HeroTabId }) {
   const { me, act, refresh } = useGame();
-  const [tab, setTab] = useState<"stats" | "life" | "bag" | "awards">(initialTab);
+  const [tab, setTab] = useState<HeroTabId>(initialTab);
   const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
 
   return (
-    <Sheet title="Profile" onClose={onClose} peek={peek}>
+    <Sheet title="Hero" onClose={onClose} peek={peek}>
       <div className="row" style={{ marginBottom: 12 }}>
         <div className="avatar" style={{ width: 64, height: 64, fontSize: 36 }}>
           {me.avatar}
@@ -664,7 +668,14 @@ export function ProfilePanel({ onClose, peek, initialTab = "stats" }: { onClose:
         </div>
       )}
 
-      <Tabs value={tab} onChange={setTab} tabs={[["stats", "Stats"], ["life", `${me.mood.emoji} Life`], ["bag", `Bag (${me.inventory.reduce((s, i) => s + i.qty, 0)})`], ["awards", `Awards (${me.achievements.length})`]]} />
+      <div className="res-bar">
+        <span>{me.league.emoji} {me.trophies} 🏆</span>
+        <span>💎 {me.gems}</span>
+        <span>🔩 {me.scrap}</span>
+        <span>🪙 {me.coins.toLocaleString()}</span>
+      </div>
+
+      <Tabs value={tab} onChange={setTab} tabs={[["hero", `🦸 Hero${me.freePoints ? ` (${me.freePoints})` : ""}`], ["gear", "🎒 Gear"], ["quests", `📜 Quests${me.questsReady ? ` (${me.questsReady})` : ""}`], ["powers", `⭐ Powers${me.commandPoints ? ` (${me.commandPoints})` : ""}`], ["life", `${me.mood.emoji} Life`], ["stats", "⚙️ Profile"], ["bag", `Bag (${me.inventory.reduce((s, i) => s + i.qty, 0)})`], ["awards", `Awards (${me.achievements.length})`]]} />
 
       {tab === "stats" && (
         <>
@@ -724,6 +735,10 @@ export function ProfilePanel({ onClose, peek, initialTab = "stats" }: { onClose:
       )}
 
       {tab === "life" && <LifeTab />}
+      {tab === "hero" && <HeroTab />}
+      {tab === "gear" && <GearTab />}
+      {tab === "quests" && <QuestsTab />}
+      {tab === "powers" && <PowersTab />}
 
       {tab === "bag" &&
         (me.inventory.length ? (

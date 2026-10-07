@@ -6,6 +6,10 @@ import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BREACH_RANGE_M, FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
 import { BasePanel } from "./BasePanel";
+import { TargetPowers } from "./Hero";
+import { OUTPOST_INCOME_HOUR } from "@/lib/outposts";
+import { UNITS } from "@/lib/rts";
+import type { HeroTabId } from "./Panels";
 import { NeedsHud } from "./Life";
 import { api, fmtTime, type LatLng, type Me, type Selected, type World } from "./client";
 import { Lockpick, TapRush } from "./MiniGames";
@@ -22,7 +26,7 @@ const NAV: [PanelId, string, string][] = [
   ["jobs", "📦", "Jobs"],
   ["crew", "🤝", "Crew"],
   ["events", "🎉", "Events"],
-  ["me", "🎒", "Me"],
+  ["me", "🦸", "Hero"],
 ];
 
 const TEST_MODE_KEY = "sq_test_mode";
@@ -47,11 +51,21 @@ export default function Game() {
   const [announce, setAnnounce] = useState<{ id: string; title: string; body: string; ctaLabel: string | null; ctaUrl: string | null } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [match, setMatch] = useState<string | null>(null);
-  const [meTab, setMeTab] = useState<"stats" | "life">("stats");
+  const [meTab, setMeTab] = useState<HeroTabId>("hero");
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
 
   // ---- data loading
-  const loadMe = useCallback(() => api<Me>("/api/me").then(setMe).catch(() => {}), []);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadMe = useCallback(
+    () =>
+      api<Me>("/api/me")
+        .then((m) => {
+          setMe(m);
+          setLoadError(null);
+        })
+        .catch((e) => setLoadError((e as Error).message)),
+    [],
+  );
   const loadWorld = useCallback(async (force = false) => {
     if (!pos) return;
     const last = lastWorldFetch.current;
@@ -217,7 +231,21 @@ export default function Game() {
     [me, pos, world, toast, act, refresh, simMode],
   );
 
-  if (!me || !ctx) return <div className="game" style={{ display: "grid", placeItems: "center" }}><div className="big-num">LOADING…</div></div>;
+  if (!me || !ctx)
+    return (
+      <div className="game" style={{ display: "grid", placeItems: "center", padding: 16 }}>
+        {loadError && !me ? (
+          <div className="modal">
+            <div style={{ fontSize: 44 }}>⚠️</div>
+            <h2>Couldn&apos;t start the game</h2>
+            <p className="muted small">{loadError}</p>
+            <button className="btn" onClick={() => loadMe()}>Retry</button>
+          </div>
+        ) : (
+          <div className="big-num">LOADING…</div>
+        )}
+      </div>
+    );
 
   const run = me.activeRun;
   const runLeft = run ? Math.max(0, Math.round((new Date(run.deadline).getTime() - now) / 1000)) : 0;
@@ -265,6 +293,7 @@ export default function Game() {
           />
           <div className="hud-right">
             <div className="chip">🪙 {me.coins.toLocaleString()}</div>
+            <div className="chip small">💎 {me.gems} · {me.league.emoji} {me.trophies}</div>
             {world && (
               <div className="chip phase">
                 {PHASE_ICON[world.phase]} {world.phase.toUpperCase()}
@@ -279,7 +308,20 @@ export default function Game() {
           </div>
         </div>
 
-        {announce && !run && !picker && (
+        {me.quest && !run && !picker && !panel && (
+          <button
+            className={`quest-hud ${me.quest.done ? "done" : ""}`}
+            onClick={() => {
+              setMeTab("quests");
+              setPanel("me");
+            }}
+          >
+            📜 <b>{me.quest.title}</b>
+            <span>{me.quest.done ? "Claim reward!" : `${me.quest.desc} · ${me.quest.progress}/${me.quest.target}`}</span>
+          </button>
+        )}
+
+        {announce && !run && !picker && !me.quest && (
           <div className="announce" style={{ position: "absolute", top: 76, left: 10, right: 10, zIndex: 450, background: "var(--panel)", maxWidth: 560, margin: "0 auto" }}>
             <b className="grow small">📣 {announce.title}</b>
             {announce.ctaUrl && (
@@ -371,7 +413,7 @@ export default function Game() {
             initialTab={meTab}
             onClose={() => {
               close();
-              setMeTab("stats");
+              setMeTab("hero");
             }}
             peek={peek}
           />
@@ -384,7 +426,9 @@ export default function Game() {
                 <span className="ic">{ic}</span>
                 {label}
                 {id === "crew" && unread + me.pendingFriends > 0 && <span className="badge">{unread + me.pendingFriends}</span>}
-                {id === "me" && (me.dailyAvailable || me.mood.score < 30) && <span className="badge">!</span>}
+                {id === "me" && (me.questsReady + me.freePoints + me.commandPoints > 0 || me.dailyAvailable || me.mood.score < 30) && (
+                  <span className="badge">{me.questsReady || me.freePoints || me.commandPoints || "!"}</span>
+                )}
               </button>
             ))}
           </nav>
@@ -678,6 +722,7 @@ function InfoCard({
                   : "Siege is auto-resolved: your army vs their garrison and turrets."}{" "}
               {dist > BREACH_RANGE_M ? `Walk within ${BREACH_RANGE_M} m to breach it in first person.` : !humansOnline ? "Breach unlocks when players are online nearby." : "You're close — breach it in first person!"}
             </p>
+            <TargetPowers targetId={b.id} allow={["spy_drone", "barrage"]} />
           </>
         )}
       </Sheet>
@@ -702,7 +747,64 @@ function InfoCard({
             💥 Bombard with army
           </button>
         </div>
+        <TargetPowers targetId={b.id} allow={["barrage"]} />
         <p className="small muted">Everyone who damages it shares the loot when it falls; top damage gets a 👑. {dist > BREACH_RANGE_M && `Walk within ${BREACH_RANGE_M} m to fight it in first person.`}</p>
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "outpost") {
+    const o = sel.data;
+    const g = o.garrison ?? {};
+    const station = (unit: string, qty: number) => act(() => api("/api/outposts", { body: { action: "station", outpostId: o.id, unit, qty } }));
+    return (
+      <Sheet title={`${o.owner ? "🚩" : "🏴"} ${o.name}`} onClose={onClose}>
+        <p className="small muted">
+          {o.mine ? "Held by you" : o.owner ? `Held by ${o.owner.username}` : "Neutral — guarded by militia"} · pays {OUTPOST_INCOME_HOUR} 🪙/hour to its holder · {formatDistance(dist)}
+        </p>
+        <div className="card small">
+          {o.owner ? (
+            o.garrison ? (
+              <>🪖 Garrison: {Object.entries(g).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji} ${q}`).join("  ") || "none (only the fortification)"}</>
+            ) : (
+              <>🪖 Garrison: <b>{o.garrisonSize}</b> <span className="muted">(research 📡 Radar or use a 🛰️ Spy Drone for details)</span></>
+            )
+          ) : (
+            <>⚔️ Militia strength {o.guard}</>
+          )}
+          {o.shielded && <div style={{ color: "var(--cyan)" }}>🛡️ Freshly captured — dug in for a few minutes</div>}
+        </div>
+        {o.mine ? (
+          <>
+            <label>Station troops from your army</label>
+            <div className="row wrap">
+              {UNITS.map((u) => (
+                <button key={u.key} className="btn ghost small" onClick={() => station(u.key, u.key === "ranger" ? 5 : 1)}>
+                  +{u.key === "ranger" ? 5 : 1} {u.emoji}
+                </button>
+              ))}
+            </div>
+            <div className="row wrap" style={{ marginTop: 8 }}>
+              <button className="btn ghost small" onClick={() => act(() => api("/api/outposts", { body: { action: "withdraw", outpostId: o.id } }))}>↩️ Withdraw all</button>
+              <button className="btn yellow small" onClick={() => act(() => api("/api/outposts", { body: { action: "collect" } }))}>🪙 Collect tribute</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="row wrap">
+              {jump}
+              <button
+                className="btn yellow"
+                disabled={!me.base || fromBase > SIEGE_RANGE_M || o.shielded}
+                onClick={() => confirm(`Send your whole army to assault ${o.name}?`) && act(() => api("/api/outposts", { body: { action: "assault", outpostId: o.id } }))}
+              >
+                🎖️ Assault with army
+              </button>
+            </div>
+            <p className="small muted">{!me.base ? "Plant a base to send armies." : fromBase > SIEGE_RANGE_M ? `Out of range (${formatDistance(fromBase)} from your base, max ${SIEGE_RANGE_M / 1000} km).` : "Win and it's yours — then garrison it before someone takes it back."}</p>
+            {o.owner && <TargetPowers targetId={o.id} allow={["spy_drone", "barrage"]} />}
+          </>
+        )}
       </Sheet>
     );
   }

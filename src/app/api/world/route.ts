@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db";
 import { bbox, dayPhase, distanceM, solarHour } from "@/lib/geo";
 import { spawnsAround } from "@/lib/spawns";
 import { bossesAround } from "@/lib/bosses";
-import { factionOf, levelOf } from "@/lib/rts";
+import { factionOf, levelOf, type Army } from "@/lib/rts";
+import { outpostsAround } from "@/lib/outposts";
+import { researchDone } from "@/server/hero";
 import { ITEM_BY_KEY } from "@/lib/catalog";
 import { levelForXp } from "@/lib/progression";
 import { requireUser } from "@/server/auth";
@@ -33,7 +35,8 @@ export const GET = route(async (req) => {
   });
 
   const bosses = bossesAround(here);
-  const [missions, notes, events, deliveries, friends, nearbyUsers, bases, bossStates] = await Promise.all([
+  const sites = outpostsAround(here);
+  const [missions, notes, events, deliveries, friends, nearbyUsers, bases, bossStates, outpostRows, research] = await Promise.all([
     prisma.adminMission.findMany({ where: { ...inBox(near), activeFrom: { lte: now }, activeTo: { gte: now } } }),
     prisma.geoNote.findMany({
       where: { ...inBox(near), hidden: false, expiresAt: { gt: now } },
@@ -63,7 +66,11 @@ export const GET = route(async (req) => {
       take: 150,
     }),
     prisma.bossState.findMany({ where: { bossId: { in: bosses.map((b) => b.id) } } }),
+    prisma.outpost.findMany({ where: { id: { in: sites.map((s) => s.id) } }, include: { owner: { select: { id: true, username: true, faction: true } } } }),
+    researchDone(u.id),
   ]);
+  const opBy = new Map(outpostRows.map((o) => [o.id, o]));
+  const radar = research.includes("radar");
   const liveMatches = await prisma.match.findMany({
     where: { status: "LIVE", endsAt: { gt: now }, targetId: { in: [...bases.map((b) => b.id), ...bosses.map((b) => b.id)] } },
     select: { id: true, targetId: true },
@@ -137,5 +144,24 @@ export const GET = route(async (req) => {
       })
       .filter((b) => !b.defeated),
     onlineNearby: nearbyUsers.length,
+    outposts: sites.map((s) => {
+      const o = opBy.get(s.id);
+      const mine = o?.ownerId === u.id;
+      const garrison = (o?.garrison as Army | undefined) ?? {};
+      const size = Object.values(garrison).reduce((a, q) => a + (q ?? 0), 0);
+      return {
+        id: s.id,
+        name: s.name,
+        lat: s.lat,
+        lng: s.lng,
+        owner: o?.owner ? { id: o.owner.id, username: o.owner.username, faction: o.owner.faction } : null,
+        mine,
+        shielded: !!o?.shieldUntil && o.shieldUntil > now,
+        // Your own garrisons are always visible; Radar Uplink reveals everyone else's.
+        garrison: mine || radar ? garrison : null,
+        garrisonSize: o?.ownerId ? (mine || radar ? String(size) : size === 0 ? "empty?" : size < 10 ? "light" : size < 30 ? "medium" : "heavy") : null,
+        guard: o?.ownerId ? null : s.guard,
+      };
+    }),
   };
 });

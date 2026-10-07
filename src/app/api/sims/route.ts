@@ -11,6 +11,7 @@ import { body, HttpError, route } from "@/server/http";
 import { isOnline, notify } from "@/server/hub";
 import { bumpNeeds } from "@/server/needs";
 import { lastKnownLocation, spendCoins } from "@/server/rewards";
+import { questEvent } from "@/server/quests";
 
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("eat"), itemKey: z.string().max(40) }),
@@ -36,6 +37,7 @@ export const POST = route(async (req) => {
     const res = await prisma.inventoryItem.updateMany({ where: { userId: u.id, itemKey: item.key, qty: { gte: 1 } }, data: { qty: { decrement: 1 } } });
     if (!res.count) throw new HttpError(400, `No ${item.name} in your bag`);
     await bumpNeeds(u.id, { hunger: item.food });
+    await questEvent(u.id, "eat");
     return { message: `${item.emoji} Yum! Hunger +${item.food}` };
   }
 
@@ -44,6 +46,7 @@ export const POST = route(async (req) => {
     if (levelOf(base.buildings, "quarters") < 1) throw new HttpError(400, "Build Quarters to get a mess hall");
     await spendCoins(u.id, MESS_HALL_COST);
     await bumpNeeds(u.id, { hunger: 45 });
+    await questEvent(u.id, "eat");
     return { message: `🍲 Hot meal at the mess hall. Hunger +45` };
   }
 
@@ -52,6 +55,7 @@ export const POST = route(async (req) => {
     const base = await atBase(u.id);
     const gain = 30 + 10 * levelOf(base.buildings, "quarters");
     await bumpNeeds(u.id, { energy: gain }, { restedAt: new Date() });
+    await questEvent(u.id, "rest");
     return { message: `😴 Power nap at ${base.name}. Energy +${gain}` };
   }
 
@@ -64,6 +68,7 @@ export const POST = route(async (req) => {
   if (distanceM(here, { lat: other.lastLat, lng: other.lastLng }) > 120) throw new HttpError(400, "Get closer — hang out in person (within 120 m)");
   await bumpNeeds(u.id, { social: 25, fun: 5 }, { socialAt: new Date() });
   await bumpNeeds(other.id, { social: 15 });
+  await questEvent(u.id, "socialize");
   await notify(other.id, { kind: "social", title: `👋 ${u.username} hung out with you`, body: "Social +15" });
   return { message: `🤝 Hung out with ${other.username}. Social +25` };
 });

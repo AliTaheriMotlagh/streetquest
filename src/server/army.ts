@@ -1,7 +1,7 @@
 // Bases, buildings and armies are settled lazily: finished training orders become
 // units the next time anyone reads them. No background jobs needed.
 import { prisma } from "../lib/db";
-import { baseDefense, factionOf, levelOf, powerOf, UNIT_BY_KEY, type Army, type UnitKey } from "../lib/rts";
+import { baseDefense, factionOf, levelOf, powerOf, UNIT_BY_KEY, type Army, type UnitKey, type Vets } from "../lib/rts";
 
 export async function settleTraining(userId: string) {
   const done = await prisma.trainOrder.findMany({ where: { userId, readyAt: { lte: new Date() } } });
@@ -9,20 +9,39 @@ export async function settleTraining(userId: string) {
     // delete first so two concurrent settles can't double-grant
     const del = await prisma.trainOrder.deleteMany({ where: { id: o.id } });
     if (!del.count) continue;
-    await prisma.unitStack.upsert({
-      where: { userId_unitType: { userId, unitType: o.unitType } },
-      create: { userId, unitType: o.unitType, qty: o.qty },
-      update: { qty: { increment: o.qty } },
-    });
+    await addUnits(userId, o.unitType, o.qty);
   }
 }
 
-export async function armyOf(userId: string): Promise<Army> {
+/** Add units to a stack. Fresh recruits dilute the stack's veterancy (weighted average). */
+export async function addUnits(userId: string, unitType: string, qty: number, vet = 0) {
+  const cur = await prisma.unitStack.findUnique({ where: { userId_unitType: { userId, unitType } } });
+  if (!cur) return prisma.unitStack.create({ data: { userId, unitType, qty, vet } });
+  const total = cur.qty + qty;
+  return prisma.unitStack.update({ where: { id: cur.id }, data: { qty: { increment: qty }, vet: total ? (cur.vet * cur.qty + vet * qty) / total : 0 } });
+}
+
+/** Survivors of a battle gain veterancy. */
+export async function gainVet(userId: string, army: Army, amount: number) {
+  const types = Object.entries(army).filter(([, q]) => q).map(([k]) => k);
+  if (types.length) await prisma.unitStack.updateMany({ where: { userId, unitType: { in: types }, qty: { gt: 0 } }, data: { vet: { increment: amount } } });
+}
+
+export async function forcesOf(userId: string): Promise<{ army: Army; vets: Vets }> {
   await settleTraining(userId);
   const rows = await prisma.unitStack.findMany({ where: { userId, qty: { gt: 0 } } });
   const army: Army = {};
-  for (const r of rows) if (UNIT_BY_KEY[r.unitType as UnitKey]) army[r.unitType as UnitKey] = r.qty;
-  return army;
+  const vets: Vets = {};
+  for (const r of rows) {
+    if (!UNIT_BY_KEY[r.unitType as UnitKey]) continue;
+    army[r.unitType as UnitKey] = r.qty;
+    vets[r.unitType as UnitKey] = r.vet;
+  }
+  return { army, vets };
+}
+
+export async function armyOf(userId: string): Promise<Army> {
+  return (await forcesOf(userId)).army;
 }
 
 export async function removeUnits(userId: string, losses: Army) {
@@ -48,3 +67,6 @@ export function baseSummary(b: LoadedBase) {
     faction: f,
   };
 }
+
+export const fmtLosses = (a: Army) => Object.entries(a).filter(([, q]) => q).map(([k, q]) => `${q} ${k}`).join(", ") || "none";
+export const survivors = (army: Army, losses: Army) => Object.fromEntries(Object.entries(army).map(([k, q]) => [k, (q ?? 0) - (losses[k as UnitKey] ?? 0)])) as Army;
