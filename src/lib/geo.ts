@@ -16,6 +16,13 @@ export function distanceM(a: LatLng, b: LatLng): number {
 }
 
 /** Point `meters` away from `from` along `bearingDeg` (0 = north). */
+/** Compass bearing from a to b in degrees (0 = north, 90 = east). */
+export function bearingTo(a: LatLng, b: LatLng) {
+  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
 export function offset(from: LatLng, meters: number, bearingDeg: number): LatLng {
   const d = meters / R;
   const b = toRad(bearingDeg);

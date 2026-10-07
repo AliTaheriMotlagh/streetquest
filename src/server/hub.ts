@@ -1,6 +1,7 @@
 // Serverless-friendly "realtime": everything lives in Postgres and clients poll
 // /api/sync. Works on Vercel (no long-lived sockets) and anywhere else.
 import { prisma } from "../lib/db";
+import { pushTo } from "./push";
 
 export type Notice = { title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" };
 
@@ -11,4 +12,6 @@ export const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && Date.now() 
 
 export async function notify(userId: string, n: Notice) {
   await prisma.notification.create({ data: { userId, kind: n.kind ?? "info", title: n.title, body: n.body } }).catch(() => {});
+  // Also reach the phone when the game isn't open (fire-and-forget).
+  void pushTo(userId, { title: n.title, body: n.body, kind: n.kind });
 }

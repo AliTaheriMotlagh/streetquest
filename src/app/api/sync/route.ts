@@ -23,5 +23,6 @@ export const GET = route(async (req) => {
   });
   // Keep presence fresh even when the player is standing still with GPS idle.
   if (!u.lastSeenAt || now.getTime() - u.lastSeenAt.getTime() > 30_000) await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: now } });
-  return { now: now.getTime(), notifications, unread };
+  const inbox = await prisma.notification.count({ where: { userId: u.id, readAt: null } });
+  return { now: now.getTime(), notifications, unread, inbox };
 });

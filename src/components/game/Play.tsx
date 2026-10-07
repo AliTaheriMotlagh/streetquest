@@ -3,11 +3,12 @@
 // rewarded sponsor spots, the live GPS-game banner on the map, turn-by-turn
 // directions hand-off, and the reward celebrations.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { distanceM, formatDistance } from "@/lib/geo";
+import { bearingTo, distanceM, formatDistance } from "@/lib/geo";
 import { FACTION_BY_KEY, type FactionKey } from "@/lib/rts";
 import { askConfirm } from "@/components/Dialogs";
 import { api, type GpsView, type LatLng } from "./client";
 import { sfx } from "./sfx";
+import { duckMusic } from "./music";
 import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
 
 // ---------------------------------------------------------------- celebrations
@@ -148,6 +149,11 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
   const left = Math.max(0, Math.ceil((g.endsAt - now) / 1000));
   const target = g.points && g.next != null ? g.points[g.next] : g.target ?? null;
   const dist = target && pos ? distanceM(pos, target) : null;
+  // Where to head: the waypoint, the search area, or back into the hold zone.
+  const aim = target ?? g.area?.center ?? (g.hold && !g.hold.inside ? g.center : null) ?? null;
+  const aimDist = aim && pos ? distanceM(pos, aim) : null;
+  const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const brg = aim && pos ? bearingTo(pos, aim) : 0;
   const holdLeft = g.hold?.since ? Math.max(0, g.hold.seconds - Math.floor((now - g.hold.since) / 1000)) : g.hold?.seconds;
   return (
     <div className="gps-banner">
@@ -157,8 +163,19 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
           <b style={{ fontFamily: "var(--display)" }}>{g.title}</b>
         </div>
         <div className={`t ${left < 60 ? "low" : ""}`}>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</div>
+        <button className="gb-x" aria-label="Quit game" title="Quit" onClick={() => askConfirm("Quit this game? You won't get the reward.", { ok: "Quit", danger: true }).then((ok) => ok && onQuit())}>✕</button>
       </div>
-      {g.text && <div className="small" style={{ margin: "4px 0" }}>{g.text}</div>}
+      {g.kind === "story" && g.steps && (
+        <div className="step-pills">{Array.from({ length: g.steps }, (_, i) => <i key={i} className={i < (g.step ?? 0) ? "done" : i === g.step ? "on" : ""} />)}</div>
+      )}
+      {g.text && <div className="step-text">{g.stepKind === "find" ? "🔍 " : g.stepKind === "hold" ? "🛡️ " : "📍 "}{g.text}</div>}
+      {aim && aimDist != null && aimDist > 15 && (
+        <div className="aim">
+          <span className="dir-arrow" style={{ transform: `rotate(${brg - 90}deg)` }}>➤</span>
+          <b>{formatDistance(aimDist)}</b>
+          <span className="small muted">{COMPASS[Math.round(brg / 45) % 8]} · {g.area ? "to the search area" : g.hold ? "back to the zone" : "to the gold beacon"}</span>
+        </div>
+      )}
       {g.heat && (
         <div className="heat">
           <div className="heat-bars">{[1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= g.heat!.level ? `on l${g.heat!.level}` : ""} />)}</div>
@@ -180,13 +197,10 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
           <div className="meter"><i style={{ width: `${g.hold.since ? Math.min(100, ((now - g.hold.since) / 1000 / g.hold.seconds) * 100) : 0}%`, background: "var(--green)" }} /></div>
         </div>
       )}
-      {g.kind === "story" && g.target && dist != null && <div className="small">📍 {formatDistance(dist)} to the waypoint</div>}
-      <div className="row wrap" style={{ marginTop: 6 }}>
-        {target && (teleport ? <button className="btn yellow small" onClick={() => teleport(target)}><MoveIcon /> Go</button> : <Directions to={target} className="btn cyan small" />)}
-        {teleport && g.hold?.since == null && g.center && !g.hold?.inside && <button className="btn yellow small" onClick={() => teleport(g.center!)}><MoveIcon /> Go</button>}
-        {(g.reroutes ?? 0) > 0 && g.kind !== "sprint" && g.stepKind !== "hold" && <button className="btn ghost small" onClick={onReroute} title="Waypoint unreachable? Get a new one">🔀 Reroute ({g.reroutes})</button>}
-        <span className="grow" />
-        <button className="btn ghost small" onClick={() => askConfirm("Quit this game? You won't get the reward.", { ok: "Quit", danger: true }).then((ok) => ok && onQuit())}>Quit</button>
+
+      <div className="row" style={{ marginTop: 4 }}>
+        {aim && aimDist != null && aimDist > 15 && (teleport ? <button className="btn yellow small" onClick={() => teleport(aim)}><MoveIcon /> Go</button> : <Directions to={aim} label="🧭 Route" className="btn cyan small" />)}
+        {(g.reroutes ?? 0) > 0 && g.kind !== "sprint" && g.stepKind !== "hold" && <button className="btn ghost small" onClick={onReroute} title="Waypoint unreachable? Get a new one">🔀 New spot ({g.reroutes})</button>}
       </div>
     </div>
   );
@@ -245,7 +259,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
     });
 
   return (
-    <Sheet title="🎮 Play" onClose={onClose} peek={peek}>
+    <Sheet title="🎮 Play" onClose={onClose} peek={peek} help="play">
       <Tabs value={tab} onChange={setTab} tabs={[["story", "📖 Story"], ["games", "🧭 GPS games"], ["goals", `🏆 Goals${me.goalsReady ? ` (${me.goalsReady})` : ""}`]]} />
       {d?.active && (
         <div className="card hl small">▶️ <b>{d.active.title}</b> is running — see the banner on the map.</div>
@@ -439,7 +453,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
     });
 
   return (
-    <Sheet title="💎 Store" onClose={onClose} peek={peek}>
+    <Sheet title="💎 Store" onClose={onClose} peek={peek} help="store">
       <div className="gem-hero">
         <span className="gem-big">💎</span>
         <div>
@@ -511,7 +525,20 @@ export function AdModal({ onClose }: { onClose: () => void }) {
   const { act, toast } = useGame();
   const [ad, setAd] = useState<(AdStart & { at: number }) | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [sound, setSound] = useState(false);
+  const video = useRef<HTMLVideoElement>(null);
   const started = useRef(false);
+  // The ad has its own soundtrack: pause the game music while it's open.
+  useEffect(() => {
+    duckMusic(true);
+    return () => duckMusic(false);
+  }, []);
+  useEffect(() => {
+    if (video.current) {
+      video.current.muted = !sound;
+      if (sound) video.current.play().catch(() => {});
+    }
+  }, [sound]);
   useEffect(() => {
     if (started.current) return;
     started.current = true;
@@ -534,10 +561,13 @@ export function AdModal({ onClose }: { onClose: () => void }) {
       <div className="ad-card">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span className="tag">Sponsored · {c.sponsor}</span>
-          <span className="ad-timer" style={{ ["--p" as string]: `${(1 - left / ad.seconds) * 360}deg` }}>{done ? "✓" : left}</span>
+          <span className="ad-timer" style={{ ["--p" as string]: `${(1 - left / ad.seconds) * 360}deg` }}><span className="ad-timer-n">{done ? "✓" : left}</span></span>
         </div>
         {c.videoUrl ? (
-          <video className="ad-media" src={c.videoUrl} autoPlay muted playsInline loop />
+          <div className="ad-video-wrap">
+            <video ref={video} className="ad-media video" src={c.videoUrl} poster={c.videoUrl.replace(/\.mp4$/, ".jpg")} autoPlay muted={!sound} playsInline loop />
+            <button className="ad-sound" onClick={() => setSound(!sound)} aria-label={sound ? "Mute" : "Sound on"}>{sound ? "🔊" : "🔇 Tap for sound"}</button>
+          </div>
         ) : c.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img className="ad-media" src={c.imageUrl} alt={c.title} />

@@ -85,12 +85,12 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
     </button>
   );
 
-  if (!v) return <Sheet title="Base" onClose={onClose} peek={peek}><div className="empty">Loading…</div></Sheet>;
+  if (!v) return <Sheet title="Base" onClose={onClose} peek={peek} help="base"><div className="empty">Loading…</div></Sheet>;
   const f = v.faction ? FACTION_BY_KEY[v.faction] : null;
 
   if (!f) {
     return (
-      <Sheet title="Choose your side" onClose={onClose} peek={peek}>
+      <Sheet title="Choose your side" onClose={onClose} peek={peek} help="base">
         <p className="small muted">Your faction shapes your army. Build a base on a real street, train an army, take derricks and outposts, raid rivals for stars and trophies — and when they&apos;re online nearby, fight it out in first person.</p>
         {FACTIONS.map((x) => (
           <div key={x.key} className="card list-item" style={{ borderColor: x.color }}>
@@ -109,7 +109,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
 
   if (!v.base) {
     return (
-      <Sheet title={`${f.emoji} Plant your base`} onClose={onClose} peek={peek}>
+      <Sheet title={`${f.emoji} Plant your base`} onClose={onClose} peek={peek} help="base">
         <p className="small muted">Your base goes exactly where you&apos;re standing. Pick somewhere you visit often — you rest and eat there, and rivals have to come to it in person to breach it.</p>
         <label>Base name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Fort Midnight" maxLength={30} />
@@ -130,7 +130,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
   const tribute = terr?.outposts.reduce((s, o) => s + o.pending, 0) ?? 0;
 
   return (
-    <Sheet title={`${f.emoji} ${b.name}`} onClose={onClose} peek={peek}>
+    <Sheet title={`${f.emoji} ${b.name}`} onClose={onClose} peek={peek} help="base">
       <div className="res-bar">
         <span title="Trophies & league">{v.league.emoji} {v.trophies} 🏆</span>
         <span title="Gems">💎 {v.gems}</span>

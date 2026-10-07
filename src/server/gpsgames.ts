@@ -15,7 +15,10 @@ import { grant, lastKnownLocation } from "./rewards";
 type Hunt = { target: LatLng; best: number; last: number | null; prev?: number | null; reroutes: number };
 type Sprint = { startWalked: number; meters: number };
 type Rally = { points: LatLng[]; next: number; reroutes: number };
-type Story = { chapter: number; replay: boolean; step: number; target: LatLng | null; hidden: boolean; holdStart: number | null; center: LatLng | null; last: number | null; prev?: number | null; reroutes: number };
+// area: the gold "search here" circle shown for hidden steps (contains the target, not centred on it)
+type Story = { chapter: number; replay: boolean; step: number; target: LatLng | null; hidden: boolean; holdStart: number | null; center: LatLng | null; last: number | null; prev?: number | null; reroutes: number; area?: { center: LatLng; radius: number } | null };
+const AREA_M = 110;
+const searchArea = (target: LatLng) => ({ center: offset(target, Math.random() * AREA_M * 0.55, Math.random() * 360), radius: AREA_M });
 type Data = Hunt | Sprint | Rally | Story;
 
 const between = (a: number, b: number) => a + Math.random() * Math.max(0, b - a);
@@ -35,8 +38,9 @@ export async function activeGame(userId: string) {
 
 function storyStep(d: Story, here: LatLng): Story {
   const step = storyChapterOf(d.chapter).def.steps[d.step];
-  if (step.kind === "hold") return { ...d, target: null, hidden: false, center: here, holdStart: null, last: null, prev: null };
-  return { ...d, target: spot(here, step.minM, step.maxM), hidden: step.kind === "find", center: null, holdStart: null, last: null, prev: null };
+  if (step.kind === "hold") return { ...d, target: null, hidden: false, center: here, holdStart: null, last: null, prev: null, area: null };
+  const target = spot(here, step.minM, step.maxM);
+  return { ...d, target, hidden: step.kind === "find", center: null, holdStart: null, last: null, prev: null, area: step.kind === "find" ? searchArea(target) : null };
 }
 
 export async function startGame(u: User, kind: GpsGameKind) {
@@ -112,6 +116,7 @@ export function gameView(g: GpsGame, here: LatLng | null, walkedM: number) {
     stepKind: step.kind,
     target: d.hidden ? null : d.target,
     center: d.center,
+    area: d.hidden ? (d.area ?? null) : null,
     heat: d.hidden && d.target ? heat(d.target, d.prev) : null,
     dist: !d.hidden && d.target && here ? Math.round(distanceM(here, d.target)) : null,
     hold: step.kind === "hold" ? { seconds: step.holdS ?? 30, since: d.holdStart, radius: HOLD_RADIUS_M, inside: here && d.center ? distanceM(here, d.center) <= HOLD_RADIUS_M : false } : null,
@@ -209,6 +214,7 @@ export async function rerouteGame(u: User, g: GpsGame) {
     d.target = spot(here, step.minM * 0.7, step.maxM * 0.7);
     d.last = null;
     d.prev = null;
+    if (d.hidden) d.area = searchArea(d.target);
   } else throw new HttpError(400, "Sprints go anywhere — no route needed");
   d.reroutes = (d.reroutes ?? 0) + 1;
   await prisma.gpsGame.update({ where: { id: g.id }, data: { data: d as object } });

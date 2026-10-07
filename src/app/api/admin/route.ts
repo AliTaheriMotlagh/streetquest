@@ -13,6 +13,7 @@ import { BUILDINGS, RESEARCH, UNITS } from "@/lib/rts";
 import { TOWERS } from "@/lib/td";
 import { ITEMS } from "@/lib/catalog";
 import { stripeReady } from "@/server/store";
+import { pushReady, pushTo } from "@/server/push";
 
 const day = 86_400_000;
 
@@ -78,7 +79,7 @@ export const GET = route(async (req) => {
       claims24,
       upcomingEvents,
       pageViews7,
-      conversion7: pageViews7 ? signups7 / pageViews7 : 0,
+      conversion7: pageViews7 ? Math.min(1, signups7 / pageViews7) : 0,
       deliveries: Object.fromEntries(deliveryStatus.map((d) => [d.status, d._count])),
     },
     bySource: bySource.map((s) => ({ source: s.utmSource ?? "organic", count: s._count })),
@@ -101,6 +102,8 @@ export const GET = route(async (req) => {
     },
     revenue: {
       stripe: stripeReady(),
+      push: pushReady(),
+      pushDevices: await prisma.pushSub.count(),
       last30: { cents: paid30._sum.amountCents ?? 0, gems: paid30._sum.gems ?? 0, count: paid30._count },
       allTime: { cents: paidAll._sum.amountCents ?? 0, count: paidAll._count },
       ads7,
@@ -134,7 +137,7 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("hideNote"), id: z.string(), hidden: z.boolean() }),
   z.object({ action: z.literal("deleteMessage"), id: z.string() }),
   z.object({ action: z.literal("cancelDelivery"), id: z.string() }),
-  z.object({ action: z.literal("broadcast"), title: z.string().min(1).max(100), body: z.string().max(300).optional() }),
+  z.object({ action: z.literal("broadcast"), title: z.string().min(1).max(100), body: z.string().max(300).optional(), push: z.boolean().optional() }),
   z.object({ action: z.literal("saveSettings"), data: z.record(z.unknown()) }),
   z.object({ action: z.literal("grantGems"), userId: z.string(), gems: z.number().int().min(-1e6).max(1e6) }),
 ]);
@@ -211,6 +214,12 @@ export const POST = route(async (req) => {
       // Everyone active in the last 15 minutes gets it on their next poll.
       const active = await prisma.user.findMany({ where: { lastSeenAt: { gt: new Date(Date.now() - 15 * 60_000) } }, select: { id: true } });
       await prisma.notification.createMany({ data: active.map((a) => ({ userId: a.id, kind: "info", title: d.title, body: d.body })) });
+      // Optionally a phone notification to everyone who turned notifications on.
+      if (d.push) {
+        const subs = await prisma.pushSub.findMany({ distinct: ["userId"], select: { userId: true }, take: 20000 });
+        for (let i = 0; i < subs.length; i += 50) await Promise.all(subs.slice(i, i + 50).map((s) => pushTo(s.userId, { title: d.title, body: d.body, kind: "info", tag: "broadcast" })));
+        return { ok: true, pushed: subs.length };
+      }
     }
       break;
   }

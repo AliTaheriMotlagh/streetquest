@@ -8,7 +8,7 @@ import { needsOf } from "@/server/needs";
 import { moodOf } from "@/lib/sims";
 import { attrPointsFree } from "@/lib/hero";
 import { commandPoints } from "@/lib/powers";
-import { leagueOf } from "@/lib/rts";
+import { leagueOf, pendingSupply } from "@/lib/rts";
 import { questView } from "@/server/quests";
 import { body, HttpError, route } from "@/server/http";
 import { currentHp, ROOKIE_LEVEL } from "@/lib/td";
@@ -25,10 +25,15 @@ export const GET = route(async () => {
     prisma.userAchievement.findMany({ where: { userId: u.id } }),
     prisma.missionRun.findMany({ where: { userId: u.id, status: "ACTIVE" } }),
     prisma.friendship.count({ where: { addresseeId: u.id, status: "PENDING" } }),
-    prisma.base.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, lat: true, lng: true } }),
+    prisma.base.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, lat: true, lng: true, lastCollectAt: true, buildings: { select: { type: true, level: true, readyAt: true } } } }),
     prisma.powerState.findMany({ where: { userId: u.id }, select: { rank: true } }),
     prisma.gear.count({ where: { userId: u.id, equipped: true } }),
   ]);
+  // What's new at the base (finished builds/research, supplies piling up) — drives the nav badge.
+  const now = Date.now();
+  const lastResearch = await prisma.research.findFirst({ where: { userId: u.id, readyAt: { lte: new Date() } }, orderBy: { readyAt: "desc" }, select: { readyAt: true } });
+  const doneAt = Math.max(0, lastResearch?.readyAt.getTime() ?? 0, ...(base?.buildings ?? []).map((b) => b.readyAt.getTime()).filter((t) => t <= now));
+  const supply = base ? pendingSupply(base.buildings, base.lastCollectAt, now) : 0;
   const [maxHp, settings, goals, gpsGame] = await Promise.all([
     maxHpOf(u.id),
     settingOverrides(),
@@ -62,7 +67,8 @@ export const GET = route(async () => {
     activeRun: runs[0] ?? null,
     pendingFriends,
     faction: u.faction,
-    base,
+    base: base && { id: base.id, name: base.name, lat: base.lat, lng: base.lng },
+    baseAlert: base ? { doneAt, supply } : null,
     needs,
     needsAt: Date.now(),
     mood: moodOf(needs),

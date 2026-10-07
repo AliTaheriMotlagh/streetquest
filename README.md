@@ -151,6 +151,13 @@ Don't run the demo seed in production.
 
 ## Production checklist
 
+- **Installable app & offline:** `/sw.js` (service worker) caches the app, map tiles you've seen and your last game
+  state, so the game opens offline. Every deploy gets a new version id, and players see "New version ready → Update".
+- **Push notifications:** set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`
+  (`npx web-push generate-vapid-keys`). Every in-game notification is also pushed to the phone when the player isn't
+  in the app; Admin → Campaigns → live push can send to everyone. iPhone needs the app added to the Home Screen
+  (iOS 16.4+).
+
 - `/api/health` must say `"ok": true`.
 - Set `CRON_SECRET` on Vercel — `vercel.json` schedules `/api/cron/cleanup` daily (prunes old notifications,
   lobbies, pings, waves, matches and superweapon launches; refunds expired bounties).

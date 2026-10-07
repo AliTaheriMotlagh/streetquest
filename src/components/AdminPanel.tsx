@@ -21,6 +21,30 @@ type Data = {
 };
 
 type Tab = "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type NavItem = { id: Tab; icon: string; label: string; desc: string };
+// Grouped by what you're trying to do, each page says what it's for.
+const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
+  { group: "Overview", items: [{ id: "dash", icon: "📈", label: "Dashboard", desc: "Players, visits, sign-ups and activity over the last 7 days." }] },
+  {
+    group: "Game",
+    items: [
+      { id: "settings", icon: "⚙️", label: "Game settings", desc: "Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds." },
+      { id: "data", icon: "📊", label: "Game data", desc: "Stats of every unit, building, tower, item and research project. Change a number to override it; clear it to go back to the original." },
+      { id: "missions", icon: "📍", label: "Map drops", desc: "Place special missions on the map at real places for a time window — sponsored drops, store activations, city campaigns." },
+    ],
+  },
+  { group: "Money", items: [{ id: "revenue", icon: "💰", label: "Revenue", desc: "Gem sales, sponsor ad views and clicks, and how to switch on payments." }] },
+  {
+    group: "Community",
+    items: [
+      { id: "users", icon: "👥", label: "Players", desc: "Search players, gift coins or gems, make admins, ban cheaters." },
+      { id: "moderation", icon: "🛡️", label: "Moderation", desc: "Hide location posts and delete chat messages." },
+      { id: "deliveries", icon: "📦", label: "Deliveries", desc: "Real-world package jobs between players. Cancel one to refund the sender." },
+    ],
+  },
+  { group: "Marketing", items: [{ id: "marketing", icon: "📣", label: "Campaigns", desc: "Where players come from, campaign links, in-game banners and live push messages." }] },
+];
+const PAGE = Object.fromEntries(ADMIN_NAV.flatMap((g) => g.items.map((i) => [i.id, i]))) as Record<Tab, NavItem>;
 const fmt = (d: string) => new Date(d).toLocaleString();
 const toLocalInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
@@ -60,7 +84,7 @@ export function AdminPanel() {
   }, [saved]);
   const [mission, setMission] = useState({ title: "", description: "", lat: "", lng: "", itemKey: "diamond", rewardXp: 300, rewardCoins: 100, activeFrom: toLocalInput(new Date()), activeTo: toLocalInput(new Date(Date.now() + 7 * 86400000)), sponsor: "" });
   const [ann, setAnn] = useState({ title: "", body: "", ctaLabel: "", ctaUrl: "" });
-  const [push, setPush] = useState({ title: "", body: "" });
+  const [push, setPush] = useState({ title: "", body: "", push: true });
   const [utm, setUtm] = useState({ path: "/", source: "instagram", medium: "social", campaign: "launch" });
 
   const load = useCallback(() => {
@@ -100,18 +124,32 @@ export function AdminPanel() {
           <b className="grow small" style={{ color: "var(--green)" }}>✅ Settings saved — live for players within ~15 seconds</b>
         </div>
       )}
-      <div className="wrap admin">
-        <div className="topbar">
-          <Link href="/" className="logo">STREET<span>QUEST</span></Link>
-          <span className="tag" style={{ color: "var(--yellow)" }}>ADMIN</span>
-          <span className="grow" />
-          <Link href="/play" className="btn small">Open game</Link>
-        </div>
-        <div className="tabs">
-          {([["dash", "Dashboard"], ["settings", "⚙️ Game settings"], ["data", "📊 Game data"], ["revenue", "💰 Revenue"], ["users", "Players"], ["missions", "Missions"], ["marketing", "Marketing"], ["moderation", "Moderation"], ["deliveries", "Deliveries"]] as [Tab, string][]).map(([k, l]) => (
-            <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
-          ))}
-        </div>
+      <div className="admin-shell">
+        <aside className="admin-side">
+          <div className="admin-brand">
+            <Link href="/" className="logo">STREET<span>QUEST</span></Link>
+            <span className="tag" style={{ color: "var(--yellow)" }}>ADMIN</span>
+          </div>
+          <nav>
+            {ADMIN_NAV.map((g) => (
+              <div key={g.group} className="side-group">
+                <div className="side-label">{g.group}</div>
+                {g.items.map((it) => (
+                  <button key={it.id} className={`side-item ${tab === it.id ? "on" : ""}`} onClick={() => setTab(it.id)}>
+                    <span>{it.icon}</span>
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+          <Link href="/play" className="btn small block" style={{ marginTop: 12 }}>▶ Open game</Link>
+        </aside>
+        <section className="admin-main admin">
+        <header className="admin-head">
+          <h1>{PAGE[tab].icon} {PAGE[tab].label}</h1>
+          <p className="muted">{PAGE[tab].desc}</p>
+        </header>
 
         {tab === "dash" && (
           <>
@@ -266,7 +304,11 @@ export function AdminPanel() {
               <div className="row" style={{ marginTop: 8 }}>
                 <input placeholder="Title" value={push.title} onChange={(e) => setPush({ ...push, title: e.target.value })} />
                 <input placeholder="Body" value={push.body} onChange={(e) => setPush({ ...push, body: e.target.value })} />
-                <button className="btn yellow small" disabled={!push.title} onClick={async () => (await post({ action: "broadcast", ...push })) && setPush({ title: "", body: "" })}>Send</button>
+                <button className="btn yellow small" disabled={!push.title} onClick={async () => (await post({ action: "broadcast", ...push })) && setPush({ title: "", body: "", push: push.push })}>Send</button>
+              </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <button className={`toggle ${push.push ? "on" : ""}`} onClick={() => setPush({ ...push, push: !push.push })} aria-pressed={push.push}><i /><span>Also send as a phone notification</span></button>
+                <span className="small muted">{data.revenue.push ? `${data.revenue.pushDevices} devices subscribed` : "Phone notifications need VAPID keys on the server"}</span>
               </div>
             </div>
           </>
@@ -317,6 +359,7 @@ export function AdminPanel() {
             </tbody>
           </table>
         )}
+        </section>
       </div>
     </main>
   );

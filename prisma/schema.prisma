@@ -109,6 +109,7 @@ model User {
   purchases     Purchase[]
   adViews       AdView[]
   gpsGames      GpsGame[]
+  pushSubs      PushSub[]
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -122,10 +123,12 @@ model Notification {
   kind      String   @default("info")
   title     String
   body      String?
+  readAt    DateTime? // seen in the inbox
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([userId, readAt])
   @@index([createdAt])
 }
 
@@ -793,4 +796,19 @@ model GpsGame {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
+}
+
+// Web Push subscriptions (one per browser/device). Notifications are pushed when the
+// player isn't in the app; dead subscriptions (404/410 from the push service) are removed.
+model PushSub {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  lastPush  DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

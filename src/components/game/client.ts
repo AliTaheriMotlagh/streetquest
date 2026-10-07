@@ -63,6 +63,8 @@ export type Me = {
   pendingFriends: number;
   faction: FactionKey | null;
   base: { id: string; name: string; lat: number; lng: number } | null;
+  /** Latest finished build/research and supplies waiting — for the Base badge. */
+  baseAlert: { doneAt: number; supply: number } | null;
   needs: Needs;
   needsAt: number;
   mood: Mood;
@@ -116,6 +118,8 @@ export type GpsView = {
   text?: string;
   stepKind?: "go" | "find" | "hold";
   center?: LatLng | null;
+  /** Story "find" steps: the gold circle to search in. */
+  area?: { center: LatLng; radius: number } | null;
   hold?: { seconds: number; since: number | null; radius: number; inside: boolean } | null;
 };
 

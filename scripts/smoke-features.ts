@@ -202,6 +202,33 @@ check("GPS wins count toward goals", r.data.personal.find((p: { metric: string }
 r = await call(A, "/api/hero");
 check("hero sheet has a service record", typeof r.data.stats?.walkedM === "number" && r.data.stats.story === 1 && r.data.stats.gpsGames >= 2, r.data.stats);
 
+// ---------------------------------------------------------------- inbox
+r = await call(A, "/api/notifications");
+check("inbox lists notifications", r.status === 200 && Array.isArray(r.data.items) && r.data.items.length > 0, r.data);
+check("sync reports unread inbox count", typeof (await call(A, `/api/sync?since=${Date.now()}`)).data.inbox === "number");
+await call(A, "/api/notifications", { action: "readAll" });
+check("mark all read clears the badge", (await call(A, "/api/notifications")).data.unread === 0 && (await call(A, `/api/sync?since=${Date.now()}`)).data.inbox === 0);
+const first = r.data.items[0].id;
+await call(A, "/api/notifications", { action: "dismiss", id: first });
+check("dismiss one", !(await call(A, "/api/notifications")).data.items.some((i: { id: string }) => i.id === first));
+await call(A, "/api/notifications", { action: "clear" });
+check("clear all", (await call(A, "/api/notifications")).data.items.length === 0);
+check("house ad has the video trailer", (await call(A, "/api/store")).status === 200 && (await fetch(BASE + "/media/streetquest-ad.mp4", { method: "HEAD" })).ok);
+
+// ---------------------------------------------------------------- push notifications
+r = await call(A, "/api/push");
+check("push public key served", r.status === 200 && (process.env.VAPID_PUBLIC_KEY ? typeof r.data.publicKey === "string" : true), r.data);
+if (r.data.publicKey) {
+  const endpoint = `https://push.example.invalid/sub/${Date.now()}`;
+  r = await call(A, "/api/push", { action: "subscribe", sub: { endpoint, keys: { p256dh: "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM", auth: "tBHItJI5svbpez7KI4CCXg" } } });
+  check("subscribe this device", r.status === 200, r.data);
+  check("device counted", (await call(A, "/api/push")).data.devices === 1);
+  check("reject non-https endpoints", (await call(A, "/api/push", { action: "subscribe", sub: { endpoint: "http://evil.test/x", keys: { p256dh: "x", auth: "y" } } })).status === 400);
+  check("unsubscribe", (await call(A, "/api/push", { action: "unsubscribe", endpoint })).status === 200 && (await call(A, "/api/push")).data.devices === 0);
+}
+check("service worker served with a version", /const VERSION = "/.test(await (await fetch(BASE + "/sw.js")).text()));
+check("manifest has installable icons", ((await (await fetch(BASE + "/manifest.webmanifest")).json()).icons ?? []).some((i: { sizes: string; purpose?: string }) => i.sizes === "512x512" && i.purpose === "maskable"));
+
 // ---------------------------------------------------------------- play from home
 const H: Client = { cookie: "" };
 await call(H, "/api/auth/guest", {});

@@ -12,6 +12,7 @@ const KEY = "sq_muted";
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
+let out: AudioNode | null = null;
 let muted = false;
 const listeners = new Set<(m: boolean) => void>();
 
@@ -37,6 +38,7 @@ function audio() {
     // A gentle compressor keeps explosions from clipping on phone speakers.
     const comp = ctx.createDynamicsCompressor();
     master.connect(comp).connect(ctx.destination);
+    out = comp;
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -45,6 +47,11 @@ function audio() {
 }
 
 export const isMuted = () => muted;
+/** Shared audio graph for the background music (same context, own volume). */
+export function audioOut() {
+  const a = audio();
+  return a && out ? { ctx: a, out } : null;
+}
 export function setMuted(m: boolean) {
   muted = m;
   try {

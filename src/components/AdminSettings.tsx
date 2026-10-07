@@ -16,6 +16,8 @@ export type AdminConfig = {
 };
 export type AdminRevenue = {
   stripe: boolean;
+  push: boolean;
+  pushDevices: number;
   last30: { cents: number; gems: number; count: number };
   allTime: { cents: number; count: number };
   ads7: number;
@@ -141,12 +143,25 @@ function ListEditor({ k, rows, metrics, onChange }: { k: string; rows: Record<st
 }
 
 // ---------------------------------------------------------------- settings tab
+const GROUP_ICON: Record<string, string> = { "Players & map": "🗺️", "Play from home": "🛋️", "Rewards & economy": "🪙", "Base & army": "🏰", Territory: "🚩", "Street combat": "🔫", "GPS games & story": "🧭", Goals: "🏆", "Store & ads": "💎" };
+const GROUP_DESC: Record<string, string> = {
+  "Players & map": "How close players must be, how much spawns, how far they see.",
+  "Play from home": "Players who don't walk: on/off, their reward cut and travel speed.",
+  "Rewards & economy": "XP, coins and gems the game hands out.",
+  "Base & army": "Costs and timers for buildings, troops and research.",
+  Territory: "Outposts and king-of-the-hill flags.",
+  "Street combat": "Player health and shooting on the street.",
+  "GPS games & story": "Treasure hunt, sprint, rally and story missions.",
+  Goals: "Weekly world and faction goals, and personal milestones.",
+  "Store & ads": "Gem packs, gem offers, boosts and sponsor ads.",
+};
 export function SettingsTab({ config, post }: { config: AdminConfig; post: Post }) {
   const [draft, setDraft] = useState<Record<string, unknown>>(() => clone(config.values));
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState(false);
   const defs = config.defs.filter((d) => d.key !== "catalog");
   const groups = [...new Set(defs.map((d) => d.group))];
+  const [group, setGroup] = useState(groups[0]);
   const dirty = defs.filter((d) => !same(draft[d.key], config.values[d.key])).length;
   const overridden = (d: Def) => !same(draft[d.key], d.def);
   const shown = (d: Def) => !q || `${d.label} ${d.help} ${d.key}`.toLowerCase().includes(q.toLowerCase());
@@ -167,43 +182,62 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
     <>
       <div className="settings-bar">
         <input placeholder="🔎 Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="grow small muted">{dirty ? `${dirty} unsaved change${dirty > 1 ? "s" : ""}` : "All saved · changes go live within ~15 s"}</span>
+        <span className={`grow small ${dirty ? "unsaved-note" : "muted"}`}>{dirty ? `● ${dirty} unsaved change${dirty > 1 ? "s" : ""}` : "✓ All saved · changes go live within ~15 s"}</span>
         <button className="btn ghost small" disabled={!dirty} onClick={() => setDraft(clone(config.values))}>Discard</button>
         <button className="btn small" disabled={!dirty || saving} onClick={save}>{saving ? "Saving…" : "💾 Save & apply"}</button>
       </div>
-      {groups.map((g) => {
-        const list = defs.filter((d) => d.group === g && shown(d));
-        if (!list.length) return null;
-        return (
-          <details key={g} className="card settings-group" open={!!q || g === "Players & map"}>
-            <summary><b>{g}</b> <span className="small muted">· {list.length} settings{list.some(overridden) ? ` · ${list.filter(overridden).length} changed from default` : ""}</span></summary>
-            {g === "Goals" && (
-              <p className="small muted">Goal metrics: {Object.entries(config.metrics).map(([k, v]) => `${v} (${k})`).join(" · ")}</p>
-            )}
-            {list.map((d) => (
-              <div key={d.key} className={`setting ${d.type === "json" ? "wide" : ""} ${overridden(d) ? "changed" : ""}`}>
-                <div className="grow">
-                  <b>{d.label}</b>
-                  {d.help && <div className="small muted">{d.help}</div>}
-                  {d.type !== "json" && overridden(d) && <div className="small" style={{ color: "var(--yellow)" }}>Default: {String(d.def)}</div>}
+      <div className="settings-layout">
+        <nav className="settings-cats">
+          {groups.map((g) => {
+            const changed = defs.filter((d) => d.group === g && overridden(d)).length;
+            const unsaved = defs.filter((d) => d.group === g && !same(draft[d.key], config.values[d.key])).length;
+            return (
+              <button key={g} className={`cat ${!q && group === g ? "on" : ""}`} onClick={() => (setQ(""), setGroup(g))}>
+                <span>{GROUP_ICON[g] ?? "•"}</span>
+                <span className="grow">{g}</span>
+                {unsaved > 0 ? <i className="cat-dot unsaved" title="Unsaved changes" /> : changed > 0 ? <i className="cat-dot" title={`${changed} changed from default`} /> : null}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="settings-list">
+          {q && <p className="small muted">Results for “{q}” in all categories</p>}
+          {groups.map((g) => {
+            const list = defs.filter((d) => (q ? shown(d) : d.group === group) && d.group === g);
+            if (!list.length) return null;
+            return (
+              <div key={g} className="card settings-group">
+                <div className="settings-group-head">
+                  <b>{GROUP_ICON[g]} {g}</b>
+                  {GROUP_DESC[g] && <span className="small muted">{GROUP_DESC[g]}</span>}
                 </div>
-                <div className="setting-input">
-                  {d.type === "number" && <input type="number" value={Number(draft[d.key])} min={d.min} max={d.max} step={d.step ?? 1} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.value === "" ? 0 : Number(e.target.value) })} />}
-                  {d.type === "bool" && (
-                    <label className="switch">
-                      <input type="checkbox" checked={!!draft[d.key]} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.checked })} />
-                      <span>{draft[d.key] ? "On" : "Off"}</span>
-                    </label>
-                  )}
-                  {d.type === "text" && <input value={String(draft[d.key] ?? "")} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.value })} />}
-                  {overridden(d) && <button className="btn ghost small" title="Back to default" onClick={() => setDraft({ ...draft, [d.key]: clone(d.def) })}>↺</button>}
-                </div>
-                {d.type === "json" && <ListEditor k={d.key} rows={(draft[d.key] as Record<string, unknown>[]) ?? []} metrics={config.metrics} onChange={(rows) => setDraft({ ...draft, [d.key]: rows })} />}
+                {g === "Goals" && <p className="small muted">Things a goal can count: {Object.values(config.metrics).join(" · ")}</p>}
+                {list.map((d) => (
+                  <div key={d.key} className={`setting ${d.type === "json" ? "wide" : ""} ${overridden(d) ? "changed" : ""}`}>
+                    <div className="grow">
+                      <b>{d.label}</b>
+                      {d.help && <div className="small muted">{d.help}</div>}
+                      {d.type !== "json" && overridden(d) && <div className="small" style={{ color: "var(--yellow)" }}>Changed · default is {String(d.def)}</div>}
+                    </div>
+                    <div className="setting-input">
+                      {d.type === "number" && <input type="number" value={Number(draft[d.key])} min={d.min} max={d.max} step={d.step ?? 1} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.value === "" ? 0 : Number(e.target.value) })} />}
+                      {d.type === "bool" && (
+                        <button className={`toggle ${draft[d.key] ? "on" : ""}`} onClick={() => setDraft({ ...draft, [d.key]: !draft[d.key] })} aria-pressed={!!draft[d.key]}>
+                          <i />
+                          <span>{draft[d.key] ? "On" : "Off"}</span>
+                        </button>
+                      )}
+                      {d.type === "text" && <input value={String(draft[d.key] ?? "")} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.value })} />}
+                      {overridden(d) && <button className="btn ghost small" title="Back to default" onClick={() => setDraft({ ...draft, [d.key]: clone(d.def) })}>↺</button>}
+                    </div>
+                    {d.type === "json" && <ListEditor k={d.key} rows={(draft[d.key] as Record<string, unknown>[]) ?? []} metrics={config.metrics} onChange={(rows) => setDraft({ ...draft, [d.key]: rows })} />}
+                  </div>
+                ))}
               </div>
-            ))}
-          </details>
-        );
-      })}
+            );
+          })}
+        </div>
+      </div>
       <button
         className="btn ghost small"
         style={{ marginTop: 10 }}

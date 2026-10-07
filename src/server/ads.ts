@@ -11,6 +11,7 @@ export const HOUSE_AD: AdCreative = {
   sponsor: "StreetQuest",
   title: "Bring your crew",
   body: "Invite a friend with your link from Hero → Profile — you both get bonus coins when they join.",
+  videoUrl: "/media/streetquest-ad.mp4",
 };
 
 const dayStart = () => {

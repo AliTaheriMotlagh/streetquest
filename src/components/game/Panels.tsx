@@ -11,7 +11,9 @@ import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
 import { askConfirm } from "@/components/Dialogs";
 import { CAPTURE_SECONDS, FLAG_COST, FLAG_INCOME_HOUR } from "@/lib/flags";
 import { resizePhoto } from "./photo";
-import { sfx } from "./sfx";
+import { isMuted, onMuteChange, setMuted, sfx } from "./sfx";
+import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
+import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalone, onPwaChange, promptInstall, pushSupported } from "@/components/pwaClient";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -53,7 +55,7 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
   }[world.phase];
 
   return (
-    <Sheet title="Nearby" onClose={onClose} peek={peek}>
+    <Sheet title="Nearby" onClose={onClose} peek={peek} help="nearby">
       {phaseInfo && <div className="card small">{phaseInfo}</div>}
       <Tabs value={tab} onChange={setTab} tabs={[["spawns", `Spawns (${spawns.length})`], ["notes", `Posts (${world?.notes.length ?? 0})`], ["flags", `🚩 Flags (${world?.flags.length ?? 0})`]]} />
       {tab === "spawns" &&
@@ -277,7 +279,7 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
   const STATUS: Record<string, string> = { OPEN: "🟡 Waiting for courier", ACCEPTED: "🔵 Courier on the way", PICKED_UP: "🟣 In transit", DELIVERED: "✅ Delivered", CANCELLED: "⚫ Cancelled" };
 
   return (
-    <Sheet title="Courier Jobs" onClose={onClose} peek={peek}>
+    <Sheet title="Courier Jobs" onClose={onClose} peek={peek} help="jobs">
       <Tabs
         value={tab}
         onChange={setTab}
@@ -530,7 +532,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
   const active = chat ?? rooms[0];
 
   return (
-    <Sheet title="Crew" onClose={onClose} peek={peek}>
+    <Sheet title="Crew" onClose={onClose} peek={peek} help="crew">
       <Tabs value={tab} onChange={setTab} tabs={[["friends", `Friends${data.incoming.length ? ` (${data.incoming.length})` : ""}`], ["chat", "Chat"], ["ranks", "Ranks"], ["wanted", "💀 Wanted"]]} />
 
       {tab === "wanted" && (
@@ -711,7 +713,7 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
   };
 
   return (
-    <Sheet title="Events" onClose={onClose} peek={peek}>
+    <Sheet title="Events" onClose={onClose} peek={peek} help="events">
       <Tabs value={tab} onChange={setTab} tabs={[["nearby", "Nearby"], ["mine", `My events (${mine.length})`], ["new", "+ Create"]]} />
       {tab === "nearby" && (world?.events.length ? world.events.map((e) => <Card key={e.id} e={e} />) : <div className="empty">No events within 8 km. Start one!</div>)}
       {tab === "mine" && (mine.length ? mine.map((e) => <Card key={e.id} e={e} />) : <div className="empty">You haven&apos;t joined any events.</div>)}
@@ -755,12 +757,12 @@ const AVATARS = ["🕶️", "😎", "🦊", "🐺", "🐯", "🤖", "👽", "�
 
 export type HeroTabId = "hero" | "gear" | "quests" | "powers" | "life" | "bag" | "awards" | "stats";
 export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: () => void; peek: boolean; initialTab?: HeroTabId }) {
-  const { me, act, refresh, setHomeMode } = useGame();
+  const { me, act, refresh, setHomeMode, startTour } = useGame();
   const [tab, setTab] = useState<HeroTabId>(initialTab);
   const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
 
   return (
-    <Sheet title="Hero" onClose={onClose} peek={peek}>
+    <Sheet title="Hero" onClose={onClose} peek={peek} help="hero">
       {tab !== "hero" && <div className="row" style={{ marginBottom: 12 }}>
         <div className="avatar" style={{ width: 64, height: 64, fontSize: 36 }}>
           {me.avatar}
@@ -821,6 +823,12 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
             </button>
           </div>
           <p className="small muted">The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.</p>
+          <AppSettings />
+          <SoundSettings />
+          <div className="row wrap" style={{ marginTop: 8 }}>
+            <button className="btn cyan small" onClick={startTour}>📖 Replay tutorial</button>
+            <button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 Show all tips again</button>
+          </div>
           <div className="grid3">
             <div className="stat"><b>{me.coins.toLocaleString()}</b><span>Coins</span></div>
             <div className="stat"><b>🔥 {me.streak}</b><span>Streak</span></div>
@@ -979,6 +987,98 @@ function BagTab() {
           <button className="btn yellow" disabled={!count} onClick={() => sellNow(chosen)}>💰 Sell selected</button>
         </div>
       )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- sound & music
+function SoundSettings() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const a = onMusicChange(() => force((n) => n + 1));
+    const b = onMuteChange(() => force((n) => n + 1));
+    return () => {
+      a();
+      b();
+    };
+  }, []);
+  return (
+    <>
+      <label>Sound</label>
+      <div className="card sound-card">
+        <div className="row">
+          <span className="grow">🔊 Sound effects &amp; music</span>
+          <button className={`btn small ${isMuted() ? "ghost" : "green"}`} onClick={() => setMuted(!isMuted())}>{isMuted() ? "Off" : "On"}</button>
+        </div>
+        <div className="row">
+          <span className="grow">🎵 Background music</span>
+          <button className={`btn small ${musicOn() ? "green" : "ghost"}`} disabled={isMuted()} onClick={() => setMusicOn(!musicOn())}>{musicOn() ? "On" : "Off"}</button>
+        </div>
+        <div className="row">
+          <span className="small muted" style={{ width: 70 }}>Volume</span>
+          <input type="range" min={0} max={1} step={0.05} value={musicVolume()} disabled={isMuted() || !musicOn()} onChange={(e) => setMusicVolume(Number(e.target.value))} className="grow" aria-label="Music volume" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- app install + notifications
+function AppSettings() {
+  const { act, toast } = useGame();
+  const [, force] = useState(0);
+  const [push, setPush] = useState<"unknown" | "on" | "off" | "blocked" | "unsupported">("unknown");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => onPwaChange(() => force((n) => n + 1)), []);
+  useEffect(() => {
+    if (!pushSupported()) return setPush("unsupported");
+    if (Notification.permission === "denied") return setPush("blocked");
+    currentPushSub().then((s) => setPush(s ? "on" : "off")).catch(() => setPush("off"));
+  }, []);
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (push === "on") {
+        await disablePush();
+        setPush("off");
+        toast({ title: "🔕 Notifications off for this device" });
+      } else {
+        await enablePush();
+        setPush("on");
+        toast({ kind: "reward", title: "🔔 Notifications on", body: "We'll tell you about raids, rewards and your crew." });
+      }
+    } catch (e) {
+      toast({ kind: "error", title: (e as Error).message });
+      if (typeof Notification !== "undefined" && Notification.permission === "denied") setPush("blocked");
+    }
+    setBusy(false);
+  };
+  return (
+    <>
+      <label>App</label>
+      <div className="card sound-card">
+        <div className="row">
+          <span className="grow">📲 Install on this phone<div className="small muted">Full screen, home-screen icon, works offline</div></span>
+          {isStandalone() ? (
+            <span className="tag" style={{ color: "var(--green)" }}>Installed ✓</span>
+          ) : canInstall() ? (
+            <button className="btn green small" onClick={() => promptInstall()}>Install</button>
+          ) : isIos() ? (
+            <span className="small muted" style={{ maxWidth: 150, textAlign: "right" }}>Safari: Share ⬆️ → Add to Home Screen</span>
+          ) : (
+            <span className="small muted" style={{ maxWidth: 150, textAlign: "right" }}>Browser menu → Install app</span>
+          )}
+        </div>
+        <div className="row">
+          <span className="grow">🔔 Notifications<div className="small muted">{push === "blocked" ? "Blocked — allow them in your browser's site settings" : push === "unsupported" ? (isIos() ? "Install the app first (iOS 16.4+)" : "Not supported in this browser") : "Raids on your base, rewards, crew messages"}</div></span>
+          {push === "on" || push === "off" ? (
+            <button className={`btn small ${push === "on" ? "green" : "ghost"}`} disabled={busy} onClick={toggle}>{push === "on" ? "On" : "Off"}</button>
+          ) : null}
+        </div>
+        {push === "on" && (
+          <button className="btn ghost small" onClick={() => act(() => api("/api/push", { body: { action: "test" } }))}>Send a test notification</button>
+        )}
+      </div>
     </>
   );
 }

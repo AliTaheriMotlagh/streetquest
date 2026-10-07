@@ -97,6 +97,17 @@ function Me({ pos, heading, speed, follow, onDrag }: { pos: LatLng | null; headi
   return null;
 }
 
+/** When a new waypoint appears, zoom out so both you and it are on screen. */
+function FrameTarget({ pos, target }: { pos: LatLng | null; target: LatLng | null }) {
+  const map = useMap();
+  const key = target ? `${target.lat.toFixed(5)},${target.lng.toFixed(5)}` : "";
+  useEffect(() => {
+    if (!pos || !target) return;
+    map.fitBounds(L.latLngBounds([pos.lat, pos.lng], [target.lat, target.lng]), { paddingTopLeft: [40, 110], paddingBottomRight: [80, 260], maxZoom: 17, animate: true });
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
   useMapEvents({ click: (e) => onClick({ lat: e.latlng.lat, lng: e.latlng.lng }) });
   return null;
@@ -137,6 +148,7 @@ function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSe
           maxZoom={19}
         />
         <Me pos={pos} heading={heading} speed={speed} follow={follow} onDrag={onUnfollow} />
+        <FrameTarget pos={pos} target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
 
         {world?.events.map((e) => (
@@ -342,15 +354,26 @@ function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSe
         {game?.points && pos && game.next != null && game.points[game.next] && (
           <Polyline positions={[[pos.lat, pos.lng], [game.points[game.next].lat, game.points[game.next].lng]]} pathOptions={{ color: "#ffd23f", dashArray: "8 10", weight: 3 }} />
         )}
+        {/* Story / GPS waypoints: a gold beacon you can't miss, with what to do there */}
         {game?.target && (
           <>
-            <Marker position={[game.target.lat, game.target.lng]} zIndexOffset={1200} icon={icon(`<span class="ring" style="color:#b26bff"></span>📍`, "quest-pt next", 44)} />
-            <Circle center={[game.target.lat, game.target.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#b26bff", weight: 2, fillOpacity: 0.12 }} />
-            {pos && <Polyline positions={[[pos.lat, pos.lng], [game.target.lat, game.target.lng]]} pathOptions={{ color: "#b26bff", dashArray: "8 10", weight: 3 }} />}
+            <Circle center={[game.target.lat, game.target.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#ffd23f", weight: 3, fillOpacity: 0.14 }} />
+            {pos && <Polyline positions={[[pos.lat, pos.lng], [game.target.lat, game.target.lng]]} pathOptions={{ color: "#ffd23f", dashArray: "10 10", weight: 4, opacity: 0.9 }} />}
+            <Marker position={[game.target.lat, game.target.lng]} zIndexOffset={1300} icon={icon(`<span class="beacon"></span><span class="bc-pin">${game.kind === "story" ? "📖" : "📍"}</span><span class="bc-label">${game.kind === "story" ? `GO HERE · ${(game.step ?? 0) + 1}/${game.steps}` : "GO HERE"}</span>`, "story-beacon", 56)} />
+          </>
+        )}
+        {game?.area && (
+          <>
+            <Circle center={[game.area.center.lat, game.area.center.lng]} radius={game.area.radius} pathOptions={{ color: "#ffd23f", weight: 3, fillOpacity: 0.12, dashArray: "8 8" }} />
+            {pos && <Polyline positions={[[pos.lat, pos.lng], [game.area.center.lat, game.area.center.lng]]} pathOptions={{ color: "#ffd23f", dashArray: "10 10", weight: 3, opacity: 0.7 }} />}
+            <Marker position={[game.area.center.lat, game.area.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon"></span><span class="bc-pin">🔍</span><span class="bc-label">SEARCH HERE · ${(game.step ?? 0) + 1}/${game.steps}</span>`, "story-beacon", 56)} />
           </>
         )}
         {game?.hold && game.center && (
-          <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#3dff8f" : "#ff4d4d", weight: 3, fillOpacity: 0.1, dashArray: "6 6" }} />
+          <>
+            <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#3dff8f" : "#ff4d4d", weight: 3, fillOpacity: 0.12, dashArray: "6 6" }} />
+            <Marker position={[game.center.lat, game.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon ${game.hold.inside ? "ok" : ""}"></span><span class="bc-pin">🛡️</span><span class="bc-label">HOLD HERE · ${(game.step ?? 0) + 1}/${game.steps}</span>`, "story-beacon", 56)} />
+          </>
         )}
 
         {/* Play from home: where the commander is travelling to */}

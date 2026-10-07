@@ -17,6 +17,10 @@ import { api, fmtTime, type LatLng, type LobbyView, type Me, type Selected, type
 import { BombDefuse } from "./MiniGames";
 import { NoteCard } from "./Panels";
 import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
+import { setMusicMood, startMusic } from "./music";
+import { InboxPanel } from "./Inbox";
+import { Tour, TOUR_KEY } from "./Help";
+import { enablePush, pushSupported, swEnabled } from "@/components/pwaClient";
 import { askConfirm, askText } from "@/components/Dialogs";
 import { BOUNTY_DAYS, BOUNTY_MAX, BOUNTY_MIN, CAPTURE_SECONDS, FLAG_RADIUS_M } from "@/lib/flags";
 import { SUPER_RANGE_M, SUPERWEAPONS } from "@/lib/superweapons";
@@ -73,6 +77,16 @@ export default function Game() {
   const [picker, setPicker] = useState<{ label: string; cb: (p: LatLng) => void } | null>(null);
   const [chat, setChat] = useState<{ room: string; label: string } | null>(null);
   const [unread, setUnread] = useState(0);
+  const [inbox, setInbox] = useState(0);
+  const [tour, setTour] = useState(false);
+  // Nav badges the player clears by opening the panel: each badge has a signature of
+  // what it's about; once seen, it stays hidden until something new changes it.
+  const [seen, setSeen] = useState<Record<string, string>>({});
+  useEffect(() => {
+    try {
+      setSeen(JSON.parse(localStorage.getItem("sq_seen") ?? "{}"));
+    } catch {}
+  }, []);
   const [announce, setAnnounce] = useState<{ id: string; title: string; body: string; ctaLabel: string | null; ctaUrl: string | null } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [match, setMatch] = useState<string | null>(null);
@@ -207,6 +221,24 @@ export default function Game() {
   useWakeLock(geo.speed > 2 || !!gps.view);
   const driving = geo.speed > 7;
 
+  // First-run tutorial, once the map is up (real GPS or play-from-home).
+  const mapReady = !!geo.pos;
+  useEffect(() => {
+    if (!me || !mapReady) return;
+    try {
+      if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => setTour(true), 1200);
+    } catch {}
+  }, [me?.id, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [askPush, setAskPush] = useState(false);
+  const endTour = useCallback(() => {
+    setTour(false);
+    try {
+      localStorage.setItem(TOUR_KEY, "1");
+      // Then, once, offer notifications (only where they can actually work).
+      if (pushSupported() && swEnabled() && Notification.permission === "default" && !localStorage.getItem("sq_push_asked")) setTimeout(() => setAskPush(true), 1500);
+    } catch {}
+  }, []);
+
   // Back from Stripe Checkout: credit the gems (the webhook may already have).
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("purchase");
@@ -250,6 +282,10 @@ export default function Game() {
     return () => document.removeEventListener("pointerdown", onDown);
   }, []);
 
+  // Background music: day/night mood, silent during first-person fights.
+  useEffect(() => startMusic(), []);
+  useEffect(() => setMusicMood(match ? "off" : world?.phase === "night" || world?.phase === "dusk" ? "night" : "day"), [match, world?.phase]);
+
   const [muted, setMutedState] = useState(false);
   useEffect(() => {
     setMutedState(isMuted());
@@ -265,9 +301,10 @@ export default function Game() {
     const tick = async () => {
       if (document.hidden) return;
       try {
-        const r = await api<{ now: number; unread: number; notifications: Toast[] }>(`/api/sync?since=${syncSince.current}`);
+        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[] }>(`/api/sync?since=${syncSince.current}`);
         if (stop) return;
         syncSince.current = r.now;
+        setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
         for (const n of r.notifications) toast(n);
         const titles = r.notifications.map((n) => n.title).join(" ");
         if (/INCOMING/.test(titles)) sfx("siren");
@@ -296,6 +333,13 @@ export default function Game() {
   // Deep links: /play?match=<id> drops straight into a live fight; /play?event=<id> joins an event.
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
+    // Home-screen shortcuts: /play?panel=base|play|me…
+    const want = sp.get("panel");
+    if (want && me && ["nearby", "base", "play", "jobs", "crew", "me", "store", "inbox", "events"].includes(want)) {
+      history.replaceState(null, "", "/play");
+      setPanel(want as PanelId);
+      return;
+    }
     const fight = sp.get("match");
     if (fight && me) {
       history.replaceState(null, "", "/play");
@@ -425,6 +469,11 @@ export default function Game() {
         teleport: simMode ? (p) => setSimPos({ lat: p.lat, lng: p.lng }) : homeMode && homePos ? (p) => setTravel({ lat: p.lat, lng: p.lng }) : null,
         moveIcon: simMode ? "🕹️" : "🛋️",
         setHomeMode,
+        startTour: () => {
+          setPanel(null);
+          setSelected(null);
+          setTour(true);
+        },
         enterMatch: (id) => {
           setSelected(null);
           setPanel(null);
@@ -449,6 +498,34 @@ export default function Game() {
         )}
       </div>
     );
+
+  const nearbyLobbies = world?.spawns.filter((s) => s.lobby && !s.claimed) ?? [];
+  const badges: Partial<Record<PanelId, { n: number | string; sig: string }>> = {
+    nearby: { n: nearbyLobbies.length, sig: nearbyLobbies.map((s) => s.lobby!.id).join(",") },
+    base: !me.base ? { n: "!", sig: "nobase" } : me.baseAlert ? { n: me.baseAlert.supply >= 100 ? "🪙" : "!", sig: `${me.baseAlert.doneAt}|${me.baseAlert.supply >= 100}` } : undefined,
+    play: { n: me.goalsReady || (me.gpsGame ? "▶" : 0), sig: `${me.goalsReady}|${me.gpsGame?.id ?? ""}` },
+    jobs: { n: world?.deliveries.length ?? 0, sig: (world?.deliveries ?? []).map((d) => d.id).sort().join(",") },
+    crew: { n: unread + me.pendingFriends, sig: `${unread}|${me.pendingFriends}` },
+    me: {
+      n: me.questsReady || me.freePoints || me.commandPoints || (me.dailyAvailable || me.mood.score < 30 ? "!" : 0),
+      sig: `${me.questsReady}|${me.freePoints}|${me.commandPoints}|${me.dailyAvailable}|${me.mood.score < 30}|${me.level}`,
+    },
+  };
+  const showBadge = (id: PanelId) => {
+    const b = badges[id];
+    return b && b.n ? (seen[id] === b.sig ? null : b.n) : null;
+  };
+  const openPanel = (id: PanelId) => {
+    setPanel(id);
+    const b = badges[id];
+    if (b) {
+      const next = { ...seen, [id]: b.sig };
+      setSeen(next);
+      try {
+        localStorage.setItem("sq_seen", JSON.stringify(next));
+      } catch {}
+    }
+  };
 
   const run = me.activeRun;
   const runLeft = run ? Math.max(0, Math.round((new Date(run.deadline).getTime() - now) / 1000)) : 0;
@@ -497,7 +574,7 @@ export default function Game() {
               setPanel("me");
             }}
           />
-          <div className="hud-right">
+          <div className="hud-right" data-tour="wallet">
             <div className="chip">🪙 {me.coins.toLocaleString()}</div>
             <HpChip me={me} fire={fire} now={now} />
             <button className="chip small gem-chip" onClick={() => setPanel("store")} title="Gem store">💎 {me.gems} <span className="plus">+</span></button>
@@ -633,6 +710,9 @@ export default function Game() {
 
         {/* Floating buttons */}
         <div className="fab-col">
+          <button className="fab" data-tour="inbox" title="Inbox" aria-label={`Inbox${inbox ? `, ${inbox} new` : ""}`} onClick={() => setPanel("inbox")}>
+            🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? "99+" : inbox}</span>}
+          </button>
           {me.canSimulate && (
             <button className="fab" title={simMode ? "Test mode on — tap to use real GPS" : "Test mode: play without walking"} onClick={toggleSim} style={{ outline: simMode ? "2px solid var(--yellow)" : undefined }}>
               🕹️
@@ -693,7 +773,7 @@ export default function Game() {
         {/* Toasts */}
         <div className="toasts">
           {toasts.map((t) => (
-            <div key={t.id} className={`toast ${t.kind ?? ""}`}>
+            <div key={t.id} className={`toast ${t.kind ?? ""}`} onClick={() => setToasts((ts) => ts.filter((x) => x.id !== t.id))} title="Tap to dismiss">
               <b>{t.title}</b>
               {t.body && <span className="small muted">{t.body}</span>}
             </div>
@@ -719,6 +799,7 @@ export default function Game() {
         {panel === "jobs" && <JobsPanel onClose={close} peek={peek} />}
         {panel === "crew" && <CrewPanel onClose={close} peek={peek} chat={chat} setChat={setChat} />}
         {panel === "events" && <EventsPanel onClose={close} peek={peek} />}
+        {panel === "inbox" && <InboxPanel onClose={close} peek={peek} onRead={() => setInbox(0)} />}
         {panel === "play" && <PlayPanel onClose={close} peek={peek} onStarted={loadMe} />}
         {panel === "store" && <StorePanel onClose={close} peek={peek} onWatch={() => setAdOpen(true)} />}
         {panel === "me" && (
@@ -735,17 +816,16 @@ export default function Game() {
 
         {!panel && !selected && (
           <nav className="nav">
-            {NAV.map(([id, ic, label]) => (
-              <button key={id} onClick={() => setPanel(id)} className={id === "base" && !me.base ? "pulse" : ""}>
-                <span className="ic">{ic}</span>
-                {label}
-                {id === "crew" && unread + me.pendingFriends > 0 && <span className="badge">{unread + me.pendingFriends}</span>}
-                {id === "play" && (me.goalsReady > 0 || !!me.gpsGame) && <span className="badge">{me.goalsReady || "▶"}</span>}
-                {id === "me" && (me.questsReady + me.freePoints + me.commandPoints > 0 || me.dailyAvailable || me.mood.score < 30) && (
-                  <span className="badge">{me.questsReady || me.freePoints || me.commandPoints || "!"}</span>
-                )}
-              </button>
-            ))}
+            {NAV.map(([id, ic, label]) => {
+              const b = showBadge(id);
+              return (
+                <button key={id} data-tour={`nav-${id}`} onClick={() => openPanel(id)} className={id === "base" && !me.base ? "pulse" : ""}>
+                  <span className="ic">{ic}</span>
+                  {label}
+                  {b != null && <span className="badge pop">{b}</span>}
+                </button>
+              );
+            })}
           </nav>
         )}
 
@@ -762,6 +842,29 @@ export default function Game() {
         {lobby && <LobbyModal open={lobby} onClose={() => setLobby(null)} />}
         {adOpen && <AdModal onClose={() => (setAdOpen(false), loadMe())} />}
         <CelebrationLayer />
+        {askPush && (
+          <div className="modal-bg" style={{ zIndex: 2500 }}>
+            <div className="modal">
+              <div style={{ fontSize: 56 }}>🔔</div>
+              <h2>Don&apos;t miss a raid</h2>
+              <p className="muted small" style={{ lineHeight: 1.5 }}>Get a notification when your base is attacked, a reward is waiting or your crew needs you — even when the game is closed. You can turn it off any time in Hero → Profile.</p>
+              <div className="row wrap" style={{ justifyContent: "center" }}>
+                <button className="btn ghost" onClick={() => { setAskPush(false); try { localStorage.setItem("sq_push_asked", "1"); } catch {} }}>Not now</button>
+                <button
+                  className="btn green"
+                  onClick={() => {
+                    setAskPush(false);
+                    try { localStorage.setItem("sq_push_asked", "1"); } catch {}
+                    enablePush().then(() => toast({ kind: "reward", title: "🔔 Notifications on" })).catch((e) => toast({ kind: "error", title: (e as Error).message }));
+                  }}
+                >
+                  Turn on
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tour && <Tour onDone={endTour} onChooseHome={(home) => home !== me.remotePlay && setHomeMode(home)} />}
 
         {c4 && (
           <div className="modal-bg">

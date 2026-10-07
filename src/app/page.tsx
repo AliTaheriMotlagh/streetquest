@@ -97,17 +97,9 @@ export default async function Home() {
               {players.toLocaleString()} players · {events} live & upcoming events · Works in your browser
             </p>
           </div>
-          <div className="phone" aria-hidden>
-            <div className="street" style={{ left: 0, right: 0, top: "30%", height: 18 }} />
-            <div className="street" style={{ left: 0, right: 0, top: "68%", height: 26 }} />
-            <div className="street" style={{ top: 0, bottom: 0, left: "35%", width: 20 }} />
-            <div className="street" style={{ top: 0, bottom: 0, left: "75%", width: 14 }} />
-            <div className="pin" style={{ left: "15%", top: "18%" }}>💎</div>
-            <div className="pin" style={{ left: "60%", top: "40%", animationDelay: ".5s" }}>🧰</div>
-            <div className="pin" style={{ left: "20%", top: "55%", animationDelay: "1s" }}>🏁</div>
-            <div className="pin" style={{ left: "70%", top: "78%", animationDelay: "1.4s" }}>📦</div>
-            <div className="pin" style={{ left: "42%", top: "86%", animationDelay: ".2s" }}>🌙</div>
-            <div className="me-marker" style={{ position: "absolute", left: "45%", top: "58%" }} />
+          <div className="phone">
+            {/* The 15 s gameplay trailer (muted autoplay; tap for sound). */}
+            <video className="phone-video" src="/media/streetquest-ad.mp4" poster="/media/streetquest-ad.jpg" autoPlay muted loop playsInline preload="metadata" aria-label="StreetQuest gameplay trailer" />
           </div>
         </section>
 

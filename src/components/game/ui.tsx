@@ -1,9 +1,10 @@
 "use client";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
 import type { LatLng, Me, World } from "./client";
 
 export type Toast = { id?: number; title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error" };
-export type PanelId = "nearby" | "base" | "jobs" | "crew" | "events" | "me" | "play" | "store";
+export type PanelId = "nearby" | "base" | "jobs" | "crew" | "events" | "me" | "play" | "store" | "inbox";
 
 export type GameCtx = {
   me: Me;
@@ -22,6 +23,8 @@ export type GameCtx = {
   moveIcon: string;
   /** Switch between walking with GPS and playing from home. */
   setHomeMode: (on: boolean) => Promise<boolean>;
+  /** Replay the first-run tutorial. */
+  startTour: () => void;
   /** Drop into a first-person fight. */
   enterMatch: (matchId: string) => void;
 };
@@ -31,18 +34,35 @@ export const useGame = () => useContext(Ctx)!;
 /** The icon on "go there" buttons: 🕹️ test mode, 🛋️ play from home. */
 export const MoveIcon = () => <>{useGame().moveIcon}</>;
 
-export function Sheet({ title, onClose, children, peek, actions }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode }) {
+export function Sheet({ title, onClose, children, peek, actions, help }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string }) {
+  // "How this works" card: shown automatically the first time, then from the ? button.
+  const [showHelp, setShowHelp] = useState(false);
+  useEffect(() => {
+    if (help && HELP[help] && !helpSeen(help)) setShowHelp(true);
+  }, [help]);
+  const closeHelp = () => {
+    if (help) markHelpSeen(help);
+    setShowHelp(false);
+  };
   return (
     <div className={`sheet ${peek ? "peek" : ""}`} role="dialog" aria-label={title}>
       <div className="sheet-grip" />
       <div className="sheet-head">
         <h2>{title}</h2>
         {actions}
+        {help && HELP[help] && (
+          <button className={`close help-btn ${showHelp ? "on" : ""}`} onClick={() => (showHelp ? closeHelp() : setShowHelp(true))} aria-label="How this works" title="How this works">
+            ?
+          </button>
+        )}
         <button className="close" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
-      <div className="sheet-body">{children}</div>
+      <div className="sheet-body">
+        {showHelp && help && <HelpCard k={help} onClose={closeHelp} />}
+        {children}
+      </div>
     </div>
   );
 }
