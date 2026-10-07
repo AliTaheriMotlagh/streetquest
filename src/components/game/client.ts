@@ -85,6 +85,9 @@ export type Me = {
   /** Admin overrides of lib/settings — applied on the client with applyConfig. */
   settings: Record<string, unknown>;
   goalsReady: number;
+  /** Playing from home: tap-to-travel, reduced rewards. */
+  remotePlay: boolean;
+  lastPos: LatLng | null;
   walkedM: number;
   storyChapter: number;
   gpsGame: { id: string; kind: string } | null;
@@ -164,7 +167,7 @@ export type WorldMission = { id: string; title: string; description: string; lat
 export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null; hasPhoto: boolean; likes: number; mine: boolean };
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
 export type WorldDelivery = { id: string; title: string; description: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; reward: number; status: string; sender?: { username: string }; distanceM?: number };
-export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; bounty: number; lat: number; lng: number };
+export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; bounty: number; home?: boolean; lat: number; lng: number };
 export type WorldFlag = { id: string; name: string; lat: number; lng: number; owner: string; ownerAvatar: string; faction: string | null; mine: boolean; friend: boolean; heldSince: number; captures: number; capture: { by: string | null; mine: boolean; endsAt: number } | null; shielded: boolean };
 
 export type WorldBase = {

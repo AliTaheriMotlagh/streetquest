@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { AT_BASE_M, currentNeeds, MESS_HALL_COST, moodOf, NEEDS, REST_COOLDOWN_MS, SOCIAL_COOLDOWN_MS, type Needs } from "@/lib/sims";
 import { api, type Me } from "./client";
-import { useGame } from "./ui";
+import { MoveIcon, useGame } from "./ui";
 
 /** Needs drain live on the client between /api/me refreshes. */
 export function useLiveNeeds(me: Me): Needs {
@@ -88,7 +88,7 @@ export function LifeTab() {
         !atHome &&
         home != null &&
         (teleport ? (
-          <button className="btn yellow small" style={{ marginLeft: 6 }} onClick={() => teleport(me.base!)}>🕹️ Go home</button>
+          <button className="btn yellow small" style={{ marginLeft: 6 }} onClick={() => teleport(me.base!)}><MoveIcon /> Go home</button>
         ) : (
           <span className="small muted"> Home is {formatDistance(home)} away.</span>
         ))

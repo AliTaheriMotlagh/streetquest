@@ -16,6 +16,7 @@ import { maxHpOf } from "@/server/td";
 import { superStatus } from "@/server/superweapons";
 import { settingOverrides } from "@/server/settings";
 import { goalsReady } from "@/server/goals";
+import { S } from "@/lib/settings";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -81,6 +82,8 @@ export const GET = route(async () => {
     downedUntil: u.downedUntil && u.downedUntil.getTime() > Date.now() ? u.downedUntil.getTime() : null,
     rookie: prog.level < ROOKIE_LEVEL,
     settings,
+    remotePlay: u.remotePlay && u.role !== "ADMIN",
+    lastPos: u.lastLat != null && u.lastLng != null ? { lat: u.lastLat, lng: u.lastLng } : null,
     goalsReady: goals,
     walkedM: Math.round(u.walkedM),
     storyChapter: u.storyChapter,
@@ -93,6 +96,7 @@ const Patch = z.object({
   username: z.string().trim().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, "letters, numbers and _ only").optional(),
   avatar: z.string().min(1).max(8).optional(),
   timezone: z.string().max(64).optional(),
+  remotePlay: z.boolean().optional(),
 });
 
 export const PATCH = route(async (req) => {
@@ -104,6 +108,13 @@ export const PATCH = route(async (req) => {
     } catch {
       delete d.timezone;
     }
+  }
+  if (d.remotePlay !== undefined && d.remotePlay !== u.remotePlay) {
+    if (d.remotePlay && !S.remoteEnabled) throw new HttpError(400, "Play from home is switched off right now");
+    const active = await prisma.gpsGame.count({ where: { userId: u.id, status: "ACTIVE", kind: "sprint" } });
+    if (active) throw new HttpError(400, "Finish your sprint first");
+    // Back to GPS: forget the couch position so the next real fix is accepted wherever you are.
+    if (!d.remotePlay) Object.assign(d, { lastLat: null, lastLng: null });
   }
   if (d.username && d.username !== u.username && (await prisma.user.findUnique({ where: { username: d.username } }))) throw new HttpError(409, "That callsign is taken");
   await prisma.user.update({ where: { id: u.id }, data: d });

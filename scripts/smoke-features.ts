@@ -202,6 +202,26 @@ check("GPS wins count toward goals", r.data.personal.find((p: { metric: string }
 r = await call(A, "/api/hero");
 check("hero sheet has a service record", typeof r.data.stats?.walkedM === "number" && r.data.stats.story === 1 && r.data.stats.gpsGames >= 2, r.data.stats);
 
+// ---------------------------------------------------------------- play from home
+const H: Client = { cookie: "" };
+await call(H, "/api/auth/guest", {});
+const hHome = offset(home, 400, 90);
+check("switch to play from home", (await call(H, "/api/me", { remotePlay: true }, "PATCH")).status === 200);
+r = await call(H, "/api/me");
+check("me reports home mode", r.data.remotePlay === true, r.data.remotePlay);
+check("home player picks a start point", (await go(H, hHome)).status === 200);
+await sleep(3200);
+check("home player travels at the capped speed", (await go(H, offset(hHome, 35, 0))).status === 200); // ~39 km/h
+check("home player can't teleport", (await go(H, offset(hHome, 3000, 0))).status === 409);
+const hm = (await call(H, "/api/me")).data;
+r = await call(H, "/api/daily", {});
+const hm2 = (await call(H, "/api/me")).data;
+check("home rewards are reduced (daily coins ×0.5)", r.status === 200 && hm2.coins - hm.coins === Math.round(hm.dailyReward.coins * 0.5), { got: hm2.coins - hm.coins, full: hm.dailyReward.coins });
+check("sprints need real walking", (await call(H, "/api/gpsgame", { action: "start", kind: "sprint" })).status === 400);
+check("switch back to GPS", (await call(H, "/api/me", { remotePlay: false }, "PATCH")).status === 200);
+r = await call(H, "/api/me");
+check("GPS mode forgets the couch position", r.data.remotePlay === false && r.data.lastPos === null, r.data);
+
 // Restore the admin settings this test changed.
 await call(ADMIN, "/api/admin", { action: "saveSettings", data: before });
 r = await call(A, "/api/me");

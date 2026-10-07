@@ -26,7 +26,12 @@ const DEFAULTS = {
   siegeRange: 5000,
   shootRange: 60,
   baseSpacing: 250,
-  testMode: true,
+  testMode: false,
+
+  // ---- play from home
+  remoteEnabled: true,
+  remoteRewardMult: 0.5,
+  remoteSpeedKmh: 40,
 
   // ---- rewards & economy
   xpMult: 1,
@@ -168,7 +173,11 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "siegeRange", group: "Players & map", label: "Army range from base (m)", help: "Armies can siege and march this far from your base.", min: 500, max: 50000 },
   { key: "shootRange", group: "Players & map", label: "Street-combat range (m)", help: "Shoot rival commanders, towers and squads within this distance.", min: 10, max: 500 },
   { key: "baseSpacing", group: "Players & map", label: "Min distance between bases (m)", help: "", min: 0, max: 5000 },
-  { key: "testMode", group: "Players & map", label: "Test mode for everyone", help: "Tap-to-move without GPS. Turn off when the game is live (admins keep it). The TEST_MODE=off env var also turns it off.", },
+  { key: "testMode", group: "Players & map", label: "Test mode for everyone", help: "Instant teleports with full rewards — for testing. Off by default in production (admins always have it; local dev always has it). Players use Play from home instead." },
+
+  { key: "remoteEnabled", group: "Play from home", label: "Play from home on", help: "Players who don't want to walk can play from the couch: they move by tapping the map and travel at a capped speed." },
+  { key: "remoteRewardMult", group: "Play from home", label: "Reward multiplier at home", help: "XP and coins earned from home are multiplied by this (0.5 = half). Walking players always get full rewards.", min: 0, max: 1, step: 0.05 },
+  { key: "remoteSpeedKmh", group: "Play from home", label: "Travel speed at home (km/h)", help: "How fast a home player's commander moves across the map toward where they tapped.", min: 5, max: 1000 },
 
   { key: "xpMult", group: "Rewards & economy", label: "Global XP ×", help: "Multiplies all XP players earn (events, weekends…).", min: 0, max: 20, step: 0.1 },
   { key: "coinMult", group: "Rewards & economy", label: "Global coin ×", help: "Multiplies coins created by the game (not transfers between players or refunds).", min: 0, max: 20, step: 0.1 },

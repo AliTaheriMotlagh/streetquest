@@ -49,6 +49,7 @@ export async function startGame(u: User, kind: GpsGameKind) {
     const wait = finishedAt + S.gpsGameCooldownMin * 60_000 - Date.now();
     if (last && wait > 0) throw new HttpError(429, `Catch your breath — next GPS game in ${Math.ceil(wait / 60_000)} min`);
   } else if (!S.storyEnabled) throw new HttpError(400, "Story missions are switched off");
+  if (kind === "sprint" && u.remotePlay && u.role !== "ADMIN") throw new HttpError(400, "Sprints need real walking — switch to GPS mode to run one");
 
   let data: Data;
   let minutes: number;

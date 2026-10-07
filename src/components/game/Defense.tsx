@@ -6,7 +6,7 @@ import { distanceM, formatDistance } from "@/lib/geo";
 import { UNITS, type Army, type UnitKey } from "@/lib/rts";
 import { maxTowers, PROVOKE_DELAY_MS, squadPos, TOWER_MAX_LEVEL, TOWER_TERRITORY_M, TOWERS, towerCost, towerStats, unitCount, type TowerKey } from "@/lib/td";
 import { api } from "./client";
-import { useGame } from "./ui";
+import { MoveIcon, useGame } from "./ui";
 import { askConfirm } from "@/components/Dialogs";
 
 type TowerRow = { id: string; type: string; level: number; lat: number; lng: number; hp: number; kills: number; readyAt: string };
@@ -132,7 +132,7 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
             <div className="col" style={{ gap: 4 }}>
               {up && left <= 0 && <button className="btn small" onClick={() => doAct("/api/towers", { action: "upgrade", towerId: t.id })}>↑ {up.coins}🪙</button>}
               {t.hp < st.maxHp && <button className="btn ghost small" onClick={() => doAct("/api/towers", { action: "repair", towerId: t.id })}>🔧 {Math.ceil((st.maxHp - t.hp) * 0.4)}</button>}
-              {teleport && d != null && d > 30 && <button className="btn ghost small" onClick={() => teleport(t)}>🕹️</button>}
+              {teleport && d != null && d > 30 && <button className="btn ghost small" onClick={() => teleport(t)}><MoveIcon /></button>}
               <button className="btn ghost small" onClick={() => askConfirm(`Demolish this ${st.def.name}? You get 30% back.`, { ok: "Demolish", danger: true }).then((ok) => ok && doAct("/api/towers", { action: "demolish", towerId: t.id }))}>🏚️</button>
             </div>
           </div>

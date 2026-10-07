@@ -66,7 +66,7 @@ export const GET = route(async (req) => {
     friendIds(u.id),
     prisma.user.findMany({
       where: { id: { not: u.id }, banned: false, lastSeenAt: { gt: onlineSince() }, lastLat: { gte: wide.minLat, lte: wide.maxLat }, lastLng: { gte: wide.minLng, lte: wide.maxLng } },
-      select: { id: true, username: true, avatar: true, xp: true, lastLat: true, lastLng: true },
+      select: { id: true, username: true, avatar: true, xp: true, lastLat: true, lastLng: true, remotePlay: true },
       take: 200,
     }),
     prisma.base.findMany({
@@ -132,7 +132,7 @@ export const GET = route(async (req) => {
       // Strangers are shown with ~150m of fuzz for privacy.
       const fuzz = friend ? 0 : 0.0013;
       const r = (s: string) => ((parseInt(s.slice(-4), 36) % 1000) / 1000 - 0.5) * 2 * fuzz;
-      return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, bounty: wanted.get(x.id) ?? 0, lat: x.lat + r(x.id), lng: x.lng + r(x.id + "x") };
+      return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, bounty: wanted.get(x.id) ?? 0, home: x.remotePlay, lat: x.lat + r(x.id), lng: x.lng + r(x.id + "x") };
     });
 
   return {

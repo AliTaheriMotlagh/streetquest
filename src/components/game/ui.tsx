@@ -16,14 +16,20 @@ export type GameCtx = {
   pick: (label: string, cb: (p: LatLng) => void) => void;
   openChat: (room: string, label: string) => void;
   setPanel: (p: PanelId | null) => void;
-  /** Test mode only: jump straight to a spot instead of walking there. */
+  /** Test mode: jump straight to a spot. Play from home: travel there at the capped speed. */
   teleport: ((p: LatLng) => void) | null;
+  /** 🕹️ in test mode, 🛋️ when playing from home. */
+  moveIcon: string;
+  /** Switch between walking with GPS and playing from home. */
+  setHomeMode: (on: boolean) => Promise<boolean>;
   /** Drop into a first-person fight. */
   enterMatch: (matchId: string) => void;
 };
 
 export const Ctx = createContext<GameCtx | null>(null);
 export const useGame = () => useContext(Ctx)!;
+/** The icon on "go there" buttons: 🕹️ test mode, 🛋️ play from home. */
+export const MoveIcon = () => <>{useGame().moveIcon}</>;
 
 export function Sheet({ title, onClose, children, peek, actions }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode }) {
   return (

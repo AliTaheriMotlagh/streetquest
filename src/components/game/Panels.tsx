@@ -5,7 +5,7 @@ import { S } from "@/lib/settings";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote } from "./client";
-import { Sheet, Tabs, useGame } from "./ui";
+import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { LifeTab } from "./Life";
 import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
 import { askConfirm } from "@/components/Dialogs";
@@ -222,7 +222,7 @@ type MyDeliveries = {
 function GoTo({ lat, lng, label = "navigate" }: { lat: number; lng: number; label?: string }) {
   const { teleport } = useGame();
   return teleport ? (
-    <a href="#" onClick={(e) => (e.preventDefault(), teleport({ lat, lng }))}>🕹️ teleport</a>
+    <a href="#" onClick={(e) => (e.preventDefault(), teleport({ lat, lng }))}><MoveIcon /> go</a>
   ) : (
     <a href={navUrl(lat, lng)} target="_blank" rel="noreferrer">{label}</a>
   );
@@ -755,7 +755,7 @@ const AVATARS = ["🕶️", "😎", "🦊", "🐺", "🐯", "🤖", "👽", "�
 
 export type HeroTabId = "hero" | "gear" | "quests" | "powers" | "life" | "bag" | "awards" | "stats";
 export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: () => void; peek: boolean; initialTab?: HeroTabId }) {
-  const { me, act, refresh } = useGame();
+  const { me, act, refresh, setHomeMode } = useGame();
   const [tab, setTab] = useState<HeroTabId>(initialTab);
   const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
 
@@ -805,6 +805,22 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
 
       {tab === "stats" && (
         <>
+          <label>Play mode</label>
+          <div className="mode-pick">
+            <button className={`mode ${!me.remotePlay ? "on" : ""}`} onClick={() => me.remotePlay && setHomeMode(false)}>
+              <span className="mode-ic">🚶</span>
+              <b>Walk with GPS</b>
+              <span className="small muted">Move in the real world. Full rewards.</span>
+              <span className="mode-tag">100%</span>
+            </button>
+            <button className={`mode ${me.remotePlay ? "on" : ""}`} disabled={!S.remoteEnabled && !me.remotePlay} onClick={() => !me.remotePlay && setHomeMode(true)}>
+              <span className="mode-ic">🛋️</span>
+              <b>Play from home</b>
+              <span className="small muted">Tap the map, your commander travels there at {S.remoteSpeedKmh} km/h. No walking.</span>
+              <span className="mode-tag">{Math.round(S.remoteRewardMult * 100)}%</span>
+            </button>
+          </div>
+          <p className="small muted">The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.</p>
           <div className="grid3">
             <div className="stat"><b>{me.coins.toLocaleString()}</b><span>Coins</span></div>
             <div className="stat"><b>🔥 {me.streak}</b><span>Streak</span></div>

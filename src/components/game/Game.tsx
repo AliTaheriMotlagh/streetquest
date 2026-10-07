@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { applyConfig } from "@/lib/config";
+import { S } from "@/lib/settings";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BREACH_RANGE_M, FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
@@ -23,7 +24,7 @@ import { LobbyModal } from "./Lobby";
 import { useLiveWaves } from "./waves";
 import { creepPos, PINGS, SHOOT_RANGE_M, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
-import { Ctx, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
+import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { useLocation, useWakeLock, type FireReport, type GeoError } from "./useLocation";
 import { AdModal, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 
@@ -48,13 +49,17 @@ export default function Game() {
   const [world, setWorld] = useState<World | null>(null);
   const [simPos, setSimPos] = useState<LatLng | null>(null);
   const [simMode, setSimMode] = useState(false);
+  // Play from home: the commander travels toward where you tap, at a capped speed.
+  const [homePos, setHomePos] = useState<LatLng | null>(null);
+  const [travel, setTravel] = useState<LatLng | null>(null);
+  const homeMode = !!me?.remotePlay && !simMode;
   const [fire, setFire] = useState<(FireReport & { at: number }) | null>(null);
   const [shake, setShake] = useState(0);
   const quake = useCallback(() => {
     setShake(Date.now());
     setTimeout(() => setShake(0), 650);
   }, []);
-  const geo = useLocation(simPos, (f) => setFire({ ...f, at: Date.now() }));
+  const geo = useLocation(simMode ? simPos : homeMode ? homePos : null, (f) => setFire({ ...f, at: Date.now() }));
   const pos = geo.pos;
   const [follow, setFollow] = useState(true);
   const [panel, setPanel] = useState<PanelId | null>(null);
@@ -319,6 +324,7 @@ export default function Game() {
       return;
     }
     if (simMode) setSimPos(p);
+    else if (homeMode && homePos) setTravel(p);
   };
   // Stable handlers so the (memoized) map doesn't re-render on every 1 s HUD tick.
   const mapClickRef = useRef(onMapClick);
@@ -347,6 +353,45 @@ export default function Game() {
       else if (!simMode) localStorage.removeItem(TEST_MODE_KEY);
     } catch {}
   }, [simMode, simPos]);
+
+  // Home mode: start where the server last saw you (or your real GPS), else let the player pick.
+  useEffect(() => {
+    if (!homeMode || homePos) return;
+    const start = me?.lastPos ?? geo.pos;
+    if (start) setHomePos(start);
+    else setPicker({ label: "🛋️ Tap where your commander starts", cb: (p) => setHomePos(p) });
+  }, [homeMode, me?.lastPos?.lat, geo.pos?.lat]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!homeMode) {
+      setHomePos(null);
+      setTravel(null);
+    }
+  }, [homeMode]);
+  const homeRef = useRef(homePos);
+  homeRef.current = homePos;
+  useEffect(() => {
+    if (!homeMode || !travel) return;
+    const t = setInterval(() => {
+      const cur = homeRef.current;
+      if (!cur) return;
+      const d = distanceM(cur, travel);
+      const step = S.remoteSpeedKmh / 3.6; // metres per 1 s tick
+      if (d <= step) {
+        setHomePos(travel);
+        setTravel(null);
+      } else setHomePos({ lat: cur.lat + ((travel.lat - cur.lat) * step) / d, lng: cur.lng + ((travel.lng - cur.lng) * step) / d });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [homeMode, travel]);
+  const setHomeMode = useCallback(
+    (on: boolean) =>
+      act(() =>
+        api("/api/me", { method: "PATCH", body: { remotePlay: on } }).then(() => ({
+          message: on ? `🛋️ Playing from home — tap the map to travel (rewards ×${S.remoteRewardMult})` : "🚶 Back to GPS — full rewards for walking",
+        })),
+      ),
+    [act],
+  );
 
   const toggleSim = () => {
     if (simMode) {
@@ -377,14 +422,16 @@ export default function Game() {
           setPanel("crew");
         },
         setPanel,
-        teleport: simMode ? (p) => setSimPos({ lat: p.lat, lng: p.lng }) : null,
+        teleport: simMode ? (p) => setSimPos({ lat: p.lat, lng: p.lng }) : homeMode && homePos ? (p) => setTravel({ lat: p.lat, lng: p.lng }) : null,
+        moveIcon: simMode ? "🕹️" : "🛋️",
+        setHomeMode,
         enterMatch: (id) => {
           setSelected(null);
           setPanel(null);
           setMatch(id);
         },
       },
-    [me, pos, world, toast, act, refresh, simMode],
+    [me, pos, world, toast, act, refresh, simMode, homeMode, !!homePos, setHomeMode], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (!me || !ctx)
@@ -419,6 +466,7 @@ export default function Game() {
           follow={follow}
           picking={!!picker}
           runners={runners}
+          travelTo={homeMode ? travel : null}
           heading={geo.heading}
           speed={geo.speed}
           game={gps.view}
@@ -461,7 +509,12 @@ export default function Game() {
                 {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>2× XP</span>}
               </div>
             )}
-            {geo.simulated && (
+            {homeMode && (
+              <button className="chip small home-chip" onClick={() => (setMeTab("stats"), setPanel("me"))} title="Playing from home — tap to switch back to GPS">
+                🛋️ <span className="hide-sm">HOME</span> ×{S.remoteRewardMult}
+              </button>
+            )}
+            {geo.simulated && !homeMode && (
               <button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title="Turn test mode off">
                 🕹️ <span className="hide-sm">TEST MODE</span><span className="show-sm">TEST</span>
               </button>
@@ -469,7 +522,7 @@ export default function Game() {
           </div>
         </div>
 
-        {me.quest && !run && !picker && !panel && (
+        {me.quest && !run && !picker && !panel && !(homeMode && travel) && (
           <button
             className={`quest-hud ${me.quest.done ? "done" : ""}`}
             onClick={() => {
@@ -504,6 +557,9 @@ export default function Game() {
             <div className={`t ${runLeft < 30 ? "low" : ""}`}>
               {Math.floor(runLeft / 60)}:{String(runLeft % 60).padStart(2, "0")}
             </div>
+            {homeMode && !atRunTarget && runLeft > 0 && (
+              <button className="btn green small" onClick={() => setTravel({ lat: run.targetLat, lng: run.targetLng })}>🛋️ Go</button>
+            )}
             {simMode && !atRunTarget && runLeft > 0 && (
               <button className="btn yellow small" onClick={() => setSimPos({ lat: run.targetLat, lng: run.targetLng })}>
                 🕹️ Jump
@@ -547,7 +603,7 @@ export default function Game() {
             dist={pos ? distanceM(pos, { lat: myWave.w.baseLat, lng: myWave.w.baseLng }) : Infinity}
             striking={strike === myWave.w.id}
             onStrike={() => setStrike(strike ? null : myWave.w.id)}
-            onGo={simMode ? () => setSimPos({ lat: myWave.w.baseLat, lng: myWave.w.baseLng }) : undefined}
+            onGo={simMode ? () => setSimPos({ lat: myWave.w.baseLat, lng: myWave.w.baseLng }) : homeMode ? () => setTravel({ lat: myWave.w.baseLat, lng: myWave.w.baseLng }) : undefined}
           />
         )}
 
@@ -565,7 +621,15 @@ export default function Game() {
           </div>
         )}
 
-        {!pos && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} />}
+        {!pos && !homeMode && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} onHome={S.remoteEnabled ? () => setHomeMode(true) : undefined} />}
+
+        {homeMode && travel && pos && !picker && (
+          <div className="travel-banner">
+            🛋️ <b>Travelling</b>
+            <span className="small">{formatDistance(distanceM(pos, travel))} · {Math.ceil(distanceM(pos, travel) / (S.remoteSpeedKmh / 3.6) / 60)} min</span>
+            <button className="btn ghost small" onClick={() => setTravel(null)}>Stop</button>
+          </div>
+        )}
 
         {/* Floating buttons */}
         <div className="fab-col">
@@ -755,7 +819,7 @@ const GEO_HELP: Record<GeoError, { title: string; body: React.ReactNode }> = {
   timeout: { title: "GPS is taking a while", body: "Still searching for satellites. Moving outdoors or near a window usually helps." },
 };
 
-function LocationGate({ error, onRetry, onSimulate }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void }) {
+function LocationGate({ error, onRetry, onSimulate, onHome }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void; onHome?: () => void }) {
   const help = error ? GEO_HELP[error] : null;
   return (
     <div className="modal-bg" style={{ zIndex: 900 }}>
@@ -771,12 +835,18 @@ function LocationGate({ error, onRetry, onSimulate }: { error: GeoError | null; 
               Retry
             </button>
           )}
+          {onHome && (
+            <button className="btn green" onClick={onHome}>
+              🛋️ Play from home
+            </button>
+          )}
           {onSimulate && (
             <button className="btn yellow" onClick={onSimulate}>
               🕹️ Test mode — no GPS
             </button>
           )}
         </div>
+        {onHome && <p className="small muted" style={{ marginTop: 10 }}>Don&apos;t want to walk? Play from home: tap the map and your commander travels there. You earn {Math.round(S.remoteRewardMult * 100)}% of the usual XP and coins — walking always pays more.</p>}
         {onSimulate && <p className="small muted" style={{ marginTop: 10 }}>Test mode: no walking needed — tap the map to move anywhere. Switch it off any time with 🕹️.</p>}
       </div>
     </div>
@@ -802,7 +872,7 @@ function InfoCard({
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
-    <button className="btn yellow block" onClick={() => teleport(target)}>🕹️ Teleport here · {formatDistance(dist)}</button>
+    <button className="btn yellow block" onClick={() => teleport(target)}><MoveIcon /> Go here · {formatDistance(dist)}</button>
   ) : (
     <div className="row">
       <button className="btn grow" disabled>Get closer · {formatDistance(dist)}</button>
@@ -811,7 +881,7 @@ function InfoCard({
   );
   // Bases and bosses can be fought from up to BREACH_RANGE_M away.
   const jump = teleport && dist > BREACH_RANGE_M && (
-    <button className="btn yellow" onClick={() => teleport(target)}>🕹️ Teleport next to it</button>
+    <button className="btn yellow" onClick={() => teleport(target)}><MoveIcon /> Go next to it</button>
   );
   const startMatch = async (kind: "breach" | "raid", targetId: string) => {
     let id = "";
@@ -921,7 +991,7 @@ function InfoCard({
     return (
       <Sheet title={sel.data.hasPhoto ? "📸 Photo at this spot" : "💬 Post at this spot"} onClose={onClose}>
         <NoteCard n={sel.data} dist={dist} />
-        {!sel.data.unlocked && teleport && <button className="btn yellow block" onClick={() => teleport(sel.data)}>🕹️ Teleport here</button>}
+        {!sel.data.unlocked && teleport && <button className="btn yellow block" onClick={() => teleport(sel.data)}><MoveIcon /> Go here</button>}
       </Sheet>
     );
   }
@@ -975,7 +1045,7 @@ function InfoCard({
         {b.mine || b.friend ? (
           <div className="row wrap">
             {b.mine && <button className="btn cyan" onClick={() => setPanel("base")}>Open base</button>}
-            {teleport && dist > 60 && <button className="btn yellow" onClick={() => teleport(b)}>🕹️ Go home</button>}
+            {teleport && dist > 60 && <button className="btn yellow" onClick={() => teleport(b)}><MoveIcon /> Go home</button>}
             {b.liveMatch && <button className="btn" onClick={() => startMatch("breach", b.id)}>🛡️ Defend it (FPS)</button>}
             {!b.mine && !b.liveMatch && <p className="small muted">Your crew&apos;s base. If it&apos;s breached while you&apos;re close, you can jump in to defend.</p>}
           </div>
@@ -1127,7 +1197,7 @@ function InfoCard({
               <button className="btn yellow" disabled={dist > st.range + 15 || !!me.downedUntil} onClick={() => onC4(t.id)}>💣 Plant C4</button>
               {marchOn("tower", t.id, `${t.owner}'s ${st.def.name}`)}
               <OrderSquads kind="tower" id={t.id} />
-              {teleport && dist > st.range + 15 && <button className="btn ghost" onClick={() => teleport(t)}>🕹️ Go there</button>}
+              {teleport && dist > st.range + 15 && <button className="btn ghost" onClick={() => teleport(t)}><MoveIcon /> Go there</button>}
             </div>
             <p className="small muted">
               {me.rookie ? "Rookie cover: it won't shoot you until level 3." : `It shoots commanders inside ${st.range} m — run in, wire the charge fast, get out.`} Or march a squad at it from your base.
@@ -1176,7 +1246,7 @@ function InfoCard({
     return (
       <Sheet title={`${PINGS[pg.kind]?.emoji} ${PINGS[pg.kind]?.label}`} onClose={onClose}>
         <p className="small muted">{pg.avatar} {pg.mine ? "You" : pg.by} pinged this spot · {formatDistance(dist)} · fades in {Math.max(0, Math.ceil((pg.expiresAt - Date.now()) / 60000))} min</p>
-        {teleport && <button className="btn yellow" onClick={() => teleport(pg)}>🕹️ Go there</button>}
+        {teleport && <button className="btn yellow" onClick={() => teleport(pg)}><MoveIcon /> Go there</button>}
       </Sheet>
     );
   }
@@ -1208,7 +1278,7 @@ function InfoCard({
               🚩 {f.capture?.mine ? (capLeft > 0 ? `Hold… ${capLeft}s` : "Claim it!") : "Capture"}
             </button>
           )}
-          {teleport && !inRange && <button className="btn yellow" onClick={() => teleport(f)}>🕹️ Go there</button>}
+          {teleport && !inRange && <button className="btn yellow" onClick={() => teleport(f)}><MoveIcon /> Go there</button>}
         </div>
         <p className="small muted">
           {ours
@@ -1337,7 +1407,7 @@ function WaveBanner({ wave, now, meId, dist, striking, onStrike, onGo }: { wave:
           ✈️ {dist > STRIKE_RANGE_M ? "Get closer" : `Strike (${STRIKES_PER_WAVE - used})`}
         </button>
       )}
-      {onGo && dist > 150 && <button className="btn yellow small" onClick={onGo}>🕹️ Go</button>}
+      {onGo && dist > 150 && <button className="btn yellow small" onClick={onGo}><MoveIcon /> Go</button>}
     </div>
   );
 }

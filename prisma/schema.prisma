@@ -70,6 +70,9 @@ model User {
   walkedM      Float    @default(0)
   storyChapter Int      @default(0)
 
+  // Play from home: move by tapping the map at a capped speed, for reduced rewards.
+  remotePlay   Boolean  @default(false)
+
   inventory     InventoryItem[]
   claims        Claim[]
   runs          MissionRun[]

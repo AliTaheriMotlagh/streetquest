@@ -22,7 +22,7 @@ import {
 } from "@/lib/rts";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { api, fmtTime, type BaseView } from "./client";
-import { Sheet, Tabs, useGame } from "./ui";
+import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { DefenseTab } from "./Defense";
 import { askConfirm } from "@/components/Dialogs";
 
@@ -147,7 +147,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
         <button className="btn yellow small" disabled={b.pending <= 0} onClick={() => doAct({ action: "collect" })}>📦 Collect {b.pending} 🪙</button>
         {b.hp < 1000 && <button className="btn ghost small" onClick={() => doAct({ action: "repair" })}>🔧 Repair ({Math.ceil((1000 - b.hp) / 2)} 🪙)</button>}
         {shield > 0 && <span className="tag" style={{ color: "var(--cyan)" }}>🛡️ Shield {fmtLeft(shield)}</span>}
-        {dist != null && (dist < 80 ? <span className="small muted">🏠 You&apos;re home</span> : teleport ? <button className="btn ghost small" onClick={() => teleport(b)}>🕹️ Go home</button> : <span className="small muted">{formatDistance(dist)} away</span>)}
+        {dist != null && (dist < 80 ? <span className="small muted">🏠 You&apos;re home</span> : teleport ? <button className="btn ghost small" onClick={() => teleport(b)}><MoveIcon /> Go home</button> : <span className="small muted">{formatDistance(dist)} away</span>)}
       </div>
       <Tabs
         value={tab}

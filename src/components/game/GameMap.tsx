@@ -105,6 +105,7 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
 const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#22e3ff" : t.friend ? "#3dff8f" : "#ff4d4d");
 
 type Props = {
+  travelTo?: LatLng | null;
   heading?: number | null;
   speed?: number;
   game?: GpsView | null;
@@ -122,7 +123,7 @@ type Props = {
 
 export default memo(GameMap);
 
-function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode, heading = null, speed = 0, game }: Props) {
+function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode, heading = null, speed = 0, game, travelTo }: Props) {
   const center = pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
   const tint = world ? `${world.phase}-tint` : "";
@@ -321,7 +322,7 @@ function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSe
           <Marker
             key={p.id}
             position={[p.lat, p.lng]}
-            icon={icon(`${esc(p.avatar)}<span class="nm">${esc(p.username)} · ${p.level}</span>${p.bounty ? `<span class="wanted">💀${p.bounty}</span>` : ""}`, `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""}`, 34)}
+            icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${p.level}</span>${p.bounty ? `<span class="wanted">💀${p.bounty}</span>` : ""}`, `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""}`, 34)}
             eventHandlers={{ click: () => onSelect({ type: "player", data: p }) }}
           />
         ))}
@@ -350,6 +351,14 @@ function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSe
         )}
         {game?.hold && game.center && (
           <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#3dff8f" : "#ff4d4d", weight: 3, fillOpacity: 0.1, dashArray: "6 6" }} />
+        )}
+
+        {/* Play from home: where the commander is travelling to */}
+        {travelTo && pos && (
+          <>
+            <Polyline positions={[[pos.lat, pos.lng], [travelTo.lat, travelTo.lng]]} pathOptions={{ color: "#3dff8f", dashArray: "6 8", weight: 3 }} />
+            <Marker position={[travelTo.lat, travelTo.lng]} zIndexOffset={1100} interactive={false} icon={icon(`<span class="ring" style="color:#3dff8f"></span>📍`, "quest-pt next", 36)} />
+          </>
         )}
 
         {pos && <Circle center={[pos.lat, pos.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#22e3ff", weight: 1, fillOpacity: 0.06, dashArray: "4 6" }} />}

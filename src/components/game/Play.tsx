@@ -8,7 +8,7 @@ import { FACTION_BY_KEY, type FactionKey } from "@/lib/rts";
 import { askConfirm } from "@/components/Dialogs";
 import { api, type GpsView, type LatLng } from "./client";
 import { sfx } from "./sfx";
-import { Sheet, Tabs, useGame, type Toast } from "./ui";
+import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
 
 // ---------------------------------------------------------------- celebrations
 type Celebration = { title: string; body?: string; emoji?: string };
@@ -182,8 +182,8 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
       )}
       {g.kind === "story" && g.target && dist != null && <div className="small">📍 {formatDistance(dist)} to the waypoint</div>}
       <div className="row wrap" style={{ marginTop: 6 }}>
-        {target && (teleport ? <button className="btn yellow small" onClick={() => teleport(target)}>🕹️ Jump</button> : <Directions to={target} className="btn cyan small" />)}
-        {teleport && g.hold?.since == null && g.center && !g.hold?.inside && <button className="btn yellow small" onClick={() => teleport(g.center!)}>🕹️ Jump</button>}
+        {target && (teleport ? <button className="btn yellow small" onClick={() => teleport(target)}><MoveIcon /> Go</button> : <Directions to={target} className="btn cyan small" />)}
+        {teleport && g.hold?.since == null && g.center && !g.hold?.inside && <button className="btn yellow small" onClick={() => teleport(g.center!)}><MoveIcon /> Go</button>}
         {(g.reroutes ?? 0) > 0 && g.kind !== "sprint" && g.stepKind !== "hold" && <button className="btn ghost small" onClick={onReroute} title="Waypoint unreachable? Get a new one">🔀 Reroute ({g.reroutes})</button>}
         <span className="grow" />
         <button className="btn ghost small" onClick={() => askConfirm("Quit this game? You won't get the reward.", { ok: "Quit", danger: true }).then((ok) => ok && onQuit())}>Quit</button>
@@ -303,7 +303,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
                 <div className="small muted">{g.blurb}</div>
                 <div className="small">⏱ {g.minutes} min · {g.detail} · <span style={{ color: "var(--yellow)" }}>+{g.reward.xp} XP · +{g.reward.coins} 🪙{g.gems ? ` · +${g.gems} 💎` : ""}</span></div>
               </div>
-              <button className="btn yellow" disabled={!!d.active} onClick={() => start(g.kind, g.blurb)}>Play</button>
+              <button className="btn yellow" disabled={!!d.active || (g.kind === "sprint" && me.remotePlay)} title={g.kind === "sprint" && me.remotePlay ? "Sprints need real walking" : undefined} onClick={() => start(g.kind, g.blurb)}>Play</button>
             </div>
           ))}
           <div className="game-tile" onClick={() => setPanel("events")} style={{ cursor: "pointer" }}>
