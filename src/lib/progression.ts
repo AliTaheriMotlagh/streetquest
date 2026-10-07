@@ -1,4 +1,5 @@
 // Levels, titles and achievements. Pure — safe on client and server.
+import { S } from "./settings";
 
 export const levelForXp = (xp: number) => Math.floor(Math.sqrt(xp / 100)) + 1;
 export const xpForLevel = (level: number) => 100 * (level - 1) ** 2;
@@ -63,4 +64,7 @@ export function dayKey(timezone: string, at = new Date()) {
   }
 }
 
-export const DAILY_REWARD = (streak: number) => ({ coins: 25 + Math.min(streak, 7) * 10, xp: 30 + Math.min(streak, 7) * 10 });
+export const DAILY_REWARD = (streak: number) => {
+  const d = Math.min(streak, S.dailyStreakCap);
+  return { coins: S.dailyCoinsBase + d * S.dailyCoinsStep, xp: S.dailyXpBase + d * S.dailyXpStep, gems: S.dailyGems * (streak >= 7 ? 2 : 1) };
+};

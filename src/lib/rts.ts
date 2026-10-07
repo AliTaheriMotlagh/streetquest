@@ -2,6 +2,7 @@
 // power, supply income and auto-resolved battles. Pure — safe on client and server.
 import { hashStr, rng } from "./geo";
 import { NO_BONUS, type ArmorClass, type Bonus, type Mods } from "./hero";
+import { S } from "./settings";
 
 // ---------------------------------------------------------------- factions
 export type FactionKey = "coalition" | "dragon" | "insurgency";
@@ -59,8 +60,8 @@ export const LEVEL_CAP: Partial<Record<BuildingKey, number>> = { superweapon: 3 
 export const BUILDING_BY_KEY = Object.fromEntries(BUILDINGS.map((b) => [b.key, b])) as Record<BuildingKey, BuildingDef>;
 export const MAX_LEVEL = 5;
 
-export const buildCost = (b: BuildingDef, level: number, f: FactionDef | null) => Math.round(b.cost * level ** 1.5 * (f?.cost ?? 1));
-export const buildSeconds = (b: BuildingDef, level: number) => Math.round(b.minutes * 60 * level);
+export const buildCost = (b: BuildingDef, level: number, f: FactionDef | null) => Math.round(b.cost * level ** 1.5 * (f?.cost ?? 1) * S.buildCostMult);
+export const buildSeconds = (b: BuildingDef, level: number) => Math.round(b.minutes * 60 * level * S.buildTimeMult);
 
 export type BuildingState = { type: string; level: number; readyAt: Date | string };
 /** A building under construction/upgrade counts at its previous level until ready. */
@@ -90,8 +91,8 @@ export function powerOf(buildings: BuildingState[], f: FactionDef | null, now = 
 /** Low power (Generals rule): production takes 50% longer. */
 export const slowdown = (powerOk: boolean) => (powerOk ? 1 : 1.5);
 
-export const SUPPLY_PER_LEVEL_HOUR = 60;
-export const SUPPLY_CAP_HOURS = 12;
+export let SUPPLY_PER_LEVEL_HOUR = S.supplyPerLevelHour;
+export let SUPPLY_CAP_HOURS = S.supplyCapHours;
 export function pendingSupply(buildings: BuildingState[], lastCollectAt: Date | string, now = Date.now(), incomeMult = 1) {
   const lvl = levelOf(buildings, "supply", now);
   const hours = Math.min(SUPPLY_CAP_HOURS, Math.max(0, (now - new Date(lastCollectAt).getTime()) / 3_600_000));
@@ -126,7 +127,7 @@ export const UNITS: UnitDef[] = [
   { key: "jet", name: "Strike Jet", emoji: "✈️", cls: "air", building: "airfield", buildingLevel: 1, cost: 650, atk: 40, hp: 30, seconds: 120, housing: 8, vs: { infantry: 0.9, vehicle: 1.6, air: 1, structure: 1.2 }, role: "Kills armor. Fears rockets." },
 ];
 export const UNIT_BY_KEY = Object.fromEntries(UNITS.map((u) => [u.key, u])) as Record<UnitKey, UnitDef>;
-export const unitCost = (u: UnitDef, f: FactionDef | null) => Math.round(u.cost * (f?.cost ?? 1));
+export const unitCost = (u: UnitDef, f: FactionDef | null) => Math.round(u.cost * (f?.cost ?? 1) * S.unitCostMult);
 /** Turrets: anti-air and anti-armor leaning. */
 const TURRET_VS: Record<ArmorClass, number> = { infantry: 1, vehicle: 1.2, air: 1.5 };
 
@@ -276,12 +277,12 @@ export function resolveBattle(attacker: Side, defender: Side, seed: string): Bat
 }
 
 // ---------------------------------------------------------------- rules
-export const BASE_MIN_SPACING_M = 250;
-export const SIEGE_RANGE_M = 5000; // armies march from your base
-export const BREACH_RANGE_M = 200; // FPS needs you physically there
-export const SIEGE_COOLDOWN_MS = 30 * 60_000;
-export const SHIELD_MS = 2 * 3600_000;
-export const RELOCATE_COST = 500;
+export let BASE_MIN_SPACING_M = S.baseSpacing;
+export let SIEGE_RANGE_M = S.siegeRange; // armies march from your base
+export let BREACH_RANGE_M = S.breachRange; // FPS needs you physically there
+export let SIEGE_COOLDOWN_MS = S.siegeCooldownMin * 60_000;
+export let SHIELD_MS = S.shieldHours * 3600_000;
+export let RELOCATE_COST = S.relocateCost;
 export const MAX_RESEARCH_AT_ONCE = 1;
 
 // ---------------------------------------------------------------- Clash-style rules
@@ -318,5 +319,17 @@ export const LEAGUES = [
 ];
 export const leagueOf = (trophies: number) => [...LEAGUES].reverse().find((l) => trophies >= l.min)!;
 
-/** Gems finish any timer: 1 gem per started minute left. */
-export const rushCost = (msLeft: number) => Math.max(1, Math.ceil(msLeft / 60_000));
+/** Gems finish any timer: 1 gem per started minute (admin-tunable) left. */
+export const rushCost = (msLeft: number) => Math.max(1, Math.ceil(msLeft / (60_000 * S.rushMinutesPerGem)));
+
+/** Re-read the live admin settings (called by lib/config applyConfig). */
+export function syncSettings() {
+  BASE_MIN_SPACING_M = S.baseSpacing;
+  SIEGE_RANGE_M = S.siegeRange;
+  BREACH_RANGE_M = S.breachRange;
+  SIEGE_COOLDOWN_MS = S.siegeCooldownMin * 60_000;
+  SHIELD_MS = S.shieldHours * 3600_000;
+  RELOCATE_COST = S.relocateCost;
+  SUPPLY_PER_LEVEL_HOUR = S.supplyPerLevelHour;
+  SUPPLY_CAP_HOURS = S.supplyCapHours;
+}

@@ -49,7 +49,7 @@ export const POST = route(async (req, ctx) => {
       if (d.code !== del.dropoffCode) throw new HttpError(400, "Wrong handover code — ask the recipient");
       await move("PICKED_UP", { status: "DELIVERED", deliveredAt: new Date() });
       const km = distanceM({ lat: del.pickupLat, lng: del.pickupLng }, { lat: del.dropoffLat, lng: del.dropoffLng }) / 1000;
-      await grant(u.id, { coins: del.reward, xp: 200 + Math.round(km * 50) });
+      await grant(u.id, { coins: del.reward, xp: 200 + Math.round(km * 50) }, { raw: true });
       await grant(del.senderId, { xp: 50 });
       const done = await prisma.delivery.count({ where: { courierId: u.id, status: "DELIVERED" } });
       await unlock(u.id, "courier_1");
@@ -60,7 +60,7 @@ export const POST = route(async (req, ctx) => {
     case "cancel": {
       if (isSender && del.status === "OPEN") {
         await move("OPEN", { status: "CANCELLED" });
-        await grant(u.id, { coins: del.reward }); // refund escrow
+        await grant(u.id, { coins: del.reward }, { raw: true }); // refund escrow
         return { message: "Request cancelled, coins refunded" };
       }
       if (isCourier && del.status === "ACCEPTED") {

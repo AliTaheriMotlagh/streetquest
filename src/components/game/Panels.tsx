@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ACHIEVEMENTS } from "@/lib/progression";
+import { S } from "@/lib/settings";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote } from "./client";
@@ -760,7 +761,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
 
   return (
     <Sheet title="Hero" onClose={onClose} peek={peek}>
-      <div className="row" style={{ marginBottom: 12 }}>
+      {tab !== "hero" && <div className="row" style={{ marginBottom: 12 }}>
         <div className="avatar" style={{ width: 64, height: 64, fontSize: 36 }}>
           {me.avatar}
           <span className="lvl">{me.level}</span>
@@ -777,14 +778,14 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
             {me.xp.toLocaleString()} / {me.nextLevelXp.toLocaleString()} XP
           </div>
         </div>
-      </div>
+      </div>}
 
       {me.dailyAvailable && (
         <div className="card hl row">
           <div className="grow">
             <b>🎁 Daily drop ready</b>
             <div className="small muted">
-              Streak {me.streak} → +{me.dailyReward.coins} coins, +{me.dailyReward.xp} XP
+              Streak {me.streak} → +{me.dailyReward.coins} coins, +{me.dailyReward.xp} XP{me.dailyReward.gems ? `, +${me.dailyReward.gems} 💎` : ""}
             </div>
           </div>
           <button className="btn yellow small" onClick={() => act(() => api("/api/daily", { body: {} }))}>
@@ -860,34 +861,12 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
       )}
 
       {tab === "life" && <LifeTab />}
-      {tab === "hero" && <HeroTab />}
+      {tab === "hero" && <HeroTab onTab={setTab} />}
       {tab === "gear" && <GearTab />}
       {tab === "quests" && <QuestsTab />}
       {tab === "powers" && <PowersTab />}
 
-      {tab === "bag" &&
-        (me.inventory.length ? (
-          <>
-            <p className="small muted">Tap an item to sell one.</p>
-            <div className="inv">
-              {me.inventory.map((i) => (
-                <div
-                  key={i.key}
-                  className="inv-item"
-                  style={{ borderColor: RARITY_COLOR[i.def.rarity] }}
-                  title={i.def.blurb}
-                  onClick={() => askConfirm(`Sell 1 ${i.def.name} for ${i.def.value} coins?`, { ok: "Sell", danger: true }).then((ok) => ok && act(() => api("/api/inventory", { body: { action: "sell", itemKey: i.key, qty: 1 } })))}
-                >
-                  <span className="q">×{i.qty}</span>
-                  <div className="e">{i.def.emoji}</div>
-                  <div className="n">{i.def.name}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="empty">Your bag is empty. Go collect something!</div>
-        ))}
+      {tab === "bag" && <BagTab />}
 
       {tab === "awards" && (
         <div className="ach">
@@ -900,5 +879,90 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
         </div>
       )}
     </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Bag (multi-select selling)
+const RARITY_ORDER = { legendary: 0, epic: 1, rare: 2, common: 3 } as const;
+
+function BagTab() {
+  const { me, act } = useGame();
+  const [sel, setSel] = useState<Record<string, number>>({});
+  const [selecting, setSelecting] = useState(false);
+  const [filter, setFilter] = useState<"all" | "food" | "common" | "rare" | "epic" | "legendary">("all");
+  const price = (key: string) => Math.round((me.inventory.find((i) => i.key === key)?.def.value ?? 0) * S.sellMult);
+  const items = [...me.inventory]
+    .filter((i) => filter === "all" || (filter === "food" ? !!i.def.food : i.def.rarity === filter))
+    .sort((a, b) => RARITY_ORDER[a.def.rarity] - RARITY_ORDER[b.def.rarity] || b.def.value - a.def.value);
+  const chosen = Object.entries(sel).filter(([k, q]) => q > 0 && me.inventory.some((i) => i.key === k));
+  const total = chosen.reduce((s, [k, q]) => s + price(k) * q, 0);
+  const count = chosen.reduce((s, [, q]) => s + q, 0);
+  const bagValue = me.inventory.reduce((s, i) => s + price(i.key) * i.qty, 0);
+  const toggle = (key: string, qty: number) => setSel((s) => ({ ...s, [key]: s[key] ? 0 : qty }));
+  const setQty = (key: string, q: number, max: number) => setSel((s) => ({ ...s, [key]: Math.max(0, Math.min(max, q)) }));
+  const sellNow = (list: [string, number][]) => {
+    const n = list.reduce((s, [, q]) => s + q, 0);
+    const coins = list.reduce((s, [k, q]) => s + price(k) * q, 0);
+    if (!n) return;
+    askConfirm(`Sell ${n} item${n > 1 ? "s" : ""} for ${coins.toLocaleString()} coins?`, { ok: `Sell for ${coins.toLocaleString()} 🪙`, danger: true }).then(async (ok) => {
+      if (!ok) return;
+      const done = await act(() => api("/api/inventory", { body: { action: "sellMany", items: list.map(([itemKey, qty]) => ({ itemKey, qty })) } }));
+      if (done) {
+        setSel({});
+        setSelecting(false);
+      }
+    });
+  };
+
+  if (!me.inventory.length) return <div className="empty">🎒 Your bag is empty. Go collect something!</div>;
+  return (
+    <>
+      <div className="row wrap" style={{ marginBottom: 8, justifyContent: "space-between" }}>
+        <span className="small muted">{me.inventory.reduce((s, i) => s + i.qty, 0)} items · worth {bagValue.toLocaleString()} 🪙</span>
+        <div className="row">
+          {selecting && <button className="btn ghost small" onClick={() => setSel(Object.fromEntries(items.map((i) => [i.key, i.qty])))}>Select all</button>}
+          <button className={`btn small ${selecting ? "yellow" : "ghost"}`} onClick={() => (setSelecting(!selecting), setSel({}))}>{selecting ? "Done" : "☑️ Select"}</button>
+        </div>
+      </div>
+      <div className="tabs">
+        {(["all", "food", "common", "rare", "epic", "legendary"] as const).map((f) => (
+          <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)} style={f !== "all" && f !== "food" ? { color: RARITY_COLOR[f] } : undefined}>{f === "all" ? "All" : f === "food" ? "🍔 Food" : f}</button>
+        ))}
+      </div>
+      <p className="small muted">{selecting ? "Tap items to pick them, adjust how many with − / +, then sell them in one go." : "Tap an item to sell it, or use ☑️ Select to sell many at once. Food can be eaten in Hero → Life."}</p>
+      <div className="inv">
+        {items.map((i) => {
+          const q = sel[i.key] ?? 0;
+          return (
+            <div
+              key={i.key}
+              className={`inv-item ${i.def.rarity} ${q ? "picked" : ""}`}
+              style={{ borderColor: RARITY_COLOR[i.def.rarity] }}
+              title={i.def.blurb}
+              onClick={() => (selecting ? toggle(i.key, i.qty) : sellNow([[i.key, 1]]))}
+            >
+              <span className="q">×{i.qty}</span>
+              {q > 0 && <span className="check">✓</span>}
+              <div className="e">{i.def.emoji}</div>
+              <div className="n">{i.def.name}</div>
+              <div className="v">{price(i.key)} 🪙</div>
+              {selecting && q > 0 && (
+                <div className="stepper" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => setQty(i.key, q - 1, i.qty)}>−</button>
+                  <b>{q}</b>
+                  <button onClick={() => setQty(i.key, q + 1, i.qty)}>+</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {selecting && (
+        <div className="sell-bar">
+          <span className="grow">{count ? <>Selected <b>{count}</b> · <b style={{ color: "var(--yellow)" }}>{total.toLocaleString()} 🪙</b></> : "Nothing selected"}</span>
+          <button className="btn yellow" disabled={!count} onClick={() => sellNow(chosen)}>💰 Sell selected</button>
+        </div>
+      )}
+    </>
   );
 }

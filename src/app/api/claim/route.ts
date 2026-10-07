@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { cellKey, cellOf, dayPhase, distanceM } from "@/lib/geo";
 import { INTERACT_RADIUS_M, resolveSpawn } from "@/lib/spawns";
+import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "@/server/rewards";
@@ -24,7 +25,7 @@ export const POST = route(async (req) => {
   const { spawnId } = await body(req, Schema);
   await assertNotDowned(u);
   const here = await lastKnownLocation(u.id);
-  const reach = INTERACT_RADIUS_M + 10;
+  const reach = INTERACT_RADIUS_M + S.claimSlack;
 
   // Admin-placed mission drop
   if (spawnId.startsWith("m:")) {

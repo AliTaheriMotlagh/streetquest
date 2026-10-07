@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { ensureSettings } from "./settings";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -12,6 +13,7 @@ type Ctx = { params: Promise<Record<string, string>> };
 export function route<T>(fn: (req: Request, ctx: Ctx) => Promise<T>) {
   return async (req: Request, ctx: Ctx) => {
     try {
+      await ensureSettings();
       const data = await fn(req, ctx);
       return data instanceof Response ? data : Response.json(data ?? { ok: true });
     } catch (e) {

@@ -54,7 +54,7 @@ export type Me = {
   title: string;
   streak: number;
   dailyAvailable: boolean;
-  dailyReward: { coins: number; xp: number };
+  dailyReward: { coins: number; xp: number; gems: number };
   referralCode: string;
   canSimulate: boolean;
   inventory: { key: string; qty: number; def: ItemDef }[];
@@ -82,6 +82,38 @@ export type Me = {
   downedUntil: number | null;
   rookie: boolean;
   superweapon: { key: SuperKey; name: string; emoji: string; level: number; readyAt: number | null; radius: number } | null;
+  /** Admin overrides of lib/settings — applied on the client with applyConfig. */
+  settings: Record<string, unknown>;
+  goalsReady: number;
+  walkedM: number;
+  storyChapter: number;
+  gpsGame: { id: string; kind: string } | null;
+};
+
+/** An active GPS mini-game or story chapter, as the server lets the client see it. */
+export type GpsView = {
+  id: string;
+  kind: "hunt" | "sprint" | "rally" | "story";
+  status: string;
+  title: string;
+  startedAt: number;
+  endsAt: number;
+  heat?: { label: string; emoji: string; level: number; approx: number; trend: number } | null;
+  progress?: number;
+  goal?: number;
+  target?: LatLng | null;
+  points?: LatLng[];
+  next?: number;
+  dist?: number | null;
+  reroutes?: number;
+  chapter?: number;
+  replay?: boolean;
+  step?: number;
+  steps?: number;
+  text?: string;
+  stepKind?: "go" | "find" | "hold";
+  center?: LatLng | null;
+  hold?: { seconds: number; since: number | null; radius: number; inside: boolean } | null;
 };
 
 export type League = { name: string; emoji: string; bonus: number; min: number };
@@ -105,6 +137,26 @@ export type HeroView = {
   powers: { key: PowerKey; rank: number; lastUsedAt: string | null }[];
   quests: (QuestDef & { key: string; campaign: boolean; progress: number; done: boolean; claimed: boolean })[];
   campaignStep: number;
+  stats: {
+    maxHp: number;
+    walkedM: number;
+    trophies: number;
+    battlesWon: number;
+    battles: number;
+    claims: number;
+    achievements: number;
+    outposts: number;
+    flags: number;
+    towers: number;
+    units: number;
+    kills: number;
+    bossDmg: number;
+    raiders: number;
+    gpsGames: number;
+    story: number;
+    streak: number;
+    memberDays: number;
+  };
 };
 
 export type WorldSpawn = Spawn & { claimed: boolean; lobby: { id: string; kind: string; players: number; openUntil: number } | null };
@@ -224,7 +276,7 @@ export type BaseView = {
   builders: number;
   protection: number;
   timeMult: { build: number; train: number; research: number };
-  queue: { id: string; unitType: string; qty: number; readyAt: string }[];
+  queue: { id: string; unitType: string; qty: number; readyAt: string; unitMs: number }[];
   battles: { id: string; kind: string; targetName: string; won: boolean; loot: number; stars: number; destruction: number; trophies: number; createdAt: string; side: "attack" | "defend"; revengeBaseId: string | null }[];
   defended: BaseView["battles"];
 };

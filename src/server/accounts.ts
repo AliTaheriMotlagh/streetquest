@@ -5,8 +5,8 @@ import { prisma } from "../lib/db";
 import { notify } from "./hub";
 import { HttpError } from "./http";
 import { track } from "./rewards";
+import { S } from "../lib/settings";
 
-const REFERRAL_BONUS = 150;
 const CALLSIGNS = ["Ghost", "Viper", "Falcon", "Raven", "Wolf", "Cobra", "Titan", "Nova", "Blaze", "Shadow", "Hawk", "Rogue"];
 
 const randomName = () => `${CALLSIGNS[Math.floor(Math.random() * CALLSIGNS.length)]}${Math.floor(1000 + Math.random() * 9000)}`;
@@ -37,15 +37,16 @@ export async function createAccount(d: NewAccount) {
           role: d.role ?? "PLAYER",
           referralCode: referralCode(username),
           referredById: referrer?.id,
-          coins: referrer ? 100 + REFERRAL_BONUS : 100,
+          coins: S.startCoins + (referrer ? S.referralCoins : 0),
+          gems: S.startGems,
           utmSource: utm.source ?? (referrer ? "referral" : undefined),
           utmMedium: utm.medium ?? undefined,
           utmCampaign: utm.campaign ?? undefined,
         },
       });
       if (referrer) {
-        await prisma.user.update({ where: { id: referrer.id }, data: { coins: { increment: REFERRAL_BONUS } } });
-        await notify(referrer.id, { kind: "reward", title: "Referral bonus!", body: `${user.username} joined with your code: +${REFERRAL_BONUS} coins` });
+        await prisma.user.update({ where: { id: referrer.id }, data: { coins: { increment: S.referralCoins } } });
+        await notify(referrer.id, { kind: "reward", title: "Referral bonus!", body: `${user.username} joined with your code: +${S.referralCoins} coins` });
       }
       await track("signup", { userId: user.id, source: user.utmSource ?? undefined, campaign: user.utmCampaign ?? undefined });
       return user;

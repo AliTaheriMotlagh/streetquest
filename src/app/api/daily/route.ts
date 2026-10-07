@@ -16,5 +16,5 @@ export const POST = route(async () => {
   const r = DAILY_REWARD(streak);
   await grant(u.id, r);
   if (streak >= 7) await unlock(u.id, "streak_7");
-  return { message: `Day ${streak} streak! +${r.coins} coins, +${r.xp} XP` };
+  return { message: `🎁 Day ${streak} streak! +${r.coins} coins, +${r.xp} XP${r.gems ? `, +${r.gems} 💎` : ""}` };
 });

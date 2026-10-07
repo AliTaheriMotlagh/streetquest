@@ -66,6 +66,10 @@ model User {
   sabotageAt   DateTime?
   shotAt       DateTime? // street combat cooldown
 
+  // Lifetime distance moved on foot (metres, from accepted GPS fixes) and story progress.
+  walkedM      Float    @default(0)
+  storyChapter Int      @default(0)
+
   inventory     InventoryItem[]
   claims        Claim[]
   runs          MissionRun[]
@@ -98,6 +102,10 @@ model User {
   noteReactions NoteReaction[]
   bountiesOn    Bounty[]           @relation("bountyTarget")
   bountiesPosted Bounty[]          @relation("bountyPoster")
+  goalClaims    GoalClaim[]
+  purchases     Purchase[]
+  adViews       AdView[]
+  gpsGames      GpsGame[]
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -358,6 +366,7 @@ model TrainOrder {
   unitType String
   qty      Int
   readyAt  DateTime
+  unitMs   Int      @default(0) // time per unit: finished units are delivered one by one
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readyAt])
@@ -700,4 +709,85 @@ model Bounty {
 
   @@index([targetId, claimedAt])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------- Live config, goals, store, GPS games
+// Admin-edited game settings (one row, id "main"): overrides on top of lib/settings.ts defaults.
+model GameConfig {
+  id        String   @id
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+// Goal progress counters. scope: user | faction | world; period: "all" or a week key like "2026-W41".
+model GoalCounter {
+  id      String @id @default(cuid())
+  scope   String
+  scopeId String
+  period  String
+  metric  String
+  value   Float  @default(0)
+
+  @@unique([scope, scopeId, period, metric])
+  @@index([period, metric])
+}
+
+// One row per reward a player has collected: "w:<week>:<goal>", "f:<week>:<goal>", "p:<goal>:<tier>".
+model GoalClaim {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+// Gem purchases (Stripe Checkout). ref = the provider's session id, so crediting is idempotent.
+model Purchase {
+  id          String    @id @default(cuid())
+  userId      String
+  provider    String    @default("stripe")
+  ref         String    @unique
+  pack        String
+  gems        Int
+  amountCents Int
+  currency    String
+  status      String    @default("PENDING") // PENDING | PAID | FAILED
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+// A rewarded sponsor spot: started → must stay open adSeconds → claimed.
+model AdView {
+  id         String    @id @default(cuid())
+  userId     String
+  creativeId String
+  startedAt  DateTime  @default(now())
+  claimedAt  DateTime?
+  clicked    Boolean   @default(false)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([creativeId, startedAt])
+}
+
+// GPS mini-games (treasure hunt, sprint, rally) and story chapters. The hidden
+// parts (treasure spot) stay on the server; the client only gets what it may see.
+model GpsGame {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String // hunt | sprint | rally | story
+  data      Json
+  status    String   @default("ACTIVE") // ACTIVE | WON | LOST | QUIT
+  startedAt DateTime @default(now())
+  endsAt    DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }

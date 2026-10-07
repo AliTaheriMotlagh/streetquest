@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 import type { LatLng, Me, World } from "./client";
 
 export type Toast = { id?: number; title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error" };
-export type PanelId = "nearby" | "base" | "jobs" | "crew" | "events" | "me";
+export type PanelId = "nearby" | "base" | "jobs" | "crew" | "events" | "me" | "play" | "store";
 
 export type GameCtx = {
   me: Me;

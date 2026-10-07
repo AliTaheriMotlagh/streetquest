@@ -2,6 +2,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RARITY_COLOR } from "@/lib/catalog";
+import { applyConfig } from "@/lib/config";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BREACH_RANGE_M, FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
@@ -23,7 +24,8 @@ import { useLiveWaves } from "./waves";
 import { creepPos, PINGS, SHOOT_RANGE_M, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
 import { Ctx, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
-import { useLocation, type FireReport, type GeoError } from "./useLocation";
+import { useLocation, useWakeLock, type FireReport, type GeoError } from "./useLocation";
+import { AdModal, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <div className="fps" /> });
@@ -31,9 +33,9 @@ const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <di
 const NAV: [PanelId, string, string][] = [
   ["nearby", "🎯", "Nearby"],
   ["base", "🏰", "Base"],
+  ["play", "🎮", "Play"],
   ["jobs", "📦", "Jobs"],
   ["crew", "🤝", "Crew"],
-  ["events", "🎉", "Events"],
   ["me", "🦸", "Hero"],
 ];
 
@@ -70,6 +72,7 @@ export default function Game() {
   const [now, setNow] = useState(Date.now());
   const [match, setMatch] = useState<string | null>(null);
   const [meTab, setMeTab] = useState<HeroTabId>("hero");
+  const [adOpen, setAdOpen] = useState(false);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
 
   // ---- data loading
@@ -78,13 +81,20 @@ export default function Game() {
     () =>
       api<Me>("/api/me")
         .then((m) => {
+          // Admin settings (reach radius, ranges, costs…) must be live before anything renders.
+          applyConfig(m.settings);
           setMe(m);
           setLoadError(null);
         })
         .catch((e) => setLoadError((e as Error).message)),
     [],
   );
+  // Read the position through a ref so loadWorld stays stable: otherwise every GPS fix
+  // recreated it and restarted the 45 s refresh timer, which then never fired.
+  const posRef = useRef(pos);
+  posRef.current = pos;
   const loadWorld = useCallback(async (force = false) => {
+    const pos = posRef.current;
     if (!pos) return;
     const last = lastWorldFetch.current;
     if (!force && last && Date.now() - last.at < 30_000 && distanceM(last.pos, pos) < 80) return;
@@ -92,7 +102,7 @@ export default function Game() {
     try {
       setWorld(await api<World>(`/api/world?lat=${pos.lat}&lng=${pos.lng}`));
     } catch {}
-  }, [pos]);
+  }, []);
 
   const toast = useCallback((t: Toast) => {
     const id = Math.random();
@@ -113,6 +123,9 @@ export default function Game() {
         await flush();
         const r = await fn();
         if (r?.message) toast({ kind: "reward", title: r.message });
+        // Clash-style reward fly-up for anything that paid out.
+        if (r?.message && /\+[\d,]+ ?(🪙|coins)/.test(r.message)) burst("🪙", 8);
+        if (r?.message && /\+[\d,]+ ?💎/.test(r.message)) burst("💎", 5);
         sfx("reward");
         navigator.vibrate?.([40, 30, 40]);
         refresh();
@@ -136,7 +149,9 @@ export default function Game() {
   }, [loadMe]);
 
   useEffect(() => {
-    loadWorld();
+    loadWorld(); // throttled: only refetches after 30 s or 80 m of movement
+  }, [pos?.lat, pos?.lng, loadWorld]);
+  useEffect(() => {
     const t = setInterval(() => loadWorld(true), 45_000);
     return () => clearInterval(t);
   }, [loadWorld]);
@@ -180,6 +195,27 @@ export default function Game() {
     const t = setInterval(() => loadWorld(true), 5000);
     return () => clearInterval(t);
   }, [waveLive, loadWorld]);
+
+  // ---- GPS mini-games & story chapters
+  const gps = useGpsGame(me?.gpsGame?.id ?? null, loadMe, toast);
+  // Keep the screen on while moving (driving with the map open) or playing a GPS game.
+  useWakeLock(geo.speed > 2 || !!gps.view);
+  const driving = geo.speed > 7;
+
+  // Back from Stripe Checkout: credit the gems (the webhook may already have).
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("purchase");
+    if (!id || !me) return;
+    history.replaceState(null, "", "/play");
+    if (id === "cancelled") return;
+    api<{ message: string }>("/api/store", { body: { action: "confirm", sessionId: id } })
+      .then((r) => {
+        celebrate({ title: "THANK YOU!", body: r.message, emoji: "💎" });
+        burst("💎", 14);
+        loadMe();
+      })
+      .catch((e) => toast({ kind: "error", title: (e as Error).message }));
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- sound cues for things happening on the map
   const heard = useRef(new Set<string>());
@@ -230,7 +266,10 @@ export default function Game() {
         for (const n of r.notifications) toast(n);
         const titles = r.notifications.map((n) => n.title).join(" ");
         if (/INCOMING/.test(titles)) sfx("siren");
-        else if (/LEVEL UP/.test(titles)) sfx("levelup");
+        else if (/LEVEL UP/.test(titles)) {
+          const n = r.notifications.find((x) => /LEVEL UP/.test(x.title));
+          celebrate({ title: n!.title, body: n!.body, emoji: "⭐" });
+        }
         else if (/shot you|took you down|DOWN/.test(titles)) sfx("hurt");
         else if (r.notifications.some((n) => n.kind === "reward")) sfx("coin");
         else if (r.notifications.length) sfx("beep");
@@ -380,6 +419,9 @@ export default function Game() {
           follow={follow}
           picking={!!picker}
           runners={runners}
+          heading={geo.heading}
+          speed={geo.speed}
+          game={gps.view}
           strikeMode={!!strike}
           onUnfollow={handleUnfollow}
           onMapClick={handleMapClick}
@@ -410,7 +452,9 @@ export default function Game() {
           <div className="hud-right">
             <div className="chip">🪙 {me.coins.toLocaleString()}</div>
             <HpChip me={me} fire={fire} now={now} />
-            <div className="chip small">💎 {me.gems} · {me.league.emoji} {me.trophies}</div>
+            <button className="chip small gem-chip" onClick={() => setPanel("store")} title="Gem store">💎 {me.gems} <span className="plus">+</span></button>
+            <div className="chip small hide-sm">{me.league.emoji} {me.trophies}</div>
+            {driving && !geo.simulated && <div className="chip small" title="Driving: the map zooms out and walking goals pause">🚗 {Math.round(geo.speed * 3.6)} km/h</div>}
             {world && (
               <div className="chip phase">
                 {PHASE_ICON[world.phase]} <span className="hide-sm">{world.phase.toUpperCase()}</span>
@@ -478,6 +522,15 @@ export default function Game() {
               ✕
             </button>
           </div>
+        )}
+
+        {gps.view && !run && !picker && (
+          <GpsBanner
+            g={gps.view}
+            now={now}
+            onQuit={() => act(() => api("/api/gpsgame", { body: { action: "quit" } })).then(() => loadMe())}
+            onReroute={() => act(() => api("/api/gpsgame", { body: { action: "reroute" } })).then(() => gps.reload())}
+          />
         )}
 
         {me.downedUntil && me.downedUntil > now && (
@@ -602,6 +655,8 @@ export default function Game() {
         {panel === "jobs" && <JobsPanel onClose={close} peek={peek} />}
         {panel === "crew" && <CrewPanel onClose={close} peek={peek} chat={chat} setChat={setChat} />}
         {panel === "events" && <EventsPanel onClose={close} peek={peek} />}
+        {panel === "play" && <PlayPanel onClose={close} peek={peek} onStarted={loadMe} />}
+        {panel === "store" && <StorePanel onClose={close} peek={peek} onWatch={() => setAdOpen(true)} />}
         {panel === "me" && (
           <ProfilePanel
             key={meTab}
@@ -621,6 +676,7 @@ export default function Game() {
                 <span className="ic">{ic}</span>
                 {label}
                 {id === "crew" && unread + me.pendingFriends > 0 && <span className="badge">{unread + me.pendingFriends}</span>}
+                {id === "play" && (me.goalsReady > 0 || !!me.gpsGame) && <span className="badge">{me.goalsReady || "▶"}</span>}
                 {id === "me" && (me.questsReady + me.freePoints + me.commandPoints > 0 || me.dailyAvailable || me.mood.score < 30) && (
                   <span className="badge">{me.questsReady || me.freePoints || me.commandPoints || "!"}</span>
                 )}
@@ -640,6 +696,8 @@ export default function Game() {
         )}
 
         {lobby && <LobbyModal open={lobby} onClose={() => setLobby(null)} />}
+        {adOpen && <AdModal onClose={() => (setAdOpen(false), loadMe())} />}
+        <CelebrationLayer />
 
         {c4 && (
           <div className="modal-bg">
@@ -746,7 +804,10 @@ function InfoCard({
   const tooFar = teleport ? (
     <button className="btn yellow block" onClick={() => teleport(target)}>🕹️ Teleport here · {formatDistance(dist)}</button>
   ) : (
-    <button className="btn block" disabled>Get closer · {formatDistance(dist)}</button>
+    <div className="row">
+      <button className="btn grow" disabled>Get closer · {formatDistance(dist)}</button>
+      {dist > 150 && <Directions to={target} />}
+    </div>
   );
   // Bases and bosses can be fought from up to BREACH_RANGE_M away.
   const jump = teleport && dist > BREACH_RANGE_M && (

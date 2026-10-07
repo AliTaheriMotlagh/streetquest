@@ -6,6 +6,7 @@ import { prisma } from "../lib/db";
 import { distanceM } from "../lib/geo";
 import { COUNTDOWN_MS, DEFUSE_MAX, defuseRoundsOf, LOBBY_INFO, LOBBY_MAX_PLAYERS, rangeMaxScore, type LobbyKind } from "../lib/minigames";
 import { INTERACT_RADIUS_M, resolveSpawn, type Spawn } from "../lib/spawns";
+import { S } from "../lib/settings";
 import { maybeGear } from "./hero";
 import { HttpError } from "./http";
 import { notify, onlineSince } from "./hub";
@@ -32,7 +33,7 @@ export async function openOrJoin(u: User, spawnId: string, mode?: "race" | "coop
   if (!kind) throw new HttpError(400, "Nothing to play here");
   await assertNotDowned(u);
   const here = await lastKnownLocation(u.id);
-  if (distanceM(here, s) > INTERACT_RADIUS_M + 10) throw new HttpError(400, `Get within ${INTERACT_RADIUS_M} m to join`);
+  if (distanceM(here, s) > INTERACT_RADIUS_M + S.claimSlack) throw new HttpError(400, `Get within ${INTERACT_RADIUS_M} m to join`);
   if (await prisma.claim.findUnique({ where: { userId_spawnId: { userId: u.id, spawnId } } })) throw new HttpError(409, "You already did this one");
   if (isRun(kind) && (await prisma.missionRun.findFirst({ where: { userId: u.id, status: "ACTIVE" } }))) throw new HttpError(400, "Finish or abandon your current run first");
 

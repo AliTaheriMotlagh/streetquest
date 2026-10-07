@@ -43,8 +43,15 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
   const [name, setName] = useState("");
   const [now, setNow] = useState(Date.now());
 
+  const [loadedAt, setLoadedAt] = useState(0);
   const load = useCallback(() => {
-    api<BaseView>("/api/base").then(setV).catch(() => {});
+    const at = Date.now();
+    api<BaseView>("/api/base")
+      .then((d) => {
+        setV(d);
+        setLoadedAt(at);
+      })
+      .catch(() => {});
     api<Territory>("/api/outposts").then(setTerr).catch(() => {});
   }, []);
   useEffect(() => {
@@ -56,12 +63,20 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
       clearInterval(r);
     };
   }, [load]);
-  // Reload when a timer finishes so levels/units appear.
-  const timers = v ? [...(v.base?.buildings ?? []).map((b) => b.readyAt), ...v.queue.map((q) => q.readyAt), ...v.research.map((r) => r.readyAt)].map((t) => new Date(t).getTime()) : [];
-  const justFinished = timers.some((t) => t <= now && t > now - 1500);
+  // Reload as soon as any timer finishes (a building, research, or the next unit in a
+  // training batch) so levels and the army count update on their own.
+  const timers = v
+    ? [
+        ...(v.base?.buildings ?? []).map((b) => new Date(b.readyAt).getTime()),
+        ...v.research.map((r) => new Date(r.readyAt).getTime()),
+        ...v.queue.map((q) => new Date(q.readyAt).getTime() - (q.unitMs > 0 ? (q.qty - 1) * q.unitMs : 0)),
+      ]
+    : [];
+  const nextDue = Math.min(Infinity, ...timers.filter((t) => t > loadedAt));
+  const due = now >= nextDue + 300;
   useEffect(() => {
-    if (justFinished) load();
-  }, [justFinished]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (due) load();
+  }, [due, nextDue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doAct = (b: unknown, path = "/api/base") => act(() => api(path, { body: b })).then((ok) => ok && (load(), refresh()));
   const rush = (what: string, msLeft: number, type?: string) => (
@@ -189,6 +204,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
           </div>
           {UNITS.map((u) => {
             const have = levelOf(b.buildings, u.building, now) >= u.buildingLevel;
+            const training = v.queue.filter((q) => q.unitType === u.key).reduce((s, q) => s + q.qty, 0);
+            const room = v.housing.cap - v.housing.used;
             const rank = vetRank(v.vets[u.key as UnitKey]);
             const best = (Object.entries(u.vs) as [keyof typeof CLS_ICON, number][]).sort((a, c) => c[1] - a[1])[0][0];
             const worst = (Object.entries(u.vs) as [keyof typeof CLS_ICON, number][]).sort((a, c) => a[1] - c[1])[0][0];
@@ -196,7 +213,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div key={u.key} className="card list-item" style={{ opacity: have ? 1 : 0.5 }}>
                 <div className="icon-tile">{u.emoji}</div>
                 <div className="grow">
-                  <b>{u.name}</b> <span className="tag">×{v.army[u.key as UnitKey] ?? 0}</span>{" "}
+                  <b>{u.name}</b> <span className="tag count-pop" key={v.army[u.key as UnitKey] ?? 0}>×{v.army[u.key as UnitKey] ?? 0}</span>{" "}
+                  {training > 0 && <span className="tag" style={{ color: "var(--yellow)" }}>+{training} training</span>}{" "}
                   {(v.army[u.key as UnitKey] ?? 0) > 0 && rank.stars && <span className="tag" style={{ color: "var(--yellow)" }}>{rank.stars} {rank.name}</span>}
                   <div className="small muted">{u.role} Strong vs {CLS_ICON[best]} · weak vs {CLS_ICON[worst]}</div>
                   <div className="small muted">ATK {u.atk} · HP {u.hp} · ⛺{u.housing} · {Math.round(u.seconds * v.timeMult.train)}s</div>
@@ -204,8 +222,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 </div>
                 {have && (
                   <div className="row">
-                    <button className="btn ghost small" onClick={() => doAct({ action: "train", unit: u.key, qty: 1 })}>+1 · {unitCost(u, f)}</button>
-                    <button className="btn small" onClick={() => doAct({ action: "train", unit: u.key, qty: 5 })}>+5</button>
+                    <button className="btn ghost small" disabled={room < u.housing} onClick={() => doAct({ action: "train", unit: u.key, qty: 1 })}>+1 · {unitCost(u, f)}</button>
+                    <button className="btn small" disabled={room < u.housing * 5} onClick={() => doAct({ action: "train", unit: u.key, qty: 5 })}>+5 · {unitCost(u, f) * 5}</button>
                   </div>
                 )}
               </div>
@@ -217,12 +235,20 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 <label style={{ margin: 0 }}>Training queue</label>
                 {rush("train", queueLeft)}
               </div>
-              {v.queue.map((q) => (
-                <div key={q.id} className="small row" style={{ justifyContent: "space-between", padding: "4px 0" }}>
-                  <span>{UNITS.find((u) => u.key === q.unitType)?.emoji} {q.qty}× {UNITS.find((u) => u.key === q.unitType)?.name}</span>
-                  <span className="mono">{fmtLeft(new Date(q.readyAt).getTime() - now)}</span>
-                </div>
-              ))}
+              {v.queue.map((q) => {
+                const end = new Date(q.readyAt).getTime();
+                const nextUnit = q.unitMs > 0 ? end - (q.qty - 1) * q.unitMs : end;
+                const pct = q.unitMs > 0 ? Math.max(0, Math.min(1, 1 - (nextUnit - now) / q.unitMs)) : 0;
+                return (
+                  <div key={q.id} className="small" style={{ padding: "4px 0" }}>
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <span>{UNITS.find((u) => u.key === q.unitType)?.emoji} {q.qty}× {UNITS.find((u) => u.key === q.unitType)?.name}</span>
+                      <span className="mono">next {fmtLeft(nextUnit - now)} · all {fmtLeft(end - now)}</span>
+                    </div>
+                    {q.unitMs > 0 && <div className="need-bar"><i style={{ width: `${pct * 100}%`, background: "var(--yellow)" }} /></div>}
+                  </div>
+                );
+              })}
             </>
           )}
           <p className="small muted">Counters matter: Rangers shred infantry, Rockets kill tanks and jets, Artillery wrecks bases. Units that survive battles rank up ⭐ (Veteran → Elite → Heroic). New recruits dilute a stack&apos;s rank.</p>

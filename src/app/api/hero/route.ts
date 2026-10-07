@@ -1,5 +1,6 @@
 // RPG layer: hero class, attributes, gear (equip / salvage / forge) and quests.
 import { z } from "zod";
+import { S } from "@/lib/settings";
 import { prisma } from "@/lib/db";
 import { forgeCost, GEAR_BASE_BY_KEY, MAX_GEAR_LEVEL, SALVAGE_SCRAP, type Affix } from "@/lib/gear";
 import { ATTR_BASE, attrPointsFree, CLASS_BY_KEY, RESPEC_COST, type ClassKey } from "@/lib/hero";
@@ -11,6 +12,7 @@ import { heroOf, giveGear } from "@/server/hero";
 import { body, HttpError, route } from "@/server/http";
 import { claimQuest, questEvent, questView } from "@/server/quests";
 import { grant, spendCoins } from "@/server/rewards";
+import { maxHpOf } from "@/server/td";
 
 const CLASS_CHANGE_COST = 500;
 
@@ -29,6 +31,20 @@ export const GET = route(async () => {
     state(u.id),
   ]);
   const spent = powers.reduce((s, p) => s + p.rank, 0);
+  // Lifetime record for the hero sheet.
+  const [counters, battlesWon, battles, claims, achievements, outposts, flags, towers, units, maxHp] = await Promise.all([
+    prisma.goalCounter.findMany({ where: { scope: "user", scopeId: u.id, period: "all" } }),
+    prisma.battle.count({ where: { attackerId: u.id, won: true } }),
+    prisma.battle.count({ where: { attackerId: u.id } }),
+    prisma.claim.count({ where: { userId: u.id } }),
+    prisma.userAchievement.count({ where: { userId: u.id } }),
+    prisma.outpost.count({ where: { ownerId: u.id } }),
+    prisma.flag.count({ where: { ownerId: u.id } }),
+    prisma.tower.count({ where: { ownerId: u.id } }),
+    prisma.unitStack.aggregate({ where: { userId: u.id }, _sum: { qty: true } }),
+    maxHpOf(u.id),
+  ]);
+  const c = Object.fromEntries(counters.map((x) => [x.metric, Math.floor(x.value)]));
   return {
     heroClass: u.heroClass,
     level,
@@ -51,6 +67,26 @@ export const GET = route(async () => {
     }),
     quests: await questView(u.id, { heroClass: !!u.heroClass, ...st }),
     campaignStep: u.campaignStep,
+    stats: {
+      maxHp,
+      walkedM: Math.round(u.walkedM),
+      trophies: u.trophies,
+      battlesWon,
+      battles,
+      claims,
+      achievements,
+      outposts,
+      flags,
+      towers,
+      units: units._sum.qty ?? 0,
+      kills: c.kills ?? 0,
+      bossDmg: c.boss_dmg ?? 0,
+      raiders: c.raiders ?? 0,
+      gpsGames: c.gps_game ?? 0,
+      story: u.storyChapter,
+      streak: u.streak,
+      memberDays: Math.max(1, Math.ceil((Date.now() - u.createdAt.getTime()) / 86_400_000)),
+    },
   };
 });
 
@@ -97,7 +133,7 @@ export const POST = route(async (req) => {
   if (d.action === "claimQuest") {
     const st = await state(u.id);
     const q = await claimQuest(u.id, d.key, { heroClass: !!u.heroClass, ...st });
-    const gems = q.campaign ? 5 : 2;
+    const gems = q.campaign ? S.questGemsCampaign : S.questGemsDaily;
     await grant(u.id, { xp: q.reward.xp, coins: q.reward.coins, scrap: q.reward.scrap, gems });
     if (q.reward.gear) await giveGear(u.id, { floor: q.reward.gear as Rarity, source: q.title });
     return { message: `📜 ${q.title}: +${q.reward.coins} 🪙 +${gems} 💎${q.reward.scrap ? ` +${q.reward.scrap} scrap` : ""}${q.reward.gear ? ` + ${q.reward.gear} gear` : ""}` };

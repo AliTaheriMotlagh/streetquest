@@ -4,6 +4,7 @@ import { dayKey } from "../lib/progression";
 import { CAMPAIGN, campaignKey, dailyQuests, STATE_KINDS, type QuestDef, type QuestKind } from "../lib/quests";
 import { HttpError } from "./http";
 import { notify } from "./hub";
+import { trackStat } from "./goals";
 
 async function activeQuests(userId: string) {
   const u = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { campaignStep: true, timezone: true } });
@@ -15,6 +16,7 @@ async function activeQuests(userId: string) {
 
 /** Record progress, e.g. questEvent(id, "train", 5). Never throws — quests must not break gameplay. */
 export async function questEvent(userId: string, kind: QuestKind, n = 1) {
+  await trackStat(userId, kind, n);
   try {
     for (const q of (await activeQuests(userId)).filter((x) => x.kind === kind)) {
       const row = await prisma.questProgress.upsert({ where: { userId_key: { userId, key: q.key } }, create: { userId, key: q.key, progress: n }, update: { progress: { increment: n } } });

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { distanceM } from "@/lib/geo";
 import { armyStats, factionOf, resolveBattle, SIEGE_COOLDOWN_MS, SIEGE_RANGE_M, VET_GAIN, type Army, type UnitKey } from "@/lib/rts";
 import { INTERACT_RADIUS_M, resolveSpawn } from "@/lib/spawns";
+import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { fmtLosses, forcesOf, gainVet, loadBase, removeUnits, survivors } from "@/server/army";
 import { damageBoss } from "@/server/boss";
@@ -36,7 +37,7 @@ export const POST = route(async (req) => {
     const s = resolveSpawn(d.targetId);
     if (!s || s.kind !== "derrick") throw new HttpError(410, "This derrick is gone");
     const here = await lastKnownLocation(u.id);
-    if (distanceM(here, s) > INTERACT_RADIUS_M + 10) throw new HttpError(400, `Lead your army in person — get within ${INTERACT_RADIUS_M} m`);
+    if (distanceM(here, s) > INTERACT_RADIUS_M + S.claimSlack) throw new HttpError(400, `Lead your army in person — get within ${INTERACT_RADIUS_M} m`);
     if (await prisma.claim.findUnique({ where: { userId_spawnId: { userId: u.id, spawnId: s.id } } })) throw new HttpError(409, "You already hold this derrick");
     const r = resolveBattle(me, { army: {}, faction: null, structures: { atk: s.guard! * 0.5, hp: s.guard! * 3 } }, `${s.id}|${u.id}|${Date.now()}`);
     await removeUnits(u.id, r.attackerLosses);

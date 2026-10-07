@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { distanceM } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { checkClaimAchievements, grant, lastKnownLocation } from "@/server/rewards";
@@ -26,7 +27,7 @@ export const POST = route(async (req) => {
     throw new HttpError(400, "Too slow! The run failed.");
   }
   const here = await lastKnownLocation(u.id);
-  if (distanceM(here, { lat: run.targetLat, lng: run.targetLng }) > INTERACT_RADIUS_M + 10) throw new HttpError(400, "You're not at the target yet");
+  if (distanceM(here, { lat: run.targetLat, lng: run.targetLng }) > INTERACT_RADIUS_M + S.claimSlack) throw new HttpError(400, "You're not at the target yet");
 
   // Squad runs: race placement / co-op team bonus (computed before this run counts as done).
   const squad = run.lobbyId ? await runBonus(run.lobbyId, u.id) : { mult: 1, label: "" };

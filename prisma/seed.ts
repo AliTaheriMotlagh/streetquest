@@ -26,7 +26,8 @@ if (!(await prisma.announcement.count()))
 const start = new Date(Date.now() + 2 * 3600_000);
 await prisma.event.upsert({
   where: { slug: "launch-night-hunt" },
-  update: {},
+  // Re-seeding revives the demo event instead of leaving an expired one behind.
+  update: { startsAt: start, endsAt: new Date(start.getTime() + 3 * 3600_000) },
   create: {
     slug: "launch-night-hunt",
     title: "Launch Night Hunt",

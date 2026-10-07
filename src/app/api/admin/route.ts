@@ -6,6 +6,13 @@ import { requireAdmin } from "@/server/auth";
 import { isOnline, notify, onlineSince } from "@/server/hub";
 import { body, HttpError, route } from "@/server/http";
 import { grant } from "@/server/rewards";
+import { saveSettings, settingOverrides } from "@/server/settings";
+import { GOAL_METRICS, S, SETTING_DEFS, settingDefault, settingType } from "@/lib/settings";
+import { catalogOriginals, EDITABLE } from "@/lib/config";
+import { BUILDINGS, RESEARCH, UNITS } from "@/lib/rts";
+import { TOWERS } from "@/lib/td";
+import { ITEMS } from "@/lib/catalog";
+import { stripeReady } from "@/server/store";
 
 const day = 86_400_000;
 
@@ -35,12 +42,26 @@ export const GET = route(async (req) => {
     if (series[k]) series[k][m.name as "page_view"]++;
   }
 
+  const since30 = new Date(Date.now() - 30 * day);
+  const [overrides, paid30, paidAll, ads7, adsByCreative, adClicks] = await Promise.all([
+    settingOverrides(),
+    prisma.purchase.aggregate({ where: { status: "PAID", paidAt: { gt: since30 } }, _sum: { amountCents: true, gems: true }, _count: true }),
+    prisma.purchase.aggregate({ where: { status: "PAID" }, _sum: { amountCents: true }, _count: true }),
+    prisma.adView.count({ where: { claimedAt: { not: null }, startedAt: { gt: since7 } } }),
+    prisma.adView.groupBy({ by: ["creativeId"], where: { startedAt: { gt: since30 } }, _count: true }),
+    prisma.adView.groupBy({ by: ["creativeId"], where: { startedAt: { gt: since30 }, clicked: true }, _count: true }),
+  ]);
+  const recentPurchases = await prisma.purchase.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { user: { select: { username: true } } } });
+  const clicksBy = new Map(adClicks.map((c) => [c.creativeId, c._count]));
+  const pick = (list: { key: string }[], cat: keyof typeof EDITABLE) =>
+    list.map((e) => ({ key: e.key, name: (e as { name?: string }).name ?? e.key, emoji: (e as { emoji?: string }).emoji ?? "", values: Object.fromEntries(EDITABLE[cat].map((f) => [f, (e as unknown as Record<string, unknown>)[f] ?? null])) }));
+
   const [userList, deliveries, notes, missions, announcements, messages] = await Promise.all([
     prisma.user.findMany({
-      where: q ? { OR: [{ username: { contains: q } }, { email: { contains: q } }] } : {},
+      where: q ? { OR: [{ username: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }] } : {},
       orderBy: { createdAt: "desc" },
       take: 50,
-      select: { id: true, username: true, email: true, role: true, banned: true, xp: true, coins: true, createdAt: true, utmSource: true, lastSeenAt: true },
+      select: { id: true, username: true, email: true, role: true, banned: true, xp: true, coins: true, gems: true, createdAt: true, utmSource: true, lastSeenAt: true },
     }),
     prisma.delivery.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { sender: { select: { username: true } }, courier: { select: { username: true } } } }),
     prisma.geoNote.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { author: { select: { username: true } } } }),
@@ -70,6 +91,22 @@ export const GET = route(async (req) => {
     announcements,
     messages,
     items: Object.values(ITEM_BY_KEY).map((i) => ({ key: i.key, label: `${i.emoji} ${i.name}` })),
+    config: {
+      defs: SETTING_DEFS.map((d) => ({ ...d, type: settingType(d.key), def: settingDefault(d.key) })),
+      values: S,
+      overrides,
+      metrics: GOAL_METRICS,
+      catalog: { units: pick(UNITS, "units"), buildings: pick(BUILDINGS, "buildings"), towers: pick(TOWERS, "towers"), items: pick(ITEMS, "items"), research: pick(RESEARCH, "research") },
+      originals: catalogOriginals(),
+    },
+    revenue: {
+      stripe: stripeReady(),
+      last30: { cents: paid30._sum.amountCents ?? 0, gems: paid30._sum.gems ?? 0, count: paid30._count },
+      allTime: { cents: paidAll._sum.amountCents ?? 0, count: paidAll._count },
+      ads7,
+      adsByCreative: adsByCreative.map((a) => ({ creativeId: a.creativeId, views: a._count, clicks: clicksBy.get(a.creativeId) ?? 0 })),
+      purchases: recentPurchases.map((p) => ({ id: p.id, user: p.user.username, pack: p.pack, gems: p.gems, amountCents: p.amountCents, currency: p.currency, status: p.status, createdAt: p.createdAt })),
+    },
   };
 });
 
@@ -98,12 +135,26 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("deleteMessage"), id: z.string() }),
   z.object({ action: z.literal("cancelDelivery"), id: z.string() }),
   z.object({ action: z.literal("broadcast"), title: z.string().min(1).max(100), body: z.string().max(300).optional() }),
+  z.object({ action: z.literal("saveSettings"), data: z.record(z.unknown()) }),
+  z.object({ action: z.literal("grantGems"), userId: z.string(), gems: z.number().int().min(-1e6).max(1e6) }),
 ]);
 
 export const POST = route(async (req) => {
   const admin = await requireAdmin();
   const d = await body(req, Action);
   switch (d.action) {
+    case "saveSettings": {
+      const saved = await saveSettings(d.data, admin.id);
+      return { ok: true, saved: Object.keys(saved).length };
+    }
+    case "grantGems": {
+      const target = await prisma.user.findUnique({ where: { id: d.userId }, select: { gems: true } });
+      if (!target) throw new HttpError(404, "Player not found");
+      const gems = Math.max(-target.gems, d.gems);
+      await prisma.user.update({ where: { id: d.userId }, data: { gems: { increment: gems } } });
+      if (gems > 0) await notify(d.userId, { kind: "reward", title: "🎁 Gift from HQ", body: `+${gems} 💎` });
+      break;
+    }
     case "ban":
       if (d.userId === admin.id) throw new HttpError(400, "You can't ban yourself");
       await prisma.user.update({ where: { id: d.userId }, data: { banned: d.banned } });
@@ -112,7 +163,12 @@ export const POST = route(async (req) => {
       await prisma.user.update({ where: { id: d.userId }, data: { role: d.role } });
       break;
     case "grant":
-      await grant(d.userId, { coins: d.coins, xp: d.xp });
+      {
+        // Negative gifts take coins away, but never below zero.
+        const target = await prisma.user.findUnique({ where: { id: d.userId }, select: { coins: true } });
+        if (!target) throw new HttpError(404, "Player not found");
+        await grant(d.userId, { coins: Math.max(-target.coins, d.coins), xp: d.xp }, { raw: true });
+      }
       await notify(d.userId, { kind: "reward", title: "🎁 Gift from HQ", body: `${d.coins} coins, ${d.xp} XP` });
       break;
     case "createMission": {
@@ -145,7 +201,7 @@ export const POST = route(async (req) => {
       const del = await prisma.delivery.findUnique({ where: { id: d.id } });
       if (!del || del.status === "DELIVERED" || del.status === "CANCELLED") throw new HttpError(400, "Can't cancel");
       await prisma.delivery.update({ where: { id: d.id }, data: { status: "CANCELLED" } });
-      await grant(del.senderId, { coins: del.reward });
+      await grant(del.senderId, { coins: del.reward }, { raw: true });
       await notify(del.senderId, { kind: "delivery", title: "Delivery cancelled by admin", body: "Your coins were refunded" });
       if (del.courierId) await notify(del.courierId, { kind: "delivery", title: "Delivery cancelled by admin", body: del.title });
       break;

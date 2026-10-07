@@ -5,16 +5,22 @@ import { notify } from "./hub";
 import { HttpError } from "./http";
 import { moodOfUser } from "./needs";
 import { bonusOf } from "./hero";
+import { S } from "../lib/settings";
 
 export type Grant = { xp?: number; coins?: number; scrap?: number; gems?: number; items?: Record<string, number> };
 
-/** Give rewards. Earned XP is scaled by the commander's mood (life-sim layer). */
-export async function grant(userId: string, g: Grant) {
+/**
+ * Give rewards. Earned XP is scaled by the commander's mood (life-sim layer) and the
+ * admin's global XP multiplier; coins the game creates by the global coin multiplier.
+ * Pass raw for transfers between players, refunds and sales — they're never scaled.
+ */
+export async function grant(userId: string, g: Grant, opts: { raw?: boolean } = {}) {
   const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, hunger: true, energy: true, social: true, fun: true, needsAt: true } });
-  const xp = g.xp && g.xp > 0 ? Math.round(g.xp * moodOfUser(before).xpMult * (await bonusOf(userId)).xp) : (g.xp ?? 0);
+  const xp = g.xp && g.xp > 0 && !opts.raw ? Math.round(g.xp * moodOfUser(before).xpMult * (await bonusOf(userId)).xp * S.xpMult) : (g.xp ?? 0);
+  const coins = g.coins && g.coins > 0 && !opts.raw ? Math.round(g.coins * S.coinMult) : (g.coins ?? 0);
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { xp: { increment: xp }, coins: { increment: g.coins ?? 0 }, scrap: { increment: g.scrap ?? 0 }, gems: { increment: g.gems ?? 0 } },
+    data: { xp: { increment: xp }, coins: { increment: coins }, scrap: { increment: g.scrap ?? 0 }, gems: { increment: g.gems ?? 0 } },
   });
   for (const [itemKey, qty] of Object.entries(g.items ?? {})) {
     if (!qty) continue;
@@ -28,8 +34,9 @@ export async function grant(userId: string, g: Grant) {
   const newLevel = levelForXp(user.xp);
   if (newLevel > oldLevel) {
     const gained = newLevel - oldLevel;
-    await prisma.user.update({ where: { id: userId }, data: { gems: { increment: 2 * gained } } });
-    await notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `${titleForLevel(newLevel)} · +${3 * gained} attribute points, +${gained} Command Point${gained > 1 ? "s" : ""}, +${2 * gained} 💎` });
+    const gems = Math.round(S.levelUpGems * gained);
+    if (gems) await prisma.user.update({ where: { id: userId }, data: { gems: { increment: gems } } });
+    await notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `${titleForLevel(newLevel)} · +${3 * gained} attribute points, +${gained} Command Point${gained > 1 ? "s" : ""}${gems ? `, +${gems} 💎` : ""}` });
   }
   return user;
 }
@@ -40,8 +47,8 @@ export async function unlock(userId: string, key: string) {
   const exists = await prisma.userAchievement.findUnique({ where: { userId_key: { userId, key } } });
   if (exists) return;
   await prisma.userAchievement.create({ data: { userId, key } });
-  await notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP · +5 💎` });
-  await grant(userId, { xp: def.xp, gems: 5 });
+  await notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP${S.achievementGems ? ` · +${S.achievementGems} 💎` : ""}` });
+  await grant(userId, { xp: def.xp, gems: S.achievementGems });
 }
 
 /** Re-evaluate claim-based achievements after a claim. */

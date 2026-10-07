@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/db";
 import { bbox, dayPhase, distanceM, solarHour } from "@/lib/geo";
 import { spawnsAround } from "@/lib/spawns";
+import { S } from "@/lib/settings";
 import { bossesAround } from "@/lib/bosses";
 import { effectiveLevel, factionOf, levelOf, type Army } from "@/lib/rts";
 import { squadIcon } from "@/lib/td";
@@ -32,7 +33,7 @@ export const GET = route(async (req) => {
   );
 
   const near = bbox(here, 1500);
-  const wide = bbox(here, 8000);
+  const wide = bbox(here, S.viewRadiusKm * 1000);
   const inBox = (b: ReturnType<typeof bbox>, prefix = "") => ({
     [`${prefix}lat`]: { gte: b.minLat, lte: b.maxLat },
     [`${prefix}lng`]: { gte: b.minLng, lte: b.maxLng },

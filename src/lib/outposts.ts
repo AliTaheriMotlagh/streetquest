@@ -2,9 +2,10 @@
 // cell). Capture them with your army, garrison troops, collect tribute, and win the
 // faction war. Only ownership + garrison is stored. Pure.
 import { cellKey, hashStr, rng, type LatLng } from "./geo";
+import { S } from "./settings";
 
 export const OUTPOST_DEG = 0.008;
-export const OUTPOST_INCOME_HOUR = 40;
+export let OUTPOST_INCOME_HOUR = S.outpostIncomeHour;
 export const OUTPOST_CAP_HOURS = 12;
 export const OUTPOST_SHIELD_MS = 30 * 60_000;
 export const OUTPOST_FORT = { atk: 25, hp: 200 }; // fortification of a held outpost
@@ -44,4 +45,9 @@ export function pendingTribute(collectedAt: Date | string | null, capturedAt: Da
   const from = new Date(collectedAt ?? capturedAt ?? now).getTime();
   const hours = Math.min(OUTPOST_CAP_HOURS, Math.max(0, (now - from) / 3_600_000));
   return Math.floor(hours * OUTPOST_INCOME_HOUR * incomeMult);
+}
+
+/** Re-read the live admin settings (called by lib/config applyConfig). */
+export function syncSettings() {
+  OUTPOST_INCOME_HOUR = S.outpostIncomeHour;
 }

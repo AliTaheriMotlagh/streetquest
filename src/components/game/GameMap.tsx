@@ -1,13 +1,13 @@
 "use client";
 import L from "leaflet";
-import { memo, useEffect } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BUILDING_BY_KEY, FACTION_BY_KEY, SIEGE_RANGE_M, type BuildingKey } from "@/lib/rts";
 import { offset } from "@/lib/geo";
 import { PINGS, towerStats } from "@/lib/td";
-import type { LatLng, LobbyView, Me, Selected, World } from "./client";
+import type { GpsView, LatLng, LobbyView, Me, Selected, World } from "./client";
 import { esc, icon, meIcon } from "./mapIcons";
 import { LiveLayer } from "./LiveLayer";
 
@@ -18,12 +18,82 @@ const TILE_ATTRIBUTION = process.env.NEXT_PUBLIC_TILE_ATTRIBUTION || '&copy; <a 
 const DARKEN = !process.env.NEXT_PUBLIC_TILE_URL || process.env.NEXT_PUBLIC_TILE_DARKEN === "1";
 
 
-function Follow({ pos, follow, onDrag }: { pos: LatLng | null; follow: boolean; onDrag: () => void }) {
+/**
+ * The player's own marker. Each new fix glides from the old spot to the new one
+ * (linear, over about the time between fixes) and, while following, the camera pans
+ * along with it over the same duration — smooth in a car instead of jumping. The
+ * heading cone rotates with the direction of travel. Driving zooms out a step so
+ * you see further ahead.
+ */
+function Me({ pos, heading, speed, follow, onDrag }: { pos: LatLng | null; heading: number | null; speed: number; follow: boolean; onDrag: () => void }) {
   const map = useMap();
-  useEffect(() => {
-    if (pos && follow) map.panTo([pos.lat, pos.lng], { animate: true });
-  }, [pos?.lat, pos?.lng, follow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const marker = useRef<L.Marker | null>(null);
+  const anim = useRef<{ from: L.LatLng; to: L.LatLng; start: number; dur: number; raf: number } | null>(null);
+  const lastAt = useRef(0);
+  const driving = useRef(false);
   useMapEvents({ dragstart: onDrag });
+
+  useEffect(() => {
+    if (!pos) return;
+    const to = L.latLng(pos.lat, pos.lng);
+    if (!marker.current) {
+      marker.current = L.marker(to, { icon: meIcon, zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);
+      lastAt.current = performance.now();
+      if (follow) map.setView(to, map.getZoom(), { animate: false });
+      return;
+    }
+    const m = marker.current;
+    const from = m.getLatLng();
+    const now = performance.now();
+    const gap = now - lastAt.current;
+    lastAt.current = now;
+    if (anim.current) cancelAnimationFrame(anim.current.raf);
+    const far = from.distanceTo(to) > 2000; // teleport (test mode) or first real fix: jump
+    const dur = far ? 0 : Math.min(1800, Math.max(250, gap * 0.9));
+    if (!dur) {
+      m.setLatLng(to);
+      if (follow) map.setView(to, map.getZoom(), { animate: false });
+      return;
+    }
+    const step = () => {
+      const a = anim.current!;
+      const t = Math.min(1, (performance.now() - a.start) / a.dur);
+      m.setLatLng(L.latLng(a.from.lat + (a.to.lat - a.from.lat) * t, a.from.lng + (a.to.lng - a.from.lng) * t));
+      if (t < 1) a.raf = requestAnimationFrame(step);
+      else anim.current = null;
+    };
+    anim.current = { from, to, start: now, dur, raf: requestAnimationFrame(step) };
+    if (follow) map.panTo(to, { animate: true, duration: dur / 1000, easeLinearity: 1, noMoveStart: true });
+  }, [pos?.lat, pos?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-centre when follow is switched back on.
+  useEffect(() => {
+    if (follow && marker.current) map.setView(marker.current.getLatLng(), Math.max(map.getZoom(), driving.current ? 16 : 17), { animate: true });
+  }, [follow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Driving: zoom out once above ~25 km/h, back in after slowing to walking pace.
+  useEffect(() => {
+    const now = speed > 7 ? true : speed < 2.5 ? false : driving.current;
+    if (now === driving.current) return;
+    driving.current = now;
+    if (follow && marker.current) map.setZoom(now ? 16 : 17, { animate: true });
+  }, [speed > 7, speed < 2.5]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const el = marker.current?.getElement()?.querySelector<HTMLElement>(".me-heading");
+    if (!el) return;
+    el.style.opacity = heading == null ? "0" : "1";
+    if (heading != null) el.style.transform = `rotate(${heading}deg)`;
+  }, [heading, pos?.lat]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(
+    () => () => {
+      if (anim.current) cancelAnimationFrame(anim.current.raf);
+      marker.current?.remove();
+      marker.current = null;
+    },
+    [map],
+  );
   return null;
 }
 
@@ -35,6 +105,9 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
 const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#22e3ff" : t.friend ? "#3dff8f" : "#ff4d4d");
 
 type Props = {
+  heading?: number | null;
+  speed?: number;
+  game?: GpsView | null;
   runners?: LobbyView["players"];
   strikeMode?: boolean;
   pos: LatLng | null;
@@ -49,7 +122,7 @@ type Props = {
 
 export default memo(GameMap);
 
-function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode }: Props) {
+function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode, heading = null, speed = 0, game }: Props) {
   const center = pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
   const tint = world ? `${world.phase}-tint` : "";
@@ -62,7 +135,7 @@ function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSe
           attribution={TILE_ATTRIBUTION}
           maxZoom={19}
         />
-        <Follow pos={pos} follow={follow} onDrag={onUnfollow} />
+        <Me pos={pos} heading={heading} speed={speed} follow={follow} onDrag={onUnfollow} />
         <Clicks onClick={onMapClick} />
 
         {world?.events.map((e) => (
@@ -261,12 +334,25 @@ function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSe
           </>
         )}
 
-        {pos && (
+        {/* GPS games & story: visible waypoints, rally checkpoints, hold zones */}
+        {game?.points?.map((p, i) => (
+          <Marker key={`rp${i}`} position={[p.lat, p.lng]} zIndexOffset={1200} icon={icon(`<span class="ring" style="color:${i === game.next ? "#ffd23f" : i < (game.next ?? 0) ? "#3dff8f" : "#9ca3af"}"></span>${i < (game.next ?? 0) ? "✅" : "🏁"}<span class="nm">${i + 1}</span>`, `quest-pt ${i === game.next ? "next" : ""}`, 40)} />
+        ))}
+        {game?.points && pos && game.next != null && game.points[game.next] && (
+          <Polyline positions={[[pos.lat, pos.lng], [game.points[game.next].lat, game.points[game.next].lng]]} pathOptions={{ color: "#ffd23f", dashArray: "8 10", weight: 3 }} />
+        )}
+        {game?.target && (
           <>
-            <Circle center={[pos.lat, pos.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#22e3ff", weight: 1, fillOpacity: 0.06, dashArray: "4 6" }} />
-            <Marker position={[pos.lat, pos.lng]} icon={meIcon} zIndexOffset={1000} />
+            <Marker position={[game.target.lat, game.target.lng]} zIndexOffset={1200} icon={icon(`<span class="ring" style="color:#b26bff"></span>📍`, "quest-pt next", 44)} />
+            <Circle center={[game.target.lat, game.target.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#b26bff", weight: 2, fillOpacity: 0.12 }} />
+            {pos && <Polyline positions={[[pos.lat, pos.lng], [game.target.lat, game.target.lng]]} pathOptions={{ color: "#b26bff", dashArray: "8 10", weight: 3 }} />}
           </>
         )}
+        {game?.hold && game.center && (
+          <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#3dff8f" : "#ff4d4d", weight: 3, fillOpacity: 0.1, dashArray: "6 6" }} />
+        )}
+
+        {pos && <Circle center={[pos.lat, pos.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#22e3ff", weight: 1, fillOpacity: 0.06, dashArray: "4 6" }} />}
       </MapContainer>
     </div>
   );

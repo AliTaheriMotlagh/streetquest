@@ -14,6 +14,8 @@ import { body, HttpError, route } from "@/server/http";
 import { currentHp, ROOKIE_LEVEL } from "@/lib/td";
 import { maxHpOf } from "@/server/td";
 import { superStatus } from "@/server/superweapons";
+import { settingOverrides } from "@/server/settings";
+import { goalsReady } from "@/server/goals";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -26,7 +28,12 @@ export const GET = route(async () => {
     prisma.powerState.findMany({ where: { userId: u.id }, select: { rank: true } }),
     prisma.gear.count({ where: { userId: u.id, equipped: true } }),
   ]);
-  const maxHp = await maxHpOf(u.id);
+  const [maxHp, settings, goals, gpsGame] = await Promise.all([
+    maxHpOf(u.id),
+    settingOverrides(),
+    goalsReady(u),
+    prisma.gpsGame.findFirst({ where: { userId: u.id, status: "ACTIVE", endsAt: { gt: new Date() } }, select: { id: true, kind: true } }),
+  ]);
   const sw = base ? await superStatus(u) : null;
   const quests = await questView(u.id, { heroClass: !!u.heroClass, base: !!base, equipped: equipped > 0 });
   const needs = needsOf(u);
@@ -73,6 +80,11 @@ export const GET = route(async () => {
     maxHp,
     downedUntil: u.downedUntil && u.downedUntil.getTime() > Date.now() ? u.downedUntil.getTime() : null,
     rookie: prog.level < ROOKIE_LEVEL,
+    settings,
+    goalsReady: goals,
+    walkedM: Math.round(u.walkedM),
+    storyChapter: u.storyChapter,
+    gpsGame,
     superweapon: sw?.def && sw.level > 0 ? { key: sw.def.key, name: sw.def.name, emoji: sw.def.emoji, level: sw.level, readyAt: sw.readyAt, radius: sw.def.radius } : null,
   };
 });

@@ -12,6 +12,6 @@ export function icon(html: string, cls = "", size = 40) {
   }
   return i;
 }
-export const meIcon = L.divIcon({ html: '<div class="me-marker"></div>', className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
+export const meIcon = L.divIcon({ html: '<div class="me-wrap"><div class="me-heading"></div><div class="me-marker"></div></div>', className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

@@ -55,6 +55,18 @@ Three games stacked on one real-world map:
   dialogs instead of browser pop-ups, iPhone (notch/landscape) and iPad (side panels) layouts, achievements
   for every system.
 
+- **Story missions** — an 8-chapter campaign played on real streets: waypoints are placed around wherever you
+  are, with *go* (reach a marker), *find* (hidden spot, hot/cold detector only) and *hold* (stay in a zone) steps.
+- **GPS mini-games** — 🧭 Treasure Hunt (hot/cold, the spot never leaves the server), 🏃 Street Sprint (distance on
+  foot; driving doesn't count) and 🏁 Checkpoint Rally.
+- **Goals** — a weekly 🌍 world operation everyone works on together, a weekly faction goal (with a live faction
+  race) and permanent personal milestones with tiers. Everyone who contributed claims the shared rewards.
+- **Store & sponsor spots** — gem packs via Stripe Checkout, coin offers / instant heal / energy drink / base
+  shield paid in gems, and rewarded sponsor spots (timed server-side, daily cap, views and clicks per sponsor).
+- **Live game settings** — Admin → Game settings edits every tunable (reach radius, rewards, multipliers, timers,
+  ranges, goals, gem packs, ads…) and Admin → Game data edits unit/building/tower/item/research stats. Changes go
+  live within ~15 s, no redeploy.
+
 Every layer feeds the others: hero bonuses change battle maths, build times, income and FPS stats;
 mood scales XP; loot funds research; territory funds the army.
 
@@ -83,7 +95,8 @@ browser until you switch it off. Set `TEST_MODE=off` in production to limit it t
 **Faster timers for testing:** `GAME_SPEED=600 npm run dev` makes construction and training 600× faster
 (ignored in production). Jump straight into a live fight with `/play?match=<id>`.
 
-End-to-end tests (need the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke` and
+End-to-end tests (need the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke`,
+`npm run test:features` (settings, army delivery, bag multi-sell, goals, store, ads, GPS games, story) and
 `npm run test:mp` (lobbies, squad runs, towers shooting players, C4, squads, skirmishes, raider waves, pings).
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
@@ -107,6 +120,10 @@ End-to-end tests (need the dev server running, ideally with `GAME_SPEED=600`): `
 | Anti-cheat: claims use the server's trusted position, GPS jumps faster than 250 km/h are rejected | `src/app/api/loc`, `src/server/rewards.ts` |
 | Live layer (serverless-friendly): position + presence via `/api/loc`, notifications + unread via `/api/sync` (polled every 4 s), chat polled every 3 s. "Online" = pinged in the last 90 s | `src/server/hub.ts`, `src/app/api/{loc,sync,chat}` |
 | Deliveries: coins in escrow → courier accepts → GPS check-in at pickup → handover code at drop-off | `src/app/api/deliveries` |
+| Live settings: every tunable has a default in `lib/settings.ts`; admin overrides are stored in `GameConfig`, loaded per server instance (15 s cache) and sent to clients with `/api/me`; `applyConfig()` updates the rule constants and catalog stats in place on both sides | `src/lib/{settings,config}.ts`, `src/server/settings.ts` |
+| Goals: game events (every `questEvent`) feed per-user, per-faction and world counters per week | `src/server/goals.ts`, `/api/goals` |
+| GPS games & story: targets generated server-side around the trusted position; hidden spots never sent to the client | `src/lib/story.ts`, `src/server/gpsgames.ts`, `/api/gpsgame` |
+| Store, sponsor spots: Stripe Checkout over REST (no SDK), credited once per session by webhook or on return | `src/server/{store,ads}.ts`, `/api/{store,ads}` |
 | Admin: KPIs, 7-day funnel, players (ban/role/gift), sponsored mission drops, banners, live push, moderation, UTM link builder | `/admin` |
 | SEO: SSR landing with VideoGame + FAQ JSON-LD, public event pages with Event JSON-LD, sitemap, robots, OG image, PWA manifest | `src/app` |
 | Marketing: `?ref=` referrals (+150 coins each), UTM attribution stored when the guest account is created, first-party page-view/share tracking | `src/middleware.ts`, `/api/track` |

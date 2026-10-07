@@ -1,10 +1,11 @@
 // King of the hill + bounties. Pure — safe on client and server.
+import { S } from "./settings";
 
-export const FLAG_COST = 300;
-export const FLAG_INCOME_HOUR = 30;
+export let FLAG_COST = S.flagCost;
+export let FLAG_INCOME_HOUR = S.flagIncomeHour;
 export const FLAG_CAP_HOURS = 12;
-export const FLAG_RADIUS_M = 30; // stand this close to capture or defend
-export const CAPTURE_SECONDS = 60;
+export let FLAG_RADIUS_M = S.flagRadius; // stand this close to capture or defend
+export let CAPTURE_SECONDS = S.flagCaptureSeconds;
 export const FLAG_SPACING_M = 150;
 export const MAX_FLAGS = 3;
 export const FLAG_SHIELD_MS = 5 * 60_000; // a fresh capture can't be flipped straight back
@@ -18,3 +19,11 @@ export function flagTribute(collectedAt: Date | string | number, now = Date.now(
 export const BOUNTY_MIN = 50;
 export const BOUNTY_MAX = 5000;
 export const BOUNTY_DAYS = 7; // unclaimed bounties are refunded after this
+
+/** Re-read the live admin settings (called by lib/config applyConfig). */
+export function syncSettings() {
+  FLAG_COST = S.flagCost;
+  FLAG_INCOME_HOUR = S.flagIncomeHour;
+  FLAG_RADIUS_M = S.flagRadius;
+  CAPTURE_SECONDS = S.flagCaptureSeconds;
+}

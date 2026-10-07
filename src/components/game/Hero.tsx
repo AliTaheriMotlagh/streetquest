@@ -9,6 +9,7 @@ import { ATTRS, CLASSES, classOf, fmtMod, RESPEC_COST, type ModKey } from "@/lib
 import { cooldownMs, MAX_POWER_RANK, POWERS } from "@/lib/powers";
 import { api, type HeroView } from "./client";
 import { useGame } from "./ui";
+import { S } from "@/lib/settings";
 import { askConfirm } from "@/components/Dialogs";
 
 export function useHero() {
@@ -26,7 +27,8 @@ function useHeroAct(load: () => void) {
 }
 
 // ---------------------------------------------------------------- Hero
-export function HeroTab() {
+export function HeroTab({ onTab }: { onTab?: (t: "gear") => void } = {}) {
+  const { me } = useGame();
   const { h, load } = useHero();
   const doAct = useHeroAct(load);
   if (!h) return <div className="empty">Loading…</div>;
@@ -51,33 +53,150 @@ export function HeroTab() {
       </>
     );
 
+  const b = h.bonus;
+  const st = h.stats;
+  const equipped = h.gear.filter((g) => g.equipped);
+  const RW = { common: 1, rare: 2, epic: 3, legendary: 5 } as const;
+  const power = Math.round(h.level * 30 + (h.attrs.str + h.attrs.agi + h.attrs.int + h.attrs.cha) * 6 + equipped.reduce((s, g) => s + g.level * 4 * RW[g.rarity], 0) + h.research.length * 25);
+  const maxAttr = Math.max(20, ...Object.values(h.attrs));
+  const pct = (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`;
+  const speed = (t: number) => pct(1 / t - 1);
+  const winRate = st.battles ? Math.round((st.battlesWon / st.battles) * 100) : 0;
+  const SLOT = { weapon: "🔫", armor: "🦺", gadget: "📻" } as const;
+
   return (
-    <>
-      <div className="card row">
-        <div style={{ fontSize: 40 }}>{c.emoji}</div>
+    <div className="hero-sheet">
+      <div className="hero-banner">
+        <div className="hero-portrait">
+          <span className="hp-face">{me.avatar}</span>
+          <span className="class-badge" title={c.name}>{c.emoji}</span>
+          <span className="lvl-badge">{h.level}</span>
+          <span className="sr-only">{c.blurb}</span>
+        </div>
         <div className="grow">
-          <b style={{ fontFamily: "var(--display)" }}>{c.name}</b> <span className="small muted">· hero level {h.level}</span>
-          <div className="small muted">{c.blurb}</div>
-          <div className="small">🔫 FPS weapon: {WEAPONS[h.weapon as keyof typeof WEAPONS]?.name ?? "Assault Rifle"}{h.buffUntil && " · 📯 Battle Cry active"}</div>
+          <div className="hero-name">{me.username}</div>
+          <div className="small" style={{ color: "var(--yellow)" }}>{c.name} · {me.title}</div>
+          <div className="xpbar" style={{ width: "100%" }}><i style={{ width: `${me.levelPct * 100}%` }} /></div>
+          <div className="small muted">{me.xp.toLocaleString()} / {me.nextLevelXp.toLocaleString()} XP</div>
+          <div className="power-pill">⚡ Power <b>{power.toLocaleString()}</b></div>
         </div>
       </div>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <label style={{ margin: "6px 0" }}>Attributes {h.freePoints > 0 && <span style={{ color: "var(--yellow)" }}>· {h.freePoints} points to spend</span>}</label>
-        <button className="btn ghost small" onClick={() => askConfirm(`Reset all attribute points for ${RESPEC_COST} coins?`, { ok: "Reset", danger: true }).then((ok) => ok && doAct({ action: "respec" }))}>Respec</button>
+
+      <div className="stat-tiles">
+        <div className="stat-tile"><b>❤️ {st.maxHp}</b><span>Max HP</span></div>
+        <div className="stat-tile"><b>🔫 {WEAPONS[h.weapon as keyof typeof WEAPONS]?.name ?? "Rifle"}</b><span>FPS weapon</span></div>
+        <div className="stat-tile"><b>{me.league.emoji} {st.trophies}</b><span>{me.league.name}</span></div>
+        {h.buffUntil && <div className="stat-tile glow"><b>📯 Active</b><span>Battle Cry</span></div>}
+      </div>
+
+      <div className="sec-head">
+        <b>Attributes</b>
+        {h.freePoints > 0 && <span className="points-glow">{h.freePoints} points to spend!</span>}
+        <span className="grow" />
+        <button className="btn ghost small" onClick={() => askConfirm(`Reset all attribute points for ${RESPEC_COST} coins?`, { ok: "Reset", danger: true }).then((ok) => ok && doAct({ action: "respec" }))}>↺ Respec</button>
       </div>
       {ATTRS.map((a) => (
-        <div key={a.key} className="card list-item">
-          <div className="icon-tile">{a.emoji}</div>
+        <div key={a.key} className="attr-row">
+          <span className="attr-ic">{a.emoji}</span>
           <div className="grow">
-            <b>{a.name}</b> <span className="tag">{h.attrs[a.key]}</span>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <b>{a.name}</b>
+              <b className="mono" style={{ color: "var(--cyan)" }}>{h.attrs[a.key]}</b>
+            </div>
+            <div className="meter"><i style={{ width: `${(h.attrs[a.key] / maxAttr) * 100}%` }} /></div>
             <div className="small muted">{a.blurb} per point</div>
           </div>
-          <button className="btn small" disabled={h.freePoints < 1} onClick={() => doAct({ action: "allocate", attr: a.key, n: 1 })}>+1</button>
-          {h.freePoints >= 5 && <button className="btn ghost small" onClick={() => doAct({ action: "allocate", attr: a.key, n: 5 })}>+5</button>}
+          <div className="attr-btns">
+            <button className="btn small" disabled={h.freePoints < 1} onClick={() => doAct({ action: "allocate", attr: a.key, n: 1 })}>+1</button>
+            {h.freePoints >= 5 && <button className="btn ghost small" onClick={() => doAct({ action: "allocate", attr: a.key, n: 5 })}>+5</button>}
+          </div>
         </div>
       ))}
-      <label>Total bonuses (class + attributes + gear + research)</label>
-      <div className="mods">{modList.length ? modList.map(([m, v]) => <span key={m}>{fmtMod(m, v)}</span>) : <span className="muted">None yet</span>}</div>
+
+      <div className="sec-head"><b>Equipment</b><span className="grow" />{onTab && <button className="btn ghost small" onClick={() => onTab("gear")}>Open stash →</button>}</div>
+      <div className="slots">
+        {(["weapon", "armor", "gadget"] as const).map((slot) => {
+          const g = equipped.find((x) => x.slot === slot);
+          return (
+            <button key={slot} className={`slot ${g ? g.rarity : "empty"}`} style={g ? { borderColor: RARITY_COLOR[g.rarity] } : undefined} onClick={() => onTab?.("gear")}>
+              <span className="slot-ic">{g ? GEAR_BASE_BY_KEY[g.base]?.emoji ?? SLOT[slot] : SLOT[slot]}</span>
+              <span className="slot-name" style={g ? { color: RARITY_COLOR[g.rarity] } : undefined}>{g ? g.name : `No ${slot}`}</span>
+              {g && <span className="tag">Lv {g.level}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <StatGroup title="🔫 Combat" rows={[
+        ["Health (street & FPS)", `${st.maxHp} HP`, (st.maxHp - 100) / 150],
+        ["Weapon damage", pct(b.fpsDmg - 1), b.fpsDmg - 1],
+        ["Headshot bonus", `+${b.headBonus.toFixed(2)}×`, b.headBonus / 1.5],
+        ["Move speed", pct(b.fpsSpeed - 1), (b.fpsSpeed - 1) * 3],
+        ["Street shot", `${Math.round(S.shootDmg * b.fpsDmg)} dmg`, (b.fpsDmg - 1) * 2],
+      ]} />
+      <StatGroup title="🎖️ Army" rows={[
+        ["Army attack", pct(b.armyAtk - 1), b.armyAtk - 1],
+        ["Army health", pct(b.armyHp - 1), b.armyHp - 1],
+        ["Infantry attack", pct(b.atkBy.infantry - 1), b.atkBy.infantry - 1],
+        ["Vehicle attack", pct(b.atkBy.vehicle - 1), b.atkBy.vehicle - 1],
+        ["Air attack", pct(b.atkBy.air - 1), b.atkBy.air - 1],
+        ["Rocket attack", pct(b.rocketAtk - 1), b.rocketAtk - 1],
+        ["Vehicle armor", pct(b.vehicleHp - 1), b.vehicleHp - 1],
+        ["Turret power", pct(b.turret - 1), b.turret - 1],
+        ["Fewer casualties", pct(1 - b.losses), (1 - b.losses) * 2],
+      ]} />
+      <StatGroup title="💰 Economy" rows={[
+        ["Income & tribute", pct(b.income - 1), b.income - 1],
+        ["Raid loot", pct(b.loot - 1), b.loot - 1],
+        ["XP gain", pct(b.xp - 1), (b.xp - 1) * 2],
+        ["Build speed", speed(b.buildTime), 1 - b.buildTime],
+        ["Training speed", speed(b.trainTime), 1 - b.trainTime],
+        ["Research speed", speed(b.researchTime), 1 - b.researchTime],
+      ]} />
+
+      <div className="sec-head"><b>📜 Service record</b></div>
+      <div className="record">
+        <div><b>{(st.walkedM / 1000).toFixed(1)} km</b><span>Walked</span></div>
+        <div><b>{st.battlesWon}/{st.battles}</b><span>Battles won · {winRate}%</span></div>
+        <div><b>{st.kills}</b><span>FPS kills</span></div>
+        <div><b>{st.bossDmg.toLocaleString()}</b><span>Boss damage</span></div>
+        <div><b>{st.raiders}</b><span>Raiders stopped</span></div>
+        <div><b>{st.claims}</b><span>Items collected</span></div>
+        <div><b>{st.units}</b><span>Troops</span></div>
+        <div><b>{st.outposts}</b><span>Outposts held</span></div>
+        <div><b>{st.flags}</b><span>Flags held</span></div>
+        <div><b>{st.towers}</b><span>Towers</span></div>
+        <div><b>{st.story}</b><span>Story chapters</span></div>
+        <div><b>{st.gpsGames}</b><span>GPS games won</span></div>
+        <div><b>{st.achievements}</b><span>Achievements</span></div>
+        <div><b>🔥 {st.streak}</b><span>Day streak</span></div>
+        <div><b>{h.research.length}</b><span>Research done</span></div>
+        <div><b>{st.memberDays}</b><span>Days served</span></div>
+      </div>
+      {modList.length > 0 && (
+        <details className="small" style={{ marginTop: 10 }}>
+          <summary className="muted">All bonus sources (class + attributes + gear + research)</summary>
+          <div className="mods">{modList.map(([m, v]) => <span key={m}>{fmtMod(m, v)}</span>)}</div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** A titled list of stats, each with a bar that fills with how far above base it is. */
+function StatGroup({ title, rows }: { title: string; rows: [string, string, number][] }) {
+  return (
+    <>
+      <div className="sec-head"><b>{title}</b></div>
+      <div className="stat-group">
+        {rows.map(([label, value, fill]) => (
+          <div key={label} className="stat-line">
+            <span className="grow">{label}</span>
+            <span className="meter thin"><i style={{ width: `${Math.max(0, Math.min(1, fill)) * 100}%` }} /></span>
+            <b className={fill > 0.001 ? "up" : "muted"}>{value}</b>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
@@ -163,7 +282,7 @@ export function QuestsTab() {
       </div>
       <div className="need-bar"><i style={{ width: `${(q.progress / q.target) * 100}%`, background: "var(--yellow)" }} /></div>
       <div className="small muted">
-        Reward: {q.reward.xp} XP · {q.reward.coins} 🪙 · {q.campaign ? 5 : 2} 💎{q.reward.scrap ? ` · ${q.reward.scrap} 🔩` : ""}
+        Reward: {q.reward.xp} XP · {q.reward.coins} 🪙 · {q.campaign ? S.questGemsCampaign : S.questGemsDaily} 💎{q.reward.scrap ? ` · ${q.reward.scrap} 🔩` : ""}
         {q.reward.gear && <span style={{ color: RARITY_COLOR[q.reward.gear] }}> · {q.reward.gear} gear</span>}
       </div>
     </div>

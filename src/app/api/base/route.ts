@@ -39,6 +39,7 @@ import { heroOf } from "@/server/hero";
 import { questEvent } from "@/server/quests";
 import { deployedArmy } from "@/server/td";
 import { body, HttpError, route } from "@/server/http";
+import { S } from "@/lib/settings";
 import { grant, lastKnownLocation, spendCoins } from "@/server/rewards";
 
 // Dev/testing only: GAME_SPEED=60 makes construction and training 60× faster.
@@ -47,9 +48,10 @@ const SPEED = process.env.NODE_ENV !== "production" ? Math.max(1, Number(process
 export const GET = route(async () => {
   const u = await requireUser();
   const f = factionOf(u.faction);
-  const [base, { army, vets }, hero, research, queue, battles, field] = await Promise.all([
+  // Settle training first so the queue and the army never both count the same units.
+  const { army, vets } = await forcesOf(u.id);
+  const [base, hero, research, queue, battles, field] = await Promise.all([
     loadBase({ ownerId: u.id }),
-    forcesOf(u.id),
     heroOf(u),
     prisma.research.findMany({ where: { userId: u.id } }),
     prisma.trainOrder.findMany({ where: { userId: u.id }, orderBy: { readyAt: "asc" } }),
@@ -82,8 +84,8 @@ export const GET = route(async () => {
     housing: { used: housingOf(army) + housingOf(field) + queue.reduce((s, q) => s + (UNIT_BY_KEY[q.unitType as UnitKey]?.housing ?? 0) * q.qty, 0), cap: base ? campCapacity(base.buildings) : 10 },
     builders: base ? builderCount(base.buildings) : 1,
     protection: base ? vaultProtection(base.buildings) : 0,
-    timeMult: { build: hero.bonus.buildTime, train: hero.bonus.trainTime, research: hero.bonus.researchTime },
-    queue: queue.map((q) => ({ id: q.id, unitType: q.unitType, qty: q.qty, readyAt: q.readyAt })),
+    timeMult: { build: hero.bonus.buildTime, train: hero.bonus.trainTime * S.trainTimeMult, research: hero.bonus.researchTime * S.researchTimeMult },
+    queue: queue.map((q) => ({ id: q.id, unitType: q.unitType, qty: q.qty, readyAt: q.readyAt, unitMs: q.unitMs })),
     battles: battles.map((b) => ({ id: b.id, kind: b.kind, targetName: b.targetName, won: b.won, loot: b.loot, stars: b.stars, destruction: b.destruction, trophies: b.trophies, createdAt: b.createdAt, side: "attack" as const, revengeBaseId: null })),
     defended: defended.map((b) => ({ id: b.id, kind: b.kind, targetName: b.attacker.username, won: !b.won, loot: b.loot, stars: b.stars, destruction: b.destruction, trophies: -b.trophies, createdAt: b.createdAt, side: "defend" as const, revengeBaseId: b.attacker.base?.id ?? null })),
   };
@@ -170,8 +172,9 @@ export const POST = route(async (req) => {
     const cost = unitCost(unit, f) * d.qty;
     await spendCoins(u.id, cost);
     const start = Math.max(Date.now(), queued[0]?.readyAt.getTime() ?? 0);
-    const readyAt = new Date(start + (unit.seconds * d.qty * 1000 * slowdown(powerOf(base.buildings, f).ok) * bonus.trainTime) / SPEED);
-    await prisma.trainOrder.create({ data: { userId: u.id, unitType: unit.key, qty: d.qty, readyAt } });
+    const unitMs = Math.max(1, Math.round((unit.seconds * 1000 * slowdown(powerOf(base.buildings, f).ok) * bonus.trainTime * S.trainTimeMult) / SPEED));
+    const readyAt = new Date(start + unitMs * d.qty);
+    await prisma.trainOrder.create({ data: { userId: u.id, unitType: unit.key, qty: d.qty, readyAt, unitMs } });
     await questEvent(u.id, "train", d.qty);
     return { message: `${unit.emoji} Training ${d.qty}× ${unit.name} (−${cost} 🪙)` };
   }
@@ -198,7 +201,7 @@ export const POST = route(async (req) => {
       await prisma.user.update({ where: { id: u.id }, data: { coins: { increment: r.coins } } });
       throw new HttpError(400, "Not enough scrap");
     }
-    const readyAt = new Date(Date.now() + (r.minutes * 60_000 * bonus.researchTime) / SPEED);
+    const readyAt = new Date(Date.now() + (r.minutes * 60_000 * bonus.researchTime * S.researchTimeMult) / SPEED);
     await prisma.research.create({ data: { userId: u.id, key: r.key, readyAt } });
     await questEvent(u.id, "research");
     return { message: `${r.emoji} Researching ${r.name} (−${r.coins} 🪙, −${r.scrap} scrap)` };

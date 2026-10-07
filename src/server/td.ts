@@ -112,7 +112,7 @@ export async function knockDown(u: Pick<User, "id" | "coins">, maxHp: number, by
     data: { hp: maxHp, hpAt: new Date(now + DOWNED_MS), downedUntil: new Date(now + DOWNED_MS), coins: { decrement: Math.min(coins, Math.max(0, u.coins)) } },
   });
   if (!took.count) return 0; // someone else got there first
-  if (coins > 0) await grant(byUserId, { coins, xp: 40 });
+  if (coins > 0) await grant(byUserId, { coins, xp: 40 }, { raw: true });
   if (byUserId !== u.id) await claimBounties(u.id, byUserId);
   return coins;
 }
@@ -126,7 +126,7 @@ export async function claimBounties(targetId: string, byUserId: string) {
     if (ok.count) total += b.amount;
   }
   if (!total) return 0;
-  await grant(byUserId, { coins: total, xp: Math.min(500, Math.round(total / 5)) });
+  await grant(byUserId, { coins: total, xp: Math.min(500, Math.round(total / 5)) }, { raw: true });
   const target = await prisma.user.findUnique({ where: { id: targetId }, select: { username: true } });
   await notify(byUserId, { kind: "reward", title: `💀 Bounty collected on ${target?.username}!`, body: `+${total} 🪙` });
   await unlock(byUserId, "bounty_hunter");

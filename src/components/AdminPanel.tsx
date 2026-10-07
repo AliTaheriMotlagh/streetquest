@@ -2,22 +2,25 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { askConfirm, askText } from "@/components/Dialogs";
+import { GameDataTab, RevenueTab, SettingsTab, type AdminConfig, type AdminRevenue } from "@/components/AdminSettings";
 
 type Data = {
   stats: { users: number; online: number; signups7: number; claims24: number; upcomingEvents: number; pageViews7: number; conversion7: number; deliveries: Record<string, number> };
   bySource: { source: string; count: number }[];
   byCampaign: { campaign: string; count: number }[];
   series: Record<string, { page_view: number; signup: number; claim: number }>;
-  users: { id: string; username: string; email: string; role: string; banned: boolean; level: number; coins: number; createdAt: string; utmSource: string | null; online: boolean; lastSeenAt: string | null }[];
+  users: { id: string; username: string; email: string; role: string; banned: boolean; level: number; coins: number; gems: number; createdAt: string; utmSource: string | null; online: boolean; lastSeenAt: string | null }[];
   deliveries: { id: string; title: string; status: string; reward: number; createdAt: string; sender: { username: string }; courier: { username: string } | null }[];
   notes: { id: string; body: string; hidden: boolean; lat: number; lng: number; createdAt: string; author: { username: string } }[];
   missions: { id: string; title: string; itemKey: string; lat: number; lng: number; activeFrom: string; activeTo: string; sponsor: string | null; rewardXp: number; rewardCoins: number }[];
   announcements: { id: string; title: string; body: string; active: boolean; ctaUrl: string | null }[];
   messages: { id: string; room: string; body: string; createdAt: string; author: { username: string } }[];
   items: { key: string; label: string }[];
+  config: AdminConfig;
+  revenue: AdminRevenue;
 };
 
-type Tab = "dash" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type Tab = "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
 const fmt = (d: string) => new Date(d).toLocaleString();
 const toLocalInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
@@ -49,6 +52,12 @@ export function AdminPanel() {
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [saved, setSaved] = useState(0);
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(0), 2500);
+    return () => clearTimeout(t);
+  }, [saved]);
   const [mission, setMission] = useState({ title: "", description: "", lat: "", lng: "", itemKey: "diamond", rewardXp: 300, rewardCoins: 100, activeFrom: toLocalInput(new Date()), activeTo: toLocalInput(new Date(Date.now() + 7 * 86400000)), sponsor: "" });
   const [ann, setAnn] = useState({ title: "", body: "", ctaLabel: "", ctaUrl: "" });
   const [push, setPush] = useState({ title: "", body: "" });
@@ -67,6 +76,7 @@ export function AdminPanel() {
     const r = await fetch("/api/admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json();
     setNotice(r.ok ? null : d.error ?? "Request failed");
+    if (r.ok && "action" in body && (body as { action: string }).action === "saveSettings") setSaved(Date.now());
     load();
     return r.ok;
   };
@@ -85,6 +95,11 @@ export function AdminPanel() {
           <button className="close" onClick={() => setNotice(null)} aria-label="Dismiss">✕</button>
         </div>
       )}
+      {saved > 0 && (
+        <div className="announce" role="status" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--green)", marginBottom: 10 }}>
+          <b className="grow small" style={{ color: "var(--green)" }}>✅ Settings saved — live for players within ~15 seconds</b>
+        </div>
+      )}
       <div className="wrap admin">
         <div className="topbar">
           <Link href="/" className="logo">STREET<span>QUEST</span></Link>
@@ -93,7 +108,7 @@ export function AdminPanel() {
           <Link href="/play" className="btn small">Open game</Link>
         </div>
         <div className="tabs">
-          {([["dash", "Dashboard"], ["users", "Players"], ["missions", "Missions"], ["marketing", "Marketing"], ["moderation", "Moderation"], ["deliveries", "Deliveries"]] as [Tab, string][]).map(([k, l]) => (
+          {([["dash", "Dashboard"], ["settings", "⚙️ Game settings"], ["data", "📊 Game data"], ["revenue", "💰 Revenue"], ["users", "Players"], ["missions", "Missions"], ["marketing", "Marketing"], ["moderation", "Moderation"], ["deliveries", "Deliveries"]] as [Tab, string][]).map(([k, l]) => (
             <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
           ))}
         </div>
@@ -123,12 +138,16 @@ export function AdminPanel() {
           </>
         )}
 
+        {tab === "settings" && <SettingsTab key={JSON.stringify(data.config.overrides)} config={data.config} post={post} />}
+        {tab === "data" && <GameDataTab key={JSON.stringify(data.config.overrides.catalog ?? {})} config={data.config} post={post} />}
+        {tab === "revenue" && <RevenueTab rev={data.revenue} config={data.config} />}
+
         {tab === "users" && (
           <>
             <input placeholder="Search name or email" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320, marginBottom: 10 }} />
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Player</th><th>Email</th><th>Lvl</th><th>Coins</th><th>Source</th><th>Joined</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Player</th><th>Email</th><th>Lvl</th><th>Coins</th><th>Gems</th><th>Source</th><th>Joined</th><th>Actions</th></tr></thead>
                 <tbody>
                   {data.users.map((u) => (
                     <tr key={u.id} style={{ opacity: u.banned ? 0.5 : 1 }}>
@@ -136,12 +155,14 @@ export function AdminPanel() {
                       <td className="muted">{u.email}</td>
                       <td>{u.level}</td>
                       <td>{u.coins}</td>
+                      <td>{u.gems}</td>
                       <td>{u.utmSource ?? "organic"}</td>
                       <td className="muted">{fmt(u.createdAt)}</td>
                       <td className="row">
                         <button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? "Unban" : "Ban"}</button>
                         <button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? "Demote" : "Make admin"}</button>
-                        <button className="btn ghost small" onClick={() => askText(`Coins to grant ${u.username}`, "100", { body: "Use a negative number to remove coins.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Number(c), xp: 0 }); })}>Gift</button>
+                        <button className="btn ghost small" onClick={() => askText(`Coins to grant ${u.username}`, "100", { body: "Use a negative number to remove coins.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Math.round(Number(c)), xp: 0 }); })}>🪙 Gift</button>
+                        <button className="btn ghost small" onClick={() => askText(`Gems to grant ${u.username}`, "50", { body: "Use a negative number to remove gems.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantGems", userId: u.id, gems: Math.round(Number(c)) }); })}>💎 Gift</button>
                       </td>
                     </tr>
                   ))}

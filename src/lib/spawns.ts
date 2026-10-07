@@ -16,9 +16,10 @@ import {
   type DayPhase,
   type LatLng,
 } from "./geo";
+import { S } from "./settings";
 
 export const BUCKET_MS = 20 * 60 * 1000;
-export const INTERACT_RADIUS_M = 40;
+export let INTERACT_RADIUS_M = S.interactRadius;
 
 export type SpawnKind = "item" | "chest" | "run" | "arcade" | "derrick";
 
@@ -67,7 +68,8 @@ function itemsFor(phase: DayPhase) {
 export function spawnsForCell(cx: number, cy: number, bucket: number): Spawn[] {
   const cell = cellKey(cx, cy);
   const rand = rng(hashStr(`${bucket}|${cell}`));
-  const count = 3 + Math.floor(rand() * 4); // 3-6 per cell
+  const lo = Math.min(S.spawnMin, S.spawnMax);
+  const count = lo + Math.floor(rand() * (Math.max(S.spawnMin, S.spawnMax) - lo + 1)); // 3-6 per cell by default
   const expiresAt = (bucket + 1) * BUCKET_MS;
   const out: Spawn[] = [];
 
@@ -79,7 +81,7 @@ export function spawnsForCell(cx: number, cy: number, bucket: number): Spawn[] {
     const phase = dayPhase(pos, at);
     const h = solarHour(pos, at);
     const goldenHour = (h >= 6 && h < 8) || (h >= 18 && h < 20);
-    const mult = goldenHour ? 2 : 1;
+    const mult = goldenHour ? S.goldenHourMult : 1;
     const kind = pickWeighted(KINDS, rand()).kind;
     const item = pickWeighted(itemsFor(phase), rand());
     const id = `${bucket}.${cell}.${i}`;
@@ -129,4 +131,9 @@ export function resolveSpawn(id: string, now = Date.now()): Spawn | null {
   const cur = currentBucket(now);
   if (bucket !== cur && bucket !== cur - 1) return null;
   return spawnsForCell(Number(m[2]), Number(m[3]), bucket).find((s) => s.id === id) ?? null;
+}
+
+/** Re-read the live admin settings (called by lib/config applyConfig). */
+export function syncSettings() {
+  INTERACT_RADIUS_M = S.interactRadius;
 }

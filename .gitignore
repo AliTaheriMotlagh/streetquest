@@ -4,3 +4,4 @@ node_modules
 prisma/*.db*
 next-env.d.ts
 *.tsbuildinfo
+/.next-test

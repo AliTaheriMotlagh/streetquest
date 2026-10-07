@@ -6,6 +6,7 @@
 import { hashStr, offset, rng, type LatLng } from "./geo";
 import type { ArmorClass } from "./hero";
 import { UNIT_BY_KEY, type Army, type UnitKey } from "./rts";
+import { S } from "./settings";
 
 // ---------------------------------------------------------------- towers
 export type TowerKey = "mg" | "cannon" | "sam" | "sniper" | "tesla";
@@ -49,12 +50,12 @@ export const towerCost = (key: TowerKey, level: number) => {
 };
 
 // ---------------------------------------------------------------- commanders on foot
-export const PLAYER_MAX_HP = 100;
-export const HP_REGEN_S = 6; // +1 HP every 6 s
-export const DOWNED_MS = 3 * 60_000;
+export let PLAYER_MAX_HP = S.playerMaxHp;
+export let HP_REGEN_S = S.hpRegenS; // +1 HP every 6 s
+export let DOWNED_MS = Math.round(S.downedMin * 60_000);
 export const RESPAWN_IMMUNE_MS = 5 * 60_000;
-export const ROOKIE_LEVEL = 3; // towers ignore rookies below this level
-export const DOWNED_COIN_LOSS = 0.05;
+export let ROOKIE_LEVEL = S.rookieLevel; // towers ignore rookies below this level
+export let DOWNED_COIN_LOSS = S.downedCoinLoss;
 export const SABOTAGE_COOLDOWN_MS = 30_000;
 export const SABOTAGE_DMG = [0, 160, 320, 520];
 
@@ -64,9 +65,9 @@ export function currentHp(hp: number, hpAt: Date | string | number, maxHp: numbe
 
 // ---------------------------------------------------------------- street combat (PvP)
 // Commanders shoot each other, enemy towers and enemy squads directly with their gun.
-export const SHOOT_RANGE_M = 60;
-export const SHOOT_COOLDOWN_MS = 6_000;
-export const SHOOT_DMG = 16; // × the hero's FPS damage bonus
+export let SHOOT_RANGE_M = S.shootRange;
+export let SHOOT_COOLDOWN_MS = S.shootCooldownS * 1000;
+export let SHOOT_DMG = S.shootDmg; // × the hero's FPS damage bonus
 export const SHOOT_CRIT = 0.15; // chance of a ×2 headshot
 export const SHOOT_ASSET_MULT = 2.5; // a commander's gun vs structures and squads
 
@@ -261,3 +262,15 @@ export const PINGS = {
 } as const;
 export type PingKind = keyof typeof PINGS;
 export const PING_MS = 5 * 60_000;
+
+/** Re-read the live admin settings (called by lib/config applyConfig). */
+export function syncSettings() {
+  PLAYER_MAX_HP = S.playerMaxHp;
+  HP_REGEN_S = S.hpRegenS;
+  DOWNED_MS = Math.round(S.downedMin * 60_000);
+  ROOKIE_LEVEL = S.rookieLevel;
+  DOWNED_COIN_LOSS = S.downedCoinLoss;
+  SHOOT_RANGE_M = S.shootRange;
+  SHOOT_COOLDOWN_MS = S.shootCooldownS * 1000;
+  SHOOT_DMG = S.shootDmg;
+}

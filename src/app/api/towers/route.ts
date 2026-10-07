@@ -101,7 +101,7 @@ export const POST = route(async (req) => {
   if (d.action === "demolish") {
     await prisma.tower.delete({ where: { id: t.id } });
     const refund = Math.round(towerCost(t.type as TowerKey, t.level).coins * 0.3);
-    await grant(u.id, { coins: refund });
+    await grant(u.id, { coins: refund }, { raw: true });
     return { message: `🏚️ ${st.def.name} demolished (+${refund} 🪙)` };
   }
 

@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   reactStrictMode: true,
+  // A second dev/test server can build into its own folder without touching .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
   // Allow opening the dev server from a phone via LAN IP or an https tunnel.
   allowedDevOrigins: ["*.trycloudflare.com", "192.168.*.*", "10.*.*.*"],

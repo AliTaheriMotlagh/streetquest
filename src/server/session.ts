@@ -1,6 +1,7 @@
 // JWT session helpers with no Next.js imports (usable from any runtime).
 import { createHash } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
+import { S } from "../lib/settings";
 
 export const SESSION_COOKIE = "sq_session";
 // If AUTH_SECRET is missing, derive one from the (private) database URL rather than a
@@ -26,5 +27,5 @@ export async function verifySession(token: string | undefined): Promise<string |
  * Test mode (simulated GPS, tap-to-move) is open to everyone so the game can be tried
  * without walking around. Set TEST_MODE=off in production to limit it to admins.
  */
-export const testModeOpen = () => process.env.TEST_MODE !== "off";
+export const testModeOpen = () => process.env.TEST_MODE !== "off" && S.testMode;
 export const canSimulate = (role: string) => process.env.NODE_ENV !== "production" || role === "ADMIN" || testModeOpen();
