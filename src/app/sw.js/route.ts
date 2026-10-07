@@ -16,7 +16,7 @@ const SW = String.raw`
 const VERSION = "__VERSION__";
 const TILE_HOSTS = __TILE_HOSTS__;
 const SHELL = "sq-shell-" + VERSION;
-const STATIC = "sq-static-v1";   // hashed Next.js assets: safe forever
+const STATIC = "sq-static-v2";   // hashed Next.js assets + images (v2: no videos)
 const TILES = "sq-tiles-v1";     // map tiles you've seen, so the map works offline
 const DATA = "sq-data-v1";       // last known game state, shown while offline
 const PRECACHE = ["/offline", "/play", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/badge-96.png", "/media/streetquest-ad.jpg"];
@@ -30,7 +30,7 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k.startsWith("sq-shell-") && k !== SHELL) await caches.delete(k);
+    for (const k of await caches.keys()) if ((k.startsWith("sq-shell-") && k !== SHELL) || k === "sq-static-v1") await caches.delete(k);
     if (self.registration.navigationPreload) await self.registration.navigationPreload.enable().catch(() => {});
     await self.clients.claim();
   })());
@@ -79,10 +79,10 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith("/_next/static/")) return event.respondWith(cacheFirst(req, STATIC));
-    if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) {
-      if (req.headers.get("range")) return; // let video range requests go straight to the network
-      return event.respondWith(cacheFirst(req, STATIC));
-    }
+    // Videos always go straight to the network: Safari only plays them from byte-range
+    // (206) responses, which a cached copy can't provide.
+    if (/\.(mp4|webm|mov|m4v)$/i.test(url.pathname) || req.destination === "video" || req.headers.get("range")) return;
+    if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) return event.respondWith(cacheFirst(req, STATIC));
     if (url.pathname === "/sw.js") return;
     if (url.pathname.startsWith("/api/")) {
       if (OFFLINE_DATA.test(url.pathname + url.search)) {

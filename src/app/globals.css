@@ -957,3 +957,8 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
   .tabs button, .settings-cats button, .admin-side button, .admin-side a { cursor: pointer; }
   .dragging, .dragging * { cursor: grabbing !important; user-select: none; scroll-behavior: auto !important; scroll-snap-type: none !important; }
 }
+.video-play { width: auto; height: auto; margin: 0; transform: translate(-50%, -50%); border-radius: 999px; padding: 14px 20px 14px 22px; display: flex; gap: 8px; align-items: center; font-size: 24px; }
+.video-play span { font-size: 15px; font-weight: 800; }
+.autovideo .ad-sound { z-index: 2; }
+.video-play { animation: none; }
+.video-play { white-space: nowrap; }

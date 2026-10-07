@@ -526,7 +526,6 @@ export function AdModal({ onClose }: { onClose: () => void }) {
   const { act, toast } = useGame();
   const [ad, setAd] = useState<(AdStart & { at: number }) | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [sound, setSound] = useState(false);
   const started = useRef(false);
   // The ad has its own soundtrack: pause the game music while it's open.
   useEffect(() => {
@@ -560,8 +559,7 @@ export function AdModal({ onClose }: { onClose: () => void }) {
         </div>
         {c.videoUrl ? (
           <div className="ad-video-wrap">
-            <AutoVideo className="ad-media video" src={c.videoUrl} poster={c.videoUrl.replace(/\.mp4$/, ".jpg")} sound={sound} label={c.title} />
-            <button className="ad-sound" onClick={() => setSound(!sound)} aria-label={sound ? "Mute" : "Sound on"}>{sound ? "🔊" : "🔇 Tap for sound"}</button>
+            <AutoVideo className="ad-media video" src={c.videoUrl} poster={c.videoUrl.replace(/\.mp4$/, ".jpg")} label={c.title} soundButton />
           </div>
         ) : c.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
