@@ -4,8 +4,12 @@ import { useEffect } from "react";
 import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
-import { FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
-import type { LatLng, Me, Selected, World } from "./client";
+import { BUILDING_BY_KEY, FACTION_BY_KEY, SIEGE_RANGE_M, type BuildingKey } from "@/lib/rts";
+import { offset } from "@/lib/geo";
+import { PINGS, towerStats } from "@/lib/td";
+import type { LatLng, LobbyView, Me, Selected, World } from "./client";
+import { esc, icon, meIcon } from "./mapIcons";
+import { LiveLayer } from "./LiveLayer";
 
 // Default: public OSM tiles, darkened with CSS. For production traffic set
 // NEXT_PUBLIC_TILE_URL to a provider you have a key for (MapTiler, Stadia, Mapbox…).
@@ -13,19 +17,6 @@ const TILE_URL = process.env.NEXT_PUBLIC_TILE_URL || "https://tile.openstreetmap
 const TILE_ATTRIBUTION = process.env.NEXT_PUBLIC_TILE_ATTRIBUTION || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const DARKEN = !process.env.NEXT_PUBLIC_TILE_URL || process.env.NEXT_PUBLIC_TILE_DARKEN === "1";
 
-const iconCache = new Map<string, L.DivIcon>();
-function icon(html: string, cls = "", size = 40) {
-  const key = `${cls}|${html}|${size}`;
-  let i = iconCache.get(key);
-  if (!i) {
-    i = L.divIcon({ html: `<div class="mk ${cls}">${html}</div>`, className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
-    iconCache.set(key, i);
-  }
-  return i;
-}
-const meIcon = L.divIcon({ html: '<div class="me-marker"></div>', className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
-
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 function Follow({ pos, follow, onDrag }: { pos: LatLng | null; follow: boolean; onDrag: () => void }) {
   const map = useMap();
@@ -41,7 +32,11 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
   return null;
 }
 
+const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#22e3ff" : t.friend ? "#3dff8f" : "#ff4d4d");
+
 type Props = {
+  runners?: LobbyView["players"];
+  strikeMode?: boolean;
   pos: LatLng | null;
   world: World | null;
   me: Me | null;
@@ -52,13 +47,13 @@ type Props = {
   onSelect: (s: Selected) => void;
 };
 
-export default function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect }: Props) {
+export default function GameMap({ pos, world, me, follow, picking, onUnfollow, onMapClick, onSelect, runners, strikeMode }: Props) {
   const center = pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
   const tint = world ? `${world.phase}-tint` : "";
 
   return (
-    <div className={`map ${DARKEN ? "darken" : ""} ${tint} ${picking ? "picking" : ""}`}>
+    <div className={`map ${DARKEN ? "darken" : ""} ${tint} ${picking || strikeMode ? "picking" : ""} ${strikeMode ? "striking" : ""}`}>
       <MapContainer center={[center.lat, center.lng]} zoom={17} minZoom={3} maxZoom={19} zoomControl={false} style={{ width: "100%", height: "100%" }}>
         <TileLayer
           url={TILE_URL}
@@ -138,6 +133,69 @@ export default function GameMap({ pos, world, me, follow, picking, onUnfollow, o
             />
           );
         })}
+
+        {/* Base buildings, laid out around each base so you can see what a rival has built */}
+        {world?.bases.flatMap((b) => {
+          const list = b.buildings.filter((x) => x.type !== "hq");
+          return list.map((x, i) => {
+            const p = offset(b, 30 + (i % 2) * 9, (i * 360) / Math.max(1, list.length));
+            const def = BUILDING_BY_KEY[x.type as BuildingKey];
+            return (
+              <Marker
+                key={`bb${b.id}${x.type}`}
+                position={[p.lat, p.lng]}
+                zIndexOffset={300}
+                icon={icon(`${x.building ? "🚧" : def?.emoji ?? "🏠"}<span class="lv">${Math.max(1, x.level)}</span>`, `bldg ${b.mine ? "mine" : ""}`, 24)}
+                eventHandlers={{ click: () => onSelect({ type: "base", data: b }) }}
+              />
+            );
+          });
+        })}
+
+        {/* Towers: range rings — red ones will shoot you */}
+        {world?.towers.map((t) => {
+          const st = towerStats(t);
+          const color = towerColor(t);
+          const ready = t.readyAt <= Date.now();
+          return (
+            <Circle
+              key={`tr${t.id}`}
+              center={[t.lat, t.lng]}
+              radius={st.range}
+              pathOptions={{ color, weight: 1, opacity: ready ? 0.5 : 0.2, fillOpacity: !t.mine && !t.friend && ready ? 0.08 : 0.03, dashArray: ready ? undefined : "3 6" }}
+            />
+          );
+        })}
+        {world?.towers.map((t) => {
+          const st = towerStats(t);
+          const color = towerColor(t);
+          const ready = t.readyAt <= Date.now();
+          return (
+            <Marker
+              key={`tw${t.id}`}
+              position={[t.lat, t.lng]}
+              zIndexOffset={450}
+              icon={icon(
+                `<span class="ring" style="color:${color}"></span>${ready ? st.def.emoji : "🚧"}<span class="lv">${"▲".repeat(t.level)}</span><span class="hpbar"><i style="width:${Math.max(0, Math.min(100, (t.hp / st.maxHp) * 100))}%;background:${color}"></i></span>`,
+                `tower ${t.mine ? "mine" : t.friend ? "friend" : "enemy"}`,
+                34,
+              )}
+              eventHandlers={{ click: () => onSelect({ type: "tower", data: t }) }}
+            />
+          );
+        })}
+
+        {world?.pings.map((p) => (
+          <Marker
+            key={`pg${p.id}`}
+            position={[p.lat, p.lng]}
+            zIndexOffset={900}
+            icon={icon(`${PINGS[p.kind]?.emoji ?? "📍"}<span class="nm">${esc(p.by)}</span>`, "ping", 40)}
+            eventHandlers={{ click: () => onSelect({ type: "ping", data: p }) }}
+          />
+        ))}
+
+        <LiveLayer world={world} me={me} runners={runners} onSelect={onSelect} />
 
         {me?.base && <Circle center={[me.base.lat, me.base.lng]} radius={SIEGE_RANGE_M} pathOptions={{ color: "#22e3ff", weight: 1, opacity: 0.25, fill: false, dashArray: "2 10" }} />}
 

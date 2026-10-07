@@ -24,6 +24,23 @@ Three games stacked on one real-world map:
   concurrent builders, the Vault protects coins, Walls add HP, 💎 gems rush any timer, attacking breaks
   your shield, and you can take revenge from your battle reports.
 
+- **Tower defense on the real map** — build towers where you stand inside your territory (🔫 MG Nest, 🎯 Sniper,
+  💣 Cannon, 🚀 SAM, ⚡ Tesla). Their range rings are on everyone's map and they **shoot rival commanders** who walk in:
+  you have street HP, get downed (lose some coins to the tower owner, 3 min recovery), and rookies below level 3
+  are spared. Fight back by running in and wiring C4 (a Bomb Defuse mini-game) or by marching a squad at it.
+  **Raider waves** march on bases (HQ 2+) every hour or two — or provoke one for ×1.5 bounties. Towers, guard squads
+  and base turrets (yours and your crew's) shoot them live on the map; commanders near the base call in ✈️ airstrikes;
+  leakers steal coins.
+- **Real-time strategy on the map** — deploy squads from your base. They march at unit speed (everyone sees them,
+  enemy composition is fogged without Radar), guard a spot (shoot rival commanders, defend against raiders,
+  reinforce nearby bases/outposts), or attack an enemy tower, squad, base or outpost. Redirect or recall them
+  mid-march. Base buildings are drawn around every base so you can scout rivals.
+- **Multiplayer mini-games** — arcades are a 🎯 Shooting Range (hostiles in windows, spare civilians, reload,
+  combos) and chests are a 💣 Bomb Defuse (memorise the wire sequence). Tapping one opens a lobby at that spawn,
+  everyone nearby is pinged, and all players get the same seeded round; the winner takes a pot bonus.
+- **Squad runs** — start a run solo, as a 🏎️ race (podium pays +50% / +25%) or a 🤝 co-op run (+20% per teammate);
+  squadmates' live positions show on the map. Crew **pings** (⚔️ attack / 🆘 help / 🚩 rally / 💰 loot) coordinate it all.
+
 Every layer feeds the others: hero bonuses change battle maths, build times, income and FPS stats;
 mood scales XP; loot funds research; territory funds the army.
 
@@ -52,7 +69,8 @@ browser until you switch it off. Set `TEST_MODE=off` in production to limit it t
 **Faster timers for testing:** `GAME_SPEED=600 npm run dev` makes construction and training 600× faster
 (ignored in production). Jump straight into a live fight with `/play?match=<id>`.
 
-End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke`
+End-to-end tests (need the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke` and
+`npm run test:mp` (lobbies, squad runs, towers shooting players, C4, squads, skirmishes, raider waves, pings).
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.
@@ -67,6 +85,9 @@ End-to-end test (needs the dev server running, ideally with `GAME_SPEED=600`): `
 | Life sim: needs decay computed from a stored snapshot + timestamp, so no background jobs; mood multiplies XP in `grant()` | `src/lib/sims.ts`, `src/server/needs.ts`, `src/app/api/sims` |
 | World bosses: deterministic per ~1.3 km region and 2 h window like spawns; only damage is stored. The killing hit pays every contributor | `src/lib/bosses.ts`, `src/server/boss.ts` |
 | FPS: the arena is generated from the match seed on every client. Clients POST position + hits ~7×/s; the server owns HP, kills, capture and the result. The first live human is the *host* and runs bot/boss AI; if it goes quiet the next player takes over | `src/lib/arena.ts`, `src/server/match.ts`, `src/components/fps/Fps.tsx` |
+| Multiplayer lobbies: one lobby per spawn, same seed for every player, state advances whenever a member polls (~1×/s); the server caps scores with the same generator | `src/lib/minigames.ts`, `src/server/lobby.ts`, `src/app/api/lobby` |
+| Tower defense: towers fire when a commander reports their position (`/api/loc` → `takeFire`), HP regenerates from a stored snapshot; raider waves are generated from a seed and fought by a deterministic simulation the server resolves once and clients animate | `src/lib/td.ts`, `src/server/td.ts`, `src/app/api/{towers,waves}` |
+| Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Spawns: deterministic per ~450 m cell and 20-min window, so everyone sees the same world with zero storage; the server rebuilds a spawn from its id to verify claims | `src/lib/spawns.ts` |
 | Time of day: local *solar* time decides night/dawn/day/dusk items and golden-hour 2× XP anywhere on Earth; daily streaks reset at the player's own midnight | `src/lib/geo.ts`, `src/lib/progression.ts` |
 | Anti-cheat: claims use the server's trusted position, GPS jumps faster than 250 km/h are rejected | `src/app/api/loc`, `src/server/rewards.ts` |

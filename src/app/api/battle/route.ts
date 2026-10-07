@@ -5,15 +5,15 @@ import { z } from "zod";
 import { resolveBoss, BOSS_BOMBARD_COOLDOWN_MS } from "@/lib/bosses";
 import { prisma } from "@/lib/db";
 import { distanceM } from "@/lib/geo";
-import { armyStats, baseDefense, factionOf, leagueOf, resolveBattle, SHIELD_MS, SIEGE_COOLDOWN_MS, SIEGE_RANGE_M, siegeStars, trophySwing, vaultProtection, VET_GAIN, type Army, type UnitKey } from "@/lib/rts";
+import { armyStats, factionOf, resolveBattle, SIEGE_COOLDOWN_MS, SIEGE_RANGE_M, VET_GAIN, type Army, type UnitKey } from "@/lib/rts";
 import { INTERACT_RADIUS_M, resolveSpawn } from "@/lib/spawns";
 import { requireUser } from "@/server/auth";
 import { fmtLosses, forcesOf, gainVet, loadBase, removeUnits, survivors } from "@/server/army";
 import { damageBoss } from "@/server/boss";
 import { heroOf, maybeGear } from "@/server/hero";
 import { body, HttpError, route } from "@/server/http";
-import { notify } from "@/server/hub";
 import { moodOfUser } from "@/server/needs";
+import { homeForce, siegeBase } from "@/server/warfare";
 import { questEvent } from "@/server/quests";
 import { grant, lastKnownLocation, track } from "@/server/rewards";
 
@@ -86,61 +86,5 @@ export const POST = route(async (req) => {
   if (target.shieldUntil && target.shieldUntil > new Date()) throw new HttpError(400, "This base is under a cease-fire shield");
   const recent = await prisma.battle.findFirst({ where: { attackerId: u.id, targetId: target.id, createdAt: { gt: new Date(Date.now() - SIEGE_COOLDOWN_MS) } } });
   if (recent) throw new HttpError(429, "Your army needs to regroup before hitting this base again");
-
-  const owner = await prisma.user.findUniqueOrThrow({ where: { id: target.ownerId } });
-  const tf = factionOf(owner.faction);
-  const def = await forcesOf(owner.id);
-  const defHero = await heroOf(owner);
-  const fort = baseDefense(target.buildings, tf, Date.now(), defHero.bonus);
-  const integrity = Math.max(0.4, target.hp / 1000);
-  const r = resolveBattle(
-    me,
-    { army: def.army, vets: def.vets, faction: tf, bonus: defHero.bonus, structures: { atk: fort.atk * integrity, hp: fort.hp * integrity }, moodMult: moodOfUser(owner).xpMult },
-    `${target.id}|${u.id}|${Date.now()}`,
-  );
-  await removeUnits(u.id, r.attackerLosses);
-  await removeUnits(owner.id, r.defenderLosses);
-  await gainVet(u.id, survivors(army, r.attackerLosses), r.won ? VET_GAIN.won : VET_GAIN.fought);
-  await gainVet(owner.id, survivors(def.army, r.defenderLosses), r.won ? VET_GAIN.fought : VET_GAIN.won);
-  // Clash-style scoring: destruction % → stars → loot share and trophies.
-  const { destruction, stars } = siegeStars(r.won, r.structureDamage, fort.hp * integrity);
-  const swing = trophySwing(u.trophies, owner.trophies, stars);
-  const raidable = Math.floor(owner.coins * (1 - vaultProtection(target.buildings)));
-  const league = leagueOf(u.trophies);
-  let loot = Math.min(1500, Math.floor(raidable * 0.3 * (destruction / 100) * f.loot * hero.bonus.loot));
-  if (loot > 0) {
-    const took = await prisma.user.updateMany({ where: { id: owner.id, coins: { gte: loot } }, data: { coins: { decrement: loot } } });
-    if (!took.count) loot = 0;
-  }
-  const leagueBonus = stars > 0 ? Math.round(loot * league.bonus) : 0;
-  await prisma.user.update({ where: { id: u.id }, data: { trophies: { increment: Math.max(-u.trophies, swing) } } });
-  await prisma.user.update({ where: { id: owner.id }, data: { trophies: { increment: Math.max(-owner.trophies, -swing) } } });
-  // Attacking breaks your own cease-fire; a defender who lost a star gets one.
-  if (myBase.shieldUntil && myBase.shieldUntil > new Date()) await prisma.base.update({ where: { id: myBase.id }, data: { shieldUntil: null } });
-  await prisma.base.update({
-    where: { id: target.id },
-    data: { hp: Math.max(0, target.hp - Math.min(400, Math.round(r.structureDamage / 2))), ...(stars > 0 ? { shieldUntil: new Date(Date.now() + SHIELD_MS * stars) } : {}) },
-  });
-  if (stars > 0) {
-    await questEvent(u.id, "siege_win");
-    await maybeGear(u.id, 0.2 * stars, { source: `sacking ${target.name}` });
-  }
-  await grant(u.id, { coins: loot + leagueBonus, xp: 60 + 60 * stars, scrap: 1 + stars });
-  await prisma.battle.create({ data: { attackerId: u.id, defenderId: owner.id, kind: "siege", targetId: target.id, targetName: target.name, won: stars > 0, loot, stars, destruction, trophies: swing, log: r } });
-  const starStr = "★".repeat(stars) + "☆".repeat(3 - stars);
-  await notify(target.ownerId, {
-    kind: "event",
-    title: stars ? `💥 ${u.username} raided ${target.name} ${starStr}` : `🛡️ ${target.name} repelled ${u.username}`,
-    body: stars ? `${destruction}% destroyed · lost ${loot} 🪙, ${-swing} 🏆 · revenge from Base → Reports` : `+${-swing} 🏆 · defenders lost ${fmtLosses(r.defenderLosses)}`,
-  });
-  return {
-    won: stars > 0,
-    result: r,
-    stars,
-    destruction,
-    trophies: swing,
-    message: stars
-      ? `${starStr} ${destruction}% destroyed! +${loot + leagueBonus} 🪙${leagueBonus ? ` (${league.emoji} +${leagueBonus})` : ""} · +${swing} 🏆`
-      : `☆☆☆ Raid failed (${r.atkPower} vs ${r.defPower}) · ${swing} 🏆 · lost ${fmtLosses(r.attackerLosses)}`,
-  };
+  return siegeBase(u, myBase.id, await homeForce(u.id), target, "army");
 });

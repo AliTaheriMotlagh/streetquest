@@ -11,11 +11,14 @@ import { OUTPOST_INCOME_HOUR } from "@/lib/outposts";
 import { UNITS } from "@/lib/rts";
 import type { HeroTabId } from "./Panels";
 import { NeedsHud } from "./Life";
-import { api, fmtTime, type LatLng, type Me, type Selected, type World } from "./client";
-import { Lockpick, TapRush } from "./MiniGames";
+import { api, fmtTime, type LatLng, type LobbyView, type Me, type Selected, type World } from "./client";
+import { BombDefuse } from "./MiniGames";
+import { LobbyModal } from "./Lobby";
+import { useLiveWaves } from "./waves";
+import { creepPos, PINGS, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
 import { Ctx, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
-import { useLocation, type GeoError } from "./useLocation";
+import { useLocation, type FireReport, type GeoError } from "./useLocation";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <div className="fps" /> });
@@ -38,12 +41,17 @@ export default function Game() {
   const [world, setWorld] = useState<World | null>(null);
   const [simPos, setSimPos] = useState<LatLng | null>(null);
   const [simMode, setSimMode] = useState(false);
-  const geo = useLocation(simPos);
+  const [fire, setFire] = useState<(FireReport & { at: number }) | null>(null);
+  const geo = useLocation(simPos, (f) => setFire({ ...f, at: Date.now() }));
   const pos = geo.pos;
   const [follow, setFollow] = useState(true);
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
-  const [mini, setMini] = useState<{ kind: "chest" | "arcade"; spawnId: string } | null>(null);
+  const [lobby, setLobby] = useState<{ spawnId: string; mode?: "race" | "coop" } | { lobbyId: string } | null>(null);
+  const [c4, setC4] = useState<{ towerId: string; seed: number; startAt: number } | null>(null);
+  const [strike, setStrike] = useState<string | null>(null); // wave id while choosing an airstrike spot
+  const [pingMenu, setPingMenu] = useState(false);
+  const [runners, setRunners] = useState<LobbyView["players"] | undefined>(undefined);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [picker, setPicker] = useState<{ label: string; cb: (p: LatLng) => void } | null>(null);
   const [chat, setChat] = useState<{ room: string; label: string } | null>(null);
@@ -121,6 +129,43 @@ export default function Game() {
     return () => clearInterval(t);
   }, [loadWorld]);
 
+  // ---- tower defense: getting shot on the street
+  useEffect(() => {
+    if (!fire) return;
+    if (fire.downed) {
+      toast({ kind: "error", title: `☠️ DOWNED by ${fire.downed.by}'s defenses`, body: `Lost ${fire.downed.coins} 🪙 · patching up for 3 min — move out of tower range` });
+      navigator.vibrate?.([300, 100, 300]);
+      loadMe();
+    } else if (fire.hits.length) {
+      const total = fire.hits.reduce((a, h) => a + h.dmg, 0);
+      toast({ kind: "error", title: `${fire.hits.map((h) => h.emoji).join("")} Under fire! −${total} HP`, body: `${[...new Set(fire.hits.map((h) => h.by))].join(", ")}'s defenses — get out of the red rings` });
+      navigator.vibrate?.([80, 40, 80]);
+    }
+  }, [fire?.at]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- squad run: track squadmates on the map
+  const runLobby = me?.activeRun?.lobbyId ?? null;
+  useEffect(() => {
+    if (!runLobby) {
+      setRunners(undefined);
+      return;
+    }
+    const poll = () => api<{ lobby: LobbyView }>(`/api/lobby?id=${runLobby}`).then((r) => setRunners(r.lobby.players)).catch(() => {});
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => clearInterval(t);
+  }, [runLobby]);
+
+  // ---- raider waves near me: refresh faster while one is running
+  const liveWaves = useLiveWaves(world);
+  const myWave = liveWaves.find(({ w }) => !w.resolved && now >= w.startAt - 10 * 60_000 && now <= w.endAt + 2000 && (w.ownerId === me?.id || world?.bases.find((b) => b.id === w.baseId)?.friend));
+  const waveLive = !!myWave && now >= myWave.w.startAt;
+  useEffect(() => {
+    if (!waveLive) return;
+    const t = setInterval(() => loadWorld(true), 5000);
+    return () => clearInterval(t);
+  }, [waveLive, loadWorld]);
+
   // ---- "realtime" via polling (works on serverless hosts like Vercel)
   const syncSince = useRef(Date.now());
   const panelRef = useRef(panel);
@@ -166,6 +211,14 @@ export default function Game() {
 
   // ---- map interactions
   const onMapClick = (p: LatLng) => {
+    if (strike) {
+      const id = strike;
+      setStrike(null);
+      act(() => api("/api/waves", { body: { action: "strike", waveId: id, lat: p.lat, lng: p.lng } })).then((ok) => {
+        if (ok) loadWorld(true);
+      });
+      return;
+    }
     if (picker) {
       picker.cb(p);
       setPicker(null);
@@ -204,7 +257,7 @@ export default function Game() {
     }
   };
 
-  const claim = (spawnId: string, score?: number) => act(() => api("/api/claim", { body: { spawnId, score } })).then((ok) => ok && setSelected(null));
+  const claim = (spawnId: string) => act(() => api("/api/claim", { body: { spawnId } })).then((ok) => ok && setSelected(null));
 
   const ctx = useMemo<GameCtx | null>(
     () =>
@@ -262,6 +315,8 @@ export default function Game() {
           me={me}
           follow={follow}
           picking={!!picker}
+          runners={runners}
+          strikeMode={!!strike}
           onUnfollow={() => setFollow(false)}
           onMapClick={onMapClick}
           onSelect={(s) => {
@@ -293,6 +348,7 @@ export default function Game() {
           />
           <div className="hud-right">
             <div className="chip">🪙 {me.coins.toLocaleString()}</div>
+            <HpChip me={me} fire={fire} now={now} />
             <div className="chip small">💎 {me.gems} · {me.league.emoji} {me.trophies}</div>
             {world && (
               <div className="chip phase">
@@ -363,6 +419,31 @@ export default function Game() {
           </div>
         )}
 
+        {me.downedUntil && me.downedUntil > now && (
+          <div className="downed-banner">
+            ☠️ <b>DOWNED</b> · back on your feet in {Math.ceil((me.downedUntil - now) / 1000)}s
+          </div>
+        )}
+
+        {myWave && !run && !picker && (
+          <WaveBanner
+            wave={myWave}
+            now={now}
+            meId={me.id}
+            dist={pos ? distanceM(pos, { lat: myWave.w.baseLat, lng: myWave.w.baseLng }) : Infinity}
+            striking={strike === myWave.w.id}
+            onStrike={() => setStrike(strike ? null : myWave.w.id)}
+            onGo={simMode ? () => setSimPos({ lat: myWave.w.baseLat, lng: myWave.w.baseLng }) : undefined}
+          />
+        )}
+
+        {strike && (
+          <div className="pick-banner" style={{ background: "#ff8a00" }}>
+            ✈️ Tap the map where the bombs should fall
+            <button className="close" onClick={() => setStrike(null)}>✕</button>
+          </div>
+        )}
+
         {picker && (
           <div className="pick-banner">
             {picker.label}
@@ -384,6 +465,24 @@ export default function Game() {
               🎁<span className="badge">!</span>
             </button>
           )}
+          <button className="fab" title="Ping your crew" onClick={() => setPingMenu(!pingMenu)} style={{ outline: pingMenu ? "2px solid var(--yellow)" : undefined }}>
+            📣
+          </button>
+          {pingMenu && (
+            <div className="ping-menu">
+              {(Object.keys(PINGS) as PingKind[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    setPingMenu(false);
+                    setPicker({ label: `${PINGS[k].emoji} Tap where to ping`, cb: (p) => act(() => api("/api/pings", { body: { kind: k, lat: p.lat, lng: p.lng } })) });
+                  }}
+                >
+                  {PINGS[k].emoji} {PINGS[k].label}
+                </button>
+              ))}
+            </div>
+          )}
           <button className="fab" title="Re-center" onClick={() => setFollow(true)} style={{ color: follow ? "var(--cyan)" : undefined }}>
             ◎
           </button>
@@ -400,7 +499,18 @@ export default function Game() {
         </div>
 
         {/* Selected object card */}
-        {selected && !panel && <InfoCard sel={selected} onClose={() => setSelected(null)} onClaim={claim} onMini={setMini} />}
+        {selected && !panel && (
+          <InfoCard
+            sel={selected}
+            onClose={() => setSelected(null)}
+            onClaim={claim}
+            onLobby={(l) => {
+              setSelected(null);
+              setLobby(l);
+            }}
+            onC4={(towerId) => setC4({ towerId, seed: Math.floor(Math.random() * 2 ** 31), startAt: Date.now() + 2500 })}
+          />
+        )}
 
         {panel === "nearby" && <NearbyPanel onClose={close} peek={peek} />}
         {panel === "base" && <BasePanel onClose={close} peek={peek} />}
@@ -444,28 +554,23 @@ export default function Game() {
           />
         )}
 
-        {mini && (
+        {lobby && <LobbyModal open={lobby} onClose={() => setLobby(null)} />}
+
+        {c4 && (
           <div className="modal-bg">
-            <div className="modal">
-              {mini.kind === "chest" ? (
-                <Lockpick
-                  onDone={(score) => {
-                    setMini(null);
-                    if (score === 0) toast({ kind: "error", title: "The lock held!", body: "Try again — the chest is still there." });
-                    else claim(mini.spawnId, score);
-                  }}
-                />
-              ) : (
-                <TapRush
-                  onDone={(score) => {
-                    setMini(null);
-                    claim(mini.spawnId, score);
-                  }}
-                />
-              )}
-              <button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setMini(null)}>
-                Walk away
-              </button>
+            <div className="modal" style={{ maxWidth: 420, padding: 14 }}>
+              <BombDefuse
+                title="💣 Wire the C4"
+                seed={c4.seed}
+                startAt={c4.startAt}
+                onDone={(score) => {
+                  const towerId = c4.towerId;
+                  setC4(null);
+                  // Rounds cleared (0–3) decide the blast.
+                  act(() => api("/api/towers", { body: { action: "sabotage", towerId, score: Math.min(3, Math.floor(score / 100)) } })).then(() => loadWorld(true));
+                }}
+              />
+              <button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setC4(null)}>Abort</button>
             </div>
           </div>
         )}
@@ -540,15 +645,17 @@ function InfoCard({
   sel,
   onClose,
   onClaim,
-  onMini,
+  onLobby,
+  onC4,
 }: {
   sel: Selected;
   onClose: () => void;
-  onClaim: (spawnId: string, score?: number) => void;
-  onMini: (m: { kind: "chest" | "arcade"; spawnId: string }) => void;
+  onClaim: (spawnId: string) => void;
+  onLobby: (l: { spawnId: string; mode?: "race" | "coop" }) => void;
+  onC4: (towerId: string) => void;
 }) {
-  const { pos, act, me, world, openChat, setPanel, enterMatch, teleport } = useGame();
-  const target = sel.type === "delivery" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.data;
+  const { pos, act, me, world, openChat, setPanel, enterMatch, teleport, pick } = useGame();
+  const target = sel.type === "delivery" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
@@ -569,6 +676,16 @@ function InfoCard({
     if (ok && id) enterMatch(id);
   };
   const fromBase = me.base ? distanceM(me.base, target) : Infinity;
+  // RTS on the map: march your home army out as a squad against this target.
+  const marchOn = (kind: "tower" | "squad" | "base" | "outpost", id: string, label: string) => (
+    <button
+      className="btn cyan"
+      disabled={!me.base || fromBase > SIEGE_RANGE_M}
+      onClick={() => confirm(`March your home army to ${label}? Everyone will see it coming.`) && act(() => api("/api/squads", { body: { action: "deploy", target: { kind, id } } })).then((ok) => ok && onClose())}
+    >
+      🎖️ March a squad
+    </button>
+  );
 
   if (sel.type === "spawn") {
     const s = sel.data;
@@ -580,9 +697,9 @@ function InfoCard({
         : s.kind === "run"
         ? `${s.run!.brief} Target is ${formatDistance(s.run!.distanceM)} away — you have ${Math.round(s.run!.timeLimitS / 60)} min.`
         : s.kind === "chest"
-          ? `Pick the lock to grab what's inside (maybe ${s.item!.emoji}). Flawless pick = double loot.`
+          ? `A booby-trapped supply crate (maybe ${s.item!.emoji} inside). Defuse the bomb — flawless = double loot. Nearby players can join and race you for a winner's bonus.`
           : s.kind === "arcade"
-            ? "15 seconds of Tap Rush. More hits, more coins."
+            ? "Shooting Range: 20 seconds, hostiles in the windows, spare the civilians. Players nearby can join — highest score takes the pot."
             : s.item!.blurb;
     return (
       <Sheet title={title} onClose={onClose}>
@@ -606,13 +723,21 @@ function InfoCard({
             {me.faction ? "🎖️ Attack with your army" : "Join a faction first (Base tab)"}
           </button>
         ) : s.kind === "chest" || s.kind === "arcade" ? (
-          <button className="btn yellow block" onClick={() => onMini({ kind: s.kind as "chest" | "arcade", spawnId: s.id })}>
-            {s.kind === "chest" ? "🔓 Crack it" : "▶ Play"}
+          <button className="btn yellow block" disabled={!!me.downedUntil} onClick={() => onLobby({ spawnId: s.id })}>
+            {s.lobby ? `👥 Join ${s.lobby.players} player${s.lobby.players > 1 ? "s" : ""} — ${Math.max(0, Math.ceil((s.lobby.openUntil - Date.now()) / 1000))}s` : s.kind === "chest" ? "💣 Defuse it" : "🎯 Play"}
           </button>
         ) : s.kind === "run" ? (
-          <button className="btn block" disabled={!!me.activeRun} onClick={() => onClaim(s.id)}>
-            {me.activeRun ? "Finish your current run first" : "🏁 Start run"}
-          </button>
+          me.activeRun ? (
+            <button className="btn block" disabled>Finish your current run first</button>
+          ) : s.lobby ? (
+            <button className="btn yellow block" onClick={() => onLobby({ spawnId: s.id })}>👥 Join the {s.lobby.kind === "coop" ? "co-op run" : "race"} ({s.lobby.players})</button>
+          ) : (
+            <div className="row wrap">
+              <button className="btn" onClick={() => onClaim(s.id)}>🏁 Solo</button>
+              <button className="btn yellow" onClick={() => onLobby({ spawnId: s.id, mode: "race" })}>🏎️ Race others</button>
+              <button className="btn green" onClick={() => onLobby({ spawnId: s.id, mode: "coop" })}>🤝 Co-op run</button>
+            </div>
+          )
         ) : (
           <button className="btn green block" onClick={() => onClaim(s.id)}>Collect</button>
         )}
@@ -707,6 +832,8 @@ function InfoCard({
               >
                 🎖️ Siege with army
               </button>
+              {marchOn("base", b.id, b.name)}
+              <OrderSquads kind="base" id={b.id} />
               {jump}
               {b.liveMatch ? (
                 <button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("breach", b.id)}>⚔️ Join the firefight</button>
@@ -800,11 +927,97 @@ function InfoCard({
               >
                 🎖️ Assault with army
               </button>
+              {marchOn("outpost", o.id, o.name)}
+              <OrderSquads kind="outpost" id={o.id} />
             </div>
             <p className="small muted">{!me.base ? "Plant a base to send armies." : fromBase > SIEGE_RANGE_M ? `Out of range (${formatDistance(fromBase)} from your base, max ${SIEGE_RANGE_M / 1000} km).` : "Win and it's yours — then garrison it before someone takes it back."}</p>
             {o.owner && <TargetPowers targetId={o.id} allow={["spy_drone", "barrage"]} />}
           </>
         )}
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "tower") {
+    const t = sel.data;
+    const st = towerStats(t);
+    const ready = t.readyAt <= Date.now();
+    const hostile = !t.mine && !t.friend;
+    const up = t.level < TOWER_MAX_LEVEL ? towerCost(t.type as TowerKey, t.level + 1) : null;
+    return (
+      <Sheet title={`${st.def.emoji} ${st.def.name}`} onClose={onClose}>
+        <div className="small muted" style={{ marginBottom: 6 }}>
+          {t.mine ? "Your tower" : t.friend ? `${t.owner}'s tower (crew)` : <span style={{ color: "var(--red)" }}>Hostile — {t.owner}</span>} · Lv {t.level} · {formatDistance(dist)}
+          {!ready && " · 🚧 under construction"}
+        </div>
+        <div className="need-bar"><i style={{ width: `${(t.hp / st.maxHp) * 100}%`, background: hostile ? "var(--red)" : "var(--green)" }} /></div>
+        <p className="small">{st.def.blurb}</p>
+        <div className="grid3" style={{ marginBottom: 10 }}>
+          <div className="stat"><b>{t.hp}</b><span>HP</span></div>
+          <div className="stat"><b>{st.range} m</b><span>Range</span></div>
+          <div className="stat"><b>☠️ {t.kills}</b><span>Kills</span></div>
+        </div>
+        {t.mine ? (
+          <div className="row wrap">
+            {up && ready && <button className="btn" onClick={() => act(() => api("/api/towers", { body: { action: "upgrade", towerId: t.id } }))}>↑ Level {t.level + 1} · {up.coins} 🪙</button>}
+            {t.hp < st.maxHp && <button className="btn ghost" onClick={() => act(() => api("/api/towers", { body: { action: "repair", towerId: t.id } }))}>🔧 Repair</button>}
+            <button className="btn ghost" onClick={() => setPanel("base")}>All defenses</button>
+          </div>
+        ) : hostile ? (
+          <>
+            <div className="row wrap">
+              <button className="btn yellow" disabled={dist > st.range + 15 || !!me.downedUntil} onClick={() => onC4(t.id)}>💣 Plant C4</button>
+              {marchOn("tower", t.id, `${t.owner}'s ${st.def.name}`)}
+              <OrderSquads kind="tower" id={t.id} />
+              {teleport && dist > st.range + 15 && <button className="btn ghost" onClick={() => teleport(t)}>🕹️ Go there</button>}
+            </div>
+            <p className="small muted">
+              {me.rookie ? "Rookie cover: it won't shoot you until level 3." : `It shoots commanders inside ${st.range} m — run in, wire the charge fast, get out.`} Or march a squad at it from your base.
+            </p>
+          </>
+        ) : (
+          <p className="small muted">Your crew&apos;s tower. It covers you and shoots raiders attacking crew bases.</p>
+        )}
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "squad") {
+    const q = sel.data;
+    const marching = q.status === "MARCH" && q.arriveAt > Date.now();
+    const units = q.units ? Object.entries(q.units).filter(([, n]) => n).map(([k, n]) => `${UNITS.find((u) => u.key === k)?.emoji} ${n}`).join("  ") : `~${q.size} units (research 📡 Radar to see more)`;
+    return (
+      <Sheet title={`${q.icon} ${q.mine ? "Your squad" : `${q.owner}'s squad`}`} onClose={onClose}>
+        <p className="small muted">
+          {q.friend ? "Crew · " : !q.mine ? <span style={{ color: "var(--red)" }}>Hostile · </span> : null}
+          {marching ? `${q.order === "attack" ? "On the attack" : q.order === "return" ? "Heading home" : "On the move"} · arrives in ${Math.max(0, Math.ceil((q.arriveAt - Date.now()) / 1000))}s` : "Holding position"} · {formatDistance(dist)}
+        </p>
+        <div className="card small">🪖 {units}</div>
+        {q.mine ? (
+          <div className="row wrap">
+            <button className="btn cyan" onClick={() => { onClose(); pick("Tap where this squad should move", (to) => act(() => api("/api/squads", { body: { action: "move", squadId: q.id, to } }))); }}>📍 Move</button>
+            {q.order !== "return" && <button className="btn ghost" onClick={() => act(() => api("/api/squads", { body: { action: "recall", squadId: q.id } })).then((ok) => ok && onClose())}>↩️ Recall</button>}
+            <p className="small muted">To attack with it, tap an enemy tower, squad, base or outpost and use <b>Order my squads</b>.</p>
+          </div>
+        ) : !q.friend ? (
+          <>
+            <div className="row wrap">
+              {!marching && marchOn("squad", q.id, `${q.owner}'s squad`)}
+              {!marching && <OrderSquads kind="squad" id={q.id} />}
+            </div>
+            <p className="small muted">{marching ? "It's on the move — wait for it to stop before you can engage." : "Guard squads shoot commanders within 55 m and join any fight at nearby bases and outposts."}</p>
+          </>
+        ) : null}
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "ping") {
+    const pg = sel.data;
+    return (
+      <Sheet title={`${PINGS[pg.kind]?.emoji} ${PINGS[pg.kind]?.label}`} onClose={onClose}>
+        <p className="small muted">{pg.avatar} {pg.mine ? "You" : pg.by} pinged this spot · {formatDistance(dist)} · fades in {Math.max(0, Math.ceil((pg.expiresAt - Date.now()) / 60000))} min</p>
+        {teleport && <button className="btn yellow" onClick={() => teleport(pg)}>🕹️ Go there</button>}
       </Sheet>
     );
   }
@@ -822,3 +1035,72 @@ function InfoCard({
   );
 }
 
+
+// ---------------------------------------------------------------- RTS: order squads already in the field
+function OrderSquads({ kind, id }: { kind: "tower" | "squad" | "base" | "outpost"; id: string }) {
+  const { world, act } = useGame();
+  const mine = world?.squads.filter((q) => q.mine && q.order !== "return") ?? [];
+  const [open, setOpen] = useState(false);
+  if (!mine.length) return null;
+  return (
+    <>
+      <button className="btn ghost" onClick={() => setOpen(!open)}>⚔️ Order my squads ({mine.length})</button>
+      {open && (
+        <div className="row wrap" style={{ width: "100%" }}>
+          {mine.map((q) => (
+            <button key={q.id} className="btn small" onClick={() => act(() => api("/api/squads", { body: { action: "attack", squadId: q.id, target: { kind, id } } })).then((ok) => ok && setOpen(false))}>
+              {q.icon} {q.size} → attack
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- tower defense HUD
+function HpChip({ me, fire, now }: { me: Me; fire: (FireReport & { at: number }) | null; now: number }) {
+  // Prefer the freshest number: a recent fire report, else /api/me plus regen.
+  const fresh = fire && now - fire.at < 60_000 ? fire : null;
+  const hp = fresh ? Math.min(fresh.maxHp, fresh.hp + Math.floor((now - fresh.at) / 6000)) : me.hp;
+  const max = fresh?.maxHp ?? me.maxHp;
+  const hurt = fresh?.hits.length && now - fresh.at < 1500;
+  if (hp >= max && !hurt) return null;
+  return (
+    <>
+      <div className={`chip small hp-chip ${hp < max * 0.3 ? "low" : ""}`} title="Your health on the street — hostile towers and guards shoot you">
+        ❤️ {hp}/{max}
+        <span className="hpline"><i style={{ width: `${(hp / max) * 100}%` }} /></span>
+      </div>
+      {hurt && <div className="hurt-flash" />}
+    </>
+  );
+}
+
+function WaveBanner({ wave, now, meId, dist, striking, onStrike, onGo }: { wave: ReturnType<typeof useLiveWaves>[number]; now: number; meId: string; dist: number; striking: boolean; onStrike: () => void; onGo?: () => void }) {
+  const { w, def, out } = wave;
+  const started = now >= w.startAt;
+  const alive = def.creeps.filter((c, i) => {
+    const at = creepPosOrNull(def, i, now);
+    return (out.deathAt[i] == null || out.deathAt[i]! > now) && (!at || at.f < 1);
+  }).length;
+  const used = ((w.strikes as Strike[]) ?? []).filter((s) => s.by === meId).length;
+  const left = Math.max(0, Math.ceil(((started ? w.endAt : w.startAt) - now) / 1000));
+  return (
+    <div className={`wave-banner ${started ? "live" : ""}`}>
+      <div className="grow">
+        <div className="small" style={{ color: "var(--red)", fontWeight: 800 }}>🏴‍☠️ RAIDERS {w.ownerId === meId ? "→ YOUR BASE" : "→ CREW BASE"}{w.boost > 1 ? " · ×1.5" : ""}</div>
+        <b style={{ fontFamily: "var(--display)" }}>{started ? `${alive}/${def.creeps.length} left` : `${def.creeps.length} incoming`}</b>
+        <span className="small muted"> · {started ? "ends" : "in"} {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</span>
+      </div>
+      {started && (
+        <button className="btn small" style={{ background: striking ? "#ff8a00" : undefined }} disabled={dist > STRIKE_RANGE_M || used >= STRIKES_PER_WAVE} onClick={onStrike} title={dist > STRIKE_RANGE_M ? `Get within ${STRIKE_RANGE_M} m of the base` : ""}>
+          ✈️ {dist > STRIKE_RANGE_M ? "Get closer" : `Strike (${STRIKES_PER_WAVE - used})`}
+        </button>
+      )}
+      {onGo && dist > 150 && <button className="btn yellow small" onClick={onGo}>🕹️ Go</button>}
+    </div>
+  );
+}
+
+const creepPosOrNull = (def: ReturnType<typeof useLiveWaves>[number]["def"], i: number, now: number) => creepPos(def, def.creeps[i], now);

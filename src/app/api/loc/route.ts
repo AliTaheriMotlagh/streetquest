@@ -6,6 +6,7 @@ import { distanceM } from "@/lib/geo";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { canSimulate } from "@/server/session";
+import { takeFire } from "@/server/td";
 
 const Schema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), sim: z.boolean().optional() });
 const MAX_SPEED_MS = 70; // ~250 km/h — anything faster is a spoofed jump
@@ -25,5 +26,8 @@ export const POST = route(async (req) => {
     }
   }
   await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date() } });
-  return { ok: true };
+  // Tower defense: hostile towers and guard squads in range open fire.
+  const dt = u.lastSeenAt ? (Date.now() - u.lastSeenAt.getTime()) / 1000 : 0;
+  const fire = await takeFire(u, d, dt);
+  return { ok: true, fire };
 });

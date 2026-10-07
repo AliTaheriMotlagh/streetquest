@@ -21,7 +21,11 @@ export type GeoState = {
  * a high-accuracy watch. If high accuracy keeps failing (common on laptops and
  * indoors) we fall back to a low-accuracy watch instead of hanging forever.
  */
-export function useLocation(simPos: LatLng | null): GeoState {
+export type FireReport = { hp: number; maxHp: number; hits: { by: string; emoji: string; dmg: number }[]; downed: { by: string; coins: number } | null; protectedReason?: string };
+
+export function useLocation(simPos: LatLng | null, onFire?: (f: FireReport) => void): GeoState {
+  const fireCb = useRef(onFire);
+  fireCb.current = onFire;
   const [gps, setGps] = useState<{ pos: LatLng | null; accuracy: number | null; error: GeoError | null }>({ pos: null, accuracy: null, error: null });
   const [attempt, setAttempt] = useState(0);
   const hasFix = useRef(false);
@@ -86,8 +90,18 @@ export function useLocation(simPos: LatLng | null): GeoState {
     const res = await fetch("/api/loc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lat: p.lat, lng: p.lng, sim }) }).catch(() => null);
     // Only count it as delivered if the server accepted it (a brand-new guest's first
     // ping can land before their account exists); otherwise flush() will resend.
-    if (res?.ok) sent.current = { ...p, sim, at: Date.now() };
+    if (res?.ok) {
+      sent.current = { ...p, sim, at: Date.now() };
+      // Tower defense: the server says whether hostile towers/guards shot at us.
+      const data = await res.json().catch(() => null);
+      if (data?.fire) fireCb.current?.(data.fire);
+      // While under fire, report more often so damage (and escaping) feel immediate.
+      if (data?.fire?.hits?.length) setTimeout(() => sendRef.current?.(), 3000);
+    }
   }, []);
+
+  const sendRef = useRef<(() => Promise<void>) | null>(null);
+  sendRef.current = send;
 
   useEffect(() => {
     if (!pos) return;

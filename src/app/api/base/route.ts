@@ -36,6 +36,7 @@ import { requireUser } from "@/server/auth";
 import { forcesOf, loadBase } from "@/server/army";
 import { heroOf } from "@/server/hero";
 import { questEvent } from "@/server/quests";
+import { deployedArmy } from "@/server/td";
 import { body, HttpError, route } from "@/server/http";
 import { grant, lastKnownLocation, spendCoins } from "@/server/rewards";
 
@@ -45,13 +46,14 @@ const SPEED = process.env.NODE_ENV !== "production" ? Math.max(1, Number(process
 export const GET = route(async () => {
   const u = await requireUser();
   const f = factionOf(u.faction);
-  const [base, { army, vets }, hero, research, queue, battles] = await Promise.all([
+  const [base, { army, vets }, hero, research, queue, battles, field] = await Promise.all([
     loadBase({ ownerId: u.id }),
     forcesOf(u.id),
     heroOf(u),
     prisma.research.findMany({ where: { userId: u.id } }),
     prisma.trainOrder.findMany({ where: { userId: u.id }, orderBy: { readyAt: "asc" } }),
     prisma.battle.findMany({ where: { attackerId: u.id }, orderBy: { createdAt: "desc" }, take: 15 }),
+    deployedArmy(u.id),
   ]);
   const defended = base ? await prisma.battle.findMany({ where: { targetId: base.id }, orderBy: { createdAt: "desc" }, take: 10, include: { attacker: { select: { username: true, base: { select: { id: true } } } } } }) : [];
   return {
@@ -76,7 +78,7 @@ export const GET = route(async () => {
     gems: u.gems,
     trophies: u.trophies,
     league: leagueOf(u.trophies),
-    housing: { used: housingOf(army) + queue.reduce((s, q) => s + (UNIT_BY_KEY[q.unitType as UnitKey]?.housing ?? 0) * q.qty, 0), cap: base ? campCapacity(base.buildings) : 10 },
+    housing: { used: housingOf(army) + housingOf(field) + queue.reduce((s, q) => s + (UNIT_BY_KEY[q.unitType as UnitKey]?.housing ?? 0) * q.qty, 0), cap: base ? campCapacity(base.buildings) : 10 },
     builders: base ? builderCount(base.buildings) : 1,
     protection: base ? vaultProtection(base.buildings) : 0,
     timeMult: { build: hero.bonus.buildTime, train: hero.bonus.trainTime, research: hero.bonus.researchTime },
@@ -161,7 +163,7 @@ export const POST = route(async (req) => {
     if ((await prisma.trainOrder.count({ where: { userId: u.id } })) >= 8) throw new HttpError(400, "Training queue is full");
     const [{ army }, allQueued] = await Promise.all([forcesOf(u.id), prisma.trainOrder.findMany({ where: { userId: u.id } })]);
     const queuedArmy = Object.fromEntries(Object.keys(UNIT_BY_KEY).map((k) => [k, allQueued.filter((q) => q.unitType === k).reduce((s, q) => s + q.qty, 0)]));
-    const used = housingOf(army) + housingOf(queuedArmy);
+    const used = housingOf(army) + housingOf(queuedArmy) + housingOf(await deployedArmy(u.id));
     const cap = campCapacity(base.buildings);
     if (used + unit.housing * d.qty > cap) throw new HttpError(400, `Army Camps are full (${used}/${cap}) — build or upgrade an Army Camp`);
     const cost = unitCost(unit, f) * d.qty;

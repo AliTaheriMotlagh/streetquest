@@ -5,7 +5,8 @@ import { hashStr, rng } from "./geo";
 
 export type QuestKind =
   | "collect" | "chest" | "derrick" | "train" | "build" | "research" | "siege_win" | "breach_win" | "kills"
-  | "boss_dmg" | "eat" | "rest" | "socialize" | "outpost" | "power" | "run" | "class" | "base" | "equip" | "forge";
+  | "boss_dmg" | "eat" | "rest" | "socialize" | "outpost" | "power" | "run" | "class" | "base" | "equip" | "forge"
+  | "arcade" | "duel_win" | "squad_run" | "tower" | "tower_down" | "raiders" | "squad";
 
 export type Reward = { xp: number; coins: number; scrap?: number; gear?: Rarity };
 export type QuestDef = { kind: QuestKind; target: number; title: string; desc: string; reward: Reward; lore?: string };
@@ -41,6 +42,13 @@ const DAILY_POOL: QuestDef[] = [
   { kind: "run", target: 1, title: "Wheelman", desc: "Finish a timed run", reward: { xp: 150, coins: 80 } },
   { kind: "siege_win", target: 1, title: "Conqueror", desc: "Win a siege", reward: { xp: 250, coins: 150, gear: "rare" } },
   { kind: "forge", target: 1, title: "Blacksmith", desc: "Upgrade gear at the forge", reward: { xp: 100, coins: 50, scrap: 4 } },
+  { kind: "arcade", target: 2, title: "Range Day", desc: "Play 2 mini-games (range or bomb defuse)", reward: { xp: 120, coins: 70 } },
+  { kind: "duel_win", target: 1, title: "Top Gun", desc: "Win a multiplayer mini-game", reward: { xp: 200, coins: 120, gear: "rare" } },
+  { kind: "squad_run", target: 1, title: "Squad Goals", desc: "Finish a run with a squad", reward: { xp: 200, coins: 120 } },
+  { kind: "tower", target: 1, title: "Fortify", desc: "Build or upgrade a tower", reward: { xp: 120, coins: 80, scrap: 3 } },
+  { kind: "raiders", target: 8, title: "Hold the Line", desc: "Kill 8 raiders with towers, squads or airstrikes", reward: { xp: 200, coins: 150, scrap: 4 } },
+  { kind: "tower_down", target: 1, title: "Demolition", desc: "Destroy an enemy tower", reward: { xp: 250, coins: 150, gear: "rare" } },
+  { kind: "squad", target: 1, title: "Boots on the Map", desc: "Deploy a squad onto the map", reward: { xp: 100, coins: 60 } },
 ];
 
 export function dailyQuests(userId: string, day: string): (QuestDef & { key: string })[] {

@@ -59,6 +59,12 @@ model User {
   trophies     Int      @default(0)
   gems         Int      @default(25)
 
+  // Tower-defense layer: the commander's own HP on the street (towers shoot it).
+  hp           Int      @default(100)
+  hpAt         DateTime @default(now()) // HP regenerates from this snapshot
+  downedUntil  DateTime?
+  sabotageAt   DateTime?
+
   inventory     InventoryItem[]
   claims        Claim[]
   runs          MissionRun[]
@@ -82,6 +88,10 @@ model User {
   powers        PowerState[]
   quests        QuestProgress[]
   outposts      Outpost[]
+  lobbies       LobbyPlayer[]
+  towers        Tower[]
+  squads        Squad[]
+  pings         Ping[]
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -136,6 +146,7 @@ model MissionRun {
   deadline    DateTime
   rewardXp    Int
   rewardCoins Int
+  lobbyId     String? // squad run (race / co-op)
   status      String   @default("ACTIVE") // ACTIVE | DONE | FAILED
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -488,4 +499,119 @@ model Outpost {
   owner       User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
   @@index([ownerId])
+}
+
+// ---------------------------------------------------------------- Multiplayer lobbies
+// Everyone sees the same spawns, so a lobby lives at a spawn: arcade duels (range),
+// chest co-ops (defuse) and squad runs (race / coop). All players get the same seed.
+model Lobby {
+  id        String        @id @default(cuid())
+  kind      String // range | defuse | race | coop
+  spawnId   String
+  seed      Int
+  hostId    String
+  lat       Float
+  lng       Float
+  status    String        @default("OPEN") // OPEN | LIVE | ENDED
+  openUntil DateTime // auto-start time
+  startsAt  DateTime? // end of the 3-2-1 countdown
+  endsAt    DateTime?
+  createdAt DateTime      @default(now())
+  players   LobbyPlayer[]
+
+  @@index([spawnId, status])
+}
+
+model LobbyPlayer {
+  id         String    @id @default(cuid())
+  lobbyId    String
+  userId     String
+  name       String
+  avatar     String
+  score      Int?
+  place      Int?
+  finishedAt DateTime?
+  reward     String?
+  joinedAt   DateTime  @default(now())
+  lobby      Lobby     @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([lobbyId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- Tower defense
+// Towers stand on real streets. They shoot hostile players who walk into range
+// and every raider wave that marches past.
+model Tower {
+  id        String   @id @default(cuid())
+  ownerId   String
+  type      String
+  level     Int      @default(1)
+  lat       Float
+  lng       Float
+  hp        Int
+  kills     Int      @default(0)
+  readyAt   DateTime
+  createdAt DateTime @default(now())
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
+  @@index([ownerId])
+}
+
+// Army units deployed onto the map. Position is interpolated from the march, so
+// no background job is needed; arrivals are settled whenever someone looks.
+model Squad {
+  id         String   @id @default(cuid())
+  ownerId    String
+  units      Json // Army
+  vets       Json     @default("{}")
+  fromLat    Float
+  fromLng    Float
+  toLat      Float
+  toLng      Float
+  departAt   DateTime @default(now())
+  arriveAt   DateTime
+  order      String // guard | attack | return
+  targetKind String? // tower | squad
+  targetId   String?
+  status     String   @default("MARCH") // MARCH | HOLD
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([toLat, toLng])
+  @@index([ownerId])
+}
+
+// A raider wave against one base. The creeps are generated from the seed, the
+// fight is a deterministic simulation (server resolves, clients animate it).
+model Wave {
+  id         String    @id @default(cuid())
+  baseId     String
+  seed       Int
+  hq         Int
+  boost      Float     @default(1) // provoked waves are tougher and pay more
+  startAt    DateTime
+  endAt      DateTime
+  strikes    Json      @default("[]") // [{ by, name, t, lat, lng }]
+  result     Json?
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([baseId, resolvedAt])
+  @@index([startAt])
+}
+
+// Short-lived map markers for crew coordination.
+model Ping {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String // attack | help | rally | loot
+  lat       Float
+  lng       Float
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
 }

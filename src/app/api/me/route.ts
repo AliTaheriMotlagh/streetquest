@@ -11,6 +11,8 @@ import { commandPoints } from "@/lib/powers";
 import { leagueOf } from "@/lib/rts";
 import { questView } from "@/server/quests";
 import { body, HttpError, route } from "@/server/http";
+import { currentHp, ROOKIE_LEVEL } from "@/lib/td";
+import { maxHpOf } from "@/server/td";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -23,6 +25,7 @@ export const GET = route(async () => {
     prisma.powerState.findMany({ where: { userId: u.id }, select: { rank: true } }),
     prisma.gear.count({ where: { userId: u.id, equipped: true } }),
   ]);
+  const maxHp = await maxHpOf(u.id);
   const quests = await questView(u.id, { heroClass: !!u.heroClass, base: !!base, equipped: equipped > 0 });
   const needs = needsOf(u);
   const prog = levelProgress(u.xp);
@@ -64,6 +67,10 @@ export const GET = route(async () => {
     commandPoints: commandPoints(prog.level, powers.reduce((s, p) => s + p.rank, 0)),
     quest: quests[0] ? { title: quests[0].title, desc: quests[0].desc, progress: quests[0].progress, target: quests[0].target, done: quests[0].done, campaign: quests[0].campaign } : null,
     questsReady: quests.filter((q) => q.done && !q.claimed).length,
+    hp: currentHp(u.hp, u.hpAt, maxHp),
+    maxHp,
+    downedUntil: u.downedUntil && u.downedUntil.getTime() > Date.now() ? u.downedUntil.getTime() : null,
+    rookie: prog.level < ROOKIE_LEVEL,
   };
 });
 

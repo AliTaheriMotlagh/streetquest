@@ -8,6 +8,8 @@ import type { Bonus, Mods } from "@/lib/hero";
 import type { QuestDef } from "@/lib/quests";
 import type { PowerKey } from "@/lib/powers";
 import type { Mood, Needs } from "@/lib/sims";
+import type { PingKind, Strike } from "@/lib/td";
+import type { LobbyKind } from "@/lib/minigames";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
@@ -56,7 +58,7 @@ export type Me = {
   canSimulate: boolean;
   inventory: { key: string; qty: number; def: ItemDef }[];
   achievements: string[];
-  activeRun: { id: string; title: string; targetLat: number; targetLng: number; deadline: string; rewardXp: number; rewardCoins: number } | null;
+  activeRun: { id: string; title: string; targetLat: number; targetLng: number; deadline: string; rewardXp: number; rewardCoins: number; lobbyId: string | null } | null;
   pendingFriends: number;
   faction: FactionKey | null;
   base: { id: string; name: string; lat: number; lng: number } | null;
@@ -74,6 +76,10 @@ export type Me = {
   commandPoints: number;
   quest: { title: string; desc: string; progress: number; target: number; done: boolean; campaign: boolean } | null;
   questsReady: number;
+  hp: number;
+  maxHp: number;
+  downedUntil: number | null;
+  rookie: boolean;
 };
 
 export type League = { name: string; emoji: string; bonus: number; min: number };
@@ -99,7 +105,7 @@ export type HeroView = {
   campaignStep: number;
 };
 
-export type WorldSpawn = Spawn & { claimed: boolean };
+export type WorldSpawn = Spawn & { claimed: boolean; lobby: { id: string; kind: string; players: number; openUntil: number } | null };
 export type WorldMission = { id: string; title: string; description: string; lat: number; lng: number; item?: ItemDef; rewardXp: number; rewardCoins: number; sponsor: string | null; claimed: boolean; activeTo: string };
 export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null };
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
@@ -117,6 +123,7 @@ export type WorldBase = {
   shielded: boolean;
   hq: number;
   turrets: number;
+  buildings: { type: string; level: number; building: boolean }[];
   owner: { id: string; username: string; avatar: string; online: boolean };
   faction: FactionKey | null;
   liveMatch: string | null;
@@ -134,6 +141,58 @@ export type WorldOutpost = {
   guard: number | null;
 };
 export type WorldBoss = { id: string; lat: number; lng: number; expiresAt: number; def: BossDef; maxHp: number; hp: number; liveMatch: string | null };
+
+export type WorldTower = { id: string; type: string; level: number; lat: number; lng: number; hp: number; kills: number; readyAt: number; ownerId: string; owner: string; faction: string | null; mine: boolean; friend: boolean };
+export type WorldSquad = {
+  id: string;
+  ownerId: string;
+  owner: string;
+  faction: string | null;
+  mine: boolean;
+  friend: boolean;
+  units: Army | null;
+  size: number;
+  icon: string;
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  departAt: number;
+  arriveAt: number;
+  order: "guard" | "attack" | "return";
+  status: "MARCH" | "HOLD";
+  targetKind: string | null;
+  targetId: string | null;
+};
+export type WorldWave = {
+  id: string;
+  baseId: string;
+  ownerId: string;
+  baseLat: number;
+  baseLng: number;
+  seed: number;
+  hq: number;
+  boost: number;
+  startAt: number;
+  endAt: number;
+  strikes: Strike[];
+  result: { killed: number; leaked: number; total: number; stolen: number; baseDmg: number } | null;
+  resolved: boolean;
+};
+export type WorldPing = { id: string; kind: PingKind; lat: number; lng: number; expiresAt: number; mine: boolean; by: string; avatar: string };
+
+export type LobbyView = {
+  id: string;
+  kind: LobbyKind;
+  spawnId: string;
+  seed: number;
+  status: "OPEN" | "LIVE" | "ENDED";
+  hostId: string;
+  openUntil: number;
+  startsAt: number | null;
+  endsAt: number | null;
+  players: { userId: string; name: string; avatar: string; score: number | null; place: number | null; reward: string | null; finished: boolean; run: string | null; lat: number | null; lng: number | null }[];
+};
 
 export type BaseView = {
   faction: FactionKey | null;
@@ -180,6 +239,10 @@ export type World = {
   bosses: WorldBoss[];
   outposts: WorldOutpost[];
   onlineNearby: number;
+  towers: WorldTower[];
+  squads: WorldSquad[];
+  waves: WorldWave[];
+  pings: WorldPing[];
 };
 
 export type Selected =
@@ -191,7 +254,10 @@ export type Selected =
   | { type: "player"; data: WorldPlayer }
   | { type: "base"; data: WorldBase }
   | { type: "boss"; data: WorldBoss }
-  | { type: "outpost"; data: WorldOutpost };
+  | { type: "outpost"; data: WorldOutpost }
+  | { type: "tower"; data: WorldTower }
+  | { type: "squad"; data: WorldSquad }
+  | { type: "ping"; data: WorldPing };
 
 export const fmtTime = (iso: string | number | Date) =>
   new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));

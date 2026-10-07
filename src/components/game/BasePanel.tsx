@@ -22,6 +22,7 @@ import {
 import { distanceM, formatDistance } from "@/lib/geo";
 import { api, fmtTime, type BaseView } from "./client";
 import { Sheet, Tabs, useGame } from "./ui";
+import { DefenseTab } from "./Defense";
 
 const fmtLeft = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -33,10 +34,10 @@ const CLS_ICON = { infantry: "🚶", vehicle: "🚙", air: "✈️", structure: 
 type Territory = { outposts: { id: string; name: string; garrison: Partial<Record<UnitKey, number>>; pending: number }[]; war: { faction: string; outposts: number }[] };
 
 export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
-  const { act, pos, refresh, teleport } = useGame();
+  const { act, pos, refresh, teleport, me } = useGame();
   const [v, setV] = useState<BaseView | null>(null);
   const [terr, setTerr] = useState<Territory | null>(null);
-  const [tab, setTab] = useState<"base" | "army" | "research" | "territory" | "reports">("base");
+  const [tab, setTab] = useState<"base" | "defense" | "army" | "research" | "territory" | "reports">("base");
   const [name, setName] = useState("");
   const [now, setNow] = useState(Date.now());
 
@@ -134,7 +135,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
       <Tabs
         value={tab}
         onChange={setTab}
-        tabs={[["base", "Buildings"], ["army", `Army (${v.attack.count})`], ["research", "Research"], ["territory", `Territory${tribute ? " 🪙" : ""}`], ["reports", "Reports"]]}
+        tabs={[["base", "Buildings"], ["defense", "🗼 Defense"], ["army", `Army (${v.attack.count})`], ["research", "Research"], ["territory", `Territory${tribute ? " 🪙" : ""}`], ["reports", "Reports"]]}
       />
 
       {tab === "base" && (
@@ -173,6 +174,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
           <button className="btn ghost small" onClick={() => confirm(`Move ${b.name} to where you're standing for ${RELOCATE_COST} coins?`) && doAct({ action: "found", name: b.name })}>🚚 Move base here ({RELOCATE_COST} 🪙)</button>
         </>
       )}
+
+      {tab === "defense" && <DefenseTab base={b} hq={hq} coins={me.coins} scrap={v.scrap} reload={load} />}
 
       {tab === "army" && (
         <>
@@ -286,7 +289,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div className="icon-tile" style={{ fontSize: r.kind === "siege" ? 14 : 26, color: "var(--yellow)" }}>{r.kind === "siege" ? stars(r.stars) : r.won ? "🏆" : "☠️"}</div>
               <div className="grow">
                 <b>
-                  {r.side === "defend" ? `${r.won ? "Held off" : "Raided by"} ${r.targetName}` : { siege: "Raid", derrick: "Derrick raid", boss: "Bombarded", breach: "Breach (FPS)", raid: "Boss raid (FPS)", outpost: "Outpost assault" }[r.kind] ?? r.kind}
+                  {r.side === "defend" ? `${r.won ? "Held off" : "Raided by"} ${r.targetName}` : { siege: "Raid", derrick: "Derrick raid", boss: "Bombarded", breach: "Breach (FPS)", raid: "Boss raid (FPS)", outpost: "Outpost assault", skirmish: "Skirmish", wave: "Raider wave" }[r.kind] ?? r.kind}
                   {r.side === "attack" && ` · ${r.targetName}`}
                 </b>
                 <div className="small muted">

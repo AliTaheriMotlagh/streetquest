@@ -7,6 +7,7 @@ import { body, HttpError, route } from "@/server/http";
 import { checkClaimAchievements, grant, lastKnownLocation } from "@/server/rewards";
 import { bumpNeeds } from "@/server/needs";
 import { questEvent } from "@/server/quests";
+import { runBonus } from "@/server/lobby";
 
 const Schema = z.object({ runId: z.string(), action: z.enum(["complete", "abandon"]) });
 
@@ -27,12 +28,18 @@ export const POST = route(async (req) => {
   const here = await lastKnownLocation(u.id);
   if (distanceM(here, { lat: run.targetLat, lng: run.targetLng }) > INTERACT_RADIUS_M + 10) throw new HttpError(400, "You're not at the target yet");
 
-  await prisma.missionRun.update({ where: { id: run.id }, data: { status: "DONE" } });
+  // Squad runs: race placement / co-op team bonus (computed before this run counts as done).
+  const squad = run.lobbyId ? await runBonus(run.lobbyId, u.id) : { mult: 1, label: "" };
+  const done = await prisma.missionRun.updateMany({ where: { id: run.id, status: "ACTIVE" }, data: { status: "DONE" } });
+  if (!done.count) throw new HttpError(409, "Run already finished");
   const secondsLeft = Math.round((run.deadline.getTime() - Date.now()) / 1000);
   const speedBonus = Math.round(run.rewardCoins * Math.min(0.5, secondsLeft / 600));
-  await grant(u.id, { xp: run.rewardXp, coins: run.rewardCoins + speedBonus });
-  await bumpNeeds(u.id, { energy: -10, hunger: -8, fun: 10 });
+  const coins = Math.round((run.rewardCoins + speedBonus) * squad.mult);
+  const xp = Math.round(run.rewardXp * squad.mult);
+  await grant(u.id, { xp, coins });
+  await bumpNeeds(u.id, { energy: -10, hunger: -8, fun: 10, ...(squad.label ? { social: 15 } : {}) });
   await questEvent(u.id, "run");
+  if (squad.label) await questEvent(u.id, "squad_run");
   await checkClaimAchievements(u.id, "day");
-  return { message: `${run.title} complete! +${run.rewardCoins + speedBonus} coins`, xp: run.rewardXp };
+  return { message: `${run.title} complete! +${coins} coins${squad.label ? ` · ${squad.label}` : ""}`, xp };
 });

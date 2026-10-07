@@ -13,6 +13,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
     "test:smoke": "tsx scripts/smoke.ts",
+    "test:mp": "tsx scripts/smoke-mp.ts",
     "tunnel": "cloudflared tunnel --url http://localhost:3000"
   },
   "dependencies": {
