@@ -203,7 +203,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .hero h1 { font-size: clamp(38px, 7vw, 72px); line-height: 1; }
 .hero h1 em { font-style: normal; color: var(--yellow); text-shadow: 0 0 30px rgba(255,210,63,.4); }
 .hero p { font-size: 18px; color: #c8c8dc; max-width: 520px; line-height: 1.5; }
-.phone { aspect-ratio: 9/17; max-width: 300px; margin: 0 auto; border-radius: 40px; border: 8px solid #1d1d2b; background: linear-gradient(160deg, #1b1030, #071a22); position: relative; overflow: hidden; box-shadow: 0 30px 80px rgba(255,46,136,.25); }
+.phone { aspect-ratio: 9/17; width: 100%; max-width: 300px; margin: 0 auto; border-radius: 40px; border: 8px solid #1d1d2b; background: linear-gradient(160deg, #1b1030, #071a22); position: relative; overflow: hidden; box-shadow: 0 30px 80px rgba(255,46,136,.25); }
 .phone .street { position: absolute; background: rgba(255,255,255,.07); }
 .phone .pin { position: absolute; font-size: 28px; animation: bob 2.4s ease-in-out infinite; }
 .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; padding: 30px 0; }
@@ -240,7 +240,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 }
 @media (max-width: 800px) {
   .hero { grid-template-columns: 1fr; padding-top: 30px; }
-  .hero .phone { display: none; }
+  /* Phones: show the trailer smaller under the headline instead of hiding it. */
+  .hero .phone { width: min(230px, 66vw); max-width: none; border-radius: 32px; }
 }
 
 /* ---------- Life-sim needs ---------- */
@@ -933,3 +934,10 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 .update-bar { position: fixed; left: 10px; right: 10px; bottom: calc(86px + var(--safe-b)); z-index: 6000; max-width: 520px; margin: 0 auto; display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 16px; background: linear-gradient(135deg, #10301f, #12121f); border: 2px solid var(--green); box-shadow: 0 12px 30px rgba(0,0,0,.6); animation: bounceIn .4s cubic-bezier(.2,1.4,.4,1); font-size: 14px; }
 .offline-bar { white-space: nowrap; top: calc(76px + var(--safe-t)); }
 .ad-timer-n { position: relative; z-index: 1; }
+
+/* Autoplaying video with a ▶ fallback (Low Power Mode, data saver) */
+.autovideo { position: relative; overflow: hidden; }
+.autovideo video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.phone-video.autovideo { position: absolute; inset: 0; }
+.ad-media.video.autovideo { padding: 0; height: min(56vh, 520px); aspect-ratio: 9 / 16; width: auto; }
+.video-play { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px; border-radius: 50%; border: 3px solid #fff; background: rgba(255,46,136,.85); color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: pulse 1.6s infinite; padding-left: 6px; }

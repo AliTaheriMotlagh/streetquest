@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { AutoVideo } from "@/components/AutoVideo";
 import { prisma } from "@/lib/db";
 import { SITE } from "@/lib/site";
 
@@ -99,7 +100,7 @@ export default async function Home() {
           </div>
           <div className="phone">
             {/* The 15 s gameplay trailer (muted autoplay; tap for sound). */}
-            <video className="phone-video" src="/media/streetquest-ad.mp4" poster="/media/streetquest-ad.jpg" autoPlay muted loop playsInline preload="metadata" aria-label="StreetQuest gameplay trailer" />
+            <AutoVideo className="phone-video" src="/media/streetquest-ad.mp4" poster="/media/streetquest-ad.jpg" label="StreetQuest gameplay trailer" />
           </div>
         </section>
 

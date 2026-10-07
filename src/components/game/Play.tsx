@@ -9,6 +9,7 @@ import { askConfirm } from "@/components/Dialogs";
 import { api, type GpsView, type LatLng } from "./client";
 import { sfx } from "./sfx";
 import { duckMusic } from "./music";
+import { AutoVideo } from "@/components/AutoVideo";
 import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
 
 // ---------------------------------------------------------------- celebrations
@@ -526,19 +527,13 @@ export function AdModal({ onClose }: { onClose: () => void }) {
   const [ad, setAd] = useState<(AdStart & { at: number }) | null>(null);
   const [now, setNow] = useState(Date.now());
   const [sound, setSound] = useState(false);
-  const video = useRef<HTMLVideoElement>(null);
   const started = useRef(false);
   // The ad has its own soundtrack: pause the game music while it's open.
   useEffect(() => {
     duckMusic(true);
     return () => duckMusic(false);
   }, []);
-  useEffect(() => {
-    if (video.current) {
-      video.current.muted = !sound;
-      if (sound) video.current.play().catch(() => {});
-    }
-  }, [sound]);
+
   useEffect(() => {
     if (started.current) return;
     started.current = true;
@@ -565,7 +560,7 @@ export function AdModal({ onClose }: { onClose: () => void }) {
         </div>
         {c.videoUrl ? (
           <div className="ad-video-wrap">
-            <video ref={video} className="ad-media video" src={c.videoUrl} poster={c.videoUrl.replace(/\.mp4$/, ".jpg")} autoPlay muted={!sound} playsInline loop />
+            <AutoVideo className="ad-media video" src={c.videoUrl} poster={c.videoUrl.replace(/\.mp4$/, ".jpg")} sound={sound} label={c.title} />
             <button className="ad-sound" onClick={() => setSound(!sound)} aria-label={sound ? "Mute" : "Sound on"}>{sound ? "🔊" : "🔇 Tap for sound"}</button>
           </div>
         ) : c.imageUrl ? (
