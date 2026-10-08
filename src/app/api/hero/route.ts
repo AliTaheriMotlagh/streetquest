@@ -9,7 +9,7 @@ import { levelForXp } from "@/lib/progression";
 import type { Rarity } from "@/lib/catalog";
 import { requireUser } from "@/server/auth";
 import { heroOf, giveGear } from "@/server/hero";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { claimQuest, questEvent, questView } from "@/server/quests";
 import { grant, spendCoins } from "@/server/rewards";
 import { maxHpOf } from "@/server/td";
@@ -102,7 +102,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claimQuest"), key: z.string().max(40) }),
 ]);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const level = levelForXp(u.xp);

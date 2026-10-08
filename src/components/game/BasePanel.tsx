@@ -37,7 +37,7 @@ const CLS_ICON = { infantry: "🚶", vehicle: "🚙", air: "✈️", structure: 
 type Territory = { outposts: { id: string; name: string; garrison: Partial<Record<UnitKey, number>>; pending: number }[]; war: { faction: string; outposts: number }[] };
 
 export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
-  const { act, pos, refresh, teleport, me } = useGame();
+  const { act, pos, teleport, me } = useGame();
   const [v, setV] = useState<BaseView | null>(null);
   const [terr, setTerr] = useState<Territory | null>(null);
   const [tab, setTab] = useState<"base" | "defense" | "army" | "research" | "territory" | "reports">("base");
@@ -79,7 +79,10 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
     if (due) load();
   }, [due, nextDue]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doAct = (b: unknown, path = "/api/base") => act(() => api(path, { body: b })).then((ok) => ok && (load(), refresh()));
+  const doAct = (b: unknown, path = "/api/base") => act(() => api(path, { body: b })).then((ok) => {
+      load(); // also after a refusal: the panel was showing something out of date
+      return ok;
+    });
   const rush = (what: string, msLeft: number, type?: string) => (
     <Button className="btn ghost small" disabled={(v?.gems ?? 0) < rushCost(msLeft)} onClick={() => doAct({ action: "rush", what, type })}>
       💎 {rushCost(msLeft)}

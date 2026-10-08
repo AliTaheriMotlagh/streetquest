@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
 import { STORY } from "@/lib/story";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { activeGame, checkGame, gameView, rerouteGame, startGame, storyChapterOf, GPS_GAMES } from "@/server/gpsgames";
 
 async function here(userId: string) {
@@ -46,7 +46,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("quit") }),
 ]);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (d.action === "start") {

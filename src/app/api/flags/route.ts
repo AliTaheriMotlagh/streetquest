@@ -6,7 +6,7 @@ import { distanceM } from "@/lib/geo";
 import { CAPTURE_BONUS, CAPTURE_SECONDS, FLAG_COST, FLAG_RADIUS_M, FLAG_SHIELD_MS, FLAG_SPACING_M, flagTribute, MAX_FLAGS } from "@/lib/flags";
 import { requireUser } from "@/server/auth";
 import { heroOf } from "@/server/hero";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { notify, onlineSince } from "@/server/hub";
 import { questEvent } from "@/server/quests";
 import { grant, lastKnownLocation, spendCoins, unlock } from "@/server/rewards";
@@ -38,7 +38,7 @@ async function defendersAt(flag: { lat: number; lng: number; ownerId: string }) 
   return near.filter((p) => p.lastLat != null && distanceM(flag, { lat: p.lastLat, lng: p.lastLng! }) <= FLAG_RADIUS_M && !(p.downedUntil && p.downedUntil > new Date())).length;
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
 

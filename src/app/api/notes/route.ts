@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { questEvent } from "@/server/quests";
 import { grant, lastKnownLocation, spendCoins, unlock } from "@/server/rewards";
 
@@ -31,7 +31,7 @@ function decodePhoto(dataUrl: string) {
   return { bytes: buf, type: m[1] };
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (!d.body && !d.photo) throw new HttpError(400, "Write something or add a photo");

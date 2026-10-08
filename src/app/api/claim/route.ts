@@ -5,7 +5,7 @@ import { cellKey, cellOf, dayPhase, distanceM } from "@/lib/geo";
 import { INTERACT_RADIUS_M, resolveSpawn } from "@/lib/spawns";
 import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "@/server/rewards";
 import { assertNotDowned } from "@/server/td";
 import { questEvent } from "@/server/quests";
@@ -20,7 +20,7 @@ async function recordClaim(userId: string, spawnId: string, kind: string, cell: 
   }
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const { spawnId } = await body(req, Schema);
   await assertNotDowned(u);

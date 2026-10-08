@@ -7,3 +7,6 @@ next-env.d.ts
 /.next-test
 .vercel
 .env*.local
+/.next-e2e
+/test-results
+/playwright-report

@@ -15,7 +15,10 @@
     "test:smoke": "tsx scripts/smoke.ts",
     "test:mp": "tsx scripts/smoke-mp.ts",
     "test:features": "tsx scripts/smoke-features.ts",
-    "tunnel": "cloudflared tunnel --url http://localhost:3000"
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "test:e2e": "playwright test",
+    "test:e2e:api": "playwright test --project=api",
+    "test:e2e:ui": "playwright test --project=mobile"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -31,6 +34,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^26.6.4",

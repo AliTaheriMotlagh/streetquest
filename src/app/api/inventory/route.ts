@@ -3,7 +3,7 @@ import { ITEM_BY_KEY } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { grant } from "@/server/rewards";
 
 // Sell one item type, or several at once from the bag's multi-select.
@@ -14,7 +14,7 @@ const Schema = z.discriminatedUnion("action", [
 
 const price = (key: string) => Math.round(ITEM_BY_KEY[key].value * S.sellMult);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const list = d.action === "sell" ? [{ itemKey: d.itemKey, qty: d.qty }] : d.items;

@@ -7,7 +7,7 @@ import { levelOf } from "@/lib/rts";
 import { AT_BASE_M, MESS_HALL_COST, REST_COOLDOWN_MS, SOCIAL_COOLDOWN_MS } from "@/lib/sims";
 import { requireUser } from "@/server/auth";
 import { loadBase } from "@/server/army";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { isOnline, notify } from "@/server/hub";
 import { bumpNeeds } from "@/server/needs";
 import { lastKnownLocation, spendCoins } from "@/server/rewards";
@@ -27,7 +27,7 @@ async function atBase(userId: string) {
   return base;
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
 

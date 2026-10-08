@@ -8,7 +8,7 @@ import { maxTowers, SABOTAGE_COOLDOWN_MS, SABOTAGE_DMG, TOWER_BY_KEY, TOWER_MAX_
 import { requireUser } from "@/server/auth";
 import { loadBase } from "@/server/army";
 import { heroOf } from "@/server/hero";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { notify } from "@/server/hub";
 import { questEvent } from "@/server/quests";
 import { grant, lastKnownLocation, spendCoins, unlock } from "@/server/rewards";
@@ -39,7 +39,7 @@ export const GET = route(async () => {
   return { towers, max: maxTowers(hq), hq };
 });
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
 

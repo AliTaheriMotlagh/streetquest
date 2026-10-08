@@ -7,7 +7,7 @@ import { factionOf, FACTIONS, SIEGE_RANGE_M, type Army } from "@/lib/rts";
 import { addUnits, forcesOf, loadBase, removeUnits } from "@/server/army";
 import { requireUser } from "@/server/auth";
 import { heroOf } from "@/server/hero";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { assaultOutpost, homeForce } from "@/server/warfare";
 import { grant } from "@/server/rewards";
 
@@ -39,7 +39,7 @@ const Schema = z.object({
   qty: z.number().int().min(1).max(50).optional(),
 });
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const hero = await heroOf(u);

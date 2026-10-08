@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { spendCoins, track } from "@/server/rewards";
 
 const pub = { select: { id: true, username: true, avatar: true } } as const;
@@ -29,7 +29,7 @@ const Schema = z.object({
   reward: z.number().int().min(10).max(100_000),
 });
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const open = await prisma.delivery.count({ where: { senderId: u.id, status: { in: ["OPEN", "ACCEPTED", "PICKED_UP"] } } });

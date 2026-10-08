@@ -2,10 +2,10 @@
 import { prisma } from "@/lib/db";
 import { DAILY_REWARD, dayKey } from "@/lib/progression";
 import { requireUser } from "@/server/auth";
-import { HttpError, route } from "@/server/http";
+import { HttpError, actionRoute } from "@/server/http";
 import { grant, unlock } from "@/server/rewards";
 
-export const POST = route(async () => {
+export const POST = actionRoute(async () => {
   const u = await requireUser();
   const today = dayKey(u.timezone);
   if (u.lastDailyKey === today) throw new HttpError(400, "Already claimed today — come back tomorrow");

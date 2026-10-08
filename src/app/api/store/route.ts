@@ -3,9 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { confirmCheckout, createCheckout, stripeReady } from "@/server/store";
 import { maxHpOf } from "@/server/td";
+import { currentHp } from "@/lib/td";
 import { adStatus } from "@/server/ads";
 
 export const GET = route(async () => {
@@ -36,7 +37,7 @@ async function spendGems(userId: string, gems: number) {
   if (!took.count) throw new HttpError(400, `Needs ${gems} 💎 — watch a sponsor spot or visit the gem store`);
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
 
@@ -57,6 +58,8 @@ export const POST = route(async (req) => {
   }
   if (d.action === "heal") {
     const max = await maxHpOf(u.id);
+    const downed = !!u.downedUntil && u.downedUntil.getTime() > Date.now();
+    if (!downed && currentHp(u.hp, u.hpAt, max) >= max) throw new HttpError(400, "You're already at full health");
     await spendGems(u.id, S.healGems);
     await prisma.user.update({ where: { id: u.id }, data: { hp: max, hpAt: new Date(), downedUntil: null } });
     return { message: `❤️ Fully healed (−${S.healGems} 💎)` };

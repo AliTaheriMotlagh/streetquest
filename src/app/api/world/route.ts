@@ -21,8 +21,9 @@ import { friendIds } from "@/server/rooms";
 export const GET = route(async (req) => {
   const u = await requireUser();
   const sp = new URL(req.url).searchParams;
-  const here = { lat: Number(sp.get("lat")), lng: Number(sp.get("lng")) };
-  if (!Number.isFinite(here.lat) || !Number.isFinite(here.lng)) throw new HttpError(400, "lat/lng required");
+  // Number(null) is 0: a missing param would quietly load the map at 0,0.
+  const here = { lat: Number(sp.get("lat") ?? NaN), lng: Number(sp.get("lng") ?? NaN) };
+  if (!Number.isFinite(here.lat) || !Number.isFinite(here.lng) || Math.abs(here.lat) > 90 || Math.abs(here.lng) > 180) throw new HttpError(400, "lat/lng required");
   const now = new Date();
 
   const spawns = spawnsAround(here);

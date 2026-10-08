@@ -23,6 +23,7 @@ model User {
   lastLat      Float?
   lastLng      Float?
   lastSeenAt   DateTime?
+  locAt        DateTime? // when lastLat/lastLng was accepted (speed checks measure from here)
   streak       Int      @default(0)
   lastDailyKey String? // YYYY-MM-DD in the user's own timezone
   referralCode String   @unique
@@ -811,4 +812,11 @@ model PushSub {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// One mutating action at a time per player: a double-tap or a retried request waits
+// for the first to finish instead of spending twice. Rows live for one request.
+model ActionLock {
+  key       String   @id
+  expiresAt DateTime
 }

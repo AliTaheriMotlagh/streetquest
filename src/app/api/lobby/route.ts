@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { leave, loadLobby, openOrJoin, start, submitScore, tick } from "@/server/lobby";
 
 async function view(id: string, userId: string) {
@@ -61,7 +61,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("score"), lobbyId: z.string().max(40), score: z.number().finite() }),
 ]);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (d.action === "open") {

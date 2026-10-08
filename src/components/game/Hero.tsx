@@ -23,8 +23,11 @@ export function useHero() {
 }
 
 function useHeroAct(load: () => void) {
-  const { act, refresh } = useGame();
-  return (body: unknown, path = "/api/hero") => act(() => api(path, { body })).then((ok) => ok && (load(), refresh()));
+  const { act } = useGame();
+  return (body: unknown, path = "/api/hero") => act(() => api(path, { body })).then((ok) => {
+    load(); // also after a refusal: the sheet was showing something out of date
+    return ok;
+  });
 }
 
 // ---------------------------------------------------------------- Hero

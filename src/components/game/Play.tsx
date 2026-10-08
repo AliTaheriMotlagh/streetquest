@@ -450,9 +450,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
     }
   };
   const spend = (body: object) =>
-    act(() => api("/api/store", { body })).then((ok) => {
-      if (ok) load();
-    });
+    act(() => api("/api/store", { body })).then(() => load());
 
   return (
     <Sheet title="💎 Store" onClose={onClose} peek={peek} help="store">
@@ -509,7 +507,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
 
           <label>Boosts</label>
           <div className="boosts">
-            <Button className="btn ghost" disabled={me.gems < d.boosts.heal} onClick={() => spend({ action: "heal" })}>❤️ Instant heal · 💎{d.boosts.heal}</Button>
+            <Button className="btn ghost" disabled={me.gems < d.boosts.heal || (me.hp >= me.maxHp && !me.downedUntil)} title={me.hp >= me.maxHp && !me.downedUntil ? "You're at full health" : undefined} onClick={() => spend({ action: "heal" })}>❤️ Instant heal · 💎{d.boosts.heal}</Button>
             <Button className="btn ghost" disabled={me.gems < d.boosts.refresh} onClick={() => spend({ action: "refresh" })}>🥤 Energy drink · 💎{d.boosts.refresh}</Button>
             <Button className="btn ghost" disabled={!me.base || me.gems < d.boosts.shield} onClick={() => spend({ action: "shield" })}>🛡️ 4 h base shield · 💎{d.boosts.shield}</Button>
           </div>

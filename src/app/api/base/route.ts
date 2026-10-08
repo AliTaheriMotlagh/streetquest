@@ -38,7 +38,7 @@ import { forcesOf, loadBase } from "@/server/army";
 import { heroOf } from "@/server/hero";
 import { questEvent } from "@/server/quests";
 import { deployedArmy } from "@/server/td";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { S } from "@/lib/settings";
 import { grant, lastKnownLocation, spendCoins } from "@/server/rewards";
 
@@ -102,7 +102,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("research"), key: z.enum(["drills", "ap_rockets", "composite", "supply_lines", "lasers", "radar", "afterburners", "medics"]) }),
 ]);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const f = factionOf(u.faction);
@@ -144,6 +144,9 @@ export const POST = route(async (req) => {
     const hq = levelOf(base.buildings, "hq");
     if (hq < def.hqLevel) throw new HttpError(400, `Needs Command Center level ${def.hqLevel}`);
     const cur = base.buildings.find((b) => b.type === d.type);
+    // Under construction, effectiveLevel is one below the target: "upgrading" again would
+    // charge for the same level and restart its timer.
+    if (cur && new Date(cur.readyAt).getTime() > now) throw new HttpError(400, `${def.name} is already being built — wait or rush it with 💎`);
     const level = (cur ? effectiveLevel(cur) : 0) + 1;
     if (level > (LEVEL_CAP[d.type as BuildingKey] ?? MAX_LEVEL)) throw new HttpError(400, "Already max level");
     if (d.type !== "hq" && level > hq) throw new HttpError(400, "Upgrade your Command Center first");

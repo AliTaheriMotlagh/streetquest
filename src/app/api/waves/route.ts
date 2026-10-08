@@ -6,7 +6,7 @@ import { distanceM } from "@/lib/geo";
 import { PROVOKE_COOLDOWN_MS, PROVOKE_DELAY_MS, STRIKE_COOLDOWN_MS, STRIKE_RANGE_M, STRIKES_PER_WAVE, type Strike } from "@/lib/td";
 import { loadBase } from "@/server/army";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { notify, onlineSince } from "@/server/hub";
 import { lastKnownLocation } from "@/server/rewards";
 import { areFriends, friendIds } from "@/server/rooms";
@@ -29,7 +29,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("strike"), waveId: z.string().max(40), lat: z.number(), lng: z.number() }),
 ]);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
 

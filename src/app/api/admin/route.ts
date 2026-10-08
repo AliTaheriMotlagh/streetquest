@@ -131,7 +131,14 @@ const Action = z.discriminatedUnion("action", [
     sponsor: z.string().max(60).optional(),
   }),
   z.object({ action: z.literal("deleteMission"), id: z.string() }),
-  z.object({ action: z.literal("createAnnouncement"), title: z.string().min(1).max(100), body: z.string().max(500), ctaLabel: z.string().max(30).optional(), ctaUrl: z.string().max(300).optional() }),
+  z.object({
+    action: z.literal("createAnnouncement"),
+    title: z.string().min(1).max(100),
+    body: z.string().max(500),
+    ctaLabel: z.string().max(30).optional(),
+    // Shown as a link to every player: only web links or in-app paths, never javascript: & co.
+    ctaUrl: z.string().max(300).regex(/^(https?:\/\/|\/(?!\/))/, "must start with https:// or /").optional().or(z.literal("").transform(() => undefined)),
+  }),
   z.object({ action: z.literal("toggleAnnouncement"), id: z.string(), active: z.boolean() }),
   z.object({ action: z.literal("deleteAnnouncement"), id: z.string() }),
   z.object({ action: z.literal("hideNote"), id: z.string(), hidden: z.boolean() }),
@@ -203,7 +210,9 @@ export const POST = route(async (req) => {
     case "cancelDelivery": {
       const del = await prisma.delivery.findUnique({ where: { id: d.id } });
       if (!del || del.status === "DELIVERED" || del.status === "CANCELLED") throw new HttpError(400, "Can't cancel");
-      await prisma.delivery.update({ where: { id: d.id }, data: { status: "CANCELLED" } });
+      // Conditional: two admins (or an admin and the courier) racing must not refund twice.
+      const moved = await prisma.delivery.updateMany({ where: { id: d.id, status: del.status }, data: { status: "CANCELLED" } });
+      if (!moved.count) throw new HttpError(409, "The delivery just changed — refresh");
       await grant(del.senderId, { coins: del.reward }, { raw: true });
       await notify(del.senderId, { kind: "delivery", title: "Delivery cancelled by admin", body: "Your coins were refunded" });
       if (del.courierId) await notify(del.courierId, { kind: "delivery", title: "Delivery cancelled by admin", body: del.title });

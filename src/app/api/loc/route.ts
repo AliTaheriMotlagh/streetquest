@@ -20,7 +20,11 @@ export const POST = route(async (req) => {
   const trusted = canSimulate(u.role) && !remote;
   if (d.sim && !trusted && !remote) throw new HttpError(403, "GPS simulator is not available");
   const moved = u.lastLat != null && u.lastLng != null ? distanceM({ lat: u.lastLat, lng: u.lastLng }, d) : 0;
-  const since = u.lastSeenAt ? Math.max(1, (Date.now() - u.lastSeenAt.getTime()) / 1000) : Infinity;
+  // Time since the stored position was *accepted*, not since the last ping: rejected
+  // pings still refresh lastSeenAt, and measuring from that would reject every later fix
+  // after one bad one (a wifi fix 2 km off, a tunnel) and freeze the player for good.
+  const fixAt = u.locAt ?? u.lastSeenAt;
+  const since = fixAt ? Math.max(1, (Date.now() - fixAt.getTime()) / 1000) : Infinity;
   if (remote && moved > 30 && moved / since > (S.remoteSpeedKmh / 3.6) * 1.5) {
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
     throw new HttpError(409, "Travelling faster than your commander can move");
@@ -34,7 +38,7 @@ export const POST = route(async (req) => {
   // limit), GPS noise (tiny hops, poor accuracy) and test-mode teleports don't count.
   const onFoot = !d.sim && !remote && moved >= 3 && moved <= 400 && moved / since <= S.footSpeedKmh / 3.6 && (d.acc ?? 0) <= 50;
   const walked = onFoot ? moved : 0;
-  await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date(), ...(walked ? { walkedM: { increment: walked } } : {}) } });
+  await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date(), locAt: new Date(), ...(walked ? { walkedM: { increment: walked } } : {}) } });
   if (walked) await trackStat(u.id, "walk_m", walked, u.faction);
   // Tower defense: hostile towers and guard squads in range open fire.
   const dt = u.lastSeenAt ? (Date.now() - u.lastSeenAt.getTime()) / 1000 : 0;

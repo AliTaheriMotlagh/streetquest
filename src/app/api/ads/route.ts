@@ -1,7 +1,7 @@
 // Rewarded sponsor spots: start → watch adSeconds → claim gems + coins.
 import { z } from "zod";
 import { requireUser } from "@/server/auth";
-import { body, route } from "@/server/http";
+import { body, actionRoute } from "@/server/http";
 import { claimAd, clickAd, startAd } from "@/server/ads";
 import { grant, track } from "@/server/rewards";
 import { trackStat } from "@/server/goals";
@@ -12,7 +12,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("click"), viewId: z.string().max(40) }),
 ]);
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (d.action === "start") return startAd(u.id);

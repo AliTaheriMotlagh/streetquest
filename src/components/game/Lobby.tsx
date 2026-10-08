@@ -20,7 +20,12 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
   const offset = useRef(0); // server clock − local clock
   const [, setTick] = useState(0);
 
+  // Polls overlap on a slow network and can land out of order: an old "OPEN" answer
+  // must not flip a game that's already LIVE back to the waiting room.
+  const newest = useRef(0);
   const take = useCallback((r: Resp) => {
+    if (r.now < newest.current) return;
+    newest.current = r.now;
     offset.current = r.now - Date.now();
     setL(r.lobby);
   }, []);

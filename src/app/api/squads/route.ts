@@ -9,7 +9,7 @@ import { factionOf, SIEGE_COOLDOWN_MS, SIEGE_RANGE_M, type Army, type UnitKey } 
 import { MAX_SQUADS, squadPos, unitCount } from "@/lib/td";
 import { forcesOf, loadBase, removeUnits } from "@/server/army";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { notify } from "@/server/hub";
 import { questEvent } from "@/server/quests";
 import { areFriends } from "@/server/rooms";
@@ -65,7 +65,7 @@ async function checkHostile(userId: string, ownerId: string | null) {
   if (ownerId && (await areFriends(userId, ownerId))) throw new HttpError(400, "That belongs to your crew");
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (!factionOf(u.faction)) throw new HttpError(400, "Pick a faction first");

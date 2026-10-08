@@ -7,6 +7,7 @@ import { HttpError } from "./http";
 import { track } from "./rewards";
 import { S } from "../lib/settings";
 
+const REFERRALS_PER_DAY = 10;
 const CALLSIGNS = ["Ghost", "Viper", "Falcon", "Raven", "Wolf", "Cobra", "Titan", "Nova", "Blaze", "Shadow", "Hawk", "Rogue"];
 
 const randomName = () => `${CALLSIGNS[Math.floor(Math.random() * CALLSIGNS.length)]}${Math.floor(1000 + Math.random() * 9000)}`;
@@ -18,7 +19,11 @@ type NewAccount = { username?: string; email?: string; passwordHash?: string; ti
 export async function createAccount(d: NewAccount) {
   const jar = await cookies();
   const refCode = jar.get("sq_ref")?.value;
-  const referrer = refCode ? await prisma.user.findUnique({ where: { referralCode: refCode } }) : null;
+  const found = refCode ? await prisma.user.findUnique({ where: { referralCode: refCode } }) : null;
+  // Guest accounts are free to make, so cap how many referral bonuses one code earns a
+  // day — otherwise clearing cookies in a loop prints coins for the referrer.
+  const referredToday = found ? await prisma.user.count({ where: { referredById: found.id, createdAt: { gt: new Date(Date.now() - 86_400_000) } } }) : 0;
+  const referrer = found && !found.banned && referredToday < REFERRALS_PER_DAY ? found : null;
   let utm: { source?: string; medium?: string; campaign?: string } = {};
   try {
     utm = JSON.parse(jar.get("sq_utm")?.value ?? "{}");

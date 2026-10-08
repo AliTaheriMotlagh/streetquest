@@ -187,6 +187,9 @@ export default function Game() {
       } catch (e) {
         toast({ kind: "error", title: (e as Error).message });
         sfx("error");
+        // A rejected action usually means the screen was out of date ("Already collected",
+        // "That squad is gone", a run that just failed): reload so it stops offering it.
+        refresh();
         return false;
       }
     },
@@ -334,8 +337,12 @@ export default function Game() {
   panelRef.current = panel;
   useEffect(() => {
     let stop = false;
+    let busy = false;
     const tick = async () => {
-      if (document.hidden) return;
+      // On a slow connection a poll can outlast the interval: never run two at once, or
+      // both read the same `since` and every notification pops up twice.
+      if (document.hidden || busy) return;
+      busy = true;
       try {
         const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[] }>(`/api/sync?since=${syncSince.current}`);
         if (stop) return;
@@ -353,7 +360,10 @@ export default function Game() {
         else if (r.notifications.length) sfx("beep");
         if (r.notifications.some((n) => n.kind === "reward" || n.kind === "delivery" || n.kind === "social")) loadMe();
         if (r.unread && panelRef.current !== "crew") setUnread((u) => u + r.unread);
-      } catch {}
+      } catch {
+      } finally {
+        busy = false;
+      }
     };
     const t = setInterval(tick, 4000);
     return () => {

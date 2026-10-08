@@ -12,7 +12,7 @@ import { requireUser } from "@/server/auth";
 import { fmtLosses, forcesOf, gainVet, loadBase, removeUnits, survivors } from "@/server/army";
 import { damageBoss } from "@/server/boss";
 import { heroOf, maybeGear } from "@/server/hero";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { moodOfUser } from "@/server/needs";
 import { homeForce, siegeBase } from "@/server/warfare";
 import { questEvent } from "@/server/quests";
@@ -21,7 +21,7 @@ import { grant, lastKnownLocation, track } from "@/server/rewards";
 const Schema = z.object({ kind: z.enum(["siege", "derrick", "bombard"]), targetId: z.string().max(80) });
 
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const f = factionOf(u.faction);

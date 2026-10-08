@@ -10,8 +10,12 @@ export const metadata: Metadata = { title: "Admin", robots: { index: false } };
 
 const keyMatches = (given: string | undefined) => {
   const want = process.env.ADMIN_KEY;
-  if (!want || !given || given.length !== want.length) return false;
-  return timingSafeEqual(Buffer.from(given), Buffer.from(want));
+  if (!want || !given) return false;
+  // Compare bytes, not string length: a non-ASCII key of the same length would make
+  // timingSafeEqual throw and crash the page.
+  const a = Buffer.from(given);
+  const b = Buffer.from(want);
+  return a.length === b.length && timingSafeEqual(a, b);
 };
 
 // There's no login: open /admin?key=<ADMIN_KEY> once in a browser that has played,

@@ -4,7 +4,7 @@ import { distanceM } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { checkClaimAchievements, grant, lastKnownLocation } from "@/server/rewards";
 import { bumpNeeds } from "@/server/needs";
 import { questEvent } from "@/server/quests";
@@ -12,7 +12,7 @@ import { runBonus } from "@/server/lobby";
 
 const Schema = z.object({ runId: z.string(), action: z.enum(["complete", "abandon"]) });
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const run = await prisma.missionRun.findFirst({ where: { id: d.runId, userId: u.id, status: "ACTIVE" } });

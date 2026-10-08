@@ -7,7 +7,7 @@ import { UNIT_BY_KEY, type Army, type UnitKey } from "@/lib/rts";
 import { currentHp, SHOOT_ASSET_MULT, SHOOT_COOLDOWN_MS, SHOOT_CRIT, SHOOT_DMG, SHOOT_RANGE_M, squadPos, TOWER_BY_KEY, towerStats, type TowerKey } from "@/lib/td";
 import { requireUser } from "@/server/auth";
 import { heroOf } from "@/server/hero";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { notify } from "@/server/hub";
 import { questEvent } from "@/server/quests";
 import { grant, lastKnownLocation, unlock } from "@/server/rewards";
@@ -34,7 +34,7 @@ function casualties(units: Army, dmg: number): Army {
   return out;
 }
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   await assertNotDowned(u);

@@ -10,7 +10,7 @@ import { armyStats, baseDefense, factionOf, levelOf, SIEGE_RANGE_M, type Army, t
 import { addUnits, armyOf, fmtLosses, loadBase } from "@/server/army";
 import { requireUser } from "@/server/auth";
 import { damageBoss } from "@/server/boss";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { notify } from "@/server/hub";
 import { bumpNeeds } from "@/server/needs";
 import { questEvent } from "@/server/quests";
@@ -22,7 +22,7 @@ const Schema = z.object({
   targetId: z.string().max(80).optional(),
 });
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const p = POWER_BY_KEY[d.key as PowerKey];

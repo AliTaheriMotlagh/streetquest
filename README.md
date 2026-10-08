@@ -95,7 +95,16 @@ browser until you switch it off. Set `TEST_MODE=off` in production to limit it t
 **Faster timers for testing:** `GAME_SPEED=600 npm run dev` makes construction and training 600× faster
 (ignored in production). Jump straight into a live fight with `/play?match=<id>`.
 
-End-to-end tests (need the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke`,
+**End-to-end tests (Playwright):** `npm run test:e2e` starts its own dev server on port 3200 against a separate
+`streetquest_e2e` database (create it once: `docker compose exec db createdb -U postgres streetquest_e2e`; override with
+`E2E_DATABASE_URL`) and runs two suites:
+- `npm run test:e2e:api` — server behaviour: accounts, bans, referrals, admin access, the economy (daily, store, ads,
+  selling), base building, claims, lobbies, runs, play-from-home travel, SEO/health/security headers — including
+  double-tap races (two identical requests at once must never charge or pay twice).
+- `npm run test:e2e:ui` — the game in a phone-sized Chrome: first visit, GPS on/off, bottom nav, store, double-tap on
+  buttons, the marker following GPS. Uses your installed Google Chrome (`PW_CHANNEL=chromium` for Playwright's own).
+
+Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke`,
 `npm run test:features` (settings, army delivery, bag multi-sell, goals, store, ads, GPS games, story) and
 `npm run test:mp` (lobbies, squad runs, towers shooting players, C4, squads, skirmishes, raider waves, pings).
 

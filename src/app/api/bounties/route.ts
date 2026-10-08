@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BOUNTY_MAX, BOUNTY_MIN } from "@/lib/flags";
 import { requireUser } from "@/server/auth";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, route, actionRoute } from "@/server/http";
 import { notify } from "@/server/hub";
 import { spendCoins } from "@/server/rewards";
 import { areFriends } from "@/server/rooms";
@@ -19,7 +19,7 @@ export const GET = route(async () => {
 
 const Schema = z.object({ targetId: z.string().max(40), amount: z.number().int().min(BOUNTY_MIN).max(BOUNTY_MAX) });
 
-export const POST = route(async (req) => {
+export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const t = await prisma.user.findUnique({ where: { id: d.targetId } });

@@ -4,13 +4,13 @@ import { prisma } from "@/lib/db";
 import { distanceM } from "@/lib/geo";
 import { requireUser } from "@/server/auth";
 import { notify } from "@/server/hub";
-import { body, HttpError, route } from "@/server/http";
+import { body, HttpError, actionRoute } from "@/server/http";
 import { grant, lastKnownLocation, unlock } from "@/server/rewards";
 
 const Schema = z.object({ action: z.enum(["accept", "pickup", "deliver", "cancel"]), code: z.string().optional() });
 const CHECKIN_M = 75;
 
-export const POST = route(async (req, ctx) => {
+export const POST = actionRoute(async (req, ctx) => {
   const u = await requireUser();
   const { id } = await ctx.params;
   const d = await body(req, Schema);
