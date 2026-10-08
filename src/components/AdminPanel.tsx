@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { askConfirm, askText } from "@/components/Dialogs";
 import { GameDataTab, RevenueTab, SettingsTab, type AdminConfig, type AdminRevenue } from "@/components/AdminSettings";
+import { Button } from "./Button";
 
 type Data = {
   stats: { users: number; online: number; signups7: number; claims24: number; upcomingEvents: number; pageViews7: number; conversion7: number; deliveries: Record<string, number> };
@@ -116,7 +117,7 @@ export function AdminPanel() {
       {notice && (
         <div className="announce" role="alert" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--red)", marginBottom: 10 }}>
           <b className="grow small" style={{ color: "var(--red)" }}>⚠️ {notice}</b>
-          <button className="close" onClick={() => setNotice(null)} aria-label="Dismiss">✕</button>
+          <Button className="close" onClick={() => setNotice(null)} aria-label="Dismiss">✕</Button>
         </div>
       )}
       {saved > 0 && (
@@ -135,10 +136,10 @@ export function AdminPanel() {
               <div key={g.group} className="side-group">
                 <div className="side-label">{g.group}</div>
                 {g.items.map((it) => (
-                  <button key={it.id} className={`side-item ${tab === it.id ? "on" : ""}`} onClick={() => setTab(it.id)}>
+                  <Button key={it.id} className={`side-item ${tab === it.id ? "on" : ""}`} onClick={() => setTab(it.id)}>
                     <span>{it.icon}</span>
                     {it.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             ))}
@@ -197,10 +198,10 @@ export function AdminPanel() {
                       <td>{u.utmSource ?? "organic"}</td>
                       <td className="muted">{fmt(u.createdAt)}</td>
                       <td className="row">
-                        <button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? "Unban" : "Ban"}</button>
-                        <button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? "Demote" : "Make admin"}</button>
-                        <button className="btn ghost small" onClick={() => askText(`Coins to grant ${u.username}`, "100", { body: "Use a negative number to remove coins.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Math.round(Number(c)), xp: 0 }); })}>🪙 Gift</button>
-                        <button className="btn ghost small" onClick={() => askText(`Gems to grant ${u.username}`, "50", { body: "Use a negative number to remove gems.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantGems", userId: u.id, gems: Math.round(Number(c)) }); })}>💎 Gift</button>
+                        <Button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? "Unban" : "Ban"}</Button>
+                        <Button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? "Demote" : "Make admin"}</Button>
+                        <Button className="btn ghost small" onClick={() => askText(`Coins to grant ${u.username}`, "100", { body: "Use a negative number to remove coins.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Math.round(Number(c)), xp: 0 }); })}>🪙 Gift</Button>
+                        <Button className="btn ghost small" onClick={() => askText(`Gems to grant ${u.username}`, "50", { body: "Use a negative number to remove gems.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantGems", userId: u.id, gems: Math.round(Number(c)) }); })}>💎 Gift</Button>
                       </td>
                     </tr>
                   ))}
@@ -229,11 +230,11 @@ export function AdminPanel() {
               <label>Description</label>
               <textarea rows={2} value={mission.description} onChange={(e) => setMission({ ...mission, description: e.target.value })} />
               <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn ghost small" onClick={() => navigator.geolocation.getCurrentPosition((p) => setMission({ ...mission, lat: String(p.coords.latitude), lng: String(p.coords.longitude) }))}>📍 Use my location</button>
-                <button className="btn" onClick={async () => {
+                <Button className="btn ghost small" onClick={() => navigator.geolocation.getCurrentPosition((p) => setMission({ ...mission, lat: String(p.coords.latitude), lng: String(p.coords.longitude) }))}>📍 Use my location</Button>
+                <Button className="btn" onClick={async () => {
                   const ok = await post({ action: "createMission", ...mission, lat: Number(mission.lat), lng: Number(mission.lng), sponsor: mission.sponsor || undefined, activeFrom: new Date(mission.activeFrom), activeTo: new Date(mission.activeTo) });
                   if (ok) setMission({ ...mission, title: "", description: "" });
-                }}>Create mission</button>
+                }}>Create mission</Button>
               </div>
             </div>
             <table>
@@ -245,7 +246,7 @@ export function AdminPanel() {
                     <td className="mono small">{m.lat.toFixed(4)}, {m.lng.toFixed(4)}</td>
                     <td className="small muted">{fmt(m.activeFrom)} → {fmt(m.activeTo)}</td>
                     <td>{m.itemKey} · {m.rewardXp} XP · {m.rewardCoins} 🪙</td>
-                    <td><button className="btn ghost small" onClick={() => askConfirm("Delete mission?", { ok: "Delete", danger: true }).then((ok) => ok && post({ action: "deleteMission", id: m.id }))}>Delete</button></td>
+                    <td><Button className="btn ghost small" onClick={() => askConfirm("Delete mission?", { ok: "Delete", danger: true }).then((ok) => ok && post({ action: "deleteMission", id: m.id }))}>Delete</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -274,7 +275,7 @@ export function AdminPanel() {
               </div>
               <div className="row" style={{ marginTop: 10 }}>
                 <input readOnly value={utmUrl} className="mono small" />
-                <button className="btn cyan small" onClick={() => navigator.clipboard.writeText(utmUrl)}>Copy</button>
+                <Button className="btn cyan small" onClick={() => navigator.clipboard.writeText(utmUrl)}>Copy</Button>
               </div>
             </div>
             <div className="card">
@@ -286,14 +287,14 @@ export function AdminPanel() {
                 <div><label>Button label</label><input value={ann.ctaLabel} onChange={(e) => setAnn({ ...ann, ctaLabel: e.target.value })} /></div>
                 <div><label>Button URL</label><input value={ann.ctaUrl} onChange={(e) => setAnn({ ...ann, ctaUrl: e.target.value })} /></div>
               </div>
-              <button className="btn small" style={{ marginTop: 10 }} onClick={async () => (await post({ action: "createAnnouncement", ...ann, ctaLabel: ann.ctaLabel || undefined, ctaUrl: ann.ctaUrl || undefined })) && setAnn({ title: "", body: "", ctaLabel: "", ctaUrl: "" })}>Publish</button>
+              <Button className="btn small" style={{ marginTop: 10 }} onClick={async () => (await post({ action: "createAnnouncement", ...ann, ctaLabel: ann.ctaLabel || undefined, ctaUrl: ann.ctaUrl || undefined })) && setAnn({ title: "", body: "", ctaLabel: "", ctaUrl: "" })}>Publish</Button>
               <table style={{ marginTop: 10 }}><tbody>
                 {data.announcements.map((a) => (
                   <tr key={a.id}>
                     <td><b>{a.title}</b> <span className="muted">{a.body}</span></td>
                     <td className="row">
-                      <button className="btn ghost small" onClick={() => post({ action: "toggleAnnouncement", id: a.id, active: !a.active })}>{a.active ? "Hide" : "Show"}</button>
-                      <button className="btn ghost small" onClick={() => post({ action: "deleteAnnouncement", id: a.id })}>Delete</button>
+                      <Button className="btn ghost small" onClick={() => post({ action: "toggleAnnouncement", id: a.id, active: !a.active })}>{a.active ? "Hide" : "Show"}</Button>
+                      <Button className="btn ghost small" onClick={() => post({ action: "deleteAnnouncement", id: a.id })}>Delete</Button>
                     </td>
                   </tr>
                 ))}
@@ -304,10 +305,10 @@ export function AdminPanel() {
               <div className="row" style={{ marginTop: 8 }}>
                 <input placeholder="Title" value={push.title} onChange={(e) => setPush({ ...push, title: e.target.value })} />
                 <input placeholder="Body" value={push.body} onChange={(e) => setPush({ ...push, body: e.target.value })} />
-                <button className="btn yellow small" disabled={!push.title} onClick={async () => (await post({ action: "broadcast", ...push })) && setPush({ title: "", body: "", push: push.push })}>Send</button>
+                <Button className="btn yellow small" disabled={!push.title} onClick={async () => (await post({ action: "broadcast", ...push })) && setPush({ title: "", body: "", push: push.push })}>Send</Button>
               </div>
               <div className="row" style={{ marginTop: 8 }}>
-                <button className={`toggle ${push.push ? "on" : ""}`} onClick={() => setPush({ ...push, push: !push.push })} aria-pressed={push.push}><i /><span>Also send as a phone notification</span></button>
+                <Button className={`toggle ${push.push ? "on" : ""}`} onClick={() => setPush({ ...push, push: !push.push })} aria-pressed={push.push}><i /><span>Also send as a phone notification</span></Button>
                 <span className="small muted">{data.revenue.push ? `${data.revenue.pushDevices} devices subscribed` : "Phone notifications need VAPID keys on the server"}</span>
               </div>
             </div>
@@ -322,7 +323,7 @@ export function AdminPanel() {
                 {data.notes.map((n) => (
                   <tr key={n.id} style={{ opacity: n.hidden ? 0.4 : 1 }}>
                     <td><b>{n.author.username}</b>: {n.body}<div className="small muted mono">{n.lat.toFixed(4)}, {n.lng.toFixed(4)}</div></td>
-                    <td><button className="btn ghost small" onClick={() => post({ action: "hideNote", id: n.id, hidden: !n.hidden })}>{n.hidden ? "Restore" : "Hide"}</button></td>
+                    <td><Button className="btn ghost small" onClick={() => post({ action: "hideNote", id: n.id, hidden: !n.hidden })}>{n.hidden ? "Restore" : "Hide"}</Button></td>
                   </tr>
                 ))}
               </tbody></table>
@@ -333,7 +334,7 @@ export function AdminPanel() {
                 {data.messages.map((m) => (
                   <tr key={m.id}>
                     <td><span className="tag">{m.room.split(":")[0]}</span> <b>{m.author.username}</b>: {m.body}</td>
-                    <td><button className="btn ghost small" onClick={() => post({ action: "deleteMessage", id: m.id })}>Delete</button></td>
+                    <td><Button className="btn ghost small" onClick={() => post({ action: "deleteMessage", id: m.id })}>Delete</Button></td>
                   </tr>
                 ))}
               </tbody></table>
@@ -353,7 +354,7 @@ export function AdminPanel() {
                   <td>{d.reward}</td>
                   <td><span className="tag">{d.status}</span></td>
                   <td className="muted small">{fmt(d.createdAt)}</td>
-                  <td>{!["DELIVERED", "CANCELLED"].includes(d.status) && <button className="btn ghost small" onClick={() => askConfirm("Cancel and refund sender?", { ok: "Cancel delivery", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelDelivery", id: d.id }))}>Cancel</button>}</td>
+                  <td>{!["DELIVERED", "CANCELLED"].includes(d.status) && <Button className="btn ghost small" onClick={() => askConfirm("Cancel and refund sender?", { ok: "Cancel delivery", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelDelivery", id: d.id }))}>Cancel</Button>}</td>
                 </tr>
               ))}
             </tbody>

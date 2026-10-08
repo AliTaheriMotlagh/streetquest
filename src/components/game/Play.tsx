@@ -11,6 +11,7 @@ import { sfx } from "./sfx";
 import { duckMusic } from "./music";
 import { AutoVideo } from "@/components/AutoVideo";
 import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
+import { Button } from "@/components/Button";
 
 // ---------------------------------------------------------------- celebrations
 type Celebration = { title: string; body?: string; emoji?: string };
@@ -75,7 +76,7 @@ export function Directions({ to, label = "🧭 Directions", className = "btn cya
   ];
   return (
     <span className="dir-wrap">
-      <button className={className} onClick={() => setOpen(!open)}>{label}</button>
+      <Button className={className} onClick={() => setOpen(!open)}>{label}</Button>
       {open && (
         <span className="dir-menu" onClick={() => setOpen(false)}>
           {links.map(([l, href]) => (
@@ -164,7 +165,7 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
           <b style={{ fontFamily: "var(--display)" }}>{g.title}</b>
         </div>
         <div className={`t ${left < 60 ? "low" : ""}`}>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</div>
-        <button className="gb-x" aria-label="Quit game" title="Quit" onClick={() => askConfirm("Quit this game? You won't get the reward.", { ok: "Quit", danger: true }).then((ok) => ok && onQuit())}>✕</button>
+        <Button className="gb-x" aria-label="Quit game" title="Quit" onClick={() => askConfirm("Quit this game? You won't get the reward.", { ok: "Quit", danger: true }).then((ok) => ok && onQuit())}>✕</Button>
       </div>
       {g.kind === "story" && g.steps && (
         <div className="step-pills">{Array.from({ length: g.steps }, (_, i) => <i key={i} className={i < (g.step ?? 0) ? "done" : i === g.step ? "on" : ""} />)}</div>
@@ -200,8 +201,8 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
       )}
 
       <div className="row" style={{ marginTop: 4 }}>
-        {aim && aimDist != null && aimDist > 15 && (teleport ? <button className="btn yellow small" onClick={() => teleport(aim)}><MoveIcon /> Go</button> : <Directions to={aim} label="🧭 Route" className="btn cyan small" />)}
-        {(g.reroutes ?? 0) > 0 && g.kind !== "sprint" && g.stepKind !== "hold" && <button className="btn ghost small" onClick={onReroute} title="Waypoint unreachable? Get a new one">🔀 New spot ({g.reroutes})</button>}
+        {aim && aimDist != null && aimDist > 15 && (teleport ? <Button className="btn yellow small" onClick={() => teleport(aim)}><MoveIcon /> Go</Button> : <Directions to={aim} label="🧭 Route" className="btn cyan small" />)}
+        {(g.reroutes ?? 0) > 0 && g.kind !== "sprint" && g.stepKind !== "hold" && <Button className="btn ghost small" onClick={onReroute} title="Waypoint unreachable? Get a new one">🔀 New spot ({g.reroutes})</Button>}
       </div>
     </div>
   );
@@ -289,7 +290,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
                       <span>💎 {c.reward.gems}</span>
                       {c.reward.gear && !d.story.replay && <span>🎁 {c.reward.gear} gear</span>}
                     </div>
-                    <button className="btn yellow block big-btn" disabled={!!d.active} onClick={() => start("story", c.intro)}>▶ Start chapter</button>
+                    <Button className="btn yellow block big-btn" disabled={!!d.active} onClick={() => start("story", c.intro)}>▶ Start chapter</Button>
                   </div>
                 );
               })()}
@@ -318,7 +319,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
                 <div className="small muted">{g.blurb}</div>
                 <div className="small">⏱ {g.minutes} min · {g.detail} · <span style={{ color: "var(--yellow)" }}>+{g.reward.xp} XP · +{g.reward.coins} 🪙{g.gems ? ` · +${g.gems} 💎` : ""}</span></div>
               </div>
-              <button className="btn yellow" disabled={!!d.active || (g.kind === "sprint" && me.remotePlay)} title={g.kind === "sprint" && me.remotePlay ? "Sprints need real walking" : undefined} onClick={() => start(g.kind, g.blurb)}>Play</button>
+              <Button className="btn yellow" disabled={!!d.active || (g.kind === "sprint" && me.remotePlay)} title={g.kind === "sprint" && me.remotePlay ? "Sprints need real walking" : undefined} onClick={() => start(g.kind, g.blurb)}>Play</Button>
             </div>
           ))}
           <div className="game-tile" onClick={() => setPanel("events")} style={{ cursor: "pointer" }}>
@@ -378,7 +379,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
                       <div className="meter"><i style={{ width: `${next ? Math.min(100, ((p.value - prev) / (next.target - prev)) * 100) : 100}%` }} /></div>
                       <div className="small muted">{fmtMetric(p.metric, p.value)}{next ? ` / ${fmtMetric(p.metric, next.target)} · next: ${next.reward}` : " · all tiers reached!"}</div>
                     </div>
-                    {ready.length > 0 && <button className="btn yellow small" onClick={() => claim(`p:${p.key}:${ready[0].i}`)}>Claim</button>}
+                    {ready.length > 0 && <Button className="btn yellow small" onClick={() => claim(`p:${p.key}:${ready[0].i}`)}>Claim</Button>}
                   </div>
                 );
               })}
@@ -404,7 +405,7 @@ function GoalCard({ kind, g, endsAt, onClaim, children }: { kind: string; g: Goa
       <div className="small">{fmtMetric(g.metric, g.value)} / {fmtMetric(g.metric, g.target)} · your part: <b>{fmtMetric(g.metric, g.mine)}</b></div>
       <div className="small muted">Reward for everyone who helps: {g.rewardText}</div>
       {children}
-      {g.done && g.claimKey && (g.claimed ? <button className="btn block" disabled>✓ Claimed</button> : g.mine > 0 ? <button className="btn yellow block" onClick={() => onClaim(g.claimKey!)}>🎁 Claim reward</button> : <p className="small muted">Contribute this week to share the reward.</p>)}
+      {g.done && g.claimKey && (g.claimed ? <Button className="btn block" disabled>✓ Claimed</Button> : g.mine > 0 ? <Button className="btn yellow block" onClick={() => onClaim(g.claimKey!)}>🎁 Claim reward</Button> : <p className="small muted">Contribute this week to share the reward.</p>)}
     </div>
   );
 }
@@ -472,7 +473,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
                 <b>Free gems</b>
                 <div className="small muted">Watch a {d.ads.seconds}s sponsor spot: +{d.ads.gems} 💎{d.ads.coins ? ` +${d.ads.coins} 🪙` : ""} · {d.ads.left} left today</div>
               </div>
-              <button className="btn green" disabled={d.ads.left <= 0} onClick={onWatch}>▶ Watch</button>
+              <Button className="btn green" disabled={d.ads.left <= 0} onClick={onWatch}>▶ Watch</Button>
             </div>
           )}
 
@@ -482,13 +483,13 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
               {!d.payments && <p className="small muted">Purchases open soon.{me.role === "ADMIN" && " (Admin: set STRIPE_SECRET_KEY on the server to take payments.)"}</p>}
               <div className="store-grid">
                 {d.packs.map((p, i) => (
-                  <button key={p.key} className={`pack tier${Math.min(i, 4)}`} disabled={!d.payments || !!busy} onClick={() => buy(p.key)}>
+                  <Button key={p.key} className={`pack tier${Math.min(i, 4)}`} disabled={!d.payments || !!busy} onClick={() => buy(p.key)}>
                     {p.bonus && <span className="pack-bonus">{p.bonus}</span>}
                     <span className="pack-gems">{"💎".repeat(Math.min(3, i + 1))}</span>
                     <b>{p.gems.toLocaleString()}</b>
                     <span className="small">{p.label}</span>
                     <span className="price">{busy === p.key ? "…" : money(p.priceCents, d.currency)}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </>
@@ -497,20 +498,20 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
           <label>Coins</label>
           <div className="store-grid">
             {d.offers.map((o) => (
-              <button key={o.key} className="pack coins" disabled={me.gems < o.gems} onClick={() => spend({ action: "offer", key: o.key })}>
+              <Button key={o.key} className="pack coins" disabled={me.gems < o.gems} onClick={() => spend({ action: "offer", key: o.key })}>
                 <span className="pack-gems">🪙</span>
                 <b>{o.coins.toLocaleString()}</b>
                 <span className="small">{o.label}</span>
                 <span className="price">💎 {o.gems}</span>
-              </button>
+              </Button>
             ))}
           </div>
 
           <label>Boosts</label>
           <div className="boosts">
-            <button className="btn ghost" disabled={me.gems < d.boosts.heal} onClick={() => spend({ action: "heal" })}>❤️ Instant heal · 💎{d.boosts.heal}</button>
-            <button className="btn ghost" disabled={me.gems < d.boosts.refresh} onClick={() => spend({ action: "refresh" })}>🥤 Energy drink · 💎{d.boosts.refresh}</button>
-            <button className="btn ghost" disabled={!me.base || me.gems < d.boosts.shield} onClick={() => spend({ action: "shield" })}>🛡️ 4 h base shield · 💎{d.boosts.shield}</button>
+            <Button className="btn ghost" disabled={me.gems < d.boosts.heal} onClick={() => spend({ action: "heal" })}>❤️ Instant heal · 💎{d.boosts.heal}</Button>
+            <Button className="btn ghost" disabled={me.gems < d.boosts.refresh} onClick={() => spend({ action: "refresh" })}>🥤 Energy drink · 💎{d.boosts.refresh}</Button>
+            <Button className="btn ghost" disabled={!me.base || me.gems < d.boosts.shield} onClick={() => spend({ action: "shield" })}>🛡️ 4 h base shield · 💎{d.boosts.shield}</Button>
           </div>
           <p className="small muted" style={{ marginTop: 10 }}>Gems also come from levels, quests, achievements, goals, story chapters and GPS games.</p>
         </>
@@ -575,7 +576,7 @@ export function AdModal({ onClose }: { onClose: () => void }) {
               Visit {c.sponsor}
             </a>
           )}
-          <button
+          <Button
             className="btn yellow"
             disabled={!done}
             onClick={() =>
@@ -588,8 +589,8 @@ export function AdModal({ onClose }: { onClose: () => void }) {
             }
           >
             {done ? "🎁 Collect reward" : `Reward in ${left}s`}
-          </button>
-          <button className="btn ghost" onClick={close}>{done ? "Close" : "✕"}</button>
+          </Button>
+          <Button className="btn ghost" onClick={close}>{done ? "Close" : "✕"}</Button>
         </div>
       </div>
     </div>

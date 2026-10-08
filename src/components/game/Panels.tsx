@@ -14,6 +14,7 @@ import { resizePhoto } from "./photo";
 import { isMuted, onMuteChange, setMuted, sfx } from "./sfx";
 import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
 import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalone, onPwaChange, promptInstall, pushSupported } from "@/components/pwaClient";
+import { Button } from "@/components/Button";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -24,12 +25,12 @@ function LocationField({ label, value, onChange }: { label: string; value: LatLn
       <label>{label}</label>
       <div className="row">
         <div className="grow small mono muted">{value ? `${value.lat.toFixed(5)}, ${value.lng.toFixed(5)}` : "not set"}</div>
-        <button type="button" className="btn ghost small" onClick={() => pos && onChange(pos)}>
+        <Button type="button" className="btn ghost small" onClick={() => pos && onChange(pos)}>
           📍 Here
-        </button>
-        <button type="button" className="btn ghost small" onClick={() => pick(`Tap the map: ${label}`, onChange)}>
+        </Button>
+        <Button type="button" className="btn ghost small" onClick={() => pick(`Tap the map: ${label}`, onChange)}>
           🗺️ Pick
-        </button>
+        </Button>
       </div>
     </>
   );
@@ -41,7 +42,6 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
   const [tab, setTab] = useState<"spawns" | "notes" | "flags">("spawns");
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
-  const [posting, setPosting] = useState(false);
   const [flagName, setFlagName] = useState("");
   const [radius, setRadius] = useState(50);
   const d = (p: LatLng) => (pos ? distanceM(pos, p) : 0);
@@ -88,7 +88,7 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
             {photo && (
               <div className="photo-preview">
                 <img src={photo} alt="Your photo" />
-                <button className="close" onClick={() => setPhoto(null)} aria-label="Remove photo">✕</button>
+                <Button className="close" onClick={() => setPhoto(null)} aria-label="Remove photo">✕</Button>
               </div>
             )}
             <div className="row wrap" style={{ marginTop: 8 }}>
@@ -119,21 +119,19 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
                 ))}
               </select>
               <span className="grow" />
-              <button
+              <Button
                 className="btn small"
-                disabled={(!note.trim() && !photo) || posting}
+                disabled={!note.trim() && !photo}
                 onClick={async () => {
-                  setPosting(true);
                   const ok = await act(() => api("/api/notes", { body: { body: note, radiusM: radius, photo: photo ?? undefined } }));
-                  setPosting(false);
                   if (ok) {
                     setNote("");
                     setPhoto(null);
                   }
                 }}
               >
-                {posting ? "Posting…" : `Post · ${photo ? 15 : 5} 🪙`}
-              </button>
+                Post · {photo ? 15 : 5} 🪙
+              </Button>
             </div>
           </div>
           {world?.notes.map((n) => (
@@ -150,13 +148,13 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
             </p>
             <div className="row">
               <input value={flagName} onChange={(e) => setFlagName(e.target.value)} maxLength={24} placeholder="Flag name, e.g. Taco Hill" />
-              <button className="btn small" disabled={flagName.trim().length < 2} onClick={async () => (await act(() => api("/api/flags", { body: { action: "plant", name: flagName } }))) && setFlagName("")}>
+              <Button className="btn small" disabled={flagName.trim().length < 2} onClick={async () => (await act(() => api("/api/flags", { body: { action: "plant", name: flagName } }))) && setFlagName("")}>
                 Plant
-              </button>
+              </Button>
             </div>
-            <button className="btn yellow small" style={{ marginTop: 8 }} onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>
+            <Button className="btn yellow small" style={{ marginTop: 8 }} onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>
               🪙 Collect flag tribute
-            </button>
+            </Button>
           </div>
           {(world?.flags ?? [])
             .slice()
@@ -194,14 +192,14 @@ export function NoteCard({ n, dist }: { n: WorldNote; dist: number }) {
           {n.hasPhoto && <img className="note-photo" src={`/api/notes/${n.id}`} alt={`Photo by ${n.author.username}`} loading="lazy" />}
           {n.body && <div style={{ marginTop: 6 }}>{n.body}</div>}
           <div className="row" style={{ marginTop: 8 }}>
-            <button className="btn ghost small" disabled={n.mine} onClick={() => act(async () => { const r = await api<{ message: string; likes: number }>(`/api/notes/${n.id}`, { body: { kind: "like" } }); setLikes(r.likes); return r; })}>
+            <Button className="btn ghost small" disabled={n.mine} onClick={() => act(async () => { const r = await api<{ message: string; likes: number }>(`/api/notes/${n.id}`, { body: { kind: "like" } }); setLikes(r.likes); return r; })}>
               ❤️ {likes}
-            </button>
+            </Button>
             <span className="grow" />
             {!n.mine && (
-              <button className="btn ghost small" onClick={() => askConfirm("Report this post?", { body: "Posts with several reports are hidden and reviewed by moderators.", ok: "Report", danger: true }).then((ok) => ok && act(() => api(`/api/notes/${n.id}`, { body: { kind: "report" } })))}>
+              <Button className="btn ghost small" onClick={() => askConfirm("Report this post?", { body: "Posts with several reports are hidden and reviewed by moderators.", ok: "Report", danger: true }).then((ok) => ok && act(() => api(`/api/notes/${n.id}`, { body: { kind: "report" } })))}>
                 🚩
-              </button>
+              </Button>
             )}
           </div>
         </>
@@ -308,9 +306,9 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 </div>
                 {d.description && <p className="small">{d.description}</p>}
                 <DeliveryRoute d={d} />
-                <button className="btn green small" onClick={() => doAct(d.id, "accept")}>
+                <Button className="btn green small" onClick={() => doAct(d.id, "accept")}>
                   Accept job
-                </button>
+                </Button>
               </div>
             ))
         ) : (
@@ -329,12 +327,12 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <DeliveryRoute d={d} />
               {d.status === "ACCEPTED" && (
                 <div className="row">
-                  <button className="btn cyan small" onClick={() => doAct(d.id, "pickup")}>
+                  <Button className="btn cyan small" onClick={() => doAct(d.id, "pickup")}>
                     I&apos;m at pickup
-                  </button>
-                  <button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
+                  </Button>
+                  <Button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
                     Drop job
-                  </button>
+                  </Button>
                 </div>
               )}
               {d.status === "PICKED_UP" && (
@@ -347,9 +345,9 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
                     value={codes[d.id] ?? ""}
                     onChange={(e) => setCodes({ ...codes, [d.id]: e.target.value })}
                   />
-                  <button className="btn green small" onClick={() => doAct(d.id, "deliver", codes[d.id])}>
+                  <Button className="btn green small" onClick={() => doAct(d.id, "deliver", codes[d.id])}>
                     Deliver
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -376,9 +374,9 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 </div>
               )}
               {d.status === "OPEN" && (
-                <button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
+                <Button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
                   Cancel & refund
-                </button>
+                </Button>
               )}
             </div>
           ))
@@ -402,9 +400,9 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
           <input value={f.dropoffLabel} onChange={(e) => setF({ ...f, dropoffLabel: e.target.value })} placeholder="e.g. Library front desk" style={{ marginTop: 6 }} />
           <label>Reward (coins) — you have {me.coins}</label>
           <input type="number" min={10} value={f.reward} onChange={(e) => setF({ ...f, reward: Number(e.target.value) })} />
-          <button className="btn block" style={{ marginTop: 14 }} disabled={!pickup || !dropoff || f.title.length < 3} onClick={create}>
+          <Button className="btn block" style={{ marginTop: 14 }} disabled={!pickup || !dropoff || f.title.length < 3} onClick={create}>
             Post request
-          </button>
+          </Button>
         </div>
       )}
     </Sheet>
@@ -488,7 +486,7 @@ function Chat({ room }: { room: string }) {
       </div>
       <form className="row" onSubmit={send} style={{ paddingTop: 8 }}>
         <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Message…" />
-        <button className="btn small">Send</button>
+        <Button className="btn small">Send</Button>
       </form>
     </div>
   );
@@ -559,21 +557,21 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
             }}
           >
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add by player name" />
-            <button className="btn small" disabled={!name.trim()}>
+            <Button className="btn small" disabled={!name.trim()}>
               Add
-            </button>
+            </Button>
           </form>
           {data.incoming.length > 0 && <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>Requests</h3>}
           {data.incoming.map((f) => (
             <div key={f.friendshipId} className="card list-item">
               <div className="icon-tile">{f.avatar}</div>
               <b className="grow">{f.username}</b>
-              <button className="btn green small" onClick={() => fr({ action: "accept", friendshipId: f.friendshipId })}>
+              <Button className="btn green small" onClick={() => fr({ action: "accept", friendshipId: f.friendshipId })}>
                 ✓
-              </button>
-              <button className="btn ghost small" onClick={() => fr({ action: "decline", friendshipId: f.friendshipId })}>
+              </Button>
+              <Button className="btn ghost small" onClick={() => fr({ action: "decline", friendshipId: f.friendshipId })}>
                 ✕
-              </button>
+              </Button>
             </div>
           ))}
           <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>
@@ -591,12 +589,12 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
                     <span className={`dot ${f.online ? "on" : ""}`} /> {f.online ? "Online" : f.lastSeenAt ? `Seen ${fmtTime(f.lastSeenAt)}` : "Offline"}
                   </div>
                 </div>
-                <button className="btn cyan small" onClick={() => dm(f)}>
+                <Button className="btn cyan small" onClick={() => dm(f)}>
                   💬
-                </button>
-                <button className="btn ghost small" onClick={() => askConfirm(`Remove ${f.username}?`, { ok: "Remove", danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
+                </Button>
+                <Button className="btn ghost small" onClick={() => askConfirm(`Remove ${f.username}?`, { ok: "Remove", danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
                   ✕
-                </button>
+                </Button>
               </div>
             ))}
           {data.outgoing.length > 0 && <p className="small muted">Pending: {data.outgoing.map((f) => f.username).join(", ")}</p>}
@@ -607,9 +605,9 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
         <>
           <div className="tabs">
             {rooms.map((r) => (
-              <button key={r.room} className={active.room === r.room ? "on" : ""} onClick={() => setChat(r)}>
+              <Button key={r.room} className={active.room === r.room ? "on" : ""} onClick={() => setChat(r)}>
                 {r.label}
-              </button>
+              </Button>
             ))}
           </div>
           <Chat room={active.room} />
@@ -662,11 +660,13 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
     if (ok) setTab("mine");
   };
 
-  const Card = ({ e }: { e: WorldEvent }) => {
+  // A render helper, not a component: a component declared in here would be a new type
+  // on every render, remounting the card (and eating taps on its buttons).
+  const card = (e: WorldEvent) => {
     const j = joined.get(e.id);
     const live = new Date(e.startsAt).getTime() - 15 * 60_000 < Date.now();
     return (
-      <div className={`card ${e.official ? "hl" : ""}`}>
+      <div key={e.id} className={`card ${e.official ? "hl" : ""}`}>
         <div className="row">
           <b className="grow">
             {e.official ? "⭐" : "🎉"} {e.title}
@@ -679,25 +679,25 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
         {e.description && <p className="small">{e.description}</p>}
         <div className="row wrap">
           {!j && (
-            <button className="btn small" onClick={() => evAct(e.id, "join")}>
+            <Button className="btn small" onClick={() => evAct(e.id, "join")}>
               Join
-            </button>
+            </Button>
           )}
           {j && !j.checkedIn && live && (
-            <button className="btn green small" onClick={() => evAct(e.id, "checkin")}>
+            <Button className="btn green small" onClick={() => evAct(e.id, "checkin")}>
               Check in
-            </button>
+            </Button>
           )}
           {j?.checkedIn && <span className="tag" style={{ color: "var(--green)" }}>✓ Checked in</span>}
           {j && (
-            <button className="btn cyan small" onClick={() => openChat(`event:${e.id}`, `🎉 ${e.title}`)}>
+            <Button className="btn cyan small" onClick={() => openChat(`event:${e.id}`, `🎉 ${e.title}`)}>
               Squad chat
-            </button>
+            </Button>
           )}
           <a className="btn ghost small" href={navUrl(e.lat, e.lng)} target="_blank" rel="noreferrer">
             Navigate
           </a>
-          <button
+          <Button
             className="btn ghost small"
             onClick={() => {
               const url = `${location.origin}/e/${e.slug}`;
@@ -706,7 +706,7 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
             }}
           >
             Share
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -715,8 +715,8 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
   return (
     <Sheet title="Events" onClose={onClose} peek={peek} help="events">
       <Tabs value={tab} onChange={setTab} tabs={[["nearby", "Nearby"], ["mine", `My events (${mine.length})`], ["new", "+ Create"]]} />
-      {tab === "nearby" && (world?.events.length ? world.events.map((e) => <Card key={e.id} e={e} />) : <div className="empty">No events within 8 km. Start one!</div>)}
-      {tab === "mine" && (mine.length ? mine.map((e) => <Card key={e.id} e={e} />) : <div className="empty">You haven&apos;t joined any events.</div>)}
+      {tab === "nearby" && (world?.events.length ? world.events.map(card) : <div className="empty">No events within 8 km. Start one!</div>)}
+      {tab === "mine" && (mine.length ? mine.map(card) : <div className="empty">You haven&apos;t joined any events.</div>)}
       {tab === "new" && (
         <div>
           <label>Title</label>
@@ -743,9 +743,9 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
             Public (listed on the map & website)
           </label>
           <p className="small muted">Checked-in players get a squad bonus: +10% XP for every other player who shows up.</p>
-          <button className="btn block" disabled={!loc || !f.start || f.title.length < 3} onClick={create}>
+          <Button className="btn block" disabled={!loc || !f.start || f.title.length < 3} onClick={create}>
             Create event
-          </button>
+          </Button>
         </div>
       )}
     </Sheet>
@@ -790,9 +790,9 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
               Streak {me.streak} → +{me.dailyReward.coins} coins, +{me.dailyReward.xp} XP{me.dailyReward.gems ? `, +${me.dailyReward.gems} 💎` : ""}
             </div>
           </div>
-          <button className="btn yellow small" onClick={() => act(() => api("/api/daily", { body: {} }))}>
+          <Button className="btn yellow small" onClick={() => act(() => api("/api/daily", { body: {} }))}>
             Claim
-          </button>
+          </Button>
         </div>
       )}
 
@@ -809,25 +809,25 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
         <>
           <label>Play mode</label>
           <div className="mode-pick">
-            <button className={`mode ${!me.remotePlay ? "on" : ""}`} onClick={() => me.remotePlay && setHomeMode(false)}>
+            <Button className={`mode ${!me.remotePlay ? "on" : ""}`} onClick={() => me.remotePlay && setHomeMode(false)}>
               <span className="mode-ic">🚶</span>
               <b>Walk with GPS</b>
               <span className="small muted">Move in the real world. Full rewards.</span>
               <span className="mode-tag">100%</span>
-            </button>
-            <button className={`mode ${me.remotePlay ? "on" : ""}`} disabled={!S.remoteEnabled && !me.remotePlay} onClick={() => !me.remotePlay && setHomeMode(true)}>
+            </Button>
+            <Button className={`mode ${me.remotePlay ? "on" : ""}`} disabled={!S.remoteEnabled && !me.remotePlay} onClick={() => !me.remotePlay && setHomeMode(true)}>
               <span className="mode-ic">🛋️</span>
               <b>Play from home</b>
               <span className="small muted">Tap the map, your commander travels there at {S.remoteSpeedKmh} km/h. No walking.</span>
               <span className="mode-tag">{Math.round(S.remoteRewardMult * 100)}%</span>
-            </button>
+            </Button>
           </div>
           <p className="small muted">The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.</p>
           <AppSettings />
           <SoundSettings />
           <div className="row wrap" style={{ marginTop: 8 }}>
-            <button className="btn cyan small" onClick={startTour}>📖 Replay tutorial</button>
-            <button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 Show all tips again</button>
+            <Button className="btn cyan small" onClick={startTour}>📖 Replay tutorial</Button>
+            <Button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 Show all tips again</Button>
           </div>
           <div className="grid3">
             <div className="stat"><b>{me.coins.toLocaleString()}</b><span>Coins</span></div>
@@ -844,31 +844,31 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
             }}
           >
             <input name="username" defaultValue={me.username} maxLength={20} minLength={3} pattern="[A-Za-z0-9_]+" />
-            <button className="btn ghost small">Save</button>
+            <Button className="btn ghost small">Save</Button>
           </form>
           <p className="small muted">No account needed — your progress is saved in this browser.</p>
           <label>Avatar</label>
           <div className="row wrap">
             {AVATARS.map((a) => (
-              <button
+              <Button
                 key={a}
                 className="btn ghost small"
                 style={{ fontSize: 20, outline: a === me.avatar ? "2px solid var(--pink)" : undefined }}
                 onClick={() => api("/api/me", { method: "PATCH", body: { avatar: a } }).then(refresh)}
               >
                 {a}
-              </button>
+              </Button>
             ))}
           </div>
           <label>Invite friends — you both get 150 coins</label>
           <div className="row">
             <input readOnly value={refLink} className="mono small" onFocus={(e) => e.target.select()} />
-            <button
+            <Button
               className="btn cyan small"
               onClick={() => (navigator.share ? navigator.share({ title: "Play StreetQuest with me", url: refLink }).catch(() => {}) : navigator.clipboard.writeText(refLink))}
             >
               Share
-            </button>
+            </Button>
           </div>
           <p className="small muted">
             Timezone: {me.timezone} (daily reset at your local midnight)
@@ -924,18 +924,21 @@ function BagTab() {
   const bagValue = me.inventory.reduce((s, i) => s + price(i.key) * i.qty, 0);
   const toggle = (key: string, qty: number) => setSel((s) => ({ ...s, [key]: s[key] ? 0 : qty }));
   const setQty = (key: string, q: number, max: number) => setSel((s) => ({ ...s, [key]: Math.max(0, Math.min(max, q)) }));
-  const sellNow = (list: [string, number][]) => {
+  // Items are tiles, not buttons: guard against a double tap opening two sell dialogs.
+  const selling = useRef(false);
+  const sellNow = async (list: [string, number][]) => {
     const n = list.reduce((s, [, q]) => s + q, 0);
     const coins = list.reduce((s, [k, q]) => s + price(k) * q, 0);
-    if (!n) return;
-    askConfirm(`Sell ${n} item${n > 1 ? "s" : ""} for ${coins.toLocaleString()} coins?`, { ok: `Sell for ${coins.toLocaleString()} 🪙`, danger: true }).then(async (ok) => {
+    if (!n || selling.current) return;
+    selling.current = true;
+    await askConfirm(`Sell ${n} item${n > 1 ? "s" : ""} for ${coins.toLocaleString()} coins?`, { ok: `Sell for ${coins.toLocaleString()} 🪙`, danger: true }).then(async (ok) => {
       if (!ok) return;
       const done = await act(() => api("/api/inventory", { body: { action: "sellMany", items: list.map(([itemKey, qty]) => ({ itemKey, qty })) } }));
       if (done) {
         setSel({});
         setSelecting(false);
       }
-    });
+    }).finally(() => (selling.current = false));
   };
 
   if (!me.inventory.length) return <div className="empty">🎒 Your bag is empty. Go collect something!</div>;
@@ -944,13 +947,13 @@ function BagTab() {
       <div className="row wrap" style={{ marginBottom: 8, justifyContent: "space-between" }}>
         <span className="small muted">{me.inventory.reduce((s, i) => s + i.qty, 0)} items · worth {bagValue.toLocaleString()} 🪙</span>
         <div className="row">
-          {selecting && <button className="btn ghost small" onClick={() => setSel(Object.fromEntries(items.map((i) => [i.key, i.qty])))}>Select all</button>}
-          <button className={`btn small ${selecting ? "yellow" : "ghost"}`} onClick={() => (setSelecting(!selecting), setSel({}))}>{selecting ? "Done" : "☑️ Select"}</button>
+          {selecting && <Button className="btn ghost small" onClick={() => setSel(Object.fromEntries(items.map((i) => [i.key, i.qty])))}>Select all</Button>}
+          <Button className={`btn small ${selecting ? "yellow" : "ghost"}`} onClick={() => (setSelecting(!selecting), setSel({}))}>{selecting ? "Done" : "☑️ Select"}</Button>
         </div>
       </div>
       <div className="tabs">
         {(["all", "food", "common", "rare", "epic", "legendary"] as const).map((f) => (
-          <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)} style={f !== "all" && f !== "food" ? { color: RARITY_COLOR[f] } : undefined}>{f === "all" ? "All" : f === "food" ? "🍔 Food" : f}</button>
+          <Button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)} style={f !== "all" && f !== "food" ? { color: RARITY_COLOR[f] } : undefined}>{f === "all" ? "All" : f === "food" ? "🍔 Food" : f}</Button>
         ))}
       </div>
       <p className="small muted">{selecting ? "Tap items to pick them, adjust how many with − / +, then sell them in one go." : "Tap an item to sell it, or use ☑️ Select to sell many at once. Food can be eaten in Hero → Life."}</p>
@@ -972,9 +975,9 @@ function BagTab() {
               <div className="v">{price(i.key)} 🪙</div>
               {selecting && q > 0 && (
                 <div className="stepper" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setQty(i.key, q - 1, i.qty)}>−</button>
+                  <Button onClick={() => setQty(i.key, q - 1, i.qty)}>−</Button>
                   <b>{q}</b>
-                  <button onClick={() => setQty(i.key, q + 1, i.qty)}>+</button>
+                  <Button onClick={() => setQty(i.key, q + 1, i.qty)}>+</Button>
                 </div>
               )}
             </div>
@@ -984,7 +987,7 @@ function BagTab() {
       {selecting && (
         <div className="sell-bar">
           <span className="grow">{count ? <>Selected <b>{count}</b> · <b style={{ color: "var(--yellow)" }}>{total.toLocaleString()} 🪙</b></> : "Nothing selected"}</span>
-          <button className="btn yellow" disabled={!count} onClick={() => sellNow(chosen)}>💰 Sell selected</button>
+          <Button className="btn yellow" disabled={!count} onClick={() => sellNow(chosen)}>💰 Sell selected</Button>
         </div>
       )}
     </>
@@ -1008,11 +1011,11 @@ function SoundSettings() {
       <div className="card sound-card">
         <div className="row">
           <span className="grow">🔊 Sound effects &amp; music</span>
-          <button className={`btn small ${isMuted() ? "ghost" : "green"}`} onClick={() => setMuted(!isMuted())}>{isMuted() ? "Off" : "On"}</button>
+          <Button className={`btn small ${isMuted() ? "ghost" : "green"}`} onClick={() => setMuted(!isMuted())}>{isMuted() ? "Off" : "On"}</Button>
         </div>
         <div className="row">
           <span className="grow">🎵 Background music</span>
-          <button className={`btn small ${musicOn() ? "green" : "ghost"}`} disabled={isMuted()} onClick={() => setMusicOn(!musicOn())}>{musicOn() ? "On" : "Off"}</button>
+          <Button className={`btn small ${musicOn() ? "green" : "ghost"}`} disabled={isMuted()} onClick={() => setMusicOn(!musicOn())}>{musicOn() ? "On" : "Off"}</Button>
         </div>
         <div className="row">
           <span className="small muted" style={{ width: 70 }}>Volume</span>
@@ -1062,7 +1065,7 @@ function AppSettings() {
           {isStandalone() ? (
             <span className="tag" style={{ color: "var(--green)" }}>Installed ✓</span>
           ) : canInstall() ? (
-            <button className="btn green small" onClick={() => promptInstall()}>Install</button>
+            <Button className="btn green small" onClick={() => promptInstall()}>Install</Button>
           ) : isIos() ? (
             <span className="small muted" style={{ maxWidth: 150, textAlign: "right" }}>Safari: Share ⬆️ → Add to Home Screen</span>
           ) : (
@@ -1072,11 +1075,11 @@ function AppSettings() {
         <div className="row">
           <span className="grow">🔔 Notifications<div className="small muted">{push === "blocked" ? "Blocked — allow them in your browser's site settings" : push === "unsupported" ? (isIos() ? "Install the app first (iOS 16.4+)" : "Not supported in this browser") : "Raids on your base, rewards, crew messages"}</div></span>
           {push === "on" || push === "off" ? (
-            <button className={`btn small ${push === "on" ? "green" : "ghost"}`} disabled={busy} onClick={toggle}>{push === "on" ? "On" : "Off"}</button>
+            <Button className={`btn small ${push === "on" ? "green" : "ghost"}`} disabled={busy} onClick={toggle}>{push === "on" ? "On" : "Off"}</Button>
           ) : null}
         </div>
         {push === "on" && (
-          <button className="btn ghost small" onClick={() => act(() => api("/api/push", { body: { action: "test" } }))}>Send a test notification</button>
+          <Button className="btn ghost small" onClick={() => act(() => api("/api/push", { body: { action: "test" } }))}>Send a test notification</Button>
         )}
       </div>
     </>

@@ -1002,3 +1002,18 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 @supports (height: 100dvh) {
   @media (orientation: landscape) and (max-height: 500px) { .sheet { max-height: 92dvh; } }
 }
+
+/* ---------- Action buttons (components/Button.tsx) ---------- */
+/* No double-tap-to-zoom wait on taps, in every browser. */
+button, .btn, a.btn { touch-action: manipulation; }
+/* Locked while its action runs: keep the normal look (not the grey "disabled" one). */
+.busy { cursor: progress; }
+.btn.busy:disabled, .pack.busy:disabled, .mode.busy:disabled, .fab.busy:disabled { filter: none; opacity: 1; cursor: progress; }
+.close.busy, .gb-x.busy, .chip.busy { position: relative; }
+/* The label keeps its space (so nothing jumps) but hides under the spinner. */
+.busy-label { display: contents; visibility: hidden; }
+.busy-spin { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; opacity: .9; animation: spin .7s linear infinite, fadein .15s ease-out; pointer-events: none; }
+.btn.small .busy-spin, .close .busy-spin, .gb-x .busy-spin { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-width: 2px; }
+/* Toasts leave as smoothly as they arrive (Game.tsx TOAST_OUT_MS). */
+.toast.out { animation: toastOut .22s ease-in forwards; pointer-events: none; }
+@keyframes toastOut { to { transform: translateY(-14px) scale(.94); opacity: 0; } }

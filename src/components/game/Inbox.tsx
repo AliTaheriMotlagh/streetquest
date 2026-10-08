@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./client";
 import { Sheet } from "./ui";
+import { Button } from "@/components/Button";
 
 type Item = { id: string; kind: string; title: string; body: string | null; readAt: string | null; createdAt: string };
 const ICON: Record<string, string> = { reward: "🎁", social: "🤝", delivery: "📦", event: "🎉", info: "📣" };
@@ -33,7 +34,7 @@ export function InboxPanel({ onClose, peek, onRead }: { onClose: () => void; pee
     api("/api/notifications", { body: { action: "clear" } }).catch(() => {});
   };
   return (
-    <Sheet title="🔔 Inbox" onClose={onClose} peek={peek} help="inbox" actions={items?.length ? <button className="btn ghost small" onClick={clear}>Clear all</button> : undefined}>
+    <Sheet title="🔔 Inbox" onClose={onClose} peek={peek} help="inbox" actions={items?.length ? <Button className="btn ghost small" onClick={clear}>Clear all</Button> : undefined}>
       {!items && <div className="empty">Loading…</div>}
       {items && !items.length && <div className="empty">📭 All caught up! Rewards, raids, crew news and events show up here.</div>}
       <div className="inbox">
@@ -45,7 +46,7 @@ export function InboxPanel({ onClose, peek, onRead }: { onClose: () => void; pee
               {i.body && <div className="small muted">{i.body}</div>}
               <div className="small muted ib-time">{ago(i.createdAt)}</div>
             </div>
-            <button className="ib-x" aria-label="Dismiss" onClick={() => dismiss(i.id)}>✕</button>
+            <Button className="ib-x" aria-label="Dismiss" onClick={() => dismiss(i.id)}>✕</Button>
           </div>
         ))}
       </div>

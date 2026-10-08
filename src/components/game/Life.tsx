@@ -5,6 +5,7 @@ import { distanceM, formatDistance } from "@/lib/geo";
 import { AT_BASE_M, currentNeeds, MESS_HALL_COST, moodOf, NEEDS, REST_COOLDOWN_MS, SOCIAL_COOLDOWN_MS, type Needs } from "@/lib/sims";
 import { api, type Me } from "./client";
 import { MoveIcon, useGame } from "./ui";
+import { Button } from "@/components/Button";
 
 /** Needs drain live on the client between /api/me refreshes. */
 export function useLiveNeeds(me: Me): Needs {
@@ -21,14 +22,14 @@ export function NeedsHud({ onClick }: { onClick: () => void }) {
   const needs = useLiveNeeds(me);
   const mood = moodOf(needs);
   return (
-    <button className="needs-hud" onClick={onClick} title={`Mood: ${mood.label}`}>
+    <Button className="needs-hud" onClick={onClick} title={`Mood: ${mood.label}`}>
       <span className="mood">{mood.emoji}</span>
       {NEEDS.map((n) => (
         <span key={n.key} className={`need ${needs[n.key] < 25 ? "low" : ""}`}>
           <i style={{ height: `${needs[n.key]}%`, background: n.color }} />
         </span>
       ))}
-    </button>
+    </Button>
   );
 }
 
@@ -68,27 +69,27 @@ export function LifeTab() {
       <label>Eat</label>
       <div className="row wrap">
         {food.map((i) => (
-          <button key={i.key} className="btn ghost small" onClick={() => act(() => api("/api/sims", { body: { action: "eat", itemKey: i.key } }))}>
+          <Button key={i.key} className="btn ghost small" onClick={() => act(() => api("/api/sims", { body: { action: "eat", itemKey: i.key } }))}>
             {i.def.emoji} ×{i.qty} (+{i.def.food})
-          </button>
+          </Button>
         ))}
-        <button className="btn ghost small" disabled={!atHome} onClick={() => act(() => api("/api/sims", { body: { action: "mess" } }))}>
+        <Button className="btn ghost small" disabled={!atHome} onClick={() => act(() => api("/api/sims", { body: { action: "mess" } }))}>
           🍲 Mess hall · {MESS_HALL_COST} 🪙
-        </button>
+        </Button>
       </div>
       {!food.length && <p className="small muted">No food in your bag — 🍩🍔🥫 spawn around the city.</p>}
 
       <label>Rest</label>
-      <button className="btn cyan small" disabled={!atHome || restLeft > 0} onClick={() => act(() => api("/api/sims", { body: { action: "rest" } }))}>
+      <Button className="btn cyan small" disabled={!atHome || restLeft > 0} onClick={() => act(() => api("/api/sims", { body: { action: "rest" } }))}>
         😴 {restLeft > 0 ? `Rested — ${Math.ceil(restLeft / 60000)} min` : "Sleep at base"}
-      </button>
+      </Button>
       {!me.base ? (
         <span className="small muted"> Plant a base first.</span>
       ) : (
         !atHome &&
         home != null &&
         (teleport ? (
-          <button className="btn yellow small" style={{ marginLeft: 6 }} onClick={() => teleport(me.base!)}><MoveIcon /> Go home</button>
+          <Button className="btn yellow small" style={{ marginLeft: 6 }} onClick={() => teleport(me.base!)}><MoveIcon /> Go home</Button>
         ) : (
           <span className="small muted"> Home is {formatDistance(home)} away.</span>
         ))
@@ -98,9 +99,9 @@ export function LifeTab() {
       {near.length ? (
         <div className="row wrap">
           {near.map((p) => (
-            <button key={p.id} className="btn ghost small" disabled={socialLeft > 0} onClick={() => act(() => api("/api/sims", { body: { action: "socialize", userId: p.id } }))}>
+            <Button key={p.id} className="btn ghost small" disabled={socialLeft > 0} onClick={() => act(() => api("/api/sims", { body: { action: "socialize", userId: p.id } }))}>
               👋 {p.avatar} {p.username}
-            </button>
+            </Button>
           ))}
         </div>
       ) : (

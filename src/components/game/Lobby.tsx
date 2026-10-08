@@ -7,6 +7,7 @@ import { api, type LobbyView } from "./client";
 import { BombDefuse, ShootingRange } from "./MiniGames";
 import { useGame } from "./ui";
 import { sfx } from "./sfx";
+import { Button } from "@/components/Button";
 
 type Resp = { now: number; lobby: LobbyView };
 const MEDAL = ["🥇", "🥈", "🥉"];
@@ -77,7 +78,7 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
       <Shell onClose={onClose}>
         <div style={{ fontSize: 44 }}>🚫</div>
         <p>{err}</p>
-        <button className="btn ghost" onClick={onClose}>OK</button>
+        <Button className="btn ghost" onClick={onClose}>OK</Button>
       </Shell>
     );
   if (!l) return <Shell onClose={onClose}><div className="big-num">…</div></Shell>;
@@ -111,13 +112,13 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
         </p>
         <div className="row" style={{ justifyContent: "center" }}>
           {l.hostId === me.id ? (
-            <button className="btn green" onClick={() => api<Resp>("/api/lobby", { body: { action: "start", lobbyId: l.id } }).then(take).catch((e) => toast({ kind: "error", title: (e as Error).message }))}>
+            <Button className="btn green" onClick={() => api<Resp>("/api/lobby", { body: { action: "start", lobbyId: l.id } }).then(take).catch((e) => toast({ kind: "error", title: (e as Error).message }))}>
               ▶ {l.players.length > 1 ? `Start (${l.players.length} players)` : "Play solo now"}
-            </button>
+            </Button>
           ) : (
             <span className="small muted">Waiting for the host…</span>
           )}
-          <button className="btn ghost" onClick={leave}>Leave</button>
+          <Button className="btn ghost" onClick={leave}>Leave</Button>
         </div>
       </Shell>
     );
@@ -159,7 +160,7 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
         ))}
       </div>
       {meP?.reward && <p style={{ color: "var(--yellow)", fontWeight: 800 }}>{meP.reward}</p>}
-      <button className="btn" onClick={onClose}>Done</button>
+      <Button className="btn" onClick={onClose}>Done</Button>
     </Shell>
   );
 }
@@ -182,7 +183,7 @@ function Shell({ children, onClose, wide }: { children: React.ReactNode; onClose
   return (
     <div className="modal-bg">
       <div className="modal" style={wide ? { maxWidth: 420, padding: 14 } : undefined}>
-        {onClose && <button className="close" style={{ float: "right" }} onClick={onClose} aria-label="Close">✕</button>}
+        {onClose && <Button className="close" style={{ float: "right" }} onClick={onClose} aria-label="Close">✕</Button>}
         {children}
       </div>
     </div>

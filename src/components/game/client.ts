@@ -23,12 +23,27 @@ function ensureGuest() {
   return guest;
 }
 
+/** A dead mobile connection can hang a request for minutes; give up and say so instead. */
+const TIMEOUT_MS = 20_000;
+
 export async function api<T = { message?: string }>(path: string, init?: { method?: string; body?: unknown }, retried = false): Promise<T> {
-  const res = await fetch(path, {
-    method: init?.method ?? (init?.body ? "POST" : "GET"),
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-  });
+  // AbortController + timer rather than AbortSignal.timeout(): older Safari lacks it.
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: init?.method ?? (init?.body ? "POST" : "GET"),
+      headers: init?.body ? { "content-type": "application/json" } : undefined,
+      body: init?.body ? JSON.stringify(init.body) : undefined,
+      signal: ctl.signal,
+    });
+  } catch (e) {
+    if (ctl.signal.aborted) throw new Error("The server is taking too long — check your connection and try again");
+    throw navigator.onLine === false ? new Error("You're offline — try again when you're back online") : e;
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !retried) {
     await ensureGuest();

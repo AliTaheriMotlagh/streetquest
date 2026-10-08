@@ -60,12 +60,17 @@ export class LocationReporter {
     this.schedule(last && last.sim === simulated ? MIN_GAP_MS - (Date.now() - last.at) : 0);
   }
 
-  /** Make sure the server has our latest position before a location-checked action. */
+  /**
+   * Make sure the server has our latest position before a location-checked action.
+   * Only sends when the server's copy is actually off (≥ MIN_MOVE_M, other mode, or
+   * stale): GPS jitters by a metre every second, and an extra round trip before
+   * every tap is what made actions feel slow while walking.
+   */
   async flush() {
     if (this.inflight) await this.inflight;
     const { pos, simulated } = this.read();
     const last = this.sent;
-    if (pos && (!last || last.sim !== simulated || last.pos.lat !== pos.lat || last.pos.lng !== pos.lng || Date.now() - last.at > 60_000)) await this.send();
+    if (pos && (!last || last.sim !== simulated || distanceM(last.pos, pos) >= MIN_MOVE_M || Date.now() - last.at > 60_000)) await this.send();
   }
 
   private onVisible = () => {

@@ -6,6 +6,7 @@ import { S } from "@/lib/settings";
 import { browserInfo, browserLabel, locationSteps, openInBrowserUrl } from "./location/browser";
 import type { GeoError, GeoState } from "./useLocation";
 import { TOUR_KEY } from "./Help";
+import { Button } from "@/components/Button";
 
 // ---------------------------------------------------------------- "where are you?" screen
 const TITLE: Record<GeoError, string> = {
@@ -70,24 +71,24 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
             </a>
           )}
           {inApp && !openUrl && (
-            <button className="btn cyan" onClick={copy}>
+            <Button className="btn cyan" onClick={copy}>
               {copied ? "✓ Link copied" : "Copy link"}
-            </button>
+            </Button>
           )}
           {error && error !== "insecure" && error !== "unsupported" && !inApp && (
-            <button className="btn cyan" onClick={onRetry}>
+            <Button className="btn cyan" onClick={onRetry}>
               Retry
-            </button>
+            </Button>
           )}
           {onHome && (
-            <button className="btn green" onClick={onHome}>
+            <Button className="btn green" onClick={onHome}>
               🛋️ Play from home
-            </button>
+            </Button>
           )}
           {onSimulate && (
-            <button className="btn yellow" onClick={onSimulate}>
+            <Button className="btn yellow" onClick={onSimulate}>
               🕹️ Test mode — no GPS
-            </button>
+            </Button>
           )}
         </div>
         {onHome && <p className="small muted" style={{ marginTop: 10 }}>No GPS needed: tap the map and your commander travels there, for {Math.round(S.remoteRewardMult * 100)}% of the usual XP and coins.</p>}
@@ -102,9 +103,9 @@ export function GpsChip({ geo }: { geo: GeoState }) {
   if (geo.simulated || !geo.pos) return null;
   if (geo.stale)
     return (
-      <button className="chip small gps-chip lost" onClick={geo.retry} title="GPS stopped answering — tap to reconnect" aria-label="GPS signal lost, tap to reconnect">
+      <Button className="chip small gps-chip lost" onClick={geo.retry} title="GPS stopped answering — tap to reconnect" aria-label="GPS signal lost, tap to reconnect">
         📡 <span className="hide-sm">GPS LOST</span>
-      </button>
+      </Button>
     );
   if (geo.accuracy && geo.accuracy > 60)
     return (
@@ -175,18 +176,18 @@ export function ModePrompt({ name, home, onPick, onClose }: { name: string; home
         <h2 id="mode-title">Welcome back, {name}!</h2>
         <p className="muted small">How are you playing right now?</p>
         <div className="mode-pick">
-          <button className={`mode ${!home ? "on" : ""}`} onClick={() => pick(false)} autoFocus={!home}>
+          <Button className={`mode ${!home ? "on" : ""}`} onClick={() => pick(false)} autoFocus={!home}>
             <span className="mode-ic">🚶</span>
             <b>Out walking</b>
             <span className="small muted">Real GPS. Full rewards.</span>
             <span className="mode-tag">100%</span>
-          </button>
-          <button className={`mode ${home ? "on" : ""}`} onClick={() => pick(true)} autoFocus={home}>
+          </Button>
+          <Button className={`mode ${home ? "on" : ""}`} onClick={() => pick(true)} autoFocus={home}>
             <span className="mode-ic">🛋️</span>
             <b>From home</b>
             <span className="small muted">Tap the map to travel.</span>
             <span className="mode-tag">{Math.round(S.remoteRewardMult * 100)}%</span>
-          </button>
+          </Button>
         </div>
         <label className="row small muted" style={{ justifyContent: "center", gap: 8, marginTop: 10, cursor: "pointer" }}>
           <input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> Don&apos;t ask again (change it in Hero → Profile)

@@ -25,6 +25,7 @@ import { api, fmtTime, type BaseView } from "./client";
 import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { DefenseTab } from "./Defense";
 import { askConfirm } from "@/components/Dialogs";
+import { Button } from "@/components/Button";
 
 const fmtLeft = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -80,9 +81,9 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
 
   const doAct = (b: unknown, path = "/api/base") => act(() => api(path, { body: b })).then((ok) => ok && (load(), refresh()));
   const rush = (what: string, msLeft: number, type?: string) => (
-    <button className="btn ghost small" disabled={(v?.gems ?? 0) < rushCost(msLeft)} onClick={() => doAct({ action: "rush", what, type })}>
+    <Button className="btn ghost small" disabled={(v?.gems ?? 0) < rushCost(msLeft)} onClick={() => doAct({ action: "rush", what, type })}>
       💎 {rushCost(msLeft)}
-    </button>
+    </Button>
   );
 
   if (!v) return <Sheet title="Base" onClose={onClose} peek={peek} help="base"><div className="empty">Loading…</div></Sheet>;
@@ -100,7 +101,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div className="small muted">{x.blurb}</div>
               <div className="small">ATK ×{x.atk} · HP ×{x.hp} · cost ×{x.cost}{!x.needsPower && " · no power grid"}</div>
             </div>
-            <button className="btn small" onClick={() => doAct({ action: "faction", faction: x.key })}>Join</button>
+            <Button className="btn small" onClick={() => doAct({ action: "faction", faction: x.key })}>Join</Button>
           </div>
         ))}
       </Sheet>
@@ -113,9 +114,9 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
         <p className="small muted">Your base goes exactly where you&apos;re standing. Pick somewhere you visit often — you rest and eat there, and rivals have to come to it in person to breach it.</p>
         <label>Base name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Fort Midnight" maxLength={30} />
-        <button className="btn block" style={{ marginTop: 12 }} disabled={!pos || name.trim().length < 2} onClick={() => doAct({ action: "found", name })}>
+        <Button className="btn block" style={{ marginTop: 12 }} disabled={!pos || name.trim().length < 2} onClick={() => doAct({ action: "found", name })}>
           🏛️ Establish base here
-        </button>
+        </Button>
       </Sheet>
     );
   }
@@ -144,10 +145,10 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
         <div className="stat"><b>🏦 {Math.round(v.protection * 100)}%</b><span>Coins safe</span></div>
       </div>
       <div className="row wrap" style={{ marginBottom: 10 }}>
-        <button className="btn yellow small" disabled={b.pending <= 0} onClick={() => doAct({ action: "collect" })}>📦 Collect {b.pending} 🪙</button>
-        {b.hp < 1000 && <button className="btn ghost small" onClick={() => doAct({ action: "repair" })}>🔧 Repair ({Math.ceil((1000 - b.hp) / 2)} 🪙)</button>}
+        <Button className="btn yellow small" disabled={b.pending <= 0} onClick={() => doAct({ action: "collect" })}>📦 Collect {b.pending} 🪙</Button>
+        {b.hp < 1000 && <Button className="btn ghost small" onClick={() => doAct({ action: "repair" })}>🔧 Repair ({Math.ceil((1000 - b.hp) / 2)} 🪙)</Button>}
         {shield > 0 && <span className="tag" style={{ color: "var(--cyan)" }}>🛡️ Shield {fmtLeft(shield)}</span>}
-        {dist != null && (dist < 80 ? <span className="small muted">🏠 You&apos;re home</span> : teleport ? <button className="btn ghost small" onClick={() => teleport(b)}><MoveIcon /> Go home</button> : <span className="small muted">{formatDistance(dist)} away</span>)}
+        {dist != null && (dist < 80 ? <span className="small muted">🏠 You&apos;re home</span> : teleport ? <Button className="btn ghost small" onClick={() => teleport(b)}><MoveIcon /> Go home</Button> : <span className="small muted">{formatDistance(dist)} away</span>)}
       </div>
       <Tabs
         value={tab}
@@ -181,15 +182,15 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 ) : capped ? (
                   <span className="small muted">{next > cap ? "MAX" : "HQ ↑"}</span>
                 ) : (
-                  <button className="btn small" disabled={busy >= v.builders} onClick={() => doAct({ action: "build", type: def.key })} title={`${Math.max(1, Math.round((buildSeconds(def, next) * v.timeMult.build) / 60))} min`}>
+                  <Button className="btn small" disabled={busy >= v.builders} onClick={() => doAct({ action: "build", type: def.key })} title={`${Math.max(1, Math.round((buildSeconds(def, next) * v.timeMult.build) / 60))} min`}>
                     {lvl ? "↑" : "Build"} {buildCost(def, next, f)}🪙
-                  </button>
+                  </Button>
                 )}
               </div>
             );
           })}
           <p className="small muted">{busy >= v.builders ? "All builders busy — rush with 💎 or build a Builder's Hut." : `${v.builders - busy} builder${v.builders - busy > 1 ? "s" : ""} free.`} {f.needsPower ? "Keep power positive or everything slows down." : ""}</p>
-          <button className="btn ghost small" onClick={() => askConfirm(`Move ${b.name} to where you're standing for ${RELOCATE_COST} coins?`, { ok: "Move base" }).then((ok) => ok && doAct({ action: "found", name: b.name }))}>🚚 Move base here ({RELOCATE_COST} 🪙)</button>
+          <Button className="btn ghost small" onClick={() => askConfirm(`Move ${b.name} to where you're standing for ${RELOCATE_COST} coins?`, { ok: "Move base" }).then((ok) => ok && doAct({ action: "found", name: b.name }))}>🚚 Move base here ({RELOCATE_COST} 🪙)</Button>
         </>
       )}
 
@@ -222,8 +223,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 </div>
                 {have && (
                   <div className="row">
-                    <button className="btn ghost small" disabled={room < u.housing} onClick={() => doAct({ action: "train", unit: u.key, qty: 1 })}>+1 · {unitCost(u, f)}</button>
-                    <button className="btn small" disabled={room < u.housing * 5} onClick={() => doAct({ action: "train", unit: u.key, qty: 5 })}>+5 · {unitCost(u, f) * 5}</button>
+                    <Button className="btn ghost small" disabled={room < u.housing} onClick={() => doAct({ action: "train", unit: u.key, qty: 1 })}>+1 · {unitCost(u, f)}</Button>
+                    <Button className="btn small" disabled={room < u.housing * 5} onClick={() => doAct({ action: "train", unit: u.key, qty: 5 })}>+5 · {unitCost(u, f) * 5}</Button>
                   </div>
                 )}
               </div>
@@ -273,9 +274,9 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                   {left > 0 && <div className="small" style={{ color: "var(--yellow)" }}>🔬 {fmtLeft(left)}</div>}
                 </div>
                 {left > 0 ? rush("research", left) : !row && have && (
-                  <button className="btn small" disabled={!!researching || v.scrap < r.scrap} onClick={() => doAct({ action: "research", key: r.key })}>
+                  <Button className="btn small" disabled={!!researching || v.scrap < r.scrap} onClick={() => doAct({ action: "research", key: r.key })}>
                     {r.coins}🪙 {r.scrap}🔩
-                  </button>
+                  </Button>
                 )}
               </div>
             );
@@ -287,7 +288,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
         <>
           <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
             <b>🚩 Your outposts ({terr?.outposts.length ?? 0})</b>
-            <button className="btn yellow small" disabled={!tribute} onClick={() => doAct({ action: "collect" }, "/api/outposts")}>Collect {tribute} 🪙</button>
+            <Button className="btn yellow small" disabled={!tribute} onClick={() => doAct({ action: "collect" }, "/api/outposts")}>Collect {tribute} 🪙</Button>
           </div>
           {terr?.outposts.map((o) => (
             <div key={o.id} className="card small row" style={{ justifyContent: "space-between" }}>
@@ -329,7 +330,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 </div>
               </div>
               {r.side === "defend" && !r.won && r.revengeBaseId && (
-                <button className="btn small" onClick={() => askConfirm(`Send your army for revenge on ${r.targetName}?`, { ok: "Attack" }).then((ok) => ok && doAct({ kind: "siege", targetId: r.revengeBaseId }, "/api/battle"))}>⚔️ Revenge</button>
+                <Button className="btn small" onClick={() => askConfirm(`Send your army for revenge on ${r.targetName}?`, { ok: "Attack" }).then((ok) => ok && doAct({ kind: "siege", targetId: r.revengeBaseId }, "/api/battle"))}>⚔️ Revenge</Button>
               )}
             </div>
           ))}

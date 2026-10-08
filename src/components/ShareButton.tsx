@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Button } from "./Button";
 
 export function ShareButton({ title, text, url }: { title: string; text?: string; url?: string }) {
   const [copied, setCopied] = useState(false);
@@ -14,8 +15,8 @@ export function ShareButton({ title, text, url }: { title: string; text?: string
     }
   };
   return (
-    <button className="btn cyan" onClick={share}>
+    <Button className="btn cyan" onClick={share}>
       {copied ? "Link copied ✓" : "Share"}
-    </button>
+    </Button>
   );
 }

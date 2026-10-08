@@ -11,6 +11,7 @@ import { api, type HeroView } from "./client";
 import { useGame } from "./ui";
 import { S } from "@/lib/settings";
 import { askConfirm } from "@/components/Dialogs";
+import { Button } from "@/components/Button";
 
 export function useHero() {
   const [h, setH] = useState<HeroView | null>(null);
@@ -47,7 +48,7 @@ export function HeroTab({ onTab }: { onTab?: (t: "gear") => void } = {}) {
               <div className="small muted">{k.blurb}</div>
               <div className="small">{(Object.entries(k.mods) as [ModKey, number][]).map(([m, v]) => fmtMod(m, v)).join(" · ")}</div>
             </div>
-            <button className="btn small" onClick={() => doAct({ action: "class", heroClass: k.key })}>Choose</button>
+            <Button className="btn small" onClick={() => doAct({ action: "class", heroClass: k.key })}>Choose</Button>
           </div>
         ))}
       </>
@@ -93,7 +94,7 @@ export function HeroTab({ onTab }: { onTab?: (t: "gear") => void } = {}) {
         <b>Attributes</b>
         {h.freePoints > 0 && <span className="points-glow">{h.freePoints} points to spend!</span>}
         <span className="grow" />
-        <button className="btn ghost small" onClick={() => askConfirm(`Reset all attribute points for ${RESPEC_COST} coins?`, { ok: "Reset", danger: true }).then((ok) => ok && doAct({ action: "respec" }))}>↺ Respec</button>
+        <Button className="btn ghost small" onClick={() => askConfirm(`Reset all attribute points for ${RESPEC_COST} coins?`, { ok: "Reset", danger: true }).then((ok) => ok && doAct({ action: "respec" }))}>↺ Respec</Button>
       </div>
       {ATTRS.map((a) => (
         <div key={a.key} className="attr-row">
@@ -107,22 +108,22 @@ export function HeroTab({ onTab }: { onTab?: (t: "gear") => void } = {}) {
             <div className="small muted">{a.blurb} per point</div>
           </div>
           <div className="attr-btns">
-            <button className="btn small" disabled={h.freePoints < 1} onClick={() => doAct({ action: "allocate", attr: a.key, n: 1 })}>+1</button>
-            {h.freePoints >= 5 && <button className="btn ghost small" onClick={() => doAct({ action: "allocate", attr: a.key, n: 5 })}>+5</button>}
+            <Button className="btn small" disabled={h.freePoints < 1} onClick={() => doAct({ action: "allocate", attr: a.key, n: 1 })}>+1</Button>
+            {h.freePoints >= 5 && <Button className="btn ghost small" onClick={() => doAct({ action: "allocate", attr: a.key, n: 5 })}>+5</Button>}
           </div>
         </div>
       ))}
 
-      <div className="sec-head"><b>Equipment</b><span className="grow" />{onTab && <button className="btn ghost small" onClick={() => onTab("gear")}>Open stash →</button>}</div>
+      <div className="sec-head"><b>Equipment</b><span className="grow" />{onTab && <Button className="btn ghost small" onClick={() => onTab("gear")}>Open stash →</Button>}</div>
       <div className="slots">
         {(["weapon", "armor", "gadget"] as const).map((slot) => {
           const g = equipped.find((x) => x.slot === slot);
           return (
-            <button key={slot} className={`slot ${g ? g.rarity : "empty"}`} style={g ? { borderColor: RARITY_COLOR[g.rarity] } : undefined} onClick={() => onTab?.("gear")}>
+            <Button key={slot} className={`slot ${g ? g.rarity : "empty"}`} style={g ? { borderColor: RARITY_COLOR[g.rarity] } : undefined} onClick={() => onTab?.("gear")}>
               <span className="slot-ic">{g ? GEAR_BASE_BY_KEY[g.base]?.emoji ?? SLOT[slot] : SLOT[slot]}</span>
               <span className="slot-name" style={g ? { color: RARITY_COLOR[g.rarity] } : undefined}>{g ? g.name : `No ${slot}`}</span>
               {g && <span className="tag">Lv {g.level}</span>}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -217,7 +218,7 @@ export function GearTab() {
       </div>
       <div className="tabs">
         {(["all", "weapon", "armor", "gadget"] as const).map((s) => (
-          <button key={s} className={slot === s ? "on" : ""} onClick={() => setSlot(s)}>{s === "all" ? "All" : s === "weapon" ? "🔫 Weapon" : s === "armor" ? "🦺 Armor" : "📻 Gadget"}</button>
+          <Button key={s} className={slot === s ? "on" : ""} onClick={() => setSlot(s)}>{s === "all" ? "All" : s === "weapon" ? "🔫 Weapon" : s === "armor" ? "🦺 Armor" : "📻 Gadget"}</Button>
         ))}
       </div>
       {items.map((g) => {
@@ -241,13 +242,13 @@ export function GearTab() {
             </div>
             <div className="row wrap" style={{ marginTop: 6 }}>
               {g.equipped ? (
-                <button className="btn ghost small" onClick={() => doAct({ action: "unequip", gearId: g.id })}>Unequip</button>
+                <Button className="btn ghost small" onClick={() => doAct({ action: "unequip", gearId: g.id })}>Unequip</Button>
               ) : (
-                <button className="btn green small" onClick={() => doAct({ action: "equip", gearId: g.id })}>Equip</button>
+                <Button className="btn green small" onClick={() => doAct({ action: "equip", gearId: g.id })}>Equip</Button>
               )}
-              <button className="btn ghost small" disabled={h.scrap < cost.scrap || h.coins < cost.coins} onClick={() => doAct({ action: "forge", gearId: g.id })}>🔨 Forge {cost.scrap}🔩 {cost.coins}🪙</button>
+              <Button className="btn ghost small" disabled={h.scrap < cost.scrap || h.coins < cost.coins} onClick={() => doAct({ action: "forge", gearId: g.id })}>🔨 Forge {cost.scrap}🔩 {cost.coins}🪙</Button>
               {!g.equipped && (
-                <button className="btn ghost small" onClick={() => askConfirm(`Salvage ${g.name} for scrap?`, { ok: "Salvage", danger: true }).then((ok) => ok && doAct({ action: "salvage", gearId: g.id }))}>♻️ +{SALVAGE_SCRAP[g.rarity] + Math.floor(g.level / 2)}🔩</button>
+                <Button className="btn ghost small" onClick={() => askConfirm(`Salvage ${g.name} for scrap?`, { ok: "Salvage", danger: true }).then((ok) => ok && doAct({ action: "salvage", gearId: g.id }))}>♻️ +{SALVAGE_SCRAP[g.rarity] + Math.floor(g.level / 2)}🔩</Button>
               )}
             </div>
           </div>
@@ -265,8 +266,10 @@ export function QuestsTab() {
   if (!h) return <div className="empty">Loading…</div>;
   const camp = h.quests.find((q) => q.campaign);
   const daily = h.quests.filter((q) => !q.campaign);
-  const Q = ({ q }: { q: HeroView["quests"][number] }) => (
-    <div className={`card ${q.done && !q.claimed ? "hl" : ""}`} style={{ opacity: q.claimed ? 0.5 : 1 }}>
+  // A render helper, not a component: a component declared in here would be a new type
+  // on every render, remounting the card (and eating taps on Claim mid-update).
+  const quest = (q: HeroView["quests"][number]) => (
+    <div key={q.key} className={`card ${q.done && !q.claimed ? "hl" : ""}`} style={{ opacity: q.claimed ? 0.5 : 1 }}>
       <div className="row">
         <div className="grow">
           <b>{q.title}</b>
@@ -275,7 +278,7 @@ export function QuestsTab() {
         {q.claimed ? (
           <span className="small muted">✓</span>
         ) : q.done ? (
-          <button className="btn yellow small" onClick={() => doAct({ action: "claimQuest", key: q.key })}>Claim</button>
+          <Button className="btn yellow small" onClick={() => doAct({ action: "claimQuest", key: q.key })}>Claim</Button>
         ) : (
           <span className="small mono">{q.progress}/{q.target}</span>
         )}
@@ -293,13 +296,13 @@ export function QuestsTab() {
       {camp ? (
         <>
           {camp.lore && <p className="small" style={{ fontStyle: "italic", color: "#c8c8dc" }}>“{camp.lore}”</p>}
-          <Q q={camp} />
+          {quest(camp)}
         </>
       ) : (
         <div className="empty">Campaign complete — you&apos;re a legend. Daily orders keep coming.</div>
       )}
       <label>🗓️ Daily orders (reset at your midnight)</label>
-      {daily.map((q) => <Q key={q.key} q={q} />)}
+      {daily.map(quest)}
     </>
   );
 }
@@ -336,10 +339,10 @@ export function PowersTab() {
                 </div>
                 <div className="row" style={{ flexDirection: "column", gap: 4 }}>
                   {!locked && st.rank < MAX_POWER_RANK && (
-                    <button className="btn ghost small" disabled={h.commandPoints < 1} onClick={() => doAct({ action: "unlock", key: p.key }, "/api/powers")}>{st.rank ? "Rank up" : "Unlock"} ⭐</button>
+                    <Button className="btn ghost small" disabled={h.commandPoints < 1} onClick={() => doAct({ action: "unlock", key: p.key }, "/api/powers")}>{st.rank ? "Rank up" : "Unlock"} ⭐</Button>
                   )}
                   {st.rank > 0 && p.target === "none" && (
-                    <button className="btn small" disabled={left > 0} onClick={() => doAct({ action: "use", key: p.key }, "/api/powers")}>{left > 0 ? `${Math.ceil(left / 60000)}m` : "Use"}</button>
+                    <Button className="btn small" disabled={left > 0} onClick={() => doAct({ action: "use", key: p.key }, "/api/powers")}>{left > 0 ? `${Math.ceil(left / 60000)}m` : "Use"}</Button>
                   )}
                   {st.rank > 0 && p.target !== "none" && <span className="small muted">{left > 0 ? `${Math.ceil(left / 60000)}m` : "Ready · on map"}</span>}
                 </div>
@@ -364,9 +367,9 @@ export function TargetPowers({ targetId, allow }: { targetId: string; allow: ("s
       {ready.map(({ p, st }) => {
         const left = st.lastUsedAt ? new Date(st.lastUsedAt).getTime() + cooldownMs(p, st.rank) - Date.now() : 0;
         return (
-          <button key={p.key} className="btn ghost small" disabled={left > 0} onClick={() => doAct({ action: "use", key: p.key, targetId }, "/api/powers")}>
+          <Button key={p.key} className="btn ghost small" disabled={left > 0} onClick={() => doAct({ action: "use", key: p.key, targetId }, "/api/powers")}>
             {p.emoji} {p.name}{left > 0 ? ` · ${Math.ceil(left / 60000)}m` : ""}
-          </button>
+          </Button>
         );
       })}
     </div>

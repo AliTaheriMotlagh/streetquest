@@ -3,6 +3,7 @@
 // overrides for units/buildings/towers/items/research, and store & ad revenue.
 import { useMemo, useState } from "react";
 import { askConfirm } from "@/components/Dialogs";
+import { Button } from "./Button";
 
 type Def = { key: string; group: string; label: string; help: string; min?: number; max?: number; step?: number; type: "number" | "bool" | "text" | "json"; def: unknown };
 type CatalogEntry = { key: string; name: string; emoji: string; values: Record<string, number | null> };
@@ -130,14 +131,14 @@ function ListEditor({ k, rows, metrics, onChange }: { k: string; rows: Record<st
                 );
               })}
               <td>
-                <button className="btn ghost small" title="Move up" disabled={!i} onClick={() => { const n = clone(rows); [n[i - 1], n[i]] = [n[i], n[i - 1]]; onChange(n); }}>↑</button>
-                <button className="btn ghost small" title="Remove" onClick={() => onChange(rows.filter((_, j) => j !== i))}>✕</button>
+                <Button className="btn ghost small" title="Move up" disabled={!i} onClick={() => { const n = clone(rows); [n[i - 1], n[i]] = [n[i], n[i - 1]]; onChange(n); }}>↑</Button>
+                <Button className="btn ghost small" title="Remove" onClick={() => onChange(rows.filter((_, j) => j !== i))}>✕</Button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <button className="btn ghost small" style={{ marginTop: 6 }} onClick={() => onChange([...rows, NEW_ROW[k]() as Record<string, unknown>])}>+ Add row</button>
+      <Button className="btn ghost small" style={{ marginTop: 6 }} onClick={() => onChange([...rows, NEW_ROW[k]() as Record<string, unknown>])}>+ Add row</Button>
     </div>
   );
 }
@@ -183,8 +184,8 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
       <div className="settings-bar">
         <input placeholder="🔎 Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className={`grow small ${dirty ? "unsaved-note" : "muted"}`}>{dirty ? `● ${dirty} unsaved change${dirty > 1 ? "s" : ""}` : "✓ All saved · changes go live within ~15 s"}</span>
-        <button className="btn ghost small" disabled={!dirty} onClick={() => setDraft(clone(config.values))}>Discard</button>
-        <button className="btn small" disabled={!dirty || saving} onClick={save}>{saving ? "Saving…" : "💾 Save & apply"}</button>
+        <Button className="btn ghost small" disabled={!dirty} onClick={() => setDraft(clone(config.values))}>Discard</Button>
+        <Button className="btn small" disabled={!dirty || saving} onClick={save}>{saving ? "Saving…" : "💾 Save & apply"}</Button>
       </div>
       <div className="settings-layout">
         <nav className="settings-cats">
@@ -192,11 +193,11 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
             const changed = defs.filter((d) => d.group === g && overridden(d)).length;
             const unsaved = defs.filter((d) => d.group === g && !same(draft[d.key], config.values[d.key])).length;
             return (
-              <button key={g} className={`cat ${!q && group === g ? "on" : ""}`} onClick={() => (setQ(""), setGroup(g))}>
+              <Button key={g} className={`cat ${!q && group === g ? "on" : ""}`} onClick={() => (setQ(""), setGroup(g))}>
                 <span>{GROUP_ICON[g] ?? "•"}</span>
                 <span className="grow">{g}</span>
                 {unsaved > 0 ? <i className="cat-dot unsaved" title="Unsaved changes" /> : changed > 0 ? <i className="cat-dot" title={`${changed} changed from default`} /> : null}
-              </button>
+              </Button>
             );
           })}
         </nav>
@@ -222,13 +223,13 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
                     <div className="setting-input">
                       {d.type === "number" && <input type="number" value={Number(draft[d.key])} min={d.min} max={d.max} step={d.step ?? 1} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.value === "" ? 0 : Number(e.target.value) })} />}
                       {d.type === "bool" && (
-                        <button className={`toggle ${draft[d.key] ? "on" : ""}`} onClick={() => setDraft({ ...draft, [d.key]: !draft[d.key] })} aria-pressed={!!draft[d.key]}>
+                        <Button className={`toggle ${draft[d.key] ? "on" : ""}`} onClick={() => setDraft({ ...draft, [d.key]: !draft[d.key] })} aria-pressed={!!draft[d.key]}>
                           <i />
                           <span>{draft[d.key] ? "On" : "Off"}</span>
-                        </button>
+                        </Button>
                       )}
                       {d.type === "text" && <input value={String(draft[d.key] ?? "")} onChange={(e) => setDraft({ ...draft, [d.key]: e.target.value })} />}
-                      {overridden(d) && <button className="btn ghost small" title="Back to default" onClick={() => setDraft({ ...draft, [d.key]: clone(d.def) })}>↺</button>}
+                      {overridden(d) && <Button className="btn ghost small" title="Back to default" onClick={() => setDraft({ ...draft, [d.key]: clone(d.def) })}>↺</Button>}
                     </div>
                     {d.type === "json" && <ListEditor k={d.key} rows={(draft[d.key] as Record<string, unknown>[]) ?? []} metrics={config.metrics} onChange={(rows) => setDraft({ ...draft, [d.key]: rows })} />}
                   </div>
@@ -238,13 +239,13 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
           })}
         </div>
       </div>
-      <button
+      <Button
         className="btn ghost small"
         style={{ marginTop: 10 }}
         onClick={() => askConfirm("Reset EVERY setting and stat override to the built-in defaults?", { ok: "Reset everything", danger: true }).then((ok) => ok && post({ action: "saveSettings", data: {} }))}
       >
         Reset all to defaults
-      </button>
+      </Button>
     </>
   );
 }
@@ -284,11 +285,11 @@ export function GameDataTab({ config, post }: { config: AdminConfig; post: Post 
       <p className="small muted">Every unit, building, tower, item and research project. Change a number to override it (highlighted); clear a cell to go back to the built-in value. Costs and times here are before the global multipliers in Settings.</p>
       <div className="settings-bar">
         <div className="tabs" style={{ margin: 0 }}>
-          {Object.keys(config.catalog).map((c) => <button key={c} className={cat === c ? "on" : ""} onClick={() => setCat(c)}>{CAT_LABEL[c] ?? c}</button>)}
+          {Object.keys(config.catalog).map((c) => <Button key={c} className={cat === c ? "on" : ""} onClick={() => setCat(c)}>{CAT_LABEL[c] ?? c}</Button>)}
         </div>
         <span className="grow" />
-        <button className="btn ghost small" disabled={!dirty} onClick={() => setDraft(clone((config.values.catalog as typeof draft) ?? {}))}>Discard</button>
-        <button className="btn small" disabled={!dirty} onClick={save}>💾 Save & apply</button>
+        <Button className="btn ghost small" disabled={!dirty} onClick={() => setDraft(clone((config.values.catalog as typeof draft) ?? {}))}>Discard</Button>
+        <Button className="btn small" disabled={!dirty} onClick={save}>💾 Save & apply</Button>
       </div>
       <div className="table-scroll">
         <table className="edit-table">

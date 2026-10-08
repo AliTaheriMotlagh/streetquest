@@ -3,6 +3,7 @@
 // a short "how this works" card for every panel (auto-shown the first time, and
 // any time from the ? button in the panel header).
 import { useEffect, useLayoutEffect, useState } from "react";
+import { Button } from "@/components/Button";
 
 // ---------------------------------------------------------------- per-panel help
 export const HELP: Record<string, { title: string; tips: [string, string][] }> = {
@@ -109,7 +110,7 @@ export function HelpCard({ k, onClose }: { k: string; onClose: () => void }) {
           <span>{t}</span>
         </div>
       ))}
-      <button className="btn yellow small" onClick={onClose}>Got it</button>
+      <Button className="btn yellow small" onClick={onClose}>Got it</Button>
     </div>
   );
 }
@@ -190,15 +191,15 @@ export function Tour({ onDone, onChooseHome }: { onDone: () => void; onChooseHom
         <div className="tour-dots">{TOUR.map((_, j) => <i key={j} className={j === i ? "on" : j < i ? "done" : ""} />)}</div>
         {last && onChooseHome ? (
           <div className="row wrap" style={{ justifyContent: "center" }}>
-            <button className="btn green" onClick={() => (onChooseHome(false), onDone())}>🚶 I&apos;ll walk</button>
-            <button className="btn cyan" onClick={() => (onChooseHome(true), onDone())}>🛋️ Play from home</button>
+            <Button className="btn green" onClick={() => (onChooseHome(false), onDone())}>🚶 I&apos;ll walk</Button>
+            <Button className="btn cyan" onClick={() => (onChooseHome(true), onDone())}>🛋️ Play from home</Button>
           </div>
         ) : (
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <button className="btn ghost small" onClick={onDone}>Skip</button>
+            <Button className="btn ghost small" onClick={onDone}>Skip</Button>
             <div className="row">
-              {i > 0 && <button className="btn ghost small" onClick={() => setI(i - 1)}>Back</button>}
-              <button className="btn yellow small" onClick={() => (last ? onDone() : setI(i + 1))}>{last ? "Let's go!" : "Next"}</button>
+              {i > 0 && <Button className="btn ghost small" onClick={() => setI(i - 1)}>Back</Button>}
+              <Button className="btn yellow small" onClick={() => (last ? onDone() : setI(i + 1))}>{last ? "Let's go!" : "Next"}</Button>
             </div>
           </div>
         )}

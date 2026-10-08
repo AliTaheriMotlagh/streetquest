@@ -31,17 +31,22 @@ export function DialogHost() {
   const okRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // One dialog at a time: a second request waits its turn instead of replacing the open
+  // one (which would leave the first caller's promise hanging forever).
+  const current = useRef<Req | null>(null);
+  const present = (r: Req | null) => {
+    current.current = r;
+    setReq(r);
+    if (r?.kind === "text") setText(r.value);
+  };
   useEffect(() => {
-    show = (r) => {
-      setReq(r);
-      if (r.kind === "text") setText(r.value);
-    };
+    show = (r) => (current.current ? queue.push(r) : present(r));
     const pending = queue.shift();
-    if (pending) show(pending);
+    if (pending) present(pending);
     return () => {
       show = null;
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!req) return;
@@ -54,12 +59,10 @@ export function DialogHost() {
   if (!req) return null;
 
   function done(ok: boolean) {
-    if (!req) return;
+    if (!req || current.current !== req) return; // already answered (double tap)
     if (req.kind === "confirm") req.resolve(ok);
     else req.resolve(ok ? text : null);
-    const next = queue.shift() ?? null;
-    setReq(next);
-    if (next?.kind === "text") setText(next.value);
+    present(queue.shift() ?? null);
   }
 
   return (

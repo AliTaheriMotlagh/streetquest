@@ -8,6 +8,7 @@ import { maxTowers, PROVOKE_DELAY_MS, squadPos, TOWER_MAX_LEVEL, TOWER_TERRITORY
 import { api } from "./client";
 import { MoveIcon, useGame } from "./ui";
 import { askConfirm } from "@/components/Dialogs";
+import { Button } from "@/components/Button";
 
 type TowerRow = { id: string; type: string; level: number; lat: number; lng: number; hp: number; kills: number; readyAt: string };
 type SquadRow = { id: string; units: Army; fromLat: number; fromLng: number; toLat: number; toLng: number; departAt: string; arriveAt: string; order: string; status: string; targetKind: string | null };
@@ -78,9 +79,9 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
                   : `⚠️ Wave in progress! ${fmtLeft(wave.endAt - now)} left`}
             </div>
           </div>
-          <button className="btn yellow small" disabled={!!wave && now >= wave.startAt - PROVOKE_DELAY_MS} onClick={() => askConfirm("Provoke a raider wave against your base in 60 s? Bounties ×1.5, but leaked raiders still steal coins.", { ok: "Provoke" }).then((ok) => ok && doAct("/api/waves", { action: "provoke" }))}>
+          <Button className="btn yellow small" disabled={!!wave && now >= wave.startAt - PROVOKE_DELAY_MS} onClick={() => askConfirm("Provoke a raider wave against your base in 60 s? Bounties ×1.5, but leaked raiders still steal coins.", { ok: "Provoke" }).then((ok) => ok && doAct("/api/waves", { action: "provoke" }))}>
             📯 Provoke
-          </button>
+          </Button>
         </div>
         <p className="small muted" style={{ margin: "6px 0 0" }}>
           Raiders march in from 550 m out. Towers, guard squads and your base turrets shoot them — your crew&apos;s too. Be within 400 m of the base to call in ✈️ airstrikes. Leakers steal coins (the 🏦 Vault protects some).
@@ -97,7 +98,7 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
           const c = towerCost(t.key, 1);
           const locked = hq < t.hqLevel;
           return (
-            <button
+            <Button
               key={t.key}
               className="tower-card"
               disabled={locked || !inTerritory || towers.length >= maxTowers(hq) || coins < c.coins || scrap < c.scrap}
@@ -108,7 +109,7 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
               <b>{t.name}</b>
               <span className="small muted">{locked ? `HQ ${t.hqLevel}` : `${c.coins}🪙${c.scrap ? ` ${c.scrap}🔩` : ""}`}</span>
               <span className="small muted">⌖{t.range}m · {t.dps}dps</span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -130,10 +131,10 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
               </div>
             </div>
             <div className="col" style={{ gap: 4 }}>
-              {up && left <= 0 && <button className="btn small" onClick={() => doAct("/api/towers", { action: "upgrade", towerId: t.id })}>↑ {up.coins}🪙</button>}
-              {t.hp < st.maxHp && <button className="btn ghost small" onClick={() => doAct("/api/towers", { action: "repair", towerId: t.id })}>🔧 {Math.ceil((st.maxHp - t.hp) * 0.4)}</button>}
-              {teleport && d != null && d > 30 && <button className="btn ghost small" onClick={() => teleport(t)}><MoveIcon /></button>}
-              <button className="btn ghost small" onClick={() => askConfirm(`Demolish this ${st.def.name}? You get 30% back.`, { ok: "Demolish", danger: true }).then((ok) => ok && doAct("/api/towers", { action: "demolish", towerId: t.id }))}>🏚️</button>
+              {up && left <= 0 && <Button className="btn small" onClick={() => doAct("/api/towers", { action: "upgrade", towerId: t.id })}>↑ {up.coins}🪙</Button>}
+              {t.hp < st.maxHp && <Button className="btn ghost small" onClick={() => doAct("/api/towers", { action: "repair", towerId: t.id })}>🔧 {Math.ceil((st.maxHp - t.hp) * 0.4)}</Button>}
+              {teleport && d != null && d > 30 && <Button className="btn ghost small" onClick={() => teleport(t)}><MoveIcon /></Button>}
+              <Button className="btn ghost small" onClick={() => askConfirm(`Demolish this ${st.def.name}? You get 30% back.`, { ok: "Demolish", danger: true }).then((ok) => ok && doAct("/api/towers", { action: "demolish", towerId: t.id }))}>🏚️</Button>
             </div>
           </div>
         );
@@ -157,8 +158,8 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
               </div>
             </div>
             <div className="col" style={{ gap: 4 }}>
-              <button className="btn ghost small" onClick={() => pick("Tap where this squad should move", (to) => doAct("/api/squads", { action: "move", squadId: s.id, to }))}>📍 Move</button>
-              {s.order !== "return" && <button className="btn ghost small" onClick={() => doAct("/api/squads", { action: "recall", squadId: s.id })}>↩️ Recall</button>}
+              <Button className="btn ghost small" onClick={() => pick("Tap where this squad should move", (to) => doAct("/api/squads", { action: "move", squadId: s.id, to }))}>📍 Move</Button>
+              {s.order !== "return" && <Button className="btn ghost small" onClick={() => doAct("/api/squads", { action: "recall", squadId: s.id })}>↩️ Recall</Button>}
             </div>
           </div>
         );
@@ -172,16 +173,16 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
               const max = home[u.key as UnitKey] ?? 0;
               return (
                 <div key={u.key} className="stepper">
-                  <button onClick={() => setPickUnits({ ...pickUnits, [u.key]: Math.max(0, n - 1) })}>−</button>
+                  <Button onClick={() => setPickUnits({ ...pickUnits, [u.key]: Math.max(0, n - 1) })}>−</Button>
                   <span>{u.emoji} {n || "·"}/{max}</span>
-                  <button onClick={() => setPickUnits({ ...pickUnits, [u.key]: Math.min(max, n + 1) })}>+</button>
+                  <Button onClick={() => setPickUnits({ ...pickUnits, [u.key]: Math.min(max, n + 1) })}>+</Button>
                 </div>
               );
             })}
           </div>
           <div className="row wrap" style={{ marginTop: 8 }}>
-            {pos && <button className="btn small" onClick={() => deploy(pos)}>🛡️ Guard where I stand</button>}
-            <button className="btn cyan small" onClick={() => pick("Tap where the squad should take position", deploy)}>📍 Guard a spot</button>
+            {pos && <Button className="btn small" onClick={() => deploy(pos)}>🛡️ Guard where I stand</Button>}
+            <Button className="btn cyan small" onClick={() => pick("Tap where the squad should take position", deploy)}>📍 Guard a spot</Button>
           </div>
           <p className="small muted" style={{ margin: "6px 0 0" }}>
             Squads march at their slowest unit (🚶 3 m/s · 🚙 8 m/s · ✈️ 25 m/s) and everyone sees them on the map. Guards shoot rival commanders within {55} m, defend against raiders and reinforce nearby bases and outposts. To attack, tap an enemy 🗼 tower, squad, 🏰 base or 🚩 outpost on the map → <b>March a squad</b>.
