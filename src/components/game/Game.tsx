@@ -903,20 +903,37 @@ export default function Game() {
           />
         )}
 
-        {!panel && !selected && (
-          <nav className="nav">
-            {NAV.map(([id, ic, label]) => {
-              const b = showBadge(id);
-              return (
-                <Button key={id} data-tour={`nav-${id}`} onClick={() => openPanel(id)} className={id === "base" && !me.base ? "pulse" : ""}>
-                  <span className="ic">{ic}</span>
-                  {label}
-                  {b != null && <span className="badge pop">{b}</span>}
-                </Button>
-              );
-            })}
-          </nav>
-        )}
+        {/* Phones hide it under an open panel; tablets/desktop keep it beside the side panel (CSS). */}
+        <nav className={`nav ${panel || selected ? "with-sheet" : ""}`}>
+          {NAV.map(([id, ic, label]) => {
+            const b = showBadge(id);
+            const on = panel === id;
+            return (
+              <Button
+                key={id}
+                data-tour={`nav-${id}`}
+                title={label}
+                aria-label={b != null ? `${label}, ${b} new` : label}
+                aria-current={on ? "page" : undefined}
+                onClick={() => {
+                  if (on) {
+                    close();
+                    if (id === "me") setMeTab("hero");
+                    return;
+                  }
+                  setSelected(null);
+                  if (panel === "me") setMeTab("hero");
+                  openPanel(id);
+                }}
+                className={`${on ? "on" : ""} ${id === "base" && !me.base ? "pulse" : ""}`}
+              >
+                <span className="ic">{ic}</span>
+                <span className="nav-lb">{label}</span>
+                {b != null && <span className="badge pop">{b}</span>}
+              </Button>
+            );
+          })}
+        </nav>
 
         {match && <Fps matchId={match} onExit={exitMatch} />}
 

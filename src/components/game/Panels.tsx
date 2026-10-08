@@ -15,6 +15,7 @@ import { isMuted, onMuteChange, setMuted, sfx } from "./sfx";
 import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
 import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalone, onPwaChange, promptInstall, pushSupported } from "@/components/pwaClient";
 import { Button } from "@/components/Button";
+import { ModeCards } from "./LocationUi";
 import { autoIsLite, onPerfChange, perfMode, setPerfMode, type PerfMode } from "@/components/perf";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
@@ -809,20 +810,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
       {tab === "stats" && (
         <>
           <label>Play mode</label>
-          <div className="mode-pick">
-            <Button className={`mode ${!me.remotePlay ? "on" : ""}`} onClick={() => me.remotePlay && setHomeMode(false)}>
-              <span className="mode-ic">🚶</span>
-              <b>Walk with GPS</b>
-              <span className="small muted">Move in the real world. Full rewards.</span>
-              <span className="mode-tag">100%</span>
-            </Button>
-            <Button className={`mode ${me.remotePlay ? "on" : ""}`} disabled={!S.remoteEnabled && !me.remotePlay} onClick={() => !me.remotePlay && setHomeMode(true)}>
-              <span className="mode-ic">🛋️</span>
-              <b>Play from home</b>
-              <span className="small muted">Tap the map, your commander travels there at {S.remoteSpeedKmh} km/h. No walking.</span>
-              <span className="mode-tag">{Math.round(S.remoteRewardMult * 100)}%</span>
-            </Button>
-          </div>
+          <ModeCards home={!!me.remotePlay} homeLocked={!S.remoteEnabled} onPick={(h) => h !== !!me.remotePlay && setHomeMode(h)} />
           <p className="small muted">The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.</p>
           <AppSettings />
           <SoundSettings />

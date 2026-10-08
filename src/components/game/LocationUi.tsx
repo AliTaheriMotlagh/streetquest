@@ -198,6 +198,33 @@ export const markModeAsked = () => {
   } catch {}
 };
 
+/** The two ways to play as big pickable cards: the welcome-back prompt and Hero → Profile. */
+export function ModeCards({ home, onPick, homeLocked, focus }: { home: boolean; onPick: (home: boolean) => unknown; homeLocked?: boolean; focus?: boolean }) {
+  const modes = [
+    { h: false, tone: "walk", ic: "🚶", title: "Walk with GPS", desc: "Move in the real world. Every goal counts.", pct: 100 },
+    { h: true, tone: "home", ic: "🛋️", title: "Play from home", desc: `Tap the map — your commander travels there at ${S.remoteSpeedKmh} km/h.`, pct: Math.round(S.remoteRewardMult * 100) },
+  ];
+  return (
+    <div className="mode-pick" role="group" aria-label="Play mode">
+      {modes.map((m) => {
+        const on = m.h === home;
+        return (
+          <Button key={m.tone} className={`mode ${m.tone} ${on ? "on" : ""}`} aria-pressed={on} disabled={m.h && homeLocked && !on} onClick={() => onPick(m.h)} autoFocus={focus && on}>
+            {on && <span className="mode-check" aria-hidden>✓</span>}
+            <span className="mode-ic" aria-hidden>{m.ic}</span>
+            <b>{m.title}</b>
+            <span className="mode-desc">{m.desc}</span>
+            <span className="mode-reward">
+              <span className="mode-meter"><i style={{ width: `${m.pct}%` }} /></span>
+              {m.pct}% XP &amp; coins
+            </span>
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ModePrompt({ name, home, onPick, onClose }: { name: string; home: boolean; onPick: (home: boolean) => void; onClose: () => void }) {
   const [never, setNever] = useState(false);
   const pick = (h: boolean) => {
@@ -208,28 +235,27 @@ export function ModePrompt({ name, home, onPick, onClose }: { name: string; home
     if (h !== home) onPick(h);
     onClose();
   };
+  // Esc, ✕ and a tap outside all mean "keep what I had".
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && pick(home);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="modal-bg" style={{ zIndex: 950 }} onClick={(e) => e.target === e.currentTarget && pick(home)}>
-      <div className="modal mode-prompt" role="dialog" aria-labelledby="mode-title">
+      <div className="modal mode-prompt" role="dialog" aria-modal="true" aria-labelledby="mode-title" aria-describedby="mode-sub">
+        <button className="close mode-x" onClick={() => pick(home)} aria-label="Keep the current mode" title="Keep the current mode">✕</button>
+        <div className="mode-wave" aria-hidden>👋</div>
+        <span className="eyebrow">Play mode</span>
         <h2 id="mode-title">Welcome back, {name}!</h2>
-        <p className="muted small">How are you playing right now?</p>
-        <div className="mode-pick">
-          <Button className={`mode ${!home ? "on" : ""}`} onClick={() => pick(false)} autoFocus={!home}>
-            <span className="mode-ic">🚶</span>
-            <b>Out walking</b>
-            <span className="small muted">Real GPS. Full rewards.</span>
-            <span className="mode-tag">100%</span>
-          </Button>
-          <Button className={`mode ${home ? "on" : ""}`} onClick={() => pick(true)} autoFocus={home}>
-            <span className="mode-ic">🛋️</span>
-            <b>From home</b>
-            <span className="small muted">Tap the map to travel.</span>
-            <span className="mode-tag">{Math.round(S.remoteRewardMult * 100)}%</span>
-          </Button>
+        <p id="mode-sub" className="muted small">How are you playing right now?</p>
+        <ModeCards home={home} onPick={pick} focus />
+        <div className="mode-foot">
+          <button type="button" className={`toggle ${never ? "on" : ""}`} aria-pressed={never} onClick={() => setNever(!never)}>
+            <i /> Don&apos;t ask again
+          </button>
+          <span className="small muted">Change it any time in 🦸 Hero → Profile</span>
         </div>
-        <label className="row small muted" style={{ justifyContent: "center", gap: 8, marginTop: 10, cursor: "pointer" }}>
-          <input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} /> Don&apos;t ask again (change it in Hero → Profile)
-        </label>
       </div>
     </div>
   );
