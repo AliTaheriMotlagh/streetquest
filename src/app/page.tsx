@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AutoVideo } from "@/components/AutoVideo";
@@ -5,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { SITE } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 const FEATURES = [
   ["🏰", "Build a base on your street", "Pick a faction, plant your base where you really are, then build power, supply lines, barracks, factories and turrets on real timers."],

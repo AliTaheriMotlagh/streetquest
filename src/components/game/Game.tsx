@@ -29,7 +29,8 @@ import { useLiveWaves } from "./waves";
 import { creepPos, PINGS, SHOOT_RANGE_M, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
-import { useLocation, useWakeLock, type FireReport, type GeoError } from "./useLocation";
+import { useLocation, useWakeLock, type FireReport } from "./useLocation";
+import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
 import { AdModal, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
@@ -232,6 +233,7 @@ export default function Game() {
   const [askPush, setAskPush] = useState(false);
   const endTour = useCallback(() => {
     setTour(false);
+    markModeAsked(); // the tour's last step just asked walking vs home
     try {
       localStorage.setItem(TOUR_KEY, "1");
       // Then, once, offer notifications (only where they can actually work).
@@ -375,6 +377,7 @@ export default function Game() {
   mapClickRef.current = onMapClick;
   const handleMapClick = useCallback((p: LatLng) => mapClickRef.current(p), []);
   const handleUnfollow = useCallback(() => setFollow(false), []);
+  const handleFollow = useCallback(() => setFollow(true), []);
   const handleSelect = useCallback((s: Selected) => {
     setSelected(s);
     setPanel(null);
@@ -444,6 +447,9 @@ export default function Game() {
       ),
     [act],
   );
+
+  // Coming back to the game: a quick "walking or from home?" (not in test mode or mid-tour).
+  const [modeAsk, closeModeAsk] = useModePrompt(!!me && S.remoteEnabled && !simMode && !tour && !match);
 
   const toggleSim = () => {
     // Test mode and play-from-home are exclusive: test mode teleports, home mode travels.
@@ -553,18 +559,16 @@ export default function Game() {
     <Ctx.Provider value={ctx}>
       <div className={`game ${shake ? "shake" : ""}`}>
         <GameMap
-          pos={pos}
           world={world}
           me={me}
           follow={follow}
           picking={!!picker}
           runners={runners}
           travelTo={homeMode ? travel : null}
-          heading={geo.heading}
-          speed={geo.speed}
           game={gps.view}
           strikeMode={!!strike}
           onUnfollow={handleUnfollow}
+          onFollow={handleFollow}
           onMapClick={handleMapClick}
           onSelect={handleSelect}
         />
@@ -596,6 +600,7 @@ export default function Game() {
             <button className="chip small gem-chip" onClick={() => setPanel("store")} title="Gem store">💎 {me.gems} <span className="plus">+</span></button>
             <div className="chip small hide-sm">{me.league.emoji} {me.trophies}</div>
             {driving && !geo.simulated && <div className="chip small" title="Driving: the map zooms out and walking goals pause">🚗 {Math.round(geo.speed * 3.6)} km/h</div>}
+            <GpsChip geo={geo} />
             {world && (
               <div className="chip phase">
                 {PHASE_ICON[world.phase]} <span className="hide-sm">{world.phase.toUpperCase()}</span>
@@ -714,7 +719,18 @@ export default function Game() {
           </div>
         )}
 
-        {!pos && !homeMode && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} onHome={S.remoteEnabled ? () => setHomeMode(true) : undefined} />}
+        {modeAsk && (
+          <ModePrompt
+            name={me.username}
+            home={!!me.remotePlay}
+            onClose={closeModeAsk}
+            onPick={(home) => {
+              setHomeMode(home);
+              if (!home) geo.retry(); // a tap is the best moment to (re)ask for GPS
+            }}
+          />
+        )}
+        {!pos && !homeMode && !modeAsk && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} onHome={S.remoteEnabled ? () => setHomeMode(true) : undefined} />}
 
         {homeMode && travel && pos && !picker && (
           <div className="travel-banner">
@@ -781,7 +797,7 @@ export default function Game() {
               ))}
             </div>
           )}
-          <button className="fab" title="Re-center" onClick={() => setFollow(true)} style={{ color: follow ? "var(--cyan)" : undefined }}>
+          <button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title="Re-center on me" aria-label="Re-center the map on me" aria-pressed={follow} onClick={() => setFollow(true)} style={{ color: follow ? "var(--cyan)" : undefined }}>
             ◎
           </button>
         </div>
@@ -902,73 +918,6 @@ export default function Game() {
         )}
       </div>
     </Ctx.Provider>
-  );
-}
-
-// ---------------------------------------------------------------- "where are you?" screen
-const GEO_HELP: Record<GeoError, { title: string; body: React.ReactNode }> = {
-  insecure: {
-    title: "Location needs a secure link",
-    body: (
-      <>
-        Phones only share GPS with <b>https://</b> sites (or <b>localhost</b>). You opened <span className="mono">{typeof location !== "undefined" ? location.origin : ""}</span>.
-        Open the game through its https link instead.
-      </>
-    ),
-  },
-  unsupported: { title: "No location on this device", body: "This browser can't share a location. Try Chrome or Safari on your phone." },
-  denied: {
-    title: "Location is blocked",
-    body: (
-      <>
-        Allow location for this site, then tap Retry.
-        <br />
-        <b>iPhone:</b> Settings → Privacy → Location Services → Safari Websites → While Using.
-        <br />
-        <b>Android/Chrome:</b> tap the 🔒 next to the address → Permissions → Location → Allow.
-        <br />
-        <b>Mac:</b> System Settings → Privacy &amp; Security → Location Services → turn on your browser.
-      </>
-    ),
-  },
-  unavailable: {
-    title: "Can't get a GPS fix",
-    body: "Your device couldn't find its position. Turn on Location/GPS (and Wi-Fi helps), step near a window, then retry. On a Mac, check that Location Services is on for your browser.",
-  },
-  timeout: { title: "GPS is taking a while", body: "Still searching for satellites. Moving outdoors or near a window usually helps." },
-};
-
-function LocationGate({ error, onRetry, onSimulate, onHome }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void; onHome?: () => void }) {
-  const help = error ? GEO_HELP[error] : null;
-  return (
-    <div className="modal-bg" style={{ zIndex: 900 }}>
-      <div className="modal">
-        <div style={{ fontSize: 50 }}>{help ? "⚠️" : "📡"}</div>
-        <h2>{help?.title ?? "Finding you…"}</h2>
-        <p className="muted small" style={{ lineHeight: 1.6, textAlign: help && error === "denied" ? "left" : "center" }}>
-          {help?.body ?? "Allow location access when your browser asks — the city around you becomes the game map."}
-        </p>
-        <div className="row wrap" style={{ justifyContent: "center" }}>
-          {error && error !== "insecure" && error !== "unsupported" && (
-            <button className="btn cyan" onClick={onRetry}>
-              Retry
-            </button>
-          )}
-          {onHome && (
-            <button className="btn green" onClick={onHome}>
-              🛋️ Play from home
-            </button>
-          )}
-          {onSimulate && (
-            <button className="btn yellow" onClick={onSimulate}>
-              🕹️ Test mode — no GPS
-            </button>
-          )}
-        </div>
-        {onHome && <p className="small muted" style={{ marginTop: 10 }}>Don&apos;t want to walk? Play from home: tap the map and your commander travels there. You earn {Math.round(S.remoteRewardMult * 100)}% of the usual XP and coins — walking always pays more.</p>}
-        {onSimulate && <p className="small muted" style={{ marginTop: 10 }}>Test mode: no walking needed — tap the map to move anywhere. Switch it off any time with 🕹️.</p>}
-      </div>
-    </div>
   );
 }
 

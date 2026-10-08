@@ -12,8 +12,8 @@
   --red: #ff4d4d;
   --purple: #b26bff;
   --radius: 18px;
-  --display: "Lilita One", "Russo One", "Arial Black", system-ui, sans-serif;
-  --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: var(--font-lilita, "Lilita One"), var(--font-russo, "Russo One"), "Arial Black", system-ui, sans-serif;
+  --body: var(--font-inter, "Inter"), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
@@ -962,3 +962,43 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 .autovideo .ad-sound { z-index: 2; }
 .video-play { animation: none; }
 .video-play { white-space: nowrap; }
+
+/* ---------- Location health ---------- */
+/* GPS stopped answering: grey, still dot (like a maps app showing a last-known spot). */
+.me-stale .me-marker { background: #8a8fa3; box-shadow: none; }
+.me-stale .me-marker::after { animation: none; opacity: 0; }
+.me-stale .me-heading { opacity: 0 !important; }
+.gps-chip { font-weight: 800; }
+.gps-chip.weak { color: var(--yellow); }
+.gps-chip.lost { color: #ff6b6b; border-color: rgba(255,77,77,.5); cursor: pointer; animation: gpsblink 1.4s ease-in-out infinite; }
+@keyframes gpsblink { 50% { opacity: .55; } }
+/* Not following you: nudge the re-center button. */
+.fab-recenter { color: var(--cyan); box-shadow: 0 0 0 2px rgba(34,227,255,.55), 0 6px 20px rgba(0,0,0,.4); animation: recenter 2s ease-in-out infinite; }
+@keyframes recenter { 50% { box-shadow: 0 0 0 6px rgba(34,227,255,.12), 0 6px 20px rgba(0,0,0,.4); } }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.mode-prompt { max-width: 420px; }
+.mode-prompt h2 { margin-bottom: 4px; }
+.mode-prompt .mode { min-height: 128px; }
+@media (prefers-reduced-motion: reduce) {
+  .fab-recenter, .gps-chip.lost { animation: none; }
+}
+
+/* ---------- Cross-browser ---------- */
+/* Safari < 18 only knows the prefixed backdrop-filter. */
+.chip, .player-card, .needs-hud, .quest-hud { -webkit-backdrop-filter: blur(12px); }
+.fab { -webkit-backdrop-filter: blur(10px); }
+.nav { -webkit-backdrop-filter: blur(14px); }
+.modal-bg { -webkit-backdrop-filter: blur(4px); }
+/* Chrome/Samsung on Android: vh includes the hidden URL bar, so sheets slid under it.
+   dvh is the visible height; browsers without it keep the vh fallback above. */
+@supports (height: 100dvh) {
+  .sheet { max-height: 78dvh; }
+  .chat { height: 52dvh; }
+  .page, .admin-shell { min-height: 100dvh; }
+  .admin-side { height: 100dvh; }
+  .ad-media.video { max-height: 56dvh; }
+  .ad-media.video.autovideo { height: min(56dvh, 520px); }
+}
+@supports (height: 100dvh) {
+  @media (orientation: landscape) and (max-height: 500px) { .sheet { max-height: 92dvh; } }
+}
