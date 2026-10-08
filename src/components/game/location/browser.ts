@@ -64,6 +64,19 @@ export function locationSteps(b: BrowserInfo): string[] {
   return [`Click the 🔒 next to the address → Location → Allow, then Retry.`];
 }
 
+/** "Approximate location" is on: how to switch this browser back to precise GPS. */
+export function preciseSteps(b: BrowserInfo): string[] {
+  const app = browserLabel(b);
+  if (b.os === "ios") {
+    if (b.name === "safari" || b.name === "other") return ["Open the iPhone Settings app → Privacy & Security → Location Services → Safari Websites.", "Turn on Precise Location, then come back and tap Retry."];
+    return [`Open the iPhone Settings app → ${app} → Location.`, "Turn on Precise Location, then come back and tap Retry."];
+  }
+  if (b.os === "android")
+    return [`Settings → Apps → ${app} → Permissions → Location → turn on “Use precise location”.`, "Also check Settings → Location → Location services → Google Location Accuracy is on.", "Then come back and tap Retry."];
+  if (b.os === "mac") return [`System Settings → Privacy & Security → Location Services → make sure ${app} is on.`, "Desktop location comes from Wi-Fi, so it's rarely street-accurate — play on your phone."];
+  return ["Turn on precise / high-accuracy location for this browser in your device settings, then tap Retry."];
+}
+
 /** Android can hand the page straight to Chrome; iOS can only be told how. */
 export function openInBrowserUrl(b: BrowserInfo): string | null {
   if (typeof location === "undefined" || b.os !== "android") return null;

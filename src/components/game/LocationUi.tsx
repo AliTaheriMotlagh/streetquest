@@ -3,7 +3,7 @@
 // "walking or from home?" question when a player comes back to the game.
 import { useEffect, useMemo, useState } from "react";
 import { S } from "@/lib/settings";
-import { browserInfo, browserLabel, locationSteps, openInBrowserUrl } from "./location/browser";
+import { browserInfo, browserLabel, locationSteps, openInBrowserUrl, preciseSteps } from "./location/browser";
 import type { GeoError, GeoState } from "./useLocation";
 import { TOUR_KEY } from "./Help";
 import { Button } from "@/components/Button";
@@ -100,12 +100,22 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
 // ---------------------------------------------------------------- GPS health chip
 /** Only visible when something's off, so a healthy GPS stays out of the way. */
 export function GpsChip({ geo }: { geo: GeoState }) {
+  const [help, setHelp] = useState(false);
   if (geo.simulated || !geo.pos) return null;
   if (geo.stale)
     return (
       <Button className="chip small gps-chip lost" onClick={geo.retry} title="GPS stopped answering — tap to reconnect" aria-label="GPS signal lost, tap to reconnect">
         📡 <span className="hide-sm">GPS LOST</span>
       </Button>
+    );
+  if (geo.approximate)
+    return (
+      <>
+        <Button className="chip small gps-chip lost" onClick={() => setHelp(true)} aria-label="Only an approximate location — tap for how to fix it">
+          📡 <span className="hide-sm">APPROX</span> ±{geo.accuracy && geo.accuracy >= 1000 ? `${(geo.accuracy / 1000).toFixed(1)} km` : "?"}
+        </Button>
+        {help && <PreciseHelp onClose={() => setHelp(false)} onRetry={() => (setHelp(false), geo.retry())} />}
+      </>
     );
   if (geo.accuracy && geo.accuracy > 60)
     return (
@@ -114,6 +124,34 @@ export function GpsChip({ geo }: { geo: GeoState }) {
       </div>
     );
   return null;
+}
+
+function PreciseHelp({ onClose, onRetry }: { onClose: () => void; onRetry: () => void }) {
+  const b = useMemo(() => browserInfo(), []);
+  return (
+    <div className="modal-bg" style={{ zIndex: 900 }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-labelledby="precise-title">
+        <div style={{ fontSize: 50 }} aria-hidden>🎯</div>
+        <h2 id="precise-title">Your location is only approximate</h2>
+        <p className="muted small" style={{ lineHeight: 1.6 }}>
+          {browserLabel(b)} is sharing a spot that can be a few kilometres off, so the map can&apos;t follow you down the street. Turn on <b>Precise Location</b>:
+        </p>
+        <ol className="steps muted small" style={{ lineHeight: 1.6, textAlign: "left", margin: "10px 0 14px" }}>
+          {preciseSteps(b).map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+        <div className="row wrap" style={{ justifyContent: "center" }}>
+          <Button className="btn cyan" onClick={onRetry}>
+            Retry
+          </Button>
+          <Button className="btn ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------- "how are you playing?"

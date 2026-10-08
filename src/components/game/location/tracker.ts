@@ -26,6 +26,8 @@ export type LocationSnapshot = {
   simulated: boolean;
   /** GPS stopped answering: we're showing the last known spot. */
   stale: boolean;
+  /** Only kilometre-wide fixes for a while: "Precise location" is probably off. */
+  approximate: boolean;
   /** When the position last changed (ms epoch). */
   at: number;
 };
@@ -34,17 +36,20 @@ const QUIET_MS = 15_000; // no fix for this long → probe the GPS
 const STALE_MS = 30_000; // …and for this long → tell the player
 const RESTART_GAP_MS = 10_000;
 const AWAY_MS = 5_000; // backgrounded longer than this → restart the watch on return
+const APPROX_M = 1_000; // iOS / Android "approximate location" fixes are 1–10 km wide
+const APPROX_MS = 15_000; // …and nothing better for this long
 
 type Listener = () => void;
 
 class LocationTracker {
-  private snap: LocationSnapshot = { pos: null, accuracy: null, heading: null, speed: 0, error: null, simulated: false, stale: false, at: 0 };
+  private snap: LocationSnapshot = { pos: null, accuracy: null, heading: null, speed: 0, error: null, simulated: false, stale: false, approximate: false, at: 0 };
   private listeners = new Set<Listener>();
   private filter = new FixFilter();
   private gps: Fix | null = null;
   private override: LatLng | null = null;
   private watchId: number | null = null;
   private lastRawAt = 0;
+  private coarseSince = 0; // first of an unbroken run of km-wide fixes
   private lastStartAt = 0;
   private hiddenAt = 0;
   private probing = false;
@@ -165,6 +170,7 @@ class LocationTracker {
     const now = Date.now();
     const quiet = now - Math.max(this.lastRawAt, this.lastStartAt);
     if (this.gps && now - this.lastRawAt > STALE_MS && !this.snap.stale) this.set({ stale: true });
+    this.checkApproximate();
     if (quiet < QUIET_MS || this.probing) return;
     this.probing = true;
     navigator.geolocation.getCurrentPosition(
@@ -186,6 +192,8 @@ class LocationTracker {
     this.lastRawAt = Date.now();
     this.denied = false;
     const c = p.coords;
+    this.coarseSince = c.accuracy >= APPROX_M ? this.coarseSince || this.lastRawAt : 0;
+    this.checkApproximate();
     // The fix's own time: a cached fix from a minute ago must not look like a teleport.
     const at = p.timestamp > 0 ? Math.min(this.lastRawAt, p.timestamp) : this.lastRawAt;
     const fix = this.filter.push({ lat: c.latitude, lng: c.longitude, acc: c.accuracy, speed: c.speed, heading: c.heading, at });
@@ -193,6 +201,11 @@ class LocationTracker {
     // Even a filtered-out fix proves the GPS is alive.
     if (fix || this.snap.stale || this.snap.error) this.publish();
   };
+
+  private checkApproximate() {
+    const approximate = !this.override && this.coarseSince > 0 && Date.now() - this.coarseSince > APPROX_MS;
+    if (approximate !== this.snap.approximate) this.set({ approximate });
+  }
 
   private onError = (e: GeolocationPositionError) => {
     if (e.code === e.PERMISSION_DENIED) return this.fail("denied");
@@ -214,7 +227,7 @@ class LocationTracker {
     const o = this.override;
     const g = this.gps;
     if (o) {
-      this.set({ pos: o, accuracy: 5, heading: null, speed: 0, simulated: true, stale: false, error: null, at: Date.now() });
+      this.set({ pos: o, accuracy: 5, heading: null, speed: 0, simulated: true, stale: false, approximate: false, error: null, at: Date.now() });
       return;
     }
     const stale = !!g && Date.now() - this.lastRawAt > STALE_MS;
