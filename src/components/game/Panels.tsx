@@ -15,6 +15,7 @@ import { isMuted, onMuteChange, setMuted, sfx } from "./sfx";
 import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
 import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalone, onPwaChange, promptInstall, pushSupported } from "@/components/pwaClient";
 import { Button } from "@/components/Button";
+import { autoIsLite, onPerfChange, perfMode, setPerfMode, type PerfMode } from "@/components/perf";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -825,6 +826,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
           <p className="small muted">The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.</p>
           <AppSettings />
           <SoundSettings />
+          <GraphicsSettings />
           <div className="row wrap" style={{ marginTop: 8 }}>
             <Button className="btn cyan small" onClick={startTour}>📖 Replay tutorial</Button>
             <Button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 Show all tips again</Button>
@@ -1021,6 +1023,39 @@ function SoundSettings() {
           <span className="small muted" style={{ width: 70 }}>Volume</span>
           <input type="range" min={0} max={1} step={0.05} value={musicVolume()} disabled={isMuted() || !musicOn()} onChange={(e) => setMusicVolume(Number(e.target.value))} className="grow" aria-label="Music volume" />
         </div>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- graphics
+const PERF_MODES: [PerfMode, string][] = [
+  ["auto", "Auto"],
+  ["lite", "Lite"],
+  ["full", "Full"],
+];
+function GraphicsSettings() {
+  const [, force] = useState(0);
+  useEffect(() => onPerfChange(() => force((n) => n + 1)), []);
+  const mode = perfMode();
+  return (
+    <>
+      <label>Graphics</label>
+      <div className="card sound-card">
+        <div className="row">
+          <span className="grow">⚡ Performance mode</span>
+          <div className="tabs" style={{ margin: 0 }}>
+            {PERF_MODES.map(([m, label]) => (
+              <button key={m} className={mode === m ? "on" : ""} onClick={() => setPerfMode(m)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="small muted" style={{ margin: 0 }}>
+          Lite turns off looping map animations and lowers 3D fight resolution — smoother and lighter on battery and memory.
+          {mode === "auto" && ` This phone is using ${autoIsLite() ? "Lite" : "Full"}.`}
+        </p>
       </div>
     </>
   );

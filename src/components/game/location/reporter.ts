@@ -7,14 +7,18 @@
 //  - one request in flight; fixes that arrive meanwhile are coalesced into one follow-up
 //  - heartbeat every HEARTBEAT_MS so the player stays "online" when standing still
 //  - network failure → retry with backoff; back on screen → report right away
+//  - another player physically near us: report faster, so both of us see each other live
 import { distanceM, type LatLng } from "@/lib/geo";
+import { nearby, type NearReport } from "./nearby";
 import type { LocationSnapshot } from "./tracker";
 
 export type FireReport = { hp: number; maxHp: number; hits: { by: string; emoji: string; dmg: number }[]; downed: { by: string; coins: number } | null; protectedReason?: string };
 
 const MIN_MOVE_M = 3;
 const MIN_GAP_MS = 2_000;
+const NEAR_GAP_MS = 1_000;
 const HEARTBEAT_MS = 20_000;
+const NEAR_HEARTBEAT_MS = 3_000;
 const UNDER_FIRE_MS = 3_000;
 const MAX_BACKOFF_MS = 30_000;
 
@@ -28,6 +32,8 @@ export class LocationReporter {
   private dueAt = Infinity;
   private failures = 0;
   private stopped = false;
+  /** Someone is near us: shorter gaps both ways (they move on our map, we on theirs). */
+  private hasNear = false;
 
   constructor(
     private read: () => LocationSnapshot,
@@ -44,6 +50,7 @@ export class LocationReporter {
     this.stopped = true;
     document.removeEventListener("visibilitychange", this.onVisible);
     this.clear();
+    nearby.clear();
   }
 
   /** Call whenever the location snapshot changes. */
@@ -52,12 +59,12 @@ export class LocationReporter {
     if (!pos || this.stopped) return;
     const last = this.sent;
     const moved = !last || last.sim !== simulated || distanceM(last.pos, pos) >= MIN_MOVE_M;
-    if (!moved) return this.schedule(HEARTBEAT_MS - (Date.now() - last.at));
+    if (!moved) return this.schedule((this.hasNear ? NEAR_HEARTBEAT_MS : HEARTBEAT_MS) - (Date.now() - last.at));
     if (this.inflight) {
       this.dirty = true;
       return;
     }
-    this.schedule(last && last.sim === simulated ? MIN_GAP_MS - (Date.now() - last.at) : 0);
+    this.schedule(last && last.sim === simulated ? (this.hasNear ? NEAR_GAP_MS : MIN_GAP_MS) - (Date.now() - last.at) : 0);
   }
 
   /**
@@ -120,8 +127,12 @@ export class LocationReporter {
           this.failures = 0;
           const data = await res.json().catch(() => null);
           if (data?.fire) this.onFire(data.fire);
+          const near: NearReport[] = Array.isArray(data?.near) ? data.near : [];
+          nearby.set(near, typeof data?.serverTime === "number" ? data.serverTime : Date.now());
+          this.hasNear = near.length > 0;
+          if (this.hasNear) next = NEAR_HEARTBEAT_MS;
           // Under fire: report more often so damage (and escaping) feel immediate.
-          if (data?.fire?.hits?.length) next = UNDER_FIRE_MS;
+          if (data?.fire?.hits?.length) next = Math.min(next, UNDER_FIRE_MS);
         } else if (res.status === 401 || res.status >= 500) {
           next = this.backoff(); // account still being created, or a server hiccup
         }

@@ -9,6 +9,7 @@ import { canSimulate } from "@/server/session";
 import { takeFire } from "@/server/td";
 import { trackStat } from "@/server/goals";
 import { S } from "@/lib/settings";
+import { nearbyLive } from "@/server/presence";
 
 const Schema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), sim: z.boolean().optional(), acc: z.number().min(0).max(100_000).optional() });
 
@@ -42,6 +43,8 @@ export const POST = route(async (req) => {
   if (walked) await trackStat(u.id, "walk_m", walked, u.faction);
   // Tower defense: hostile towers and guard squads in range open fire.
   const dt = u.lastSeenAt ? (Date.now() - u.lastSeenAt.getTime()) / 1000 : 0;
-  const fire = await takeFire(u, d, dt);
-  return { ok: true, fire };
+  // Players right next to us, exact and live — only for a real, reasonably sharp GPS fix,
+  // so test-mode teleports and play-from-home can't be used to pinpoint anyone.
+  const [fire, near] = await Promise.all([takeFire(u, d, dt), !d.sim && !remote && (d.acc ?? 0) <= 100 ? nearbyLive(u.id, d) : []]);
+  return { ok: true, fire, near, serverTime: Date.now() };
 });

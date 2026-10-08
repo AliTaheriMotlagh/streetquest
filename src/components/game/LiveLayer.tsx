@@ -16,6 +16,7 @@ import type { LobbyView, Me, Selected, World } from "./client";
 import { useLiveWaves } from "./waves";
 import { SUPERWEAPONS } from "@/lib/superweapons";
 import { esc, icon } from "./mapIcons";
+import { isLite } from "../perf";
 
 const squadColor = (s: { mine: boolean; friend: boolean }) => (s.mine ? "#22e3ff" : s.friend ? "#3dff8f" : "#ff4d4d");
 
@@ -29,7 +30,7 @@ export function LiveLayer({ world, me, runners, onSelect }: { world: World | nul
       world.strikes.some((x) => !x.resolved || now - x.impactAt < 5000) ||
       world.flags.some((f) => f.capture && f.capture.endsAt > now - 2000));
   const moving = !!world && (world.squads.some((s) => s.status === "MARCH" && s.arriveAt > now) || !!runners?.length || live.some(({ w }) => now < w.startAt && w.startAt - now < 600_000));
-  const every = fighting ? 250 : moving ? 1000 : 0;
+  const every = fighting ? (isLite() ? 500 : 250) : moving ? 1000 : 0;
   useEffect(() => {
     if (!every) return;
     const t = setInterval(() => setNow(Date.now()), every);

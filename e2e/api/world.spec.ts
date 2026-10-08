@@ -161,3 +161,86 @@ test.describe("play from home", () => {
     await p.dispose();
   });
 });
+
+test.describe("players near each other", () => {
+  type Near = { id: string; lat: number; lng: number; at: number };
+  type Loc = { near: Near[]; serverTime: number };
+  type WorldP = { players: (LatLng & { id: string })[] };
+  const metres = (a: LatLng, b: LatLng) => Math.hypot((a.lat - b.lat) * 111_320, (a.lng - b.lng) * 111_320 * Math.cos((a.lat * Math.PI) / 180));
+  /** A real GPS report (not test mode). */
+  const gps = (p: Player, at: LatLng) => p.post<Loc>("/api/loc", { ...at, acc: 8 });
+
+  test("two players together (same car) see each other exactly and live", async ({ baseURL }) => {
+    const a = await Player.create(baseURL!);
+    const b = await Player.create(baseURL!);
+    const here = randomSpot();
+    const bAt = offset(here, 6, 3);
+    expectOk(await gps(a, here));
+    expectOk(await gps(b, bAt));
+    const bId = (await b.me()).id;
+    const aId = (await a.me()).id;
+
+    // B's report already sees A; A's next report sees B — exact, with a timestamp.
+    expect((await gps(b, bAt)).data.near.map((n) => n.id)).toContain(aId);
+    const r = await gps(a, here);
+    const seen = r.data.near.find((n) => n.id === bId)!;
+    expect(seen).toBeTruthy();
+    expect(metres(seen, bAt)).toBeLessThan(1);
+    expect(seen.at).toBeLessThanOrEqual(r.data.serverTime);
+
+    // The slower world list keeps strangers fuzzed (60–150 m), not reversible from the id.
+    const w = (await a.get<WorldP>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data;
+    const fuzzed = w.players.find((p) => p.id === bId)!;
+    expect(metres(fuzzed, bAt)).toBeGreaterThan(55);
+    expect(metres(fuzzed, bAt)).toBeLessThan(160);
+    await a.dispose();
+    await b.dispose();
+  });
+
+  test("nobody is pinpointed from afar or from test mode", async ({ baseURL }) => {
+    const a = await Player.create(baseURL!);
+    const b = await Player.create(baseURL!);
+    const here = randomSpot();
+    expectOk(await gps(b, here));
+    const bId = (await b.me()).id;
+    // 400 m away: not "near".
+    expect((await gps(a, offset(here, 400))).data.near.map((n) => n.id)).not.toContain(bId);
+    // Teleporting next to them in test mode reveals nothing.
+    const sim = await a.post<Loc>("/api/loc", { ...offset(here, 5), sim: true });
+    expect(sim.status).toBe(200);
+    expect(sim.data.near).toEqual([]);
+    await a.dispose();
+    await b.dispose();
+  });
+});
+
+test.describe("boss raid netcode", () => {
+  type Boss = LatLng & { id: string };
+  type View = { host: boolean; serverTime: number; players: { key: string; shotAt: number }[] };
+
+  test("the host's boss shots reach every client", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    let boss: Boss | undefined;
+    for (let i = 0; i < 10 && !boss; i++) {
+      const here = randomSpot();
+      await p.goTo(here);
+      boss = (await p.get<{ bosses: Boss[] }>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data.bosses[0];
+    }
+    expect(boss).toBeTruthy();
+    await p.goTo(boss!);
+    const { matchId } = expectOk(await p.post("/api/match", { kind: "raid", targetId: boss!.id })).data as { matchId: string };
+    const first = expectOk(await p.post<View>(`/api/match/${matchId}`, { x: 0, z: 28, yaw: 0 })).data as View;
+    expect(first.host).toBe(true);
+
+    const at = first.serverTime + 600;
+    const v = expectOk(await p.post<View>(`/api/match/${matchId}`, { x: 0, z: 28, yaw: 0, bots: [], botShots: [{ from: "boss", at }] })).data as View;
+    const shot = v.players.find((x) => x.key === "boss")!.shotAt;
+    // Stored as announced (clamped to a sane window around now).
+    expect(Math.abs(shot - at)).toBeLessThan(1600);
+    expect(shot).toBeGreaterThan(first.serverTime - 1000);
+    // A shot for someone who isn't a bot is ignored.
+    const v2 = expectOk(await p.post<View>(`/api/match/${matchId}`, { x: 0, z: 28, yaw: 0, botShots: [{ from: "nobody", at }] })).data as View;
+    expect(v2.players.filter((x) => x.key !== "boss" && !x.key.startsWith("bot:")).map((x) => x.shotAt)).toEqual([0]);
+    await p.dispose();
+  });
+});

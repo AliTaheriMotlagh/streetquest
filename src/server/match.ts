@@ -30,6 +30,8 @@ export type Tick = {
   hits?: { key: string; head?: boolean }[];
   bots?: { key: string; x: number; z: number; yaw: number }[];
   botHits?: { from: string; key: string; dmg: number }[];
+  /** Bot shots (server-time ms they go off; the boss announces its wind-up early) so every client can draw them. */
+  botShots?: { from: string; at: number }[];
 };
 
 const isBotKey = (k: string) => k.startsWith("bot:") || k === "boss";
@@ -183,9 +185,17 @@ export async function tick(u: User, matchId: string, t: Tick | null) {
       const npcs = await prisma.matchPlayer.findMany({ where: { matchId, userId: null } });
       const byKey = new Map(npcs.map((p) => [p.key, p]));
       const boss = m.kind === "raid" ? resolveBoss(m.targetId) : null;
+      const shotAt = new Map<string, Date>();
+      for (const sh of (t.botShots ?? []).slice(0, 12)) shotAt.set(sh.from, new Date(Math.max(now - 1000, Math.min(now + 1500, sh.at))));
       for (const b of (t.bots ?? []).slice(0, 12)) {
         const row = byKey.get(b.key);
-        if (row && row.hp > 0) await prisma.matchPlayer.update({ where: { id: row.id }, data: { x: Math.max(-lim, Math.min(lim, b.x)), z: Math.max(-lim, Math.min(lim, b.z)), yaw: b.yaw } });
+        const shot = shotAt.get(b.key);
+        shotAt.delete(b.key);
+        if (row && row.hp > 0) await prisma.matchPlayer.update({ where: { id: row.id }, data: { x: Math.max(-lim, Math.min(lim, b.x)), z: Math.max(-lim, Math.min(lim, b.z)), yaw: b.yaw, ...(shot ? { lastShotAt: shot } : {}) } });
+      }
+      for (const [key, at] of shotAt) {
+        const row = byKey.get(key);
+        if (row && row.hp > 0) await prisma.matchPlayer.update({ where: { id: row.id }, data: { lastShotAt: at } });
       }
       for (const h of (t.botHits ?? []).slice(0, 10)) {
         const from = byKey.get(h.from);
@@ -304,6 +314,7 @@ async function view(m: Match, meKey: string) {
       hp: p.hp,
       maxHp: p.maxHp,
       kills: p.kills,
+      shotAt: p.lastShotAt?.getTime() ?? 0,
       gone: !!p.userId && now - p.updatedAt.getTime() > STALE_MS,
     })),
   };

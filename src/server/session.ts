@@ -8,6 +8,8 @@ export const SESSION_COOKIE = "sq_session";
 // public default, so sessions can't be forged. /api/health warns about it.
 const raw = process.env.AUTH_SECRET || createHash("sha256").update(`sq|${process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "dev"}`).digest("hex");
 const secret = () => new TextEncoder().encode(raw);
+/** Derive a purpose-specific key from the server secret (never the JWT key itself). */
+export const serverKey = (purpose: string) => createHash("sha256").update(`${purpose}|${raw}`).digest("hex");
 
 export async function signSession(userId: string) {
   return new SignJWT({ sub: userId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("365d").sign(secret());

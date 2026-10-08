@@ -398,6 +398,11 @@ export default function Game() {
     act(() => api(`/api/events/${id}`, { body: { action: "join" } })).then(() => setPanel("events"));
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const exitMatch = useCallback(() => {
+    setMatch(null);
+    refresh();
+  }, [refresh]);
+
   // ---- map interactions
   const onMapClick = (p: LatLng) => {
     if (strike) {
@@ -609,7 +614,7 @@ export default function Game() {
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className={`game ${shake ? "shake" : ""}`}>
+      <div className={`game ${shake ? "shake" : ""} ${match ? "in-fight" : ""}`}>
         <GameMap
           world={world}
           me={me}
@@ -913,15 +918,7 @@ export default function Game() {
           </nav>
         )}
 
-        {match && (
-          <Fps
-            matchId={match}
-            onExit={() => {
-              setMatch(null);
-              refresh();
-            }}
-          />
-        )}
+        {match && <Fps matchId={match} onExit={exitMatch} />}
 
         {lobby && <LobbyModal open={lobby} onClose={() => setLobby(null)} />}
         {adOpen && <AdModal onClose={() => (setAdOpen(false), loadMe())} />}

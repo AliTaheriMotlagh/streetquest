@@ -1,7 +1,7 @@
 // The game in a real (phone-sized) Chrome: first visit, GPS, panels, and the
 // double-tap protection on buttons.
 import { expect, test as base, type Page } from "@playwright/test";
-import { randomSpot } from "../helpers";
+import { Player, randomSpot, type LatLng } from "../helpers";
 
 /** Every test fails on an uncaught error in the page, even if the UI looks fine. */
 const test = base.extend<{ crashes: string[] }>({
@@ -135,6 +135,87 @@ test.describe("in the game", () => {
       await page.waitForTimeout(1200);
     }
     await expect.poll(() => reports.some((r) => Math.abs(r.lat - (here.lat + 0.001)) < 0.0005 && Math.abs(r.lng - here.lng) < 0.001), { timeout: 30_000 }).toBe(true);
+  });
+});
+
+test.describe("map & fight on a phone", () => {
+  test("zooming out clusters the clutter instead of piling up markers", async ({ page }) => {
+    await returningPlayer(page);
+    await withGps(page);
+    await page.goto("/play");
+    const map = page.locator(".leaflet-container");
+    await expect(map).toHaveClass(/lod-near/);
+    await expect.poll(() => page.locator(".leaflet-marker-icon .mk").count()).toBeGreaterThan(3);
+    // Zoom out step by step (wheel over the map centre).
+    const box = (await map.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const zoomOutTo = async (cls: RegExp) => {
+      for (let i = 0; i < 8 && !cls.test((await map.getAttribute("class")) ?? ""); i++) {
+        await page.mouse.wheel(0, 240);
+        await page.waitForTimeout(450);
+      }
+      await expect(map).toHaveClass(cls);
+    };
+    await zoomOutTo(/lod-mid/);
+    await expect(page.locator(".mk.cluster").first()).toBeVisible();
+    await zoomOutTo(/lod-far/);
+    // City view: only landmarks, no loot.
+    await expect(page.locator(".mk.cluster.loot")).toHaveCount(0);
+    await expect(page.locator(".mk.item, .mk.chest")).toHaveCount(0);
+  });
+
+  test("boss raid: touch controls, rotating the phone, back to the map", async ({ page, baseURL }) => {
+    // Bosses are deterministic: find one with a throwaway player, then stand on it.
+    const scout = await Player.create(baseURL!);
+    let boss: (LatLng & { id: string }) | undefined;
+    for (let i = 0; i < 10 && !boss; i++) {
+      const here = randomSpot();
+      await scout.goTo(here);
+      boss = (await scout.get<{ bosses: (LatLng & { id: string })[] }>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data.bosses[0];
+    }
+    await scout.dispose();
+    expect(boss).toBeTruthy();
+
+    await returningPlayer(page);
+    await page.context().grantPermissions(["geolocation"]);
+    await page.context().setGeolocation({ latitude: boss!.lat, longitude: boss!.lng, accuracy: 8 });
+    const reported = page.waitForResponse((r) => r.url().endsWith("/api/loc") && r.ok());
+    await page.goto("/play");
+    await expect(page.locator(".player-card")).toBeVisible();
+    await reported;
+    const r = await page.request.post("/api/match", { data: { kind: "raid", targetId: boss!.id } });
+    expect(r.status()).toBe(200);
+    const { matchId } = await r.json();
+
+    await page.goto(`/play?match=${matchId}`);
+    const fire = page.locator(".fps-fire");
+    await expect(page.locator(".fps-view canvas")).toBeVisible();
+    await expect(fire).toBeVisible();
+    await expect(page.locator(".fps-bar.boss")).toContainText("HP");
+    // The map underneath stops rendering while the fight is open.
+    await expect(page.locator(".game.in-fight .map")).toBeHidden();
+
+    // Hold FIRE and drag to aim: ammo goes down.
+    const ammo = () => page.locator(".fps-ammo b").first().innerText().then(Number).catch(() => NaN);
+    const before = await ammo();
+    const box = (await fire.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 40, box.y + box.height / 2, { steps: 8 });
+    await page.waitForTimeout(400);
+    await page.mouse.up();
+    await expect.poll(ammo).toBeLessThan(before);
+
+    // Portrait ↔ landscape a few times: the canvas follows every time.
+    const canvas = page.locator(".fps-view canvas");
+    for (const [w, h] of [[915, 412], [412, 915], [915, 412], [412, 915]]) {
+      await page.setViewportSize({ width: w, height: h });
+      await expect.poll(async () => (await canvas.boundingBox())?.width).toBe(w);
+    }
+
+    await page.locator(".fps-corner").getByRole("button", { name: /Leave/ }).click();
+    await expect(page.locator(".fps")).toHaveCount(0);
+    await expect(page.locator(".leaflet-container")).toBeVisible();
   });
 });
 

@@ -17,6 +17,7 @@ import { requireUser } from "@/server/auth";
 import { isOnline, onlineSince } from "@/server/hub";
 import { HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
+import { fuzzed } from "@/server/presence";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -130,10 +131,10 @@ export const GET = route(async (req) => {
     .slice(0, 100)
     .map((x) => {
       const friend = friendSet.has(x.id);
-      // Strangers are shown with ~150m of fuzz for privacy.
-      const fuzz = friend ? 0 : 0.0013;
-      const r = (s: string) => ((parseInt(s.slice(-4), 36) % 1000) / 1000 - 0.5) * 2 * fuzz;
-      return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, bounty: wanted.get(x.id) ?? 0, home: x.remotePlay, lat: x.lat + r(x.id), lng: x.lng + r(x.id + "x") };
+      // Strangers are shown 60–150 m off for privacy; players right next to you come
+      // exact (and live) with your own /api/loc reports instead.
+      const at = friend ? { lat: x.lat, lng: x.lng } : fuzzed(x.id, x);
+      return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, bounty: wanted.get(x.id) ?? 0, home: x.remotePlay, lat: at.lat, lng: at.lng };
     });
 
   return {
