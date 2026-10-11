@@ -1,7 +1,8 @@
-// Polled every few seconds by the game: new notifications + unread chat count.
+// Polled every few seconds by the game: new notifications, unread chat count, incoming calls.
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { route } from "@/server/http";
+import { RING_MS } from "@/server/calls";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -24,5 +25,11 @@ export const GET = route(async (req) => {
   // Keep presence fresh even when the player is standing still with GPS idle.
   if (!u.lastSeenAt || now.getTime() - u.lastSeenAt.getTime() > 30_000) await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: now } });
   const inbox = await prisma.notification.count({ where: { userId: u.id, readAt: null } });
-  return { now: now.getTime(), notifications, unread, inbox };
+  // A crew member ringing this player right now.
+  const ring = await prisma.call.findFirst({
+    where: { calleeId: u.id, status: "RINGING", createdAt: { gt: new Date(now.getTime() - RING_MS) } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, caller: { select: { id: true, username: true, avatar: true } } },
+  });
+  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, peer: ring.caller } };
 });

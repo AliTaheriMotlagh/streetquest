@@ -13,7 +13,7 @@ const days = (n: number) => new Date(Date.now() - n * 86_400_000);
 export const GET = route(async (req) => {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) throw new HttpError(401, "Unauthorized");
-  const [notifications, lobbies, pings, waves, matches, strikes, locks] = await Promise.all([
+  const [notifications, lobbies, pings, waves, matches, strikes, locks, calls] = await Promise.all([
     prisma.notification.deleteMany({ where: { createdAt: { lt: days(14) } } }),
     prisma.lobby.deleteMany({ where: { createdAt: { lt: days(1) } } }), // players cascade
     prisma.ping.deleteMany({ where: { expiresAt: { lt: new Date() } } }),
@@ -23,6 +23,8 @@ export const GET = route(async (req) => {
     prisma.superstrike.deleteMany({ where: { launchAt: { lt: days(7) } } }),
     // Action locks left behind by requests that were killed mid-flight.
     prisma.actionLock.deleteMany({ where: { expiresAt: { lt: new Date() } } }),
+    // Call handshakes are useless once the call is over (signals cascade).
+    prisma.call.deleteMany({ where: { createdAt: { lt: days(1) } } }),
   ]);
   // Refund week-old unclaimed bounties to whoever posted them.
   let refunded = 0;
@@ -35,5 +37,5 @@ export const GET = route(async (req) => {
   // Lotteries nobody looked at after their draw time, and ride requests nobody took.
   await drawDue();
   const ridesExpired = await expireRides();
-  return { refunded, ridesExpired, deleted: { notifications: notifications.count, lobbies: lobbies.count, pings: pings.count, waves: waves.count, matches: matches.count, strikes: strikes.count, locks: locks.count } };
+  return { refunded, ridesExpired, deleted: { notifications: notifications.count, lobbies: lobbies.count, pings: pings.count, waves: waves.count, matches: matches.count, strikes: strikes.count, locks: locks.count, calls: calls.count } };
 });

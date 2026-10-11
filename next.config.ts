@@ -20,8 +20,8 @@ const config: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          // The game needs GPS and vibration; nothing else.
-          { key: "Permissions-Policy", value: "geolocation=(self), camera=(), microphone=(), payment=(), usb=()" },
+          // GPS for the game, camera + mic for crew video calls; nothing else.
+          { key: "Permissions-Policy", value: "geolocation=(self), camera=(self), microphone=(self), payment=(), usb=()" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
         ],
       },

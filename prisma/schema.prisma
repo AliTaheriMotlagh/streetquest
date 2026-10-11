@@ -116,6 +116,8 @@ model User {
   adViews       AdView[]
   gpsGames      GpsGame[]
   pushSubs      PushSub[]
+  callsOut      Call[]             @relation("caller")
+  callsIn       Call[]             @relation("callee")
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -882,6 +884,41 @@ model PushSub {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// 1:1 video calls between crew members. Audio/video flow peer-to-peer over WebRTC; the
+// server only relays the handshake (offer, answer, ICE candidates) as CallSignal rows
+// that both phones poll while the call is up.
+model Call {
+  id         String       @id @default(cuid())
+  callerId   String
+  calleeId   String
+  status     String       @default("RINGING") // RINGING | ACTIVE | ENDED
+  endReason  String? // hangup | declined | missed | busy | lost
+  createdAt  DateTime     @default(now())
+  answeredAt DateTime?
+  endedAt    DateTime?
+  // Last poll from each side: a phone that vanished mid-call frees the other one.
+  callerSeen DateTime     @default(now())
+  calleeSeen DateTime     @default(now())
+  caller     User         @relation("caller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee     User         @relation("callee", fields: [calleeId], references: [id], onDelete: Cascade)
+  signals    CallSignal[]
+
+  @@index([calleeId, status])
+  @@index([callerId, status])
+}
+
+model CallSignal {
+  id        Int      @id @default(autoincrement()) // ordering: ICE must follow its offer/answer
+  callId    String
+  fromId    String
+  kind      String // offer | answer | ice | state (camera/mic on-off)
+  data      String
+  createdAt DateTime @default(now())
+  call      Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId, id])
 }
 
 // One mutating action at a time per player: a double-tap or a retried request waits

@@ -758,7 +758,7 @@ function Chat({ room }: { room: string }) {
 }
 
 export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => void; peek: boolean; chat: { room: string; label: string } | null; setChat: (c: { room: string; label: string } | null) => void }) {
-  const { act, pos, me } = useGame();
+  const { act, pos, me, startCall } = useGame();
   const [tab, setTab] = useState<"friends" | "chat" | "ranks" | "wanted">(chat ? "chat" : "friends");
   const [wanted, setWanted] = useState<{ id: string; username: string; avatar: string; amount: number }[] | null>(null);
   const [data, setData] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }>({ friends: [], incoming: [], outgoing: [] });
@@ -854,8 +854,11 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
                     <span className={`dot ${f.online ? "on" : ""}`} /> {f.online ? "Online" : f.lastSeenAt ? `Seen ${fmtTime(f.lastSeenAt)}` : "Offline"}
                   </div>
                 </div>
-                <Button className="btn cyan small" onClick={() => dm(f)}>
+                <Button className="btn cyan small" onClick={() => dm(f)} aria-label={`Message ${f.username}`}>
                   💬
+                </Button>
+                <Button className="btn green small" onClick={() => startCall(f)} aria-label={`Video call ${f.username}`}>
+                  📹
                 </Button>
                 <Button className="btn ghost small" onClick={() => askConfirm(`Remove ${f.username}?`, { ok: "Remove", danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
                   ✕

@@ -6,7 +6,7 @@
 
 export type Sfx =
   | "tap" | "shot" | "miss" | "hit" | "hurt" | "down" | "explode" | "nuke" | "siren" | "reward" | "coin"
-  | "levelup" | "error" | "beep" | "go" | "cut" | "reload" | "capture" | "alarm" | "whoosh" | "win" | "lose" | "photo";
+  | "levelup" | "error" | "beep" | "go" | "cut" | "reload" | "capture" | "alarm" | "whoosh" | "win" | "lose" | "photo" | "ring";
 
 const KEY = "sq_muted";
 let ctx: AudioContext | null = null;
@@ -149,6 +149,12 @@ const SOUNDS: Record<Sfx, () => void> = {
   lose: () => arp([440, 349, 294, 220], 0.16, "triangle", 0.25),
   error: () => tone(180, 0.22, { type: "square", vol: 0.15, to: 120 }),
   beep: () => tone(660, 0.12, { type: "square", vol: 0.14 }),
+  // Classic two-burst phone ring (incoming video call).
+  ring: () =>
+    [0, 0.45].forEach((d) => {
+      tone(880, 0.32, { type: "sine", vol: 0.2, delay: d });
+      tone(1108, 0.32, { type: "sine", vol: 0.12, delay: d });
+    }),
   go: () => tone(1320, 0.35, { type: "square", vol: 0.16 }),
   cut: () => {
     noise(0.05, { vol: 0.5, from: 7000, to: 3000, type: "highpass" });

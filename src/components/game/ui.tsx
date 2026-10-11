@@ -16,6 +16,8 @@ export type GameCtx = {
   refresh: () => void;
   pick: (label: string, cb: (p: LatLng) => void) => void;
   openChat: (room: string, label: string) => void;
+  /** Ring a crew member for a video call. */
+  startCall: (peer: { id: string; username: string; avatar: string }) => void;
   setPanel: (p: PanelId | null) => void;
   /** Test mode: jump straight to a spot. Play from home: travel there at the capped speed. */
   teleport: ((p: LatLng) => void) | null;

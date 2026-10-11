@@ -28,6 +28,7 @@ import { SUPER_RANGE_M, SUPERWEAPONS } from "@/lib/superweapons";
 import { LobbyModal } from "./Lobby";
 import { useLiveWaves } from "./waves";
 import { creepPos, PINGS, SHOOT_RANGE_M, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
+import { CallScreen, type CallInvite, type CallPeer } from "./Call";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { useLocation, useWakeLock, type FireReport } from "./useLocation";
@@ -82,6 +83,12 @@ export default function Game() {
   const [toasts, setToasts] = useState<(Toast & { out?: boolean })[]>([]);
   const [picker, setPicker] = useState<{ label: string; cb: (p: LatLng) => void } | null>(null);
   const [chat, setChat] = useState<{ room: string; label: string } | null>(null);
+  // The video call on screen (placing one, ringing, or live). Handled calls are
+  // remembered so a poll that was already in flight can't ring the same call again.
+  const [call, setCall] = useState<CallInvite | null>(null);
+  const callRef = useRef(call);
+  callRef.current = call;
+  const handledCalls = useRef(new Set<string>());
   const [unread, setUnread] = useState(0);
   const [inbox, setInbox] = useState(0);
   const [tour, setTour] = useState(false);
@@ -345,9 +352,10 @@ export default function Game() {
       if (document.hidden || busy) return;
       busy = true;
       try {
-        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[] }>(`/api/sync?since=${syncSince.current}`);
+        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; peer: CallPeer } | null }>(`/api/sync?since=${syncSince.current}`);
         if (stop) return;
         syncSince.current = r.now;
+        if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, role: "callee" });
         setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
         for (const n of r.notifications) toast(n);
         const titles = r.notifications.map((n) => n.title).join(" ");
@@ -544,6 +552,10 @@ export default function Game() {
         openChat: (room, label) => {
           setChat({ room, label });
           setPanel("crew");
+        },
+        startCall: (peer) => {
+          if (callRef.current) return toast({ kind: "error", title: "You're already on a call" });
+          setCall({ peer, role: "caller" });
         },
         setPanel,
         teleport: simMode ? (p) => setSimPos({ lat: p.lat, lng: p.lng }) : homeMode && homePos ? (p) => setTravel({ lat: p.lat, lng: p.lng }) : null,
@@ -938,6 +950,17 @@ export default function Game() {
 
         {match && <Fps matchId={match} onExit={exitMatch} />}
 
+        {call && (
+          <CallScreen
+            key={call.id ?? `to:${call.peer.id}`}
+            invite={call}
+            onDone={(id) => {
+              if (id) handledCalls.current.add(id);
+              setCall(null);
+            }}
+          />
+        )}
+
         {lobby && <LobbyModal open={lobby} onClose={() => setLobby(null)} />}
         {adOpen && <AdModal onClose={() => (setAdOpen(false), loadMe())} />}
         <CelebrationLayer />
@@ -1002,7 +1025,7 @@ function InfoCard({
   onLobby: (l: { spawnId: string; mode?: "race" | "coop" }) => void;
   onC4: (towerId: string) => void;
 }) {
-  const { pos, act, me, world, openChat, setPanel, enterMatch, teleport, pick } = useGame();
+  const { pos, act, me, world, openChat, startCall, setPanel, enterMatch, teleport, pick } = useGame();
   const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
@@ -1479,7 +1502,10 @@ function InfoCard({
         {p.bounty > 0 && <span style={{ color: "var(--yellow)" }}> · 💀 WANTED {p.bounty.toLocaleString()} 🪙</span>}
       </p>
       {p.friend ? (
-        <Button className="btn cyan block" onClick={() => openChat(`dm:${[me.id, p.id].sort().join(":")}`, p.username)}>💬 Message</Button>
+        <div className="row">
+          <Button className="btn cyan grow" onClick={() => openChat(`dm:${[me.id, p.id].sort().join(":")}`, p.username)}>💬 Message</Button>
+          <Button className="btn green grow" onClick={() => startCall({ id: p.id, username: p.username, avatar: p.avatar })}>📹 Video call</Button>
+        </div>
       ) : (
         <>
           <div className="row wrap">
