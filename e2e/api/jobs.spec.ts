@@ -78,6 +78,10 @@ test.describe("rides", () => {
     await Promise.all([rider.goTo(from), driver.goTo(from)]);
     const start = (await rider.me()).coins;
     expect((await rider.post("/api/rides", rideBody(from, offset(from, 500), start + 1))).status).toBe(400); // can't afford
+    const tooShort = await rider.post("/api/rides", rideBody(from, offset(from, 10), 20));
+    expect(tooShort.status).toBe(400);
+    expect(tooShort.data.error).toMatch(/at least/);
+    expect((await rider.me()).coins).toBe(start);
     const ride = (expectOk(await rider.post("/api/rides", rideBody(from, offset(from, 500), 20))).data as { ride: Ride }).ride;
     expectOk(await driver.post(`/api/rides/${ride.id}`, { action: "accept" }));
     expectOk(await driver.post(`/api/rides/${ride.id}`, { action: "cancel" }));

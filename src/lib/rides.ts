@@ -4,6 +4,8 @@ import { distanceM, type LatLng } from "./geo";
 
 export const RIDE_MIN_FARE = 10;
 export const RIDE_MAX_FARE = 50_000;
+/** Shortest trip worth a ride. */
+export const RIDE_MIN_TRIP_M = 50;
 /** Unanswered requests disappear from the map after this long (rider can still cancel for a refund). */
 export const RIDE_REQUEST_TTL_MS = 45 * 60_000;
 /** Driver must be this close to the pickup / drop-off to start / finish. */

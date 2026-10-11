@@ -5,7 +5,7 @@ import { S } from "@/lib/settings";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote, type WorldRide } from "./client";
-import { RIDE_MIN_FARE, RIDE_STATUS, suggestFare, type RideStatus } from "@/lib/rides";
+import { RIDE_MAX_FARE, RIDE_MIN_FARE, RIDE_MIN_TRIP_M, RIDE_STATUS, suggestFare, type RideStatus } from "@/lib/rides";
 import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { LifeTab } from "./Life";
 import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
@@ -460,9 +460,13 @@ function RidesTab() {
   const [pin, setPin] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [form, setForm] = useState({ pickupLabel: "My location", dropoffLabel: "", seats: 1, note: "" });
-  const [pickup, setPickup] = useState<LatLng | null>(null);
+  // null = follow my live position (until the player pins a spot with Here / Pick).
+  const [pinnedPickup, setPinnedPickup] = useState<LatLng | null>(null);
   const [dropoff, setDropoff] = useState<LatLng | null>(null);
-  const [fare, setFare] = useState<number | null>(null); // null = use the suggestion
+  // What's typed in the fare box (kept as text so it can be cleared); null = use the suggestion.
+  const [fare, setFare] = useState<string | null>(null);
+  // Collapsed when riders are already waiting (drivers come here for the list), then the player's choice.
+  const [formOpen, setFormOpen] = useState(() => !world?.rides.length);
 
   const load = useCallback(() => api<MyRides>("/api/rides").then(setMine).catch(() => {}), []);
   const active = !!(mine?.riding || mine?.driving);
@@ -472,9 +476,12 @@ function RidesTab() {
     const t = setInterval(load, active ? 8_000 : 30_000);
     return () => clearInterval(t);
   }, [load, active]);
-  useEffect(() => {
-    if (!pickup && pos) setPickup(pos);
-  }, [pos, pickup]);
+  const pickup = pinnedPickup ?? pos;
+  const setPickup = (p: LatLng) => {
+    setPinnedPickup(p);
+    // A spot picked on the map isn't "my location" any more.
+    if (form.pickupLabel === "My location" && (!pos || distanceM(p, pos) > 30)) setForm((f) => ({ ...f, pickupLabel: "" }));
+  };
 
   const doAct = async (id: string, action: string, extra: object = {}) => {
     const ok = await act(() => api(`/api/rides/${id}`, { body: { action, ...extra } }));
@@ -485,14 +492,34 @@ function RidesTab() {
     return ok;
   };
   const suggested = pickup && dropoff ? suggestFare(pickup, dropoff) : RIDE_MIN_FARE;
-  const price = fare ?? suggested;
+  const price = fare === null ? suggested : Number(fare) || 0;
+  const trip = pickup && dropoff ? distanceM(pickup, dropoff) : 0;
+  // Say why the button is off instead of just greying it out.
+  const problem = !pickup
+    ? "Waiting for your GPS — or pick the pickup on the map"
+    : !dropoff
+      ? "Choose where you're going (📍 Here or 🗺️ Pick)"
+      : trip < RIDE_MIN_TRIP_M
+        ? `The destination must be at least ${RIDE_MIN_TRIP_M} m from the pickup`
+        : form.pickupLabel.trim().length < 2
+          ? "Name the pickup spot so the driver can find you"
+          : form.dropoffLabel.trim().length < 2
+            ? "Name the destination"
+            : price < RIDE_MIN_FARE
+              ? `The minimum fare is ${RIDE_MIN_FARE} 🪙`
+              : price > RIDE_MAX_FARE
+                ? `The maximum fare is ${RIDE_MAX_FARE.toLocaleString()} 🪙`
+                : price > me.coins
+                  ? `Not enough coins — you have ${me.coins} 🪙`
+                  : null;
   const request = async () => {
-    if (!pickup || !dropoff) return;
+    if (!pickup || !dropoff || problem) return;
     const ok = await act(() =>
       api("/api/rides", { body: { ...form, fare: price, pickupLat: pickup.lat, pickupLng: pickup.lng, dropoffLat: dropoff.lat, dropoffLng: dropoff.lng } }),
     );
     if (ok) {
       setForm({ pickupLabel: "My location", dropoffLabel: "", seats: 1, note: "" });
+      setPinnedPickup(null);
       setDropoff(null);
       setFare(null);
       load();
@@ -588,7 +615,7 @@ function RidesTab() {
 
       {/* ---- Request a car */}
       {!r && (
-        <details className="card ride-request" open={!world?.rides.length}>
+        <details className="card ride-request" open={formOpen} onToggle={(e) => setFormOpen(e.currentTarget.open)}>
           <summary><b>🚕 Request a car</b></summary>
           <LocationField label="Pickup" value={pickup} onChange={setPickup} />
           <input value={form.pickupLabel} maxLength={120} onChange={(e) => setForm({ ...form, pickupLabel: e.target.value })} placeholder="e.g. Café entrance" style={{ marginTop: 6 }} />
@@ -603,13 +630,20 @@ function RidesTab() {
             </div>
             <div>
               <label>Fare (🪙) · you have {me.coins}</label>
-              <input type="number" min={RIDE_MIN_FARE} value={price} onChange={(e) => setFare(Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                value={fare ?? String(suggested)}
+                onChange={(e) => setFare(e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}
+                onBlur={() => fare === "" && setFare(null)}
+              />
             </div>
           </div>
           {pickup && dropoff && (
             <p className="small muted">
-              {formatDistance(distanceM(pickup, dropoff))} trip · suggested {suggested} 🪙
-              {fare != null && fare !== suggested && <> · <a href="#" onClick={(e) => (e.preventDefault(), setFare(null))}>use suggestion</a></>}
+              {formatDistance(trip)} trip · suggested {suggested} 🪙
+              {fare !== null && price !== suggested && <> · <a href="#" onClick={(e) => (e.preventDefault(), setFare(null))}>use suggestion</a></>}
             </p>
           )}
           <label>Note for the driver</label>
@@ -617,11 +651,12 @@ function RidesTab() {
           <Button
             className="btn yellow block"
             style={{ marginTop: 12 }}
-            disabled={!pickup || !dropoff || form.dropoffLabel.trim().length < 2 || form.pickupLabel.trim().length < 2 || price < RIDE_MIN_FARE || price > me.coins}
+            disabled={!!problem}
             onClick={request}
           >
             Request car · {price} 🪙
           </Button>
+          {problem && <p className="small" style={{ marginTop: 6, color: "var(--yellow)" }}>{problem}</p>}
           <p className="small muted" style={{ marginTop: 8 }}>
             ⚠️ Rides are with other real players. Only get in with people you trust, wear a seatbelt and follow local laws. The fare is held until you arrive.
           </p>

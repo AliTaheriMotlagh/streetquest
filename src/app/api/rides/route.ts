@@ -1,7 +1,8 @@
 // Ride hailing: request a car (fare held in escrow) and see your current ride.
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { RIDE_MAX_FARE, RIDE_MIN_FARE } from "@/lib/rides";
+import { distanceM } from "@/lib/geo";
+import { RIDE_MAX_FARE, RIDE_MIN_FARE, RIDE_MIN_TRIP_M } from "@/lib/rides";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route, actionRoute } from "@/server/http";
 import { isOnline } from "@/server/hub";
@@ -58,7 +59,8 @@ const Schema = z.object({
 export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
-  if (d.pickupLat === d.dropoffLat && d.pickupLng === d.dropoffLng) throw new HttpError(400, "Pick a destination different from the pickup");
+  if (distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng }) < RIDE_MIN_TRIP_M)
+    throw new HttpError(400, `The destination must be at least ${RIDE_MIN_TRIP_M} m from the pickup`);
   if (await prisma.ride.count({ where: { riderId: u.id, status: { in: ACTIVE } } })) throw new HttpError(400, "You already have a ride on the way");
   await spendCoins(u.id, d.fare); // escrow
   const ride = await prisma.ride.create({ data: { ...d, riderId: u.id, pin: String(Math.floor(1000 + Math.random() * 9000)) } });
