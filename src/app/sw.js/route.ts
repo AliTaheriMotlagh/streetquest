@@ -126,24 +126,49 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch { d = { title: event.data && event.data.text() }; }
-  event.waitUntil(self.registration.showNotification(d.title || "StreetQuest", {
-    body: d.body || "",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/badge-96.png",
-    tag: d.tag || "sq",
-    renotify: true,
-    vibrate: [80, 40, 80],
-    data: { url: d.url || "/play" },
-  }));
+  const tag = d.tag || "sq";
+  event.waitUntil((async () => {
+    if (d.call) {
+      // The game is on screen: it rings (or shows the missed call) by itself.
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (wins.some((w) => w.visibilityState === "visible")) {
+        (await self.registration.getNotifications({ tag })).forEach((n) => n.close());
+        return;
+      }
+    }
+    await self.registration.showNotification(d.title || "StreetQuest", {
+      body: d.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/badge-96.png",
+      tag,
+      renotify: true,
+      // An incoming call rings like one and stays until answered, declined or missed.
+      vibrate: d.ring ? [600, 300, 600, 300, 600, 300, 600] : [80, 40, 80],
+      requireInteraction: !!d.ring,
+      actions: d.ring ? [{ action: "answer", title: "📹 Answer" }, { action: "decline", title: "Decline" }] : [],
+      data: { url: d.url || "/play", call: d.call, ring: !!d.ring },
+    });
+  })());
 });
 
 self.addEventListener("notificationclick", (event) => {
+  const d = event.notification.data || {};
   event.notification.close();
-  const target = new URL((event.notification.data && event.notification.data.url) || "/play", self.location.origin).href;
+  if (d.ring && d.call && event.action === "decline") {
+    event.waitUntil(fetch("/api/calls", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "decline", callId: d.call }) }).catch(() => {}));
+    return;
+  }
+  const answer = d.ring && event.action === "answer";
+  const target = new URL(d.ring && d.call ? "/play?call=" + d.call + (answer ? "&answer=1" : "") : d.url || "/play", self.location.origin).href;
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const w of wins) {
-      if (new URL(w.url).pathname.startsWith("/play")) { await w.focus(); return; }
+      if (new URL(w.url).pathname.startsWith("/play")) {
+        await w.focus();
+        // The open game picks the call up straight away (it would otherwise wait for its next poll).
+        if (d.ring && d.call) w.postMessage({ type: "CALL", call: d.call, answer });
+        return;
+      }
     }
     await self.clients.openWindow(target);
   })());

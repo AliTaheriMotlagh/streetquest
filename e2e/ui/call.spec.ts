@@ -3,10 +3,12 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
 test.use({ launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] } });
+// Each test drives two browsers that poll the dev server every second: run them one at a time.
+test.describe.configure({ mode: "default" });
 
 const octet = () => Math.floor(Math.random() * 250) + 1;
 
-async function open(browser: Browser, opts: { blockCamera?: boolean } = {}) {
+async function open(browser: Browser, opts: { blockCamera?: boolean; noRoute?: boolean } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 839 }, isMobile: true, hasTouch: true, extraHTTPHeaders: { "x-forwarded-for": `10.${octet()}.${octet()}.${octet()}` } });
   await ctx.grantPermissions(["camera", "microphone", "geolocation"]);
   await ctx.setGeolocation({ latitude: 40 + Math.random(), longitude: -70 - Math.random(), accuracy: 10 });
@@ -27,10 +29,15 @@ async function open(browser: Browser, opts: { blockCamera?: boolean } = {}) {
       const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
       navigator.mediaDevices.getUserMedia = (c) => (w.__blockCam ? Promise.reject(new DOMException("Permission denied", "NotAllowedError")) : real(c));
     });
+  // Simulate a network where the phones can never reach each other: no ICE candidates get through.
+  if (opts.noRoute)
+    await page.addInitScript(() => {
+      RTCPeerConnection.prototype.addIceCandidate = () => Promise.resolve();
+    });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/play");
-  await expect(page.locator(".player-card")).toBeVisible();
+  await expect(page.locator(".player-card")).toBeVisible({ timeout: 60_000 }); // dev server may still be compiling
   const me = await page.evaluate(() => fetch("/api/me").then((r) => r.json()));
   return { page, errors, id: me.id as string, username: me.username as string };
 }
@@ -96,4 +103,41 @@ test("a blocked camera explains how to fix it, and the call goes on once allowed
   await expect(bCall).toHaveClass(/\blive\b/, { timeout: 30_000 });
   await expect.poll(() => a.page.locator("video.call-remote").evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 15_000 }).toBeGreaterThan(0);
   expect([...a.errors, ...b.errors]).toEqual([]);
+});
+
+test("a call that can't connect gives up with a reason instead of hanging", async ({ browser }) => {
+  test.setTimeout(240_000); // setup + a 40 s give-up, on a dev server that may be busy
+  const [a, b] = await Promise.all([open(browser, { noRoute: true }), open(browser, { noRoute: true })]);
+  await json(a.page, "/api/friends", { action: "request", username: b.username });
+  const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
+  await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
+
+  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
+  const aCall = a.page.getByRole("dialog", { name: `Video call with ${b.username}` });
+  const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
+  await bCall.getByRole("button", { name: "Answer" }).click();
+  // No relay in the test setup, so both sides name the relay as the problem.
+  // Each phone shows it for a moment before closing, so watch both at once.
+  await Promise.all([aCall, bCall].map((d) => expect(d).toContainText("Couldn't connect", { timeout: 60_000 })));
+  await expect(aCall).toHaveCount(0, { timeout: 10_000 });
+});
+
+test("answering from the notification opens the game straight into the call", async ({ browser }) => {
+  const [a, b] = await Promise.all([open(browser), open(browser)]);
+  await json(a.page, "/api/friends", { action: "request", username: b.username });
+  const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
+  await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
+
+  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
+  // The notification's Answer button opens /play?call=<id>&answer=1.
+  const callId = await expect.poll(() => b.page.evaluate(() => fetch(`/api/sync?since=${Date.now()}`).then((r) => r.json()).then((r) => r.call?.id ?? null))).not.toBeNull().then(() =>
+    b.page.evaluate(() => fetch(`/api/sync?since=${Date.now()}`).then((r) => r.json()).then((r) => r.call.id as string)),
+  );
+  await b.page.goto(`/play?call=${callId}&answer=1`);
+  const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
+  await expect(bCall).toHaveClass(/\blive\b/, { timeout: 30_000 });
+  await expect(b.page).toHaveURL(/\/play$/);
+  await b.page.getByRole("button", { name: "Hang up" }).click();
 });

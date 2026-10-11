@@ -11,7 +11,7 @@ import { useGame } from "./ui";
 
 export type CallPeer = { id: string; username: string; avatar: string };
 /** A call to place (caller, no id yet) or one ringing this phone (callee). */
-export type CallInvite = { id?: string; peer: CallPeer; role: "caller" | "callee" };
+export type CallInvite = { id?: string; peer: CallPeer; role: "caller" | "callee"; /** Answered from the notification. */ autoAnswer?: boolean };
 
 type Phase = "ringing" | "calling" | "connecting" | "live" | "ended";
 type Signal = { id: number; kind: "offer" | "answer" | "ice" | "state"; data: string };
@@ -24,7 +24,12 @@ const END_TEXT: Record<string, string> = {
   busy: "Busy",
   lost: "Connection lost",
   failed: "Couldn't connect — the network blocked the call",
+  norelay: "Couldn't connect — this network blocks the call relay. Try Wi-Fi or another SIM",
 };
+
+/** "typ relay" etc. from an ICE candidate line. */
+const candType = (line: string) => / typ (\w+)/.exec(line)?.[1] ?? "?";
+const candProto = (line: string) => (/ tcp /i.test(line) ? "tcp" : "udp");
 
 /** Why the camera/mic couldn't be opened. */
 type MediaProblem = "blocked" | "busy" | "inapp" | "insecure" | "nodevice";
@@ -73,7 +78,11 @@ class Session {
   private pollT: ReturnType<typeof setTimeout> | null = null;
   private sending: Promise<unknown> = Promise.resolve();
   private pendingIce: RTCIceCandidateInit[] = [];
+  private offerer = false;
+  private watchdog: ReturnType<typeof setTimeout>[] = [];
   live = false;
+  /** What ICE found on each side, sent to the server logs when a call can't connect. */
+  private diag = { local: {} as Record<string, number>, remote: {} as Record<string, number>, restarts: 0, iceState: "", gather: "" };
 
   constructor(
     public id: string,
@@ -84,6 +93,7 @@ class Session {
   connect(iceServers: RTCIceServer[], offerer: boolean) {
     // Hung up while this phone was still asking for the camera.
     if (this.closed) return this.local?.getTracks().forEach((t) => t.stop());
+    this.offerer = offerer;
     const pc = (this.pc = new RTCPeerConnection({ iceServers }));
     for (const t of this.local?.getTracks() ?? []) pc.addTrack(t, this.local!);
     // The offer always asks for both audio and video, even if this phone has no camera or
@@ -94,19 +104,56 @@ class Session {
       if (!this.remote.getTracks().includes(e.track)) this.remote.addTrack(e.track);
       this.on.track();
     };
-    pc.onicecandidate = (e) => e.candidate && this.send("ice", JSON.stringify(e.candidate.toJSON()));
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      const k = `${candType(e.candidate.candidate)}/${candProto(e.candidate.candidate)}`;
+      this.diag.local[k] = (this.diag.local[k] ?? 0) + 1;
+      this.send("ice", JSON.stringify(e.candidate.toJSON()));
+    };
+    pc.onicegatheringstatechange = () => (this.diag.gather = pc.iceGatheringState);
+    pc.oniceconnectionstatechange = () => (this.diag.iceState = pc.iceConnectionState);
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected" && !this.live) {
+      const st = pc.connectionState;
+      if (st === "connected" && !this.live) {
         this.live = true;
         this.on.connected();
       }
-      if (pc.connectionState === "failed") this.finish(this.live ? "lost" : "failed");
+      // Mobile data drops for a moment when the phone changes cell or switches to Wi-Fi:
+      // the caller asks for a fresh route instead of letting the call die.
+      if (st === "disconnected" && this.live) setTimeout(() => pc.connectionState === "disconnected" && this.restart(), 3000);
+      if (st === "failed") {
+        if (this.live) this.restart();
+        // Before connecting, the watchdog decides (restart, then give up).
+      }
     };
     if (offerer)
       (async () => {
         await pc.setLocalDescription(await pc.createOffer());
         this.send("offer", pc.localDescription!.sdp);
       })().catch(() => this.finish("failed"));
+  }
+
+  /**
+   * Started once offer and answer are exchanged: a call stuck "Connecting…" gets a fresh
+   * set of routes (ICE restart) and then gives up with a reason, instead of hanging.
+   */
+  private arm() {
+    if (this.watchdog.length) return;
+    this.watchdog = [
+      setTimeout(() => !this.live && this.restart(), 12_000),
+      setTimeout(() => !this.live && this.finish(this.diag.local["relay/udp"] || this.diag.local["relay/tcp"] ? "failed" : "norelay"), 40_000),
+    ];
+  }
+
+  /** New ICE routes. The caller drives it; the callee just answers the new offer. */
+  private async restart() {
+    const pc = this.pc;
+    if (!pc || this.closed || !this.offerer || pc.signalingState !== "stable") return;
+    this.diag.restarts++;
+    try {
+      await pc.setLocalDescription(await pc.createOffer({ iceRestart: true }));
+      this.send("offer", pc.localDescription!.sdp);
+    } catch {}
   }
 
   send(kind: Signal["kind"], data: string) {
@@ -146,11 +193,15 @@ class Session {
         await this.drainIce();
         await pc.setLocalDescription(await pc.createAnswer());
         this.send("answer", pc.localDescription!.sdp);
+        this.arm();
       } else if (s.kind === "answer") {
         if (pc.signalingState === "have-local-offer") await pc.setRemoteDescription({ type: "answer", sdp: s.data });
         await this.drainIce();
+        this.arm();
       } else if (s.kind === "ice") {
         const c = JSON.parse(s.data) as RTCIceCandidateInit;
+        const k = `${candType(c.candidate ?? "")}/${candProto(c.candidate ?? "")}`;
+        this.diag.remote[k] = (this.diag.remote[k] ?? 0) + 1;
         if (pc.remoteDescription) await pc.addIceCandidate(c);
         else this.pendingIce.push(c);
       } else if (s.kind === "state") this.on.peer(JSON.parse(s.data));
@@ -176,7 +227,12 @@ class Session {
     this.closed = true;
     if (this.flushT) clearTimeout(this.flushT);
     if (this.pollT) clearTimeout(this.pollT);
-    if (tellServer) api("/api/calls", { body: { action: "end", callId: this.id } }).catch(() => {});
+    this.watchdog.forEach(clearTimeout);
+    // A call that couldn't connect (or dropped) reports what ICE saw, for the server logs.
+    const troubled = reason === "failed" || reason === "norelay" || reason === "lost";
+    const net = (navigator as { connection?: { effectiveType?: string; type?: string } }).connection;
+    const diag = troubled ? { reason, role: this.offerer ? "caller" : "callee", ...this.diag, net: net ? `${net.type ?? "?"}/${net.effectiveType ?? "?"}` : "?", ua: navigator.userAgent.slice(0, 160) } : undefined;
+    if (tellServer) api("/api/calls", { body: { action: "end", callId: this.id, reason: troubled ? reason : undefined, diag } }).catch(() => {});
     this.pc?.close();
     this.local?.getTracks().forEach((t) => t.stop());
     this.on.ended(reason);
@@ -184,7 +240,8 @@ class Session {
 
   /** Page is closing: a beacon still reaches the server after the tab is gone. */
   beacon() {
-    if (this.closed) return;
+    // A phone that is only ringing leaves the call alone: it can still be answered from the notification.
+    if (this.closed || !this.pc) return;
     navigator.sendBeacon?.("/api/calls", new Blob([JSON.stringify({ action: "end", callId: this.id })], { type: "application/json" }));
   }
 }
@@ -291,6 +348,12 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
         // Ring until answered, or until the caller gives up (status-only polling).
         sess.current = new Session(invite.id, null, handlers);
         sess.current.poll(true);
+        // It rings in here now: clear the phone's ringing notification.
+        navigator.serviceWorker?.ready
+          .then((r) => r.getNotifications({ tag: `call-${invite.id}` }))
+          .then((ns) => ns.forEach((n) => n.close()))
+          .catch(() => {});
+        if (invite.autoAnswer) void accept();
       } else if (role === "caller") void placeCall();
     }
     const bye = () => sess.current?.beacon();
@@ -300,7 +363,8 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
       teardown.current = setTimeout(() => {
         gone.current = true;
         helpStream.current?.getTracks().forEach((t) => t.stop());
-        sess.current?.finish("hangup");
+        // Only hang up a call this phone is in (not one that's merely ringing here).
+        sess.current?.finish("hangup", !!sess.current.pc);
       }, 0);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

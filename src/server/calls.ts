@@ -1,7 +1,7 @@
 // Video calls between crew members. The media is peer-to-peer WebRTC; Postgres only
 // carries the handshake, polled by both phones while the call is up (see /api/calls).
 import { prisma } from "../lib/db";
-import { notify } from "./hub";
+import { pushTo } from "./push";
 
 /** An unanswered call stops ringing after this long. */
 export const RING_MS = 40_000;
@@ -16,7 +16,8 @@ type CallRow = { id: string; callerId: string; calleeId: string; status: string;
  * TURN_USERNAME and TURN_CREDENTIAL to add one.
  */
 export function iceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+  // Two STUN providers: some mobile networks block Google's.
+  const servers: RTCIceServer[] = [{ urls: ["stun:stun.relay.metered.ca:80", "stun:stun.l.google.com:19302"] }];
   const turn = process.env.TURN_URLS?.split(",").map((s) => s.trim()).filter(Boolean);
   if (turn?.length) servers.push({ urls: turn, username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
   return servers;
@@ -37,7 +38,10 @@ export async function endCall(c: CallRow, reason: string) {
   const { count } = await prisma.call.updateMany({ where: { id: c.id, status: { not: "ENDED" } }, data: { status: "ENDED", endReason: reason, endedAt: new Date() } });
   if (count && c.status === "RINGING" && reason !== "declined" && reason !== "busy") {
     const caller = await prisma.user.findUnique({ where: { id: c.callerId }, select: { username: true } });
-    await notify(c.calleeId, { kind: "social", title: "📵 Missed video call", body: `${caller?.username ?? "Someone"} tried to call you` });
+    const n = { title: "📵 Missed video call", body: `${caller?.username ?? "Someone"} tried to call you` };
+    await prisma.notification.create({ data: { userId: c.calleeId, kind: "social", ...n } }).catch(() => {});
+    // Same tag as the ringing notification, so it turns into "missed" instead of ringing on.
+    void pushTo(c.calleeId, { ...n, kind: "social", tag: `call-${c.id}`, call: c.id, url: "/play?panel=crew" }, { evenIfActive: true });
   }
   return count > 0;
 }

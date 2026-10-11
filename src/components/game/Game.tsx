@@ -275,14 +275,15 @@ export default function Game() {
       if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => setTour(true), 1200);
     } catch {}
   }, [me?.id, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [askPush, setAskPush] = useState(false);
+  // Offer notifications: on first visit, and again after a first call ("call" wording).
+  const [askPush, setAskPush] = useState<false | "general" | "call">(false);
   const endTour = useCallback(() => {
     setTour(false);
     markModeAsked(); // the tour's last step just asked walking vs home
     try {
       localStorage.setItem(TOUR_KEY, "1");
       // Then, once, offer notifications (only where they can actually work).
-      if (pushSupported() && swEnabled() && Notification.permission === "default" && !localStorage.getItem("sq_push_asked")) setTimeout(() => setAskPush(true), 1500);
+      if (pushSupported() && swEnabled() && Notification.permission === "default" && !localStorage.getItem("sq_push_asked")) setTimeout(() => setAskPush("general"), 1500);
     } catch {}
   }, []);
 
@@ -385,9 +386,37 @@ export default function Game() {
     if (panel === "crew") setUnread(0);
   }, [panel, unread]);
 
-  // Deep links: /play?match=<id> drops straight into a live fight; /play?event=<id> joins an event.
+  // A call notification was tapped: ring right away (or answer, if they tapped Answer)
+  // instead of waiting for the next sync poll.
+  const ringNow = useCallback(
+    async (id: string, answer: boolean) => {
+      if (callRef.current || handledCalls.current.has(id)) return;
+      try {
+        const r = await api<{ call: { id: string; peer: CallPeer } | null }>(`/api/sync?since=${Date.now()}`);
+        if (r.call?.id === id) setCall({ id, peer: r.call.peer, role: "callee", autoAnswer: answer });
+        else toast({ kind: "info", title: "📵 That call already ended" });
+      } catch {}
+    },
+    [toast],
+  );
+  useEffect(() => {
+    const sw = navigator.serviceWorker;
+    if (!sw) return;
+    const onMsg = (e: MessageEvent) => e.data?.type === "CALL" && ringNow(e.data.call, !!e.data.answer);
+    sw.addEventListener("message", onMsg);
+    return () => sw.removeEventListener("message", onMsg);
+  }, [ringNow]);
+
+  // Deep links: /play?match=<id> drops straight into a live fight; /play?event=<id> joins an event;
+  // /play?call=<id>[&answer=1] picks up a ringing video call.
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
+    const ringing = sp.get("call");
+    if (ringing && me) {
+      history.replaceState(null, "", "/play");
+      void ringNow(ringing, sp.get("answer") === "1");
+      return;
+    }
     // Home-screen shortcuts: /play?panel=base|play|me…
     const want = sp.get("panel");
     if (want && me && ["nearby", "base", "play", "jobs", "crew", "me", "store", "inbox", "events"].includes(want)) {
@@ -957,6 +986,13 @@ export default function Game() {
             onDone={(id) => {
               if (id) handledCalls.current.add(id);
               setCall(null);
+              // Calls are the best reason to allow notifications: ask once, even after an earlier "Not now".
+              try {
+                if (pushSupported() && swEnabled() && Notification.permission === "default" && !localStorage.getItem("sq_push_asked_call")) {
+                  localStorage.setItem("sq_push_asked_call", "1");
+                  setAskPush("call");
+                }
+              } catch {}
             }}
           />
         )}
@@ -968,8 +1004,17 @@ export default function Game() {
           <div className="modal-bg" style={{ zIndex: 2500 }}>
             <div className="modal">
               <div style={{ fontSize: 56 }}>🔔</div>
-              <h2>Don&apos;t miss a raid</h2>
-              <p className="muted small" style={{ lineHeight: 1.5 }}>Get a notification when your base is attacked, a reward is waiting or your crew needs you — even when the game is closed. You can turn it off any time in Hero → Profile.</p>
+              {askPush === "call" ? (
+                <>
+                  <h2>Don&apos;t miss a call</h2>
+                  <p className="muted small" style={{ lineHeight: 1.5 }}>Let your phone ring when your crew video-calls you — even when the game is closed — and get raid alerts too. You can turn it off any time in Hero → Profile.</p>
+                </>
+              ) : (
+                <>
+                  <h2>Don&apos;t miss a raid</h2>
+                  <p className="muted small" style={{ lineHeight: 1.5 }}>Get a notification when your base is attacked, a reward is waiting or your crew needs you — even when the game is closed. You can turn it off any time in Hero → Profile.</p>
+                </>
+              )}
               <div className="row wrap" style={{ justifyContent: "center" }}>
                 <Button className="btn ghost" onClick={() => { setAskPush(false); try { localStorage.setItem("sq_push_asked", "1"); } catch {} }}>Not now</Button>
                 <Button

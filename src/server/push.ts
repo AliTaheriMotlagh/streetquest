@@ -17,7 +17,18 @@ if (PUB && PRIV) {
 export const pushReady = () => ready;
 export const pushPublicKey = () => (ready ? PUB! : null);
 
-export type PushPayload = { title: string; body?: string; kind?: string; url?: string; tag?: string };
+export type PushPayload = {
+  title: string;
+  body?: string;
+  kind?: string;
+  url?: string;
+  tag?: string;
+  /** A video call this is about; `ring` makes it an incoming-call notification (Answer / Decline). */
+  call?: string;
+  ring?: boolean;
+  /** Seconds the push service keeps trying to deliver it (default 6 h). */
+  ttl?: number;
+};
 
 /**
  * Push to every device of a player. Skipped while they're actively playing (the
@@ -37,8 +48,8 @@ export async function pushTo(userId: string, p: PushPayload, opts: { evenIfActiv
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-            JSON.stringify({ title: p.title, body: p.body ?? "", url: p.url ?? "/play", tag: p.tag ?? p.kind ?? "sq" }),
-            { TTL: 6 * 3600, urgency: p.kind === "reward" ? "normal" : "high", topic: (p.tag ?? p.kind ?? "sq").slice(0, 32) },
+            JSON.stringify({ title: p.title, body: p.body ?? "", url: p.url ?? "/play", tag: p.tag ?? p.kind ?? "sq", call: p.call, ring: p.ring }),
+            { TTL: p.ttl ?? 6 * 3600, urgency: p.kind === "reward" ? "normal" : "high", topic: (p.tag ?? p.kind ?? "sq").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) },
           );
           sent++;
           await prisma.pushSub.update({ where: { id: s.id }, data: { lastPush: new Date() } }).catch(() => {});

@@ -27,7 +27,7 @@ export const GET = route(async (req) => {
 
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), userId: z.string() }),
-  z.object({ action: z.enum(["accept", "decline", "end"]), callId: z.string() }),
+  z.object({ action: z.enum(["accept", "decline", "end"]), callId: z.string(), reason: z.enum(["failed", "norelay", "lost"]).optional(), diag: z.record(z.unknown()).optional() }),
   z.object({
     action: z.literal("signal"),
     callId: z.string(),
@@ -49,7 +49,8 @@ export const POST = route(async (req) => {
     if (theirs) throw new HttpError(409, "They're on another call — try again in a bit");
     const call = await prisma.call.create({ data: { callerId: u.id, calleeId: d.userId } });
     // Ring the phone even if the app looks open: it may be in a pocket with the tab hidden.
-    void pushTo(d.userId, { title: `📹 ${u.username} is calling`, body: "Tap to answer", tag: "call", kind: "social" }, { evenIfActive: true });
+    // It expires with the ring, so a phone that was offline doesn't ring hours later.
+    void pushTo(d.userId, { title: `📹 ${u.username} is calling`, body: "Video call · tap to answer", tag: `call-${call.id}`, kind: "social", call: call.id, ring: true, url: `/play?call=${call.id}`, ttl: 40 }, { evenIfActive: true });
     return { callId: call.id, iceServers: iceServers() };
   }
 
@@ -68,7 +69,10 @@ export const POST = route(async (req) => {
   }
 
   if (d.action !== "signal") {
-    await endCall(c, c.status === "RINGING" ? "missed" : "hangup");
+    // Why a call couldn't connect, as seen by this phone (Vercel → Logs, search "call-diag").
+    if (d.diag) console.warn("[call-diag]", JSON.stringify({ callId: c.id, user: u.username, ...d.diag }).slice(0, 2000));
+    // A call that couldn't connect ends with that reason, so the other phone says so too.
+    await endCall(c, c.status === "RINGING" ? "missed" : (d.reason ?? "hangup"));
     return { ok: true };
   }
 
