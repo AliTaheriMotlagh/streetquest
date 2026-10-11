@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../Button";
 import { api } from "./client";
+import { browserInfo, cameraSteps, openInBrowserUrl } from "./location/browser";
 import { sfx } from "./sfx";
 import { useGame } from "./ui";
 
@@ -25,17 +26,38 @@ const END_TEXT: Record<string, string> = {
   failed: "Couldn't connect — the network blocked the call",
 };
 
-/** Camera + mic, falling back to mic only, then to watching/listening only. */
-async function getMedia(facingMode: "user" | "environment" = "user") {
+/** Why the camera/mic couldn't be opened. */
+type MediaProblem = "blocked" | "busy" | "inapp" | "insecure" | "nodevice";
+
+const PROBLEM_TITLE: Record<Exclude<MediaProblem, "nodevice">, string> = {
+  blocked: "Camera & mic are blocked",
+  busy: "Camera is busy",
+  inapp: "Open in your browser",
+  insecure: "Calls need https",
+};
+
+function classify(e: unknown): MediaProblem {
+  const name = (e as { name?: string })?.name;
+  if (name === "NotFoundError" || name === "OverconstrainedError" || name === "DevicesNotFoundError") return "nodevice";
+  // Android also reports a camera held by another app (or switched off in quick settings) this way.
+  if (name === "NotReadableError" || name === "TrackStartError" || name === "AbortError") return "busy";
+  // In-app browsers (Telegram, Instagram…) refuse without ever asking.
+  return browserInfo().inApp ? "inapp" : "blocked";
+}
+
+/** Camera + mic; failing that, mic only (with the reason the camera failed). */
+async function getMedia(): Promise<{ stream: MediaStream | null; problem: MediaProblem | null }> {
   const md = navigator.mediaDevices;
-  if (!md?.getUserMedia) return { stream: null, note: "Calls need a secure (https) connection" };
+  if (!md?.getUserMedia) return { stream: null, problem: browserInfo().inApp ? "inapp" : "insecure" };
   try {
-    return { stream: await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } } }), note: null };
-  } catch {
+    return { stream: await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } }), problem: null };
+  } catch (e) {
+    const problem = classify(e);
     try {
-      return { stream: await md.getUserMedia({ audio: true }), note: "Camera unavailable — voice only" };
-    } catch {
-      return { stream: null, note: "Camera and mic are blocked — they won't see or hear you" };
+      return { stream: await md.getUserMedia({ audio: true }), problem };
+    } catch (e2) {
+      const p2 = classify(e2);
+      return { stream: null, problem: p2 === "nodevice" ? problem : p2 };
     }
   }
 }
@@ -191,6 +213,41 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
   const localV = useRef<HTMLVideoElement>(null);
   const remoteV = useRef<HTMLVideoElement>(null);
   const callId = useRef(invite.id);
+  // Camera/mic couldn't open: the call waits on this card until the player fixes it or goes on without.
+  const [help, setHelp] = useState<{ problem: Exclude<MediaProblem, "nodevice">; partial: MediaStream | null } | null>(null);
+  const helpDone = useRef<((s: MediaStream | null) => void) | null>(null);
+  const helpStream = useRef<MediaStream | null>(null);
+  const b = useRef(browserInfo()).current;
+  const installed = typeof window !== "undefined" && window.matchMedia?.("(display-mode: standalone)").matches;
+
+  /** Camera + mic, or explain what's blocking them and let the player fix it or go on without. */
+  const acquire = async (): Promise<MediaStream | null> => {
+    const { stream, problem } = await getMedia();
+    if (!problem) return stream;
+    if (problem === "nodevice") {
+      toast({ kind: "info", title: stream ? "No camera found — voice only" : "No camera or mic found — you can still watch and listen" });
+      return stream;
+    }
+    helpStream.current = stream;
+    return new Promise((resolve) => {
+      helpDone.current = (s) => {
+        helpDone.current = null;
+        helpStream.current = null;
+        setHelp(null);
+        resolve(s);
+      };
+      setHelp({ problem, partial: stream });
+    });
+  };
+  const retryMedia = async () => {
+    helpStream.current?.getTracks().forEach((t) => t.stop());
+    helpStream.current = null;
+    const { stream, problem } = await getMedia();
+    if (!problem || problem === "nodevice") return helpDone.current?.(stream);
+    helpStream.current = stream;
+    setHelp({ problem, partial: stream });
+    toast({ kind: "error", title: "Still blocked — check the steps above" });
+  };
 
   const handlers = {
     connected: () => {
@@ -206,6 +263,8 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     },
     peer: setThem,
     ended: (reason: string) => {
+      helpStream.current?.getTracks().forEach((t) => t.stop());
+      helpDone.current?.(null);
       setEndText(role === "callee" && reason === "missed" ? "Missed call" : (END_TEXT[reason] ?? "Call ended"));
       setPhase("ended");
       setMini(false);
@@ -240,6 +299,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
       window.removeEventListener("pagehide", bye);
       teardown.current = setTimeout(() => {
         gone.current = true;
+        helpStream.current?.getTracks().forEach((t) => t.stop());
         sess.current?.finish("hangup");
       }, 0);
     };
@@ -247,10 +307,9 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
 
   // Caller: camera first (its permission prompt), then ring them and send the offer.
   const placeCall = async () => {
-    const { stream, note } = await getMedia();
+    const stream = await acquire();
     const stop = () => stream?.getTracks().forEach((t) => t.stop());
     if (gone.current) return stop();
-    if (note) toast({ kind: stream ? "info" : "error", title: note });
     showLocal(stream);
     try {
       const r = await api<{ callId: string; iceServers: RTCIceServer[] }>("/api/calls", { body: { action: "start", userId: peer.id } });
@@ -320,8 +379,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
       toast({ kind: "error", title: (e as Error).message });
       return s.finish("hangup", false);
     }
-    const { stream, note } = await getMedia();
-    if (note) toast({ kind: stream ? "info" : "error", title: note });
+    const stream = await acquire();
     if (gone.current) return stream?.getTracks().forEach((t) => t.stop());
     s.local = stream;
     showLocal(stream);
@@ -417,6 +475,38 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
           {canFlip && <Button className="call-btn" onClick={flip} aria-label="Switch camera">🔄</Button>}
           <Button className="call-btn" onClick={() => setMini(true)} aria-label="Minimize — keep playing">🗺️</Button>
           <Button className="call-btn end" onClick={hangUp} aria-label="Hang up">📵</Button>
+        </div>
+      )}
+
+      {help && phase !== "ended" && !mini && (
+        <div className="call-help" role="alertdialog" aria-labelledby="call-help-title">
+          <div style={{ fontSize: 40 }} aria-hidden>📷</div>
+          <h3 id="call-help-title">{PROBLEM_TITLE[help.problem]}</h3>
+          {help.problem === "blocked" && (
+            <ol className="steps">
+              {cameraSteps(b, installed).map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ol>
+          )}
+          {help.problem === "busy" && <p>Another app is using the camera, or camera access is switched off in your phone&apos;s quick settings. Close the other app (or turn access on), then tap Try again.</p>}
+          {help.problem === "inapp" && <p>You opened the game inside <b>{b.inApp}</b>, which can&apos;t use the camera. {b.os === "ios" ? "Tap ••• or the share icon → Open in browser." : "Open it in Chrome to make calls."}</p>}
+          {help.problem === "insecure" && <p>Browsers only allow the camera on <b>https://</b> pages. Open the game through its https link.</p>}
+          <div className="row wrap" style={{ justifyContent: "center" }}>
+            {help.problem === "inapp" && openInBrowserUrl(b) && (
+              <a className="btn cyan" href={openInBrowserUrl(b)!}>
+                Open in Chrome
+              </a>
+            )}
+            {(help.problem === "blocked" || help.problem === "busy") && (
+              <Button className="btn cyan" onClick={retryMedia}>
+                Try again
+              </Button>
+            )}
+            <Button className="btn ghost" onClick={() => helpDone.current?.(help.partial)}>
+              {help.partial ? "Continue voice only" : "Continue without camera"}
+            </Button>
+          </div>
         </div>
       )}
     </div>

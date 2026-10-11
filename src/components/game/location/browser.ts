@@ -77,6 +77,36 @@ export function preciseSteps(b: BrowserInfo): string[] {
   return ["Turn on precise / high-accuracy location for this browser in your device settings, then tap Retry."];
 }
 
+/** Step-by-step "allow the camera and mic again" (video calls), for this exact browser. */
+export function cameraSteps(b: BrowserInfo, installed = false): string[] {
+  const app = browserLabel(b);
+  if (b.os === "ios") {
+    if (b.name === "safari" || b.name === "other")
+      return [
+        installed ? "Open the game in Safari once, then tap ᴀA in the address bar → Website Settings → Camera and Microphone → Allow." : "Tap ᴀA (or the page icon) in the address bar → Website Settings → Camera and Microphone → Allow.",
+        "Still blocked? iPhone Settings → Safari → Camera and Microphone → Ask or Allow.",
+      ];
+    return [`Open the iPhone Settings app → ${app} → turn on Camera and Microphone.`, `Then come back to ${app} and tap Try again.`];
+  }
+  if (b.os === "android") {
+    // An installed app has no address bar: its site settings hang off the app icon.
+    const site = installed
+      ? "Long-press the StreetQuest icon → App info (ⓘ) → Permissions → allow Camera and Microphone."
+      : b.name === "samsung"
+        ? "Tap ☰ → Settings → Sites and downloads → Site permissions → Camera / Microphone → allow this site."
+        : b.name === "firefox"
+          ? "Tap the 🔒 next to the address → Permissions → Camera and Microphone → Allowed."
+          : "Tap the 🔒 (or ⓘ) next to the address → Permissions → turn on Camera and Microphone.";
+    return [
+      site,
+      `Make sure ${app} itself is allowed: phone Settings → Apps → ${app} → Permissions → Camera and Microphone → Allow while using.`,
+      "Swipe down from the top: if Camera access or Microphone access is switched off there, turn it on.",
+    ];
+  }
+  if (b.os === "mac") return ["Click the 🔒 next to the address → Camera and Microphone → Allow.", `System Settings → Privacy & Security → Camera (and Microphone) → turn on ${app}.`];
+  return ["Click the 🔒 next to the address → Camera and Microphone → Allow, then Try again."];
+}
+
 /** Android can hand the page straight to Chrome; iOS can only be told how. */
 export function openInBrowserUrl(b: BrowserInfo): string | null {
   if (typeof location === "undefined" || b.os !== "android") return null;

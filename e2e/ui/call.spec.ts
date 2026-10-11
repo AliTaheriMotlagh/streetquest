@@ -6,7 +6,7 @@ test.use({ launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake
 
 const octet = () => Math.floor(Math.random() * 250) + 1;
 
-async function open(browser: Browser) {
+async function open(browser: Browser, opts: { blockCamera?: boolean } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 412, height: 839 }, isMobile: true, hasTouch: true, extraHTTPHeaders: { "x-forwarded-for": `10.${octet()}.${octet()}.${octet()}` } });
   await ctx.grantPermissions(["camera", "microphone", "geolocation"]);
   await ctx.setGeolocation({ latitude: 40 + Math.random(), longitude: -70 - Math.random(), accuracy: 10 });
@@ -19,6 +19,14 @@ async function open(browser: Browser) {
     if (document.head) hide();
     else document.addEventListener("DOMContentLoaded", hide);
   });
+  // Simulate a camera the browser has blocked (Chrome stops asking after a few denials).
+  if (opts.blockCamera)
+    await page.addInitScript(() => {
+      const w = window as unknown as { __blockCam: boolean };
+      w.__blockCam = true;
+      const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = (c) => (w.__blockCam ? Promise.reject(new DOMException("Permission denied", "NotAllowedError")) : real(c));
+    });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/play");
@@ -60,5 +68,32 @@ test("crew members can video call each other", async ({ browser }) => {
   await a.page.getByRole("button", { name: "Hang up" }).click();
   await expect(bCall).toContainText("Call ended", { timeout: 10_000 });
   await expect(bCall).toHaveCount(0, { timeout: 10_000 });
+  expect([...a.errors, ...b.errors]).toEqual([]);
+});
+
+test("a blocked camera explains how to fix it, and the call goes on once allowed", async ({ browser }) => {
+  const [a, b] = await Promise.all([open(browser), open(browser, { blockCamera: true })]);
+  await json(a.page, "/api/friends", { action: "request", username: b.username });
+  const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
+  await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
+
+  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
+  const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
+  await bCall.getByRole("button", { name: "Answer" }).click();
+
+  // Blocked: steps for this browser, and retrying while still blocked keeps the card up.
+  const help = b.page.getByRole("alertdialog", { name: "Camera & mic are blocked" });
+  await expect(help).toBeVisible();
+  await expect(help.locator(".steps li").first()).toBeVisible();
+  await help.getByRole("button", { name: "Try again" }).click();
+  await expect(help).toBeVisible();
+
+  // The player allows the camera in settings and tries again: the call connects.
+  await b.page.evaluate(() => ((window as unknown as { __blockCam: boolean }).__blockCam = false));
+  await help.getByRole("button", { name: "Try again" }).click();
+  await expect(help).toHaveCount(0);
+  await expect(bCall).toHaveClass(/\blive\b/, { timeout: 30_000 });
+  await expect.poll(() => a.page.locator("video.call-remote").evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 15_000 }).toBeGreaterThan(0);
   expect([...a.errors, ...b.errors]).toEqual([]);
 });
