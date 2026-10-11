@@ -78,6 +78,35 @@ test("crew members can video call each other", async ({ browser }) => {
   expect([...a.errors, ...b.errors]).toEqual([]);
 });
 
+test("mobile data drops requests: every lost handshake message is resent and the call still connects", async ({ browser }) => {
+  const [a, b] = await Promise.all([open(browser), open(browser)]);
+  // The first try of every offer / answer / ICE batch fails, as a weak LTE link does.
+  for (const p of [a.page, b.page]) {
+    const tried = new Set<string>();
+    await p.route("**/api/calls", (r) => {
+      const body = r.request().postData() ?? "";
+      if (r.request().method() === "POST" && body.includes('"action":"signal"') && !tried.has(body)) {
+        tried.add(body);
+        return r.abort("failed");
+      }
+      return r.continue();
+    });
+  }
+  await json(a.page, "/api/friends", { action: "request", username: b.username });
+  const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
+  await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
+
+  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
+  const aCall = a.page.getByRole("dialog", { name: `Video call with ${b.username}` });
+  const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
+  await bCall.getByRole("button", { name: "Answer" }).click({ timeout: 15_000 });
+  for (const d of [aCall, bCall]) await expect(d).toHaveClass(/\blive\b/, { timeout: 30_000 });
+  await expect.poll(() => b.page.locator("video.call-remote").evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 15_000 }).toBeGreaterThan(0);
+  await a.page.getByRole("button", { name: "Hang up" }).click();
+  expect([...a.errors, ...b.errors]).toEqual([]);
+});
+
 test("a blocked camera explains how to fix it, and the call goes on once allowed", async ({ browser }) => {
   const [a, b] = await Promise.all([open(browser), open(browser, { blockCamera: true })]);
   await json(a.page, "/api/friends", { action: "request", username: b.username });

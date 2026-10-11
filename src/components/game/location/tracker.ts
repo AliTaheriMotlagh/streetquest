@@ -11,6 +11,7 @@
 //  - the Permissions API: once location is allowed in settings, resume by itself
 //  - paused while a simulated/home position overrides it (saves battery)
 import type { LatLng } from "@/lib/geo";
+import { browserInfo } from "./browser";
 import { FixFilter, type Fix } from "./filter";
 
 export type GeoError = "insecure" | "unsupported" | "denied" | "unavailable" | "timeout";
@@ -138,7 +139,14 @@ class LocationTracker {
 
     if (!this.override) {
       // Fast coarse fix (wifi/cell, or a recent cached one) so the map shows up quickly.
-      navigator.geolocation.getCurrentPosition(this.onPosition, () => {}, { enableHighAccuracy: false, maximumAge: 120_000, timeout: 8_000 });
+      // A computer has no GPS to wait for: if it can't place itself now (no Wi-Fi location,
+      // or the lookup service is unreachable), say so at once instead of "Finding you…".
+      const desktop = browserInfo().desktop;
+      navigator.geolocation.getCurrentPosition(this.onPosition, (e) => (desktop || e.code === e.PERMISSION_DENIED) && this.onError(e), {
+        enableHighAccuracy: false,
+        maximumAge: 120_000,
+        timeout: desktop ? 12_000 : 8_000,
+      });
       this.startWatch(false);
     }
   }

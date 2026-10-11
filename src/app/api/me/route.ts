@@ -17,8 +17,9 @@ import { superStatus } from "@/server/superweapons";
 import { settingOverrides } from "@/server/settings";
 import { goalsReady } from "@/server/goals";
 import { S } from "@/lib/settings";
+import { ipLocation } from "@/server/geoip";
 
-export const GET = route(async () => {
+export const GET = route(async (req) => {
   const u = await requireUser();
   const [inventory, achievements, runs, pendingFriends, base, powers, equipped] = await Promise.all([
     prisma.inventoryItem.findMany({ where: { userId: u.id, qty: { gt: 0 } } }),
@@ -90,6 +91,9 @@ export const GET = route(async () => {
     settings,
     remotePlay: u.remotePlay,
     lastPos: u.lastLat != null && u.lastLng != null ? { lat: u.lastLat, lng: u.lastLng } : null,
+    // Where the connection comes from (city-level): a starting point for players whose
+    // device can't locate itself, e.g. desktop browsers.
+    ipPos: u.lastLat == null ? ipLocation(req) : null,
     goalsReady: goals,
     walkedM: Math.round(u.walkedM),
     storyChapter: u.storyChapter,

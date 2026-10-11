@@ -1,8 +1,9 @@
 // Which browser are we in? Location permission lives in a different place for each,
 // and in-app browsers (Instagram, Facebook, TikTok…) often block GPS entirely.
-export type Os = "ios" | "android" | "mac" | "other";
+export type Os = "ios" | "android" | "mac" | "windows" | "linux" | "other";
 export type BrowserName = "safari" | "chrome" | "firefox" | "edge" | "samsung" | "opera" | "other";
-export type BrowserInfo = { os: Os; name: BrowserName; inApp: string | null };
+/** `desktop`: a computer — no GPS chip; it locates itself from Wi-Fi networks at best. */
+export type BrowserInfo = { os: Os; name: BrowserName; inApp: string | null; desktop: boolean };
 
 const IN_APP: [RegExp, string][] = [
   [/Instagram/i, "Instagram"],
@@ -19,7 +20,17 @@ const IN_APP: [RegExp, string][] = [
 export function browserInfo(ua = typeof navigator !== "undefined" ? navigator.userAgent : ""): BrowserInfo {
   // iPadOS reports itself as a Mac; touch support gives it away.
   const ipad = /Macintosh/.test(ua) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1;
-  const os: Os = /iPhone|iPad|iPod/.test(ua) || ipad ? "ios" : /Android/.test(ua) ? "android" : /Macintosh/.test(ua) ? "mac" : "other";
+  const os: Os = /iPhone|iPad|iPod/.test(ua) || ipad
+    ? "ios"
+    : /Android/.test(ua)
+      ? "android"
+      : /Macintosh/.test(ua)
+        ? "mac"
+        : /Windows/.test(ua)
+          ? "windows"
+          : /Linux|CrOS|X11/.test(ua)
+            ? "linux"
+            : "other";
   const name: BrowserName = /CriOS|Chrome/.test(ua) && !/EdgiOS|EdgA|Edg\/|SamsungBrowser|OPR|OPiOS/.test(ua)
     ? "chrome"
     : /FxiOS|Firefox/.test(ua)
@@ -36,7 +47,8 @@ export function browserInfo(ua = typeof navigator !== "undefined" ? navigator.us
   // Android WebViews mark themselves with "; wv)"; iOS ones lack "Safari/".
   const wv = os === "android" ? /; wv\)/.test(ua) : os === "ios" && !/Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
   const inApp = IN_APP.find(([re]) => re.test(ua))?.[1] ?? (wv ? "this app" : null);
-  return { os, name, inApp };
+  const desktop = os === "mac" || os === "windows" || (os === "linux" && !/Mobile/.test(ua));
+  return { os, name, inApp, desktop };
 }
 
 const LABEL: Record<BrowserName, string> = { safari: "Safari", chrome: "Chrome", firefox: "Firefox", edge: "Edge", samsung: "Samsung Internet", opera: "Opera", other: "your browser" };
@@ -60,8 +72,37 @@ export function locationSteps(b: BrowserInfo): string[] {
           : "Tap the 🔒 (or ⓘ) next to the address → Permissions → Location → Allow.";
     return [site, `Make sure phone Location is on (swipe down → Location) and ${app} is allowed: Settings → Apps → ${app} → Permissions → Location → Allow while using.`];
   }
-  if (b.os === "mac") return [`Click the 🔒 next to the address → Location → Allow.`, `System Settings → Privacy & Security → Location Services → turn on ${app}.`];
-  return [`Click the 🔒 next to the address → Location → Allow, then Retry.`];
+  return [...siteLocationStep(b), ...desktopLocationSteps(b)];
+}
+
+/** Allow location for this site in a desktop browser. */
+function siteLocationStep(b: BrowserInfo): string[] {
+  if (b.name === "chrome" || b.name === "edge" || b.name === "opera")
+    return ["Click the icon left of the address (🔒 or ⚙) → Site settings → Location → Allow, then reload."];
+  if (b.name === "firefox") return ["Click the 🔒 left of the address → clear the blocked Location permission, then Retry and choose Allow."];
+  if (b.name === "safari") return ["Safari → Settings → Websites → Location → set this site to Allow."];
+  return ["Click the 🔒 next to the address → Location → Allow, then Retry."];
+}
+
+/** A computer also needs location switched on for the browser at the system level. */
+function desktopLocationSteps(b: BrowserInfo): string[] {
+  const app = browserLabel(b);
+  if (b.os === "mac") return [`System Settings → Privacy & Security → Location Services → turn it on, and turn on ${app} in the list.`, "Keep Wi-Fi on (it doesn't need to be connected): Macs find their location from nearby networks."];
+  if (b.os === "windows")
+    return ["Windows Settings → Privacy & security → Location → turn on Location services and “Let desktop apps access your location”.", "Keep Wi-Fi on: PCs find their location from nearby networks."];
+  if (b.os === "linux") return ["Make sure your system's location service is on and Wi-Fi is switched on."];
+  return [];
+}
+
+/**
+ * The computer has no location to give. Desktop browsers locate from Wi-Fi networks
+ * through an online service, which some networks and countries can't reach.
+ */
+export function desktopUnavailableSteps(b: BrowserInfo): string[] {
+  return [
+    ...desktopLocationSteps(b),
+    ...(b.name === "chrome" || b.name === "edge" ? [`${browserLabel(b)} looks up Wi-Fi locations online; on some networks that service is blocked. A VPN, or Safari on a Mac, usually works.`] : []),
+  ];
 }
 
 /** "Approximate location" is on: how to switch this browser back to precise GPS. */
@@ -73,7 +114,7 @@ export function preciseSteps(b: BrowserInfo): string[] {
   }
   if (b.os === "android")
     return [`Settings → Apps → ${app} → Permissions → Location → turn on “Use precise location”.`, "Also check Settings → Location → Location services → Google Location Accuracy is on.", "Then come back and tap Retry."];
-  if (b.os === "mac") return [`System Settings → Privacy & Security → Location Services → make sure ${app} is on.`, "Desktop location comes from Wi-Fi, so it's rarely street-accurate — play on your phone."];
+  if (b.desktop) return [...desktopLocationSteps(b), "Computers locate from Wi-Fi, so it's rarely street-accurate — walk with your phone, or play from home here."];
   return ["Turn on precise / high-accuracy location for this browser in your device settings, then tap Retry."];
 }
 

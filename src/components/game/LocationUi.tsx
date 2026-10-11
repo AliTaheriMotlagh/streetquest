@@ -3,7 +3,7 @@
 // "walking or from home?" question when a player comes back to the game.
 import { useEffect, useMemo, useState } from "react";
 import { S } from "@/lib/settings";
-import { browserInfo, browserLabel, locationSteps, openInBrowserUrl, preciseSteps } from "./location/browser";
+import { browserInfo, browserLabel, desktopUnavailableSteps, locationSteps, openInBrowserUrl, preciseSteps } from "./location/browser";
 import type { GeoError, GeoState } from "./useLocation";
 import { TOUR_KEY } from "./Help";
 import { Button } from "@/components/Button";
@@ -50,6 +50,19 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
     body = <>Phones only share GPS with <b>https://</b> sites. Open the game through its https link.</>;
   } else if (error === "unsupported") {
     body = <>{browserLabel(b)} can&apos;t share a location here. Try Chrome, Safari, Firefox or Samsung Internet.</>;
+  } else if (b.desktop && (error === "unavailable" || error === "timeout")) {
+    // Computers have no GPS: they ask an online service where their Wi-Fi networks are.
+    body = (
+      <>
+        This computer couldn&apos;t work out where it is.
+        <ol className="steps" style={{ textAlign: "left" }}>
+          {desktopUnavailableSteps(b).map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+        The game is made for walking with your phone — on a computer, <b>Play from home</b> works anywhere.
+      </>
+    );
   } else if (error === "unavailable") {
     body = <>Turn on Location/GPS on your phone (Wi-Fi helps too), step near a window, then Retry.</>;
   } else if (error === "timeout") {
@@ -62,8 +75,8 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
     <div className="modal-bg" style={{ zIndex: 900 }}>
       <div className="modal" role="dialog" aria-labelledby="gate-title">
         <div style={{ fontSize: 50 }} aria-hidden>{error || b.inApp ? "⚠️" : "📡"}</div>
-        <h2 id="gate-title">{b.inApp ? `Open in ${b.os === "ios" ? "Safari" : "your browser"}` : error ? TITLE[error] : "Finding you…"}</h2>
-        <div className="muted small" style={{ lineHeight: 1.6, textAlign: error === "denied" && !b.inApp ? "left" : "center", margin: "10px 0 14px" }}>{body}</div>
+        <h2 id="gate-title">{b.inApp ? `Open in ${b.os === "ios" ? "Safari" : "your browser"}` : error ? (b.desktop && (error === "unavailable" || error === "timeout") ? "Can't find this computer" : TITLE[error]) : "Finding you…"}</h2>
+        <div className="muted small" style={{ lineHeight: 1.6, textAlign: error === "denied" && !b.inApp ? "start" : "center", margin: "10px 0 14px" }}>{body}</div>
         <div className="row wrap" style={{ justifyContent: "center" }}>
           {inApp && openUrl && (
             <a className="btn cyan" href={openUrl}>

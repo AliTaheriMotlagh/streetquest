@@ -49,9 +49,17 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
     await ensureGuest();
     return api<T>(path, init, true);
   }
-  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
   return data as T;
 }
+
+/** A refused request. Branch on `status`, never on the (translated) message. */
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+export const statusOf = (e: unknown) => (e instanceof ApiError ? e.status : 0);
 
 export type LatLng = { lat: number; lng: number };
 
@@ -105,6 +113,8 @@ export type Me = {
   /** Playing from home: tap-to-travel, reduced rewards. */
   remotePlay: boolean;
   lastPos: LatLng | null;
+  /** City-level guess from the connection, when there's no last position (desktop fallback). */
+  ipPos: (LatLng & { city: string | null }) | null;
   walkedM: number;
   storyChapter: number;
   gpsGame: { id: string; kind: string } | null;

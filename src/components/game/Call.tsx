@@ -4,7 +4,7 @@
 // polling, the same serverless-friendly "realtime" as chat. The caller always offers.
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../Button";
-import { api } from "./client";
+import { api, statusOf } from "./client";
 import { browserInfo, cameraSteps, openInBrowserUrl } from "./location/browser";
 import { sfx } from "./sfx";
 import { useGame } from "./ui";
@@ -25,6 +25,23 @@ const END_TEXT: Record<string, string> = {
   lost: "Connection lost",
   failed: "Couldn't connect — the network blocked the call",
   norelay: "Couldn't connect — this network blocks the call relay. Try Wi-Fi or another SIM",
+};
+
+/** Signals per request (the server accepts up to 60). */
+const SIGNAL_BATCH = 30;
+/** A signal batch is retried this many times (about 20 s in all) before it's given up. */
+const SEND_RETRIES = 8;
+/**
+ * Relay-only calls: every packet goes through TURN, as it must between two phones on
+ * carrier-grade NAT (most mobile data). Set localStorage sq_call_relay=1 to check the
+ * relay works from a network, or to reproduce an LTE ↔ LTE call on Wi-Fi.
+ */
+const forceRelay = () => {
+  try {
+    return localStorage.getItem("sq_call_relay") === "1";
+  } catch {
+    return false;
+  }
 };
 
 /** "typ relay" etc. from an ICE candidate line. */
@@ -94,7 +111,7 @@ class Session {
     // Hung up while this phone was still asking for the camera.
     if (this.closed) return this.local?.getTracks().forEach((t) => t.stop());
     this.offerer = offerer;
-    const pc = (this.pc = new RTCPeerConnection({ iceServers }));
+    const pc = (this.pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: forceRelay() ? "relay" : "all" }));
     for (const t of this.local?.getTracks() ?? []) pc.addTrack(t, this.local!);
     // The offer always asks for both audio and video, even if this phone has no camera or
     // mic. (The answering side reuses its addTrack senders for the offer's lines.)
@@ -163,9 +180,31 @@ class Session {
     // order, so candidates never overtake the offer/answer they belong to.
     this.flushT ??= setTimeout(() => {
       this.flushT = null;
-      const signals = this.outbox.splice(0);
-      this.sending = this.sending.then(() => api("/api/calls", { body: { action: "signal", callId: this.id, signals } }).catch(() => {}));
+      const all = this.outbox.splice(0);
+      // Phones on mobile data with IPv6 and several TURN routes can gather more candidates
+      // than one request may carry: split rather than have the server refuse the lot.
+      for (let i = 0; i < all.length; i += SIGNAL_BATCH) {
+        const signals = all.slice(i, i + SIGNAL_BATCH);
+        this.sending = this.sending.then(() => this.deliver(signals));
+      }
     }, 120);
+  }
+
+  /**
+   * One batch, retried until it lands: on mobile data a request often fails once, and a
+   * lost answer or relay candidate would leave the call stuck on "Connecting…".
+   */
+  private async deliver(signals: { kind: Signal["kind"]; data: string }[]) {
+    for (let attempt = 0; attempt < SEND_RETRIES && !this.closed; attempt++) {
+      try {
+        await api("/api/calls", { body: { action: "signal", callId: this.id, signals } });
+        return;
+      } catch (e) {
+        // The call is over (410) or gone (404): nothing left to deliver to.
+        if (statusOf(e) === 404 || statusOf(e) === 410) return;
+        await new Promise((r) => setTimeout(r, Math.min(4000, 400 * 2 ** attempt)));
+      }
+    }
   }
 
   /** Poll for the call's status and the other side's signals. While ringing, only status. */

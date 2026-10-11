@@ -53,6 +53,10 @@ export default defineConfig({
           VAPID_PUBLIC_KEY: "",
           VAPID_PRIVATE_KEY: "",
           STRIPE_SECRET_KEY: "",
+          // A TURN relay only when the run provides one (e2e/ui/call-lte.spec.ts).
+          TURN_URLS: process.env.TURN_URLS ?? "",
+          TURN_USERNAME: process.env.TURN_USERNAME ?? "",
+          TURN_CREDENTIAL: process.env.TURN_CREDENTIAL ?? "",
         },
       },
 });

@@ -31,7 +31,8 @@ const Schema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("signal"),
     callId: z.string(),
-    signals: z.array(z.object({ kind: z.enum(["offer", "answer", "ice", "state"]), data: z.string().max(20_000) })).min(1).max(40),
+    // iPhone offers list many H.264 profiles: SDPs can run well past 20 KB.
+    signals: z.array(z.object({ kind: z.enum(["offer", "answer", "ice", "state"]), data: z.string().max(100_000) })).min(1).max(60),
   }),
 ]);
 

@@ -499,7 +499,7 @@ export default function Game() {
   // Home mode: start where the server last saw you (or your real GPS), else let the player pick.
   useEffect(() => {
     if (!homeMode || homePos) return;
-    const start = me?.lastPos ?? geo.pos;
+    const start = me?.lastPos ?? geo.pos ?? (me?.ipPos ? { lat: me.ipPos.lat, lng: me.ipPos.lng } : null);
     if (start) setHomePos(start);
     else setPicker({ label: "🛋️ Tap where your commander starts", cb: (p) => setHomePos(p) });
   }, [homeMode, me?.lastPos?.lat, geo.pos?.lat]); // eslint-disable-line react-hooks/exhaustive-deps
