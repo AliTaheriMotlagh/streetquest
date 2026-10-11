@@ -84,6 +84,11 @@ model User {
   geoNotes      GeoNote[]
   deliveriesOut Delivery[]         @relation("sender")
   deliveriesIn  Delivery[]         @relation("courier")
+  ridesTaken    Ride[]             @relation("rider")
+  ridesDriven   Ride[]             @relation("driver")
+  lotteriesHosted Lottery[]        @relation("lotteryHost")
+  lotteriesWon  Lottery[]          @relation("lotteryWinner")
+  lotteryTickets LotteryTicket[]
   eventsCreated Event[]
   eventsJoined  EventParticipant[]
   notifications Notification[]
@@ -254,6 +259,71 @@ model Delivery {
   courier       User?     @relation("courier", fields: [courierId], references: [id])
 
   @@index([status, pickupLat, pickupLng])
+}
+
+// In-game ride hailing: a player requests a car, another player drives them.
+model Ride {
+  id           String    @id @default(cuid())
+  riderId      String
+  driverId     String?
+  pickupLabel  String
+  pickupLat    Float
+  pickupLng    Float
+  dropoffLabel String
+  dropoffLat   Float
+  dropoffLng   Float
+  seats        Int       @default(1)
+  note         String    @default("")
+  fare         Int // coins held in escrow from the rider
+  pin          String // rider tells the driver at pickup; proves they actually met
+  status       String    @default("REQUESTED") // REQUESTED | ACCEPTED | ONBOARD | DONE | CANCELLED
+  createdAt    DateTime  @default(now())
+  acceptedAt   DateTime?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  rider        User      @relation("rider", fields: [riderId], references: [id], onDelete: Cascade)
+  driver       User?     @relation("driver", fields: [driverId], references: [id])
+
+  @@index([status, pickupLat, pickupLng])
+  @@index([riderId, status])
+  @@index([driverId, status])
+}
+
+// Lottery at a real place: buy tickets there, at drawAt one random ticket takes the whole pot.
+model Lottery {
+  id          String          @id @default(cuid())
+  name        String
+  lat         Float
+  lng         Float
+  radiusM     Int             @default(60)
+  ticketPrice Int
+  maxTickets  Int             @default(10) // per player
+  drawAt      DateTime
+  hostId      String
+  official    Boolean         @default(false)
+  pot         Int             @default(0)
+  status      String          @default("OPEN") // OPEN | DRAWN | REFUNDED
+  winnerId    String?
+  drawnAt     DateTime?
+  createdAt   DateTime        @default(now())
+  host        User            @relation("lotteryHost", fields: [hostId], references: [id], onDelete: Cascade)
+  winner      User?           @relation("lotteryWinner", fields: [winnerId], references: [id])
+  tickets     LotteryTicket[]
+
+  @@index([status, drawAt])
+  @@index([lat, lng])
+}
+
+model LotteryTicket {
+  id        String   @id @default(cuid())
+  lotteryId String
+  userId    String
+  qty       Int      @default(0)
+  lottery   Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([lotteryId, userId])
+  @@index([userId])
 }
 
 model Event {

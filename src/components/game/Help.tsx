@@ -32,6 +32,7 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
       ["🔍", "Some steps hide the target: search the gold circle and follow the hot/cold detector."],
       ["🧭", "GPS games: treasure hunt, street sprint and checkpoint rally — quick rounds with rewards."],
       ["🏆", "Goals: a world operation everyone shares, a faction goal and your own milestones. Claim them here."],
+      ["🎰", "Lottery: buy tickets at the 🎰 spot on the map. At the draw time one random ticket wins the whole pot."],
     ],
   },
   store: {
@@ -46,7 +47,9 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
     title: "Jobs",
     tips: [
       ["📦", "Real deliveries posted by players nearby. Accept one, pick it up, hand it over with the code."],
-      ["🪙", "Coins are held in escrow, so couriers always get paid."],
+      ["🚕", "Rides: request a car and set your fare, or drive a waiting rider. The rider tells the driver a 4-digit PIN at pickup."],
+      ["🏁", "The driver is paid when both of you reach the drop-off, or when the rider taps “I've arrived”."],
+      ["🪙", "Coins are held in escrow, so couriers and drivers always get paid — and you're refunded if nobody takes the job."],
     ],
   },
   crew: {

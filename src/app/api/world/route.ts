@@ -18,6 +18,9 @@ import { isOnline, onlineSince } from "@/server/hub";
 import { HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
 import { fuzzed } from "@/server/presence";
+import { drawDue, lotteryView } from "@/server/lottery";
+import { RIDE_REQUEST_TTL_MS } from "@/lib/rides";
+import { LOTTERY_SHOW_DRAWN_MS } from "@/lib/lottery";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -44,6 +47,7 @@ export const GET = route(async (req) => {
   // Lazy settlement: squads that arrived, raider waves that finished.
   await settleSquads({ near: here });
   await resolveStrikes({ near: here });
+  await drawDue({ near: wide });
   const bosses = bossesAround(here);
   const sites = outpostsAround(here);
   const [missions, notes, events, deliveries, friends, nearbyUsers, bases, bossStates, outpostRows, research] = await Promise.all([
@@ -90,9 +94,21 @@ export const GET = route(async (req) => {
     include: { owner: { select: { username: true } } },
     take: 20,
   });
-  const [flags, bounties] = await Promise.all([
+  const [flags, bounties, rides, lotteries] = await Promise.all([
     prisma.flag.findMany({ where: inBox(bbox(here, 3000)), include: { owner: { select: { username: true, avatar: true, faction: true } } }, take: 100 }),
     prisma.bounty.groupBy({ by: ["targetId"], where: { claimedAt: null, targetId: { in: nearbyUsers.map((x) => x.id) } }, _sum: { amount: true } }),
+    prisma.ride.findMany({
+      where: { status: "REQUESTED", riderId: { not: u.id }, createdAt: { gt: new Date(Date.now() - RIDE_REQUEST_TTL_MS) }, pickupLat: { gte: wide.minLat, lte: wide.maxLat }, pickupLng: { gte: wide.minLng, lte: wide.maxLng } },
+      include: { rider: { select: { username: true, avatar: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    prisma.lottery.findMany({
+      where: { ...inBox(wide), OR: [{ status: "OPEN" }, { drawnAt: { gt: new Date(Date.now() - LOTTERY_SHOW_DRAWN_MS) } }] },
+      include: { host: { select: { username: true } }, winner: { select: { username: true } }, tickets: { select: { userId: true, qty: true } } },
+      orderBy: { drawAt: "asc" },
+      take: 30,
+    }),
   ]);
   const wanted = new Map(bounties.map((b) => [b.targetId, b._sum.amount ?? 0]));
   const [towers, squads, waves, pings, lobbies] = await Promise.all([
@@ -164,6 +180,8 @@ export const GET = route(async (req) => {
     deliveries: deliveries
       .filter((d) => d.senderId !== u.id)
       .map(({ dropoffCode: _c, ...d }) => ({ ...d, distanceM: Math.round(distanceM(here, { lat: d.pickupLat, lng: d.pickupLng })) })),
+    rides: rides.map(({ pin: _p, ...r }) => ({ ...r, distanceM: Math.round(distanceM(here, { lat: r.pickupLat, lng: r.pickupLng })) })),
+    lotteries: lotteries.map((l) => lotteryView(l, u.id)),
     players,
     bases: bases.map((b) => ({
       id: b.id,

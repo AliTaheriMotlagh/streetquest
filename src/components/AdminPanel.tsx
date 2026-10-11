@@ -12,6 +12,8 @@ type Data = {
   series: Record<string, { page_view: number; signup: number; claim: number }>;
   users: { id: string; username: string; email: string; role: string; banned: boolean; level: number; coins: number; gems: number; createdAt: string; utmSource: string | null; online: boolean; lastSeenAt: string | null }[];
   deliveries: { id: string; title: string; status: string; reward: number; createdAt: string; sender: { username: string }; courier: { username: string } | null }[];
+  rides: { id: string; pickupLabel: string; dropoffLabel: string; status: string; fare: number; createdAt: string; rider: { username: string }; driver: { username: string } | null }[];
+  lotteries: { id: string; name: string; status: string; pot: number; ticketPrice: number; drawAt: string; players: number; official: boolean; host: { username: string }; winner: { username: string } | null }[];
   notes: { id: string; body: string; hidden: boolean; lat: number; lng: number; createdAt: string; author: { username: string } }[];
   missions: { id: string; title: string; itemKey: string; lat: number; lng: number; activeFrom: string; activeTo: string; sponsor: string | null; rewardXp: number; rewardCoins: number }[];
   announcements: { id: string; title: string; body: string; active: boolean; ctaUrl: string | null }[];
@@ -40,7 +42,7 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { id: "users", icon: "👥", label: "Players", desc: "Search players, gift coins or gems, make admins, ban cheaters." },
       { id: "moderation", icon: "🛡️", label: "Moderation", desc: "Hide location posts and delete chat messages." },
-      { id: "deliveries", icon: "📦", label: "Deliveries", desc: "Real-world package jobs between players. Cancel one to refund the sender." },
+      { id: "deliveries", icon: "📦", label: "Jobs", desc: "Package deliveries and car rides between players, plus lotteries. Cancel a job to refund whoever paid; cancel a lottery to refund every ticket." },
     ],
   },
   { group: "Marketing", items: [{ id: "marketing", icon: "📣", label: "Campaigns", desc: "Where players come from, campaign links, in-game banners and live push messages." }] },
@@ -343,6 +345,8 @@ export function AdminPanel() {
         )}
 
         {tab === "deliveries" && (
+          <>
+          <h3>📦 Deliveries</h3>
           <table>
             <thead><tr><th>Package</th><th>Sender</th><th>Courier</th><th>Reward</th><th>Status</th><th>Created</th><th /></tr></thead>
             <tbody>
@@ -359,6 +363,49 @@ export function AdminPanel() {
               ))}
             </tbody>
           </table>
+          <h3>🚕 Rides</h3>
+          <table>
+            <thead><tr><th>Route</th><th>Rider</th><th>Driver</th><th>Fare</th><th>Status</th><th>Created</th><th /></tr></thead>
+            <tbody>
+              {data.rides.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.pickupLabel} → <b>{r.dropoffLabel}</b></td>
+                  <td>{r.rider.username}</td>
+                  <td>{r.driver?.username ?? "—"}</td>
+                  <td>{r.fare}</td>
+                  <td><span className="tag">{r.status}</span></td>
+                  <td className="muted small">{fmt(r.createdAt)}</td>
+                  <td>{!["DONE", "CANCELLED"].includes(r.status) && <Button className="btn ghost small" onClick={() => askConfirm("Cancel and refund the rider?", { ok: "Cancel ride", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelRide", id: r.id }))}>Cancel</Button>}</td>
+                </tr>
+              ))}
+              {!data.rides.length && <tr><td colSpan={7} className="muted small">No rides yet</td></tr>}
+            </tbody>
+          </table>
+          <h3>🎰 Lotteries</h3>
+          <table>
+            <thead><tr><th>Name</th><th>Host</th><th>Ticket</th><th>Pot</th><th>Players</th><th>Draw</th><th>Status</th><th /></tr></thead>
+            <tbody>
+              {data.lotteries.map((l) => (
+                <tr key={l.id}>
+                  <td><b>{l.official ? "⭐ " : ""}{l.name}</b></td>
+                  <td>{l.host.username}</td>
+                  <td>{l.ticketPrice}</td>
+                  <td>{l.pot}</td>
+                  <td>{l.players}</td>
+                  <td className="muted small">{fmt(l.drawAt)}</td>
+                  <td><span className="tag">{l.status}{l.winner ? ` · ${l.winner.username}` : ""}</span></td>
+                  <td>{l.status === "OPEN" && (
+                    <>
+                      <Button className="btn ghost small" onClick={() => askConfirm("Draw the winner now?", { body: "Ticket sales close and one random ticket wins the pot.", ok: "Draw now" }).then((ok) => ok && post({ action: "drawLottery", id: l.id }))}>Draw now</Button>{" "}
+                      <Button className="btn ghost small" onClick={() => askConfirm("Cancel and refund every ticket?", { ok: "Cancel lottery", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelLottery", id: l.id }))}>Cancel</Button>
+                    </>
+                  )}</td>
+                </tr>
+              ))}
+              {!data.lotteries.length && <tr><td colSpan={8} className="muted small">No lotteries yet</td></tr>}
+            </tbody>
+          </table>
+          </>
         )}
         </section>
       </div>

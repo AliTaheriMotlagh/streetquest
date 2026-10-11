@@ -4,7 +4,8 @@ import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
 import { RARITY_COLOR } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
-import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote } from "./client";
+import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote, type WorldRide } from "./client";
+import { RIDE_MIN_FARE, RIDE_STATUS, suggestFare, type RideStatus } from "@/lib/rides";
 import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { LifeTab } from "./Life";
 import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
@@ -20,7 +21,7 @@ import { autoIsLite, onPerfChange, perfMode, setPerfMode, type PerfMode } from "
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
-function LocationField({ label, value, onChange }: { label: string; value: LatLng | null; onChange: (p: LatLng) => void }) {
+export function LocationField({ label, value, onChange }: { label: string; value: LatLng | null; onChange: (p: LatLng) => void }) {
   const { pos, pick } = useGame();
   return (
     <>
@@ -221,7 +222,7 @@ type MyDeliveries = {
 };
 
 /** "navigate" opens maps; in test mode it just jumps you there. */
-function GoTo({ lat, lng, label = "navigate" }: { lat: number; lng: number; label?: string }) {
+export function GoTo({ lat, lng, label = "navigate" }: { lat: number; lng: number; label?: string }) {
   const { teleport } = useGame();
   return teleport ? (
     <a href="#" onClick={(e) => (e.preventDefault(), teleport({ lat, lng }))}><MoveIcon /> go</a>
@@ -246,6 +247,24 @@ function DeliveryRoute({ d }: { d: WorldDelivery }) {
 }
 
 export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
+  const { world } = useGame();
+  const [kind, setKind] = useState<"deliveries" | "rides">("deliveries");
+  return (
+    <Sheet title="Jobs" onClose={onClose} peek={peek} help="jobs">
+      <div className="seg" role="tablist">
+        <button role="tab" aria-selected={kind === "deliveries"} className={kind === "deliveries" ? "on" : ""} onClick={() => setKind("deliveries")}>
+          📦 Deliveries {!!world?.deliveries.length && <span className="seg-n">{world.deliveries.length}</span>}
+        </button>
+        <button role="tab" aria-selected={kind === "rides"} className={kind === "rides" ? "on" : ""} onClick={() => setKind("rides")}>
+          🚕 Rides {!!world?.rides.length && <span className="seg-n">{world.rides.length}</span>}
+        </button>
+      </div>
+      {kind === "deliveries" ? <DeliveriesTab /> : <RidesTab />}
+    </Sheet>
+  );
+}
+
+function DeliveriesTab() {
   const { world, act, me } = useGame();
   const [tab, setTab] = useState<"open" | "carrying" | "sent" | "new">("open");
   const [mine, setMine] = useState<MyDeliveries>({ sent: [], carrying: [] });
@@ -279,7 +298,7 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
   const STATUS: Record<string, string> = { OPEN: "🟡 Waiting for courier", ACCEPTED: "🔵 Courier on the way", PICKED_UP: "🟣 In transit", DELIVERED: "✅ Delivered", CANCELLED: "⚫ Cancelled" };
 
   return (
-    <Sheet title="Courier Jobs" onClose={onClose} peek={peek} help="jobs">
+    <>
       <Tabs
         value={tab}
         onChange={setTab}
@@ -407,7 +426,251 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
           </Button>
         </div>
       )}
-    </Sheet>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- Rides (Uber-style)
+type RidePeer = { id: string; username: string; avatar: string; pos: LatLng | null };
+type MyRide = WorldRide & { pin?: string; acceptedAt: string | null; startedAt: string | null };
+type MyRides = {
+  riding: (MyRide & { pin: string; driver: RidePeer | null }) | null;
+  driving: (MyRide & { rider: RidePeer }) | null;
+  history: (WorldRide & { mine: "rider" | "driver"; rider: { username: string }; driver: { username: string } | null })[];
+};
+
+const pickupOf = (r: WorldRide) => ({ lat: r.pickupLat, lng: r.pickupLng });
+const dropoffOf = (r: WorldRide) => ({ lat: r.dropoffLat, lng: r.dropoffLng });
+
+function RideRoute({ r }: { r: WorldRide }) {
+  return (
+    <div className="ride-route small">
+      <div><span className="dot-pin a" /> <b>{r.pickupLabel}</b> <GoTo lat={r.pickupLat} lng={r.pickupLng} /></div>
+      <div className="ride-line" />
+      <div><span className="dot-pin b" /> <b>{r.dropoffLabel}</b> <GoTo lat={r.dropoffLat} lng={r.dropoffLng} /></div>
+      <div className="muted">{formatDistance(distanceM(pickupOf(r), dropoffOf(r)))} trip · {r.seats} seat{r.seats > 1 ? "s" : ""} · <b style={{ color: "var(--yellow)" }}>{r.fare} 🪙</b></div>
+      {r.note && <div className="muted">“{r.note}”</div>}
+    </div>
+  );
+}
+
+function RidesTab() {
+  const { world, act, me, pos } = useGame();
+  const [mine, setMine] = useState<MyRides | null>(null);
+  const [pin, setPin] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [form, setForm] = useState({ pickupLabel: "My location", dropoffLabel: "", seats: 1, note: "" });
+  const [pickup, setPickup] = useState<LatLng | null>(null);
+  const [dropoff, setDropoff] = useState<LatLng | null>(null);
+  const [fare, setFare] = useState<number | null>(null); // null = use the suggestion
+
+  const load = useCallback(() => api<MyRides>("/api/rides").then(setMine).catch(() => {}), []);
+  const active = !!(mine?.riding || mine?.driving);
+  useEffect(() => {
+    load();
+    // While a ride is on, keep both sides' screens moving (driver distance, status).
+    const t = setInterval(load, active ? 8_000 : 30_000);
+    return () => clearInterval(t);
+  }, [load, active]);
+  useEffect(() => {
+    if (!pickup && pos) setPickup(pos);
+  }, [pos, pickup]);
+
+  const doAct = async (id: string, action: string, extra: object = {}) => {
+    const ok = await act(() => api(`/api/rides/${id}`, { body: { action, ...extra } }));
+    if (ok) {
+      setPin("");
+      load();
+    }
+    return ok;
+  };
+  const suggested = pickup && dropoff ? suggestFare(pickup, dropoff) : RIDE_MIN_FARE;
+  const price = fare ?? suggested;
+  const request = async () => {
+    if (!pickup || !dropoff) return;
+    const ok = await act(() =>
+      api("/api/rides", { body: { ...form, fare: price, pickupLat: pickup.lat, pickupLng: pickup.lng, dropoffLat: dropoff.lat, dropoffLng: dropoff.lng } }),
+    );
+    if (ok) {
+      setForm({ pickupLabel: "My location", dropoffLabel: "", seats: 1, note: "" });
+      setDropoff(null);
+      setFare(null);
+      load();
+    }
+  };
+  const away = (p: LatLng | null | undefined, to: LatLng) => (p ? formatDistance(distanceM(p, to)) : "—");
+
+  if (!mine) return <div className="empty">Loading…</div>;
+  const { riding: r, driving: dr } = mine;
+
+  return (
+    <>
+      {/* ---- I'm the rider */}
+      {r && (
+        <div className="card hl ride-card">
+          <div className="row">
+            <b className="grow">🚕 Your ride</b>
+            <span className="tag">{RIDE_STATUS[r.status as RideStatus]}</span>
+          </div>
+          {r.status === "REQUESTED" && <p className="small muted">Waiting for a driver nearby… Your fare is held safely and refunded if nobody accepts.</p>}
+          {r.driver && (
+            <div className="ride-peer">
+              <span className="ride-avatar">{r.driver.avatar}</span>
+              <div className="grow">
+                <b>{r.driver.username}</b>
+                <div className="small muted">
+                  {r.status === "ACCEPTED" ? `is ${away(r.driver.pos, pickupOf(r))} from the pickup` : `heading to ${r.dropoffLabel}`}
+                  {!r.driver.pos && " · location hidden (offline)"}
+                </div>
+              </div>
+            </div>
+          )}
+          {r.status !== "ONBOARD" && (
+            <div className="ride-pin">
+              <span className="small muted">Tell your driver this PIN at pickup</span>
+              <b className="mono">{r.pin}</b>
+            </div>
+          )}
+          <RideRoute r={r} />
+          {r.status === "ONBOARD" && (
+            <>
+              <p className="small muted">{away(pos, dropoffOf(r))} to go.</p>
+              <Button className="btn green block" onClick={() => askConfirm("Arrived?", { body: `This pays ${r.driver?.username ?? "your driver"} the ${r.fare}-coin fare.`, ok: "🏁 I've arrived" }).then((ok) => ok && doAct(r.id, "arrive"))}>
+                🏁 I&apos;ve arrived
+              </Button>
+            </>
+          )}
+          {(r.status === "REQUESTED" || r.status === "ACCEPTED") && (
+            <Button className="btn ghost small" onClick={() => askConfirm("Cancel this ride?", { body: "Your fare is refunded in full.", ok: "Cancel ride", cancel: "Keep waiting", danger: true }).then((ok) => ok && doAct(r.id, "cancel"))}>
+              Cancel &amp; refund
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* ---- I'm the driver */}
+      {dr && (
+        <div className="card hl ride-card">
+          <div className="row">
+            <b className="grow">🚗 You&apos;re driving</b>
+            <span className="tag">{RIDE_STATUS[dr.status as RideStatus]}</span>
+          </div>
+          <div className="ride-peer">
+            <span className="ride-avatar">{dr.rider.avatar}</span>
+            <div className="grow">
+              <b>{dr.rider.username}</b>
+              <div className="small muted">
+                {dr.status === "ACCEPTED" ? `Pickup is ${away(pos, pickupOf(dr))} from you` : `Drop-off is ${away(pos, dropoffOf(dr))} away`}
+                {dr.status === "ACCEPTED" && dr.rider.pos && ` · rider ${away(dr.rider.pos, pickupOf(dr))} from it`}
+              </div>
+            </div>
+          </div>
+          <RideRoute r={dr} />
+          {dr.status === "ACCEPTED" && (
+            <>
+              <div className="row">
+                <input className="grow" inputMode="numeric" maxLength={4} placeholder="Rider's PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
+                <Button className="btn green small" disabled={pin.length !== 4} onClick={() => doAct(dr.id, "start", { pin })}>Start ride</Button>
+              </div>
+              <Button className="btn ghost small" style={{ marginTop: 8 }} onClick={() => askConfirm("Drop this ride?", { body: "The rider goes back in the queue for another driver.", ok: "Drop ride", danger: true }).then((ok) => ok && doAct(dr.id, "cancel"))}>
+                Drop ride
+              </Button>
+            </>
+          )}
+          {dr.status === "ONBOARD" && (
+            <>
+              <Button className="btn green block" onClick={() => doAct(dr.id, "complete")}>🏁 End ride · collect {dr.fare} 🪙</Button>
+              <p className="small muted">Both of you need to be at the drop-off — or your rider taps “I&apos;ve arrived”.</p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ---- Request a car */}
+      {!r && (
+        <details className="card ride-request" open={!world?.rides.length}>
+          <summary><b>🚕 Request a car</b></summary>
+          <LocationField label="Pickup" value={pickup} onChange={setPickup} />
+          <input value={form.pickupLabel} maxLength={120} onChange={(e) => setForm({ ...form, pickupLabel: e.target.value })} placeholder="e.g. Café entrance" style={{ marginTop: 6 }} />
+          <LocationField label="Where to?" value={dropoff} onChange={setDropoff} />
+          <input value={form.dropoffLabel} maxLength={120} onChange={(e) => setForm({ ...form, dropoffLabel: e.target.value })} placeholder="e.g. Central station" style={{ marginTop: 6 }} />
+          <div className="grid2" style={{ marginTop: 4 }}>
+            <div>
+              <label>Seats</label>
+              <select value={form.seats} onChange={(e) => setForm({ ...form, seats: Number(e.target.value) })}>
+                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label>Fare (🪙) · you have {me.coins}</label>
+              <input type="number" min={RIDE_MIN_FARE} value={price} onChange={(e) => setFare(Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
+            </div>
+          </div>
+          {pickup && dropoff && (
+            <p className="small muted">
+              {formatDistance(distanceM(pickup, dropoff))} trip · suggested {suggested} 🪙
+              {fare != null && fare !== suggested && <> · <a href="#" onClick={(e) => (e.preventDefault(), setFare(null))}>use suggestion</a></>}
+            </p>
+          )}
+          <label>Note for the driver</label>
+          <input value={form.note} maxLength={200} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Wearing a red jacket" />
+          <Button
+            className="btn yellow block"
+            style={{ marginTop: 12 }}
+            disabled={!pickup || !dropoff || form.dropoffLabel.trim().length < 2 || form.pickupLabel.trim().length < 2 || price < RIDE_MIN_FARE || price > me.coins}
+            onClick={request}
+          >
+            Request car · {price} 🪙
+          </Button>
+          <p className="small muted" style={{ marginTop: 8 }}>
+            ⚠️ Rides are with other real players. Only get in with people you trust, wear a seatbelt and follow local laws. The fare is held until you arrive.
+          </p>
+        </details>
+      )}
+
+      {/* ---- Riders waiting (drive them) */}
+      {!dr && (
+        <>
+          <label>Riders waiting near you</label>
+          {world?.rides.length ? (
+            [...world.rides]
+              .sort((a, b) => (a.distanceM ?? 0) - (b.distanceM ?? 0))
+              .map((x) => (
+                <div key={x.id} className="card">
+                  <div className="row">
+                    <b className="grow">{x.rider?.avatar} {x.rider?.username}</b>
+                    <span className="small muted">{formatDistance(x.distanceM ?? 0)} away</span>
+                  </div>
+                  <RideRoute r={x} />
+                  <Button className="btn green small" onClick={() => doAct(x.id, "accept")}>Accept ride</Button>
+                </div>
+              ))
+          ) : (
+            <div className="empty">Nobody needs a ride right now. Requests pop up here and on the map as 🚕.</div>
+          )}
+        </>
+      )}
+
+      {!!mine.history.length && (
+        <>
+          <Button className="btn ghost small" style={{ marginTop: 6 }} onClick={() => setShowHistory(!showHistory)}>
+            {showHistory ? "Hide" : "Show"} past rides ({mine.history.length})
+          </Button>
+          {showHistory &&
+            mine.history.map((h) => (
+              <div key={h.id} className="card small">
+                <div className="row">
+                  <span className="grow">{h.mine === "rider" ? "🧍 Rode" : "🚗 Drove"} to <b>{h.dropoffLabel}</b></span>
+                  <span className="tag">{RIDE_STATUS[h.status as RideStatus]}</span>
+                </div>
+                <div className="muted">
+                  {h.mine === "rider" ? (h.driver ? `with ${h.driver.username}` : "no driver") : `for ${h.rider.username}`} · {h.fare} 🪙 · {fmtTime(h.createdAt)}
+                </div>
+              </div>
+            ))}
+        </>
+      )}
+    </>
   );
 }
 

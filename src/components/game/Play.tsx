@@ -12,6 +12,7 @@ import { duckMusic } from "./music";
 import { AutoVideo } from "@/components/AutoVideo";
 import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
 import { Button } from "@/components/Button";
+import { LotteryTab } from "./Lottery";
 
 // ---------------------------------------------------------------- celebrations
 type Celebration = { title: string; body?: string; emoji?: string };
@@ -235,7 +236,7 @@ const fmtLeft = (ms: number) => {
 
 export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; peek: boolean; onStarted: () => void }) {
   const { act, setPanel, me } = useGame();
-  const [tab, setTab] = useState<"story" | "games" | "goals">(me.goalsReady ? "goals" : "story");
+  const [tab, setTab] = useState<"story" | "games" | "goals" | "lottery">(me.goalsReady ? "goals" : "story");
   const [d, setD] = useState<PlayData | null>(null);
   const [goals, setGoals] = useState<GoalsData | null>(null);
   const load = useCallback(() => {
@@ -262,7 +263,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
 
   return (
     <Sheet title="🎮 Play" onClose={onClose} peek={peek} help="play">
-      <Tabs value={tab} onChange={setTab} tabs={[["story", "📖 Story"], ["games", "🧭 GPS games"], ["goals", `🏆 Goals${me.goalsReady ? ` (${me.goalsReady})` : ""}`]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["story", "📖 Story"], ["games", "🧭 GPS games"], ["goals", `🏆 Goals${me.goalsReady ? ` (${me.goalsReady})` : ""}`], ["lottery", "🎰 Lottery"]]} />
       {d?.active && (
         <div className="card hl small">▶️ <b>{d.active.title}</b> is running — see the banner on the map.</div>
       )}
@@ -329,6 +330,8 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
           </div>
         </>
       )}
+
+      {tab === "lottery" && <LotteryTab />}
 
       {tab === "goals" && goals && (
         <>

@@ -16,6 +16,7 @@ import { NeedsHud } from "./Life";
 import { api, fmtTime, type LatLng, type LobbyView, type Me, type Selected, type World } from "./client";
 import { BombDefuse } from "./MiniGames";
 import { NoteCard } from "./Panels";
+import { LotteryCard } from "./Lottery";
 import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
 import { setMusicMood, startMusic } from "./music";
 import { InboxPanel } from "./Inbox";
@@ -583,7 +584,7 @@ export default function Game() {
     nearby: { n: nearbyLobbies.length, sig: nearbyLobbies.map((s) => s.lobby!.id).join(",") },
     base: !me.base ? { n: "!", sig: "nobase" } : me.baseAlert ? { n: me.baseAlert.supply >= 100 ? "🪙" : "!", sig: `${me.baseAlert.doneAt}|${me.baseAlert.supply >= 100}` } : undefined,
     play: { n: me.goalsReady || (me.gpsGame ? "▶" : 0), sig: `${me.goalsReady}|${me.gpsGame?.id ?? ""}` },
-    jobs: { n: world?.deliveries.length ?? 0, sig: (world?.deliveries ?? []).map((d) => d.id).sort().join(",") },
+    jobs: { n: (world?.deliveries.length ?? 0) + (world?.rides.length ?? 0), sig: [...(world?.deliveries ?? []), ...(world?.rides ?? [])].map((d) => d.id).sort().join(",") },
     crew: { n: unread + me.pendingFriends, sig: `${unread}|${me.pendingFriends}` },
     me: {
       n: me.questsReady || me.freePoints || me.commandPoints || (me.dailyAvailable || me.mood.score < 30 ? "!" : 0),
@@ -1002,7 +1003,7 @@ function InfoCard({
   onC4: (towerId: string) => void;
 }) {
   const { pos, act, me, world, openChat, setPanel, enterMatch, teleport, pick } = useGame();
-  const target = sel.type === "delivery" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.data;
+  const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
@@ -1156,6 +1157,33 @@ function InfoCard({
         <Button className="btn green block" onClick={() => act(() => api(`/api/deliveries/${d.id}`, { body: { action: "accept" } })).then((ok) => ok && onClose())}>
           Accept job
         </Button>
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "ride") {
+    const r = sel.data;
+    return (
+      <Sheet title={`🚕 ${r.rider?.username ?? "Rider"} needs a ride`} onClose={onClose}>
+        <p className="small muted">{r.seats} seat{r.seats > 1 ? "s" : ""} · pickup {formatDistance(dist)} from you · fare <b style={{ color: "var(--yellow)" }}>{r.fare} 🪙</b></p>
+        <p className="small">🟢 {r.pickupLabel}<br />🔴 {r.dropoffLabel} ({formatDistance(distanceM({ lat: r.pickupLat, lng: r.pickupLng }, { lat: r.dropoffLat, lng: r.dropoffLng }))} trip)</p>
+        {r.note && <p className="small muted">“{r.note}”</p>}
+        <div className="row">
+          <Button className="btn green grow" onClick={() => act(() => api(`/api/rides/${r.id}`, { body: { action: "accept" } })).then((ok) => ok && (onClose(), setPanel("jobs")))}>
+            🚗 Accept ride
+          </Button>
+          <Button className="btn ghost" onClick={() => setPanel("jobs")}>All jobs</Button>
+        </div>
+      </Sheet>
+    );
+  }
+
+  if (sel.type === "lottery") {
+    // Read the live copy so the card updates after buying tickets.
+    const l = world?.lotteries.find((x) => x.id === sel.data.id) ?? sel.data;
+    return (
+      <Sheet title={`🎰 ${l.official ? "⭐ " : ""}${l.name}`} onClose={onClose}>
+        <LotteryCard l={l} />
       </Sheet>
     );
   }

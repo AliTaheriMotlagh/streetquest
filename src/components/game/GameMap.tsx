@@ -7,7 +7,7 @@ import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BUILDING_BY_KEY, FACTION_BY_KEY, SIEGE_RANGE_M, type BuildingKey } from "@/lib/rts";
 import { offset } from "@/lib/geo";
 import { PINGS, towerStats } from "@/lib/td";
-import type { GpsView, LatLng, LobbyView, Me, Selected, World, WorldDelivery, WorldNote, WorldPlayer, WorldSpawn } from "./client";
+import type { GpsView, LatLng, LobbyView, Me, Selected, World, WorldDelivery, WorldNote, WorldPlayer, WorldRide, WorldSpawn } from "./client";
 import { esc, icon } from "./mapIcons";
 import { LiveLayer } from "./LiveLayer";
 import { PlayerLayer, type Guide } from "./PlayerLayer";
@@ -141,11 +141,12 @@ const RARITY_RANK: Record<string, number> = { legendary: 4, epic: 3, rare: 2, un
 type Clutter =
   | { id: string; lat: number; lng: number; kind: "spawn"; data: WorldSpawn }
   | { id: string; lat: number; lng: number; kind: "note"; data: WorldNote }
-  | { id: string; lat: number; lng: number; kind: "delivery"; data: WorldDelivery };
+  | { id: string; lat: number; lng: number; kind: "delivery"; data: WorldDelivery }
+  | { id: string; lat: number; lng: number; kind: "ride"; data: WorldRide };
 
 const spawnEmoji = (s: WorldSpawn) => (s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji ?? "❔");
 const clutterRank = (c: Clutter) => (c.kind === "spawn" ? (c.data.kind === "chest" ? 5 : RARITY_RANK[c.data.item?.rarity ?? ""] ?? 0) : -1);
-const clutterEmoji = (c: Clutter) => (c.kind === "spawn" ? spawnEmoji(c.data) : c.kind === "note" ? "💬" : "📦");
+const clutterEmoji = (c: Clutter) => (c.kind === "spawn" ? spawnEmoji(c.data) : c.kind === "note" ? "💬" : c.kind === "ride" ? "🚕" : "📦");
 
 function Layers({
   world,
@@ -190,6 +191,7 @@ function Layers({
     for (const s of world.spawns) if (keep(s) && !(lod !== "near" && s.claimed)) list.push({ id: `s${s.id}`, lat: s.lat, lng: s.lng, kind: "spawn", data: s });
     for (const n of world.notes) if (keep(n)) list.push({ id: `n${n.id}`, lat: n.lat, lng: n.lng, kind: "note", data: n });
     for (const d of world.deliveries) if (keep({ lat: d.pickupLat, lng: d.pickupLng })) list.push({ id: `d${d.id}`, lat: d.pickupLat, lng: d.pickupLng, kind: "delivery", data: d });
+    for (const r of world.rides) if (keep({ lat: r.pickupLat, lng: r.pickupLng })) list.push({ id: `r${r.id}`, lat: r.pickupLat, lng: r.pickupLng, kind: "ride", data: r });
     return cluster(list, view.zoom, cell, "cl");
   }, [world, view, lod, cell]);
 
@@ -229,6 +231,8 @@ function Layers({
       spawnMarker(c.data)
     ) : c.kind === "note" ? (
       <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon(c.data.unlocked ? "💬" : "📍", "note", 32)} eventHandlers={{ click: () => onSelect({ type: "note", data: c.data }) }} />
+    ) : c.kind === "ride" ? (
+      <Marker key={c.id} position={[c.lat, c.lng]} icon={icon(`<span class="ring" style="color:#ffd23f"></span>🚕<span class="nm">${c.data.fare} 🪙</span>`, "ride")} eventHandlers={{ click: () => onSelect({ type: "ride", data: c.data }) }} />
     ) : (
       <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon("📦", "")} eventHandlers={{ click: () => onSelect({ type: "delivery", data: c.data }) }} />
     );
@@ -276,6 +280,23 @@ function Layers({
           position={[m.lat, m.lng]}
           icon={icon(`<span class="ring" style="color:#ffd23f"></span>${m.item?.emoji ?? "⭐"}`, `legendary ${m.claimed ? "claimed" : ""}`, 46)}
           eventHandlers={{ click: () => onSelect({ type: "mission", data: m }) }}
+        />
+      ))}
+
+      {world?.lotteries.map((l) => (
+        <Circle key={`lc${l.id}`} center={[l.lat, l.lng]} radius={l.radiusM} pathOptions={{ color: "#ff2e88", weight: 1, dashArray: "4 4", fillOpacity: l.status === "OPEN" ? 0.08 : 0.02 }} />
+      ))}
+      {world?.lotteries.filter(inView).map((l) => (
+        <Marker
+          key={`l${l.id}`}
+          position={[l.lat, l.lng]}
+          zIndexOffset={300}
+          icon={icon(
+            `<span class="ring" style="color:#ff2e88"></span>🎰<span class="nm">${l.status === "OPEN" ? `${l.pot.toLocaleString()} 🪙` : l.status === "DRAWN" ? `🏆 ${esc(l.winner ?? "")}` : "refunded"}</span>${l.myTickets ? `<span class="shield">🎟️</span>` : ""}`,
+            `lottery ${l.status === "OPEN" ? "" : "drawn"}`,
+            42,
+          )}
+          eventHandlers={{ click: () => onSelect({ type: "lottery", data: l }) }}
         />
       ))}
 

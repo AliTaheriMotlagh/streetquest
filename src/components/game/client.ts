@@ -186,6 +186,8 @@ export type WorldMission = { id: string; title: string; description: string; lat
 export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null; hasPhoto: boolean; likes: number; mine: boolean };
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
 export type WorldDelivery = { id: string; title: string; description: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; reward: number; status: string; sender?: { username: string }; distanceM?: number };
+export type WorldRide = { id: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; seats: number; note: string; fare: number; status: string; createdAt: string; rider?: { username: string; avatar: string }; distanceM?: number };
+export type WorldLottery = { id: string; name: string; lat: number; lng: number; radiusM: number; ticketPrice: number; maxTickets: number; drawAt: number; pot: number; status: "OPEN" | "DRAWN" | "REFUNDED"; official: boolean; host: string; winner: string | null; players: number; totalTickets: number; myTickets: number; mine: boolean; won: boolean };
 export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; bounty: number; home?: boolean; lat: number; lng: number };
 export type WorldFlag = { id: string; name: string; lat: number; lng: number; owner: string; ownerAvatar: string; faction: string | null; mine: boolean; friend: boolean; heldSince: number; captures: number; capture: { by: string | null; mine: boolean; endsAt: number } | null; shielded: boolean };
 
@@ -312,6 +314,8 @@ export type World = {
   notes: WorldNote[];
   events: WorldEvent[];
   deliveries: WorldDelivery[];
+  rides: WorldRide[];
+  lotteries: WorldLottery[];
   players: WorldPlayer[];
   bases: WorldBase[];
   bosses: WorldBoss[];
@@ -331,6 +335,8 @@ export type Selected =
   | { type: "note"; data: WorldNote }
   | { type: "event"; data: WorldEvent }
   | { type: "delivery"; data: WorldDelivery }
+  | { type: "ride"; data: WorldRide }
+  | { type: "lottery"; data: WorldLottery }
   | { type: "player"; data: WorldPlayer }
   | { type: "base"; data: WorldBase }
   | { type: "boss"; data: WorldBoss }

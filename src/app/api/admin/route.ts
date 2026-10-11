@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cancelLottery, drawDue } from "@/server/lottery";
 import { prisma } from "@/lib/db";
 import { ITEM_BY_KEY } from "@/lib/catalog";
 import { levelForXp } from "@/lib/progression";
@@ -57,7 +58,7 @@ export const GET = route(async (req) => {
   const pick = (list: { key: string }[], cat: keyof typeof EDITABLE) =>
     list.map((e) => ({ key: e.key, name: (e as { name?: string }).name ?? e.key, emoji: (e as { emoji?: string }).emoji ?? "", values: Object.fromEntries(EDITABLE[cat].map((f) => [f, (e as unknown as Record<string, unknown>)[f] ?? null])) }));
 
-  const [userList, deliveries, notes, missions, announcements, messages] = await Promise.all([
+  const [userList, deliveries, notes, missions, announcements, messages, rides, lotteries] = await Promise.all([
     prisma.user.findMany({
       where: q ? { OR: [{ username: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }] } : {},
       orderBy: { createdAt: "desc" },
@@ -69,6 +70,8 @@ export const GET = route(async (req) => {
     prisma.adminMission.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.announcement.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.message.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { author: { select: { username: true } } } }),
+    prisma.ride.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { rider: { select: { username: true } }, driver: { select: { username: true } } } }),
+    prisma.lottery.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { host: { select: { username: true } }, winner: { select: { username: true } }, _count: { select: { tickets: true } } } }),
   ]);
 
   return {
@@ -87,6 +90,8 @@ export const GET = route(async (req) => {
     series,
     users: userList.map((x) => ({ ...x, level: levelForXp(x.xp), online: isOnline(x.lastSeenAt) })),
     deliveries: deliveries.map(({ dropoffCode: _c, ...d }) => d),
+    rides: rides.map(({ pin: _p, ...r }) => r),
+    lotteries: lotteries.map(({ _count, ...l }) => ({ ...l, players: _count.tickets })),
     notes,
     missions,
     announcements,
@@ -144,6 +149,9 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("hideNote"), id: z.string(), hidden: z.boolean() }),
   z.object({ action: z.literal("deleteMessage"), id: z.string() }),
   z.object({ action: z.literal("cancelDelivery"), id: z.string() }),
+  z.object({ action: z.literal("cancelRide"), id: z.string() }),
+  z.object({ action: z.literal("cancelLottery"), id: z.string() }),
+  z.object({ action: z.literal("drawLottery"), id: z.string() }),
   z.object({ action: z.literal("broadcast"), title: z.string().min(1).max(100), body: z.string().max(300).optional(), push: z.boolean().optional() }),
   z.object({ action: z.literal("saveSettings"), data: z.record(z.unknown()) }),
   z.object({ action: z.literal("grantGems"), userId: z.string(), gems: z.number().int().min(-1e6).max(1e6) }),
@@ -218,6 +226,24 @@ export const POST = route(async (req) => {
       if (del.courierId) await notify(del.courierId, { kind: "delivery", title: "Delivery cancelled by admin", body: del.title });
       break;
     }
+    case "cancelRide": {
+      const ride = await prisma.ride.findUnique({ where: { id: d.id } });
+      if (!ride || ride.status === "DONE" || ride.status === "CANCELLED") throw new HttpError(400, "Can't cancel");
+      const moved = await prisma.ride.updateMany({ where: { id: d.id, status: ride.status }, data: { status: "CANCELLED", endedAt: new Date() } });
+      if (!moved.count) throw new HttpError(409, "The ride just changed — refresh");
+      await grant(ride.riderId, { coins: ride.fare }, { raw: true });
+      await notify(ride.riderId, { kind: "delivery", title: "Ride cancelled by admin", body: "Your fare was refunded" });
+      if (ride.driverId) await notify(ride.driverId, { kind: "delivery", title: "Ride cancelled by admin", body: `To ${ride.dropoffLabel}` });
+      break;
+    }
+    case "cancelLottery":
+      await cancelLottery(d.id);
+      break;
+    case "drawLottery":
+      // Bring the draw forward to now; drawDue does the rest (and is safe against a racing draw).
+      await prisma.lottery.updateMany({ where: { id: d.id, status: "OPEN" }, data: { drawAt: new Date() } });
+      await drawDue({ id: d.id });
+      break;
     case "broadcast":
     {
       // Everyone active in the last 15 minutes gets it on their next poll.
