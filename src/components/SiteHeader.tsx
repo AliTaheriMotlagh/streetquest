@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { getT } from "@/server/i18n";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const { t } = await getT();
   return (
     <header className="wrap topbar">
       <Link href="/" className="logo">
@@ -8,10 +10,10 @@ export function SiteHeader() {
       </Link>
       <nav className="row" style={{ marginLeft: "auto" }}>
         <Link href="/events" className="btn ghost small hide-sm">
-          Events
+          {t("Events")}
         </Link>
         <Link href="/play" className="btn small">
-          Play now
+          {t("Play now")}
         </Link>
       </nav>
     </header>

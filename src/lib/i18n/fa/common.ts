@@ -84,6 +84,10 @@ const common: Record<string, string> = {
   "courier game": "بازی پیک",
   "GPS strategy game": "بازی استراتژی GPS",
   "location-based shooter": "بازی تیراندازی مکان‌محور",
+
+  // ---- dialogs
+  Cancel: "انصراف",
+  OK: "باشه",
 };
 
 export default common;

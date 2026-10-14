@@ -7,6 +7,7 @@ import { LocalTime } from "@/components/LocalTime";
 import { ShareButton } from "@/components/ShareButton";
 import { prisma } from "@/lib/db";
 import { SITE } from "@/lib/site";
+import { getT } from "@/server/i18n";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -14,11 +15,12 @@ const load = (slug: string) =>
   prisma.event.findUnique({ where: { slug }, include: { _count: { select: { participants: true } }, creator: { select: { username: true } } } });
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { t } = await getT();
   const e = await load((await params).slug);
-  if (!e) return { title: "Event not found" };
+  if (!e) return { title: t("Event not found") };
   return {
     title: e.title,
-    description: e.description || `Real-world group quest on ${SITE.name}. Show up, check in, earn squad XP.`,
+    description: e.description || t("Real-world group quest on {name}. Show up, check in, earn squad XP.", { name: SITE.name }),
     alternates: { canonical: `/e/${e.slug}` },
     openGraph: { title: `${e.title} · ${SITE.name}`, description: e.description, type: "website" },
     robots: { index: e.isPublic, follow: true },
@@ -28,6 +30,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function EventPage({ params }: Props) {
   const e = await load((await params).slug);
   if (!e) notFound();
+  const { t } = await getT();
+  // Structured data stays in English: it's for search engines, not the reader.
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Event",
@@ -47,23 +51,23 @@ export default async function EventPage({ params }: Props) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <SiteHeader />
       <div className="wrap section" style={{ maxWidth: 700 }}>
-        {e.official && <span className="tag" style={{ color: "var(--yellow)" }}>⭐ Official event</span>}
+        {e.official && <span className="tag" style={{ color: "var(--yellow)" }}>{t("⭐ Official event")}</span>}
         <h1 style={{ fontSize: 42, margin: "10px 0" }}>{e.title}</h1>
         <p className="muted">
           <LocalTime iso={e.startsAt.toISOString()} /> → <LocalTime iso={e.endsAt.toISOString()} />
         </p>
         <p style={{ lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{e.description}</p>
         <div className="grid3" style={{ margin: "20px 0" }}>
-          <div className="stat"><b>{e._count.participants}/{e.maxPlayers}</b><span>Going</span></div>
-          <div className="stat"><b>+{e.rewardXp}</b><span>XP</span></div>
-          <div className="stat"><b>+{e.rewardCoins}</b><span>Coins</span></div>
+          <div className="stat"><b>{e._count.participants}/{e.maxPlayers}</b><span>{t("Going")}</span></div>
+          <div className="stat"><b>+{e.rewardXp}</b><span>{t("XP")}</span></div>
+          <div className="stat"><b>+{e.rewardCoins}</b><span>{t("Coins")}</span></div>
         </div>
         <div className="row wrap">
-          <Link href={`/play?event=${e.id}`} className="btn">Join in game</Link>
-          <a href={osm} target="_blank" rel="noreferrer" className="btn ghost">Open map</a>
+          <Link href={`/play?event=${e.id}`} className="btn">{t("Join in game")}</Link>
+          <a href={osm} target="_blank" rel="noreferrer" className="btn ghost">{t("Open map")}</a>
           <ShareButton title={e.title} />
         </div>
-        <p className="small muted" style={{ marginTop: 20 }}>Hosted by {e.creator.username}. Check in with GPS within {e.radiusM} m of the meeting point.</p>
+        <p className="small muted" style={{ marginTop: 20 }}>{t("Hosted by {name}. Check in with GPS within {r} m of the meeting point.", { name: e.creator.username, r: e.radiusM })}</p>
       </div>
     </main>
   );

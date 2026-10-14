@@ -145,7 +145,7 @@ self.addEventListener("push", (event) => {
       // An incoming call rings like one and stays until answered, declined or missed.
       vibrate: d.ring ? [600, 300, 600, 300, 600, 300, 600] : [80, 40, 80],
       requireInteraction: !!d.ring,
-      actions: d.ring ? [{ action: "answer", title: "📹 Answer" }, { action: "decline", title: "Decline" }] : [],
+      actions: d.ring ? [{ action: "answer", title: (d.actions && d.actions.answer) || "📹 Answer" }, { action: "decline", title: (d.actions && d.actions.decline) || "Decline" }] : [],
       data: { url: d.url || "/play", call: d.call, ring: !!d.ring },
     });
   })());

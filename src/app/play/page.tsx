@@ -1,7 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import Game from "@/components/game/Game";
+import { getT } from "@/server/i18n";
 
-export const metadata: Metadata = { title: "Play", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Play"), robots: { index: false } };
+}
 // The map handles pinch-zoom itself; page zoom would fight it. Marketing pages stay zoomable.
 export const viewport: Viewport = { maximumScale: 1, userScalable: false };
 

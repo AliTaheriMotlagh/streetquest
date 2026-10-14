@@ -26,6 +26,8 @@ export type PushPayload = {
   /** A video call this is about; `ring` makes it an incoming-call notification (Answer / Decline). */
   call?: string;
   ring?: boolean;
+  /** The incoming-call buttons, already in the recipient's language. */
+  actions?: { answer: string; decline: string };
   /** Seconds the push service keeps trying to deliver it (default 6 h). */
   ttl?: number;
 };
@@ -48,7 +50,7 @@ export async function pushTo(userId: string, p: PushPayload, opts: { evenIfActiv
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-            JSON.stringify({ title: p.title, body: p.body ?? "", url: p.url ?? "/play", tag: p.tag ?? p.kind ?? "sq", call: p.call, ring: p.ring }),
+            JSON.stringify({ title: p.title, body: p.body ?? "", url: p.url ?? "/play", tag: p.tag ?? p.kind ?? "sq", call: p.call, ring: p.ring, actions: p.actions }),
             { TTL: p.ttl ?? 6 * 3600, urgency: p.kind === "reward" ? "normal" : "high", topic: (p.tag ?? p.kind ?? "sq").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) },
           );
           sent++;

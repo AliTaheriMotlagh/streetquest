@@ -744,8 +744,8 @@ export default function Game() {
               setPanel("me");
             }}
           >
-            📜 <b>{me.quest.title}</b>
-            <span>{me.quest.done ? t("Claim reward!") : t("{desc} · {progress}/{target}", { desc: me.quest.desc, progress: me.quest.progress, target: me.quest.target })}</span>
+            📜 <b>{t(me.quest.title)}</b>
+            <span>{me.quest.done ? t("Claim reward!") : t("{desc} · {progress}/{target}", { desc: t(me.quest.desc), progress: me.quest.progress, target: me.quest.target })}</span>
           </Button>
         )}
 

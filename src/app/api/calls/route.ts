@@ -53,7 +53,7 @@ export const POST = route(async (req) => {
     const call = await prisma.call.create({ data: { callerId: u.id, calleeId: d.userId } });
     // Ring the phone even if the app looks open: it may be in a pocket with the tab hidden.
     // It expires with the ring, so a phone that was offline doesn't ring hours later.
-    const ring = await asUser(d.userId, () => ({ title: t("📹 {name} is calling", { name: u.username }), body: t("Video call · tap to answer") }));
+    const ring = await asUser(d.userId, () => ({ title: t("📹 {name} is calling", { name: u.username }), body: t("Video call · tap to answer"), actions: { answer: t("📹 Answer"), decline: t("Decline") } }));
   void pushTo(d.userId, { ...ring, tag: `call-${call.id}`, kind: "social", call: call.id, ring: true, url: `/play?call=${call.id}`, ttl: 40 }, { evenIfActive: true });
     return { callId: call.id, iceServers: await iceServers() };
   }
