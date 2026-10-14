@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { track } from "@/server/rewards";
+import { t } from "@/lib/i18n";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -41,9 +42,9 @@ const slugify = (s: string) =>
 export const POST = route(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
-  if (d.endsAt < new Date()) throw new HttpError(400, "That time has already passed");
+  if (d.endsAt < new Date()) throw new HttpError(400, t("That time has already passed"));
   const upcoming = await prisma.event.count({ where: { creatorId: u.id, endsAt: { gt: new Date() } } });
-  if (u.role !== "ADMIN" && upcoming >= 3) throw new HttpError(400, "Max 3 upcoming events per player");
+  if (u.role !== "ADMIN" && upcoming >= 3) throw new HttpError(400, t("Max 3 upcoming events per player"));
   const event = await prisma.event.create({
     data: {
       ...d,
@@ -54,5 +55,5 @@ export const POST = route(async (req) => {
     },
   });
   await track("event_created", { userId: u.id });
-  return { message: "Event created — share the link!", event };
+  return { message: t("Event created — share the link!"), event };
 });

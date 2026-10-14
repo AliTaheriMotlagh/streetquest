@@ -41,6 +41,8 @@ import { deployedArmy } from "@/server/td";
 import { body, HttpError, route, actionRoute } from "@/server/http";
 import { S } from "@/lib/settings";
 import { grant, lastKnownLocation, spendCoins } from "@/server/rewards";
+import { t } from "@/lib/i18n";
+import { outpostLabel } from "@/lib/outposts";
 
 // Dev/testing only: GAME_SPEED=60 makes construction and training 60× faster.
 const SPEED = process.env.NODE_ENV !== "production" ? Math.max(1, Number(process.env.GAME_SPEED) || 1) : 1;
@@ -86,10 +88,18 @@ export const GET = route(async () => {
     protection: base ? vaultProtection(base.buildings) : 0,
     timeMult: { build: hero.bonus.buildTime, train: hero.bonus.trainTime * S.trainTimeMult, research: hero.bonus.researchTime * S.researchTimeMult },
     queue: queue.map((q) => ({ id: q.id, unitType: q.unitType, qty: q.qty, readyAt: q.readyAt, unitMs: q.unitMs })),
-    battles: battles.map((b) => ({ id: b.id, kind: b.kind, targetName: b.targetName, won: b.won, loot: b.loot, stars: b.stars, destruction: b.destruction, trophies: b.trophies, createdAt: b.createdAt, side: "attack" as const, revengeBaseId: null })),
+    battles: battles.map((b) => ({ id: b.id, kind: b.kind, targetName: reportTarget(b.kind, b.targetName), won: b.won, loot: b.loot, stars: b.stars, destruction: b.destruction, trophies: b.trophies, createdAt: b.createdAt, side: "attack" as const, revengeBaseId: null })),
     defended: defended.map((b) => ({ id: b.id, kind: b.kind, targetName: b.attacker.username, won: !b.won, loot: b.loot, stars: b.stars, destruction: b.destruction, trophies: -b.trophies, createdAt: b.createdAt, side: "defend" as const, revengeBaseId: b.attacker.base?.id ?? null })),
   };
 });
+
+/** Report targets are stored in English (boss, derrick, outpost code…): name them in the reader's language. */
+function reportTarget(kind: string, name: string) {
+  if (kind === "outpost") return outpostLabel(name);
+  if (kind === "skirmish") return name.endsWith("'s squad") ? t("{name}'s squad", { name: name.slice(0, -8) }) : name;
+  if (kind === "boss" || kind === "raid" || kind === "derrick" || kind === "superweapon") return t(name);
+  return name;
+}
 
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("faction"), faction: z.enum(["coalition", "dragon", "insurgency"]) }),
@@ -108,13 +118,13 @@ export const POST = actionRoute(async (req) => {
   const f = factionOf(u.faction);
 
   if (d.action === "faction") {
-    if (u.faction === d.faction) return { message: "Already in that faction" };
+    if (u.faction === d.faction) return { message: t("Already in that faction") };
     if (u.faction) await spendCoins(u.id, 1000); // defecting is expensive
     await prisma.user.update({ where: { id: u.id }, data: { faction: d.faction } });
     const nf = FACTION_BY_KEY[d.faction as FactionKey];
-    return { message: `${nf.emoji} You joined the ${nf.name}` };
+    return { message: t("{emoji} You joined the {faction}", { emoji: nf.emoji, faction: t(nf.name) }) };
   }
-  if (!f) throw new HttpError(400, "Pick a faction first");
+  if (!f) throw new HttpError(400, t("Pick a faction first"));
 
   const base = await loadBase({ ownerId: u.id });
 
@@ -123,55 +133,55 @@ export const POST = actionRoute(async (req) => {
     const near = await prisma.base.findMany({
       where: { ownerId: { not: u.id }, lat: { gte: here.lat - 0.003, lte: here.lat + 0.003 }, lng: { gte: here.lng - 0.005, lte: here.lng + 0.005 } },
     });
-    if (near.some((b) => distanceM(here, b) < BASE_MIN_SPACING_M)) throw new HttpError(400, `Too close to another base — bases need ${BASE_MIN_SPACING_M} m of space`);
+    if (near.some((b) => distanceM(here, b) < BASE_MIN_SPACING_M)) throw new HttpError(400, t("Too close to another base — bases need {m} m of space", { m: BASE_MIN_SPACING_M }));
     if (base) {
       await spendCoins(u.id, RELOCATE_COST);
       await prisma.base.update({ where: { id: base.id }, data: { lat: here.lat, lng: here.lng, name: d.name } });
-      return { message: `🚚 Base moved here (−${RELOCATE_COST} 🪙)` };
+      return { message: t("🚚 Base moved here (−{n} 🪙)", { n: RELOCATE_COST }) };
     }
     await prisma.base.create({ data: { ownerId: u.id, name: d.name, lat: here.lat, lng: here.lng, buildings: { create: { type: "hq", level: 1, readyAt: new Date() } } } });
     await questEvent(u.id, "base");
-    return { message: `🏛️ ${d.name} established! Build a Power Plant and Supply Center next.` };
+    return { message: t("🏛️ {name} established! Build a Power Plant and Supply Center next.", { name: d.name }) };
   }
-  if (!base) throw new HttpError(400, "Plant your base first");
+  if (!base) throw new HttpError(400, t("Plant your base first"));
   const { bonus } = await heroOf(u);
 
   if (d.action === "build") {
     const def = BUILDING_BY_KEY[d.type as BuildingKey];
     const now = Date.now();
     const busy = base.buildings.filter((b) => new Date(b.readyAt).getTime() > now).length;
-    if (busy >= builderCount(base.buildings, now)) throw new HttpError(400, "All builders are busy — build a Builder's Hut or rush with 💎");
+    if (busy >= builderCount(base.buildings, now)) throw new HttpError(400, t("All builders are busy — build a Builder's Hut or rush with 💎"));
     const hq = levelOf(base.buildings, "hq");
-    if (hq < def.hqLevel) throw new HttpError(400, `Needs Command Center level ${def.hqLevel}`);
+    if (hq < def.hqLevel) throw new HttpError(400, t("Needs Command Center level {n}", { n: def.hqLevel }));
     const cur = base.buildings.find((b) => b.type === d.type);
     // Under construction, effectiveLevel is one below the target: "upgrading" again would
     // charge for the same level and restart its timer.
-    if (cur && new Date(cur.readyAt).getTime() > now) throw new HttpError(400, `${def.name} is already being built — wait or rush it with 💎`);
+    if (cur && new Date(cur.readyAt).getTime() > now) throw new HttpError(400, t("{name} is already being built — wait or rush it with 💎", { name: t(def.name) }));
     const level = (cur ? effectiveLevel(cur) : 0) + 1;
-    if (level > (LEVEL_CAP[d.type as BuildingKey] ?? MAX_LEVEL)) throw new HttpError(400, "Already max level");
-    if (d.type !== "hq" && level > hq) throw new HttpError(400, "Upgrade your Command Center first");
+    if (level > (LEVEL_CAP[d.type as BuildingKey] ?? MAX_LEVEL)) throw new HttpError(400, t("Already max level"));
+    if (d.type !== "hq" && level > hq) throw new HttpError(400, t("Upgrade your Command Center first"));
     const power = powerOf(base.buildings, f);
     if (def.power < 0 && f.needsPower && power.made - power.used + def.power < 0 && d.type !== "power")
-      throw new HttpError(400, "Not enough power — build or upgrade a Power Plant");
+      throw new HttpError(400, t("Not enough power — build or upgrade a Power Plant"));
     const cost = buildCost(def, level, f);
     await spendCoins(u.id, cost);
     const readyAt = new Date(now + (buildSeconds(def, level) * 1000 * slowdown(power.ok) * bonus.buildTime) / SPEED);
     if (cur) await prisma.building.update({ where: { id: cur.id }, data: { level, readyAt } });
     else await prisma.building.create({ data: { baseId: base.id, type: d.type, level, readyAt } });
     await questEvent(u.id, "build");
-    return { message: `${def.emoji} ${def.name} ${cur ? `→ level ${level}` : "under construction"} (−${cost} 🪙)` };
+    return { message: `${def.emoji} ${cur ? t("{name} → level {n}", { name: t(def.name), n: level }) : t("{name} under construction", { name: t(def.name) })} (−${cost} 🪙)` };
   }
 
   if (d.action === "train") {
     const unit = UNIT_BY_KEY[d.unit as UnitKey];
-    if (levelOf(base.buildings, unit.building) < unit.buildingLevel) throw new HttpError(400, `Needs ${BUILDING_BY_KEY[unit.building].name} level ${unit.buildingLevel}`);
+    if (levelOf(base.buildings, unit.building) < unit.buildingLevel) throw new HttpError(400, t("Needs {building} level {n}", { building: t(BUILDING_BY_KEY[unit.building].name), n: unit.buildingLevel }));
     const queued = await prisma.trainOrder.findMany({ where: { userId: u.id }, orderBy: { readyAt: "desc" }, take: 1 });
-    if ((await prisma.trainOrder.count({ where: { userId: u.id } })) >= 8) throw new HttpError(400, "Training queue is full");
+    if ((await prisma.trainOrder.count({ where: { userId: u.id } })) >= 8) throw new HttpError(400, t("Training queue is full"));
     const [{ army }, allQueued] = await Promise.all([forcesOf(u.id), prisma.trainOrder.findMany({ where: { userId: u.id } })]);
     const queuedArmy = Object.fromEntries(Object.keys(UNIT_BY_KEY).map((k) => [k, allQueued.filter((q) => q.unitType === k).reduce((s, q) => s + q.qty, 0)]));
     const used = housingOf(army) + housingOf(queuedArmy) + housingOf(await deployedArmy(u.id));
     const cap = campCapacity(base.buildings);
-    if (used + unit.housing * d.qty > cap) throw new HttpError(400, `Army Camps are full (${used}/${cap}) — build or upgrade an Army Camp`);
+    if (used + unit.housing * d.qty > cap) throw new HttpError(400, t("Army Camps are full ({used}/{cap}) — build or upgrade an Army Camp", { used, cap }));
     const cost = unitCost(unit, f) * d.qty;
     await spendCoins(u.id, cost);
     const start = Math.max(Date.now(), queued[0]?.readyAt.getTime() ?? 0);
@@ -179,35 +189,35 @@ export const POST = actionRoute(async (req) => {
     const readyAt = new Date(start + unitMs * d.qty);
     await prisma.trainOrder.create({ data: { userId: u.id, unitType: unit.key, qty: d.qty, readyAt, unitMs } });
     await questEvent(u.id, "train", d.qty);
-    return { message: `${unit.emoji} Training ${d.qty}× ${unit.name} (−${cost} 🪙)` };
+    return { message: `${unit.emoji} ${t("Training {n}× {unit} (−{cost} 🪙)", { n: d.qty, unit: t(unit.name), cost })}` };
   }
 
   if (d.action === "collect") {
     const amount = pendingSupply(base.buildings, base.lastCollectAt, Date.now(), bonus.income);
-    if (amount <= 0) throw new HttpError(400, "No supplies yet — build or upgrade a Supply Center");
+    if (amount <= 0) throw new HttpError(400, t("No supplies yet — build or upgrade a Supply Center"));
     const res = await prisma.base.updateMany({ where: { id: base.id, lastCollectAt: base.lastCollectAt }, data: { lastCollectAt: new Date() } });
-    if (!res.count) throw new HttpError(409, "Already collected");
+    if (!res.count) throw new HttpError(409, t("Already collected"));
     await grant(u.id, { coins: amount, xp: Math.round(amount / 10) });
-    return { message: `📦 Supplies collected: +${amount} 🪙` };
+    return { message: t("📦 Supplies collected: +{n} 🪙", { n: amount }) };
   }
 
   if (d.action === "research") {
     const r = RESEARCH_BY_KEY[d.key as ResearchKey];
-    if (levelOf(base.buildings, r.building) < r.level) throw new HttpError(400, `Needs ${BUILDING_BY_KEY[r.building].name} level ${r.level}`);
+    if (levelOf(base.buildings, r.building) < r.level) throw new HttpError(400, t("Needs {building} level {n}", { building: t(BUILDING_BY_KEY[r.building].name), n: r.level }));
     const mine = await prisma.research.findMany({ where: { userId: u.id } });
-    if (mine.some((x) => x.key === r.key)) throw new HttpError(409, "Already researched");
-    if (mine.some((x) => x.readyAt.getTime() > Date.now())) throw new HttpError(400, "The lab is busy — one research at a time");
-    if (u.scrap < r.scrap) throw new HttpError(400, `Needs ${r.scrap} scrap — salvage gear or raid derricks`);
+    if (mine.some((x) => x.key === r.key)) throw new HttpError(409, t("Already researched"));
+    if (mine.some((x) => x.readyAt.getTime() > Date.now())) throw new HttpError(400, t("The lab is busy — one research at a time"));
+    if (u.scrap < r.scrap) throw new HttpError(400, t("Needs {n} scrap — salvage gear or raid derricks", { n: r.scrap }));
     await spendCoins(u.id, r.coins);
     const took = await prisma.user.updateMany({ where: { id: u.id, scrap: { gte: r.scrap } }, data: { scrap: { decrement: r.scrap } } });
     if (!took.count) {
       await prisma.user.update({ where: { id: u.id }, data: { coins: { increment: r.coins } } });
-      throw new HttpError(400, "Not enough scrap");
+      throw new HttpError(400, t("Not enough scrap"));
     }
     const readyAt = new Date(Date.now() + (r.minutes * 60_000 * bonus.researchTime * S.researchTimeMult) / SPEED);
     await prisma.research.create({ data: { userId: u.id, key: r.key, readyAt } });
     await questEvent(u.id, "research");
-    return { message: `${r.emoji} Researching ${r.name} (−${r.coins} 🪙, −${r.scrap} scrap)` };
+    return { message: `${r.emoji} ${t("Researching {name} (−{coins} 🪙, −{scrap} scrap)", { name: t(r.name), coins: r.coins, scrap: r.scrap })}` };
   }
 
   if (d.action === "rush") {
@@ -216,32 +226,32 @@ export const POST = actionRoute(async (req) => {
     let apply: () => Promise<unknown>;
     if (d.what === "build") {
       const b = base.buildings.find((x) => x.type === d.type && x.readyAt.getTime() > now);
-      if (!b) throw new HttpError(400, "Nothing under construction there");
+      if (!b) throw new HttpError(400, t("Nothing under construction there"));
       msLeft = b.readyAt.getTime() - now;
       apply = () => prisma.building.update({ where: { id: b.id }, data: { readyAt: new Date() } });
     } else if (d.what === "train") {
       const q = await prisma.trainOrder.findMany({ where: { userId: u.id } });
-      if (!q.length) throw new HttpError(400, "Nothing in training");
+      if (!q.length) throw new HttpError(400, t("Nothing in training"));
       msLeft = Math.max(...q.map((x) => x.readyAt.getTime())) - now;
       apply = () => prisma.trainOrder.updateMany({ where: { userId: u.id }, data: { readyAt: new Date() } });
     } else {
       const r = await prisma.research.findFirst({ where: { userId: u.id, readyAt: { gt: new Date() } } });
-      if (!r) throw new HttpError(400, "No research running");
+      if (!r) throw new HttpError(400, t("No research running"));
       msLeft = r.readyAt.getTime() - now;
       apply = () => prisma.research.update({ where: { id: r.id }, data: { readyAt: new Date() } });
     }
     const gems = rushCost(msLeft);
     const took = await prisma.user.updateMany({ where: { id: u.id, gems: { gte: gems } }, data: { gems: { decrement: gems } } });
-    if (!took.count) throw new HttpError(400, `Needs ${gems} 💎 — earn gems from quests, achievements, levels and bosses`);
+    if (!took.count) throw new HttpError(400, t("Needs {n} 💎 — earn gems from quests, achievements, levels and bosses", { n: gems }));
     await apply();
-    return { message: `💎 Finished instantly (−${gems} gems)` };
+    return { message: t("💎 Finished instantly (−{n} gems)", { n: gems }) };
   }
 
   // repair
   const missing = 1000 - base.hp;
-  if (missing <= 0) throw new HttpError(400, "Base is at full integrity");
+  if (missing <= 0) throw new HttpError(400, t("Base is at full integrity"));
   const cost = Math.ceil(missing / 2);
   await spendCoins(u.id, cost);
   await prisma.base.update({ where: { id: base.id }, data: { hp: 1000 } });
-  return { message: `🔧 Base repaired (−${cost} 🪙)` };
+  return { message: t("🔧 Base repaired (−{n} 🪙)", { n: cost }) };
 });

@@ -1,6 +1,7 @@
 "use client";
 // App shell glue: registers the service worker, offers updates when a new version
 // is deployed, and tells the player when they're offline.
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { swEnabled } from "./pwaClient";
 import { installHScroll } from "./hscroll";
@@ -141,13 +142,13 @@ export function Pwa() {
       reg.current.update().then(offer, () => {});
     };
     document.addEventListener("visibilitychange", check);
-    const t = setInterval(check, 30 * 60_000);
+    const every = setInterval(check, 30 * 60_000);
     return () => {
       stopped = true;
       clearTimeout(giveUp);
       sw.removeEventListener("controllerchange", onCtrl);
       document.removeEventListener("visibilitychange", check);
-      clearInterval(t);
+      clearInterval(every);
     };
   }, []);
 
@@ -175,7 +176,7 @@ export function Pwa() {
     <>
       {offline && (
         <div className="offline-bar" role="status">
-          📴 <b>Offline</b> · showing your last map
+          📴 <b>{t("Offline")}</b> · {t("showing your last map")}
         </div>
       )}
       {update && (
@@ -183,21 +184,21 @@ export function Pwa() {
           <span className="grow">
             {updating ? (
               <>
-                ⏳ <b>Updating…</b> — one moment
+                ⏳ <b>{t("Updating…")}</b> — {t("one moment")}
               </>
             ) : (
               <>
-                ✨ <b>{update === "waiting" ? "New version ready" : "Game updated"}</b> — {update === "waiting" ? "new features and fixes" : "reload to get the latest"}
+                ✨ <b>{update === "waiting" ? t("New version ready") : t("Game updated")}</b> — {update === "waiting" ? t("new features and fixes") : t("reload to get the latest")}
               </>
             )}
           </span>
           {!updating && (
             <>
               <Button className="btn ghost small" onClick={later}>
-                Later
+                {t("Later")}
               </Button>
               <Button className="btn green small" onClick={apply}>
-                {update === "waiting" ? "Update" : "Reload"}
+                {update === "waiting" ? t("Update") : t("Reload")}
               </Button>
             </>
           )}

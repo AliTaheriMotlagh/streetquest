@@ -1,6 +1,7 @@
 // Bases, buildings and armies are settled lazily: finished training orders become
 // units the next time anyone reads them. No background jobs needed.
 import { prisma } from "../lib/db";
+import { fmtNum, t } from "../lib/i18n";
 import { baseDefense, factionOf, levelOf, powerOf, UNIT_BY_KEY, type Army, type UnitKey, type Vets } from "../lib/rts";
 
 export async function settleTraining(userId: string) {
@@ -86,5 +87,10 @@ export function baseSummary(b: LoadedBase) {
   };
 }
 
-export const fmtLosses = (a: Army) => Object.entries(a).filter(([, q]) => q).map(([k, q]) => `${q} ${k}`).join(", ") || "none";
+/** "3 Rangers, 1 Battle Tank" in the reader's language. */
+export const fmtLosses = (a: Army) =>
+  Object.entries(a)
+    .filter(([, q]) => q)
+    .map(([k, q]) => `${fmtNum(q ?? 0)} ${UNIT_BY_KEY[k as UnitKey] ? t(UNIT_BY_KEY[k as UnitKey].name) : k}`)
+    .join(t(", ")) || t("none");
 export const survivors = (army: Army, losses: Army) => Object.fromEntries(Object.entries(army).map(([k, q]) => [k, (q ?? 0) - (losses[k as UnitKey] ?? 0)])) as Army;

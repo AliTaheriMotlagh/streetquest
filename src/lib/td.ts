@@ -3,6 +3,7 @@
 // points (positions are interpolated from the march, no ticking needed); waves are
 // generated from a seed and fought by a deterministic simulation, so the server's
 // result and every client's animation agree.
+import { msg } from "./i18n";
 import { hashStr, offset, rng, type LatLng } from "./geo";
 import type { ArmorClass } from "./hero";
 import { UNIT_BY_KEY, type Army, type UnitKey } from "./rts";
@@ -27,11 +28,11 @@ export type TowerDef = {
 };
 
 export const TOWERS: TowerDef[] = [
-  { key: "mg", name: "MG Nest", emoji: "🔫", blurb: "Cheap rapid fire. Shreds raiders on foot and careless passers-by.", cost: 250, scrap: 0, minutes: 1, hqLevel: 1, range: 45, dps: 4, hp: 600, vs: { infantry: 1.4, vehicle: 0.5, air: 0.6 }, vsPlayer: 0.7 },
-  { key: "sniper", name: "Sniper Tower", emoji: "🎯", blurb: "Huge range, punishing against commanders. Weak vs armor.", cost: 400, scrap: 3, minutes: 2, hqLevel: 1, range: 120, dps: 2.5, hp: 400, vs: { infantry: 1.3, vehicle: 0.4, air: 0.3 }, vsPlayer: 1.4 },
-  { key: "cannon", name: "Cannon", emoji: "💣", blurb: "Heavy shells. Cracks technicals and tanks.", cost: 450, scrap: 5, minutes: 3, hqLevel: 2, range: 60, dps: 6, hp: 900, vs: { infantry: 0.8, vehicle: 1.6, air: 0.1 }, vsPlayer: 0.4 },
-  { key: "sam", name: "SAM Site", emoji: "🚀", blurb: "Long-range anti-air. Drones and jets fall from the sky.", cost: 550, scrap: 8, minutes: 3, hqLevel: 2, range: 90, dps: 5, hp: 500, vs: { infantry: 0.3, vehicle: 0.6, air: 2.2 }, vsPlayer: 0.2 },
-  { key: "tesla", name: "Tesla Coil", emoji: "⚡", blurb: "Short range, brutal damage against everything.", cost: 800, scrap: 12, minutes: 5, hqLevel: 3, range: 35, dps: 11, hp: 750, vs: { infantry: 1.2, vehicle: 1.2, air: 0.9 }, vsPlayer: 0.9 },
+  { key: "mg", name: msg("MG Nest"), emoji: "🔫", blurb: msg("Cheap rapid fire. Shreds raiders on foot and careless passers-by."), cost: 250, scrap: 0, minutes: 1, hqLevel: 1, range: 45, dps: 4, hp: 600, vs: { infantry: 1.4, vehicle: 0.5, air: 0.6 }, vsPlayer: 0.7 },
+  { key: "sniper", name: msg("Sniper Tower"), emoji: "🎯", blurb: msg("Huge range, punishing against commanders. Weak vs armor."), cost: 400, scrap: 3, minutes: 2, hqLevel: 1, range: 120, dps: 2.5, hp: 400, vs: { infantry: 1.3, vehicle: 0.4, air: 0.3 }, vsPlayer: 1.4 },
+  { key: "cannon", name: msg("Cannon"), emoji: "💣", blurb: msg("Heavy shells. Cracks technicals and tanks."), cost: 450, scrap: 5, minutes: 3, hqLevel: 2, range: 60, dps: 6, hp: 900, vs: { infantry: 0.8, vehicle: 1.6, air: 0.1 }, vsPlayer: 0.4 },
+  { key: "sam", name: msg("SAM Site"), emoji: "🚀", blurb: msg("Long-range anti-air. Drones and jets fall from the sky."), cost: 550, scrap: 8, minutes: 3, hqLevel: 2, range: 90, dps: 5, hp: 500, vs: { infantry: 0.3, vehicle: 0.6, air: 2.2 }, vsPlayer: 0.2 },
+  { key: "tesla", name: msg("Tesla Coil"), emoji: "⚡", blurb: msg("Short range, brutal damage against everything."), cost: 800, scrap: 12, minutes: 5, hqLevel: 3, range: 35, dps: 11, hp: 750, vs: { infantry: 1.2, vehicle: 1.2, air: 0.9 }, vsPlayer: 0.9 },
 ];
 export const TOWER_BY_KEY = Object.fromEntries(TOWERS.map((t) => [t.key, t])) as Record<TowerKey, TowerDef>;
 export const TOWER_MAX_LEVEL = 3;
@@ -116,9 +117,9 @@ export const STRIKE_RANGE_M = 400; // you have to be near the base to call them 
 
 export type CreepKind = "bandit" | "technical" | "drone";
 export const CREEPS: Record<CreepKind, { name: string; emoji: string; cls: ArmorClass; hp: number; speed: number; steal: number; bounty: number; dmg: number }> = {
-  bandit: { name: "Bandit", emoji: "🥷", cls: "infantry", hp: 70, speed: 1.8, steal: 12, bounty: 5, dmg: 20 },
-  technical: { name: "Technical", emoji: "🛻", cls: "vehicle", hp: 260, speed: 4.5, steal: 35, bounty: 14, dmg: 60 },
-  drone: { name: "Drone", emoji: "🛸", cls: "air", hp: 130, speed: 7, steal: 20, bounty: 9, dmg: 35 },
+  bandit: { name: msg("Bandit"), emoji: "🥷", cls: "infantry", hp: 70, speed: 1.8, steal: 12, bounty: 5, dmg: 20 },
+  technical: { name: msg("Technical"), emoji: "🛻", cls: "vehicle", hp: 260, speed: 4.5, steal: 35, bounty: 14, dmg: 60 },
+  drone: { name: msg("Drone"), emoji: "🛸", cls: "air", hp: 130, speed: 7, steal: 20, bounty: 9, dmg: 35 },
 };
 
 export type Creep = { i: number; kind: CreepKind; hp: number; depart: number; speed: number; lane: number };
@@ -255,10 +256,10 @@ export const waveSeed = (baseId: string, at: number) => hashStr(`${baseId}|${at}
 
 // ---------------------------------------------------------------- pings
 export const PINGS = {
-  attack: { emoji: "⚔️", label: "Attack here" },
-  help: { emoji: "🆘", label: "Need help" },
-  rally: { emoji: "🚩", label: "Rally here" },
-  loot: { emoji: "💰", label: "Loot here" },
+  attack: { emoji: "⚔️", label: msg("Attack here") },
+  help: { emoji: "🆘", label: msg("Need help") },
+  rally: { emoji: "🚩", label: msg("Rally here") },
+  loot: { emoji: "💰", label: msg("Loot here") },
 } as const;
 export type PingKind = keyof typeof PINGS;
 export const PING_MS = 5 * 60_000;

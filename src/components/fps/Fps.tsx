@@ -12,6 +12,7 @@ import * as THREE from "three";
 import { blocked, buildArena, collide, EYE, weaponOf, type Pt } from "@/lib/arena";
 import type { MatchView } from "@/server/match";
 import { api } from "../game/client";
+import { t } from "@/lib/i18n";
 import { sfx } from "../game/sfx";
 import { isLite, isTouch } from "../perf";
 
@@ -1018,10 +1019,10 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
   const won = hud?.winner === hud?.team;
   const objective =
     hud?.kind === "raid"
-      ? "Take down the boss — strafe out of its red beam"
+      ? t("Take down the boss — strafe out of its red beam")
       : hud?.team === "A"
-        ? "Capture the zone in front of the Command Center — or wipe out the defenders"
-        : "Hold the Command Center until time runs out";
+        ? t("Capture the zone in front of the Command Center — or wipe out the defenders")
+        : t("Hold the Command Center until time runs out");
 
   return (
     <div className="fps">
@@ -1029,9 +1030,9 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
       {error && (
         <div className="fps-center">
           <div className="modal">
-            <h2>Can&apos;t join</h2>
+            <h2>{t("Can't join")}</h2>
             <p className="muted">{error}</p>
-            <button className="btn" onClick={onExit}>Back to map</button>
+            <button className="btn" onClick={onExit}>{t("Back to map")}</button>
           </div>
         </div>
       )}
@@ -1055,18 +1056,18 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
             {hud.kind === "breach" && (
               <div className="fps-bar">
                 <i style={{ width: `${Math.min(100, (hud.capture / hud.captureNeeded) * 100)}%`, background: "var(--yellow)" }} />
-                <span>{hud.inZone && hud.team === "A" ? "CAPTURING…" : `CAPTURE ${Math.round((hud.capture / hud.captureNeeded) * 100)}%`}</span>
+                <span>{hud.inZone && hud.team === "A" ? t("CAPTURING…") : t("CAPTURE {pct}%", { pct: Math.round((hud.capture / hud.captureNeeded) * 100) })}</span>
               </div>
             )}
             {hud.boss && (
               <div className={`fps-bar boss ${hud.boss.enraged ? "enraged" : ""} ${hud.boss.charging ? "charging" : ""}`}>
                 <i style={{ width: `${(hud.boss.hp / hud.boss.maxHp) * 100}%` }} />
                 <span>
-                  {hud.boss.emoji} {hud.boss.name} · {hud.boss.hp.toLocaleString()} HP{hud.boss.enraged ? " · ENRAGED" : ""}
+                  {hud.boss.emoji} {t(hud.boss.name)} · {t("{n} HP", { n: hud.boss.hp })}{hud.boss.enraged ? ` · ${t("ENRAGED")}` : ""}
                 </span>
               </div>
             )}
-            {hud.boss?.charging && <div className="fps-warn">⚠ BEAM INCOMING — MOVE!</div>}
+            {hud.boss?.charging && <div className="fps-warn">{t("⚠ BEAM INCOMING — MOVE!")}</div>}
             <div className="fps-obj">{objective}</div>
           </div>
           <div className="fps-feed">
@@ -1080,10 +1081,10 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
               <div className="fps-bar small"><i style={{ width: `${(hud.hp / hud.maxHp) * 100}%`, background: hud.hp < 30 ? "var(--red)" : "var(--green)" }} /></div>
             </div>
             <div className="fps-ammo">
-              <div className="small muted">{hud.weapon}</div>
+              <div className="small muted">{t(hud.weapon)}</div>
               {hud.reloading ? (
                 <span className="fps-reloading">
-                  RELOADING
+                  {t("RELOADING")}
                   <i style={{ width: `${hud.reloading * 100}%` }} />
                 </span>
               ) : (
@@ -1095,19 +1096,19 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
           </div>
           <div className="fps-corner">
             {fs.can && (
-              <button className="fps-btn" onClick={toggleFullscreen} aria-label={fs.on ? "Exit full screen" : "Full screen"}>
+              <button className="fps-btn" onClick={toggleFullscreen} aria-label={fs.on ? t("Exit full screen") : t("Full screen")}>
                 {fs.on ? "🗗" : "⛶"}
               </button>
             )}
-            <button className="fps-btn" onClick={onExit}>✕ Leave</button>
+            <button className="fps-btn" onClick={onExit}>{t("✕ Leave")}</button>
           </div>
           {!hud.locked && hud.status === "LIVE" && (
             <div className="fps-help">
-              <b>Click to fight</b>
-              <span>WASD move · Shift sprint · Mouse aim · Click shoot · R reload · Esc release</span>
+              <b>{t("Click to fight")}</b>
+              <span>{t("WASD move · Shift sprint · Mouse aim · Click shoot · R reload · Esc release")}</span>
             </div>
           )}
-          {hud.hp <= 0 && hud.status === "LIVE" && <div className="fps-down">💀 You&apos;re down — no respawns this round</div>}
+          {hud.hp <= 0 && hud.status === "LIVE" && <div className="fps-down">{t("💀 You're down — no respawns this round")}</div>}
           {touch && hud.status === "LIVE" && hud.hp > 0 && (
             <>
               <div className="fps-look" onPointerDown={(e) => onLook(e, "down")} onPointerMove={(e) => onLook(e, "move")} onPointerUp={(e) => onLook(e, "up")} onPointerCancel={(e) => onLook(e, "up")} />
@@ -1124,11 +1125,11 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
                 onPointerCancel={(e) => onFire(e, "up")}
                 onContextMenu={(e) => e.preventDefault()}
               >
-                FIRE
+                {t("FIRE")}
               </button>
               <button
                 className="fps-reload"
-                aria-label="Reload"
+                aria-label={t("Reload")}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   input.current.reload = true;
@@ -1138,27 +1139,27 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
               </button>
               {tips && (
                 <div className="fps-tips">
-                  <span>👈 Left thumb: move · push to the edge to sprint</span>
-                  <span>Right thumb: aim · hold FIRE and drag to aim while shooting 👉</span>
+                  <span>{t("👈 Left thumb: move · push to the edge to sprint")}</span>
+                  <span>{t("Right thumb: aim · hold FIRE and drag to aim while shooting 👉")}</span>
                 </div>
               )}
-              <div className="fps-rotate">📱↻ Turn your phone sideways for a wider view</div>
+              <div className="fps-rotate">{t("📱↻ Turn your phone sideways for a wider view")}</div>
             </>
           )}
           {hud.status !== "LIVE" && (
             <div className="fps-center">
               <div className="modal">
                 <div style={{ fontSize: 54 }}>{won ? "🏆" : "☠️"}</div>
-                <h2 style={{ fontSize: 30, color: won ? "var(--yellow)" : "var(--red)" }}>{won ? "VICTORY" : "DEFEAT"}</h2>
+                <h2 style={{ fontSize: 30, color: won ? "var(--yellow)" : "var(--red)" }}>{won ? t("VICTORY") : t("DEFEAT")}</h2>
                 <p className="muted">
                   {hud.kind === "raid"
-                    ? won ? "The boss is down. Loot goes to everyone who hit it." : "The boss survived — its damage stays, come back with a crew."
+                    ? won ? t("The boss is down. Loot goes to everyone who hit it.") : t("The boss survived — its damage stays, come back with a crew.")
                     : hud.team === "A"
-                      ? won ? "Base breached! Your share of the loot is in." : "The defense held."
-                      : won ? "You held the base!" : "The base was breached."}
+                      ? won ? t("Base breached! Your share of the loot is in.") : t("The defense held.")
+                      : won ? t("You held the base!") : t("The base was breached.")}
                 </p>
-                <p className="small">Kills: {hud.kills}</p>
-                <button className="btn block" onClick={onExit}>Back to map</button>
+                <p className="small">{t("Kills: {n}", { n: hud.kills })}</p>
+                <button className="btn block" onClick={onExit}>{t("Back to map")}</button>
               </div>
             </div>
           )}

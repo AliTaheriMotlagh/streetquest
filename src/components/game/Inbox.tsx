@@ -1,6 +1,7 @@
 "use client";
 // 🔔 Inbox: every notification the game sent you, newest first. Opening it marks
 // everything read (clears the bell badge); ✕ dismisses one, "Clear all" empties it.
+import { t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { api } from "./client";
 import { Sheet } from "./ui";
@@ -11,7 +12,7 @@ const ICON: Record<string, string> = { reward: "🎁", social: "🤝", delivery:
 
 const ago = (d: string) => {
   const s = Math.max(1, Math.round((Date.now() - new Date(d).getTime()) / 1000));
-  return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : `${Math.floor(s / 86400)} d ago`;
+  return s < 60 ? t("just now") : s < 3600 ? t("{n} min ago", { n: Math.floor(s / 60) }) : s < 86400 ? t("{n} h ago", { n: Math.floor(s / 3600) }) : t("{n} d ago", { n: Math.floor(s / 86400) });
 };
 
 export function InboxPanel({ onClose, peek, onRead }: { onClose: () => void; peek: boolean; onRead: () => void }) {
@@ -34,9 +35,9 @@ export function InboxPanel({ onClose, peek, onRead }: { onClose: () => void; pee
     api("/api/notifications", { body: { action: "clear" } }).catch(() => {});
   };
   return (
-    <Sheet title="🔔 Inbox" onClose={onClose} peek={peek} help="inbox" actions={items?.length ? <Button className="btn ghost small" onClick={clear}>Clear all</Button> : undefined}>
-      {!items && <div className="empty">Loading…</div>}
-      {items && !items.length && <div className="empty">📭 All caught up! Rewards, raids, crew news and events show up here.</div>}
+    <Sheet title={t("🔔 Inbox")} onClose={onClose} peek={peek} help="inbox" actions={items?.length ? <Button className="btn ghost small" onClick={clear}>{t("Clear all")}</Button> : undefined}>
+      {!items && <div className="empty">{t("Loading…")}</div>}
+      {items && !items.length && <div className="empty">{t("📭 All caught up! Rewards, raids, crew news and events show up here.")}</div>}
       <div className="inbox">
         {items?.map((i) => (
           <div key={i.id} className={`inbox-item ${i.readAt ? "" : "unread"} ${i.kind}`}>
@@ -46,7 +47,7 @@ export function InboxPanel({ onClose, peek, onRead }: { onClose: () => void; pee
               {i.body && <div className="small muted">{i.body}</div>}
               <div className="small muted ib-time">{ago(i.createdAt)}</div>
             </div>
-            <Button className="ib-x" aria-label="Dismiss" onClick={() => dismiss(i.id)}>✕</Button>
+            <Button className="ib-x" aria-label={t("Dismiss")} onClick={() => dismiss(i.id)}>✕</Button>
           </div>
         ))}
       </div>

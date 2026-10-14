@@ -6,6 +6,7 @@ import { route, HttpError } from "@/server/http";
 import { BOUNTY_DAYS } from "@/lib/flags";
 import { expireRides } from "@/server/rides";
 import { drawDue } from "@/server/lottery";
+import { shopHousekeeping } from "@/server/shops";
 
 export const dynamic = "force-dynamic";
 const days = (n: number) => new Date(Date.now() - n * 86_400_000);
@@ -37,5 +38,7 @@ export const GET = route(async (req) => {
   // Lotteries nobody looked at after their draw time, and ride requests nobody took.
   await drawDue();
   const ridesExpired = await expireRides();
-  return { refunded, ridesExpired, deleted: { notifications: notifications.count, lobbies: lobbies.count, pings: pings.count, waves: waves.count, matches: matches.count, strikes: strikes.count, locks: locks.count, calls: calls.count } };
+  // Shop orders nobody handed over in time are refunded; owners hear their shop is closing.
+  const shops = await shopHousekeeping();
+  return { refunded, ridesExpired, shops, deleted: { notifications: notifications.count, lobbies: lobbies.count, pings: pings.count, waves: waves.count, matches: matches.count, strikes: strikes.count, locks: locks.count, calls: calls.count } };
 });

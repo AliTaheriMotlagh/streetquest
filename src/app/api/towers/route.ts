@@ -14,6 +14,7 @@ import { questEvent } from "@/server/quests";
 import { grant, lastKnownLocation, spendCoins, unlock } from "@/server/rewards";
 import { areFriends } from "@/server/rooms";
 import { assertNotDowned, SPEED } from "@/server/td";
+import { t as tr } from "@/lib/i18n"; // `t` is the target in this file
 
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("build"), type: z.enum(["mg", "cannon", "sam", "sniper", "tesla"]) }),
@@ -28,7 +29,7 @@ async function spendScrap(userId: string, scrap: number, refundCoins: number) {
   const took = await prisma.user.updateMany({ where: { id: userId, scrap: { gte: scrap } }, data: { scrap: { decrement: scrap } } });
   if (!took.count) {
     await prisma.user.update({ where: { id: userId }, data: { coins: { increment: refundCoins } } });
-    throw new HttpError(400, `Needs ${scrap} 🔩 scrap — salvage gear or destroy enemy towers`);
+    throw new HttpError(400, tr("Needs {n} 🔩 scrap — salvage gear or destroy enemy towers", { n: scrap }));
   }
 }
 
@@ -44,43 +45,43 @@ export const POST = actionRoute(async (req) => {
   const d = await body(req, Schema);
 
   if (d.action === "build") {
-    if (!factionOf(u.faction)) throw new HttpError(400, "Pick a faction first");
+    if (!factionOf(u.faction)) throw new HttpError(400, tr("Pick a faction first"));
     const base = await loadBase({ ownerId: u.id });
-    if (!base) throw new HttpError(400, "Plant your base first — towers guard your territory");
+    if (!base) throw new HttpError(400, tr("Plant your base first — towers guard your territory"));
     const def = TOWER_BY_KEY[d.type as TowerKey];
     const hq = levelOf(base.buildings, "hq");
-    if (hq < def.hqLevel) throw new HttpError(400, `${def.name} needs Command Center level ${def.hqLevel}`);
+    if (hq < def.hqLevel) throw new HttpError(400, tr("{name} needs Command Center level {n}", { name: tr(def.name), n: def.hqLevel }));
     const here = await lastKnownLocation(u.id);
-    if (distanceM(here, base) > TOWER_TERRITORY_M) throw new HttpError(400, `Towers go up within ${TOWER_TERRITORY_M / 1000} km of your base — walk closer to home`);
+    if (distanceM(here, base) > TOWER_TERRITORY_M) throw new HttpError(400, tr("Towers go up within {km} km of your base — walk closer to home", { km: TOWER_TERRITORY_M / 1000 }));
     const mine = await prisma.tower.count({ where: { ownerId: u.id } });
-    if (mine >= maxTowers(hq)) throw new HttpError(400, `Tower limit reached (${maxTowers(hq)}) — upgrade your Command Center for more`);
+    if (mine >= maxTowers(hq)) throw new HttpError(400, tr("Tower limit reached ({n}) — upgrade your Command Center for more", { n: maxTowers(hq) }));
     const close = await prisma.tower.findMany({ where: { lat: { gte: here.lat - 0.0005, lte: here.lat + 0.0005 }, lng: { gte: here.lng - 0.0008, lte: here.lng + 0.0008 } } });
-    if (close.some((t) => distanceM(here, t) < TOWER_SPACING_M)) throw new HttpError(400, `Too close to another tower — keep ${TOWER_SPACING_M} m apart`);
+    if (close.some((t) => distanceM(here, t) < TOWER_SPACING_M)) throw new HttpError(400, tr("Too close to another tower — keep {m} m apart", { m: TOWER_SPACING_M }));
     const c = towerCost(def.key, 1);
     await spendCoins(u.id, c.coins);
     await spendScrap(u.id, c.scrap, c.coins);
     await prisma.tower.create({ data: { ownerId: u.id, type: def.key, lat: here.lat, lng: here.lng, hp: towerStats({ type: def.key, level: 1 }).maxHp, readyAt: new Date(Date.now() + (c.seconds * 1000) / SPEED) } });
     await questEvent(u.id, "tower");
     await unlock(u.id, "tower_builder");
-    return { message: `${def.emoji} ${def.name} going up here (−${c.coins} 🪙${c.scrap ? `, −${c.scrap} 🔩` : ""})` };
+    return { message: `${def.emoji} ${tr("{name} going up here", { name: tr(def.name) })} (−${c.coins} 🪙${c.scrap ? `, −${c.scrap} 🔩` : ""})` };
   }
 
   const t = await prisma.tower.findUnique({ where: { id: d.towerId } });
-  if (!t) throw new HttpError(404, "That tower is gone");
+  if (!t) throw new HttpError(404, tr("That tower is gone"));
   const st = towerStats(t);
 
   if (d.action === "sabotage") {
-    if (t.ownerId === u.id) throw new HttpError(400, "That's your own tower");
-    if (await areFriends(u.id, t.ownerId)) throw new HttpError(400, "That tower belongs to your crew");
+    if (t.ownerId === u.id) throw new HttpError(400, tr("That's your own tower"));
+    if (await areFriends(u.id, t.ownerId)) throw new HttpError(400, tr("That tower belongs to your crew"));
     await assertNotDowned(u);
     const here = await lastKnownLocation(u.id);
-    if (distanceM(here, t) > st.range + 15) throw new HttpError(400, `Get within ${st.range + 15} m to plant a charge`);
-    if (u.sabotageAt && Date.now() - u.sabotageAt.getTime() < SABOTAGE_COOLDOWN_MS) throw new HttpError(429, "Still wiring the next charge — give it a few seconds");
+    if (distanceM(here, t) > st.range + 15) throw new HttpError(400, tr("Get within {m} m to plant a charge", { m: st.range + 15 }));
+    if (u.sabotageAt && Date.now() - u.sabotageAt.getTime() < SABOTAGE_COOLDOWN_MS) throw new HttpError(429, tr("Still wiring the next charge — give it a few seconds"));
     await prisma.user.update({ where: { id: u.id }, data: { sabotageAt: new Date() } });
-    if (d.score === 0) return { message: "💥 The charge fizzled. Try again!" };
+    if (d.score === 0) return { message: tr("💥 The charge fizzled. Try again!") };
     const dmg = Math.round(SABOTAGE_DMG[d.score] * (await heroOf(u)).bonus.fpsDmg);
     const res = await prisma.tower.updateMany({ where: { id: t.id }, data: { hp: { decrement: dmg } } });
-    if (!res.count) throw new HttpError(404, "That tower is gone");
+    if (!res.count) throw new HttpError(404, tr("That tower is gone"));
     const after = await prisma.tower.findUnique({ where: { id: t.id } });
     if (after && after.hp <= 0) {
       const del = await prisma.tower.deleteMany({ where: { id: t.id } });
@@ -88,40 +89,40 @@ export const POST = actionRoute(async (req) => {
         const coins = Math.round(st.def.cost * 0.3);
         await grant(u.id, { coins, xp: 120, scrap: 2 + t.level });
         await questEvent(u.id, "tower_down");
-        await notify(t.ownerId, { kind: "event", title: `💥 ${u.username} blew up your ${st.def.name}`, body: "Rebuild it from Base → Defense" });
-        return { message: `💥 ${st.def.emoji} ${st.def.name} destroyed! +${coins} 🪙 +${2 + t.level} 🔩`, destroyed: true };
+        await notify(t.ownerId, () => ({ kind: "event", tag: "hurt", title: tr("💥 {name} blew up your {tower}", { name: u.username, tower: tr(st.def.name) }), body: tr("Rebuild it from Base → Defense") }));
+        return { message: `💥 ${st.def.emoji} ${tr("{tower} destroyed!", { tower: tr(st.def.name) })} +${coins} 🪙 +${2 + t.level} 🔩`, destroyed: true };
       }
     }
-    await notify(t.ownerId, { kind: "event", title: `💣 ${u.username} is sabotaging your ${st.def.name}!`, body: `${Math.max(0, after?.hp ?? 0)}/${st.maxHp} HP left` });
-    return { message: `💣 Charge hit for ${dmg}! ${Math.max(0, after?.hp ?? 0)}/${st.maxHp} HP left` };
+    await notify(t.ownerId, () => ({ kind: "event", title: tr("💣 {name} is sabotaging your {tower}!", { name: u.username, tower: tr(st.def.name) }), body: tr("{hp}/{max} HP left", { hp: Math.max(0, after?.hp ?? 0), max: st.maxHp }) }));
+    return { message: tr("💣 Charge hit for {n}! {hp}/{max} HP left", { n: dmg, hp: Math.max(0, after?.hp ?? 0), max: st.maxHp }) };
   }
 
-  if (t.ownerId !== u.id) throw new HttpError(403, "Not your tower");
+  if (t.ownerId !== u.id) throw new HttpError(403, tr("Not your tower"));
 
   if (d.action === "demolish") {
     await prisma.tower.delete({ where: { id: t.id } });
     const refund = Math.round(towerCost(t.type as TowerKey, t.level).coins * 0.3);
     await grant(u.id, { coins: refund }, { raw: true });
-    return { message: `🏚️ ${st.def.name} demolished (+${refund} 🪙)` };
+    return { message: tr("🏚️ {tower} demolished (+{n} 🪙)", { tower: tr(st.def.name), n: refund }) };
   }
 
   if (d.action === "repair") {
     const missing = st.maxHp - t.hp;
-    if (missing <= 0) throw new HttpError(400, "Already at full health");
+    if (missing <= 0) throw new HttpError(400, tr("Already at full health"));
     const cost = Math.ceil(missing * 0.4);
     await spendCoins(u.id, cost);
     await prisma.tower.update({ where: { id: t.id }, data: { hp: st.maxHp } });
-    return { message: `🔧 ${st.def.name} repaired (−${cost} 🪙)` };
+    return { message: tr("🔧 {tower} repaired (−{n} 🪙)", { tower: tr(st.def.name), n: cost }) };
   }
 
   // upgrade
-  if (t.readyAt.getTime() > Date.now()) throw new HttpError(400, "Still under construction");
-  if (t.level >= TOWER_MAX_LEVEL) throw new HttpError(400, "Already max level");
+  if (t.readyAt.getTime() > Date.now()) throw new HttpError(400, tr("Still under construction"));
+  if (t.level >= TOWER_MAX_LEVEL) throw new HttpError(400, tr("Already max level"));
   const c = towerCost(t.type as TowerKey, t.level + 1);
   await spendCoins(u.id, c.coins);
   await spendScrap(u.id, c.scrap, c.coins);
   const next = towerStats({ type: t.type, level: t.level + 1 });
   await prisma.tower.update({ where: { id: t.id }, data: { level: t.level + 1, hp: next.maxHp, readyAt: new Date(Date.now() + (c.seconds * 1000) / SPEED) } });
   await questEvent(u.id, "tower");
-  return { message: `${st.def.emoji} ${st.def.name} → level ${t.level + 1} (−${c.coins} 🪙)` };
+  return { message: `${st.def.emoji} ${tr("{tower} → level {n}", { tower: tr(st.def.name), n: t.level + 1 })} (−${c.coins} 🪙)` };
 });

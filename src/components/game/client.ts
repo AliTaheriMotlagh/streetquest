@@ -1,4 +1,5 @@
 "use client";
+import { fmtWhen, t } from "@/lib/i18n";
 import type { ItemDef } from "@/lib/catalog";
 import type { Spawn } from "@/lib/spawns";
 import type { BossDef } from "@/lib/bosses";
@@ -11,13 +12,14 @@ import type { Mood, Needs } from "@/lib/sims";
 import type { PingKind, Strike } from "@/lib/td";
 import type { LobbyKind } from "@/lib/minigames";
 import type { SuperKey } from "@/lib/superweapons";
+import type { OrderView, ProductView, ShopCard, ShopView } from "@/server/shops";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
 function ensureGuest() {
   guest ??= fetch("/api/auth/guest", { method: "POST" })
     .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `Couldn't start a game (${r.status})`);
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? t("Couldn't start a game ({status})", { status: r.status }));
     })
     .finally(() => setTimeout(() => (guest = null), 1000));
   return guest;
@@ -39,8 +41,8 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
       signal: ctl.signal,
     });
   } catch (e) {
-    if (ctl.signal.aborted) throw new Error("The server is taking too long — check your connection and try again");
-    throw navigator.onLine === false ? new Error("You're offline — try again when you're back online") : e;
+    if (ctl.signal.aborted) throw new Error(t("The server is taking too long — check your connection and try again"));
+    throw navigator.onLine === false ? new Error(t("You're offline — try again when you're back online")) : e;
   } finally {
     clearTimeout(timer);
   }
@@ -49,7 +51,7 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
     await ensureGuest();
     return api<T>(path, init, true);
   }
-  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? t("Request failed ({status})", { status: res.status }));
   return data as T;
 }
 
@@ -118,6 +120,8 @@ export type Me = {
   walkedM: number;
   storyChapter: number;
   gpsGame: { id: string; kind: string } | null;
+  /** My shop, for the Market badge: orders to hand over, closing date. */
+  shop: { id: string; name: string; expiresAt: number; pending: number } | null;
 };
 
 /** An active GPS mini-game or story chapter, as the server lets the client see it. */
@@ -198,6 +202,10 @@ export type WorldEvent = { id: string; slug: string; title: string; description:
 export type WorldDelivery = { id: string; title: string; description: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; reward: number; status: string; sender?: { username: string }; distanceM?: number };
 export type WorldRide = { id: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; seats: number; note: string; fare: number; status: string; createdAt: string; rider?: { username: string; avatar: string }; distanceM?: number };
 export type WorldLottery = { id: string; name: string; lat: number; lng: number; radiusM: number; ticketPrice: number; maxTickets: number; drawAt: number; pot: number; status: "OPEN" | "DRAWN" | "REFUNDED"; official: boolean; host: string; winner: string | null; players: number; totalTickets: number; myTickets: number; mine: boolean; won: boolean };
+export type WorldShop = { id: string; name: string; emoji: string; lat: number; lng: number; mine: boolean; live: boolean; deal: number };
+// Player shops: the server's own views (plain JSON — numbers and strings only).
+export type { OrderView as ShopOrder, ProductView as ShopProduct, ShopCard, ShopView };
+export type ShopDeal = ShopCard["showcase"][number] & { shopId: string; shopName: string; shopEmoji: string; distanceM: number | null };
 export type WorldPlayer = { id: string; username: string; avatar: string; level: number; friend: boolean; bounty: number; home?: boolean; lat: number; lng: number };
 export type WorldFlag = { id: string; name: string; lat: number; lng: number; owner: string; ownerAvatar: string; faction: string | null; mine: boolean; friend: boolean; heldSince: number; captures: number; capture: { by: string | null; mine: boolean; endsAt: number } | null; shielded: boolean };
 
@@ -326,6 +334,7 @@ export type World = {
   deliveries: WorldDelivery[];
   rides: WorldRide[];
   lotteries: WorldLottery[];
+  shops: WorldShop[];
   players: WorldPlayer[];
   bases: WorldBase[];
   bosses: WorldBoss[];
@@ -347,6 +356,7 @@ export type Selected =
   | { type: "delivery"; data: WorldDelivery }
   | { type: "ride"; data: WorldRide }
   | { type: "lottery"; data: WorldLottery }
+  | { type: "shop"; data: WorldShop }
   | { type: "player"; data: WorldPlayer }
   | { type: "base"; data: WorldBase }
   | { type: "boss"; data: WorldBoss }
@@ -357,5 +367,5 @@ export type Selected =
   | { type: "flag"; data: WorldFlag }
   | { type: "strike"; data: WorldStrike };
 
-export const fmtTime = (iso: string | number | Date) =>
-  new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+/** A timestamp in the player's language and calendar (Solar Hijri in Persian). */
+export const fmtTime = (iso: string | number | Date) => fmtWhen(iso);

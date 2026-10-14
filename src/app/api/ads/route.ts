@@ -5,6 +5,7 @@ import { body, actionRoute } from "@/server/http";
 import { claimAd, clickAd, startAd } from "@/server/ads";
 import { grant, track } from "@/server/rewards";
 import { trackStat } from "@/server/goals";
+import { t } from "@/lib/i18n";
 
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start") }),
@@ -24,5 +25,5 @@ export const POST = actionRoute(async (req) => {
   await grant(u.id, { gems: r.gems, coins: r.coins }, { raw: true });
   await track("ad_watched", { userId: u.id });
   await trackStat(u.id, "ads", 1, u.faction);
-  return { message: `📺 Thanks for watching! +${r.gems} 💎${r.coins ? ` +${r.coins} 🪙` : ""}` };
+  return { message: `${t("📺 Thanks for watching!")} +${r.gems} 💎${r.coins ? ` +${r.coins} 🪙` : ""}` };
 });

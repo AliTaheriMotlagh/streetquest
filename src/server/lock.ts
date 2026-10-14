@@ -5,6 +5,7 @@
 // then sees the first one's result ("Already max level", "Not enough coins"…).
 import { prisma } from "../lib/db";
 import { HttpError } from "./http";
+import { t } from "../lib/i18n";
 
 const TTL_MS = 30_000; // a crashed request can't hold the lock longer than this
 const WAIT_MS = 6_000;
@@ -30,7 +31,7 @@ export async function withUserLock<T>(userId: string, fn: () => Promise<T>): Pro
   const key = `user:${userId}`;
   const deadline = Date.now() + WAIT_MS;
   while (!(await acquire(key))) {
-    if (Date.now() > deadline) throw new HttpError(429, "Still finishing your last order — try again in a moment");
+    if (Date.now() > deadline) throw new HttpError(429, t("Still finishing your last order — try again in a moment"));
     await sleep(POLL_MS);
   }
   try {

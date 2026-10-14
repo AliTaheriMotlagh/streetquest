@@ -16,6 +16,7 @@ import {
   type DayPhase,
   type LatLng,
 } from "./geo";
+import { msg } from "./i18n";
 import { S } from "./settings";
 
 export const BUCKET_MS = 20 * 60 * 1000;
@@ -48,12 +49,12 @@ const KINDS: { kind: SpawnKind; weight: number }[] = [
 ];
 
 const RUN_TEMPLATES = [
-  ["Hot Package", "A courier dropped a hot package. Get it to the safehouse before the heat arrives."],
-  ["Getaway", "The job went loud. Reach the extraction point before time runs out."],
-  ["Tail the Target", "Your mark is moving. Beat them to their destination."],
-  ["Street Race", "Unofficial race, official bragging rights. Reach the finish line."],
-  ["Dead Drop", "Intel is waiting at a dead drop. Get there fast, it won't stay long."],
-  ["Rooftop Dash", "A buyer is waiting across town. Don't keep them waiting."],
+  [msg("Hot Package"), msg("A courier dropped a hot package. Get it to the safehouse before the heat arrives.")],
+  [msg("Getaway"), msg("The job went loud. Reach the extraction point before time runs out.")],
+  [msg("Tail the Target"), msg("Your mark is moving. Beat them to their destination.")],
+  [msg("Street Race"), msg("Unofficial race, official bragging rights. Reach the finish line.")],
+  [msg("Dead Drop"), msg("Intel is waiting at a dead drop. Get there fast, it won't stay long.")],
+  [msg("Rooftop Dash"), msg("A buyer is waiting across town. Don't keep them waiting.")],
 ];
 
 export const currentBucket = (now = Date.now()) => Math.floor(now / BUCKET_MS);

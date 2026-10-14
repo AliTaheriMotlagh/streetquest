@@ -1,6 +1,7 @@
 import { prisma } from "../lib/db";
 import { bossReward, type Boss } from "../lib/bosses";
 import { notify } from "./hub";
+import { t } from "../lib/i18n";
 import { grant } from "./rewards";
 import { giveGear } from "./hero";
 
@@ -25,7 +26,7 @@ export async function damageBoss(b: Boss, userId: string, dmg: number) {
     const r = bossReward(h.damage, i === 0);
     await grant(h.userId, { ...r, gems: i === 0 ? 10 : 3, scrap: 5 });
     if (i === 0 || Math.random() < 0.5) await giveGear(h.userId, { floor: i === 0 ? "epic" : "rare", source: b.def.name });
-    await notify(h.userId, { kind: "reward", title: `${b.def.emoji} ${b.def.name} defeated!`, body: `Your share: +${r.coins} 🪙${i === 0 ? " · 👑 top damage" : ""}` });
+    await notify(h.userId, () => ({ kind: "reward", title: t("{emoji} {name} defeated!", { emoji: b.def.emoji, name: t(b.def.name) }), body: `${t("Your share: +{n} 🪙", { n: r.coins })}${i === 0 ? ` · ${t("👑 top damage")}` : ""}` }));
   }
   return { hp: 0, defeated: true, killedNow: true };
 }

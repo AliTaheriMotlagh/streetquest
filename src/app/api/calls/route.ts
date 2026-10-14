@@ -7,12 +7,14 @@ import { callFor, endCall, iceServers, liveCall, markSeen } from "@/server/calls
 import { body, HttpError, route } from "@/server/http";
 import { pushTo } from "@/server/push";
 import { areFriends } from "@/server/rooms";
+import { t } from "@/lib/i18n";
+import { asUser } from "@/server/hub";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
   const sp = new URL(req.url).searchParams;
   const c = await callFor(u.id, sp.get("id") ?? "");
-  if (!c) throw new HttpError(404, "Call not found");
+  if (!c) throw new HttpError(404, t("Call not found"));
   if (c.status !== "ENDED") await markSeen(c, u.id);
   const signals =
     c.status === "ENDED"
@@ -41,32 +43,33 @@ export const POST = route(async (req) => {
   const d = await body(req, Schema);
 
   if (d.action === "start") {
-    if (d.userId === u.id) throw new HttpError(400, "You can't call yourself");
-    if (!(await areFriends(u.id, d.userId))) throw new HttpError(403, "You can only call players in your crew");
+    if (d.userId === u.id) throw new HttpError(400, t("You can't call yourself"));
+    if (!(await areFriends(u.id, d.userId))) throw new HttpError(403, t("You can only call players in your crew"));
     // A call this phone left hanging (app killed mid-call) shouldn't block a new one.
     const mine = await liveCall(u.id);
     if (mine) await endCall(mine, "hangup");
     const theirs = await liveCall(d.userId);
-    if (theirs) throw new HttpError(409, "They're on another call — try again in a bit");
+    if (theirs) throw new HttpError(409, t("They're on another call — try again in a bit"));
     const call = await prisma.call.create({ data: { callerId: u.id, calleeId: d.userId } });
     // Ring the phone even if the app looks open: it may be in a pocket with the tab hidden.
     // It expires with the ring, so a phone that was offline doesn't ring hours later.
-    void pushTo(d.userId, { title: `📹 ${u.username} is calling`, body: "Video call · tap to answer", tag: `call-${call.id}`, kind: "social", call: call.id, ring: true, url: `/play?call=${call.id}`, ttl: 40 }, { evenIfActive: true });
-    return { callId: call.id, iceServers: iceServers() };
+    const ring = await asUser(d.userId, () => ({ title: t("📹 {name} is calling", { name: u.username }), body: t("Video call · tap to answer") }));
+  void pushTo(d.userId, { ...ring, tag: `call-${call.id}`, kind: "social", call: call.id, ring: true, url: `/play?call=${call.id}`, ttl: 40 }, { evenIfActive: true });
+    return { callId: call.id, iceServers: await iceServers() };
   }
 
   const c = await callFor(u.id, d.callId);
-  if (!c) throw new HttpError(404, "Call not found");
+  if (!c) throw new HttpError(404, t("Call not found"));
 
   if (d.action === "accept" || d.action === "decline") {
-    if (c.calleeId !== u.id) throw new HttpError(400, "That's not your call to answer");
+    if (c.calleeId !== u.id) throw new HttpError(400, t("That's not your call to answer"));
     if (d.action === "decline") {
       await endCall(c, "declined");
       return { ok: true };
     }
     const { count } = await prisma.call.updateMany({ where: { id: c.id, status: "RINGING" }, data: { status: "ACTIVE", answeredAt: new Date(), calleeSeen: new Date() } });
-    if (!count) throw new HttpError(410, "The call already ended");
-    return { iceServers: iceServers() };
+    if (!count) throw new HttpError(410, t("The call already ended"));
+    return { iceServers: await iceServers() };
   }
 
   if (d.action !== "signal") {
@@ -77,7 +80,7 @@ export const POST = route(async (req) => {
     return { ok: true };
   }
 
-  if (c.status === "ENDED") throw new HttpError(410, "The call already ended");
+  if (c.status === "ENDED") throw new HttpError(410, t("The call already ended"));
   await prisma.callSignal.createMany({ data: d.signals.map((s) => ({ callId: c.id, fromId: u.id, kind: s.kind, data: s.data })) });
   return { ok: true };
 });

@@ -8,6 +8,7 @@ import { body, HttpError, route, actionRoute } from "@/server/http";
 import { isOnline } from "@/server/hub";
 import { spendCoins, track } from "@/server/rewards";
 import { expireRides } from "@/server/rides";
+import { t } from "@/lib/i18n";
 
 const pub = { select: { id: true, username: true, avatar: true, lastLat: true, lastLng: true, lastSeenAt: true } } as const;
 const ACTIVE = ["REQUESTED", "ACCEPTED", "ONBOARD"];
@@ -60,10 +61,10 @@ export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng }) < RIDE_MIN_TRIP_M)
-    throw new HttpError(400, `The destination must be at least ${RIDE_MIN_TRIP_M} m from the pickup`);
-  if (await prisma.ride.count({ where: { riderId: u.id, status: { in: ACTIVE } } })) throw new HttpError(400, "You already have a ride on the way");
+    throw new HttpError(400, t("The destination must be at least {m} m from the pickup", { m: RIDE_MIN_TRIP_M }));
+  if (await prisma.ride.count({ where: { riderId: u.id, status: { in: ACTIVE } } })) throw new HttpError(400, t("You already have a ride on the way"));
   await spendCoins(u.id, d.fare); // escrow
   const ride = await prisma.ride.create({ data: { ...d, riderId: u.id, pin: String(Math.floor(1000 + Math.random() * 9000)) } });
   await track("ride_requested", { userId: u.id });
-  return { message: `🚕 Car requested — tell your driver PIN ${ride.pin} at pickup`, ride };
+  return { message: t("🚕 Car requested — tell your driver PIN {pin} at pickup", { pin: ride.pin }), ride };
 });

@@ -3,6 +3,7 @@
 // map) and raider waves.
 import { useCallback, useEffect, useState } from "react";
 import { distanceM, formatDistance } from "@/lib/geo";
+import { fmtNum, msg, t } from "@/lib/i18n";
 import { UNITS, type Army, type UnitKey } from "@/lib/rts";
 import { maxTowers, PROVOKE_DELAY_MS, squadPos, TOWER_MAX_LEVEL, TOWER_TERRITORY_M, TOWERS, towerCost, towerStats, unitCount, type TowerKey } from "@/lib/td";
 import { api } from "./client";
@@ -15,9 +16,10 @@ type SquadRow = { id: string; units: Army; fromLat: number; fromLng: number; toL
 
 const fmtLeft = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`;
+  return s >= 60 ? t("{m}m {s}s", { m: Math.floor(s / 60), s: s % 60 }) : t("{s}s", { s });
 };
-const armyStr = (a: Army) => Object.entries(a).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji}${q}`).join(" ");
+const armyStr = (a: Army) => Object.entries(a).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji}${fmtNum(q ?? 0)}`).join(" ");
+const TARGET_KIND: Record<string, string> = { tower: msg("tower"), squad: msg("squad"), base: msg("base"), outpost: msg("outpost") };
 
 export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: string; lat: number; lng: number }; hq: number; coins: number; scrap: number; reload: () => void }) {
   const { act, pos, pick, teleport, world, refresh } = useGame();
@@ -40,10 +42,10 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
   }, []);
   useEffect(() => {
     load();
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
     const r = setInterval(load, 10_000);
     return () => {
-      clearInterval(t);
+      clearInterval(tick);
       clearInterval(r);
     };
   }, [load]);
@@ -70,71 +72,71 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
       <div className={`card ${wave && now >= wave.startAt ? "hl" : ""}`} style={{ marginBottom: 10 }}>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div>
-            <b>🏴‍☠️ Raider waves</b>
+            <b>{t("🏴‍☠️ Raider waves")}</b>
             <div className="small muted">
               {!wave
-                ? hq >= 2 ? "Quiet for now. Raiders show up every hour or two." : "Raiders start hitting bases at Command Center level 2. Provoke them early for bounties."
+                ? hq >= 2 ? t("Quiet for now. Raiders show up every hour or two.") : t("Raiders start hitting bases at Command Center level 2. Provoke them early for bounties.")
                 : now < wave.startAt
-                  ? `Next wave in ${fmtLeft(wave.startAt - now)}${wave.boost > 1 ? " · provoked ×1.5 bounty" : ""}`
-                  : `⚠️ Wave in progress! ${fmtLeft(wave.endAt - now)} left`}
+                  ? `${t("Next wave in {time}", { time: fmtLeft(wave.startAt - now) })}${wave.boost > 1 ? ` · ${t("provoked ×1.5 bounty")}` : ""}`
+                  : t("⚠️ Wave in progress! {time} left", { time: fmtLeft(wave.endAt - now) })}
             </div>
           </div>
-          <Button className="btn yellow small" disabled={!!wave && now >= wave.startAt - PROVOKE_DELAY_MS} onClick={() => askConfirm("Provoke a raider wave against your base in 60 s? Bounties ×1.5, but leaked raiders still steal coins.", { ok: "Provoke" }).then((ok) => ok && doAct("/api/waves", { action: "provoke" }))}>
-            📯 Provoke
+          <Button className="btn yellow small" disabled={!!wave && now >= wave.startAt - PROVOKE_DELAY_MS} onClick={() => askConfirm(t("Provoke a raider wave against your base in 60 s? Bounties ×1.5, but leaked raiders still steal coins."), { ok: t("Provoke") }).then((ok) => ok && doAct("/api/waves", { action: "provoke" }))}>
+            {t("📯 Provoke")}
           </Button>
         </div>
         <p className="small muted" style={{ margin: "6px 0 0" }}>
-          Raiders march in from 550 m out. Towers, guard squads and your base turrets shoot them — your crew&apos;s too. Be within 400 m of the base to call in ✈️ airstrikes. Leakers steal coins (the 🏦 Vault protects some).
+          {t("Raiders march in from 550 m out. Towers, guard squads and your base turrets shoot them — your crew's too. Be within 400 m of the base to call in ✈️ airstrikes. Leakers steal coins (the 🏦 Vault protects some).")}
         </p>
       </div>
 
       {/* ---------- towers */}
       <div className="row" style={{ justifyContent: "space-between", margin: "4px 0 6px" }}>
-        <b>🗼 Towers ({towers.length}/{maxTowers(hq)})</b>
-        <span className="small muted">{inTerritory ? `📍 ${formatDistance(fromBase)} from base — you can build here` : `Walk within ${TOWER_TERRITORY_M / 1000} km of your base to build`}</span>
+        <b>{t("🗼 Towers ({n}/{max})", { n: towers.length, max: maxTowers(hq) })}</b>
+        <span className="small muted">{inTerritory ? t("📍 {d} from base — you can build here", { d: formatDistance(fromBase) }) : t("Walk within {n} km of your base to build", { n: TOWER_TERRITORY_M / 1000 })}</span>
       </div>
       <div className="tower-shop">
-        {TOWERS.map((t) => {
-          const c = towerCost(t.key, 1);
-          const locked = hq < t.hqLevel;
+        {TOWERS.map((def) => {
+          const c = towerCost(def.key, 1);
+          const locked = hq < def.hqLevel;
           return (
             <Button
-              key={t.key}
+              key={def.key}
               className="tower-card"
               disabled={locked || !inTerritory || towers.length >= maxTowers(hq) || coins < c.coins || scrap < c.scrap}
-              onClick={() => doAct("/api/towers", { action: "build", type: t.key })}
-              title={t.blurb}
+              onClick={() => doAct("/api/towers", { action: "build", type: def.key })}
+              title={t(def.blurb)}
             >
-              <span style={{ fontSize: 26 }}>{t.emoji}</span>
-              <b>{t.name}</b>
-              <span className="small muted">{locked ? `HQ ${t.hqLevel}` : `${c.coins}🪙${c.scrap ? ` ${c.scrap}🔩` : ""}`}</span>
-              <span className="small muted">⌖{t.range}m · {t.dps}dps</span>
+              <span style={{ fontSize: 26 }}>{def.emoji}</span>
+              <b>{t(def.name)}</b>
+              <span className="small muted">{locked ? t("HQ {n}", { n: def.hqLevel }) : `${fmtNum(c.coins)}🪙${c.scrap ? ` ${fmtNum(c.scrap)}🔩` : ""}`}</span>
+              <span className="small muted">⌖{t("{n} m", { n: def.range })} · {t("{n} dps", { n: def.dps })}</span>
             </Button>
           );
         })}
       </div>
-      <p className="small muted">Towers go up exactly where you stand. They shoot any rival commander who walks into range (players below level 3 are spared) and every raider that passes. 🔫 shreds raiders on foot, 💣 kills technicals, 🚀 swats drones, 🎯 punishes players.</p>
-      {towers.map((t) => {
-        const st = towerStats(t);
-        const left = new Date(t.readyAt).getTime() - now;
-        const d = pos ? distanceM(pos, t) : null;
-        const up = t.level < TOWER_MAX_LEVEL ? towerCost(t.type as TowerKey, t.level + 1) : null;
+      <p className="small muted">{t("Towers go up exactly where you stand. They shoot any rival commander who walks into range (players below level 3 are spared) and every raider that passes. 🔫 shreds raiders on foot, 💣 kills technicals, 🚀 swats drones, 🎯 punishes players.")}</p>
+      {towers.map((tw) => {
+        const st = towerStats(tw);
+        const left = new Date(tw.readyAt).getTime() - now;
+        const d = pos ? distanceM(pos, tw) : null;
+        const up = tw.level < TOWER_MAX_LEVEL ? towerCost(tw.type as TowerKey, tw.level + 1) : null;
         return (
-          <div key={t.id} className={`card list-item ${left > 0 ? "hl" : ""}`}>
+          <div key={tw.id} className={`card list-item ${left > 0 ? "hl" : ""}`}>
             <div className="icon-tile">{st.def.emoji}</div>
             <div className="grow">
-              <b>{st.def.name}</b> <span className="tag">Lv {t.level}</span> {t.kills > 0 && <span className="tag" style={{ color: "var(--red)" }}>☠️ {t.kills}</span>}
-              <div className="need-bar"><i style={{ width: `${(t.hp / st.maxHp) * 100}%`, background: t.hp < st.maxHp * 0.4 ? "var(--red)" : "var(--green)" }} /></div>
+              <b>{t(st.def.name)}</b> <span className="tag">{t("Lv {n}", { n: tw.level })}</span> {tw.kills > 0 && <span className="tag" style={{ color: "var(--red)" }}>☠️ {fmtNum(tw.kills)}</span>}
+              <div className="need-bar"><i style={{ width: `${(tw.hp / st.maxHp) * 100}%`, background: tw.hp < st.maxHp * 0.4 ? "var(--red)" : "var(--green)" }} /></div>
               <div className="small muted">
-                {t.hp}/{st.maxHp} HP · range {st.range} m · {st.dps.toFixed(1)} dps {d != null && `· ${formatDistance(d)}`}
+                {t("{hp}/{max} HP · range {r} m · {dps} dps", { hp: tw.hp, max: st.maxHp, r: st.range, dps: Number(st.dps.toFixed(1)) })} {d != null && `· ${formatDistance(d)}`}
                 {left > 0 && <span style={{ color: "var(--yellow)" }}> · 🚧 {fmtLeft(left)}</span>}
               </div>
             </div>
             <div className="col" style={{ gap: 4 }}>
-              {up && left <= 0 && <Button className="btn small" onClick={() => doAct("/api/towers", { action: "upgrade", towerId: t.id })}>↑ {up.coins}🪙</Button>}
-              {t.hp < st.maxHp && <Button className="btn ghost small" onClick={() => doAct("/api/towers", { action: "repair", towerId: t.id })}>🔧 {Math.ceil((st.maxHp - t.hp) * 0.4)}</Button>}
-              {teleport && d != null && d > 30 && <Button className="btn ghost small" onClick={() => teleport(t)}><MoveIcon /></Button>}
-              <Button className="btn ghost small" onClick={() => askConfirm(`Demolish this ${st.def.name}? You get 30% back.`, { ok: "Demolish", danger: true }).then((ok) => ok && doAct("/api/towers", { action: "demolish", towerId: t.id }))}>🏚️</Button>
+              {up && left <= 0 && <Button className="btn small" onClick={() => doAct("/api/towers", { action: "upgrade", towerId: tw.id })}>↑ {fmtNum(up.coins)}🪙</Button>}
+              {tw.hp < st.maxHp && <Button className="btn ghost small" onClick={() => doAct("/api/towers", { action: "repair", towerId: tw.id })}>🔧 {fmtNum(Math.ceil((st.maxHp - tw.hp) * 0.4))}</Button>}
+              {teleport && d != null && d > 30 && <Button className="btn ghost small" onClick={() => teleport(tw)}><MoveIcon /></Button>}
+              <Button className="btn ghost small" onClick={() => askConfirm(t("Demolish this {tower}? You get 30% back.", { tower: t(st.def.name) }), { ok: t("Demolish"), danger: true }).then((ok) => ok && doAct("/api/towers", { action: "demolish", towerId: tw.id }))}>🏚️</Button>
             </div>
           </div>
         );
@@ -142,8 +144,8 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
 
       {/* ---------- field squads */}
       <div className="row" style={{ justifyContent: "space-between", margin: "14px 0 6px" }}>
-        <b>🎖️ Field squads ({squads.length}/{maxSquads})</b>
-        <span className="small muted">At home: {armyStr(home) || "nobody"}</span>
+        <b>{t("🎖️ Field squads ({n}/{max})", { n: squads.length, max: maxSquads })}</b>
+        <span className="small muted">{t("At home:")} {armyStr(home) || t("nobody")}</span>
       </div>
       {squads.map((s) => {
         const marching = s.status === "MARCH" && new Date(s.arriveAt).getTime() > now;
@@ -154,19 +156,21 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
             <div className="grow">
               <b>{armyStr(s.units)}</b>
               <div className="small muted">
-                {marching ? `${s.order === "attack" ? `Attacking ${s.targetKind}` : s.order === "return" ? "Heading home" : "Moving"} · arrives in ${fmtLeft(new Date(s.arriveAt).getTime() - now)}` : `Guarding · ${formatDistance(distanceM(p, base))} from base`}
+                {marching
+                  ? `${s.order === "attack" ? t("Attacking a {target}", { target: t(TARGET_KIND[s.targetKind ?? ""] ?? s.targetKind ?? "") }) : s.order === "return" ? t("Heading home") : t("Moving")} · ${t("arrives in {time}", { time: fmtLeft(new Date(s.arriveAt).getTime() - now) })}`
+                  : t("Guarding · {d} from base", { d: formatDistance(distanceM(p, base)) })}
               </div>
             </div>
             <div className="col" style={{ gap: 4 }}>
-              <Button className="btn ghost small" onClick={() => pick("Tap where this squad should move", (to) => doAct("/api/squads", { action: "move", squadId: s.id, to }))}>📍 Move</Button>
-              {s.order !== "return" && <Button className="btn ghost small" onClick={() => doAct("/api/squads", { action: "recall", squadId: s.id })}>↩️ Recall</Button>}
+              <Button className="btn ghost small" onClick={() => pick(t("Tap where this squad should move"), (to) => doAct("/api/squads", { action: "move", squadId: s.id, to }))}>{t("📍 Move")}</Button>
+              {s.order !== "return" && <Button className="btn ghost small" onClick={() => doAct("/api/squads", { action: "recall", squadId: s.id })}>{t("↩️ Recall")}</Button>}
             </div>
           </div>
         );
       })}
       {unitCount(home) > 0 && squads.length < maxSquads && (
         <div className="card">
-          <label style={{ marginTop: 0 }}>Deploy a squad {unitCount(pickUnits) ? "" : "(all units at home)"}</label>
+          <label style={{ marginTop: 0 }}>{t("Deploy a squad")} {unitCount(pickUnits) ? "" : t("(all units at home)")}</label>
           <div className="row wrap" style={{ gap: 6 }}>
             {UNITS.filter((u) => (home[u.key] ?? 0) > 0).map((u) => {
               const n = pickUnits[u.key as UnitKey] ?? 0;
@@ -174,22 +178,23 @@ export function DefenseTab({ base, hq, coins, scrap, reload }: { base: { id: str
               return (
                 <div key={u.key} className="stepper">
                   <Button onClick={() => setPickUnits({ ...pickUnits, [u.key]: Math.max(0, n - 1) })}>−</Button>
-                  <span>{u.emoji} {n || "·"}/{max}</span>
+                  <span>{u.emoji} {n ? fmtNum(n) : "·"}/{fmtNum(max)}</span>
                   <Button onClick={() => setPickUnits({ ...pickUnits, [u.key]: Math.min(max, n + 1) })}>+</Button>
                 </div>
               );
             })}
           </div>
           <div className="row wrap" style={{ marginTop: 8 }}>
-            {pos && <Button className="btn small" onClick={() => deploy(pos)}>🛡️ Guard where I stand</Button>}
-            <Button className="btn cyan small" onClick={() => pick("Tap where the squad should take position", deploy)}>📍 Guard a spot</Button>
+            {pos && <Button className="btn small" onClick={() => deploy(pos)}>{t("🛡️ Guard where I stand")}</Button>}
+            <Button className="btn cyan small" onClick={() => pick(t("Tap where the squad should take position"), deploy)}>{t("📍 Guard a spot")}</Button>
           </div>
           <p className="small muted" style={{ margin: "6px 0 0" }}>
-            Squads march at their slowest unit (🚶 3 m/s · 🚙 8 m/s · ✈️ 25 m/s) and everyone sees them on the map. Guards shoot rival commanders within {55} m, defend against raiders and reinforce nearby bases and outposts. To attack, tap an enemy 🗼 tower, squad, 🏰 base or 🚩 outpost on the map → <b>March a squad</b>.
+            {t("Squads march at their slowest unit (🚶 3 m/s · 🚙 8 m/s · ✈️ 25 m/s) and everyone sees them on the map. Guards shoot rival commanders within {r} m, defend against raiders and reinforce nearby bases and outposts.", { r: 55 })}{" "}
+            {t("To attack, tap an enemy 🗼 tower, squad, 🏰 base or 🚩 outpost on the map →")} <b>{t("March a squad")}</b>.
           </p>
         </div>
       )}
-      {!unitCount(home) && !squads.length && <div className="empty">Train units in the Army tab, then deploy them onto the map.</div>}
+      {!unitCount(home) && !squads.length && <div className="empty">{t("Train units in the Army tab, then deploy them onto the map.")}</div>}
     </>
   );
 }

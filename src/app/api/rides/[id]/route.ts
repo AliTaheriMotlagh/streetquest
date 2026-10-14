@@ -8,6 +8,7 @@ import { notify } from "@/server/hub";
 import { body, HttpError, actionRoute } from "@/server/http";
 import { bumpNeeds } from "@/server/needs";
 import { grant, lastKnownLocation, unlock } from "@/server/rewards";
+import { t } from "@/lib/i18n";
 
 const Schema = z.object({ action: z.enum(["accept", "start", "complete", "arrive", "cancel"]), pin: z.string().max(8).optional() });
 
@@ -16,13 +17,13 @@ export const POST = actionRoute(async (req, ctx) => {
   const { id } = await ctx.params;
   const d = await body(req, Schema);
   const ride = await prisma.ride.findUnique({ where: { id } });
-  if (!ride) throw new HttpError(404, "Ride not found");
+  if (!ride) throw new HttpError(404, t("Ride not found"));
   const isRider = ride.riderId === u.id;
   const isDriver = ride.driverId === u.id;
   // Conditional update guards against two drivers racing for the same rider.
   const move = async (from: string, data: Parameters<typeof prisma.ride.update>[0]["data"]) => {
     const r = await prisma.ride.updateMany({ where: { id, status: from }, data });
-    if (!r.count) throw new HttpError(409, "Ride changed — refresh");
+    if (!r.count) throw new HttpError(409, t("Ride changed — refresh"));
   };
   const pickup = { lat: ride.pickupLat, lng: ride.pickupLng };
   const dropoff = { lat: ride.dropoffLat, lng: ride.dropoffLng };
@@ -41,55 +42,55 @@ export const POST = actionRoute(async (req, ctx) => {
     await unlock(ride.driverId!, "driver_1");
     if (done >= 10) await unlock(ride.driverId!, "driver_10");
     const other = isRider ? ride.driverId! : ride.riderId;
-    await notify(other, { kind: "delivery", title: "🏁 Ride complete", body: isRider ? `${u.username} confirmed arrival — +${ride.fare} coins` : `You arrived at ${ride.dropoffLabel}` });
+    await notify(other, () => ({ kind: "delivery", title: t("🏁 Ride complete"), body: isRider ? t("{name} confirmed arrival — +{n} coins", { name: u.username, n: ride.fare }) : t("You arrived at {place}", { place: ride.dropoffLabel }) }));
     return { message: `🏁 ${how} ${isDriver ? `+${ride.fare} coins` : "Thanks for riding!"}` };
   };
 
   switch (d.action) {
     case "accept": {
-      if (isRider) throw new HttpError(400, "You can't drive yourself");
-      if (ride.status !== "REQUESTED" || Date.now() - ride.createdAt.getTime() > RIDE_REQUEST_TTL_MS) throw new HttpError(400, "That rider is no longer waiting");
-      if (await prisma.ride.count({ where: { driverId: u.id, status: { in: ["ACCEPTED", "ONBOARD"] } } })) throw new HttpError(400, "Finish your current ride first");
+      if (isRider) throw new HttpError(400, t("You can't drive yourself"));
+      if (ride.status !== "REQUESTED" || Date.now() - ride.createdAt.getTime() > RIDE_REQUEST_TTL_MS) throw new HttpError(400, t("That rider is no longer waiting"));
+      if (await prisma.ride.count({ where: { driverId: u.id, status: { in: ["ACCEPTED", "ONBOARD"] } } })) throw new HttpError(400, t("Finish your current ride first"));
       await move("REQUESTED", { status: "ACCEPTED", driverId: u.id, acceptedAt: new Date() });
-      await notify(ride.riderId, { kind: "delivery", title: "🚕 Driver on the way", body: `${u.username} is coming to ${ride.pickupLabel}` });
-      return { message: "Ride accepted — head to the pickup point" };
+      await notify(ride.riderId, () => ({ kind: "delivery", title: t("🚕 Driver on the way"), body: t("{name} is coming to {place}", { name: u.username, place: ride.pickupLabel }) }));
+      return { message: t("Ride accepted — head to the pickup point") };
     }
     case "start": {
-      if (!isDriver || ride.status !== "ACCEPTED") throw new HttpError(400, "Not your rider to pick up");
+      if (!isDriver || ride.status !== "ACCEPTED") throw new HttpError(400, t("Not your rider to pick up"));
       const here = await lastKnownLocation(u.id);
-      if (distanceM(here, pickup) > RIDE_CHECKIN_M) throw new HttpError(400, `Get to the pickup point first (within ${RIDE_CHECKIN_M} m)`);
-      if (d.pin?.trim() !== ride.pin) throw new HttpError(400, "Wrong PIN — ask your rider for the 4-digit code");
+      if (distanceM(here, pickup) > RIDE_CHECKIN_M) throw new HttpError(400, t("Get to the pickup point first (within {m} m)", { m: RIDE_CHECKIN_M }));
+      if (d.pin?.trim() !== ride.pin) throw new HttpError(400, t("Wrong PIN — ask your rider for the 4-digit code"));
       await move("ACCEPTED", { status: "ONBOARD", startedAt: new Date() });
-      await notify(ride.riderId, { kind: "delivery", title: "🚗 Ride started", body: `Heading to ${ride.dropoffLabel}` });
-      return { message: `Rider on board — drive to ${ride.dropoffLabel}` };
+      await notify(ride.riderId, () => ({ kind: "delivery", title: t("🚗 Ride started"), body: t("Heading to {place}", { place: ride.dropoffLabel }) }));
+      return { message: t("Rider on board — drive to {place}", { place: ride.dropoffLabel }) };
     }
     case "complete": {
-      if (!isDriver || ride.status !== "ONBOARD") throw new HttpError(400, "No ride in progress");
+      if (!isDriver || ride.status !== "ONBOARD") throw new HttpError(400, t("No ride in progress"));
       const here = await lastKnownLocation(u.id);
-      if (distanceM(here, dropoff) > RIDE_CHECKIN_M) throw new HttpError(400, `You're not at the drop-off yet (within ${RIDE_CHECKIN_M} m)`);
+      if (distanceM(here, dropoff) > RIDE_CHECKIN_M) throw new HttpError(400, t("You're not at the drop-off yet (within {m} m)", { m: RIDE_CHECKIN_M }));
       // The rider's phone has to agree they're there too — otherwise they confirm themselves.
       const rider = await prisma.user.findUnique({ where: { id: ride.riderId }, select: { lastLat: true, lastLng: true, lastSeenAt: true } });
       const riderFresh = rider?.lastLat != null && rider.lastLng != null && rider.lastSeenAt && Date.now() - rider.lastSeenAt.getTime() < 2 * 60_000;
       if (!riderFresh || distanceM({ lat: rider.lastLat!, lng: rider.lastLng! }, dropoff) > RIDE_RIDER_DROPOFF_M)
-        throw new HttpError(400, "Your rider's GPS doesn't show them here — ask them to tap “I've arrived”");
+        throw new HttpError(400, t("Your rider's GPS doesn't show them here — ask them to tap “I've arrived”"));
       return finish("Ride complete!");
     }
     case "arrive": {
-      if (!isRider || ride.status !== "ONBOARD") throw new HttpError(400, "No ride in progress");
+      if (!isRider || ride.status !== "ONBOARD") throw new HttpError(400, t("No ride in progress"));
       return finish("You've arrived.");
     }
     case "cancel": {
       if (isRider && (ride.status === "REQUESTED" || ride.status === "ACCEPTED")) {
         await move(ride.status, { status: "CANCELLED", endedAt: new Date() });
         await grant(u.id, { coins: ride.fare }, { raw: true }); // refund escrow
-        if (ride.driverId) await notify(ride.driverId, { kind: "delivery", title: "🚕 Ride cancelled", body: `${u.username} cancelled the ride` });
-        return { message: "Ride cancelled, fare refunded" };
+        if (ride.driverId) await notify(ride.driverId, () => ({ kind: "delivery", title: t("🚕 Ride cancelled"), body: t("{name} cancelled the ride", { name: u.username }) }));
+        return { message: t("Ride cancelled, fare refunded") };
       }
       if (isDriver && ride.status === "ACCEPTED") {
         // Back in the queue for another driver; the waiting clock restarts.
         await move("ACCEPTED", { status: "REQUESTED", driverId: null, acceptedAt: null, createdAt: new Date() });
-        await notify(ride.riderId, { kind: "delivery", title: "🚕 Driver cancelled", body: "Looking for another driver…" });
-        return { message: "You dropped the ride" };
+        await notify(ride.riderId, () => ({ kind: "delivery", title: t("🚕 Driver cancelled"), body: t("Looking for another driver…") }));
+        return { message: t("You dropped the ride") };
       }
       throw new HttpError(400, ride.status === "ONBOARD" ? "The ride is under way — the rider ends it with “I've arrived”" : "Can't cancel at this stage");
     }

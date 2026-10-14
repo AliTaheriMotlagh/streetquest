@@ -11,6 +11,8 @@ import { unitCount } from "../lib/td";
 import { forcesOf, fmtLosses, gainVet, loadBase, removeUnits, survivors, type LoadedBase } from "./army";
 import { heroOf, maybeGear } from "./hero";
 import { notify } from "./hub";
+import { t } from "../lib/i18n";
+import { outpostLabel } from "../lib/outposts";
 import { moodOfUser } from "./needs";
 import { questEvent } from "./quests";
 import { grant } from "./rewards";
@@ -131,18 +133,21 @@ export async function siegeBase(u: User, myBaseId: string | null, attack: Force,
   });
   if (stars > 0) {
     await questEvent(u.id, "siege_win");
-    await maybeGear(u.id, 0.2 * stars, { source: `sacking ${target.name}` });
+    await maybeGear(u.id, 0.2 * stars, { source: t("sacking {name}", { name: target.name }) });
   }
   await grant(u.id, { coins: loot + leagueBonus, xp: 60 + 60 * stars, scrap: 1 + stars });
   await prisma.battle.create({ data: { attackerId: u.id, defenderId: owner.id, kind: "siege", targetId: target.id, targetName: target.name, won: stars > 0, loot, stars, destruction, trophies: swing, log: r } });
   const starStr = "★".repeat(stars) + "☆".repeat(3 - stars);
-  const helped = near.length ? ` (${near.length} guard squad${near.length > 1 ? "s" : ""} joined the defense)` : "";
-  await notify(target.ownerId, {
+  const helped = () => (near.length ? ` ${t("({n, plural, one {# guard squad} other {# guard squads}} joined the defense)", { n: near.length })}` : "");
+  await notify(target.ownerId, () => ({
     kind: "event",
-    title: stars ? `💥 ${u.username} raided ${target.name} ${starStr}` : `🛡️ ${target.name} repelled ${u.username}`,
-    body: stars ? `${destruction}% destroyed · lost ${loot} 🪙, ${-swing} 🏆 · revenge from Base → Reports` : `+${-swing} 🏆 · defenders lost ${fmtLosses(r.defenderLosses)}${helped}`,
-  });
-  const lead = via === "squad" ? "🎖️ Squad assault on " + target.name + ": " : "";
+    tag: stars ? "hurt" : undefined,
+    title: stars ? t("💥 {name} raided {base} {stars}", { name: u.username, base: target.name, stars: starStr }) : t("🛡️ {base} repelled {name}", { base: target.name, name: u.username }),
+    body: stars
+      ? t("{pct}% destroyed · lost {n} 🪙, {trophies} 🏆 · revenge from Base → Reports", { pct: destruction, n: loot, trophies: -swing })
+      : `${t("+{trophies} 🏆 · defenders lost {losses}", { trophies: -swing, losses: fmtLosses(r.defenderLosses) })}${helped()}`,
+  }));
+  const lead = via === "squad" ? t("🎖️ Squad assault on {base}: ", { base: target.name }) : "";
   return {
     won: stars > 0,
     result: r,
@@ -150,8 +155,8 @@ export async function siegeBase(u: User, myBaseId: string | null, attack: Force,
     destruction,
     trophies: swing,
     message: stars
-      ? `${lead}${starStr} ${destruction}% destroyed! +${loot + leagueBonus} 🪙${leagueBonus ? ` (${league.emoji} +${leagueBonus})` : ""} · +${swing} 🏆`
-      : `${lead}☆☆☆ Raid failed (${r.atkPower} vs ${r.defPower}) · ${swing} 🏆 · lost ${fmtLosses(r.attackerLosses)}${helped}`,
+      ? `${lead}${starStr} ${t("{pct}% destroyed!", { pct: destruction })} +${loot + leagueBonus} 🪙${leagueBonus ? ` (${league.emoji} +${leagueBonus})` : ""} · +${swing} 🏆`
+      : `${lead}☆☆☆ ${t("Raid failed ({atk} vs {def})", { atk: r.atkPower, def: r.defPower })} · ${swing} 🏆 · ${t("lost {losses}", { losses: fmtLosses(r.attackerLosses) })}${helped()}`,
   };
 }
 
@@ -194,8 +199,8 @@ export async function assaultOutpost(u: User, attack: Force, site: OutpostSite):
   await prisma.battle.create({ data: { attackerId: u.id, defenderId: owner?.id, kind: "outpost", targetId: site.id, targetName: site.name, won: r.won, loot: 0, log: r } });
 
   if (!r.won) {
-    if (owner) await notify(owner.id, { kind: "event", title: `🛡️ ${site.name} held`, body: `Your defenders repelled ${u.username}` });
-    return { won: false, result: r, message: `☠️ Assault on ${site.name} failed (${r.atkPower} vs ${r.defPower}). Lost ${fmtLosses(r.attackerLosses)}` };
+    if (owner) await notify(owner.id, () => ({ kind: "event", title: t("🛡️ {name} held", { name: outpostLabel(site.name) }), body: t("Your defenders repelled {name}", { name: u.username }) }));
+    return { won: false, result: r, message: t("☠️ Assault on {name} failed ({atk} vs {def}). Lost {losses}", { name: outpostLabel(site.name), atk: r.atkPower, def: r.defPower, losses: fmtLosses(r.attackerLosses) }) };
   }
   const now = new Date();
   await prisma.outpost.upsert({
@@ -203,11 +208,11 @@ export async function assaultOutpost(u: User, attack: Force, site: OutpostSite):
     create: { id: site.id, ownerId: u.id, garrison: {}, capturedAt: now, collectedAt: now, shieldUntil: new Date(now.getTime() + OUTPOST_SHIELD_MS) },
     update: { ownerId: u.id, garrison: {}, capturedAt: now, collectedAt: now, shieldUntil: new Date(now.getTime() + OUTPOST_SHIELD_MS) },
   });
-  if (owner) await notify(owner.id, { kind: "event", title: `🚩 ${site.name} fell`, body: `${u.username} captured it — your garrison (${fmtLosses(garrison)}) was wiped out` });
+  if (owner) await notify(owner.id, () => ({ kind: "event", tag: "hurt", title: t("🚩 {name} fell", { name: outpostLabel(site.name) }), body: t("{player} captured it — your garrison ({losses}) was wiped out", { player: u.username, losses: fmtLosses(garrison) }) }));
   await grant(u.id, { xp: 150, coins: 50, scrap: 3 });
   await questEvent(u.id, "outpost");
-  await maybeGear(u.id, 0.4, { source: site.name });
-  return { won: true, result: r, message: `🚩 ${site.name} captured! Station troops there to hold it. Lost ${fmtLosses(r.attackerLosses)}` };
+  await maybeGear(u.id, 0.4, { source: outpostLabel(site.name) });
+  return { won: true, result: r, message: t("🚩 {name} captured! Station troops there to hold it. Lost {losses}", { name: outpostLabel(site.name), losses: fmtLosses(r.attackerLosses) }) };
 }
 
 export { loadBase };

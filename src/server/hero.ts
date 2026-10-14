@@ -2,12 +2,15 @@
 // Battle Cry) — read by battles, base timers, income, FPS stats and XP.
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/db";
-import { gearMods, GEAR_BASE_BY_KEY, MAX_GEAR, rollGear, type Affix, type Slot, type WeaponKey } from "../lib/gear";
+import { gearMods, GEAR_BASE_BY_KEY, MAX_GEAR, rollGear, SLOT_LABEL, type Affix, type Slot, type WeaponKey } from "../lib/gear";
 import { heroMods, sumMods, toBonus, type Bonus, type Mods } from "../lib/hero";
 import { levelForXp } from "../lib/progression";
 import { RESEARCH_BY_KEY, type ResearchKey } from "../lib/rts";
 import type { Rarity } from "../lib/catalog";
 import { notify } from "./hub";
+import { t } from "../lib/i18n";
+import { gearName } from "../lib/gear";
+import { RARITY_LABEL } from "../lib/catalog";
 
 type HeroRow = Pick<User, "id" | "heroClass" | "str" | "agi" | "int" | "cha" | "buffUntil" | "buffMult">;
 
@@ -44,11 +47,15 @@ export async function giveGear(userId: string, opts: { luck?: number; floor?: Ra
   const item = rollGear(Math.random, levelForXp(u.xp), opts);
   if ((await prisma.gear.count({ where: { userId } })) >= MAX_GEAR) {
     await prisma.user.update({ where: { id: userId }, data: { scrap: { increment: 5 } } });
-    await notify(userId, { kind: "reward", title: "Stash full", body: `${item.name} was salvaged for 5 scrap` });
+    await notify(userId, () => ({ kind: "reward", title: t("Stash full"), body: t("{item} was salvaged for 5 scrap", { item: gearName(item) }) }));
     return null;
   }
   const g = await prisma.gear.create({ data: { userId, slot: item.slot, base: item.base, name: item.name, rarity: item.rarity, level: item.level, affixes: item.affixes } });
-  await notify(userId, { kind: "reward", title: `${GEAR_BASE_BY_KEY[item.base].emoji} Loot: ${item.name}`, body: `${item.rarity} ${item.slot}${opts.source ? ` · from ${opts.source}` : ""}` });
+  await notify(userId, () => ({
+    kind: "reward",
+    title: t("{emoji} Loot: {item}", { emoji: GEAR_BASE_BY_KEY[item.base].emoji, item: gearName(item) }),
+    body: `${t("{rarity} {slot}", { rarity: t(RARITY_LABEL[item.rarity]), slot: t(SLOT_LABEL[item.slot]) })}${opts.source ? ` · ${t("from {source}", { source: t(opts.source) })}` : ""}`,
+  }));
   return g;
 }
 

@@ -1,4 +1,5 @@
 // Pure geo + seeded-random helpers. Safe to import on client and server.
+import { t } from "./i18n";
 
 export type LatLng = { lat: number; lng: number };
 
@@ -109,6 +110,7 @@ export function pickWeighted<T extends { weight: number }>(items: T[], r: number
   return items[items.length - 1];
 }
 
+/** "120 m", "1.4 km" — in the reader's language and digits. */
 export function formatDistance(m: number) {
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+  return m < 1000 ? t("{n} m", { n: Math.round(m) }) : t("{n} km", { n: Math.round(m / 100) / 10 });
 }

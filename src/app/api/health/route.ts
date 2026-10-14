@@ -1,6 +1,7 @@
 // Deployment check: open /api/health on your deployed site to see what's misconfigured.
 // Reports which settings exist (never their values) and whether the database works.
 import { prisma } from "@/lib/db";
+import { turnConfigured } from "@/server/calls";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +18,13 @@ export async function GET() {
     siteUrl: !!(env.NEXT_PUBLIC_SITE_URL || env.VERCEL_PROJECT_PRODUCTION_URL),
     adminKey: !!env.ADMIN_KEY,
     cronSecret: !!env.CRON_SECRET,
+    callRelay: turnConfigured(),
   };
   const problems: string[] = [];
   if (!settings.database) problems.push("No database connected. Vercel: Storage → connect a Postgres (Neon) database, then redeploy.");
   if (!settings.authSecret) problems.push("AUTH_SECRET is not set. Add a long random value in Settings → Environment Variables.");
   if (!settings.siteUrl) problems.push("NEXT_PUBLIC_SITE_URL is not set (links/SEO use localhost).");
+  if (!settings.callRelay) problems.push("No TURN relay for video calls: calls only connect when both phones are on the same network. Set CLOUDFLARE_TURN_KEY_ID + CLOUDFLARE_TURN_API_TOKEN (see .env.example).");
 
   let database = "skipped";
   let schema = "skipped";

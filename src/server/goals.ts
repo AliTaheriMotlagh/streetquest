@@ -6,6 +6,7 @@ import { prisma } from "../lib/db";
 import { S, type GoalDef, type GoalReward, type MilestoneDef } from "../lib/settings";
 import { FACTION_BY_KEY, type FactionKey } from "../lib/rts";
 import { HttpError } from "./http";
+import { isLocale, translate, t, type Vars } from "../lib/i18n";
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
@@ -40,13 +41,13 @@ export async function trackStat(userId: string, metric: string, n = 1, faction?:
     const rows = await Promise.all(ops);
     // Announce when this contribution completes a shared goal.
     const crossed = (v: number, target: number) => v >= target && v - n < target;
-    if (world && world.metric === metric && crossed(rows[2].value, world.target)) await announce(`${world.emoji} World operation complete: ${world.title}`, "Everyone who helped can claim the reward in Hero → Goals");
+    if (world && world.metric === metric && crossed(rows[2].value, world.target)) await announce("{emoji} World operation complete: {title}", "Everyone who helped can claim the reward in Hero → Goals", { emoji: world.emoji, title: world.title });
     if (f && fgoal?.metric === metric) {
       const row = rows[rows.length - 1];
       if (crossed(row.value, fgoal.target)) {
         const fd = FACTION_BY_KEY[f as FactionKey];
-        const members = await prisma.user.findMany({ where: { faction: f, lastSeenAt: { gt: new Date(Date.now() - 7 * DAY) } }, select: { id: true }, take: 2000 });
-        await prisma.notification.createMany({ data: members.map((m) => ({ userId: m.id, kind: "reward", title: `${fd?.emoji ?? "🚩"} Faction goal complete: ${fgoal.title}`, body: "Claim your share in Hero → Goals" })) });
+        const members = await prisma.user.findMany({ where: { faction: f, lastSeenAt: { gt: new Date(Date.now() - 7 * DAY) } }, select: { id: true, locale: true }, take: 2000 });
+        await prisma.notification.createMany({ data: members.map((m) => inLocale(m, "{emoji} Faction goal complete: {title}", "Claim your share in Hero → Goals", { emoji: fd?.emoji ?? "🚩", title: fgoal.title })) });
       }
     }
   } catch (e) {
@@ -54,12 +55,20 @@ export async function trackStat(userId: string, metric: string, n = 1, faction?:
   }
 }
 
-async function announce(title: string, body: string) {
-  const active = await prisma.user.findMany({ where: { lastSeenAt: { gt: new Date(Date.now() - 30 * 60_000) } }, select: { id: true }, take: 5000 });
-  await prisma.notification.createMany({ data: active.map((a) => ({ userId: a.id, kind: "reward", title, body })) });
+/** A reward notice for many players at once, each in their own language. */
+const inLocale = (u: { id: string; locale: string }, title: string, body: string, vars: Vars) => {
+  const l = isLocale(u.locale) ? u.locale : "en";
+  // Goal titles are admin-editable English: translated when they're one of ours.
+  const v = { ...vars, title: typeof vars.title === "string" ? translate(l, vars.title) : vars.title };
+  return { userId: u.id, kind: "reward", title: translate(l, title, v), body: translate(l, body, v) };
+};
+
+async function announce(title: string, body: string, vars: Vars) {
+  const active = await prisma.user.findMany({ where: { lastSeenAt: { gt: new Date(Date.now() - 30 * 60_000) } }, select: { id: true, locale: true }, take: 5000 });
+  await prisma.notification.createMany({ data: active.map((a) => inLocale(a, title, body, vars)) });
 }
 
-const fmtReward = (r: GoalReward, mult = 1) => [r.xp && `${r.xp * mult} XP`, r.coins && `${r.coins * mult} 🪙`, r.gems && `${r.gems * mult} 💎`].filter(Boolean).join(" · ");
+const fmtReward = (r: GoalReward, mult = 1) => [r.xp && t("{n} XP", { n: r.xp * mult }), r.coins && `${r.coins * mult} 🪙`, r.gems && `${r.gems * mult} 💎`].filter(Boolean).join(" · ");
 
 export async function goalsView(u: Pick<User, "id" | "faction">) {
   const wk = weekKey();
@@ -83,6 +92,7 @@ export async function goalsView(u: Pick<User, "id" | "faction">) {
   const shared = (def: GoalDef | null, value: number, key: string | null) =>
     def && {
       ...def,
+      title: t(def.title),
       value: Math.floor(value),
       mine: Math.floor(weekBy.get(def.metric) ?? 0),
       done: value >= def.target,
@@ -102,7 +112,7 @@ export async function goalsView(u: Pick<User, "id" | "faction">) {
       const value = Math.floor(mineBy.get(p.metric) ?? 0);
       const tiers = p.tiers.map((target, i) => ({ target, done: value >= target, claimed: claimed.has(`p:${p.key}:${i}`), reward: fmtReward(p.reward, i + 1) }));
       const next = tiers.findIndex((t) => !t.done);
-      return { ...p, value, tiers, next: next < 0 ? tiers.length : next, ready: tiers.filter((t) => t.done && !t.claimed).length };
+      return { ...p, title: t(p.title), value, tiers, next: next < 0 ? tiers.length : next, ready: tiers.filter((t) => t.done && !t.claimed).length };
     }),
   };
 }
@@ -119,14 +129,14 @@ export async function goalsReady(u: Pick<User, "id" | "faction">) {
 
 /** Claim a goal reward. Returns what to grant. */
 export async function claimGoal(u: Pick<User, "id" | "faction">, key: string): Promise<{ reward: GoalReward; title: string }> {
-  if (!S.goalsEnabled) throw new HttpError(400, "Goals are switched off");
+  if (!S.goalsEnabled) throw new HttpError(400, t("Goals are switched off"));
   const g = await goalsView(u);
   let reward: GoalReward | null = null;
   let title = "";
   for (const shared of [g.world, g.faction]) {
     if (shared?.claimKey !== key) continue;
-    if (!shared.done) throw new HttpError(400, "Not reached yet — keep going!");
-    if (shared.mine <= 0) throw new HttpError(400, "Only players who contributed this week can claim it");
+    if (!shared.done) throw new HttpError(400, t("Not reached yet — keep going!"));
+    if (shared.mine <= 0) throw new HttpError(400, t("Only players who contributed this week can claim it"));
     reward = shared.reward;
     title = shared.title;
   }
@@ -134,16 +144,16 @@ export async function claimGoal(u: Pick<User, "id" | "faction">, key: string): P
   if (m) {
     const p = g.personal.find((x) => x.key === m[1]);
     const i = Number(m[2]);
-    if (!p || !p.tiers[i]) throw new HttpError(404, "Goal not found");
-    if (!p.tiers[i].done) throw new HttpError(400, "Not reached yet");
+    if (!p || !p.tiers[i]) throw new HttpError(404, t("Goal not found"));
+    if (!p.tiers[i].done) throw new HttpError(400, t("Not reached yet"));
     reward = { xp: (p.reward.xp ?? 0) * (i + 1), coins: (p.reward.coins ?? 0) * (i + 1), gems: (p.reward.gems ?? 0) * (i + 1) };
     title = `${p.title} · tier ${i + 1}`;
   }
-  if (!reward) throw new HttpError(404, "Goal not found");
+  if (!reward) throw new HttpError(404, t("Goal not found"));
   try {
     await prisma.goalClaim.create({ data: { userId: u.id, key } });
   } catch {
-    throw new HttpError(409, "Already claimed");
+    throw new HttpError(409, t("Already claimed"));
   }
   return { reward, title };
 }

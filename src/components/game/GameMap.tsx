@@ -3,10 +3,12 @@ import L from "leaflet";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { RARITY_COLOR } from "@/lib/catalog";
+import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BUILDING_BY_KEY, FACTION_BY_KEY, SIEGE_RANGE_M, type BuildingKey } from "@/lib/rts";
 import { offset } from "@/lib/geo";
 import { PINGS, towerStats } from "@/lib/td";
+import { outpostCode } from "@/lib/outposts";
 import type { GpsView, LatLng, LobbyView, Me, Selected, World, WorldDelivery, WorldNote, WorldPlayer, WorldRide, WorldSpawn } from "./client";
 import { esc, icon } from "./mapIcons";
 import { LiveLayer } from "./LiveLayer";
@@ -232,7 +234,7 @@ function Layers({
     ) : c.kind === "note" ? (
       <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon(c.data.unlocked ? "💬" : "📍", "note", 32)} eventHandlers={{ click: () => onSelect({ type: "note", data: c.data }) }} />
     ) : c.kind === "ride" ? (
-      <Marker key={c.id} position={[c.lat, c.lng]} icon={icon(`<span class="ring" style="color:#ffd23f"></span>🚕<span class="nm">${c.data.fare} 🪙</span>`, "ride")} eventHandlers={{ click: () => onSelect({ type: "ride", data: c.data }) }} />
+      <Marker key={c.id} position={[c.lat, c.lng]} icon={icon(`<span class="ring" style="color:#ffd23f"></span>🚕<span class="nm">${fmtNum(c.data.fare)} 🪙</span>`, "ride")} eventHandlers={{ click: () => onSelect({ type: "ride", data: c.data }) }} />
     ) : (
       <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon("📦", "")} eventHandlers={{ click: () => onSelect({ type: "delivery", data: c.data }) }} />
     );
@@ -240,7 +242,7 @@ function Layers({
     <Marker
       key={p.id}
       position={[p.lat, p.lng]}
-      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${p.level}</span>${p.bounty ? `<span class="wanted">💀${p.bounty}</span>` : ""}`, `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""}`, 34)}
+      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${fmtNum(p.level)}</span>${p.bounty ? `<span class="wanted">💀${fmtNum(p.bounty)}</span>` : ""}`, `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""}`, 34)}
       eventHandlers={{ click: () => onSelect({ type: "player", data: p }) }}
     />
   );
@@ -253,7 +255,7 @@ function Layers({
         position={[b.lat, b.lng]}
         zIndexOffset={500}
         icon={icon(
-          `<span class="ring" style="color:${color}"></span>🏰<span class="nm" style="color:${color}">${esc(b.name)} · ${b.hq}</span>${b.liveMatch ? '<span class="fight">⚔️</span>' : ""}${b.shielded ? '<span class="shield">🛡️</span>' : ""}`,
+          `<span class="ring" style="color:${color}"></span>🏰<span class="nm" style="color:${color}">${esc(b.name)} · ${fmtNum(b.hq)}</span>${b.liveMatch ? '<span class="fight">⚔️</span>' : ""}${b.shielded ? '<span class="shield">🛡️</span>' : ""}`,
           `base ${b.mine ? "mine" : ""} ${b.owner.online ? "online" : ""}`,
           48,
         )}
@@ -292,11 +294,26 @@ function Layers({
           position={[l.lat, l.lng]}
           zIndexOffset={300}
           icon={icon(
-            `<span class="ring" style="color:#ff2e88"></span>🎰<span class="nm">${l.status === "OPEN" ? `${l.pot.toLocaleString()} 🪙` : l.status === "DRAWN" ? `🏆 ${esc(l.winner ?? "")}` : "refunded"}</span>${l.myTickets ? `<span class="shield">🎟️</span>` : ""}`,
+            `<span class="ring" style="color:#ff2e88"></span>🎰<span class="nm">${l.status === "OPEN" ? `${fmtNum(l.pot)} 🪙` : l.status === "DRAWN" ? `🏆 ${esc(l.winner ?? "")}` : esc(t("refunded"))}</span>${l.myTickets ? `<span class="shield">🎟️</span>` : ""}`,
             `lottery ${l.status === "OPEN" ? "" : "drawn"}`,
             42,
           )}
           eventHandlers={{ click: () => onSelect({ type: "lottery", data: l }) }}
+        />
+      ))}
+
+      {/* Player shops: street and neighbourhood level; zoomed out, only your own. */}
+      {world?.shops.filter((s) => inView(s) && (lod !== "far" || s.mine)).map((s) => (
+        <Marker
+          key={`sh${s.id}`}
+          position={[s.lat, s.lng]}
+          zIndexOffset={350}
+          icon={icon(
+            `<span class="ring" style="color:${s.mine ? "#22e3ff" : "#3dff8f"}"></span>${esc(s.emoji)}<span class="nm">${esc(s.name)}</span>${s.deal && s.live ? `<span class="deal">${esc(t("−{n}%", { n: s.deal }))}</span>` : ""}`,
+            `shop ${s.live ? "" : "closed"}`,
+            40,
+          )}
+          eventHandlers={{ click: () => onSelect({ type: "shop", data: s }) }}
         />
       ))}
 
@@ -318,7 +335,7 @@ function Layers({
               key={o.id}
               position={[o.lat, o.lng]}
               zIndexOffset={400}
-              icon={icon(`<span class="ring" style="color:${color}"></span>${o.owner ? "🚩" : "🏴"}<span class="nm" style="color:${color}">${esc(o.name.replace("Outpost ", ""))}</span>`, `outpost ${o.mine ? "mine" : ""}`, 40)}
+              icon={icon(`<span class="ring" style="color:${color}"></span>${o.owner ? "🚩" : "🏴"}<span class="nm" style="color:${color}">${esc(outpostCode(o.name))}</span>`, `outpost ${o.mine ? "mine" : ""}`, 40)}
               eventHandlers={{ click: () => onSelect({ type: "outpost", data: o }) }}
             />
           );
@@ -459,19 +476,19 @@ function Layers({
       {game?.target && (
         <>
           <Circle center={[game.target.lat, game.target.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#ffd23f", weight: 3, fillOpacity: 0.14 }} />
-          <Marker position={[game.target.lat, game.target.lng]} zIndexOffset={1300} icon={icon(`<span class="beacon"></span><span class="bc-pin">${game.kind === "story" ? "📖" : "📍"}</span><span class="bc-label">${game.kind === "story" ? `GO HERE · ${(game.step ?? 0) + 1}/${game.steps}` : "GO HERE"}</span>`, "story-beacon", 56)} />
+          <Marker position={[game.target.lat, game.target.lng]} zIndexOffset={1300} icon={icon(`<span class="beacon"></span><span class="bc-pin">${game.kind === "story" ? "📖" : "📍"}</span><span class="bc-label">${esc(game.kind === "story" ? t("GO HERE · {n}/{total}", { n: (game.step ?? 0) + 1, total: game.steps ?? 0 }) : t("GO HERE"))}</span>`, "story-beacon", 56)} />
         </>
       )}
       {game?.area && (
         <>
           <Circle center={[game.area.center.lat, game.area.center.lng]} radius={game.area.radius} pathOptions={{ color: "#ffd23f", weight: 3, fillOpacity: 0.12, dashArray: "8 8" }} />
-          <Marker position={[game.area.center.lat, game.area.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon"></span><span class="bc-pin">🔍</span><span class="bc-label">SEARCH HERE · ${(game.step ?? 0) + 1}/${game.steps}</span>`, "story-beacon", 56)} />
+          <Marker position={[game.area.center.lat, game.area.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon"></span><span class="bc-pin">🔍</span><span class="bc-label">${esc(t("SEARCH HERE · {n}/{total}", { n: (game.step ?? 0) + 1, total: game.steps ?? 0 }))}</span>`, "story-beacon", 56)} />
         </>
       )}
       {game?.hold && game.center && (
         <>
           <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#3dff8f" : "#ff4d4d", weight: 3, fillOpacity: 0.12, dashArray: "6 6" }} />
-          <Marker position={[game.center.lat, game.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon ${game.hold.inside ? "ok" : ""}"></span><span class="bc-pin">🛡️</span><span class="bc-label">HOLD HERE · ${(game.step ?? 0) + 1}/${game.steps}</span>`, "story-beacon", 56)} />
+          <Marker position={[game.center.lat, game.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon ${game.hold.inside ? "ok" : ""}"></span><span class="bc-pin">🛡️</span><span class="bc-label">${esc(t("HOLD HERE · {n}/{total}", { n: (game.step ?? 0) + 1, total: game.steps ?? 0 }))}</span>`, "story-beacon", 56)} />
         </>
       )}
 

@@ -1,4 +1,5 @@
 // Levels, titles and achievements. Pure — safe on client and server.
+import { msg, t } from "./i18n";
 import { S } from "./settings";
 
 export const levelForXp = (xp: number) => Math.floor(Math.sqrt(xp / 100)) + 1;
@@ -12,46 +13,49 @@ export function levelProgress(xp: number) {
 }
 
 const TITLES: [number, string][] = [
-  [1, "Rookie"],
-  [5, "Hustler"],
-  [10, "Runner"],
-  [15, "Enforcer"],
-  [20, "Kingpin"],
-  [30, "Street Legend"],
+  [1, msg("Rookie")],
+  [5, msg("Hustler")],
+  [10, msg("Runner")],
+  [15, msg("Enforcer")],
+  [20, msg("Kingpin")],
+  [30, msg("Street Legend")],
 ];
+/** The rank name for a level, in the reader's language. */
 export function titleForLevel(level: number) {
-  return [...TITLES].reverse().find(([l]) => level >= l)![1];
+  return t([...TITLES].reverse().find(([l]) => level >= l)![1]);
 }
 
 export type AchievementDef = { key: string; name: string; emoji: string; desc: string; xp: number };
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { key: "first_claim", name: "First Score", emoji: "🎯", desc: "Collect your first spawn", xp: 50 },
-  { key: "collector_25", name: "Collector", emoji: "🎒", desc: "Collect 25 spawns", xp: 200 },
-  { key: "collector_250", name: "Hoarder", emoji: "🏦", desc: "Collect 250 spawns", xp: 1000 },
-  { key: "chest_10", name: "Safecracker", emoji: "🔓", desc: "Crack 10 chests", xp: 300 },
-  { key: "runner_5", name: "Wheelman", emoji: "🏁", desc: "Finish 5 timed runs", xp: 300 },
-  { key: "night_owl", name: "Night Owl", emoji: "🦉", desc: "Collect something at night", xp: 100 },
-  { key: "explorer_10", name: "Explorer", emoji: "🗺️", desc: "Collect in 10 different areas", xp: 400 },
-  { key: "courier_1", name: "Courier", emoji: "📦", desc: "Deliver a real package", xp: 300 },
-  { key: "courier_10", name: "Logistics Boss", emoji: "🚚", desc: "Deliver 10 real packages", xp: 1500 },
-  { key: "driver_1", name: "Wheelman", emoji: "🚕", desc: "Give a player a ride", xp: 300 },
-  { key: "driver_10", name: "Road King", emoji: "🚖", desc: "Give 10 rides", xp: 1500 },
-  { key: "jackpot_1", name: "Jackpot", emoji: "🎰", desc: "Win a lottery", xp: 250 },
-  { key: "social_5", name: "Crew", emoji: "🤝", desc: "Have 5 friends", xp: 200 },
-  { key: "event_1", name: "Showed Up", emoji: "🎉", desc: "Check in at an event", xp: 150 },
-  { key: "streak_7", name: "Dedicated", emoji: "🔥", desc: "7-day login streak", xp: 500 },
-  { key: "note_1", name: "Graffiti", emoji: "📍", desc: "Leave a message at a location", xp: 50 },
-  { key: "photo_1", name: "Street Photographer", emoji: "📸", desc: "Pin a photo to a real place", xp: 100 },
-  { key: "liked_10", name: "Local Legend", emoji: "❤️", desc: "Get 10 likes on one post", xp: 400 },
-  { key: "flag_plant", name: "Claim Staker", emoji: "🚩", desc: "Plant a flag", xp: 100 },
-  { key: "flag_capture", name: "Flag Thief", emoji: "🏴", desc: "Capture a rival's flag", xp: 300 },
-  { key: "bounty_hunter", name: "Bounty Hunter", emoji: "💀", desc: "Collect a bounty", xp: 400 },
-  { key: "first_blood", name: "First Blood", emoji: "🔫", desc: "Down a rival commander in the street", xp: 250 },
-  { key: "tower_builder", name: "Fortifier", emoji: "🗼", desc: "Build your first tower", xp: 100 },
-  { key: "wave_clear", name: "Hold the Line", emoji: "🛡️", desc: "Stop a raider wave without a single leak", xp: 400 },
-  { key: "duel_champ", name: "Top Gun", emoji: "🏆", desc: "Win a multiplayer mini-game", xp: 200 },
-  { key: "superweapon", name: "Doomsday", emoji: "☢️", desc: "Fire your faction's superweapon", xp: 500 },
+  { key: "first_claim", name: msg("First Score"), emoji: "🎯", desc: msg("Collect your first spawn"), xp: 50 },
+  { key: "collector_25", name: msg("Collector"), emoji: "🎒", desc: msg("Collect 25 spawns"), xp: 200 },
+  { key: "collector_250", name: msg("Hoarder"), emoji: "🏦", desc: msg("Collect 250 spawns"), xp: 1000 },
+  { key: "chest_10", name: msg("Safecracker"), emoji: "🔓", desc: msg("Crack 10 chests"), xp: 300 },
+  { key: "runner_5", name: msg("Wheelman"), emoji: "🏁", desc: msg("Finish 5 timed runs"), xp: 300 },
+  { key: "night_owl", name: msg("Night Owl"), emoji: "🦉", desc: msg("Collect something at night"), xp: 100 },
+  { key: "explorer_10", name: msg("Explorer"), emoji: "🗺️", desc: msg("Collect in 10 different areas"), xp: 400 },
+  { key: "courier_1", name: msg("Courier"), emoji: "📦", desc: msg("Deliver a real package"), xp: 300 },
+  { key: "courier_10", name: msg("Logistics Boss"), emoji: "🚚", desc: msg("Deliver 10 real packages"), xp: 1500 },
+  { key: "driver_1", name: msg("Wheelman"), emoji: "🚕", desc: msg("Give a player a ride"), xp: 300 },
+  { key: "driver_10", name: msg("Road King"), emoji: "🚖", desc: msg("Give 10 rides"), xp: 1500 },
+  { key: "jackpot_1", name: msg("Jackpot"), emoji: "🎰", desc: msg("Win a lottery"), xp: 250 },
+  { key: "social_5", name: msg("Crew"), emoji: "🤝", desc: msg("Have 5 friends"), xp: 200 },
+  { key: "event_1", name: msg("Showed Up"), emoji: "🎉", desc: msg("Check in at an event"), xp: 150 },
+  { key: "streak_7", name: msg("Dedicated"), emoji: "🔥", desc: msg("7-day login streak"), xp: 500 },
+  { key: "note_1", name: msg("Graffiti"), emoji: "📍", desc: msg("Leave a message at a location"), xp: 50 },
+  { key: "photo_1", name: msg("Street Photographer"), emoji: "📸", desc: msg("Pin a photo to a real place"), xp: 100 },
+  { key: "liked_10", name: msg("Local Legend"), emoji: "❤️", desc: msg("Get 10 likes on one post"), xp: 400 },
+  { key: "flag_plant", name: msg("Claim Staker"), emoji: "🚩", desc: msg("Plant a flag"), xp: 100 },
+  { key: "flag_capture", name: msg("Flag Thief"), emoji: "🏴", desc: msg("Capture a rival's flag"), xp: 300 },
+  { key: "bounty_hunter", name: msg("Bounty Hunter"), emoji: "💀", desc: msg("Collect a bounty"), xp: 400 },
+  { key: "first_blood", name: msg("First Blood"), emoji: "🔫", desc: msg("Down a rival commander in the street"), xp: 250 },
+  { key: "tower_builder", name: msg("Fortifier"), emoji: "🗼", desc: msg("Build your first tower"), xp: 100 },
+  { key: "wave_clear", name: msg("Hold the Line"), emoji: "🛡️", desc: msg("Stop a raider wave without a single leak"), xp: 400 },
+  { key: "duel_champ", name: msg("Top Gun"), emoji: "🏆", desc: msg("Win a multiplayer mini-game"), xp: 200 },
+  { key: "superweapon", name: msg("Doomsday"), emoji: "☢️", desc: msg("Fire your faction's superweapon"), xp: 500 },
+  { key: "shopkeeper", name: msg("Shopkeeper"), emoji: "🏪", desc: msg("Open your own shop"), xp: 150 },
+  { key: "first_sale", name: msg("First Sale"), emoji: "🤝", desc: msg("Hand over your first order"), xp: 200 },
 ];
 export const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.key, a])) as Record<
   string,

@@ -21,13 +21,15 @@ import { fuzzed } from "@/server/presence";
 import { drawDue, lotteryView } from "@/server/lottery";
 import { RIDE_REQUEST_TTL_MS } from "@/lib/rides";
 import { LOTTERY_SHOW_DRAWN_MS } from "@/lib/lottery";
+import { shopsInBox } from "@/server/shops";
+import { t } from "@/lib/i18n";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
   const sp = new URL(req.url).searchParams;
   // Number(null) is 0: a missing param would quietly load the map at 0,0.
   const here = { lat: Number(sp.get("lat") ?? NaN), lng: Number(sp.get("lng") ?? NaN) };
-  if (!Number.isFinite(here.lat) || !Number.isFinite(here.lng) || Math.abs(here.lat) > 90 || Math.abs(here.lng) > 180) throw new HttpError(400, "lat/lng required");
+  if (!Number.isFinite(here.lat) || !Number.isFinite(here.lng) || Math.abs(here.lat) > 90 || Math.abs(here.lng) > 180) throw new HttpError(400, t("lat/lng required"));
   const now = new Date();
 
   const spawns = spawnsAround(here);
@@ -94,7 +96,7 @@ export const GET = route(async (req) => {
     include: { owner: { select: { username: true } } },
     take: 20,
   });
-  const [flags, bounties, rides, lotteries] = await Promise.all([
+  const [flags, bounties, rides, lotteries, shops] = await Promise.all([
     prisma.flag.findMany({ where: inBox(bbox(here, 3000)), include: { owner: { select: { username: true, avatar: true, faction: true } } }, take: 100 }),
     prisma.bounty.groupBy({ by: ["targetId"], where: { claimedAt: null, targetId: { in: nearbyUsers.map((x) => x.id) } }, _sum: { amount: true } }),
     prisma.ride.findMany({
@@ -109,6 +111,7 @@ export const GET = route(async (req) => {
       orderBy: { drawAt: "asc" },
       take: 30,
     }),
+    shopsInBox(wide, u.id),
   ]);
   const wanted = new Map(bounties.map((b) => [b.targetId, b._sum.amount ?? 0]));
   const [towers, squads, waves, pings, lobbies] = await Promise.all([
@@ -182,6 +185,7 @@ export const GET = route(async (req) => {
       .map(({ dropoffCode: _c, ...d }) => ({ ...d, distanceM: Math.round(distanceM(here, { lat: d.pickupLat, lng: d.pickupLng })) })),
     rides: rides.map(({ pin: _p, ...r }) => ({ ...r, distanceM: Math.round(distanceM(here, { lat: r.pickupLat, lng: r.pickupLng })) })),
     lotteries: lotteries.map((l) => lotteryView(l, u.id)),
+    shops,
     players,
     bases: bases.map((b) => ({
       id: b.id,

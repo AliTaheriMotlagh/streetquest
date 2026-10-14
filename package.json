@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
+    "i18n:check": "tsx scripts/i18n-check.ts",
     "test:smoke": "tsx scripts/smoke.ts",
     "test:mp": "tsx scripts/smoke-mp.ts",
     "test:features": "tsx scripts/smoke-features.ts",

@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { S } from "@/lib/settings";
 import { prisma } from "@/lib/db";
-import { forgeCost, GEAR_BASE_BY_KEY, MAX_GEAR_LEVEL, SALVAGE_SCRAP, type Affix } from "@/lib/gear";
+import { forgeCost, GEAR_BASE_BY_KEY, gearName, MAX_GEAR_LEVEL, SALVAGE_SCRAP, type Affix } from "@/lib/gear";
 import { ATTR_BASE, attrPointsFree, CLASS_BY_KEY, RESPEC_COST, type ClassKey } from "@/lib/hero";
 import { commandPoints, POWERS } from "@/lib/powers";
 import { levelForXp } from "@/lib/progression";
@@ -13,6 +13,7 @@ import { body, HttpError, route, actionRoute } from "@/server/http";
 import { claimQuest, questEvent, questView } from "@/server/quests";
 import { grant, spendCoins } from "@/server/rewards";
 import { maxHpOf } from "@/server/td";
+import { t } from "@/lib/i18n";
 
 const CLASS_CHANGE_COST = 500;
 
@@ -108,26 +109,26 @@ export const POST = actionRoute(async (req) => {
   const level = levelForXp(u.xp);
 
   if (d.action === "class") {
-    if (u.heroClass === d.heroClass) return { message: "That's already your class" };
+    if (u.heroClass === d.heroClass) return { message: t("That's already your class") };
     if (u.heroClass) await spendCoins(u.id, CLASS_CHANGE_COST);
     await prisma.user.update({ where: { id: u.id }, data: { heroClass: d.heroClass } });
     await questEvent(u.id, "class");
     const c = CLASS_BY_KEY[d.heroClass as ClassKey];
-    return { message: `${c.emoji} You are now a ${c.name}${u.heroClass ? ` (−${CLASS_CHANGE_COST} 🪙)` : ""}` };
+    return { message: `${c.emoji} ${t("You are now a {name}", { name: t(c.name) })}${u.heroClass ? ` (−${CLASS_CHANGE_COST} 🪙)` : ""}` };
   }
 
   if (d.action === "allocate") {
-    if (attrPointsFree(level, u) < d.n) throw new HttpError(400, "Not enough attribute points — level up to earn more");
+    if (attrPointsFree(level, u) < d.n) throw new HttpError(400, t("Not enough attribute points — level up to earn more"));
     // Guard against double-spends: only apply if the attribute hasn't changed since we read it.
     const res = await prisma.user.updateMany({ where: { id: u.id, [d.attr]: u[d.attr] }, data: { [d.attr]: { increment: d.n } } });
-    if (!res.count) throw new HttpError(409, "Try again");
+    if (!res.count) throw new HttpError(409, t("Try again"));
     return { message: `+${d.n} ${d.attr.toUpperCase()}` };
   }
 
   if (d.action === "respec") {
     await spendCoins(u.id, RESPEC_COST);
     await prisma.user.update({ where: { id: u.id }, data: { str: ATTR_BASE, agi: ATTR_BASE, int: ATTR_BASE, cha: ATTR_BASE } });
-    return { message: `Attributes reset (−${RESPEC_COST} 🪙)` };
+    return { message: t("Attributes reset (−{n} 🪙)", { n: RESPEC_COST }) };
   }
 
   if (d.action === "claimQuest") {
@@ -140,7 +141,7 @@ export const POST = actionRoute(async (req) => {
   }
 
   const g = await prisma.gear.findFirst({ where: { id: d.gearId, userId: u.id } });
-  if (!g) throw new HttpError(404, "Item not found");
+  if (!g) throw new HttpError(404, t("Item not found"));
 
   if (d.action === "equip") {
     await prisma.$transaction([
@@ -148,26 +149,26 @@ export const POST = actionRoute(async (req) => {
       prisma.gear.update({ where: { id: g.id }, data: { equipped: true } }),
     ]);
     await questEvent(u.id, "equip");
-    return { message: `${GEAR_BASE_BY_KEY[g.base]?.emoji ?? "🎒"} Equipped ${g.name}` };
+    return { message: `${GEAR_BASE_BY_KEY[g.base]?.emoji ?? "🎒"} ${t("Equipped {item}", { item: gearName(g) })}` };
   }
   if (d.action === "unequip") {
     await prisma.gear.update({ where: { id: g.id }, data: { equipped: false } });
-    return { message: `Unequipped ${g.name}` };
+    return { message: t("Unequipped {item}", { item: gearName(g) }) };
   }
   if (d.action === "salvage") {
-    if (g.equipped) throw new HttpError(400, "Unequip it first");
+    if (g.equipped) throw new HttpError(400, t("Unequip it first"));
     const scrap = SALVAGE_SCRAP[g.rarity as Rarity] + Math.floor(g.level / 2);
     const del = await prisma.gear.deleteMany({ where: { id: g.id, userId: u.id } });
-    if (!del.count) throw new HttpError(409, "Already salvaged");
+    if (!del.count) throw new HttpError(409, t("Already salvaged"));
     await prisma.user.update({ where: { id: u.id }, data: { scrap: { increment: scrap } } });
-    return { message: `♻️ Salvaged ${g.name}: +${scrap} scrap` };
+    return { message: t("♻️ Salvaged {item}: +{n} scrap", { item: gearName(g), n: scrap }) };
   }
   // forge: +1 item level (affix values scale with level)
-  if (g.level >= MAX_GEAR_LEVEL) throw new HttpError(400, "Already max level");
+  if (g.level >= MAX_GEAR_LEVEL) throw new HttpError(400, t("Already max level"));
   const cost = forgeCost(g.level);
   const took = await prisma.user.updateMany({ where: { id: u.id, scrap: { gte: cost.scrap }, coins: { gte: cost.coins } }, data: { scrap: { decrement: cost.scrap }, coins: { decrement: cost.coins } } });
-  if (!took.count) throw new HttpError(400, `Forging needs ${cost.scrap} scrap and ${cost.coins} 🪙`);
+  if (!took.count) throw new HttpError(400, t("Forging needs {scrap} scrap and {coins} 🪙", { scrap: cost.scrap, coins: cost.coins }));
   await prisma.gear.update({ where: { id: g.id }, data: { level: { increment: 1 } } });
   await questEvent(u.id, "forge");
-  return { message: `🔨 ${g.name} forged to level ${g.level + 1}` };
+  return { message: t("🔨 {item} forged to level {n}", { item: gearName(g), n: g.level + 1 }) };
 });

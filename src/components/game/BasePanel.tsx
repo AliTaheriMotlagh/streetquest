@@ -21,6 +21,8 @@ import {
   type UnitKey,
 } from "@/lib/rts";
 import { distanceM, formatDistance } from "@/lib/geo";
+import { fmtNum, msg, t } from "@/lib/i18n";
+import { outpostLabel } from "@/lib/outposts";
 import { api, fmtTime, type BaseView } from "./client";
 import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { DefenseTab } from "./Defense";
@@ -29,8 +31,9 @@ import { Button } from "@/components/Button";
 
 const fmtLeft = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`;
+  return s >= 3600 ? t("{h}h {m}m", { h: Math.floor(s / 3600), m: Math.floor((s % 3600) / 60) }) : s >= 60 ? t("{m}m {s}s", { m: Math.floor(s / 60), s: s % 60 }) : t("{s}s", { s });
 };
+const REPORT_KIND: Record<string, string> = { superweapon: msg("Superweapon strike"), siege: msg("Raid"), derrick: msg("Derrick raid"), boss: msg("Bombarded"), breach: msg("Breach (FPS)"), raid: msg("Boss raid (FPS)"), outpost: msg("Outpost assault"), skirmish: msg("Skirmish"), wave: msg("Raider wave") };
 const stars = (n: number) => "★".repeat(n) + "☆".repeat(3 - n);
 const CLS_ICON = { infantry: "🚶", vehicle: "🚙", air: "✈️", structure: "🏰" } as const;
 
@@ -57,10 +60,10 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
   }, []);
   useEffect(() => {
     load();
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
     const r = setInterval(load, 15_000);
     return () => {
-      clearInterval(t);
+      clearInterval(tick);
       clearInterval(r);
     };
   }, [load]);
@@ -73,7 +76,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
         ...v.queue.map((q) => new Date(q.readyAt).getTime() - (q.unitMs > 0 ? (q.qty - 1) * q.unitMs : 0)),
       ]
     : [];
-  const nextDue = Math.min(Infinity, ...timers.filter((t) => t > loadedAt));
+  const nextDue = Math.min(Infinity, ...timers.filter((at) => at > loadedAt));
   const due = now >= nextDue + 300;
   useEffect(() => {
     if (due) load();
@@ -85,26 +88,26 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
     });
   const rush = (what: string, msLeft: number, type?: string) => (
     <Button className="btn ghost small" disabled={(v?.gems ?? 0) < rushCost(msLeft)} onClick={() => doAct({ action: "rush", what, type })}>
-      💎 {rushCost(msLeft)}
+      💎 {fmtNum(rushCost(msLeft))}
     </Button>
   );
 
-  if (!v) return <Sheet title="Base" onClose={onClose} peek={peek} help="base"><div className="empty">Loading…</div></Sheet>;
+  if (!v) return <Sheet title={t("Base")} onClose={onClose} peek={peek} help="base"><div className="empty">{t("Loading…")}</div></Sheet>;
   const f = v.faction ? FACTION_BY_KEY[v.faction] : null;
 
   if (!f) {
     return (
-      <Sheet title="Choose your side" onClose={onClose} peek={peek} help="base">
-        <p className="small muted">Your faction shapes your army. Build a base on a real street, train an army, take derricks and outposts, raid rivals for stars and trophies — and when they&apos;re online nearby, fight it out in first person.</p>
+      <Sheet title={t("Choose your side")} onClose={onClose} peek={peek} help="base">
+        <p className="small muted">{t("Your faction shapes your army. Build a base on a real street, train an army, take derricks and outposts, raid rivals for stars and trophies — and when they're online nearby, fight it out in first person.")}</p>
         {FACTIONS.map((x) => (
           <div key={x.key} className="card list-item" style={{ borderColor: x.color }}>
             <div className="icon-tile" style={{ fontSize: 30 }}>{x.emoji}</div>
             <div className="grow">
-              <b style={{ color: x.color }}>{x.name}</b>
-              <div className="small muted">{x.blurb}</div>
-              <div className="small">ATK ×{x.atk} · HP ×{x.hp} · cost ×{x.cost}{!x.needsPower && " · no power grid"}</div>
+              <b style={{ color: x.color }}>{t(x.name)}</b>
+              <div className="small muted">{t(x.blurb)}</div>
+              <div className="small">{t("ATK ×{atk} · HP ×{hp} · cost ×{cost}", { atk: x.atk, hp: x.hp, cost: x.cost })}{!x.needsPower && ` · ${t("no power grid")}`}</div>
             </div>
-            <Button className="btn small" onClick={() => doAct({ action: "faction", faction: x.key })}>Join</Button>
+            <Button className="btn small" onClick={() => doAct({ action: "faction", faction: x.key })}>{t("Join")}</Button>
           </div>
         ))}
       </Sheet>
@@ -113,12 +116,12 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
 
   if (!v.base) {
     return (
-      <Sheet title={`${f.emoji} Plant your base`} onClose={onClose} peek={peek} help="base">
-        <p className="small muted">Your base goes exactly where you&apos;re standing. Pick somewhere you visit often — you rest and eat there, and rivals have to come to it in person to breach it.</p>
-        <label>Base name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Fort Midnight" maxLength={30} />
+      <Sheet title={`${f.emoji} ${t("Plant your base")}`} onClose={onClose} peek={peek} help="base">
+        <p className="small muted">{t("Your base goes exactly where you're standing. Pick somewhere you visit often — you rest and eat there, and rivals have to come to it in person to breach it.")}</p>
+        <label>{t("Base name")}</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Fort Midnight")} maxLength={30} dir="auto" />
         <Button className="btn block" style={{ marginTop: 12 }} disabled={!pos || name.trim().length < 2} onClick={() => doAct({ action: "found", name })}>
-          🏛️ Establish base here
+          {t("🏛️ Establish base here")}
         </Button>
       </Sheet>
     );
@@ -136,27 +139,27 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
   return (
     <Sheet title={`${f.emoji} ${b.name}`} onClose={onClose} peek={peek} help="base">
       <div className="res-bar">
-        <span title="Trophies & league">{v.league.emoji} {v.trophies} 🏆</span>
-        <span title="Gems">💎 {v.gems}</span>
-        <span title="Scrap (from salvaged gear)">🔩 {v.scrap}</span>
-        <span title="Builders busy / total">🔨 {busy}/{v.builders}</span>
-        <span title="Army Camp housing" style={{ color: v.housing.used >= v.housing.cap ? "var(--red)" : undefined }}>⛺ {v.housing.used}/{v.housing.cap}</span>
+        <span title={t("Trophies & league")}>{v.league.emoji} {fmtNum(v.trophies)} 🏆</span>
+        <span title={t("Gems")}>💎 {fmtNum(v.gems)}</span>
+        <span title={t("Scrap (from salvaged gear)")}>🔩 {fmtNum(v.scrap)}</span>
+        <span title={t("Builders busy / total")}>🔨 {fmtNum(busy)}/{fmtNum(v.builders)}</span>
+        <span title={t("Army Camp housing")} style={{ color: v.housing.used >= v.housing.cap ? "var(--red)" : undefined }}>⛺ {fmtNum(v.housing.used)}/{fmtNum(v.housing.cap)}</span>
       </div>
       <div className="grid3" style={{ marginBottom: 10 }}>
-        <div className="stat"><b style={{ color: b.power.ok ? "var(--green)" : "var(--red)" }}>⚡ {b.power.made}/{b.power.used}</b><span>{f.needsPower ? (b.power.ok ? "Power" : "Low power!") : "No grid"}</span></div>
-        <div className="stat"><b style={{ color: b.hp < 500 ? "var(--red)" : undefined }}>{b.hp}</b><span>Integrity</span></div>
-        <div className="stat"><b>🏦 {Math.round(v.protection * 100)}%</b><span>Coins safe</span></div>
+        <div className="stat"><b style={{ color: b.power.ok ? "var(--green)" : "var(--red)" }}>⚡ {fmtNum(b.power.made)}/{fmtNum(b.power.used)}</b><span>{f.needsPower ? (b.power.ok ? t("Power") : t("Low power!")) : t("No grid")}</span></div>
+        <div className="stat"><b style={{ color: b.hp < 500 ? "var(--red)" : undefined }}>{fmtNum(b.hp)}</b><span>{t("Integrity")}</span></div>
+        <div className="stat"><b>🏦 {t("{n}%", { n: Math.round(v.protection * 100) })}</b><span>{t("Coins safe")}</span></div>
       </div>
       <div className="row wrap" style={{ marginBottom: 10 }}>
-        <Button className="btn yellow small" disabled={b.pending <= 0} onClick={() => doAct({ action: "collect" })}>📦 Collect {b.pending} 🪙</Button>
-        {b.hp < 1000 && <Button className="btn ghost small" onClick={() => doAct({ action: "repair" })}>🔧 Repair ({Math.ceil((1000 - b.hp) / 2)} 🪙)</Button>}
-        {shield > 0 && <span className="tag" style={{ color: "var(--cyan)" }}>🛡️ Shield {fmtLeft(shield)}</span>}
-        {dist != null && (dist < 80 ? <span className="small muted">🏠 You&apos;re home</span> : teleport ? <Button className="btn ghost small" onClick={() => teleport(b)}><MoveIcon /> Go home</Button> : <span className="small muted">{formatDistance(dist)} away</span>)}
+        <Button className="btn yellow small" disabled={b.pending <= 0} onClick={() => doAct({ action: "collect" })}>{t("📦 Collect {n} 🪙", { n: b.pending })}</Button>
+        {b.hp < 1000 && <Button className="btn ghost small" onClick={() => doAct({ action: "repair" })}>{t("🔧 Repair ({n} 🪙)", { n: Math.ceil((1000 - b.hp) / 2) })}</Button>}
+        {shield > 0 && <span className="tag" style={{ color: "var(--cyan)" }}>{t("🛡️ Shield {time}", { time: fmtLeft(shield) })}</span>}
+        {dist != null && (dist < 80 ? <span className="small muted">{t("🏠 You're home")}</span> : teleport ? <Button className="btn ghost small" onClick={() => teleport(b)}><MoveIcon /> {t("Go home")}</Button> : <span className="small muted">{t("{d} away", { d: formatDistance(dist) })}</span>)}
       </div>
       <Tabs
         value={tab}
         onChange={setTab}
-        tabs={[["base", "Buildings"], ["defense", "🗼 Defense"], ["army", `Army (${v.attack.count})`], ["research", "Research"], ["territory", `Territory${tribute ? " 🪙" : ""}`], ["reports", "Reports"]]}
+        tabs={[["base", t("Buildings")], ["defense", t("🗼 Defense")], ["army", t("Army ({n})", { n: v.attack.count })], ["research", t("Research")], ["territory", `${t("Territory")}${tribute ? " 🪙" : ""}`], ["reports", t("Reports")]]}
       />
 
       {tab === "base" && (
@@ -174,26 +177,26 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div key={def.key} className={`card list-item ${building ? "hl" : ""}`} style={{ opacity: locked ? 0.5 : 1 }}>
                 <div className="icon-tile">{def.emoji}</div>
                 <div className="grow">
-                  <b>{def.name}</b> {lvl > 0 && <span className="tag">Lv {lvl}</span>}
-                  <div className="small muted">{def.blurb}</div>
-                  {building && <div className="small" style={{ color: "var(--yellow)" }}>🚧 Building Lv {cur!.level} · {fmtLeft(left)}</div>}
+                  <b>{t(def.name)}</b> {lvl > 0 && <span className="tag">{t("Lv {n}", { n: lvl })}</span>}
+                  <div className="small muted">{t(def.blurb)}</div>
+                  {building && <div className="small" style={{ color: "var(--yellow)" }}>{t("🚧 Building Lv {n} · {time}", { n: cur!.level, time: fmtLeft(left) })}</div>}
                 </div>
                 {locked ? (
-                  <span className="small muted">HQ {def.hqLevel}</span>
+                  <span className="small muted">{t("HQ {n}", { n: def.hqLevel })}</span>
                 ) : building ? (
                   rush("build", left, def.key)
                 ) : capped ? (
-                  <span className="small muted">{next > cap ? "MAX" : "HQ ↑"}</span>
+                  <span className="small muted">{next > cap ? t("MAX") : t("HQ ↑")}</span>
                 ) : (
-                  <Button className="btn small" disabled={busy >= v.builders} onClick={() => doAct({ action: "build", type: def.key })} title={`${Math.max(1, Math.round((buildSeconds(def, next) * v.timeMult.build) / 60))} min`}>
-                    {lvl ? "↑" : "Build"} {buildCost(def, next, f)}🪙
+                  <Button className="btn small" disabled={busy >= v.builders} onClick={() => doAct({ action: "build", type: def.key })} title={t("{n} min", { n: Math.max(1, Math.round((buildSeconds(def, next) * v.timeMult.build) / 60)) })}>
+                    {lvl ? "↑" : t("Build")} {fmtNum(buildCost(def, next, f))}🪙
                   </Button>
                 )}
               </div>
             );
           })}
-          <p className="small muted">{busy >= v.builders ? "All builders busy — rush with 💎 or build a Builder's Hut." : `${v.builders - busy} builder${v.builders - busy > 1 ? "s" : ""} free.`} {f.needsPower ? "Keep power positive or everything slows down." : ""}</p>
-          <Button className="btn ghost small" onClick={() => askConfirm(`Move ${b.name} to where you're standing for ${RELOCATE_COST} coins?`, { ok: "Move base" }).then((ok) => ok && doAct({ action: "found", name: b.name }))}>🚚 Move base here ({RELOCATE_COST} 🪙)</Button>
+          <p className="small muted">{busy >= v.builders ? t("All builders busy — rush with 💎 or build a Builder's Hut.") : t("{n, plural, one {# builder} other {# builders}} free.", { n: v.builders - busy })} {f.needsPower ? t("Keep power positive or everything slows down.") : ""}</p>
+          <Button className="btn ghost small" onClick={() => askConfirm(t("Move {name} to where you're standing for {n} coins?", { name: b.name, n: RELOCATE_COST }), { ok: t("Move base") }).then((ok) => ok && doAct({ action: "found", name: b.name }))}>{t("🚚 Move base here ({n} 🪙)", { n: RELOCATE_COST })}</Button>
         </>
       )}
 
@@ -202,9 +205,9 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
       {tab === "army" && (
         <>
           <div className="grid3" style={{ marginBottom: 10 }}>
-            <div className="stat"><b>{v.attack.count}</b><span>Units</span></div>
-            <div className="stat"><b>⚔️ {v.attack.atk}</b><span>Attack</span></div>
-            <div className="stat"><b>❤️ {v.attack.hp}</b><span>HP</span></div>
+            <div className="stat"><b>{fmtNum(v.attack.count)}</b><span>{t("Units")}</span></div>
+            <div className="stat"><b>⚔️ {fmtNum(v.attack.atk)}</b><span>{t("Attack")}</span></div>
+            <div className="stat"><b>❤️ {fmtNum(v.attack.hp)}</b><span>{t("HP")}</span></div>
           </div>
           {UNITS.map((u) => {
             const have = levelOf(b.buildings, u.building, now) >= u.buildingLevel;
@@ -217,17 +220,17 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div key={u.key} className="card list-item" style={{ opacity: have ? 1 : 0.5 }}>
                 <div className="icon-tile">{u.emoji}</div>
                 <div className="grow">
-                  <b>{u.name}</b> <span className="tag count-pop" key={v.army[u.key as UnitKey] ?? 0}>×{v.army[u.key as UnitKey] ?? 0}</span>{" "}
-                  {training > 0 && <span className="tag" style={{ color: "var(--yellow)" }}>+{training} training</span>}{" "}
-                  {(v.army[u.key as UnitKey] ?? 0) > 0 && rank.stars && <span className="tag" style={{ color: "var(--yellow)" }}>{rank.stars} {rank.name}</span>}
-                  <div className="small muted">{u.role} Strong vs {CLS_ICON[best]} · weak vs {CLS_ICON[worst]}</div>
-                  <div className="small muted">ATK {u.atk} · HP {u.hp} · ⛺{u.housing} · {Math.round(u.seconds * v.timeMult.train)}s</div>
-                  {!have && <div className="small muted">Needs {BUILDINGS.find((x) => x.key === u.building)!.name} Lv {u.buildingLevel}</div>}
+                  <b>{t(u.name)}</b> <span className="tag count-pop" key={v.army[u.key as UnitKey] ?? 0}>×{fmtNum(v.army[u.key as UnitKey] ?? 0)}</span>{" "}
+                  {training > 0 && <span className="tag" style={{ color: "var(--yellow)" }}>{t("+{n} training", { n: training })}</span>}{" "}
+                  {(v.army[u.key as UnitKey] ?? 0) > 0 && rank.stars && <span className="tag" style={{ color: "var(--yellow)" }}>{rank.stars} {t(rank.name)}</span>}
+                  <div className="small muted">{t(u.role)} {t("Strong vs {good} · weak vs {bad}", { good: CLS_ICON[best], bad: CLS_ICON[worst] })}</div>
+                  <div className="small muted">{t("ATK {atk} · HP {hp}", { atk: u.atk, hp: u.hp })} · ⛺{fmtNum(u.housing)} · {t("{s}s", { s: Math.round(u.seconds * v.timeMult.train) })}</div>
+                  {!have && <div className="small muted">{t("Needs {building} Lv {n}", { building: t(BUILDINGS.find((x) => x.key === u.building)!.name), n: u.buildingLevel })}</div>}
                 </div>
                 {have && (
                   <div className="row">
-                    <Button className="btn ghost small" disabled={room < u.housing} onClick={() => doAct({ action: "train", unit: u.key, qty: 1 })}>+1 · {unitCost(u, f)}</Button>
-                    <Button className="btn small" disabled={room < u.housing * 5} onClick={() => doAct({ action: "train", unit: u.key, qty: 5 })}>+5 · {unitCost(u, f) * 5}</Button>
+                    <Button className="btn ghost small" disabled={room < u.housing} onClick={() => doAct({ action: "train", unit: u.key, qty: 1 })}>+{fmtNum(1)} · {fmtNum(unitCost(u, f))}</Button>
+                    <Button className="btn small" disabled={room < u.housing * 5} onClick={() => doAct({ action: "train", unit: u.key, qty: 5 })}>+{fmtNum(5)} · {fmtNum(unitCost(u, f) * 5)}</Button>
                   </div>
                 )}
               </div>
@@ -236,7 +239,7 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
           {v.queue.length > 0 && (
             <>
               <div className="row" style={{ justifyContent: "space-between", marginTop: 6 }}>
-                <label style={{ margin: 0 }}>Training queue</label>
+                <label style={{ margin: 0 }}>{t("Training queue")}</label>
                 {rush("train", queueLeft)}
               </div>
               {v.queue.map((q) => {
@@ -246,8 +249,8 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
                 return (
                   <div key={q.id} className="small" style={{ padding: "4px 0" }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
-                      <span>{UNITS.find((u) => u.key === q.unitType)?.emoji} {q.qty}× {UNITS.find((u) => u.key === q.unitType)?.name}</span>
-                      <span className="mono">next {fmtLeft(nextUnit - now)} · all {fmtLeft(end - now)}</span>
+                      <span>{UNITS.find((u) => u.key === q.unitType)?.emoji} {fmtNum(q.qty)}× {t(UNITS.find((u) => u.key === q.unitType)?.name ?? "")}</span>
+                      <span className="mono">{t("next {a} · all {b}", { a: fmtLeft(nextUnit - now), b: fmtLeft(end - now) })}</span>
                     </div>
                     {q.unitMs > 0 && <div className="need-bar"><i style={{ width: `${pct * 100}%`, background: "var(--yellow)" }} /></div>}
                   </div>
@@ -255,13 +258,13 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               })}
             </>
           )}
-          <p className="small muted">Counters matter: Rangers shred infantry, Rockets kill tanks and jets, Artillery wrecks bases. Units that survive battles rank up ⭐ (Veteran → Elite → Heroic). New recruits dilute a stack&apos;s rank.</p>
+          <p className="small muted">{t("Counters matter: Rangers shred infantry, Rockets kill tanks and jets, Artillery wrecks bases. Units that survive battles rank up ⭐ (Veteran → Elite → Heroic). New recruits dilute a stack's rank.")}</p>
         </>
       )}
 
       {tab === "research" && (
         <>
-          <p className="small muted">Research costs coins and 🔩 scrap (salvage gear in Hero → Gear). One project at a time.</p>
+          <p className="small muted">{t("Research costs coins and 🔩 scrap (salvage gear in Hero → Gear). One project at a time.")}</p>
           {RESEARCH.map((r) => {
             const row = v.research.find((x) => x.key === r.key);
             const left = row ? new Date(row.readyAt).getTime() - now : 0;
@@ -271,14 +274,14 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div key={r.key} className={`card list-item ${left > 0 ? "hl" : ""}`} style={{ opacity: have || row ? 1 : 0.5 }}>
                 <div className="icon-tile">{r.emoji}</div>
                 <div className="grow">
-                  <b>{r.name}</b> {done && <span className="tag" style={{ color: "var(--green)" }}>✓ Done</span>}
-                  <div className="small muted">{r.blurb}</div>
-                  {!have && !row && <div className="small muted">Needs {BUILDINGS.find((x) => x.key === r.building)!.name} Lv {r.level}</div>}
+                  <b>{t(r.name)}</b> {done && <span className="tag" style={{ color: "var(--green)" }}>{t("✓ Done")}</span>}
+                  <div className="small muted">{t(r.blurb)}</div>
+                  {!have && !row && <div className="small muted">{t("Needs {building} Lv {n}", { building: t(BUILDINGS.find((x) => x.key === r.building)!.name), n: r.level })}</div>}
                   {left > 0 && <div className="small" style={{ color: "var(--yellow)" }}>🔬 {fmtLeft(left)}</div>}
                 </div>
                 {left > 0 ? rush("research", left) : !row && have && (
                   <Button className="btn small" disabled={!!researching || v.scrap < r.scrap} onClick={() => doAct({ action: "research", key: r.key })}>
-                    {r.coins}🪙 {r.scrap}🔩
+                    {fmtNum(r.coins)}🪙 {fmtNum(r.scrap)}🔩
                   </Button>
                 )}
               </div>
@@ -290,25 +293,25 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
       {tab === "territory" && (
         <>
           <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-            <b>🚩 Your outposts ({terr?.outposts.length ?? 0})</b>
-            <Button className="btn yellow small" disabled={!tribute} onClick={() => doAct({ action: "collect" }, "/api/outposts")}>Collect {tribute} 🪙</Button>
+            <b>{t("🚩 Your outposts ({n})", { n: terr?.outposts.length ?? 0 })}</b>
+            <Button className="btn yellow small" disabled={!tribute} onClick={() => doAct({ action: "collect" }, "/api/outposts")}>{t("Collect {n} 🪙", { n: tribute })}</Button>
           </div>
           {terr?.outposts.map((o) => (
             <div key={o.id} className="card small row" style={{ justifyContent: "space-between" }}>
-              <span>🚩 {o.name}</span>
+              <span>🚩 {outpostLabel(o.name)}</span>
               <span className="muted">
-                {Object.entries(o.garrison).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji}${q}`).join(" ") || "no garrison!"} · {o.pending} 🪙
+                {Object.entries(o.garrison).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji}${fmtNum(q ?? 0)}`).join(" ") || t("no garrison!")} · {fmtNum(o.pending)} 🪙
               </span>
             </div>
           ))}
-          {!terr?.outposts.length && <div className="empty">Tap a 🏴 outpost on the map and assault it with your army. Held outposts pay tribute every hour — garrison them or rivals will take them.</div>}
-          <label>Faction war</label>
+          {!terr?.outposts.length && <div className="empty">{t("Tap a 🏴 outpost on the map and assault it with your army. Held outposts pay tribute every hour — garrison them or rivals will take them.")}</div>}
+          <label>{t("Faction war")}</label>
           {terr?.war.map((w, i) => {
             const fd = FACTION_BY_KEY[w.faction as keyof typeof FACTION_BY_KEY];
             return (
               <div key={w.faction} className={`card small row ${w.faction === f.key ? "hl" : ""}`} style={{ justifyContent: "space-between" }}>
-                <span>{i === 0 && w.outposts > 0 ? "👑 " : ""}{fd.emoji} <b style={{ color: fd.color }}>{fd.name}</b></span>
-                <span>{w.outposts} outposts</span>
+                <span>{i === 0 && w.outposts > 0 ? "👑 " : ""}{fd.emoji} <b style={{ color: fd.color }}>{t(fd.name)}</b></span>
+                <span>{t("{n, plural, one {# outpost} other {# outposts}}", { n: w.outposts })}</span>
               </div>
             );
           })}
@@ -322,22 +325,22 @@ export function BasePanel({ onClose, peek }: { onClose: () => void; peek: boolea
               <div className="icon-tile" style={{ fontSize: r.kind === "siege" ? 14 : 26, color: "var(--yellow)" }}>{r.kind === "siege" ? stars(r.stars) : r.won ? "🏆" : "☠️"}</div>
               <div className="grow">
                 <b>
-                  {r.side === "defend" ? `${r.won ? "Held off" : "Raided by"} ${r.targetName}` : { siege: "Raid", derrick: "Derrick raid", boss: "Bombarded", breach: "Breach (FPS)", raid: "Boss raid (FPS)", outpost: "Outpost assault", skirmish: "Skirmish", wave: "Raider wave" }[r.kind] ?? r.kind}
+                  {r.side === "defend" ? (r.won ? t("Held off {name}", { name: r.targetName }) : t("Raided by {name}", { name: r.targetName })) : REPORT_KIND[r.kind] ? t(REPORT_KIND[r.kind]) : r.kind}
                   {r.side === "attack" && ` · ${r.targetName}`}
                 </b>
                 <div className="small muted">
                   {fmtTime(r.createdAt)}
-                  {r.kind === "siege" && ` · ${r.destruction}%`}
-                  {r.loot ? ` · ${r.side === "defend" ? "−" : "+"}${r.loot} 🪙` : ""}
-                  {r.trophies ? ` · ${r.trophies > 0 ? "+" : ""}${r.trophies} 🏆` : ""}
+                  {r.kind === "siege" && ` · ${t("{n}%", { n: r.destruction })}`}
+                  {r.loot ? ` · ${r.side === "defend" ? "−" : "+"}${fmtNum(r.loot)} 🪙` : ""}
+                  {r.trophies ? ` · ${r.trophies > 0 ? "+" : "−"}${fmtNum(Math.abs(r.trophies))} 🏆` : ""}
                 </div>
               </div>
               {r.side === "defend" && !r.won && r.revengeBaseId && (
-                <Button className="btn small" onClick={() => askConfirm(`Send your army for revenge on ${r.targetName}?`, { ok: "Attack" }).then((ok) => ok && doAct({ kind: "siege", targetId: r.revengeBaseId }, "/api/battle"))}>⚔️ Revenge</Button>
+                <Button className="btn small" onClick={() => askConfirm(t("Send your army for revenge on {name}?", { name: r.targetName }), { ok: t("Attack") }).then((ok) => ok && doAct({ kind: "siege", targetId: r.revengeBaseId }, "/api/battle"))}>{t("⚔️ Revenge")}</Button>
               )}
             </div>
           ))}
-          {!v.battles.length && !v.defended.length && <div className="empty">No battles yet.</div>}
+          {!v.battles.length && !v.defended.length && <div className="empty">{t("No battles yet.")}</div>}
         </>
       )}
     </Sheet>

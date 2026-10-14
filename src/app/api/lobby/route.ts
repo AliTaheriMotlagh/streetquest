@@ -4,10 +4,11 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route, actionRoute } from "@/server/http";
 import { leave, loadLobby, openOrJoin, start, submitScore, tick } from "@/server/lobby";
+import { t } from "@/lib/i18n";
 
 async function view(id: string, userId: string) {
   let l = await loadLobby(id);
-  if (!l) throw new HttpError(404, "Lobby closed");
+  if (!l) throw new HttpError(404, t("Lobby closed"));
   l = await tick(l);
   const member = l.players.some((p) => p.userId === userId);
   // Squad runs: members see each other's exact positions.
@@ -49,7 +50,7 @@ export const GET = route(async (req) => {
   const id = sp.get("id");
   if (id) return view(id, u.id);
   const spawnId = sp.get("spawnId");
-  if (!spawnId) throw new HttpError(400, "id or spawnId required");
+  if (!spawnId) throw new HttpError(400, t("id or spawnId required"));
   const open = await prisma.lobby.findFirst({ where: { spawnId, status: "OPEN", openUntil: { gt: new Date() } }, include: { players: { select: { name: true, avatar: true } } } });
   return { open: open ? { id: open.id, kind: open.kind, players: open.players, openUntil: open.openUntil.getTime() } : null };
 });
@@ -69,14 +70,14 @@ export const POST = actionRoute(async (req) => {
     return view(id, u.id);
   }
   const l = await loadLobby(d.lobbyId);
-  if (!l) throw new HttpError(404, "Lobby closed");
-  if (!l.players.some((p) => p.userId === u.id)) throw new HttpError(403, "You're not in this lobby");
+  if (!l) throw new HttpError(404, t("Lobby closed"));
+  if (!l.players.some((p) => p.userId === u.id)) throw new HttpError(403, t("You're not in this lobby"));
   if (d.action === "leave") {
     await leave(u, l.id);
     return { ok: true };
   }
   if (d.action === "start") {
-    if (l.hostId !== u.id) throw new HttpError(403, "Only the host can start early");
+    if (l.hostId !== u.id) throw new HttpError(403, t("Only the host can start early"));
     if (l.status === "OPEN") await start(l);
     return view(l.id, u.id);
   }

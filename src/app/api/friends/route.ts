@@ -6,6 +6,7 @@ import { isOnline, notify } from "@/server/hub";
 import { body, HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
 import { unlock } from "@/server/rewards";
+import { t } from "@/lib/i18n";
 
 const pub = { select: { id: true, username: true, avatar: true, xp: true, lastSeenAt: true } } as const;
 
@@ -41,33 +42,33 @@ export const POST = route(async (req) => {
   let otherId: string;
   if (d.action === "request") {
     const other = await prisma.user.findUnique({ where: { username: d.username } });
-    if (!other || other.id === u.id) throw new HttpError(404, "Player not found");
+    if (!other || other.id === u.id) throw new HttpError(404, t("Player not found"));
     otherId = other.id;
     const existing = await prisma.friendship.findFirst({
       where: { OR: [{ requesterId: u.id, addresseeId: other.id }, { requesterId: other.id, addresseeId: u.id }] },
     });
-    if (existing?.status === "ACCEPTED") throw new HttpError(400, "Already friends");
+    if (existing?.status === "ACCEPTED") throw new HttpError(400, t("Already friends"));
     if (existing && existing.requesterId === other.id) {
       // They already asked us — just accept.
       await prisma.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED" } });
     } else if (!existing) {
       await prisma.friendship.create({ data: { requesterId: u.id, addresseeId: other.id } });
-      await notify(other.id, { kind: "social", title: "Friend request", body: `${u.username} wants to join your crew` });
-      return { message: "Request sent" };
-    } else return { message: "Request already pending" };
+      await notify(other.id, () => ({ kind: "social", title: t("Friend request"), body: t("{name} wants to join your crew", { name: u.username }) }));
+      return { message: t("Request sent") };
+    } else return { message: t("Request already pending") };
   } else {
     const f = await prisma.friendship.findUnique({ where: { id: d.friendshipId } });
-    if (!f || (f.requesterId !== u.id && f.addresseeId !== u.id)) throw new HttpError(404, "Not found");
+    if (!f || (f.requesterId !== u.id && f.addresseeId !== u.id)) throw new HttpError(404, t("Not found"));
     otherId = f.requesterId === u.id ? f.addresseeId : f.requesterId;
     if (d.action === "accept") {
-      if (f.addresseeId !== u.id) throw new HttpError(400, "Can't accept your own request");
+      if (f.addresseeId !== u.id) throw new HttpError(400, t("Can't accept your own request"));
       await prisma.friendship.update({ where: { id: f.id }, data: { status: "ACCEPTED" } });
-      await notify(f.requesterId, { kind: "social", title: "New crew member", body: `${u.username} accepted your request` });
+      await notify(f.requesterId, () => ({ kind: "social", title: t("New crew member"), body: t("{name} accepted your request", { name: u.username }) }));
     } else {
       await prisma.friendship.delete({ where: { id: f.id } });
       return { message: d.action === "decline" ? "Declined" : "Removed" };
     }
   }
   for (const id of [u.id, otherId]) if ((await friendIds(id)).length >= 5) await unlock(id, "social_5");
-  return { message: "You're now friends" };
+  return { message: t("You're now friends") };
 });

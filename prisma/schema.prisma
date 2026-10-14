@@ -74,6 +74,9 @@ model User {
   // Play from home: move by tapping the map at a capped speed, for reduced rewards.
   remotePlay   Boolean  @default(false)
 
+  // UI language ("en" | "fa"): notifications and pushes are written in it.
+  locale       String   @default("en")
+
   inventory     InventoryItem[]
   claims        Claim[]
   runs          MissionRun[]
@@ -118,6 +121,8 @@ model User {
   pushSubs      PushSub[]
   callsOut      Call[]             @relation("caller")
   callsIn       Call[]             @relation("callee")
+  shop          Shop?
+  shopOrders    ShopOrder[]        @relation("shopBuyer")
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -129,6 +134,9 @@ model Notification {
   id        String   @id @default(cuid())
   userId    String
   kind      String   @default("info")
+  // What the game should do with it, independent of the (translated) text:
+  // "incoming" (siren), "levelup" (celebration), "hurt".
+  tag       String?
   title     String
   body      String?
   readAt    DateTime? // seen in the inbox
@@ -926,4 +934,99 @@ model CallSignal {
 model ActionLock {
   key       String   @id
   expiresAt DateTime
+}
+
+// ---------------------------------------------------------------- Player shops
+// Every player can run one shop at a real place. Opening it pays for a month
+// (expiresAt); renewing adds another. Products have photos, a price in coins, stock
+// and an optional time-limited discount; featured ones fill the shop window. A
+// purchase holds the buyer's coins in escrow until the seller hands the goods over
+// and enters the buyer's pickup code.
+model Shop {
+  id        String      @id @default(cuid())
+  ownerId   String      @unique
+  name      String
+  tagline   String      @default("")
+  about     String      @default("")
+  emoji     String      @default("🏪")
+  category  String      @default("other")
+  address   String      @default("") // how to find it, in the owner's words
+  lat       Float
+  lng       Float
+  coverId   String? // ShopImage shown as the banner
+  open      Boolean     @default(true) // the owner can pause sales
+  expiresAt DateTime
+  warnedAt  DateTime? // "about to close" reminder sent for the current month
+  sales     Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  owner     User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  products  Product[]
+  images    ShopImage[]
+  orders    ShopOrder[]
+
+  @@index([lat, lng])
+  @@index([expiresAt])
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  shopId        String
+  title         String
+  description   String      @default("")
+  price         Int // coins, before any discount
+  discountPct   Int         @default(0) // 0–90
+  discountUntil DateTime? // null: the discount has no end date
+  stock         Int         @default(1)
+  featured      Boolean     @default(false) // in the shop window
+  active        Boolean     @default(true) // hidden from buyers when false
+  sold          Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  shop          Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  photos        ShopImage[]
+
+  @@index([shopId, active])
+}
+
+// Shop banners and product photos. Rows never change (a new photo is a new row), so
+// they're served with a long immutable cache.
+model ShopImage {
+  id        String   @id @default(cuid())
+  shopId    String
+  productId String?
+  position  Int      @default(0)
+  data      Bytes
+  type      String
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, position])
+  @@index([shopId])
+}
+
+model ShopOrder {
+  id          String    @id @default(cuid())
+  shopId      String
+  buyerId     String
+  productId   String? // the product may be deleted later; title/photo are a snapshot
+  title       String
+  photoId     String?
+  qty         Int
+  unitPrice   Int // what the buyer paid per item (after discount)
+  total       Int // held in escrow until handover
+  fee         Int       @default(0) // market fee, taken from the seller's payout
+  code        String // the buyer shows it at pickup; the seller enters it
+  note        String    @default("")
+  status      String    @default("PENDING") // PENDING | DONE | CANCELLED
+  cancelledBy String? // buyer | seller | expired
+  createdAt   DateTime  @default(now())
+  doneAt      DateTime?
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  buyer       User      @relation("shopBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, status])
+  @@index([buyerId, status])
+  @@index([status, createdAt])
 }

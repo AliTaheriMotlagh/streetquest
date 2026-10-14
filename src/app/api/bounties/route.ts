@@ -8,6 +8,7 @@ import { body, HttpError, route, actionRoute } from "@/server/http";
 import { notify } from "@/server/hub";
 import { spendCoins } from "@/server/rewards";
 import { areFriends } from "@/server/rooms";
+import { t as tr } from "@/lib/i18n"; // `t` is the target in this file
 
 export const GET = route(async () => {
   await requireUser();
@@ -23,13 +24,13 @@ export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const t = await prisma.user.findUnique({ where: { id: d.targetId } });
-  if (!t || t.banned) throw new HttpError(404, "Player not found");
-  if (t.id === u.id) throw new HttpError(400, "You can't put a bounty on yourself");
-  if (await areFriends(u.id, t.id)) throw new HttpError(400, "That's your crew");
+  if (!t || t.banned) throw new HttpError(404, tr("Player not found"));
+  if (t.id === u.id) throw new HttpError(400, tr("You can't put a bounty on yourself"));
+  if (await areFriends(u.id, t.id)) throw new HttpError(400, tr("That's your crew"));
   const recent = await prisma.bounty.count({ where: { posterId: u.id, createdAt: { gt: new Date(Date.now() - 3_600_000) } } });
-  if (recent >= 5) throw new HttpError(429, "Max 5 bounties per hour");
+  if (recent >= 5) throw new HttpError(429, tr("Max 5 bounties per hour"));
   await spendCoins(u.id, d.amount);
   await prisma.bounty.create({ data: { targetId: t.id, posterId: u.id, amount: d.amount } });
-  await notify(t.id, { kind: "event", title: `💀 There's a ${d.amount} 🪙 bounty on your head`, body: `${u.username} wants you down. Watch your back.` });
-  return { message: `💀 ${d.amount} 🪙 bounty placed on ${t.username}` };
+  await notify(t.id, () => ({ kind: "event", title: tr("💀 There's a {n} 🪙 bounty on your head", { n: d.amount }), body: tr("{name} wants you down. Watch your back.", { name: u.username }) }));
+  return { message: tr("💀 {n} 🪙 bounty placed on {name}", { n: d.amount, name: t.username }) };
 });

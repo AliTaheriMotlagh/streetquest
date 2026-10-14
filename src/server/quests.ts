@@ -4,6 +4,7 @@ import { dayKey } from "../lib/progression";
 import { CAMPAIGN, campaignKey, dailyQuests, STATE_KINDS, type QuestDef, type QuestKind } from "../lib/quests";
 import { HttpError } from "./http";
 import { notify } from "./hub";
+import { t } from "../lib/i18n";
 import { trackStat } from "./goals";
 
 async function activeQuests(userId: string) {
@@ -20,7 +21,7 @@ export async function questEvent(userId: string, kind: QuestKind, n = 1) {
   try {
     for (const q of (await activeQuests(userId)).filter((x) => x.kind === kind)) {
       const row = await prisma.questProgress.upsert({ where: { userId_key: { userId, key: q.key } }, create: { userId, key: q.key, progress: n }, update: { progress: { increment: n } } });
-      if (row.progress >= q.target && row.progress - n < q.target) await notify(userId, { kind: "reward", title: `📜 Quest complete: ${q.title}`, body: "Claim your reward in Hero → Quests" });
+      if (row.progress >= q.target && row.progress - n < q.target) await notify(userId, () => ({ kind: "reward", title: t("📜 Quest complete: {title}", { title: t(q.title) }), body: t("Claim your reward in Hero → Quests") }));
     }
   } catch (e) {
     console.error("quest event failed", e);
@@ -41,17 +42,17 @@ export async function questView(userId: string, state: { heroClass: boolean; bas
 
 export async function claimQuest(userId: string, key: string, state: Parameters<typeof questView>[1]) {
   const q = (await questView(userId, state)).find((x) => x.key === key);
-  if (!q) throw new HttpError(404, "Quest not found");
-  if (!q.done) throw new HttpError(400, "Quest not finished yet");
-  if (q.claimed) throw new HttpError(409, "Already claimed");
+  if (!q) throw new HttpError(404, t("Quest not found"));
+  if (!q.done) throw new HttpError(400, t("Quest not finished yet"));
+  if (q.claimed) throw new HttpError(409, t("Already claimed"));
   // Atomic claim: only one concurrent request can flip claimed → true.
   const existing = await prisma.questProgress.findUnique({ where: { userId_key: { userId, key } } });
   if (!existing) {
     await prisma.questProgress.create({ data: { userId, key, progress: q.target, claimed: true } }).catch(() => {
-      throw new HttpError(409, "Already claimed");
+      throw new HttpError(409, t("Already claimed"));
     });
   } else if (!(await prisma.questProgress.updateMany({ where: { userId, key, claimed: false }, data: { claimed: true } })).count) {
-    throw new HttpError(409, "Already claimed");
+    throw new HttpError(409, t("Already claimed"));
   }
   if (q.campaign) await prisma.user.updateMany({ where: { id: userId, campaignStep: Number(key.slice(2)) }, data: { campaignStep: { increment: 1 } } });
   return q;

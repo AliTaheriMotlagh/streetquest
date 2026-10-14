@@ -14,6 +14,7 @@ import { requireUser } from "@/server/auth";
 import { body, HttpError, route, actionRoute } from "@/server/http";
 import { drawDue, lotteryView } from "@/server/lottery";
 import { track } from "@/server/rewards";
+import { t } from "@/lib/i18n";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -44,12 +45,12 @@ export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const lead = d.drawAt.getTime() - Date.now();
-  if (lead < LOTTERY_MIN_LEAD_MS) throw new HttpError(400, "Set the draw at least 10 minutes from now");
-  if (lead > LOTTERY_MAX_LEAD_MS) throw new HttpError(400, "The draw can be at most 7 days away");
+  if (lead < LOTTERY_MIN_LEAD_MS) throw new HttpError(400, t("Set the draw at least 10 minutes from now"));
+  if (lead > LOTTERY_MAX_LEAD_MS) throw new HttpError(400, t("The draw can be at most 7 days away"));
   const admin = u.role === "ADMIN";
   if (!admin && (await prisma.lottery.count({ where: { hostId: u.id, status: "OPEN" } })) >= LOTTERY_MAX_HOSTED)
-    throw new HttpError(400, `You can host at most ${LOTTERY_MAX_HOSTED} open lotteries`);
+    throw new HttpError(400, t("You can host at most {n} open lotteries", { n: LOTTERY_MAX_HOSTED }));
   const lottery = await prisma.lottery.create({ data: { ...d, radiusM: LOTTERY_RADIUS_M, hostId: u.id, official: admin } });
   await track("lottery_created", { userId: u.id });
-  return { message: `🎰 ${lottery.name} is live — players buy tickets at the spot`, lottery };
+  return { message: t("🎰 {name} is live — players buy tickets at the spot", { name: lottery.name }), lottery };
 });

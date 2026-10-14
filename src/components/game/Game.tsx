@@ -1,7 +1,9 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RARITY_COLOR } from "@/lib/catalog";
+import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
+import { useT } from "@/components/I18nProvider";
+import { RARITY_COLOR, RARITY_LABEL } from "@/lib/catalog";
 import { applyConfig } from "@/lib/config";
 import { S } from "@/lib/settings";
 import { distanceM, formatDistance } from "@/lib/geo";
@@ -9,7 +11,7 @@ import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BREACH_RANGE_M, FACTION_BY_KEY, SIEGE_RANGE_M } from "@/lib/rts";
 import { BasePanel } from "./BasePanel";
 import { TargetPowers } from "./Hero";
-import { OUTPOST_INCOME_HOUR } from "@/lib/outposts";
+import { OUTPOST_INCOME_HOUR, outpostLabel } from "@/lib/outposts";
 import { UNITS } from "@/lib/rts";
 import type { HeroTabId } from "./Panels";
 import { NeedsHud } from "./Life";
@@ -30,6 +32,8 @@ import { useLiveWaves } from "./waves";
 import { creepPos, PINGS, SHOOT_RANGE_M, squadPos, STRIKE_RANGE_M, STRIKES_PER_WAVE, towerStats, TOWER_MAX_LEVEL, towerCost, type PingKind, type Strike, type TowerKey } from "@/lib/td";
 import { CallScreen, type CallInvite, type CallPeer } from "./Call";
 import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./Panels";
+import { MarketPanel } from "./Market";
+import { SHOP_WARN_MS } from "@/lib/shops";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { useLocation, useWakeLock, type FireReport } from "./useLocation";
 import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
@@ -40,12 +44,13 @@ const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => 
 const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <div className="fps" /> });
 
 const NAV: [PanelId, string, string][] = [
-  ["nearby", "🎯", "Nearby"],
-  ["base", "🏰", "Base"],
-  ["play", "🎮", "Play"],
-  ["jobs", "📦", "Jobs"],
-  ["crew", "🤝", "Crew"],
-  ["me", "🦸", "Hero"],
+  ["nearby", "🎯", msg("Nearby")],
+  ["base", "🏰", msg("Base")],
+  ["play", "🎮", msg("Play")],
+  ["market", "🛍️", msg("Market")],
+  ["jobs", "📦", msg("Jobs")],
+  ["crew", "🤝", msg("Crew")],
+  ["me", "🦸", msg("Hero")],
 ];
 
 const TEST_MODE_KEY = "sq_test_mode";
@@ -54,8 +59,11 @@ const FLUSH_WAIT_MS = 2500;
 const TOAST_OUT_MS = 220;
 
 const PHASE_ICON = { night: "🌙", dawn: "🌅", day: "☀️", dusk: "🌇" } as const;
+const PHASE_LABEL = { night: msg("NIGHT"), dawn: msg("DAWN"), day: msg("DAY"), dusk: msg("DUSK") } as const;
 
 export default function Game() {
+  // The loading screen is also rendered on the server: it needs the request's language.
+  const T = useT();
   const [me, setMe] = useState<Me | null>(null);
   const [world, setWorld] = useState<World | null>(null);
   const [simPos, setSimPos] = useState<LatLng | null>(null);
@@ -74,6 +82,7 @@ export default function Game() {
   const pos = geo.pos;
   const [follow, setFollow] = useState(true);
   const [panel, setPanel] = useState<PanelId | null>(null);
+  const [marketFocus, setMarketFocus] = useState<string | null>(null); // a shop tapped on the map
   const [selected, setSelected] = useState<Selected | null>(null);
   const [lobby, setLobby] = useState<{ spawnId: string; mode?: "race" | "coop" } | { lobbyId: string } | null>(null);
   const [c4, setC4] = useState<{ towerId: string; seed: number; startAt: number } | null>(null);
@@ -162,10 +171,10 @@ export default function Game() {
     setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), TOAST_OUT_MS);
   }, []);
   const toast = useCallback(
-    (t: Toast) => {
+    (n: Toast) => {
       const id = Math.random();
-      setToasts((ts) => (ts.some((x) => !x.out && x.title === t.title && x.body === t.body) ? ts : [...ts.slice(-3), { ...t, id }]));
-      setTimeout(() => dismissToast(id), t.kind === "error" ? 4000 : 3200);
+      setToasts((ts) => (ts.some((x) => !x.out && x.title === n.title && x.body === n.body) ? ts : [...ts.slice(-3), { ...n, id }]));
+      setTimeout(() => dismissToast(id), n.kind === "error" ? 4000 : 3200);
     },
     [dismissToast],
   );
@@ -185,9 +194,9 @@ export default function Game() {
         await Promise.race([flush(), new Promise((r) => setTimeout(r, FLUSH_WAIT_MS))]);
         const r = await fn();
         if (r?.message) toast({ kind: "reward", title: r.message });
-        // Clash-style reward fly-up for anything that paid out.
-        if (r?.message && /\+[\d,]+ ?(🪙|coins)/.test(r.message)) burst("🪙", 8);
-        if (r?.message && /\+[\d,]+ ?💎/.test(r.message)) burst("💎", 5);
+        // Clash-style reward fly-up for anything that paid out (Latin or Persian digits).
+        if (r?.message && /\+[\d۰-۹,٬]+ ?(🪙|coins|سکه)/.test(r.message)) burst("🪙", 8);
+        if (r?.message && /\+[\d۰-۹,٬]+ ?(💎|gems|جم)/.test(r.message)) burst("💎", 5);
         sfx("reward");
         navigator.vibrate?.([40, 30, 40]);
         refresh();
@@ -227,13 +236,13 @@ export default function Game() {
     if (fire.downed) {
       sfx("down");
       quake();
-      toast({ kind: "error", title: `☠️ DOWNED by ${fire.downed.by}'s defenses`, body: `Lost ${fire.downed.coins} 🪙 · patching up for 3 min — move out of tower range` });
+      toast({ kind: "error", title: t("☠️ DOWNED by {name}'s defenses", { name: fire.downed.by }), body: t("Lost {n} 🪙 · patching up for 3 min — move out of tower range", { n: fire.downed.coins }) });
       navigator.vibrate?.([300, 100, 300]);
       loadMe();
     } else if (fire.hits.length) {
       const total = fire.hits.reduce((a, h) => a + h.dmg, 0);
       sfx("hurt");
-      toast({ kind: "error", title: `${fire.hits.map((h) => h.emoji).join("")} Under fire! −${total} HP`, body: `${[...new Set(fire.hits.map((h) => h.by))].join(", ")}'s defenses — get out of the red rings` });
+      toast({ kind: "error", title: t("{emoji} Under fire! −{n} HP", { emoji: fire.hits.map((h) => h.emoji).join(""), n: total }), body: t("{names}'s defenses — get out of the red rings", { names: [...new Set(fire.hits.map((h) => h.by))].join(t(", ")) }) });
       navigator.vibrate?.([80, 40, 80]);
     }
   }, [fire?.at]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -295,7 +304,7 @@ export default function Game() {
     if (id === "cancelled") return;
     api<{ message: string }>("/api/store", { body: { action: "confirm", sessionId: id } })
       .then((r) => {
-        celebrate({ title: "THANK YOU!", body: r.message, emoji: "💎" });
+        celebrate({ title: t("THANK YOU!"), body: r.message, emoji: "💎" });
         burst("💎", 14);
         loadMe();
       })
@@ -359,13 +368,14 @@ export default function Game() {
         if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, role: "callee" });
         setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
         for (const n of r.notifications) toast(n);
-        const titles = r.notifications.map((n) => n.title).join(" ");
-        if (/INCOMING/.test(titles)) sfx("siren");
-        else if (/LEVEL UP/.test(titles)) {
-          const n = r.notifications.find((x) => /LEVEL UP/.test(x.title));
-          celebrate({ title: n!.title, body: n!.body, emoji: "⭐" });
+        // React to what a notification *is* (its tag), never to its translated text.
+        const tagged = (tag: string) => r.notifications.find((n) => n.tag === tag);
+        if (tagged("incoming")) sfx("siren");
+        else if (tagged("levelup")) {
+          const n = tagged("levelup")!;
+          celebrate({ title: n.title, body: n.body, emoji: "⭐" });
         }
-        else if (/shot you|took you down|DOWN/.test(titles)) sfx("hurt");
+        else if (tagged("hurt")) sfx("hurt");
         else if (r.notifications.some((n) => n.kind === "reward")) sfx("coin");
         else if (r.notifications.length) sfx("beep");
         if (r.notifications.some((n) => n.kind === "reward" || n.kind === "delivery" || n.kind === "social")) loadMe();
@@ -394,7 +404,7 @@ export default function Game() {
       try {
         const r = await api<{ call: { id: string; peer: CallPeer } | null }>(`/api/sync?since=${Date.now()}`);
         if (r.call?.id === id) setCall({ id, peer: r.call.peer, role: "callee", autoAnswer: answer });
-        else toast({ kind: "info", title: "📵 That call already ended" });
+        else toast({ kind: "info", title: t("📵 That call already ended") });
       } catch {}
     },
     [toast],
@@ -419,7 +429,7 @@ export default function Game() {
     }
     // Home-screen shortcuts: /play?panel=base|play|me…
     const want = sp.get("panel");
-    if (want && me && ["nearby", "base", "play", "jobs", "crew", "me", "store", "inbox", "events"].includes(want)) {
+    if (want && me && ["nearby", "base", "play", "market", "jobs", "crew", "me", "store", "inbox", "events"].includes(want)) {
       history.replaceState(null, "", "/play");
       setPanel(want as PanelId);
       return;
@@ -501,7 +511,7 @@ export default function Game() {
     if (!homeMode || homePos) return;
     const start = me?.lastPos ?? geo.pos ?? (me?.ipPos ? { lat: me.ipPos.lat, lng: me.ipPos.lng } : null);
     if (start) setHomePos(start);
-    else setPicker({ label: "🛋️ Tap where your commander starts", cb: (p) => setHomePos(p) });
+    else setPicker({ label: t("🛋️ Tap where your commander starts"), cb: (p) => setHomePos(p) });
   }, [homeMode, me?.lastPos?.lat, geo.pos?.lat]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!homeMode) {
@@ -530,7 +540,7 @@ export default function Game() {
       act(() =>
         api("/api/me", { method: "PATCH", body: { remotePlay: on } }).then(() => {
           patchMe((m) => ({ ...m, remotePlay: on })); // switch now, not after the refresh
-          return { message: on ? `🛋️ Playing from home — tap the map to travel (rewards ×${S.remoteRewardMult})` : "🚶 Back to GPS — full rewards for walking" };
+          return { message: on ? t("🛋️ Playing from home — tap the map to travel (rewards ×{mult})", { mult: S.remoteRewardMult }) : t("🚶 Back to GPS — full rewards for walking") };
         }),
       ),
     [act, patchMe],
@@ -551,11 +561,11 @@ export default function Game() {
     if (simMode) {
       setSimMode(false);
       setSimPos(null);
-      toast({ title: "Test mode off", body: "Using your real GPS location" });
+      toast({ title: t("Test mode off"), body: t("Using your real GPS location") });
     } else {
       setSimMode(true);
       setSimPos(pos ?? { lat: 51.5079, lng: -0.0877 });
-      toast({ title: "🕹️ Test mode on", body: "No walking needed — tap the map or use “Teleport here”" });
+      toast({ title: t("🕹️ Test mode on"), body: t("No walking needed — tap the map or use “Go here”") });
     }
   };
 
@@ -583,10 +593,15 @@ export default function Game() {
           setPanel("crew");
         },
         startCall: (peer) => {
-          if (callRef.current) return toast({ kind: "error", title: "You're already on a call" });
+          if (callRef.current) return toast({ kind: "error", title: t("You're already on a call") });
           setCall({ peer, role: "caller" });
         },
         setPanel,
+        openShop: (id) => {
+          setSelected(null);
+          setMarketFocus(id);
+          setPanel("market");
+        },
         teleport: simMode ? (p) => setSimPos({ lat: p.lat, lng: p.lng }) : homeMode && homePos ? (p) => setTravel({ lat: p.lat, lng: p.lng }) : null,
         moveIcon: simMode ? "🕹️" : "🛋️",
         setHomeMode,
@@ -610,12 +625,12 @@ export default function Game() {
         {loadError && !me ? (
           <div className="modal">
             <div style={{ fontSize: 44 }}>⚠️</div>
-            <h2>Couldn&apos;t start the game</h2>
+            <h2>{T("Couldn't start the game")}</h2>
             <p className="muted small">{loadError}</p>
-            <Button className="btn" onClick={() => loadMe()}>Retry</Button>
+            <Button className="btn" onClick={() => loadMe()}>{T("Retry")}</Button>
           </div>
         ) : (
-          <div className="big-num">LOADING…</div>
+          <div className="big-num">{T("LOADING…")}</div>
         )}
       </div>
     );
@@ -626,6 +641,8 @@ export default function Game() {
     base: !me.base ? { n: "!", sig: "nobase" } : me.baseAlert ? { n: me.baseAlert.supply >= 100 ? "🪙" : "!", sig: `${me.baseAlert.doneAt}|${me.baseAlert.supply >= 100}` } : undefined,
     play: { n: me.goalsReady || (me.gpsGame ? "▶" : 0), sig: `${me.goalsReady}|${me.gpsGame?.id ?? ""}` },
     jobs: { n: (world?.deliveries.length ?? 0) + (world?.rides.length ?? 0), sig: [...(world?.deliveries ?? []), ...(world?.rides ?? [])].map((d) => d.id).sort().join(",") },
+    // Orders waiting to be handed over, or the shop about to close.
+    market: me.shop ? { n: me.shop.pending || (me.shop.expiresAt - Date.now() < SHOP_WARN_MS ? "!" : 0), sig: `${me.shop.pending}|${me.shop.expiresAt}` } : undefined,
     crew: { n: unread + me.pendingFriends, sig: `${unread}|${me.pendingFriends}` },
     me: {
       n: me.questsReady || me.freePoints || me.commandPoints || (me.dailyAvailable || me.mood.score < 30 ? "!" : 0),
@@ -694,26 +711,26 @@ export default function Game() {
             }}
           />
           <div className="hud-right" data-tour="wallet">
-            <div className="chip">🪙 {me.coins.toLocaleString()}</div>
+            <div className="chip">🪙 {fmtNum(me.coins)}</div>
             <HpChip me={me} fire={fire} now={now} />
-            <Button className="chip small gem-chip" onClick={() => setPanel("store")} title="Gem store">💎 {me.gems} <span className="plus">+</span></Button>
-            <div className="chip small hide-sm">{me.league.emoji} {me.trophies}</div>
-            {driving && !geo.simulated && <div className="chip small" title="Driving: the map zooms out and walking goals pause">🚗 {Math.round(geo.speed * 3.6)} km/h</div>}
+            <Button className="chip small gem-chip" onClick={() => setPanel("store")} title={t("Gem store")}>💎 {fmtNum(me.gems)} <span className="plus">+</span></Button>
+            <div className="chip small hide-sm">{me.league.emoji} {fmtNum(me.trophies)}</div>
+            {driving && !geo.simulated && <div className="chip small" title={t("Driving: the map zooms out and walking goals pause")}>🚗 {t("{n} km/h", { n: Math.round(geo.speed * 3.6) })}</div>}
             <GpsChip geo={geo} />
             {world && (
               <div className="chip phase">
-                {PHASE_ICON[world.phase]} <span className="hide-sm">{world.phase.toUpperCase()}</span>
-                {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>2× XP</span>}
+                {PHASE_ICON[world.phase]} <span className="hide-sm">{t(PHASE_LABEL[world.phase])}</span>
+                {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>{t("2× XP")}</span>}
               </div>
             )}
             {homeMode && (
-              <Button className="chip small home-chip" onClick={() => (setMeTab("stats"), setPanel("me"))} title="Playing from home — tap to switch back to GPS">
-                🛋️ <span className="hide-sm">HOME</span> ×{S.remoteRewardMult}
+              <Button className="chip small home-chip" onClick={() => (setMeTab("stats"), setPanel("me"))} title={t("Playing from home — tap to switch back to GPS")}>
+                🛋️ <span className="hide-sm">{t("HOME")}</span> ×{fmtNum(S.remoteRewardMult)}
               </Button>
             )}
             {geo.simulated && !homeMode && (
-              <Button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title="Turn test mode off">
-                🕹️ <span className="hide-sm">TEST MODE</span><span className="show-sm">TEST</span>
+              <Button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title={t("Turn test mode off")}>
+                🕹️ <span className="hide-sm">{t("TEST MODE")}</span><span className="show-sm">{t("TEST")}</span>
               </Button>
             )}
           </div>
@@ -728,7 +745,7 @@ export default function Game() {
             }}
           >
             📜 <b>{me.quest.title}</b>
-            <span>{me.quest.done ? "Claim reward!" : `${me.quest.desc} · ${me.quest.progress}/${me.quest.target}`}</span>
+            <span>{me.quest.done ? t("Claim reward!") : t("{desc} · {progress}/{target}", { desc: me.quest.desc, progress: me.quest.progress, target: me.quest.target })}</span>
           </Button>
         )}
 
@@ -737,7 +754,7 @@ export default function Game() {
             <b className="grow small">📣 {announce.title}</b>
             {announce.ctaUrl && (
               <a className="btn yellow small" href={announce.ctaUrl}>
-                {announce.ctaLabel ?? "Go"}
+                {announce.ctaLabel ?? t("Go")}
               </a>
             )}
             <Button className="close" onClick={() => setAnnounce(null)}>✕</Button>
@@ -747,31 +764,31 @@ export default function Game() {
         {run && (
           <div className="run-banner">
             <div>
-              <div className="small muted">RUN</div>
-              <b style={{ fontFamily: "var(--display)" }}>{run.title}</b>
-              {pos && <div className="small muted">{formatDistance(distanceM(pos, { lat: run.targetLat, lng: run.targetLng }))} to 🎯</div>}
+              <div className="small muted">{t("TIMED RUN")}</div>
+              <b style={{ fontFamily: "var(--display)" }}>{t(run.title)}</b>
+              {pos && <div className="small muted">{t("{d} to 🎯", { d: formatDistance(distanceM(pos, { lat: run.targetLat, lng: run.targetLng })) })}</div>}
             </div>
             <div className={`t ${runLeft < 30 ? "low" : ""}`}>
               {Math.floor(runLeft / 60)}:{String(runLeft % 60).padStart(2, "0")}
             </div>
             {homeMode && !atRunTarget && runLeft > 0 && (
-              <Button className="btn green small" onClick={() => setTravel({ lat: run.targetLat, lng: run.targetLng })}>🛋️ Go</Button>
+              <Button className="btn green small" onClick={() => setTravel({ lat: run.targetLat, lng: run.targetLng })}>🛋️ {t("Go")}</Button>
             )}
             {simMode && !atRunTarget && runLeft > 0 && (
               <Button className="btn yellow small" onClick={() => setSimPos({ lat: run.targetLat, lng: run.targetLng })}>
-                🕹️ Jump
+                🕹️ {t("Jump")}
               </Button>
             )}
             {runLeft === 0 ? (
               <Button className="btn ghost small" onClick={() => act(() => api("/api/runs", { body: { runId: run.id, action: "complete" } }))}>
-                Failed
+                {t("Failed")}
               </Button>
             ) : (
               <Button className="btn green small" disabled={!atRunTarget} onClick={() => act(() => api("/api/runs", { body: { runId: run.id, action: "complete" } }))}>
-                Finish
+                {t("Finish")}
               </Button>
             )}
-            <Button className="close" title="Abandon" onClick={() => askConfirm("Abandon this run?", { ok: "Abandon run", danger: true }).then((ok) => ok && act(() => api("/api/runs", { body: { runId: run.id, action: "abandon" } })))}>
+            <Button className="close" title={t("Abandon")} onClick={() => askConfirm(t("Abandon this run?"), { ok: t("Abandon run"), danger: true }).then((ok) => ok && act(() => api("/api/runs", { body: { runId: run.id, action: "abandon" } })))}>
               ✕
             </Button>
           </div>
@@ -788,7 +805,7 @@ export default function Game() {
 
         {me.downedUntil && me.downedUntil > now && (
           <div className="downed-banner">
-            ☠️ <b>DOWNED</b> · back on your feet in {Math.ceil((me.downedUntil - now) / 1000)}s
+            ☠️ <b>{t("DOWNED")}</b> · {t("back on your feet in {n}s", { n: Math.ceil((me.downedUntil - now) / 1000) })}
           </div>
         )}
 
@@ -806,7 +823,7 @@ export default function Game() {
 
         {strike && (
           <div className="pick-banner" style={{ background: "#ff8a00" }}>
-            ✈️ Tap the map where the bombs should fall
+            ✈️ {t("Tap the map where the bombs should fall")}
             <Button className="close" onClick={() => setStrike(null)}>✕</Button>
           </div>
         )}
@@ -833,24 +850,24 @@ export default function Game() {
 
         {homeMode && travel && pos && !picker && (
           <div className="travel-banner">
-            🛋️ <b>Travelling</b>
-            <span className="small">{formatDistance(distanceM(pos, travel))} · {Math.ceil(distanceM(pos, travel) / (S.remoteSpeedKmh / 3.6) / 60)} min</span>
-            <Button className="btn ghost small" onClick={() => setTravel(null)}>Stop</Button>
+            🛋️ <b>{t("Travelling")}</b>
+            <span className="small">{t("{d} · {n} min", { d: formatDistance(distanceM(pos, travel)), n: Math.ceil(distanceM(pos, travel) / (S.remoteSpeedKmh / 3.6) / 60) })}</span>
+            <Button className="btn ghost small" onClick={() => setTravel(null)}>{t("Stop")}</Button>
           </div>
         )}
 
         {/* Floating buttons */}
         <div className="fab-col">
-          <Button className="fab" data-tour="inbox" title="Inbox" aria-label={`Inbox${inbox ? `, ${inbox} new` : ""}`} onClick={() => setPanel("inbox")}>
-            🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? "99+" : inbox}</span>}
+          <Button className="fab" data-tour="inbox" title={t("Inbox")} aria-label={inbox ? t("Inbox, {n} new", { n: inbox }) : t("Inbox")} onClick={() => setPanel("inbox")}>
+            🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? `${fmtNum(99)}+` : fmtNum(inbox)}</span>}
           </Button>
           {me.canSimulate && (
-            <Button className="fab" title={simMode ? "Test mode on — tap to use real GPS" : "Test mode: play without walking"} onClick={toggleSim} style={{ outline: simMode ? "2px solid var(--yellow)" : undefined }}>
+            <Button className="fab" title={simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")} onClick={toggleSim} style={{ outline: simMode ? "2px solid var(--yellow)" : undefined }}>
               🕹️
             </Button>
           )}
           {me.dailyAvailable && (
-            <Button className="fab" title="Daily reward" onClick={() => act(() => api("/api/daily", { body: {} }))}>
+            <Button className="fab" title={t("Daily reward")} onClick={() => act(() => api("/api/daily", { body: {} }))}>
               🎁<span className="badge">!</span>
             </Button>
           )}
@@ -860,9 +877,9 @@ export default function Game() {
               now={now}
               onFire={() =>
                 setPicker({
-                  label: `${me.superweapon!.emoji} Tap the target (within ${SUPER_RANGE_M / 1000} km of your base)`,
+                  label: t("{emoji} Tap the target (within {km} km of your base)", { emoji: me.superweapon!.emoji, km: SUPER_RANGE_M / 1000 }),
                   cb: (p) =>
-                    askConfirm(`Launch the ${me.superweapon!.name}?`, { body: "Everyone near the target gets a countdown warning. You can't call it back.", ok: "LAUNCH", danger: true }).then((ok) => {
+                    askConfirm(t("Launch the {name}?", { name: t(me.superweapon!.name) }), { body: t("Everyone near the target gets a countdown warning. You can't call it back."), ok: t("LAUNCH"), danger: true }).then((ok) => {
                       if (ok)
                         act(() => api("/api/superweapon", { body: p })).then((done) => {
                           if (done) {
@@ -875,10 +892,10 @@ export default function Game() {
               }
             />
           )}
-          <Button className="fab" title={muted ? "Sound off" : "Sound on"} aria-label={muted ? "Turn sound on" : "Turn sound off"} onClick={() => setMuted(!muted)}>
+          <Button className="fab" title={muted ? t("Sound off") : t("Sound on")} aria-label={muted ? t("Turn sound on") : t("Turn sound off")} onClick={() => setMuted(!muted)}>
             {muted ? "🔇" : "🔊"}
           </Button>
-          <Button className="fab" title="Ping your crew" onClick={() => setPingMenu(!pingMenu)} style={{ outline: pingMenu ? "2px solid var(--yellow)" : undefined }}>
+          <Button className="fab" title={t("Ping your crew")} onClick={() => setPingMenu(!pingMenu)} style={{ outline: pingMenu ? "2px solid var(--yellow)" : undefined }}>
             📣
           </Button>
           {pingMenu && (
@@ -888,25 +905,25 @@ export default function Game() {
                   key={k}
                   onClick={() => {
                     setPingMenu(false);
-                    setPicker({ label: `${PINGS[k].emoji} Tap where to ping`, cb: (p) => act(() => api("/api/pings", { body: { kind: k, lat: p.lat, lng: p.lng } })) });
+                    setPicker({ label: t("{emoji} Tap where to ping", { emoji: PINGS[k].emoji }), cb: (p) => act(() => api("/api/pings", { body: { kind: k, lat: p.lat, lng: p.lng } })) });
                   }}
                 >
-                  {PINGS[k].emoji} {PINGS[k].label}
+                  {PINGS[k].emoji} {t(PINGS[k].label)}
                 </Button>
               ))}
             </div>
           )}
-          <Button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title="Re-center on me" aria-label="Re-center the map on me" aria-pressed={follow} onClick={() => setFollow(true)} style={{ color: follow ? "var(--cyan)" : undefined }}>
+          <Button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title={t("Re-center on me")} aria-label={t("Re-center the map on me")} aria-pressed={follow} onClick={() => setFollow(true)} style={{ color: follow ? "var(--cyan)" : undefined }}>
             ◎
           </Button>
         </div>
 
         {/* Toasts */}
         <div className="toasts">
-          {toasts.map((t) => (
-            <div key={t.id} className={`toast ${t.kind ?? ""} ${t.out ? "out" : ""}`} onClick={() => dismissToast(t.id)} title="Tap to dismiss" role={t.kind === "error" ? "alert" : "status"}>
-              <b>{t.title}</b>
-              {t.body && <span className="small muted">{t.body}</span>}
+          {toasts.map((x) => (
+            <div key={x.id} className={`toast ${x.kind ?? ""} ${x.out ? "out" : ""}`} onClick={() => dismissToast(x.id)} title={t("Tap to dismiss")} role={x.kind === "error" ? "alert" : "status"}>
+              <b>{x.title}</b>
+              {x.body && <span className="small muted">{x.body}</span>}
             </div>
           ))}
         </div>
@@ -928,6 +945,7 @@ export default function Game() {
         {panel === "nearby" && <NearbyPanel onClose={close} peek={peek} />}
         {panel === "base" && <BasePanel onClose={close} peek={peek} />}
         {panel === "jobs" && <JobsPanel onClose={close} peek={peek} />}
+        {panel === "market" && <MarketPanel onClose={close} peek={peek} focus={marketFocus} onFocused={() => setMarketFocus(null)} />}
         {panel === "crew" && <CrewPanel onClose={close} peek={peek} chat={chat} setChat={setChat} />}
         {panel === "events" && <EventsPanel onClose={close} peek={peek} />}
         {panel === "inbox" && <InboxPanel onClose={close} peek={peek} onRead={() => setInbox(0)} />}
@@ -954,8 +972,8 @@ export default function Game() {
               <Button
                 key={id}
                 data-tour={`nav-${id}`}
-                title={label}
-                aria-label={b != null ? `${label}, ${b} new` : label}
+                title={t(label)}
+                aria-label={b != null ? t("{label}, {n} new", { label: t(label), n: b }) : t(label)}
                 aria-current={on ? "page" : undefined}
                 onClick={() => {
                   if (on) {
@@ -970,8 +988,8 @@ export default function Game() {
                 className={`${on ? "on" : ""} ${id === "base" && !me.base ? "pulse" : ""}`}
               >
                 <span className="ic">{ic}</span>
-                <span className="nav-lb">{label}</span>
-                {b != null && <span className="badge pop">{b}</span>}
+                <span className="nav-lb">{t(label)}</span>
+                {b != null && <span className="badge pop">{typeof b === "number" ? fmtNum(b) : b}</span>}
               </Button>
             );
           })}
@@ -1006,26 +1024,26 @@ export default function Game() {
               <div style={{ fontSize: 56 }}>🔔</div>
               {askPush === "call" ? (
                 <>
-                  <h2>Don&apos;t miss a call</h2>
-                  <p className="muted small" style={{ lineHeight: 1.5 }}>Let your phone ring when your crew video-calls you — even when the game is closed — and get raid alerts too. You can turn it off any time in Hero → Profile.</p>
+                  <h2>{t("Don't miss a call")}</h2>
+                  <p className="muted small" style={{ lineHeight: 1.5 }}>{t("Let your phone ring when your crew video-calls you — even when the game is closed — and get raid alerts too. You can turn it off any time in Hero → Profile.")}</p>
                 </>
               ) : (
                 <>
-                  <h2>Don&apos;t miss a raid</h2>
-                  <p className="muted small" style={{ lineHeight: 1.5 }}>Get a notification when your base is attacked, a reward is waiting or your crew needs you — even when the game is closed. You can turn it off any time in Hero → Profile.</p>
+                  <h2>{t("Don't miss a raid")}</h2>
+                  <p className="muted small" style={{ lineHeight: 1.5 }}>{t("Get a notification when your base is attacked, a reward is waiting or your crew needs you — even when the game is closed. You can turn it off any time in Hero → Profile.")}</p>
                 </>
               )}
               <div className="row wrap" style={{ justifyContent: "center" }}>
-                <Button className="btn ghost" onClick={() => { setAskPush(false); try { localStorage.setItem("sq_push_asked", "1"); } catch {} }}>Not now</Button>
+                <Button className="btn ghost" onClick={() => { setAskPush(false); try { localStorage.setItem("sq_push_asked", "1"); } catch {} }}>{t("Not now")}</Button>
                 <Button
                   className="btn green"
                   onClick={() => {
                     setAskPush(false);
                     try { localStorage.setItem("sq_push_asked", "1"); } catch {}
-                    enablePush().then(() => toast({ kind: "reward", title: "🔔 Notifications on" })).catch((e) => toast({ kind: "error", title: (e as Error).message }));
+                    enablePush().then(() => toast({ kind: "reward", title: t("🔔 Notifications on") })).catch((e) => toast({ kind: "error", title: (e as Error).message }));
                   }}
                 >
-                  Turn on
+                  {t("Turn on")}
                 </Button>
               </div>
             </div>
@@ -1037,7 +1055,7 @@ export default function Game() {
           <div className="modal-bg">
             <div className="modal" style={{ maxWidth: 420, padding: 14 }}>
               <BombDefuse
-                title="💣 Wire the C4"
+                title={t("💣 Wire the C4")}
                 seed={c4.seed}
                 startAt={c4.startAt}
                 onDone={(score) => {
@@ -1047,7 +1065,7 @@ export default function Game() {
                   act(() => api("/api/towers", { body: { action: "sabotage", towerId, score: Math.min(3, Math.floor(score / 100)) } })).then(() => loadWorld(true));
                 }}
               />
-              <Button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setC4(null)}>Abort</Button>
+              <Button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setC4(null)}>{t("Abort")}</Button>
             </div>
           </div>
         )}
@@ -1070,21 +1088,21 @@ function InfoCard({
   onLobby: (l: { spawnId: string; mode?: "race" | "coop" }) => void;
   onC4: (towerId: string) => void;
 }) {
-  const { pos, act, me, world, openChat, startCall, setPanel, enterMatch, teleport, pick } = useGame();
+  const { pos, act, me, world, openChat, startCall, setPanel, enterMatch, teleport, pick, openShop } = useGame();
   const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
-    <Button className="btn yellow block" onClick={() => teleport(target)}><MoveIcon /> Go here · {formatDistance(dist)}</Button>
+    <Button className="btn yellow block" onClick={() => teleport(target)}><MoveIcon /> {t("Go here · {d}", { d: formatDistance(dist) })}</Button>
   ) : (
     <div className="row">
-      <Button className="btn grow" disabled>Get closer · {formatDistance(dist)}</Button>
+      <Button className="btn grow" disabled>{t("Get closer · {d}", { d: formatDistance(dist) })}</Button>
       {dist > 150 && <Directions to={target} />}
     </div>
   );
   // Bases and bosses can be fought from up to BREACH_RANGE_M away.
   const jump = teleport && dist > BREACH_RANGE_M && (
-    <Button className="btn yellow" onClick={() => teleport(target)}><MoveIcon /> Go next to it</Button>
+    <Button className="btn yellow" onClick={() => teleport(target)}><MoveIcon /> {t("Go next to it")}</Button>
   );
   const startMatch = async (kind: "breach" | "raid", targetId: string) => {
     let id = "";
@@ -1096,11 +1114,11 @@ function InfoCard({
   };
   const fromBase = me.base ? distanceM(me.base, target) : Infinity;
   // Street combat: shoot it yourself (players, towers, squads within range).
-  const shoot = (kind: "player" | "tower" | "squad", id: string, label = "🔫 Shoot") => (
+  const shoot = (kind: "player" | "tower" | "squad", id: string, label = t("🔫 Shoot")) => (
     <Button
       className="btn"
       disabled={!!me.downedUntil || me.rookie}
-      title={me.rookie ? "Reach level 3 to fight" : undefined}
+      title={me.rookie ? t("Reach level 3 to fight") : undefined}
       onClick={() => {
         sfx("shot");
         return act(() => api("/api/attack", { body: { kind, id } }));
@@ -1114,65 +1132,65 @@ function InfoCard({
     <Button
       className="btn cyan"
       disabled={!me.base || fromBase > SIEGE_RANGE_M}
-      onClick={() => askConfirm(`March your home army to ${label}? Everyone will see it coming.`, { ok: "March" }).then((ok) => ok && act(() => api("/api/squads", { body: { action: "deploy", target: { kind, id } } })).then((ok) => ok && onClose()))}
+      onClick={() => askConfirm(t("March your home army to {target}? Everyone will see it coming.", { target: label }), { ok: t("March") }).then((ok) => ok && act(() => api("/api/squads", { body: { action: "deploy", target: { kind, id } } })).then((ok) => ok && onClose()))}
     >
-      🎖️ March a squad
+      🎖️ {t("March a squad")}
     </Button>
   );
 
   if (sel.type === "spawn") {
     const s = sel.data;
-    const title = s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade Machine" : s.kind === "derrick" ? "Oil Derrick" : s.item!.name;
+    const title = s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Locked Chest") : s.kind === "arcade" ? t("Arcade Machine") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item!.name);
     const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item!.emoji;
     const desc =
       s.kind === "derrick"
-        ? `Neutral militia (strength ${s.guard}) guards this derrick. Lead your army here in person and take it: +${s.rewardCoins} 🪙.`
+        ? t("Neutral militia (strength {n}) guards this derrick. Lead your army here in person and take it: +{coins} 🪙.", { n: s.guard ?? 0, coins: s.rewardCoins })
         : s.kind === "run"
-        ? `${s.run!.brief} Target is ${formatDistance(s.run!.distanceM)} away — you have ${Math.round(s.run!.timeLimitS / 60)} min.`
+        ? `${t(s.run!.brief)} ${t("Target is {d} away — you have {n} min.", { d: formatDistance(s.run!.distanceM), n: Math.round(s.run!.timeLimitS / 60) })}`
         : s.kind === "chest"
-          ? `A booby-trapped supply crate (maybe ${s.item!.emoji} inside). Defuse the bomb — flawless = double loot. Nearby players can join and race you for a winner's bonus.`
+          ? t("A booby-trapped supply crate (maybe {emoji} inside). Defuse the bomb — flawless = double loot. Nearby players can join and race you for a winner's bonus.", { emoji: s.item!.emoji })
           : s.kind === "arcade"
-            ? "Shooting Range: 20 seconds, hostiles in the windows, spare the civilians. Players nearby can join — highest score takes the pot."
-            : s.item!.blurb;
+            ? t("Shooting Range: 20 seconds, hostiles in the windows, spare the civilians. Players nearby can join — highest score takes the pot.")
+            : t(s.item!.blurb);
     return (
       <Sheet title={title} onClose={onClose}>
         <div className="row" style={{ marginBottom: 10 }}>
           <div className="icon-tile" style={{ width: 70, height: 70, fontSize: 42, boxShadow: s.item ? `0 0 24px ${RARITY_COLOR[s.item.rarity]}` : undefined }}>{emoji}</div>
           <div className="grow">
-            {s.item && s.kind !== "derrick" && <span className="tag" style={{ color: RARITY_COLOR[s.item.rarity] }}>{s.item.rarity}</span>}
+            {s.item && s.kind !== "derrick" && <span className="tag" style={{ color: RARITY_COLOR[s.item.rarity] }}>{t(RARITY_LABEL[s.item.rarity])}</span>}
             <p className="small" style={{ margin: "6px 0" }}>{desc}</p>
             <div className="small muted">
-              +{s.rewardXp} XP {s.rewardCoins ? `· +${s.rewardCoins} 🪙` : ""} {s.goldenHour && "· ✨ golden hour 2×"} · despawns in{" "}
-              {Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000))} min
+              {t("+{n} XP", { n: s.rewardXp })} {s.rewardCoins ? `· +${fmtNum(s.rewardCoins)} 🪙` : ""} {s.goldenHour && `· ${t("✨ golden hour 2×")}`} ·{" "}
+              {t("despawns in {n} min", { n: Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000)) })}
             </div>
           </div>
         </div>
         {s.claimed ? (
-          <Button className="btn block" disabled>Already collected</Button>
+          <Button className="btn block" disabled>{t("Already collected")}</Button>
         ) : !inRange ? (
           tooFar
         ) : s.kind === "derrick" ? (
           <Button className="btn yellow block" disabled={!me.faction} onClick={() => act(() => api("/api/battle", { body: { kind: "derrick", targetId: s.id } })).then((ok) => ok && onClose())}>
-            {me.faction ? "🎖️ Attack with your army" : "Join a faction first (Base tab)"}
+            {me.faction ? t("🎖️ Attack with your army") : t("Join a faction first (Base tab)")}
           </Button>
         ) : s.kind === "chest" || s.kind === "arcade" ? (
           <Button className="btn yellow block" disabled={!!me.downedUntil} onClick={() => onLobby({ spawnId: s.id })}>
-            {s.lobby ? `👥 Join ${s.lobby.players} player${s.lobby.players > 1 ? "s" : ""} — ${Math.max(0, Math.ceil((s.lobby.openUntil - Date.now()) / 1000))}s` : s.kind === "chest" ? "💣 Defuse it" : "🎯 Play"}
+            {s.lobby ? t("👥 Join {n, plural, one {# player} other {# players}} — {s}s", { n: s.lobby.players, s: Math.max(0, Math.ceil((s.lobby.openUntil - Date.now()) / 1000)) }) : s.kind === "chest" ? t("💣 Defuse it") : t("🎯 Play")}
           </Button>
         ) : s.kind === "run" ? (
           me.activeRun ? (
-            <Button className="btn block" disabled>Finish your current run first</Button>
+            <Button className="btn block" disabled>{t("Finish your current run first")}</Button>
           ) : s.lobby ? (
-            <Button className="btn yellow block" onClick={() => onLobby({ spawnId: s.id })}>👥 Join the {s.lobby.kind === "coop" ? "co-op run" : "race"} ({s.lobby.players})</Button>
+            <Button className="btn yellow block" onClick={() => onLobby({ spawnId: s.id })}>{s.lobby.kind === "coop" ? t("👥 Join the co-op run ({n})", { n: s.lobby.players }) : t("👥 Join the race ({n})", { n: s.lobby.players })}</Button>
           ) : (
             <div className="row wrap">
-              <Button className="btn" onClick={() => onClaim(s.id)}>🏁 Solo</Button>
-              <Button className="btn yellow" onClick={() => onLobby({ spawnId: s.id, mode: "race" })}>🏎️ Race others</Button>
-              <Button className="btn green" onClick={() => onLobby({ spawnId: s.id, mode: "coop" })}>🤝 Co-op run</Button>
+              <Button className="btn" onClick={() => onClaim(s.id)}>🏁 {t("Solo")}</Button>
+              <Button className="btn yellow" onClick={() => onLobby({ spawnId: s.id, mode: "race" })}>🏎️ {t("Race others")}</Button>
+              <Button className="btn green" onClick={() => onLobby({ spawnId: s.id, mode: "coop" })}>🤝 {t("Co-op run")}</Button>
             </div>
           )
         ) : (
-          <Button className="btn green block" onClick={() => onClaim(s.id)}>Collect</Button>
+          <Button className="btn green block" onClick={() => onClaim(s.id)}>{t("Collect")}</Button>
         )}
       </Sheet>
     );
@@ -1182,19 +1200,19 @@ function InfoCard({
     const m = sel.data;
     return (
       <Sheet title={m.title} onClose={onClose}>
-        {m.sponsor && <span className="tag" style={{ color: "var(--yellow)" }}>Presented by {m.sponsor}</span>}
+        {m.sponsor && <span className="tag" style={{ color: "var(--yellow)" }}>{t("Presented by {name}", { name: m.sponsor })}</span>}
         <p>{m.description}</p>
-        <p className="small muted">Reward: {m.item?.emoji} {m.item?.name} · +{m.rewardXp} XP · +{m.rewardCoins} 🪙 · ends {fmtTime(m.activeTo)}</p>
-        {m.claimed ? <Button className="btn block" disabled>Completed</Button> : inRange ? <Button className="btn yellow block" onClick={() => onClaim(`m:${m.id}`)}>Complete mission</Button> : tooFar}
+        <p className="small muted">{t("Reward: {item} · +{xp} XP · +{coins} 🪙 · ends {when}", { item: m.item ? `${m.item.emoji} ${t(m.item.name)}` : "", xp: m.rewardXp, coins: m.rewardCoins, when: fmtTime(m.activeTo) })}</p>
+        {m.claimed ? <Button className="btn block" disabled>{t("Completed")}</Button> : inRange ? <Button className="btn yellow block" onClick={() => onClaim(`m:${m.id}`)}>{t("Complete mission")}</Button> : tooFar}
       </Sheet>
     );
   }
 
   if (sel.type === "note") {
     return (
-      <Sheet title={sel.data.hasPhoto ? "📸 Photo at this spot" : "💬 Post at this spot"} onClose={onClose}>
+      <Sheet title={sel.data.hasPhoto ? t("📸 Photo at this spot") : t("💬 Post at this spot")} onClose={onClose}>
         <NoteCard n={sel.data} dist={dist} />
-        {!sel.data.unlocked && teleport && <Button className="btn yellow block" onClick={() => teleport(sel.data)}><MoveIcon /> Go here</Button>}
+        {!sel.data.unlocked && teleport && <Button className="btn yellow block" onClick={() => teleport(sel.data)}><MoveIcon /> {t("Go here")}</Button>}
       </Sheet>
     );
   }
@@ -1203,13 +1221,13 @@ function InfoCard({
     const e = sel.data;
     return (
       <Sheet title={e.title} onClose={onClose}>
-        <p className="small muted">{fmtTime(e.startsAt)} – {fmtTime(e.endsAt)} · {e.participants}/{e.maxPlayers} going · {formatDistance(dist)}</p>
+        <p className="small muted">{t("{start} – {end} · {n}/{max} going · {d}", { start: fmtTime(e.startsAt), end: fmtTime(e.endsAt), n: e.participants, max: e.maxPlayers, d: formatDistance(dist) })}</p>
         <p>{e.description}</p>
         <div className="row wrap">
-          <Button className="btn" onClick={() => act(() => api(`/api/events/${e.id}`, { body: { action: "join" } }))}>Join</Button>
-          <Button className="btn green" onClick={() => act(() => api(`/api/events/${e.id}`, { body: { action: "checkin" } }))}>Check in</Button>
-          <Button className="btn cyan" onClick={() => openChat(`event:${e.id}`, e.title)}>Chat</Button>
-          <Button className="btn ghost" onClick={() => setPanel("events")}>All events</Button>
+          <Button className="btn" onClick={() => act(() => api(`/api/events/${e.id}`, { body: { action: "join" } }))}>{t("Join")}</Button>
+          <Button className="btn green" onClick={() => act(() => api(`/api/events/${e.id}`, { body: { action: "checkin" } }))}>{t("Check in")}</Button>
+          <Button className="btn cyan" onClick={() => openChat(`event:${e.id}`, e.title)}>{t("Chat")}</Button>
+          <Button className="btn ghost" onClick={() => setPanel("events")}>{t("All events")}</Button>
         </div>
       </Sheet>
     );
@@ -1219,11 +1237,11 @@ function InfoCard({
     const d = sel.data;
     return (
       <Sheet title={`📦 ${d.title}`} onClose={onClose}>
-        <p className="small muted">Posted by {d.sender?.username} · reward {d.reward} 🪙</p>
+        <p className="small muted">{t("Posted by {name} · reward {n} 🪙", { name: d.sender?.username ?? "", n: d.reward })}</p>
         {d.description && <p>{d.description}</p>}
-        <p className="small">🟢 {d.pickupLabel}<br />🔴 {d.dropoffLabel} ({formatDistance(distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng }))} trip)</p>
+        <p className="small">🟢 {d.pickupLabel}<br />🔴 {d.dropoffLabel} {t("({d} trip)", { d: formatDistance(distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng })) })}</p>
         <Button className="btn green block" onClick={() => act(() => api(`/api/deliveries/${d.id}`, { body: { action: "accept" } })).then((ok) => ok && onClose())}>
-          Accept job
+          {t("Accept job")}
         </Button>
       </Sheet>
     );
@@ -1232,15 +1250,15 @@ function InfoCard({
   if (sel.type === "ride") {
     const r = sel.data;
     return (
-      <Sheet title={`🚕 ${r.rider?.username ?? "Rider"} needs a ride`} onClose={onClose}>
-        <p className="small muted">{r.seats} seat{r.seats > 1 ? "s" : ""} · pickup {formatDistance(dist)} from you · fare <b style={{ color: "var(--yellow)" }}>{r.fare} 🪙</b></p>
-        <p className="small">🟢 {r.pickupLabel}<br />🔴 {r.dropoffLabel} ({formatDistance(distanceM({ lat: r.pickupLat, lng: r.pickupLng }, { lat: r.dropoffLat, lng: r.dropoffLng }))} trip)</p>
+      <Sheet title={t("🚕 {name} needs a ride", { name: r.rider?.username ?? t("Rider") })} onClose={onClose}>
+        <p className="small muted">{t("{n, plural, one {# seat} other {# seats}} · pickup {d} from you · fare", { n: r.seats, d: formatDistance(dist) })} <b style={{ color: "var(--yellow)" }}>{fmtNum(r.fare)} 🪙</b></p>
+        <p className="small">🟢 {r.pickupLabel}<br />🔴 {r.dropoffLabel} {t("({d} trip)", { d: formatDistance(distanceM({ lat: r.pickupLat, lng: r.pickupLng }, { lat: r.dropoffLat, lng: r.dropoffLng })) })}</p>
         {r.note && <p className="small muted">“{r.note}”</p>}
         <div className="row">
           <Button className="btn green grow" onClick={() => act(() => api(`/api/rides/${r.id}`, { body: { action: "accept" } })).then((ok) => ok && (onClose(), setPanel("jobs")))}>
-            🚗 Accept ride
+            🚗 {t("Accept ride")}
           </Button>
-          <Button className="btn ghost" onClick={() => setPanel("jobs")}>All jobs</Button>
+          <Button className="btn ghost" onClick={() => setPanel("jobs")}>{t("All jobs")}</Button>
         </div>
       </Sheet>
     );
@@ -1256,6 +1274,23 @@ function InfoCard({
     );
   }
 
+  if (sel.type === "shop") {
+    const sh = world?.shops.find((x) => x.id === sel.data.id) ?? sel.data;
+    return (
+      <Sheet title={`${sh.emoji} ${sh.name}`} onClose={onClose}>
+        <p className="small muted">
+          {sh.live ? t("Open") : t("Closed")} · {formatDistance(dist)}
+          {sh.deal > 0 && <span className="deal-pill" style={{ marginInlineStart: 8 }}>{t("Up to {n}% off", { n: sh.deal })}</span>}
+        </p>
+        <div className="row wrap">
+          <Button className="btn yellow" onClick={() => openShop(sh.id)}>{sh.mine ? `🛠️ ${t("My shop")}` : `🛍️ ${t("Visit the shop")}`}</Button>
+          {teleport && dist > 40 && <Button className="btn ghost" onClick={() => teleport(sh)}><MoveIcon /> {t("Go there")}</Button>}
+          {!teleport && dist > 150 && <Directions to={sh} />}
+        </div>
+      </Sheet>
+    );
+  }
+
   if (sel.type === "base") {
     const b = sel.data;
     const f = b.faction ? FACTION_BY_KEY[b.faction] : null;
@@ -1264,20 +1299,20 @@ function InfoCard({
     return (
       <Sheet title={`🏰 ${b.name}`} onClose={onClose}>
         <div className="small muted" style={{ marginBottom: 8 }}>
-          <span className={`dot ${b.owner.online ? "on" : ""}`} /> {b.owner.avatar} {b.owner.username} {f && <span style={{ color: f.color }}>· {f.emoji} {f.name}</span>} · {formatDistance(dist)}
+          <span className={`dot ${b.owner.online ? "on" : ""}`} /> {b.owner.avatar} {b.owner.username} {f && <span style={{ color: f.color }}>· {f.emoji} {t(f.name)}</span>} · {formatDistance(dist)}
         </div>
         <div className="grid3" style={{ marginBottom: 10 }}>
-          <div className="stat"><b>{b.hq}</b><span>HQ level</span></div>
-          <div className="stat"><b>🗼 {b.turrets}</b><span>Turrets</span></div>
-          <div className="stat"><b>{b.hp}</b><span>Integrity</span></div>
+          <div className="stat"><b>{fmtNum(b.hq)}</b><span>{t("HQ level")}</span></div>
+          <div className="stat"><b>🗼 {fmtNum(b.turrets)}</b><span>{t("Turrets")}</span></div>
+          <div className="stat"><b>{fmtNum(b.hp)}</b><span>{t("Integrity")}</span></div>
         </div>
-        {b.shielded && <p className="small" style={{ color: "var(--cyan)" }}>🛡️ Cease-fire shield is up.</p>}
+        {b.shielded && <p className="small" style={{ color: "var(--cyan)" }}>{t("🛡️ Cease-fire shield is up.")}</p>}
         {b.mine || b.friend ? (
           <div className="row wrap">
-            {b.mine && <Button className="btn cyan" onClick={() => setPanel("base")}>Open base</Button>}
-            {teleport && dist > 60 && <Button className="btn yellow" onClick={() => teleport(b)}><MoveIcon /> Go home</Button>}
-            {b.liveMatch && <Button className="btn" onClick={() => startMatch("breach", b.id)}>🛡️ Defend it (FPS)</Button>}
-            {!b.mine && !b.liveMatch && <p className="small muted">Your crew&apos;s base. If it&apos;s breached while you&apos;re close, you can jump in to defend.</p>}
+            {b.mine && <Button className="btn cyan" onClick={() => setPanel("base")}>{t("Open base")}</Button>}
+            {teleport && dist > 60 && <Button className="btn yellow" onClick={() => teleport(b)}><MoveIcon /> {t("Go home")}</Button>}
+            {b.liveMatch && <Button className="btn" onClick={() => startMatch("breach", b.id)}>{t("🛡️ Defend it (FPS)")}</Button>}
+            {!b.mine && !b.liveMatch && <p className="small muted">{t("Your crew's base. If it's breached while you're close, you can jump in to defend.")}</p>}
           </div>
         ) : (
           <>
@@ -1285,26 +1320,26 @@ function InfoCard({
               <Button
                 className="btn yellow"
                 disabled={!me.base || fromBase > SIEGE_RANGE_M || b.shielded}
-                onClick={() => askConfirm(`Send your whole army to siege ${b.name}?`, { ok: "Attack" }).then((ok) => ok && act(() => api("/api/battle", { body: { kind: "siege", targetId: b.id } })))}
+                onClick={() => askConfirm(t("Send your whole army to siege {name}?", { name: b.name }), { ok: t("Attack") }).then((ok) => ok && act(() => api("/api/battle", { body: { kind: "siege", targetId: b.id } })))}
               >
-                🎖️ Siege with army
+                🎖️ {t("Siege with army")}
               </Button>
               {marchOn("base", b.id, b.name)}
               <OrderSquads kind="base" id={b.id} />
               {jump}
               {b.liveMatch ? (
-                <Button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("breach", b.id)}>⚔️ Join the firefight</Button>
+                <Button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("breach", b.id)}>⚔️ {t("Join the firefight")}</Button>
               ) : (
-                <Button className="btn" disabled={!breachable} onClick={() => startMatch("breach", b.id)}>⚔️ Breach (FPS)</Button>
+                <Button className="btn" disabled={!breachable} onClick={() => startMatch("breach", b.id)}>⚔️ {t("Breach (FPS)")}</Button>
               )}
             </div>
             <p className="small muted">
               {!me.base
-                ? "Plant your own base to send armies."
+                ? t("Plant your own base to send armies.")
                 : fromBase > SIEGE_RANGE_M
-                  ? `Out of siege range (${formatDistance(fromBase)} from your base, max ${SIEGE_RANGE_M / 1000} km).`
-                  : "Siege is auto-resolved: your army vs their garrison and turrets."}{" "}
-              {dist > BREACH_RANGE_M ? `Walk within ${BREACH_RANGE_M} m to breach it in first person.` : !humansOnline ? "Breach unlocks when players are online nearby." : "You're close — breach it in first person!"}
+                  ? t("Out of siege range ({d} from your base, max {km} km).", { d: formatDistance(fromBase), km: SIEGE_RANGE_M / 1000 })
+                  : t("Siege is auto-resolved: your army vs their garrison and turrets.")}{" "}
+              {dist > BREACH_RANGE_M ? t("Walk within {m} m to breach it in first person.", { m: BREACH_RANGE_M }) : !humansOnline ? t("Breach unlocks when players are online nearby.") : t("You're close — breach it in first person!")}
             </p>
             <TargetPowers targetId={b.id} allow={["spy_drone", "barrage"]} />
           </>
@@ -1316,23 +1351,23 @@ function InfoCard({
   if (sel.type === "boss") {
     const b = sel.data;
     return (
-      <Sheet title={`${b.def.emoji} ${b.def.name}`} onClose={onClose}>
-        <p className="small" style={{ margin: "0 0 8px" }}>{b.def.blurb}</p>
+      <Sheet title={`${b.def.emoji} ${t(b.def.name)}`} onClose={onClose}>
+        <p className="small" style={{ margin: "0 0 8px" }}>{t(b.def.blurb)}</p>
         <div className="need-bar boss"><i style={{ width: `${(b.hp / b.maxHp) * 100}%` }} /></div>
         <p className="small muted">
-          {b.hp.toLocaleString()} / {b.maxHp.toLocaleString()} HP · shared by every player · leaves in {Math.max(0, Math.round((b.expiresAt - Date.now()) / 60000))} min · {formatDistance(dist)}
+          {t("{hp} / {max} HP · shared by every player · leaves in {n} min · {d}", { hp: b.hp, max: b.maxHp, n: Math.max(0, Math.round((b.expiresAt - Date.now()) / 60000)), d: formatDistance(dist) })}
         </p>
         <div className="row wrap">
           {jump}
           <Button className="btn" disabled={dist > BREACH_RANGE_M} onClick={() => startMatch("raid", b.id)}>
-            ⚔️ {b.liveMatch ? "Join the raid" : "Raid (FPS)"}
+            ⚔️ {b.liveMatch ? t("Join the raid") : t("Raid (FPS)")}
           </Button>
           <Button className="btn yellow" disabled={!me.base || fromBase > SIEGE_RANGE_M} onClick={() => act(() => api("/api/battle", { body: { kind: "bombard", targetId: b.id } }))}>
-            💥 Bombard with army
+            💥 {t("Bombard with army")}
           </Button>
         </div>
         <TargetPowers targetId={b.id} allow={["barrage"]} />
-        <p className="small muted">Everyone who damages it shares the loot when it falls; top damage gets a 👑. {dist > BREACH_RANGE_M && `Walk within ${BREACH_RANGE_M} m to fight it in first person.`}</p>
+        <p className="small muted">{t("Everyone who damages it shares the loot when it falls; top damage gets a 👑.")} {dist > BREACH_RANGE_M && t("Walk within {m} m to fight it in first person.", { m: BREACH_RANGE_M })}</p>
       </Sheet>
     );
   }
@@ -1342,35 +1377,35 @@ function InfoCard({
     const g = o.garrison ?? {};
     const station = (unit: string, qty: number) => act(() => api("/api/outposts", { body: { action: "station", outpostId: o.id, unit, qty } }));
     return (
-      <Sheet title={`${o.owner ? "🚩" : "🏴"} ${o.name}`} onClose={onClose}>
+      <Sheet title={`${o.owner ? "🚩" : "🏴"} ${outpostLabel(o.name)}`} onClose={onClose}>
         <p className="small muted">
-          {o.mine ? "Held by you" : o.owner ? `Held by ${o.owner.username}` : "Neutral — guarded by militia"} · pays {OUTPOST_INCOME_HOUR} 🪙/hour to its holder · {formatDistance(dist)}
+          {o.mine ? t("Held by you") : o.owner ? t("Held by {name}", { name: o.owner.username }) : t("Neutral — guarded by militia")} · {t("pays {n} 🪙/hour to its holder", { n: OUTPOST_INCOME_HOUR })} · {formatDistance(dist)}
         </p>
         <div className="card small">
           {o.owner ? (
             o.garrison ? (
-              <>🪖 Garrison: {Object.entries(g).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji} ${q}`).join("  ") || "none (only the fortification)"}</>
+              <>🪖 {t("Garrison:")} {Object.entries(g).filter(([, q]) => q).map(([k, q]) => `${UNITS.find((u) => u.key === k)?.emoji} ${fmtNum(q ?? 0)}`).join("  ") || t("none (only the fortification)")}</>
             ) : (
-              <>🪖 Garrison: <b>{o.garrisonSize}</b> <span className="muted">(research 📡 Radar or use a 🛰️ Spy Drone for details)</span></>
+              <>🪖 {t("Garrison:")} <b>{o.garrisonSize && /^\d+$/.test(o.garrisonSize) ? fmtNum(Number(o.garrisonSize)) : t(o.garrisonSize ?? "")}</b> <span className="muted">{t("(research 📡 Radar or use a 🛰️ Spy Drone for details)")}</span></>
             )
           ) : (
-            <>⚔️ Militia strength {o.guard}</>
+            <>{t("⚔️ Militia strength {n}", { n: o.guard ?? 0 })}</>
           )}
-          {o.shielded && <div style={{ color: "var(--cyan)" }}>🛡️ Freshly captured — dug in for a few minutes</div>}
+          {o.shielded && <div style={{ color: "var(--cyan)" }}>{t("🛡️ Freshly captured — dug in for a few minutes")}</div>}
         </div>
         {o.mine ? (
           <>
-            <label>Station troops from your army</label>
+            <label>{t("Station troops from your army")}</label>
             <div className="row wrap">
               {UNITS.map((u) => (
                 <Button key={u.key} className="btn ghost small" onClick={() => station(u.key, u.key === "ranger" ? 5 : 1)}>
-                  +{u.key === "ranger" ? 5 : 1} {u.emoji}
+                  +{fmtNum(u.key === "ranger" ? 5 : 1)} {u.emoji}
                 </Button>
               ))}
             </div>
             <div className="row wrap" style={{ marginTop: 8 }}>
-              <Button className="btn ghost small" onClick={() => act(() => api("/api/outposts", { body: { action: "withdraw", outpostId: o.id } }))}>↩️ Withdraw all</Button>
-              <Button className="btn yellow small" onClick={() => act(() => api("/api/outposts", { body: { action: "collect" } }))}>🪙 Collect tribute</Button>
+              <Button className="btn ghost small" onClick={() => act(() => api("/api/outposts", { body: { action: "withdraw", outpostId: o.id } }))}>↩️ {t("Withdraw all")}</Button>
+              <Button className="btn yellow small" onClick={() => act(() => api("/api/outposts", { body: { action: "collect" } }))}>🪙 {t("Collect tribute")}</Button>
             </div>
           </>
         ) : (
@@ -1380,14 +1415,14 @@ function InfoCard({
               <Button
                 className="btn yellow"
                 disabled={!me.base || fromBase > SIEGE_RANGE_M || o.shielded}
-                onClick={() => askConfirm(`Send your whole army to assault ${o.name}?`, { ok: "Attack" }).then((ok) => ok && act(() => api("/api/outposts", { body: { action: "assault", outpostId: o.id } })))}
+                onClick={() => askConfirm(t("Send your whole army to assault {name}?", { name: outpostLabel(o.name) }), { ok: t("Attack") }).then((ok) => ok && act(() => api("/api/outposts", { body: { action: "assault", outpostId: o.id } })))}
               >
-                🎖️ Assault with army
+                🎖️ {t("Assault with army")}
               </Button>
-              {marchOn("outpost", o.id, o.name)}
+              {marchOn("outpost", o.id, outpostLabel(o.name))}
               <OrderSquads kind="outpost" id={o.id} />
             </div>
-            <p className="small muted">{!me.base ? "Plant a base to send armies." : fromBase > SIEGE_RANGE_M ? `Out of range (${formatDistance(fromBase)} from your base, max ${SIEGE_RANGE_M / 1000} km).` : "Win and it's yours — then garrison it before someone takes it back."}</p>
+            <p className="small muted">{!me.base ? t("Plant a base to send armies.") : fromBase > SIEGE_RANGE_M ? t("Out of range ({d} from your base, max {km} km).", { d: formatDistance(fromBase), km: SIEGE_RANGE_M / 1000 }) : t("Win and it's yours — then garrison it before someone takes it back.")}</p>
             {o.owner && <TargetPowers targetId={o.id} allow={["spy_drone", "barrage"]} />}
           </>
         )}
@@ -1396,45 +1431,45 @@ function InfoCard({
   }
 
   if (sel.type === "tower") {
-    const t = sel.data;
-    const st = towerStats(t);
-    const ready = t.readyAt <= Date.now();
-    const hostile = !t.mine && !t.friend;
-    const up = t.level < TOWER_MAX_LEVEL ? towerCost(t.type as TowerKey, t.level + 1) : null;
+    const tw = sel.data;
+    const st = towerStats(tw);
+    const ready = tw.readyAt <= Date.now();
+    const hostile = !tw.mine && !tw.friend;
+    const up = tw.level < TOWER_MAX_LEVEL ? towerCost(tw.type as TowerKey, tw.level + 1) : null;
     return (
-      <Sheet title={`${st.def.emoji} ${st.def.name}`} onClose={onClose}>
+      <Sheet title={`${st.def.emoji} ${t(st.def.name)}`} onClose={onClose}>
         <div className="small muted" style={{ marginBottom: 6 }}>
-          {t.mine ? "Your tower" : t.friend ? `${t.owner}'s tower (crew)` : <span style={{ color: "var(--red)" }}>Hostile — {t.owner}</span>} · Lv {t.level} · {formatDistance(dist)}
-          {!ready && " · 🚧 under construction"}
+          {tw.mine ? t("Your tower") : tw.friend ? t("{name}'s tower (crew)", { name: tw.owner }) : <span style={{ color: "var(--red)" }}>{t("Hostile — {name}", { name: tw.owner })}</span>} · {t("Lv {n}", { n: tw.level })} · {formatDistance(dist)}
+          {!ready && ` · ${t("🚧 under construction")}`}
         </div>
-        <div className="need-bar"><i style={{ width: `${(t.hp / st.maxHp) * 100}%`, background: hostile ? "var(--red)" : "var(--green)" }} /></div>
-        <p className="small">{st.def.blurb}</p>
+        <div className="need-bar"><i style={{ width: `${(tw.hp / st.maxHp) * 100}%`, background: hostile ? "var(--red)" : "var(--green)" }} /></div>
+        <p className="small">{t(st.def.blurb)}</p>
         <div className="grid3" style={{ marginBottom: 10 }}>
-          <div className="stat"><b>{t.hp}</b><span>HP</span></div>
-          <div className="stat"><b>{st.range} m</b><span>Range</span></div>
-          <div className="stat"><b>☠️ {t.kills}</b><span>Kills</span></div>
+          <div className="stat"><b>{fmtNum(tw.hp)}</b><span>{t("HP")}</span></div>
+          <div className="stat"><b>{t("{n} m", { n: st.range })}</b><span>{t("Range")}</span></div>
+          <div className="stat"><b>☠️ {fmtNum(tw.kills)}</b><span>{t("Kills")}</span></div>
         </div>
-        {t.mine ? (
+        {tw.mine ? (
           <div className="row wrap">
-            {up && ready && <Button className="btn" onClick={() => act(() => api("/api/towers", { body: { action: "upgrade", towerId: t.id } }))}>↑ Level {t.level + 1} · {up.coins} 🪙</Button>}
-            {t.hp < st.maxHp && <Button className="btn ghost" onClick={() => act(() => api("/api/towers", { body: { action: "repair", towerId: t.id } }))}>🔧 Repair</Button>}
-            <Button className="btn ghost" onClick={() => setPanel("base")}>All defenses</Button>
+            {up && ready && <Button className="btn" onClick={() => act(() => api("/api/towers", { body: { action: "upgrade", towerId: tw.id } }))}>{t("↑ Level {n} · {coins} 🪙", { n: tw.level + 1, coins: up.coins })}</Button>}
+            {tw.hp < st.maxHp && <Button className="btn ghost" onClick={() => act(() => api("/api/towers", { body: { action: "repair", towerId: tw.id } }))}>🔧 {t("Repair")}</Button>}
+            <Button className="btn ghost" onClick={() => setPanel("base")}>{t("All defenses")}</Button>
           </div>
         ) : hostile ? (
           <>
             <div className="row wrap">
-              {shoot("tower", t.id)}
-              <Button className="btn yellow" disabled={dist > st.range + 15 || !!me.downedUntil} onClick={() => onC4(t.id)}>💣 Plant C4</Button>
-              {marchOn("tower", t.id, `${t.owner}'s ${st.def.name}`)}
-              <OrderSquads kind="tower" id={t.id} />
-              {teleport && dist > st.range + 15 && <Button className="btn ghost" onClick={() => teleport(t)}><MoveIcon /> Go there</Button>}
+              {shoot("tower", tw.id)}
+              <Button className="btn yellow" disabled={dist > st.range + 15 || !!me.downedUntil} onClick={() => onC4(tw.id)}>{t("💣 Plant C4")}</Button>
+              {marchOn("tower", tw.id, t("{owner}'s {name}", { owner: tw.owner, name: t(st.def.name) }))}
+              <OrderSquads kind="tower" id={tw.id} />
+              {teleport && dist > st.range + 15 && <Button className="btn ghost" onClick={() => teleport(tw)}><MoveIcon /> {t("Go there")}</Button>}
             </div>
             <p className="small muted">
-              {me.rookie ? "Rookie cover: it won't shoot you until level 3." : `It shoots commanders inside ${st.range} m — run in, wire the charge fast, get out.`} Or march a squad at it from your base.
+              {me.rookie ? t("Rookie cover: it won't shoot you until level 3.") : t("It shoots commanders inside {m} m — run in, wire the charge fast, get out.", { m: st.range })} {t("Or march a squad at it from your base.")}
             </p>
           </>
         ) : (
-          <p className="small muted">Your crew&apos;s tower. It covers you and shoots raiders attacking crew bases.</p>
+          <p className="small muted">{t("Your crew's tower. It covers you and shoots raiders attacking crew bases.")}</p>
         )}
       </Sheet>
     );
@@ -1443,28 +1478,28 @@ function InfoCard({
   if (sel.type === "squad") {
     const q = sel.data;
     const marching = q.status === "MARCH" && q.arriveAt > Date.now();
-    const units = q.units ? Object.entries(q.units).filter(([, n]) => n).map(([k, n]) => `${UNITS.find((u) => u.key === k)?.emoji} ${n}`).join("  ") : `~${q.size} units (research 📡 Radar to see more)`;
+    const units = q.units ? Object.entries(q.units).filter(([, n]) => n).map(([k, n]) => `${UNITS.find((u) => u.key === k)?.emoji} ${fmtNum(n ?? 0)}`).join("  ") : t("~{n} units (research 📡 Radar to see more)", { n: q.size });
     return (
-      <Sheet title={`${q.icon} ${q.mine ? "Your squad" : `${q.owner}'s squad`}`} onClose={onClose}>
+      <Sheet title={`${q.icon} ${q.mine ? t("Your squad") : t("{name}'s squad", { name: q.owner })}`} onClose={onClose}>
         <p className="small muted">
-          {q.friend ? "Crew · " : !q.mine ? <span style={{ color: "var(--red)" }}>Hostile · </span> : null}
-          {marching ? `${q.order === "attack" ? "On the attack" : q.order === "return" ? "Heading home" : "On the move"} · arrives in ${Math.max(0, Math.ceil((q.arriveAt - Date.now()) / 1000))}s` : "Holding position"} · {formatDistance(dist)}
+          {q.friend ? `${t("Crew")} · ` : !q.mine ? <span style={{ color: "var(--red)" }}>{t("Hostile")} · </span> : null}
+          {marching ? `${q.order === "attack" ? t("On the attack") : q.order === "return" ? t("Heading home") : t("On the move")} · ${t("arrives in {n}s", { n: Math.max(0, Math.ceil((q.arriveAt - Date.now()) / 1000)) })}` : t("Holding position")} · {formatDistance(dist)}
         </p>
         <div className="card small">🪖 {units}</div>
         {q.mine ? (
           <div className="row wrap">
-            <Button className="btn cyan" onClick={() => { onClose(); pick("Tap where this squad should move", (to) => act(() => api("/api/squads", { body: { action: "move", squadId: q.id, to } }))); }}>📍 Move</Button>
-            {q.order !== "return" && <Button className="btn ghost" onClick={() => act(() => api("/api/squads", { body: { action: "recall", squadId: q.id } })).then((ok) => ok && onClose())}>↩️ Recall</Button>}
-            <p className="small muted">To attack with it, tap an enemy tower, squad, base or outpost and use <b>Order my squads</b>.</p>
+            <Button className="btn cyan" onClick={() => { onClose(); pick(t("Tap where this squad should move"), (to) => act(() => api("/api/squads", { body: { action: "move", squadId: q.id, to } }))); }}>📍 {t("Move")}</Button>
+            {q.order !== "return" && <Button className="btn ghost" onClick={() => act(() => api("/api/squads", { body: { action: "recall", squadId: q.id } })).then((ok) => ok && onClose())}>↩️ {t("Recall")}</Button>}
+            <p className="small muted">{t("To attack with it, tap an enemy tower, squad, base or outpost and use “Order my squads”.")}</p>
           </div>
         ) : !q.friend ? (
           <>
             <div className="row wrap">
               {shoot("squad", q.id)}
-              {!marching && marchOn("squad", q.id, `${q.owner}'s squad`)}
+              {!marching && marchOn("squad", q.id, t("{name}'s squad", { name: q.owner }))}
               {!marching && <OrderSquads kind="squad" id={q.id} />}
             </div>
-            <p className="small muted">{marching ? "It's on the move — wait for it to stop before you can engage." : "Guard squads shoot commanders within 55 m and join any fight at nearby bases and outposts."}</p>
+            <p className="small muted">{marching ? t("It's on the move — wait for it to stop before you can engage.") : t("Guard squads shoot commanders within 55 m and join any fight at nearby bases and outposts.")}</p>
           </>
         ) : null}
       </Sheet>
@@ -1474,9 +1509,14 @@ function InfoCard({
   if (sel.type === "ping") {
     const pg = sel.data;
     return (
-      <Sheet title={`${PINGS[pg.kind]?.emoji} ${PINGS[pg.kind]?.label}`} onClose={onClose}>
-        <p className="small muted">{pg.avatar} {pg.mine ? "You" : pg.by} pinged this spot · {formatDistance(dist)} · fades in {Math.max(0, Math.ceil((pg.expiresAt - Date.now()) / 60000))} min</p>
-        {teleport && <Button className="btn yellow" onClick={() => teleport(pg)}><MoveIcon /> Go there</Button>}
+      <Sheet title={`${PINGS[pg.kind]?.emoji} ${t(PINGS[pg.kind]?.label ?? "")}`} onClose={onClose}>
+        <p className="small muted">
+          {pg.avatar}{" "}
+          {pg.mine
+            ? t("You pinged this spot · {d} · fades in {n} min", { d: formatDistance(dist), n: Math.max(0, Math.ceil((pg.expiresAt - Date.now()) / 60000)) })
+            : t("{name} pinged this spot · {d} · fades in {n} min", { name: pg.by, d: formatDistance(dist), n: Math.max(0, Math.ceil((pg.expiresAt - Date.now()) / 60000)) })}
+        </p>
+        {teleport && <Button className="btn yellow" onClick={() => teleport(pg)}><MoveIcon /> {t("Go there")}</Button>}
       </Sheet>
     );
   }
@@ -1492,30 +1532,30 @@ function InfoCard({
     return (
       <Sheet title={`🚩 ${f.name}`} onClose={onClose}>
         <p className="small muted">
-          {f.mine ? "Your flag" : `${f.ownerAvatar} ${f.owner}${f.friend ? " (crew)" : ""}`} · held {Math.max(1, Math.round((Date.now() - f.heldSince) / 60000))} min · captured {f.captures}× · {formatDistance(dist)}
+          {f.mine ? t("Your flag") : `${f.ownerAvatar} ${f.owner}${f.friend ? ` ${t("(crew)")}` : ""}`} · {t("held {m} min · captured {n}× · {d}", { m: Math.max(1, Math.round((Date.now() - f.heldSince) / 60000)), n: f.captures, d: formatDistance(dist) })}
         </p>
-        {f.capture && <div className="card small" style={{ borderColor: "var(--red)" }}>⚔️ {f.capture.mine ? "You are" : `${f.capture.by} is`} capturing it — {capLeft}s left</div>}
-        {f.shielded && <p className="small" style={{ color: "var(--cyan)" }}>🛡️ Just captured — can&apos;t be flipped for a few minutes</p>}
+        {f.capture && <div className="card small" style={{ borderColor: "var(--red)" }}>{f.capture.mine ? t("⚔️ You are capturing it — {s}s left", { s: capLeft }) : t("⚔️ {name} is capturing it — {s}s left", { name: f.capture.by ?? "", s: capLeft })}</div>}
+        {f.shielded && <p className="small" style={{ color: "var(--cyan)" }}>{t("🛡️ Just captured — can't be flipped for a few minutes")}</p>}
         <div className="row wrap">
           {ours ? (
             <>
-              {f.capture && <Button className="btn green" disabled={!inRange} onClick={() => doFlag("defend")}>🛡️ Defend</Button>}
-              {f.mine && <Button className="btn yellow" onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>🪙 Collect tribute</Button>}
-              {f.mine && <Button className="btn ghost" onClick={() => askConfirm(`Abandon "${f.name}"?`, { ok: "Abandon", danger: true }).then((ok) => (ok ? doFlag("abandon").then(onClose) : undefined))}>🏳️</Button>}
+              {f.capture && <Button className="btn green" disabled={!inRange} onClick={() => doFlag("defend")}>🛡️ {t("Defend")}</Button>}
+              {f.mine && <Button className="btn yellow" onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>🪙 {t("Collect tribute")}</Button>}
+              {f.mine && <Button className="btn ghost" aria-label={t("Abandon")} onClick={() => askConfirm(t("Abandon “{name}”?", { name: f.name }), { ok: t("Abandon"), danger: true }).then((ok) => (ok ? doFlag("abandon").then(onClose) : undefined))}>🏳️</Button>}
             </>
           ) : (
             <Button className="btn" disabled={!inRange || f.shielded || !!me.downedUntil} onClick={() => doFlag("capture")}>
-              🚩 {f.capture?.mine ? (capLeft > 0 ? `Hold… ${capLeft}s` : "Claim it!") : "Capture"}
+              🚩 {f.capture?.mine ? (capLeft > 0 ? t("Hold… {s}s", { s: capLeft }) : t("Claim it!")) : t("Capture")}
             </Button>
           )}
-          {teleport && !inRange && <Button className="btn yellow" onClick={() => teleport(f)}><MoveIcon /> Go there</Button>}
+          {teleport && !inRange && <Button className="btn yellow" onClick={() => teleport(f)}><MoveIcon /> {t("Go there")}</Button>}
         </div>
         <p className="small muted">
           {ours
-            ? `Rivals capture it by standing within ${FLAG_RADIUS_M} m for ${CAPTURE_SECONDS}s. Being there yourself stops them.`
+            ? t("Rivals capture it by standing within {r} m for {s}s. Being there yourself stops them.", { r: FLAG_RADIUS_M, s: CAPTURE_SECONDS })
             : inRange
-              ? `Stay within ${FLAG_RADIUS_M} m for ${CAPTURE_SECONDS}s, then tap again to claim it. Defenders standing here block you — shoot them first.`
-              : `Walk within ${FLAG_RADIUS_M} m to capture it.`}
+              ? t("Stay within {r} m for {s}s, then tap again to claim it. Defenders standing here block you — shoot them first.", { r: FLAG_RADIUS_M, s: CAPTURE_SECONDS })
+              : t("Walk within {r} m to capture it.", { r: FLAG_RADIUS_M })}
         </p>
       </Sheet>
     );
@@ -1526,15 +1566,15 @@ function InfoCard({
     const def = SUPERWEAPONS[x.kind];
     const left = Math.ceil((x.impactAt - Date.now()) / 1000);
     return (
-      <Sheet title={`${def.emoji} ${def.name}`} onClose={onClose}>
+      <Sheet title={`${def.emoji} ${t(def.name)}`} onClose={onClose}>
         <p>
           {left > 0
-            ? <b style={{ color: "var(--red)" }}>Impact in {left}s! {dist <= x.radius ? "You're inside the blast — RUN!" : "You're outside the blast."}</b>
+            ? <b style={{ color: "var(--red)" }}>{t("Impact in {s}s!", { s: left })} {dist <= x.radius ? t("You're inside the blast — RUN!") : t("You're outside the blast.")}</b>
             : x.hazardUntil && x.hazardUntil > Date.now()
-              ? <>☣️ {def.hazard?.label} — dangerous for another {Math.ceil((x.hazardUntil - Date.now()) / 60000)} min. Stay out of the circle.</>
-              : "The dust has settled."}
+              ? <>{t("☣️ {hazard} — dangerous for another {n} min. Stay out of the circle.", { hazard: t(def.hazard?.label ?? ""), n: Math.ceil((x.hazardUntil - Date.now()) / 60000) })}</>
+              : t("The dust has settled.")}
         </p>
-        <p className="small muted">Launched by {x.mine ? "you" : x.owner} · {x.radius} m radius · {def.blurb}</p>
+        <p className="small muted">{x.mine ? t("Launched by you · {r} m radius · {blurb}", { r: x.radius, blurb: t(def.blurb) }) : t("Launched by {name} · {r} m radius · {blurb}", { name: x.owner, r: x.radius, blurb: t(def.blurb) })}</p>
       </Sheet>
     );
   }
@@ -1543,33 +1583,33 @@ function InfoCard({
   return (
     <Sheet title={`${p.avatar} ${p.username}`} onClose={onClose}>
       <p className="muted">
-        Level {p.level} · {p.friend ? "In your crew" : "~ approximate location"}
-        {p.bounty > 0 && <span style={{ color: "var(--yellow)" }}> · 💀 WANTED {p.bounty.toLocaleString()} 🪙</span>}
+        {t("Level {n}", { n: p.level })} · {p.friend ? t("In your crew") : t("~ approximate location")}
+        {p.bounty > 0 && <span style={{ color: "var(--yellow)" }}> · {t("💀 WANTED {n} 🪙", { n: p.bounty })}</span>}
       </p>
       {p.friend ? (
         <div className="row">
-          <Button className="btn cyan grow" onClick={() => openChat(`dm:${[me.id, p.id].sort().join(":")}`, p.username)}>💬 Message</Button>
-          <Button className="btn green grow" onClick={() => startCall({ id: p.id, username: p.username, avatar: p.avatar })}>📹 Video call</Button>
+          <Button className="btn cyan grow" onClick={() => openChat(`dm:${[me.id, p.id].sort().join(":")}`, p.username)}>💬 {t("Message")}</Button>
+          <Button className="btn green grow" onClick={() => startCall({ id: p.id, username: p.username, avatar: p.avatar })}>📹 {t("Video call")}</Button>
         </div>
       ) : (
         <>
           <div className="row wrap">
-            {shoot("player", p.id, `🔫 Attack`)}
-            <Button className="btn ghost" onClick={() => act(() => api("/api/friends", { body: { action: "request", username: p.username } }))}>➕ Add to crew</Button>
+            {shoot("player", p.id, `🔫 ${t("Attack")}`)}
+            <Button className="btn ghost" onClick={() => act(() => api("/api/friends", { body: { action: "request", username: p.username } }))}>➕ {t("Add to crew")}</Button>
             <Button
               className="btn ghost"
               onClick={() =>
-                askText(`Bounty on ${p.username}`, "200", { body: `Coins are held until someone downs them (refunded after ${BOUNTY_DAYS} days). ${BOUNTY_MIN}–${BOUNTY_MAX} 🪙.`, ok: "Place bounty" }).then((v) => {
-                  const amount = Math.round(Number(v));
+                askText(t("Bounty on {name}", { name: p.username }), "200", { body: t("Coins are held until someone downs them (refunded after {days} days). {min}–{max} 🪙.", { days: BOUNTY_DAYS, min: BOUNTY_MIN, max: BOUNTY_MAX }), ok: t("Place bounty") }).then((v) => {
+                  const amount = Math.round(Number(toAsciiDigits(v ?? "")));
                   if (v && Number.isFinite(amount)) return act(() => api("/api/bounties", { body: { targetId: p.id, amount } }));
                 })
               }
             >
-              💀 Bounty
+              💀 {t("Bounty")}
             </Button>
           </div>
           <p className="small muted">
-            {me.rookie ? "Reach level 3 to fight other commanders." : `Shots land within ${SHOOT_RANGE_M} m (their map position is approximate — get close). Downing them steals some coins and 5 🏆.`}
+            {me.rookie ? t("Reach level 3 to fight other commanders.") : t("Shots land within {m} m (their map position is approximate — get close). Downing them steals some coins and 5 🏆.", { m: SHOOT_RANGE_M })}
           </p>
         </>
       )}
@@ -1586,12 +1626,12 @@ function OrderSquads({ kind, id }: { kind: "tower" | "squad" | "base" | "outpost
   if (!mine.length) return null;
   return (
     <>
-      <Button className="btn ghost" onClick={() => setOpen(!open)}>⚔️ Order my squads ({mine.length})</Button>
+      <Button className="btn ghost" onClick={() => setOpen(!open)}>{t("⚔️ Order my squads ({n})", { n: mine.length })}</Button>
       {open && (
         <div className="row wrap" style={{ width: "100%" }}>
           {mine.map((q) => (
             <Button key={q.id} className="btn small" onClick={() => act(() => api("/api/squads", { body: { action: "attack", squadId: q.id, target: { kind, id } } })).then((ok) => ok && setOpen(false))}>
-              {q.icon} {q.size} → attack
+              {t("{icon} {n} → attack", { icon: q.icon, n: q.size })}
             </Button>
           ))}
         </div>
@@ -1610,8 +1650,8 @@ function HpChip({ me, fire, now }: { me: Me; fire: (FireReport & { at: number })
   if (hp >= max && !hurt) return null;
   return (
     <>
-      <div className={`chip small hp-chip ${hp < max * 0.3 ? "low" : ""}`} title="Your health on the street — hostile towers and guards shoot you">
-        ❤️ {hp}/{max}
+      <div className={`chip small hp-chip ${hp < max * 0.3 ? "low" : ""}`} title={t("Your health on the street — hostile towers and guards shoot you")}>
+        ❤️ {fmtNum(hp)}/{fmtNum(max)}
         <span className="hpline"><i style={{ width: `${(hp / max) * 100}%` }} /></span>
       </div>
       {hurt && <div className="hurt-flash" />}
@@ -1631,16 +1671,16 @@ function WaveBanner({ wave, now, meId, dist, striking, onStrike, onGo }: { wave:
   return (
     <div className={`wave-banner ${started ? "live" : ""}`}>
       <div className="grow">
-        <div className="small" style={{ color: "var(--red)", fontWeight: 800 }}>🏴‍☠️ RAIDERS {w.ownerId === meId ? "→ YOUR BASE" : "→ CREW BASE"}{w.boost > 1 ? " · ×1.5" : ""}</div>
-        <b style={{ fontFamily: "var(--display)" }}>{started ? `${alive}/${def.creeps.length} left` : `${def.creeps.length} incoming`}</b>
-        <span className="small muted"> · {started ? "ends" : "in"} {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</span>
+        <div className="small" style={{ color: "var(--red)", fontWeight: 800 }}>{w.ownerId === meId ? t("🏴‍☠️ RAIDERS → YOUR BASE") : t("🏴‍☠️ RAIDERS → CREW BASE")}{w.boost > 1 ? ` · ×${fmtNum(1.5)}` : ""}</div>
+        <b style={{ fontFamily: "var(--display)" }}>{started ? t("{alive}/{total} left", { alive, total: def.creeps.length }) : t("{n} incoming", { n: def.creeps.length })}</b>
+        <span className="small muted"> · {started ? t("ends in {time}", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` }) : t("starts in {time}", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` })}</span>
       </div>
       {started && (
-        <Button className="btn small" style={{ background: striking ? "#ff8a00" : undefined }} disabled={dist > STRIKE_RANGE_M || used >= STRIKES_PER_WAVE} onClick={onStrike} title={dist > STRIKE_RANGE_M ? `Get within ${STRIKE_RANGE_M} m of the base` : ""}>
-          ✈️ {dist > STRIKE_RANGE_M ? "Get closer" : `Strike (${STRIKES_PER_WAVE - used})`}
+        <Button className="btn small" style={{ background: striking ? "#ff8a00" : undefined }} disabled={dist > STRIKE_RANGE_M || used >= STRIKES_PER_WAVE} onClick={onStrike} title={dist > STRIKE_RANGE_M ? t("Get within {m} m of the base", { m: STRIKE_RANGE_M }) : ""}>
+          ✈️ {dist > STRIKE_RANGE_M ? t("Get closer") : t("Strike ({n})", { n: STRIKES_PER_WAVE - used })}
         </Button>
       )}
-      {onGo && dist > 150 && <Button className="btn yellow small" onClick={onGo}><MoveIcon /> Go</Button>}
+      {onGo && dist > 150 && <Button className="btn yellow small" onClick={onGo}><MoveIcon /> {t("Go")}</Button>}
     </div>
   );
 }
@@ -1653,9 +1693,9 @@ function SuperweaponFab({ sw, now, onFire }: { sw: NonNullable<Me["superweapon"]
   const h = Math.floor(left / 3_600_000);
   const m = Math.ceil((left % 3_600_000) / 60_000);
   return (
-    <Button className={`fab sw-fab ${ready ? "ready" : ""}`} title={ready ? `Launch ${sw.name}` : `${sw.name} charging`} disabled={!ready} onClick={onFire}>
+    <Button className={`fab sw-fab ${ready ? "ready" : ""}`} title={ready ? t("Launch {name}", { name: t(sw.name) }) : t("{name} charging", { name: t(sw.name) })} disabled={!ready} onClick={onFire}>
       {sw.emoji}
-      {!ready && <span className="sw-charge">{h ? `${h}h` : `${m}m`}</span>}
+      {!ready && <span className="sw-charge">{h ? t("{n}h", { n: h }) : t("{n}m", { n: m })}</span>}
     </Button>
   );
 }

@@ -4,7 +4,7 @@
 import type { Squad, Tower, User } from "@prisma/client";
 import { prisma } from "../lib/db";
 import { bbox, distanceM, type LatLng } from "../lib/geo";
-import { resolveOutpost } from "../lib/outposts";
+import { outpostLabel, resolveOutpost } from "../lib/outposts";
 import { levelForXp } from "../lib/progression";
 import { factionOf, levelOf, resolveBattle, vaultProtection, type Army } from "../lib/rts";
 import {
@@ -34,7 +34,8 @@ import { SUPERWEAPONS, type SuperKey } from "../lib/superweapons";
 import { addUnits, fmtLosses, loadBase } from "./army";
 import { bonusOf, heroOf } from "./hero";
 import { HttpError } from "./http";
-import { notify } from "./hub";
+import { asUser, notify } from "./hub";
+import { t } from "../lib/i18n";
 import { questEvent } from "./quests";
 import { grant, unlock } from "./rewards";
 import { friendIds } from "./rooms";
@@ -99,7 +100,7 @@ export async function takeFire(u: User, pos: LatLng, dtSec: number): Promise<Fir
   const top = hostile.sort((a, b) => b.dps - a.dps)[0];
   const coins = await knockDown(u, maxHp, top.ownerId);
   if (top.towerId) await prisma.tower.updateMany({ where: { id: top.towerId }, data: { kills: { increment: 1 } } });
-  await notify(top.ownerId, { kind: "reward", title: `${top.emoji} Your defenses downed ${u.username}`, body: `+${coins} 🪙 bounty` });
+  await notify(top.ownerId, () => ({ kind: "reward", title: t("{emoji} Your defenses downed {name}", { emoji: top.emoji, name: u.username }), body: t("+{n} 🪙 bounty", { n: coins }) }));
   return { hp: 0, maxHp, hits, downed: { by: top.name, coins } };
 }
 
@@ -128,23 +129,23 @@ export async function claimBounties(targetId: string, byUserId: string) {
   if (!total) return 0;
   await grant(byUserId, { coins: total, xp: Math.min(500, Math.round(total / 5)) }, { raw: true });
   const target = await prisma.user.findUnique({ where: { id: targetId }, select: { username: true } });
-  await notify(byUserId, { kind: "reward", title: `💀 Bounty collected on ${target?.username}!`, body: `+${total} 🪙` });
+  await notify(byUserId, () => ({ kind: "reward", title: t("💀 Bounty collected on {name}!", { name: target?.username ?? "" }), body: `+${total} 🪙` }));
   await unlock(byUserId, "bounty_hunter");
   return total;
 }
 
 /** Can this commander be shot right now? Returns the reason if not. */
 export function shotProtection(u: Pick<User, "xp" | "downedUntil">, now = Date.now()) {
-  if (levelForXp(u.xp) < ROOKIE_LEVEL) return "is a rookie (below level 3)";
-  if (u.downedUntil && now < u.downedUntil.getTime()) return "is already down";
-  if (u.downedUntil && now < u.downedUntil.getTime() + RESPAWN_IMMUNE_MS) return "just respawned";
+  if (levelForXp(u.xp) < ROOKIE_LEVEL) return t("is a rookie (below level 3)");
+  if (u.downedUntil && now < u.downedUntil.getTime()) return t("is already down");
+  if (u.downedUntil && now < u.downedUntil.getTime() + RESPAWN_IMMUNE_MS) return t("just respawned");
   return null;
 }
 
 export async function assertNotDowned(u: Pick<User, "downedUntil">) {
   if (u.downedUntil && u.downedUntil.getTime() > Date.now()) {
     const s = Math.ceil((u.downedUntil.getTime() - Date.now()) / 1000);
-    throw new HttpError(400, `You're down! Patching up for ${s}s more`);
+    throw new HttpError(400, t("You're down! Patching up for {s}s more", { s }));
   }
 }
 
@@ -191,7 +192,8 @@ export async function settleSquads(where: { near?: LatLng; ownerId?: string }) {
         await holdAt(s.id);
         continue;
       }
-      await resolveAttack(s, at);
+      // Settled by whoever looks at the map: report in the squad owner's language.
+      await asUser(s.ownerId, () => resolveAttack(s, at));
     } catch (e) {
       console.error("squad settle failed", e);
       await holdAt(s.id);
@@ -203,10 +205,11 @@ async function resolveAttack(s: Squad, at: LatLng) {
   const owner = await prisma.user.findUniqueOrThrow({ where: { id: s.ownerId } });
   const force = squadForce(s);
   const say = (title: string, body?: string) => notify(owner.id, { kind: "event", title, body });
+  const tr = t; // `t` is the target tower below
 
   if (s.targetKind === "tower") {
     const t = await prisma.tower.findUnique({ where: { id: s.targetId! }, include: { owner: { select: { username: true } } } });
-    if (!t) return holdAt(s.id).then(() => say("🎖️ Squad arrived", "The target tower was already gone — holding position"));
+    if (!t) return holdAt(s.id).then(() => say(tr("🎖️ Squad arrived"), tr("The target tower was already gone — holding position")));
     const st = towerStats(t);
     const defBonus = await heroOf(await prisma.user.findUniqueOrThrow({ where: { id: t.ownerId } }));
     const r = resolveBattle(
@@ -219,12 +222,12 @@ async function resolveAttack(s: Squad, at: LatLng) {
       await prisma.tower.deleteMany({ where: { id: t.id } });
       await grant(owner.id, { coins: Math.round(TOWER_BY_KEY[t.type as TowerKey].cost * 0.25), xp: 80, scrap: 2 + t.level });
       await questEvent(owner.id, "tower_down");
-      await notify(t.ownerId, { kind: "event", title: `💥 ${owner.username}'s squad destroyed your ${st.def.name}`, body: "Rebuild it from Base → Defense" });
-      await say(`💥 ${st.def.emoji} ${t.owner.username}'s ${st.def.name} destroyed!`, `Lost ${fmtLosses(r.attackerLosses)} · squad is holding the ground`);
+      await notify(t.ownerId, () => ({ kind: "event", tag: "hurt", title: tr("💥 {name}'s squad destroyed your {tower}", { name: owner.username, tower: tr(st.def.name) }), body: tr("Rebuild it from Base → Defense") }));
+      await say(tr("💥 {emoji} {name}'s {tower} destroyed!", { emoji: st.def.emoji, name: t.owner.username, tower: tr(st.def.name) }), tr("Lost {losses} · squad is holding the ground", { losses: fmtLosses(r.attackerLosses) }));
       if (await prisma.squad.findUnique({ where: { id: s.id } })) await holdAt(s.id);
     } else {
       await prisma.tower.update({ where: { id: t.id }, data: { hp: Math.max(1, t.hp - r.structureDamage) } });
-      await say(`☠️ Squad failed to take the ${st.def.name}`, `It's at ${Math.max(1, t.hp - r.structureDamage)} HP · lost ${fmtLosses(r.attackerLosses)} · survivors falling back`);
+      await say(tr("☠️ Squad failed to take the {tower}", { tower: tr(st.def.name) }), tr("It's at {hp} HP · lost {losses} · survivors falling back", { hp: Math.max(1, t.hp - r.structureDamage), losses: fmtLosses(r.attackerLosses) }));
       if (await prisma.squad.findUnique({ where: { id: s.id } })) await sendHome(s, at);
     }
     return;
@@ -233,7 +236,7 @@ async function resolveAttack(s: Squad, at: LatLng) {
   if (s.targetKind === "squad") {
     const target = await prisma.squad.findUnique({ where: { id: s.targetId! }, include: { owner: true } });
     const where = target && (target.status === "HOLD" ? { lat: target.toLat, lng: target.toLng } : null);
-    if (!target || !where || distanceM(where, at) > 150) return holdAt(s.id).then(() => say("🎖️ Squad arrived", "The enemy squad slipped away — holding position"));
+    if (!target || !where || distanceM(where, at) > 150) return holdAt(s.id).then(() => say(t("🎖️ Squad arrived"), t("The enemy squad slipped away — holding position")));
     const enemy = squadForce(target);
     const r = resolveBattle(
       { army: force.army, vets: force.vets, faction: factionOf(owner.faction), bonus: (await heroOf(owner)).bonus },
@@ -243,9 +246,9 @@ async function resolveAttack(s: Squad, at: LatLng) {
     await force.onLosses(r.attackerLosses, r.won);
     await enemy.onLosses(r.defenderLosses, !r.won);
     await prisma.battle.create({ data: { attackerId: owner.id, defenderId: target.ownerId, kind: "skirmish", targetId: target.id, targetName: `${target.owner.username}'s squad`, won: r.won, loot: 0, log: r } });
-    await notify(target.ownerId, { kind: "event", title: r.won ? `☠️ ${owner.username} routed your squad` : `🛡️ Your squad beat off ${owner.username}`, body: `You lost ${fmtLosses(r.defenderLosses)}` });
+    await notify(target.ownerId, () => ({ kind: "event", title: r.won ? t("☠️ {name} routed your squad", { name: owner.username }) : t("🛡️ Your squad beat off {name}", { name: owner.username }), body: t("You lost {losses}", { losses: fmtLosses(r.defenderLosses) }) }));
     if (r.won) await grant(owner.id, { xp: 80, scrap: 2 });
-    await say(r.won ? "⚔️ Skirmish won!" : "☠️ Skirmish lost", `Lost ${fmtLosses(r.attackerLosses)} · they lost ${fmtLosses(r.defenderLosses)}`);
+    await say(r.won ? t("⚔️ Skirmish won!") : t("☠️ Skirmish lost"), t("Lost {mine} · they lost {theirs}", { mine: fmtLosses(r.attackerLosses), theirs: fmtLosses(r.defenderLosses) }));
     if (await prisma.squad.findUnique({ where: { id: s.id } })) await (r.won ? holdAt(s.id) : sendHome(s, at));
     return;
   }
@@ -254,9 +257,9 @@ async function resolveAttack(s: Squad, at: LatLng) {
     const target = await loadBase({ id: s.targetId! });
     const myBase = await prisma.base.findUnique({ where: { ownerId: owner.id }, select: { id: true } });
     if (!target) return holdAt(s.id);
-    if (target.shieldUntil && target.shieldUntil > new Date()) return holdAt(s.id).then(() => say(`🛡️ ${target.name} put up a shield`, "Your squad is holding outside"));
+    if (target.shieldUntil && target.shieldUntil > new Date()) return holdAt(s.id).then(() => say(t("🛡️ {name} put up a shield", { name: target.name }), t("Your squad is holding outside")));
     const out = await siegeBase(owner, myBase?.id ?? null, force, target, "squad");
-    await say(out.won ? "🎖️ Squad assault succeeded" : "☠️ Squad assault failed", out.message);
+    await say(out.won ? t("🎖️ Squad assault succeeded") : t("☠️ Squad assault failed"), out.message);
     if (await prisma.squad.findUnique({ where: { id: s.id } })) await sendHome(s, at);
     return;
   }
@@ -266,9 +269,9 @@ async function resolveAttack(s: Squad, at: LatLng) {
     const row = site ? await prisma.outpost.findUnique({ where: { id: site.id } }) : null;
     if (!site) return holdAt(s.id);
     if (row?.ownerId === owner.id) return holdAt(s.id);
-    if (row?.shieldUntil && row.shieldUntil > new Date()) return holdAt(s.id).then(() => say(`🛡️ ${site.name} is dug in`, "Your squad is holding nearby"));
+    if (row?.shieldUntil && row.shieldUntil > new Date()) return holdAt(s.id).then(() => say(t("🛡️ {name} is dug in", { name: outpostLabel(site.name) }), t("Your squad is holding nearby")));
     const out = await assaultOutpost(owner, force, site);
-    await say(out.won ? "🚩 Squad took the outpost" : "☠️ Squad assault failed", out.message);
+    await say(out.won ? t("🚩 Squad took the outpost") : t("☠️ Squad assault failed"), out.message);
     const left = await prisma.squad.findUnique({ where: { id: s.id } });
     if (!left) return;
     if (out.won) {
@@ -346,17 +349,23 @@ export async function resolveWaves(baseIds: string[]) {
     for (const [userId, coins] of Object.entries(out.bounty)) {
       await grant(userId, { coins, xp: coins });
       await questEvent(userId, "raiders", out.kills[userId] ?? 0);
-      if (userId !== owner.id) await notify(userId, { kind: "reward", title: `🛡️ You helped defend ${base.name}`, body: `${out.kills[userId]} raiders down · +${coins} 🪙` });
+      if (userId !== owner.id) await notify(userId, () => ({ kind: "reward", title: t("🛡️ You helped defend {base}", { base: base.name }), body: t("{n} raiders down · +{coins} 🪙", { n: out.kills[userId] ?? 0, coins }) }));
     }
     const result = { killed, leaked, total: def.creeps.length, stolen, baseDmg: out.baseDmg, kills: out.kills, bounty: out.bounty };
     await prisma.wave.update({ where: { id: w.id }, data: { result } });
     if (!leaked && killed > 0) await unlock(owner.id, "wave_clear");
     await prisma.battle.create({ data: { attackerId: owner.id, kind: "wave", targetId: base.id, targetName: base.name, won: leaked === 0, loot: (out.bounty[owner.id] ?? 0) - stolen, log: result } });
-    await notify(owner.id, {
+    await notify(owner.id, () => ({
       kind: leaked ? "event" : "reward",
-      title: leaked ? `🏴‍☠️ Raiders hit ${base.name}: ${leaked} got through` : `🛡️ Raid wave crushed at ${base.name}!`,
-      body: `${killed}/${def.creeps.length} raiders down${out.bounty[owner.id] ? ` · +${out.bounty[owner.id]} 🪙 bounty` : ""}${stolen ? ` · −${stolen} 🪙 stolen` : ""}${out.baseDmg ? ` · −${out.baseDmg} integrity` : ""}`,
-    });
+      tag: leaked ? "hurt" : undefined,
+      title: leaked ? t("🏴‍☠️ Raiders hit {base}: {n} got through", { base: base.name, n: leaked }) : t("🛡️ Raid wave crushed at {base}!", { base: base.name }),
+      body: [
+        t("{killed}/{total} raiders down", { killed, total: def.creeps.length }),
+        out.bounty[owner.id] ? t("+{n} 🪙 bounty", { n: out.bounty[owner.id] }) : "",
+        stolen ? t("−{n} 🪙 stolen", { n: stolen }) : "",
+        out.baseDmg ? t("−{n} integrity", { n: out.baseDmg }) : "",
+      ].filter(Boolean).join(" · "),
+    }));
   }
 }
 

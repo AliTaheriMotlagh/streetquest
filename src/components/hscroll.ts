@@ -16,10 +16,13 @@ export function installHScroll() {
     const row = scrollable(e.target as Element);
     if (!row) return;
     const max = row.scrollWidth - row.clientWidth;
-    const atEnd = (e.deltaY > 0 && row.scrollLeft >= max - 1) || (e.deltaY < 0 && row.scrollLeft <= 0);
+    // Right-to-left rows scroll from 0 toward negative scrollLeft.
+    const sign = getComputedStyle(row).direction === "rtl" ? -1 : 1;
+    const from = Math.abs(row.scrollLeft);
+    const atEnd = (e.deltaY > 0 && from >= max - 1) || (e.deltaY < 0 && from <= 0);
     if (atEnd) return; // let the page/sheet scroll once the row is at its end
     e.preventDefault();
-    row.scrollBy({ left: e.deltaY, behavior: "auto" });
+    row.scrollBy({ left: sign * e.deltaY, behavior: "auto" });
   };
 
   let drag: { row: HTMLElement; x: number; left: number; moved: boolean } | null = null;

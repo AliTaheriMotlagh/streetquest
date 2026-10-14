@@ -6,6 +6,7 @@ import { pickWinner } from "../lib/lottery";
 import { notify } from "./hub";
 import { unlock } from "./rewards";
 import { HttpError } from "./http";
+import { t } from "../lib/i18n";
 
 type Where = { id?: string; near?: { minLat: number; maxLat: number; minLng: number; maxLng: number }; userId?: string };
 
@@ -49,16 +50,16 @@ async function drawOne(id: string) {
 
   const { lottery, tickets, winner, total } = res;
   if (!winner) {
-    for (const t of tickets)
-      await notify(t.userId, { kind: "reward", title: `🎰 ${lottery.name}: not enough players`, body: `Draw called off — ${t.qty * lottery.ticketPrice} coins refunded` });
+    for (const tk of tickets)
+      await notify(tk.userId, () => ({ kind: "reward", title: t("🎰 {name}: not enough players", { name: lottery.name }), body: t("Draw called off — {n} coins refunded", { n: tk.qty * lottery.ticketPrice }) }));
     return;
   }
   const w = await prisma.user.findUnique({ where: { id: winner.userId }, select: { username: true } });
   await unlock(winner.userId, "jackpot_1");
-  for (const t of tickets) {
-    if (t.userId === winner.userId)
-      await notify(t.userId, { kind: "reward", title: `🎰 JACKPOT! You won ${lottery.pot} coins`, body: `${lottery.name} — your ${t.qty} of ${total} tickets came up` });
-    else await notify(t.userId, { kind: "info", title: `🎰 ${lottery.name} drawn`, body: `${w?.username ?? "Someone"} won the ${lottery.pot}-coin pot. Better luck next time!` });
+  for (const tk of tickets) {
+    if (tk.userId === winner.userId)
+      await notify(tk.userId, () => ({ kind: "reward", title: t("🎰 JACKPOT! You won {n} coins", { n: lottery.pot }), body: t("{name} — your {mine} of {total} tickets came up", { name: lottery.name, mine: tk.qty, total }) }));
+    else await notify(tk.userId, () => ({ kind: "info", title: t("🎰 {name} drawn", { name: lottery.name }), body: t("{winner} won the {n}-coin pot. Better luck next time!", { winner: w?.username ?? t("Someone"), n: lottery.pot }) }));
   }
 }
 
@@ -69,15 +70,15 @@ async function drawOne(id: string) {
 export async function cancelLottery(id: string, byHost?: string) {
   const res = await prisma.$transaction(async (tx) => {
     const flipped = await tx.lottery.updateMany({ where: { id, status: "OPEN", ...(byHost ? { hostId: byHost } : {}) }, data: { status: "REFUNDED", drawnAt: new Date() } });
-    if (!flipped.count) throw new HttpError(409, "Lottery changed — refresh");
+    if (!flipped.count) throw new HttpError(409, t("Lottery changed — refresh"));
     const lottery = await tx.lottery.findUniqueOrThrow({ where: { id } });
     const tickets = await tx.lotteryTicket.findMany({ where: { lotteryId: id, qty: { gt: 0 } } });
-    if (byHost && tickets.some((t) => t.userId !== byHost)) throw new HttpError(400, "Players already bought tickets — the draw has to happen");
-    for (const t of tickets) await tx.user.update({ where: { id: t.userId }, data: { coins: { increment: t.qty * lottery.ticketPrice } } });
+    if (byHost && tickets.some((tk) => tk.userId !== byHost)) throw new HttpError(400, t("Players already bought tickets — the draw has to happen"));
+    for (const tk of tickets) await tx.user.update({ where: { id: tk.userId }, data: { coins: { increment: tk.qty * lottery.ticketPrice } } });
     return { lottery, tickets };
   });
-  for (const t of res.tickets)
-    if (t.userId !== byHost) await notify(t.userId, { kind: "info", title: `🎰 ${res.lottery.name} cancelled`, body: `${t.qty * res.lottery.ticketPrice} coins refunded` });
+  for (const tk of res.tickets)
+    if (tk.userId !== byHost) await notify(tk.userId, () => ({ kind: "info", title: t("🎰 {name} cancelled", { name: res.lottery.name }), body: t("{n} coins refunded", { n: tk.qty * res.lottery.ticketPrice }) }));
 }
 
 /** The client's view of a lottery (who holds which tickets stays private). */

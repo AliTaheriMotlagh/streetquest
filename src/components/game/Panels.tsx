@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
-import { RARITY_COLOR } from "@/lib/catalog";
+import { RARITY_COLOR, RARITY_LABEL } from "@/lib/catalog";
 import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote, type WorldRide } from "./client";
 import { RIDE_MAX_FARE, RIDE_MIN_FARE, RIDE_MIN_TRIP_M, RIDE_STATUS, suggestFare, type RideStatus } from "@/lib/rides";
@@ -18,6 +19,7 @@ import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalon
 import { Button } from "@/components/Button";
 import { ModeCards } from "./LocationUi";
 import { autoIsLite, onPerfChange, perfMode, setPerfMode, type PerfMode } from "@/components/perf";
+import { LanguagePicker } from "@/components/LanguageSwitch";
 
 const navUrl = (lat: number, lng: number) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
@@ -27,12 +29,12 @@ export function LocationField({ label, value, onChange }: { label: string; value
     <>
       <label>{label}</label>
       <div className="row">
-        <div className="grow small mono muted">{value ? `${value.lat.toFixed(5)}, ${value.lng.toFixed(5)}` : "not set"}</div>
+        <div className="grow small mono muted" dir="ltr">{value ? `${value.lat.toFixed(5)}, ${value.lng.toFixed(5)}` : t("not set")}</div>
         <Button type="button" className="btn ghost small" onClick={() => pos && onChange(pos)}>
-          📍 Here
+          📍 {t("Here")}
         </Button>
-        <Button type="button" className="btn ghost small" onClick={() => pick(`Tap the map: ${label}`, onChange)}>
-          🗺️ Pick
+        <Button type="button" className="btn ghost small" onClick={() => pick(t("Tap the map: {label}", { label }), onChange)}>
+          🗺️ {t("Pick")}
         </Button>
       </div>
     </>
@@ -50,17 +52,17 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
   const d = (p: LatLng) => (pos ? distanceM(pos, p) : 0);
 
   const spawns = (world?.spawns ?? []).filter((s) => !s.claimed).sort((a, b) => d(a) - d(b));
-  const phaseInfo = world && {
-    night: "🌙 Night — Moon Shards & Street Crowns are out",
-    dawn: "🌅 Dawn — golden hour, double XP!",
-    day: "☀️ Daytime — Sun Stones are spawning",
-    dusk: "🌇 Dusk — golden hour, double XP!",
-  }[world.phase];
+  const phaseInfo = world && t({
+    night: msg("🌙 Night — Moon Shards & Street Crowns are out"),
+    dawn: msg("🌅 Dawn — golden hour, double XP!"),
+    day: msg("☀️ Daytime — Sun Stones are spawning"),
+    dusk: msg("🌇 Dusk — golden hour, double XP!"),
+  }[world.phase]);
 
   return (
-    <Sheet title="Nearby" onClose={onClose} peek={peek} help="nearby">
+    <Sheet title={t("Nearby")} onClose={onClose} peek={peek} help="nearby">
       {phaseInfo && <div className="card small">{phaseInfo}</div>}
-      <Tabs value={tab} onChange={setTab} tabs={[["spawns", `Spawns (${spawns.length})`], ["notes", `Posts (${world?.notes.length ?? 0})`], ["flags", `🚩 Flags (${world?.flags.length ?? 0})`]]} />
+      <Tabs value={tab} onChange={setTab} tabs={[["spawns", t("Spawns ({n})", { n: spawns.length })], ["notes", t("Posts ({n})", { n: world?.notes.length ?? 0 })], ["flags", t("🚩 Flags ({n})", { n: world?.flags.length ?? 0 })]]} />
       {tab === "spawns" &&
         (spawns.length ? (
           spawns.map((s) => (
@@ -69,34 +71,34 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
                 {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji}
               </div>
               <div className="grow">
-                <b>{s.kind === "run" ? s.run!.title : s.kind === "chest" ? "Locked Chest" : s.kind === "arcade" ? "Arcade: Shooting Range" : s.kind === "derrick" ? "Oil Derrick" : s.item?.name}</b>
+                <b>{s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Locked Chest") : s.kind === "arcade" ? t("Arcade: Shooting Range") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item?.name ?? "")}</b>
                 <div className="small muted">
-                  {formatDistance(d(s))} · +{s.rewardXp} XP {s.goldenHour && "· ✨2×"}
+                  {formatDistance(d(s))} · {t("+{n} XP", { n: s.rewardXp })} {s.goldenHour && "· ✨2×"}
                 </div>
               </div>
-              <span className="small muted">{Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000))}m</span>
+              <span className="small muted">{t("{n}m", { n: Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000)) })}</span>
             </div>
           ))
         ) : (
-          <div className="empty">Nothing left nearby. Walk a few blocks or wait for the next spawn wave.</div>
+          <div className="empty">{t("Nothing left nearby. Walk a few blocks or wait for the next spawn wave.")}</div>
         ))}
       {tab === "notes" && (
         <>
           <div className="card">
-            <b>📍 Pin a post right here</b>
+            <b>📍 {t("Pin a post right here")}</b>
             <p className="small muted" style={{ margin: "4px 0 8px" }}>
-              Text and/or a photo. Only players who physically come within the radius can see it. Likes earn you XP.
+              {t("Text and/or a photo. Only players who physically come within the radius can see it. Likes earn you XP.")}
             </p>
-            <textarea rows={2} maxLength={280} value={note} onChange={(e) => setNote(e.target.value)} placeholder="The best tacos in town are behind this wall…" />
+            <textarea rows={2} maxLength={280} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("The best tacos in town are behind this wall…")} dir="auto" />
             {photo && (
               <div className="photo-preview">
-                <img src={photo} alt="Your photo" />
-                <Button className="close" onClick={() => setPhoto(null)} aria-label="Remove photo">✕</Button>
+                <img src={photo} alt={t("Your photo")} />
+                <Button className="close" onClick={() => setPhoto(null)} aria-label={t("Remove photo")}>✕</Button>
               </div>
             )}
             <div className="row wrap" style={{ marginTop: 8 }}>
               <label className="btn ghost small" style={{ margin: 0 }}>
-                📸 {photo ? "Change" : "Photo"}
+                📸 {photo ? t("Change") : t("Photo")}
                 <input
                   type="file"
                   accept="image/*"
@@ -117,7 +119,7 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
               <select value={radius} onChange={(e) => setRadius(Number(e.target.value))} style={{ width: "auto" }}>
                 {[20, 50, 100, 200].map((r) => (
                   <option key={r} value={r}>
-                    {r} m radius
+                    {t("{n} m radius", { n: r })}
                   </option>
                 ))}
               </select>
@@ -133,7 +135,7 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
                   }
                 }}
               >
-                Post · {photo ? 15 : 5} 🪙
+                {t("Post · {n} 🪙", { n: photo ? 15 : 5 })}
               </Button>
             </div>
           </div>
@@ -145,18 +147,18 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
       {tab === "flags" && (
         <>
           <div className="card">
-            <b>🚩 King of the hill</b>
+            <b>🚩 {t("King of the hill")}</b>
             <p className="small muted" style={{ margin: "4px 0 8px" }}>
-              Plant a flag where you stand ({FLAG_COST} 🪙). It pays {FLAG_INCOME_HOUR} 🪙/hour while you hold it. Rivals capture it by standing on it for {CAPTURE_SECONDS}s while nobody from your crew is there — so defend it in person!
+              {t("Plant a flag where you stand ({cost} 🪙). It pays {income} 🪙/hour while you hold it. Rivals capture it by standing on it for {s}s while nobody from your crew is there — so defend it in person!", { cost: FLAG_COST, income: FLAG_INCOME_HOUR, s: CAPTURE_SECONDS })}
             </p>
             <div className="row">
-              <input value={flagName} onChange={(e) => setFlagName(e.target.value)} maxLength={24} placeholder="Flag name, e.g. Taco Hill" />
+              <input value={flagName} onChange={(e) => setFlagName(e.target.value)} maxLength={24} placeholder={t("Flag name, e.g. Taco Hill")} dir="auto" />
               <Button className="btn small" disabled={flagName.trim().length < 2} onClick={async () => (await act(() => api("/api/flags", { body: { action: "plant", name: flagName } }))) && setFlagName("")}>
-                Plant
+                {t("Plant")}
               </Button>
             </div>
             <Button className="btn yellow small" style={{ marginTop: 8 }} onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>
-              🪙 Collect flag tribute
+              🪙 {t("Collect flag tribute")}
             </Button>
           </div>
           {(world?.flags ?? [])
@@ -166,15 +168,15 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
               <div key={f.id} className="card list-item">
                 <div className="icon-tile">🚩</div>
                 <div className="grow">
-                  <b style={{ color: f.mine ? "var(--cyan)" : f.friend ? "var(--green)" : "var(--red)" }}>{f.name}</b>
+                  <b style={{ color: f.mine ? "var(--cyan)" : f.friend ? "var(--green)" : "var(--red)" }} dir="auto">{f.name}</b>
                   <div className="small muted">
-                    {f.mine ? "Yours" : `${f.ownerAvatar} ${f.owner}`} · {formatDistance(d(f))}
-                    {f.capture && <span style={{ color: "var(--red)" }}> · ⚔️ being captured</span>}
+                    {f.mine ? t("Yours") : `${f.ownerAvatar} ${f.owner}`} · {formatDistance(d(f))}
+                    {f.capture && <span style={{ color: "var(--red)" }}> · {t("⚔️ being captured")}</span>}
                   </div>
                 </div>
               </div>
             ))}
-          {!world?.flags.length && <div className="empty">No flags around. Be the first — plant one at your favorite spot.</div>}
+          {!world?.flags.length && <div className="empty">{t("No flags around. Be the first — plant one at your favorite spot.")}</div>}
         </>
       )}
     </Sheet>
@@ -188,19 +190,19 @@ export function NoteCard({ n, dist }: { n: WorldNote; dist: number }) {
   return (
     <div className="card note-card">
       <div className="small muted">
-        {n.author.avatar} {n.author.username} · {formatDistance(dist)} away · {fmtTime(n.createdAt)}
+        {n.author.avatar} {n.author.username} · {t("{d} away", { d: formatDistance(dist) })} · {fmtTime(n.createdAt)}
       </div>
       {n.unlocked ? (
         <>
-          {n.hasPhoto && <img className="note-photo" src={`/api/notes/${n.id}`} alt={`Photo by ${n.author.username}`} loading="lazy" />}
-          {n.body && <div style={{ marginTop: 6 }}>{n.body}</div>}
+          {n.hasPhoto && <img className="note-photo" src={`/api/notes/${n.id}`} alt={t("Photo by {name}", { name: n.author.username })} loading="lazy" />}
+          {n.body && <div style={{ marginTop: 6 }} dir="auto">{n.body}</div>}
           <div className="row" style={{ marginTop: 8 }}>
             <Button className="btn ghost small" disabled={n.mine} onClick={() => act(async () => { const r = await api<{ message: string; likes: number }>(`/api/notes/${n.id}`, { body: { kind: "like" } }); setLikes(r.likes); return r; })}>
               ❤️ {likes}
             </Button>
             <span className="grow" />
             {!n.mine && (
-              <Button className="btn ghost small" onClick={() => askConfirm("Report this post?", { body: "Posts with several reports are hidden and reviewed by moderators.", ok: "Report", danger: true }).then((ok) => ok && act(() => api(`/api/notes/${n.id}`, { body: { kind: "report" } })))}>
+              <Button className="btn ghost small" aria-label={t("Report")} onClick={() => askConfirm(t("Report this post?"), { body: t("Posts with several reports are hidden and reviewed by moderators."), ok: t("Report"), danger: true }).then((ok) => ok && act(() => api(`/api/notes/${n.id}`, { body: { kind: "report" } })))}>
                 🚩
               </Button>
             )}
@@ -208,7 +210,7 @@ export function NoteCard({ n, dist }: { n: WorldNote; dist: number }) {
         </>
       ) : (
         <div style={{ marginTop: 4 }}>
-          <i className="muted">🔒 {n.hasPhoto ? "📸 A photo is pinned here." : ""} Walk within {n.radiusM} m to see it</i>
+          <i className="muted">🔒 {n.hasPhoto ? t("📸 A photo is pinned here.") : ""} {t("Walk within {m} m to see it", { m: n.radiusM })}</i>
         </div>
       )}
     </div>
@@ -222,12 +224,12 @@ type MyDeliveries = {
 };
 
 /** "navigate" opens maps; in test mode it just jumps you there. */
-export function GoTo({ lat, lng, label = "navigate" }: { lat: number; lng: number; label?: string }) {
+export function GoTo({ lat, lng, label }: { lat: number; lng: number; label?: string }) {
   const { teleport } = useGame();
   return teleport ? (
-    <a href="#" onClick={(e) => (e.preventDefault(), teleport({ lat, lng }))}><MoveIcon /> go</a>
+    <a href="#" onClick={(e) => (e.preventDefault(), teleport({ lat, lng }))}><MoveIcon /> {t("go")}</a>
   ) : (
-    <a href={navUrl(lat, lng)} target="_blank" rel="noreferrer">{label}</a>
+    <a href={navUrl(lat, lng)} target="_blank" rel="noreferrer">{label ?? t("navigate")}</a>
   );
 }
 
@@ -235,11 +237,11 @@ function DeliveryRoute({ d }: { d: WorldDelivery }) {
   return (
     <div className="small" style={{ margin: "6px 0" }}>
       <div>
-        🟢 <b>Pickup:</b> {d.pickupLabel}{" "}
+        🟢 <b>{t("Pickup:")}</b> <span dir="auto">{d.pickupLabel}</span>{" "}
         <GoTo lat={d.pickupLat} lng={d.pickupLng} />
       </div>
       <div>
-        🔴 <b>Drop-off:</b> {d.dropoffLabel}{" "}
+        🔴 <b>{t("Drop-off:")}</b> <span dir="auto">{d.dropoffLabel}</span>{" "}
         <GoTo lat={d.dropoffLat} lng={d.dropoffLng} />
       </div>
     </div>
@@ -250,13 +252,13 @@ export function JobsPanel({ onClose, peek }: { onClose: () => void; peek: boolea
   const { world } = useGame();
   const [kind, setKind] = useState<"deliveries" | "rides">("deliveries");
   return (
-    <Sheet title="Jobs" onClose={onClose} peek={peek} help="jobs">
+    <Sheet title={t("Jobs")} onClose={onClose} peek={peek} help="jobs">
       <div className="seg" role="tablist">
         <button role="tab" aria-selected={kind === "deliveries"} className={kind === "deliveries" ? "on" : ""} onClick={() => setKind("deliveries")}>
-          📦 Deliveries {!!world?.deliveries.length && <span className="seg-n">{world.deliveries.length}</span>}
+          📦 {t("Deliveries")} {!!world?.deliveries.length && <span className="seg-n">{fmtNum(world.deliveries.length)}</span>}
         </button>
         <button role="tab" aria-selected={kind === "rides"} className={kind === "rides" ? "on" : ""} onClick={() => setKind("rides")}>
-          🚕 Rides {!!world?.rides.length && <span className="seg-n">{world.rides.length}</span>}
+          🚕 {t("Rides")} {!!world?.rides.length && <span className="seg-n">{fmtNum(world.rides.length)}</span>}
         </button>
       </div>
       {kind === "deliveries" ? <DeliveriesTab /> : <RidesTab />}
@@ -295,7 +297,7 @@ function DeliveriesTab() {
     }
   };
 
-  const STATUS: Record<string, string> = { OPEN: "🟡 Waiting for courier", ACCEPTED: "🔵 Courier on the way", PICKED_UP: "🟣 In transit", DELIVERED: "✅ Delivered", CANCELLED: "⚫ Cancelled" };
+  const STATUS: Record<string, string> = { OPEN: t("🟡 Waiting for courier"), ACCEPTED: t("🔵 Courier on the way"), PICKED_UP: t("🟣 In transit"), DELIVERED: t("✅ Delivered"), CANCELLED: t("⚫ Cancelled") };
 
   return (
     <>
@@ -303,10 +305,10 @@ function DeliveriesTab() {
         value={tab}
         onChange={setTab}
         tabs={[
-          ["open", `Open (${world?.deliveries.length ?? 0})`],
-          ["carrying", "Carrying"],
-          ["sent", "My requests"],
-          ["new", "+ Request"],
+          ["open", t("Open ({n})", { n: world?.deliveries.length ?? 0 })],
+          ["carrying", t("Carrying")],
+          ["sent", t("My requests")],
+          ["new", t("+ Request")],
         ]}
       />
       {tab === "open" &&
@@ -316,24 +318,23 @@ function DeliveriesTab() {
             .map((d) => (
               <div key={d.id} className="card">
                 <div className="row">
-                  <b className="grow">📦 {d.title}</b>
+                  <b className="grow" dir="auto">📦 {d.title}</b>
                   <span className="tag" style={{ color: "var(--yellow)" }}>
-                    {d.reward} 🪙
+                    {fmtNum(d.reward)} 🪙
                   </span>
                 </div>
                 <div className="small muted">
-                  by {d.sender?.username} · pickup {formatDistance(d.distanceM ?? 0)} away ·{" "}
-                  {formatDistance(distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng }))} trip
+                  {t("by {name} · pickup {d} away · {trip} trip", { name: d.sender?.username ?? "", d: formatDistance(d.distanceM ?? 0), trip: formatDistance(distanceM({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.dropoffLat, lng: d.dropoffLng })) })}
                 </div>
-                {d.description && <p className="small">{d.description}</p>}
+                {d.description && <p className="small" dir="auto">{d.description}</p>}
                 <DeliveryRoute d={d} />
                 <Button className="btn green small" onClick={() => doAct(d.id, "accept")}>
-                  Accept job
+                  {t("Accept job")}
                 </Button>
               </div>
             ))
         ) : (
-          <div className="empty">No open delivery requests near you.</div>
+          <div className="empty">{t("No open delivery requests near you.")}</div>
         ))}
 
       {tab === "carrying" &&
@@ -341,18 +342,18 @@ function DeliveriesTab() {
           mine.carrying.map((d) => (
             <div key={d.id} className="card">
               <div className="row">
-                <b className="grow">{d.title}</b>
+                <b className="grow" dir="auto">{d.title}</b>
                 <span className="tag">{STATUS[d.status]}</span>
               </div>
-              <div className="small muted">for {d.sender.username} · reward {d.reward} 🪙</div>
+              <div className="small muted">{t("for {name} · reward {n} 🪙", { name: d.sender.username, n: d.reward })}</div>
               <DeliveryRoute d={d} />
               {d.status === "ACCEPTED" && (
                 <div className="row">
                   <Button className="btn cyan small" onClick={() => doAct(d.id, "pickup")}>
-                    I&apos;m at pickup
+                    {t("I'm at pickup")}
                   </Button>
                   <Button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
-                    Drop job
+                    {t("Drop job")}
                   </Button>
                 </div>
               )}
@@ -362,19 +363,20 @@ function DeliveriesTab() {
                     className="grow"
                     inputMode="numeric"
                     maxLength={4}
-                    placeholder="Handover code"
+                    placeholder={t("Handover code")}
+                    dir="ltr"
                     value={codes[d.id] ?? ""}
-                    onChange={(e) => setCodes({ ...codes, [d.id]: e.target.value })}
+                    onChange={(e) => setCodes({ ...codes, [d.id]: toAsciiDigits(e.target.value).replace(/\D/g, "") })}
                   />
                   <Button className="btn green small" onClick={() => doAct(d.id, "deliver", codes[d.id])}>
-                    Deliver
+                    {t("Deliver")}
                   </Button>
                 </div>
               )}
             </div>
           ))
         ) : (
-          <div className="empty">You aren&apos;t carrying anything. Grab an open job!</div>
+          <div className="empty">{t("You aren't carrying anything. Grab an open job!")}</div>
         ))}
 
       {tab === "sent" &&
@@ -382,47 +384,46 @@ function DeliveriesTab() {
           mine.sent.map((d) => (
             <div key={d.id} className="card">
               <div className="row">
-                <b className="grow">{d.title}</b>
+                <b className="grow" dir="auto">{d.title}</b>
                 <span className="tag">{STATUS[d.status]}</span>
               </div>
               <div className="small muted">
-                Reward {d.reward} 🪙 {d.courier && `· courier: ${d.courier.username}`}
+                {t("Reward {n} 🪙", { n: d.reward })} {d.courier && `· ${t("courier: {name}", { name: d.courier.username })}`}
               </div>
               <DeliveryRoute d={d} />
               {d.status !== "DELIVERED" && d.status !== "CANCELLED" && (
                 <div className="card hl small">
-                  Handover code: <b className="mono" style={{ fontSize: 18 }}>{d.dropoffCode}</b> — give this only to the recipient.
+                  {t("Handover code:")} <b className="mono" dir="ltr" style={{ fontSize: 18 }}>{d.dropoffCode}</b> — {t("give this only to the recipient.")}
                 </div>
               )}
               {d.status === "OPEN" && (
                 <Button className="btn ghost small" onClick={() => doAct(d.id, "cancel")}>
-                  Cancel & refund
+                  {t("Cancel & refund")}
                 </Button>
               )}
             </div>
           ))
         ) : (
-          <div className="empty">You haven&apos;t requested any deliveries.</div>
+          <div className="empty">{t("You haven't requested any deliveries.")}</div>
         ))}
 
       {tab === "new" && (
         <div>
           <div className="card small">
-            ⚠️ Only legal, safe items. No cash, valuables, weapons, drugs, food that can spoil or anything you wouldn&apos;t hand to a stranger.
-            The reward is held in escrow and paid when the courier enters the handover code.
+            {t("⚠️ Only legal, safe items. No cash, valuables, weapons, drugs, food that can spoil or anything you wouldn't hand to a stranger. The reward is held in escrow and paid when the courier enters the handover code.")}
           </div>
-          <label>What is it?</label>
-          <input value={f.title} maxLength={60} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Book for my friend" />
-          <label>Details (size, how to find you…)</label>
-          <textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
-          <LocationField label="Pickup point" value={pickup} onChange={setPickup} />
-          <input value={f.pickupLabel} onChange={(e) => setF({ ...f, pickupLabel: e.target.value })} placeholder="e.g. Café entrance, 12 Main St" style={{ marginTop: 6 }} />
-          <LocationField label="Drop-off point" value={dropoff} onChange={setDropoff} />
-          <input value={f.dropoffLabel} onChange={(e) => setF({ ...f, dropoffLabel: e.target.value })} placeholder="e.g. Library front desk" style={{ marginTop: 6 }} />
-          <label>Reward (coins) — you have {me.coins}</label>
-          <input type="number" min={10} value={f.reward} onChange={(e) => setF({ ...f, reward: Number(e.target.value) })} />
+          <label>{t("What is it?")}</label>
+          <input value={f.title} maxLength={60} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t("Book for my friend")} dir="auto" />
+          <label>{t("Details (size, how to find you…)")}</label>
+          <textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} dir="auto" />
+          <LocationField label={t("Pickup point")} value={pickup} onChange={setPickup} />
+          <input value={f.pickupLabel} onChange={(e) => setF({ ...f, pickupLabel: e.target.value })} placeholder={t("e.g. Café entrance, 12 Main St")} style={{ marginTop: 6 }} dir="auto" />
+          <LocationField label={t("Drop-off point")} value={dropoff} onChange={setDropoff} />
+          <input value={f.dropoffLabel} onChange={(e) => setF({ ...f, dropoffLabel: e.target.value })} placeholder={t("e.g. Library front desk")} style={{ marginTop: 6 }} dir="auto" />
+          <label>{t("Reward (coins) — you have {n}", { n: me.coins })}</label>
+          <input inputMode="numeric" value={String(f.reward)} onChange={(e) => setF({ ...f, reward: Number(toAsciiDigits(e.target.value).replace(/\D/g, "")) || 0 })} />
           <Button className="btn block" style={{ marginTop: 14 }} disabled={!pickup || !dropoff || f.title.length < 3} onClick={create}>
-            Post request
+            {t("Post request")}
           </Button>
         </div>
       )}
@@ -445,11 +446,11 @@ const dropoffOf = (r: WorldRide) => ({ lat: r.dropoffLat, lng: r.dropoffLng });
 function RideRoute({ r }: { r: WorldRide }) {
   return (
     <div className="ride-route small">
-      <div><span className="dot-pin a" /> <b>{r.pickupLabel}</b> <GoTo lat={r.pickupLat} lng={r.pickupLng} /></div>
+      <div><span className="dot-pin a" /> <b dir="auto">{r.pickupLabel}</b> <GoTo lat={r.pickupLat} lng={r.pickupLng} /></div>
       <div className="ride-line" />
-      <div><span className="dot-pin b" /> <b>{r.dropoffLabel}</b> <GoTo lat={r.dropoffLat} lng={r.dropoffLng} /></div>
-      <div className="muted">{formatDistance(distanceM(pickupOf(r), dropoffOf(r)))} trip · {r.seats} seat{r.seats > 1 ? "s" : ""} · <b style={{ color: "var(--yellow)" }}>{r.fare} 🪙</b></div>
-      {r.note && <div className="muted">“{r.note}”</div>}
+      <div><span className="dot-pin b" /> <b dir="auto">{r.dropoffLabel}</b> <GoTo lat={r.dropoffLat} lng={r.dropoffLng} /></div>
+      <div className="muted">{t("{d} trip · {n, plural, one {# seat} other {# seats}}", { d: formatDistance(distanceM(pickupOf(r), dropoffOf(r))), n: r.seats })} · <b style={{ color: "var(--yellow)" }}>{fmtNum(r.fare)} 🪙</b></div>
+      {r.note && <div className="muted" dir="auto">“{r.note}”</div>}
     </div>
   );
 }
@@ -459,7 +460,7 @@ function RidesTab() {
   const [mine, setMine] = useState<MyRides | null>(null);
   const [pin, setPin] = useState("");
   const [showHistory, setShowHistory] = useState(false);
-  const [form, setForm] = useState({ pickupLabel: "My location", dropoffLabel: "", seats: 1, note: "" });
+  const [form, setForm] = useState({ pickupLabel: t("My location"), dropoffLabel: "", seats: 1, note: "" });
   // null = follow my live position (until the player pins a spot with Here / Pick).
   const [pinnedPickup, setPinnedPickup] = useState<LatLng | null>(null);
   const [dropoff, setDropoff] = useState<LatLng | null>(null);
@@ -480,7 +481,7 @@ function RidesTab() {
   const setPickup = (p: LatLng) => {
     setPinnedPickup(p);
     // A spot picked on the map isn't "my location" any more.
-    if (form.pickupLabel === "My location" && (!pos || distanceM(p, pos) > 30)) setForm((f) => ({ ...f, pickupLabel: "" }));
+    if (form.pickupLabel === t("My location") && (!pos || distanceM(p, pos) > 30)) setForm((f) => ({ ...f, pickupLabel: "" }));
   };
 
   const doAct = async (id: string, action: string, extra: object = {}) => {
@@ -496,21 +497,21 @@ function RidesTab() {
   const trip = pickup && dropoff ? distanceM(pickup, dropoff) : 0;
   // Say why the button is off instead of just greying it out.
   const problem = !pickup
-    ? "Waiting for your GPS — or pick the pickup on the map"
+    ? t("Waiting for your GPS — or pick the pickup on the map")
     : !dropoff
-      ? "Choose where you're going (📍 Here or 🗺️ Pick)"
+      ? t("Choose where you're going (📍 Here or 🗺️ Pick)")
       : trip < RIDE_MIN_TRIP_M
-        ? `The destination must be at least ${RIDE_MIN_TRIP_M} m from the pickup`
+        ? t("The destination must be at least {m} m from the pickup", { m: RIDE_MIN_TRIP_M })
         : form.pickupLabel.trim().length < 2
-          ? "Name the pickup spot so the driver can find you"
+          ? t("Name the pickup spot so the driver can find you")
           : form.dropoffLabel.trim().length < 2
-            ? "Name the destination"
+            ? t("Name the destination")
             : price < RIDE_MIN_FARE
-              ? `The minimum fare is ${RIDE_MIN_FARE} 🪙`
+              ? t("The minimum fare is {n} 🪙", { n: RIDE_MIN_FARE })
               : price > RIDE_MAX_FARE
-                ? `The maximum fare is ${RIDE_MAX_FARE.toLocaleString()} 🪙`
+                ? t("The maximum fare is {n} 🪙", { n: RIDE_MAX_FARE })
                 : price > me.coins
-                  ? `Not enough coins — you have ${me.coins} 🪙`
+                  ? t("Not enough coins — you have {n} 🪙", { n: me.coins })
                   : null;
   const request = async () => {
     if (!pickup || !dropoff || problem) return;
@@ -518,7 +519,7 @@ function RidesTab() {
       api("/api/rides", { body: { ...form, fare: price, pickupLat: pickup.lat, pickupLng: pickup.lng, dropoffLat: dropoff.lat, dropoffLng: dropoff.lng } }),
     );
     if (ok) {
-      setForm({ pickupLabel: "My location", dropoffLabel: "", seats: 1, note: "" });
+      setForm({ pickupLabel: t("My location"), dropoffLabel: "", seats: 1, note: "" });
       setPinnedPickup(null);
       setDropoff(null);
       setFare(null);
@@ -527,7 +528,7 @@ function RidesTab() {
   };
   const away = (p: LatLng | null | undefined, to: LatLng) => (p ? formatDistance(distanceM(p, to)) : "—");
 
-  if (!mine) return <div className="empty">Loading…</div>;
+  if (!mine) return <div className="empty">{t("Loading…")}</div>;
   const { riding: r, driving: dr } = mine;
 
   return (
@@ -536,40 +537,40 @@ function RidesTab() {
       {r && (
         <div className="card hl ride-card">
           <div className="row">
-            <b className="grow">🚕 Your ride</b>
-            <span className="tag">{RIDE_STATUS[r.status as RideStatus]}</span>
+            <b className="grow">🚕 {t("Your ride")}</b>
+            <span className="tag">{t(RIDE_STATUS[r.status as RideStatus])}</span>
           </div>
-          {r.status === "REQUESTED" && <p className="small muted">Waiting for a driver nearby… Your fare is held safely and refunded if nobody accepts.</p>}
+          {r.status === "REQUESTED" && <p className="small muted">{t("Waiting for a driver nearby… Your fare is held safely and refunded if nobody accepts.")}</p>}
           {r.driver && (
             <div className="ride-peer">
               <span className="ride-avatar">{r.driver.avatar}</span>
               <div className="grow">
                 <b>{r.driver.username}</b>
                 <div className="small muted">
-                  {r.status === "ACCEPTED" ? `is ${away(r.driver.pos, pickupOf(r))} from the pickup` : `heading to ${r.dropoffLabel}`}
-                  {!r.driver.pos && " · location hidden (offline)"}
+                  {r.status === "ACCEPTED" ? t("is {d} from the pickup", { d: away(r.driver.pos, pickupOf(r)) }) : t("heading to {place}", { place: r.dropoffLabel })}
+                  {!r.driver.pos && ` · ${t("location hidden (offline)")}`}
                 </div>
               </div>
             </div>
           )}
           {r.status !== "ONBOARD" && (
             <div className="ride-pin">
-              <span className="small muted">Tell your driver this PIN at pickup</span>
-              <b className="mono">{r.pin}</b>
+              <span className="small muted">{t("Tell your driver this PIN at pickup")}</span>
+              <b className="mono" dir="ltr">{r.pin}</b>
             </div>
           )}
           <RideRoute r={r} />
           {r.status === "ONBOARD" && (
             <>
-              <p className="small muted">{away(pos, dropoffOf(r))} to go.</p>
-              <Button className="btn green block" onClick={() => askConfirm("Arrived?", { body: `This pays ${r.driver?.username ?? "your driver"} the ${r.fare}-coin fare.`, ok: "🏁 I've arrived" }).then((ok) => ok && doAct(r.id, "arrive"))}>
-                🏁 I&apos;ve arrived
+              <p className="small muted">{t("{d} to go.", { d: away(pos, dropoffOf(r)) })}</p>
+              <Button className="btn green block" onClick={() => askConfirm(t("Arrived?"), { body: t("This pays {name} the {n}-coin fare.", { name: r.driver?.username ?? t("your driver"), n: r.fare }), ok: t("🏁 I've arrived") }).then((ok) => ok && doAct(r.id, "arrive"))}>
+                {t("🏁 I've arrived")}
               </Button>
             </>
           )}
           {(r.status === "REQUESTED" || r.status === "ACCEPTED") && (
-            <Button className="btn ghost small" onClick={() => askConfirm("Cancel this ride?", { body: "Your fare is refunded in full.", ok: "Cancel ride", cancel: "Keep waiting", danger: true }).then((ok) => ok && doAct(r.id, "cancel"))}>
-              Cancel &amp; refund
+            <Button className="btn ghost small" onClick={() => askConfirm(t("Cancel this ride?"), { body: t("Your fare is refunded in full."), ok: t("Cancel ride"), cancel: t("Keep waiting"), danger: true }).then((ok) => ok && doAct(r.id, "cancel"))}>
+              {t("Cancel & refund")}
             </Button>
           )}
         </div>
@@ -579,16 +580,16 @@ function RidesTab() {
       {dr && (
         <div className="card hl ride-card">
           <div className="row">
-            <b className="grow">🚗 You&apos;re driving</b>
-            <span className="tag">{RIDE_STATUS[dr.status as RideStatus]}</span>
+            <b className="grow">🚗 {t("You're driving")}</b>
+            <span className="tag">{t(RIDE_STATUS[dr.status as RideStatus])}</span>
           </div>
           <div className="ride-peer">
             <span className="ride-avatar">{dr.rider.avatar}</span>
             <div className="grow">
               <b>{dr.rider.username}</b>
               <div className="small muted">
-                {dr.status === "ACCEPTED" ? `Pickup is ${away(pos, pickupOf(dr))} from you` : `Drop-off is ${away(pos, dropoffOf(dr))} away`}
-                {dr.status === "ACCEPTED" && dr.rider.pos && ` · rider ${away(dr.rider.pos, pickupOf(dr))} from it`}
+                {dr.status === "ACCEPTED" ? t("Pickup is {d} from you", { d: away(pos, pickupOf(dr)) }) : t("Drop-off is {d} away", { d: away(pos, dropoffOf(dr)) })}
+                {dr.status === "ACCEPTED" && dr.rider.pos && ` · ${t("rider {d} from it", { d: away(dr.rider.pos, pickupOf(dr)) })}`}
               </div>
             </div>
           </div>
@@ -596,18 +597,18 @@ function RidesTab() {
           {dr.status === "ACCEPTED" && (
             <>
               <div className="row">
-                <input className="grow" inputMode="numeric" maxLength={4} placeholder="Rider's PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
-                <Button className="btn green small" disabled={pin.length !== 4} onClick={() => doAct(dr.id, "start", { pin })}>Start ride</Button>
+                <input className="grow code-input" inputMode="numeric" maxLength={4} dir="ltr" placeholder={t("Rider's PIN")} value={pin} onChange={(e) => setPin(toAsciiDigits(e.target.value).replace(/\D/g, "").slice(0, 4))} />
+                <Button className="btn green small" disabled={pin.length !== 4} onClick={() => doAct(dr.id, "start", { pin })}>{t("Start ride")}</Button>
               </div>
-              <Button className="btn ghost small" style={{ marginTop: 8 }} onClick={() => askConfirm("Drop this ride?", { body: "The rider goes back in the queue for another driver.", ok: "Drop ride", danger: true }).then((ok) => ok && doAct(dr.id, "cancel"))}>
-                Drop ride
+              <Button className="btn ghost small" style={{ marginTop: 8 }} onClick={() => askConfirm(t("Drop this ride?"), { body: t("The rider goes back in the queue for another driver."), ok: t("Drop ride"), danger: true }).then((ok) => ok && doAct(dr.id, "cancel"))}>
+                {t("Drop ride")}
               </Button>
             </>
           )}
           {dr.status === "ONBOARD" && (
             <>
-              <Button className="btn green block" onClick={() => doAct(dr.id, "complete")}>🏁 End ride · collect {dr.fare} 🪙</Button>
-              <p className="small muted">Both of you need to be at the drop-off — or your rider taps “I&apos;ve arrived”.</p>
+              <Button className="btn green block" onClick={() => doAct(dr.id, "complete")}>{t("🏁 End ride · collect {n} 🪙", { n: dr.fare })}</Button>
+              <p className="small muted">{t("Both of you need to be at the drop-off — or your rider taps “I've arrived”.")}</p>
             </>
           )}
         </div>
@@ -616,49 +617,49 @@ function RidesTab() {
       {/* ---- Request a car */}
       {!r && (
         <details className="card ride-request" open={formOpen} onToggle={(e) => setFormOpen(e.currentTarget.open)}>
-          <summary><b>🚕 Request a car</b></summary>
-          <LocationField label="Pickup" value={pickup} onChange={setPickup} />
-          <input value={form.pickupLabel} maxLength={120} onChange={(e) => setForm({ ...form, pickupLabel: e.target.value })} placeholder="e.g. Café entrance" style={{ marginTop: 6 }} />
-          <LocationField label="Where to?" value={dropoff} onChange={setDropoff} />
-          <input value={form.dropoffLabel} maxLength={120} onChange={(e) => setForm({ ...form, dropoffLabel: e.target.value })} placeholder="e.g. Central station" style={{ marginTop: 6 }} />
+          <summary><b>🚕 {t("Request a car")}</b></summary>
+          <LocationField label={t("Pickup")} value={pickup} onChange={setPickup} />
+          <input value={form.pickupLabel} maxLength={120} onChange={(e) => setForm({ ...form, pickupLabel: e.target.value })} placeholder={t("e.g. Café entrance")} style={{ marginTop: 6 }} dir="auto" />
+          <LocationField label={t("Where to?")} value={dropoff} onChange={setDropoff} />
+          <input value={form.dropoffLabel} maxLength={120} onChange={(e) => setForm({ ...form, dropoffLabel: e.target.value })} placeholder={t("e.g. Central station")} style={{ marginTop: 6 }} dir="auto" />
           <div className="grid2" style={{ marginTop: 4 }}>
             <div>
-              <label>Seats</label>
+              <label>{t("Seats")}</label>
               <select value={form.seats} onChange={(e) => setForm({ ...form, seats: Number(e.target.value) })}>
-                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{fmtNum(n)}</option>)}
               </select>
             </div>
             <div>
-              <label>Fare (🪙) · you have {me.coins}</label>
+              <label>{t("Fare (🪙) · you have {n}", { n: me.coins })}</label>
               <input
                 type="text"
                 inputMode="numeric"
                 maxLength={5}
                 value={fare ?? String(suggested)}
-                onChange={(e) => setFare(e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}
+                onChange={(e) => setFare(toAsciiDigits(e.target.value).replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}
                 onBlur={() => fare === "" && setFare(null)}
               />
             </div>
           </div>
           {pickup && dropoff && (
             <p className="small muted">
-              {formatDistance(trip)} trip · suggested {suggested} 🪙
-              {fare !== null && price !== suggested && <> · <a href="#" onClick={(e) => (e.preventDefault(), setFare(null))}>use suggestion</a></>}
+              {t("{d} trip · suggested {n} 🪙", { d: formatDistance(trip), n: suggested })}
+              {fare !== null && price !== suggested && <> · <a href="#" onClick={(e) => (e.preventDefault(), setFare(null))}>{t("use suggestion")}</a></>}
             </p>
           )}
-          <label>Note for the driver</label>
-          <input value={form.note} maxLength={200} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Wearing a red jacket" />
+          <label>{t("Note for the driver")}</label>
+          <input value={form.note} maxLength={200} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder={t("Wearing a red jacket")} dir="auto" />
           <Button
             className="btn yellow block"
             style={{ marginTop: 12 }}
             disabled={!!problem}
             onClick={request}
           >
-            Request car · {price} 🪙
+            {t("Request car · {n} 🪙", { n: price })}
           </Button>
           {problem && <p className="small" style={{ marginTop: 6, color: "var(--yellow)" }}>{problem}</p>}
           <p className="small muted" style={{ marginTop: 8 }}>
-            ⚠️ Rides are with other real players. Only get in with people you trust, wear a seatbelt and follow local laws. The fare is held until you arrive.
+            {t("⚠️ Rides are with other real players. Only get in with people you trust, wear a seatbelt and follow local laws. The fare is held until you arrive.")}
           </p>
         </details>
       )}
@@ -666,7 +667,7 @@ function RidesTab() {
       {/* ---- Riders waiting (drive them) */}
       {!dr && (
         <>
-          <label>Riders waiting near you</label>
+          <label>{t("Riders waiting near you")}</label>
           {world?.rides.length ? (
             [...world.rides]
               .sort((a, b) => (a.distanceM ?? 0) - (b.distanceM ?? 0))
@@ -674,14 +675,14 @@ function RidesTab() {
                 <div key={x.id} className="card">
                   <div className="row">
                     <b className="grow">{x.rider?.avatar} {x.rider?.username}</b>
-                    <span className="small muted">{formatDistance(x.distanceM ?? 0)} away</span>
+                    <span className="small muted">{t("{d} away", { d: formatDistance(x.distanceM ?? 0) })}</span>
                   </div>
                   <RideRoute r={x} />
-                  <Button className="btn green small" onClick={() => doAct(x.id, "accept")}>Accept ride</Button>
+                  <Button className="btn green small" onClick={() => doAct(x.id, "accept")}>{t("Accept ride")}</Button>
                 </div>
               ))
           ) : (
-            <div className="empty">Nobody needs a ride right now. Requests pop up here and on the map as 🚕.</div>
+            <div className="empty">{t("Nobody needs a ride right now. Requests pop up here and on the map as 🚕.")}</div>
           )}
         </>
       )}
@@ -689,17 +690,17 @@ function RidesTab() {
       {!!mine.history.length && (
         <>
           <Button className="btn ghost small" style={{ marginTop: 6 }} onClick={() => setShowHistory(!showHistory)}>
-            {showHistory ? "Hide" : "Show"} past rides ({mine.history.length})
+            {showHistory ? t("Hide past rides ({n})", { n: mine.history.length }) : t("Show past rides ({n})", { n: mine.history.length })}
           </Button>
           {showHistory &&
             mine.history.map((h) => (
               <div key={h.id} className="card small">
                 <div className="row">
-                  <span className="grow">{h.mine === "rider" ? "🧍 Rode" : "🚗 Drove"} to <b>{h.dropoffLabel}</b></span>
-                  <span className="tag">{RIDE_STATUS[h.status as RideStatus]}</span>
+                  <span className="grow">{h.mine === "rider" ? t("🧍 Rode to {place}", { place: h.dropoffLabel }) : t("🚗 Drove to {place}", { place: h.dropoffLabel })}</span>
+                  <span className="tag">{t(RIDE_STATUS[h.status as RideStatus])}</span>
                 </div>
                 <div className="muted">
-                  {h.mine === "rider" ? (h.driver ? `with ${h.driver.username}` : "no driver") : `for ${h.rider.username}`} · {h.fare} 🪙 · {fmtTime(h.createdAt)}
+                  {h.mine === "rider" ? (h.driver ? t("with {name}", { name: h.driver.username }) : t("no driver")) : t("for {name}", { name: h.rider.username })} · {fmtNum(h.fare)} 🪙 · {fmtTime(h.createdAt)}
                 </div>
               </div>
             ))}
@@ -772,7 +773,7 @@ function Chat({ room }: { room: string }) {
   return (
     <div className="chat">
       <div className="chat-log" ref={log}>
-        {msgs.length === 0 && <div className="empty">No messages yet. Say hi 👋</div>}
+        {msgs.length === 0 && <div className="empty">{t("No messages yet. Say hi 👋")}</div>}
         {msgs.map((m) => (
           <div key={m.id} className={`msg ${m.author.id === me.id ? "me" : ""}`}>
             {m.author.id !== me.id && (
@@ -780,13 +781,13 @@ function Chat({ room }: { room: string }) {
                 {m.author.avatar} {m.author.username}
               </div>
             )}
-            {m.body}
+            <div dir="auto">{m.body}</div>
           </div>
         ))}
       </div>
       <form className="row" onSubmit={send} style={{ paddingTop: 8 }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Message…" />
-        <Button className="btn small">Send</Button>
+        <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder={t("Message…")} dir="auto" enterKeyHint="send" />
+        <Button className="btn small">{t("Send")}</Button>
       </form>
     </div>
   );
@@ -822,28 +823,28 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
   const dm = (f: Friend) => setChat({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` });
 
   const rooms: { room: string; label: string }[] = [
-    { room: "global", label: "🌍 Global" },
-    ...(pos ? [{ room: `local:${regionKey(pos)}`, label: "📡 Local" }] : []),
+    { room: "global", label: t("🌍 Global") },
+    ...(pos ? [{ room: `local:${regionKey(pos)}`, label: t("📡 Local") }] : []),
     ...events.map((e) => ({ room: `event:${e.id}`, label: `🎉 ${e.title}` })),
     ...data.friends.map((f) => ({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` })),
   ];
   const active = chat ?? rooms[0];
 
   return (
-    <Sheet title="Crew" onClose={onClose} peek={peek} help="crew">
-      <Tabs value={tab} onChange={setTab} tabs={[["friends", `Friends${data.incoming.length ? ` (${data.incoming.length})` : ""}`], ["chat", "Chat"], ["ranks", "Ranks"], ["wanted", "💀 Wanted"]]} />
+    <Sheet title={t("Crew")} onClose={onClose} peek={peek} help="crew">
+      <Tabs value={tab} onChange={setTab} tabs={[["friends", data.incoming.length ? t("Friends ({n})", { n: data.incoming.length }) : t("Friends")], ["chat", t("Chat")], ["ranks", t("Ranks")], ["wanted", t("💀 Wanted")]]} />
 
       {tab === "wanted" && (
         <>
-          <p className="small muted">Most wanted commanders. Down one in the street (🔫), with towers or a superweapon to collect the whole bounty. Put a price on someone from their card on the map.</p>
+          <p className="small muted">{t("Most wanted commanders. Down one in the street (🔫), with towers or a superweapon to collect the whole bounty. Put a price on someone from their card on the map.")}</p>
           {wanted?.map((w, i) => (
             <div key={w.id} className="card list-item">
               <div className="icon-tile">{i === 0 ? "👑" : w.avatar}</div>
               <b className="grow">{w.username}</b>
-              <span className="tag" style={{ color: "var(--yellow)" }}>💀 {w.amount.toLocaleString()} 🪙</span>
+              <span className="tag" style={{ color: "var(--yellow)" }}>💀 {fmtNum(w.amount)} 🪙</span>
             </div>
           ))}
-          {wanted && !wanted.length && <div className="empty">Nobody is wanted right now. Peace… for now.</div>}
+          {wanted && !wanted.length && <div className="empty">{t("Nobody is wanted right now. Peace… for now.")}</div>}
         </>
       )}
 
@@ -856,51 +857,51 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
               fr({ action: "request", username: name }).then(() => setName(""));
             }}
           >
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add by player name" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Add by player name")} dir="ltr" />
             <Button className="btn small" disabled={!name.trim()}>
-              Add
+              {t("Add")}
             </Button>
           </form>
-          {data.incoming.length > 0 && <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>Requests</h3>}
+          {data.incoming.length > 0 && <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>{t("Requests")}</h3>}
           {data.incoming.map((f) => (
             <div key={f.friendshipId} className="card list-item">
               <div className="icon-tile">{f.avatar}</div>
               <b className="grow">{f.username}</b>
-              <Button className="btn green small" onClick={() => fr({ action: "accept", friendshipId: f.friendshipId })}>
+              <Button className="btn green small" aria-label={t("Accept")} onClick={() => fr({ action: "accept", friendshipId: f.friendshipId })}>
                 ✓
               </Button>
-              <Button className="btn ghost small" onClick={() => fr({ action: "decline", friendshipId: f.friendshipId })}>
+              <Button className="btn ghost small" aria-label={t("Decline")} onClick={() => fr({ action: "decline", friendshipId: f.friendshipId })}>
                 ✕
               </Button>
             </div>
           ))}
           <h3 style={{ fontSize: 14, margin: "14px 0 8px" }}>
-            Friends · {data.friends.filter((f) => f.online).length} online
+            {t("Friends · {n} online", { n: data.friends.filter((f) => f.online).length })}
           </h3>
-          {data.friends.length === 0 && <div className="empty">No crew yet. Add players you meet on the map!</div>}
+          {data.friends.length === 0 && <div className="empty">{t("No crew yet. Add players you meet on the map!")}</div>}
           {[...data.friends]
             .sort((a, b) => Number(b.online) - Number(a.online))
             .map((f) => (
               <div key={f.friendshipId} className="card list-item">
                 <div className="icon-tile">{f.avatar}</div>
                 <div className="grow">
-                  <b>{f.username}</b> <span className="small muted">Lv {f.level}</span>
+                  <b>{f.username}</b> <span className="small muted">{t("Lv {n}", { n: f.level })}</span>
                   <div className="small muted">
-                    <span className={`dot ${f.online ? "on" : ""}`} /> {f.online ? "Online" : f.lastSeenAt ? `Seen ${fmtTime(f.lastSeenAt)}` : "Offline"}
+                    <span className={`dot ${f.online ? "on" : ""}`} /> {f.online ? t("Online") : f.lastSeenAt ? t("Seen {when}", { when: fmtTime(f.lastSeenAt) }) : t("Offline")}
                   </div>
                 </div>
-                <Button className="btn cyan small" onClick={() => dm(f)} aria-label={`Message ${f.username}`}>
+                <Button className="btn cyan small" onClick={() => dm(f)} aria-label={t("Message {name}", { name: f.username })}>
                   💬
                 </Button>
-                <Button className="btn green small" onClick={() => startCall(f)} aria-label={`Video call ${f.username}`}>
+                <Button className="btn green small" onClick={() => startCall(f)} aria-label={t("Video call {name}", { name: f.username })}>
                   📹
                 </Button>
-                <Button className="btn ghost small" onClick={() => askConfirm(`Remove ${f.username}?`, { ok: "Remove", danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
+                <Button className="btn ghost small" aria-label={t("Remove {name}", { name: f.username })} onClick={() => askConfirm(t("Remove {name}?", { name: f.username }), { ok: t("Remove"), danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
                   ✕
                 </Button>
               </div>
             ))}
-          {data.outgoing.length > 0 && <p className="small muted">Pending: {data.outgoing.map((f) => f.username).join(", ")}</p>}
+          {data.outgoing.length > 0 && <p className="small muted">{t("Pending: {names}", { names: data.outgoing.map((f) => f.username).join(t(", ")) })}</p>}
         </>
       )}
 
@@ -919,16 +920,16 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
 
       {tab === "ranks" && (
         <>
-          <Tabs value={scope} onChange={setScope} tabs={[["global", "🌍 World"], ["friends", "🤝 Crew"]]} />
-          <Tabs value={by} onChange={setBy} tabs={[["trophies", "🏆 Trophies"], ["xp", "⭐ XP"]]} />
-          {board && <p className="small muted">Your rank: #{board.myRank}</p>}
+          <Tabs value={scope} onChange={setScope} tabs={[["global", t("🌍 World")], ["friends", t("🤝 Crew")]]} />
+          <Tabs value={by} onChange={setBy} tabs={[["trophies", t("🏆 Trophies")], ["xp", t("⭐ XP")]]} />
+          {board && <p className="small muted">{t("Your rank: #{n}", { n: board.myRank })}</p>}
           {board?.top.map((p, i) => (
             <div key={p.id} className={`card list-item ${p.me ? "hl" : ""}`}>
-              <b style={{ width: 28, fontFamily: "var(--display)", color: i < 3 ? "var(--yellow)" : undefined }}>{i + 1}</b>
+              <b style={{ width: 28, fontFamily: "var(--display)", color: i < 3 ? "var(--yellow)" : undefined }}>{fmtNum(i + 1)}</b>
               <span style={{ fontSize: 22 }}>{p.avatar}</span>
               <b className="grow">{p.username}</b>
-              <span className="small muted">Lv {p.level}</span>
-              <span className="small">{by === "trophies" ? `${p.league.emoji} ${p.trophies} 🏆` : `${p.xp.toLocaleString()} XP`}</span>
+              <span className="small muted">{t("Lv {n}", { n: p.level })}</span>
+              <span className="small">{by === "trophies" ? `${p.league.emoji} ${fmtNum(p.trophies)} 🏆` : t("{n} XP", { n: p.xp })}</span>
             </div>
           ))}
         </>
@@ -971,34 +972,34 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
     return (
       <div key={e.id} className={`card ${e.official ? "hl" : ""}`}>
         <div className="row">
-          <b className="grow">
+          <b className="grow" dir="auto">
             {e.official ? "⭐" : "🎉"} {e.title}
           </b>
-          {live && <span className="tag" style={{ color: "var(--green)" }}>LIVE</span>}
+          {live && <span className="tag" style={{ color: "var(--green)" }}>{t("LIVE")}</span>}
         </div>
         <div className="small muted">
-          {fmtTime(e.startsAt)} – {fmtTime(e.endsAt)} · {e.participants}/{e.maxPlayers} going {pos && `· ${formatDistance(distanceM(pos, e))}`}
+          {t("{start} – {end} · {n}/{max} going", { start: fmtTime(e.startsAt), end: fmtTime(e.endsAt), n: e.participants, max: e.maxPlayers })} {pos && `· ${formatDistance(distanceM(pos, e))}`}
         </div>
-        {e.description && <p className="small">{e.description}</p>}
+        {e.description && <p className="small" dir="auto">{e.description}</p>}
         <div className="row wrap">
           {!j && (
             <Button className="btn small" onClick={() => evAct(e.id, "join")}>
-              Join
+              {t("Join")}
             </Button>
           )}
           {j && !j.checkedIn && live && (
             <Button className="btn green small" onClick={() => evAct(e.id, "checkin")}>
-              Check in
+              {t("Check in")}
             </Button>
           )}
-          {j?.checkedIn && <span className="tag" style={{ color: "var(--green)" }}>✓ Checked in</span>}
+          {j?.checkedIn && <span className="tag" style={{ color: "var(--green)" }}>{t("✓ Checked in")}</span>}
           {j && (
             <Button className="btn cyan small" onClick={() => openChat(`event:${e.id}`, `🎉 ${e.title}`)}>
-              Squad chat
+              {t("Squad chat")}
             </Button>
           )}
           <a className="btn ghost small" href={navUrl(e.lat, e.lng)} target="_blank" rel="noreferrer">
-            Navigate
+            {t("Navigate")}
           </a>
           <Button
             className="btn ghost small"
@@ -1008,7 +1009,7 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
               else navigator.clipboard.writeText(url);
             }}
           >
-            Share
+            {t("Share")}
           </Button>
         </div>
       </div>
@@ -1016,38 +1017,38 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
   };
 
   return (
-    <Sheet title="Events" onClose={onClose} peek={peek} help="events">
-      <Tabs value={tab} onChange={setTab} tabs={[["nearby", "Nearby"], ["mine", `My events (${mine.length})`], ["new", "+ Create"]]} />
-      {tab === "nearby" && (world?.events.length ? world.events.map(card) : <div className="empty">No events within 8 km. Start one!</div>)}
-      {tab === "mine" && (mine.length ? mine.map(card) : <div className="empty">You haven&apos;t joined any events.</div>)}
+    <Sheet title={t("Events")} onClose={onClose} peek={peek} help="events">
+      <Tabs value={tab} onChange={setTab} tabs={[["nearby", t("Nearby")], ["mine", t("My events ({n})", { n: mine.length })], ["new", t("+ Create")]]} />
+      {tab === "nearby" && (world?.events.length ? world.events.map(card) : <div className="empty">{t("No events within 8 km. Start one!")}</div>)}
+      {tab === "mine" && (mine.length ? mine.map(card) : <div className="empty">{t("You haven't joined any events.")}</div>)}
       {tab === "new" && (
         <div>
-          <label>Title</label>
-          <input value={f.title} maxLength={80} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Saturday night chest hunt" />
-          <label>Description</label>
-          <textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Meet at the fountain, we sweep downtown together." />
-          <LocationField label="Meeting point" value={loc} onChange={setLoc} />
+          <label>{t("Title")}</label>
+          <input value={f.title} maxLength={80} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t("Saturday night chest hunt")} dir="auto" />
+          <label>{t("Description")}</label>
+          <textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t("Meet at the fountain, we sweep downtown together.")} dir="auto" />
+          <LocationField label={t("Meeting point")} value={loc} onChange={setLoc} />
           <div className="form-grid">
             <div>
-              <label>Starts (your local time)</label>
+              <label>{t("Starts (your local time)")}</label>
               <input type="datetime-local" value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} />
             </div>
             <div>
-              <label>Duration (hours)</label>
-              <input type="number" min={1} max={24} value={f.hours} onChange={(e) => setF({ ...f, hours: Number(e.target.value) })} />
+              <label>{t("Duration (hours)")}</label>
+              <input inputMode="numeric" value={String(f.hours)} onChange={(e) => setF({ ...f, hours: Math.min(24, Number(toAsciiDigits(e.target.value).replace(/\D/g, "")) || 0) })} />
             </div>
             <div>
-              <label>Max players</label>
-              <input type="number" min={2} value={f.maxPlayers} onChange={(e) => setF({ ...f, maxPlayers: Number(e.target.value) })} />
+              <label>{t("Max players")}</label>
+              <input inputMode="numeric" value={String(f.maxPlayers)} onChange={(e) => setF({ ...f, maxPlayers: Number(toAsciiDigits(e.target.value).replace(/\D/g, "")) || 0 })} />
             </div>
           </div>
           <label className="row" style={{ textTransform: "none" }}>
             <input type="checkbox" checked={f.isPublic} onChange={(e) => setF({ ...f, isPublic: e.target.checked })} style={{ width: "auto" }} />
-            Public (listed on the map & website)
+            {t("Public (listed on the map & website)")}
           </label>
-          <p className="small muted">Checked-in players get a squad bonus: +10% XP for every other player who shows up.</p>
-          <Button className="btn block" disabled={!loc || !f.start || f.title.length < 3} onClick={create}>
-            Create event
+          <p className="small muted">{t("Checked-in players get a squad bonus: +10% XP for every other player who shows up.")}</p>
+          <Button className="btn block" disabled={!loc || !f.start || f.title.length < 3 || f.hours < 1 || f.maxPlayers < 2} onClick={create}>
+            {t("Create event")}
           </Button>
         </div>
       )}
@@ -1065,7 +1066,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
   const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
 
   return (
-    <Sheet title="Hero" onClose={onClose} peek={peek} help="hero">
+    <Sheet title={t("Hero")} onClose={onClose} peek={peek} help="hero">
       {tab !== "hero" && <div className="row" style={{ marginBottom: 12 }}>
         <div className="avatar" style={{ width: 64, height: 64, fontSize: 36 }}>
           {me.avatar}
@@ -1080,7 +1081,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
             <i style={{ width: `${me.levelPct * 100}%` }} />
           </div>
           <div className="small muted">
-            {me.xp.toLocaleString()} / {me.nextLevelXp.toLocaleString()} XP
+            {t("{xp} / {next} XP", { xp: me.xp, next: me.nextLevelXp })}
           </div>
         </div>
       </div>}
@@ -1088,57 +1089,72 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
       {me.dailyAvailable && (
         <div className="card hl row">
           <div className="grow">
-            <b>🎁 Daily drop ready</b>
+            <b>🎁 {t("Daily drop ready")}</b>
             <div className="small muted">
-              Streak {me.streak} → +{me.dailyReward.coins} coins, +{me.dailyReward.xp} XP{me.dailyReward.gems ? `, +${me.dailyReward.gems} 💎` : ""}
+              {t("Streak {n} → +{coins} coins, +{xp} XP", { n: me.streak, coins: me.dailyReward.coins, xp: me.dailyReward.xp })}{me.dailyReward.gems ? `, +${fmtNum(me.dailyReward.gems)} 💎` : ""}
             </div>
           </div>
           <Button className="btn yellow small" onClick={() => act(() => api("/api/daily", { body: {} }))}>
-            Claim
+            {t("Claim")}
           </Button>
         </div>
       )}
 
       <div className="res-bar">
-        <span>{me.league.emoji} {me.trophies} 🏆</span>
-        <span>💎 {me.gems}</span>
-        <span>🔩 {me.scrap}</span>
-        <span>🪙 {me.coins.toLocaleString()}</span>
+        <span>{me.league.emoji} {fmtNum(me.trophies)} 🏆</span>
+        <span>💎 {fmtNum(me.gems)}</span>
+        <span>🔩 {fmtNum(me.scrap)}</span>
+        <span>🪙 {fmtNum(me.coins)}</span>
       </div>
 
-      <Tabs value={tab} onChange={setTab} tabs={[["hero", `🦸 Hero${me.freePoints ? ` (${me.freePoints})` : ""}`], ["gear", "🎒 Gear"], ["quests", `📜 Quests${me.questsReady ? ` (${me.questsReady})` : ""}`], ["powers", `⭐ Powers${me.commandPoints ? ` (${me.commandPoints})` : ""}`], ["life", `${me.mood.emoji} Life`], ["stats", "⚙️ Profile"], ["bag", `Bag (${me.inventory.reduce((s, i) => s + i.qty, 0)})`], ["awards", `Awards (${me.achievements.length})`]]} />
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          ["hero", me.freePoints ? t("🦸 Hero ({n})", { n: me.freePoints }) : t("🦸 Hero")],
+          ["gear", t("🎒 Gear")],
+          ["quests", me.questsReady ? t("📜 Quests ({n})", { n: me.questsReady }) : t("📜 Quests")],
+          ["powers", me.commandPoints ? t("⭐ Powers ({n})", { n: me.commandPoints }) : t("⭐ Powers")],
+          ["life", `${me.mood.emoji} ${t("Life")}`],
+          ["stats", t("⚙️ Profile")],
+          ["bag", t("Bag ({n})", { n: me.inventory.reduce((s, i) => s + i.qty, 0) })],
+          ["awards", t("Awards ({n})", { n: me.achievements.length })],
+        ]}
+      />
 
       {tab === "stats" && (
         <>
-          <label>Play mode</label>
+          <label>{t("Language")}</label>
+          <LanguagePicker />
+          <label>{t("Play mode")}</label>
           <ModeCards home={!!me.remotePlay} homeLocked={!S.remoteEnabled} onPick={(h) => h !== !!me.remotePlay && setHomeMode(h)} />
-          <p className="small muted">The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.</p>
+          <p className="small muted">{t("The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.")}</p>
           <AppSettings />
           <SoundSettings />
           <GraphicsSettings />
           <div className="row wrap" style={{ marginTop: 8 }}>
-            <Button className="btn cyan small" onClick={startTour}>📖 Replay tutorial</Button>
-            <Button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 Show all tips again</Button>
+            <Button className="btn cyan small" onClick={startTour}>📖 {t("Replay tutorial")}</Button>
+            <Button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 {t("Show all tips again")}</Button>
           </div>
           <div className="grid3">
-            <div className="stat"><b>{me.coins.toLocaleString()}</b><span>Coins</span></div>
-            <div className="stat"><b>🔥 {me.streak}</b><span>Streak</span></div>
-            <div className="stat"><b>{me.achievements.length}</b><span>Awards</span></div>
+            <div className="stat"><b>{fmtNum(me.coins)}</b><span>{t("Coins")}</span></div>
+            <div className="stat"><b>🔥 {fmtNum(me.streak)}</b><span>{t("Streak")}</span></div>
+            <div className="stat"><b>{fmtNum(me.achievements.length)}</b><span>{t("Awards")}</span></div>
           </div>
-          <label>Callsign</label>
+          <label>{t("Callsign")}</label>
           <form
             className="row"
             onSubmit={(e) => {
               e.preventDefault();
               const username = String(new FormData(e.currentTarget).get("username") ?? "").trim();
-              if (username && username !== me.username) act(() => api("/api/me", { method: "PATCH", body: { username } }).then(() => ({ message: `You're now ${username}` })));
+              if (username && username !== me.username) act(() => api("/api/me", { method: "PATCH", body: { username } }).then(() => ({ message: t("You're now {name}", { name: username }) })));
             }}
           >
-            <input name="username" defaultValue={me.username} maxLength={20} minLength={3} pattern="[A-Za-z0-9_]+" />
-            <Button className="btn ghost small">Save</Button>
+            <input name="username" defaultValue={me.username} maxLength={20} minLength={3} pattern="[A-Za-z0-9_]+" dir="ltr" title={t("Letters, numbers and _ only (English letters)")} />
+            <Button className="btn ghost small">{t("Save")}</Button>
           </form>
-          <p className="small muted">No account needed — your progress is saved in this browser.</p>
-          <label>Avatar</label>
+          <p className="small muted">{t("No account needed — your progress is saved in this browser.")}</p>
+          <label>{t("Avatar")}</label>
           <div className="row wrap">
             {AVATARS.map((a) => (
               <Button
@@ -1151,23 +1167,23 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
               </Button>
             ))}
           </div>
-          <label>Invite friends — you both get 150 coins</label>
+          <label>{t("Invite friends — you both get {n} coins", { n: S.referralCoins })}</label>
           <div className="row">
-            <input readOnly value={refLink} className="mono small" onFocus={(e) => e.target.select()} />
+            <input readOnly value={refLink} className="mono small" dir="ltr" onFocus={(e) => e.target.select()} />
             <Button
               className="btn cyan small"
-              onClick={() => (navigator.share ? navigator.share({ title: "Play StreetQuest with me", url: refLink }).catch(() => {}) : navigator.clipboard.writeText(refLink))}
+              onClick={() => (navigator.share ? navigator.share({ title: t("Play StreetQuest with me"), url: refLink }).catch(() => {}) : navigator.clipboard.writeText(refLink))}
             >
-              Share
+              {t("Share")}
             </Button>
           </div>
           <p className="small muted">
-            Timezone: {me.timezone} (daily reset at your local midnight)
+            {t("Timezone: {tz} (daily reset at your local midnight)", { tz: me.timezone })}
           </p>
           <div className="row wrap" style={{ marginTop: 10 }}>
             {me.role === "ADMIN" && (
               <a className="btn yellow small" href="/admin">
-                Admin panel
+                {t("Admin panel")}
               </a>
             )}
 
@@ -1186,9 +1202,9 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
       {tab === "awards" && (
         <div className="ach">
           {ACHIEVEMENTS.map((a) => (
-            <div key={a.key} className={me.achievements.includes(a.key) ? "" : "locked"} title={a.desc}>
+            <div key={a.key} className={me.achievements.includes(a.key) ? "" : "locked"} title={t(a.desc)}>
               <b>{a.emoji}</b>
-              {a.name}
+              {t(a.name)}
             </div>
           ))}
         </div>
@@ -1222,7 +1238,7 @@ function BagTab() {
     const coins = list.reduce((s, [k, q]) => s + price(k) * q, 0);
     if (!n || selling.current) return;
     selling.current = true;
-    await askConfirm(`Sell ${n} item${n > 1 ? "s" : ""} for ${coins.toLocaleString()} coins?`, { ok: `Sell for ${coins.toLocaleString()} 🪙`, danger: true }).then(async (ok) => {
+    await askConfirm(t("Sell {n, plural, one {# item} other {# items}} for {coins} coins?", { n, coins }), { ok: t("Sell for {n} 🪙", { n: coins }), danger: true }).then(async (ok) => {
       if (!ok) return;
       const done = await act(() => api("/api/inventory", { body: { action: "sellMany", items: list.map(([itemKey, qty]) => ({ itemKey, qty })) } }));
       if (done) {
@@ -1232,22 +1248,22 @@ function BagTab() {
     }).finally(() => (selling.current = false));
   };
 
-  if (!me.inventory.length) return <div className="empty">🎒 Your bag is empty. Go collect something!</div>;
+  if (!me.inventory.length) return <div className="empty">{t("🎒 Your bag is empty. Go collect something!")}</div>;
   return (
     <>
       <div className="row wrap" style={{ marginBottom: 8, justifyContent: "space-between" }}>
-        <span className="small muted">{me.inventory.reduce((s, i) => s + i.qty, 0)} items · worth {bagValue.toLocaleString()} 🪙</span>
+        <span className="small muted">{t("{n} items · worth {coins} 🪙", { n: me.inventory.reduce((s, i) => s + i.qty, 0), coins: bagValue })}</span>
         <div className="row">
-          {selecting && <Button className="btn ghost small" onClick={() => setSel(Object.fromEntries(items.map((i) => [i.key, i.qty])))}>Select all</Button>}
-          <Button className={`btn small ${selecting ? "yellow" : "ghost"}`} onClick={() => (setSelecting(!selecting), setSel({}))}>{selecting ? "Done" : "☑️ Select"}</Button>
+          {selecting && <Button className="btn ghost small" onClick={() => setSel(Object.fromEntries(items.map((i) => [i.key, i.qty])))}>{t("Select all")}</Button>}
+          <Button className={`btn small ${selecting ? "yellow" : "ghost"}`} onClick={() => (setSelecting(!selecting), setSel({}))}>{selecting ? t("Done") : t("☑️ Select")}</Button>
         </div>
       </div>
       <div className="tabs">
         {(["all", "food", "common", "rare", "epic", "legendary"] as const).map((f) => (
-          <Button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)} style={f !== "all" && f !== "food" ? { color: RARITY_COLOR[f] } : undefined}>{f === "all" ? "All" : f === "food" ? "🍔 Food" : f}</Button>
+          <Button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)} style={f !== "all" && f !== "food" ? { color: RARITY_COLOR[f] } : undefined}>{f === "all" ? t("All") : f === "food" ? t("🍔 Food") : t(RARITY_LABEL[f])}</Button>
         ))}
       </div>
-      <p className="small muted">{selecting ? "Tap items to pick them, adjust how many with − / +, then sell them in one go." : "Tap an item to sell it, or use ☑️ Select to sell many at once. Food can be eaten in Hero → Life."}</p>
+      <p className="small muted">{selecting ? t("Tap items to pick them, adjust how many with − / +, then sell them in one go.") : t("Tap an item to sell it, or use ☑️ Select to sell many at once. Food can be eaten in Hero → Life.")}</p>
       <div className="inv">
         {items.map((i) => {
           const q = sel[i.key] ?? 0;
@@ -1256,19 +1272,19 @@ function BagTab() {
               key={i.key}
               className={`inv-item ${i.def.rarity} ${q ? "picked" : ""}`}
               style={{ borderColor: RARITY_COLOR[i.def.rarity] }}
-              title={i.def.blurb}
+              title={t(i.def.blurb)}
               onClick={() => (selecting ? toggle(i.key, i.qty) : sellNow([[i.key, 1]]))}
             >
-              <span className="q">×{i.qty}</span>
+              <span className="q">×{fmtNum(i.qty)}</span>
               {q > 0 && <span className="check">✓</span>}
               <div className="e">{i.def.emoji}</div>
-              <div className="n">{i.def.name}</div>
-              <div className="v">{price(i.key)} 🪙</div>
+              <div className="n">{t(i.def.name)}</div>
+              <div className="v">{fmtNum(price(i.key))} 🪙</div>
               {selecting && q > 0 && (
                 <div className="stepper" onClick={(e) => e.stopPropagation()}>
-                  <Button onClick={() => setQty(i.key, q - 1, i.qty)}>−</Button>
-                  <b>{q}</b>
-                  <Button onClick={() => setQty(i.key, q + 1, i.qty)}>+</Button>
+                  <Button onClick={() => setQty(i.key, q - 1, i.qty)} aria-label={t("Fewer")}>−</Button>
+                  <b>{fmtNum(q)}</b>
+                  <Button onClick={() => setQty(i.key, q + 1, i.qty)} aria-label={t("More")}>+</Button>
                 </div>
               )}
             </div>
@@ -1277,8 +1293,8 @@ function BagTab() {
       </div>
       {selecting && (
         <div className="sell-bar">
-          <span className="grow">{count ? <>Selected <b>{count}</b> · <b style={{ color: "var(--yellow)" }}>{total.toLocaleString()} 🪙</b></> : "Nothing selected"}</span>
-          <Button className="btn yellow" disabled={!count} onClick={() => sellNow(chosen)}>💰 Sell selected</Button>
+          <span className="grow">{count ? <>{t("Selected")} <b>{fmtNum(count)}</b> · <b style={{ color: "var(--yellow)" }}>{fmtNum(total)} 🪙</b></> : t("Nothing selected")}</span>
+          <Button className="btn yellow" disabled={!count} onClick={() => sellNow(chosen)}>💰 {t("Sell selected")}</Button>
         </div>
       )}
     </>
@@ -1298,19 +1314,19 @@ function SoundSettings() {
   }, []);
   return (
     <>
-      <label>Sound</label>
+      <label>{t("Sound")}</label>
       <div className="card sound-card">
         <div className="row">
-          <span className="grow">🔊 Sound effects &amp; music</span>
-          <Button className={`btn small ${isMuted() ? "ghost" : "green"}`} onClick={() => setMuted(!isMuted())}>{isMuted() ? "Off" : "On"}</Button>
+          <span className="grow">🔊 {t("Sound effects & music")}</span>
+          <Button className={`btn small ${isMuted() ? "ghost" : "green"}`} onClick={() => setMuted(!isMuted())}>{isMuted() ? t("Off") : t("On")}</Button>
         </div>
         <div className="row">
-          <span className="grow">🎵 Background music</span>
-          <Button className={`btn small ${musicOn() ? "green" : "ghost"}`} disabled={isMuted()} onClick={() => setMusicOn(!musicOn())}>{musicOn() ? "On" : "Off"}</Button>
+          <span className="grow">🎵 {t("Background music")}</span>
+          <Button className={`btn small ${musicOn() ? "green" : "ghost"}`} disabled={isMuted()} onClick={() => setMusicOn(!musicOn())}>{musicOn() ? t("On") : t("Off")}</Button>
         </div>
         <div className="row">
-          <span className="small muted" style={{ width: 70 }}>Volume</span>
-          <input type="range" min={0} max={1} step={0.05} value={musicVolume()} disabled={isMuted() || !musicOn()} onChange={(e) => setMusicVolume(Number(e.target.value))} className="grow" aria-label="Music volume" />
+          <span className="small muted" style={{ width: 70 }}>{t("Volume")}</span>
+          <input type="range" min={0} max={1} step={0.05} value={musicVolume()} disabled={isMuted() || !musicOn()} onChange={(e) => setMusicVolume(Number(e.target.value))} className="grow" aria-label={t("Music volume")} />
         </div>
       </div>
     </>
@@ -1319,9 +1335,9 @@ function SoundSettings() {
 
 // ---------------------------------------------------------------- graphics
 const PERF_MODES: [PerfMode, string][] = [
-  ["auto", "Auto"],
-  ["lite", "Lite"],
-  ["full", "Full"],
+  ["auto", msg("Auto")],
+  ["lite", msg("Lite")],
+  ["full", msg("Full")],
 ];
 function GraphicsSettings() {
   const [, force] = useState(0);
@@ -1329,21 +1345,21 @@ function GraphicsSettings() {
   const mode = perfMode();
   return (
     <>
-      <label>Graphics</label>
+      <label>{t("Graphics")}</label>
       <div className="card sound-card">
         <div className="row">
-          <span className="grow">⚡ Performance mode</span>
+          <span className="grow">⚡ {t("Performance mode")}</span>
           <div className="tabs" style={{ margin: 0 }}>
             {PERF_MODES.map(([m, label]) => (
               <button key={m} className={mode === m ? "on" : ""} onClick={() => setPerfMode(m)}>
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
         </div>
         <p className="small muted" style={{ margin: 0 }}>
-          Lite turns off looping map animations and lowers 3D fight resolution — smoother and lighter on battery and memory.
-          {mode === "auto" && ` This phone is using ${autoIsLite() ? "Lite" : "Full"}.`}
+          {t("Lite turns off looping map animations and lowers 3D fight resolution — smoother and lighter on battery and memory.")}
+          {mode === "auto" && ` ${t("This phone is using {mode}.", { mode: t(autoIsLite() ? "Lite" : "Full") })}`}
         </p>
       </div>
     </>
@@ -1368,11 +1384,11 @@ function AppSettings() {
       if (push === "on") {
         await disablePush();
         setPush("off");
-        toast({ title: "🔕 Notifications off for this device" });
+        toast({ title: t("🔕 Notifications off for this device") });
       } else {
         await enablePush();
         setPush("on");
-        toast({ kind: "reward", title: "🔔 Notifications on", body: "We'll tell you about raids, rewards and your crew." });
+        toast({ kind: "reward", title: t("🔔 Notifications on"), body: t("We'll tell you about raids, rewards and your crew.") });
       }
     } catch (e) {
       toast({ kind: "error", title: (e as Error).message });
@@ -1382,28 +1398,28 @@ function AppSettings() {
   };
   return (
     <>
-      <label>App</label>
+      <label>{t("App")}</label>
       <div className="card sound-card">
         <div className="row">
-          <span className="grow">📲 Install on this phone<div className="small muted">Full screen, home-screen icon, works offline</div></span>
+          <span className="grow">📲 {t("Install on this phone")}<div className="small muted">{t("Full screen, home-screen icon, works offline")}</div></span>
           {isStandalone() ? (
-            <span className="tag" style={{ color: "var(--green)" }}>Installed ✓</span>
+            <span className="tag" style={{ color: "var(--green)" }}>{t("Installed ✓")}</span>
           ) : canInstall() ? (
-            <Button className="btn green small" onClick={() => promptInstall()}>Install</Button>
+            <Button className="btn green small" onClick={() => promptInstall()}>{t("Install")}</Button>
           ) : isIos() ? (
-            <span className="small muted" style={{ maxWidth: 150, textAlign: "right" }}>Safari: Share ⬆️ → Add to Home Screen</span>
+            <span className="small muted" style={{ maxWidth: 150, textAlign: "end" }}>{t("Safari: Share ⬆️ → Add to Home Screen")}</span>
           ) : (
-            <span className="small muted" style={{ maxWidth: 150, textAlign: "right" }}>Browser menu → Install app</span>
+            <span className="small muted" style={{ maxWidth: 150, textAlign: "end" }}>{t("Browser menu → Install app")}</span>
           )}
         </div>
         <div className="row">
-          <span className="grow">🔔 Notifications<div className="small muted">{push === "blocked" ? "Blocked — allow them in your browser's site settings" : push === "unsupported" ? (isIos() ? "Install the app first (iOS 16.4+)" : "Not supported in this browser") : "Raids on your base, rewards, crew messages"}</div></span>
+          <span className="grow">🔔 {t("Notifications")}<div className="small muted">{push === "blocked" ? t("Blocked — allow them in your browser's site settings") : push === "unsupported" ? (isIos() ? t("Install the app first (iOS 16.4+)") : t("Not supported in this browser")) : t("Raids on your base, rewards, crew messages")}</div></span>
           {push === "on" || push === "off" ? (
-            <Button className={`btn small ${push === "on" ? "green" : "ghost"}`} disabled={busy} onClick={toggle}>{push === "on" ? "On" : "Off"}</Button>
+            <Button className={`btn small ${push === "on" ? "green" : "ghost"}`} disabled={busy} onClick={toggle}>{push === "on" ? t("On") : t("Off")}</Button>
           ) : null}
         </div>
         {push === "on" && (
-          <Button className="btn ghost small" onClick={() => act(() => api("/api/push", { body: { action: "test" } }))}>Send a test notification</Button>
+          <Button className="btn ghost small" onClick={() => act(() => api("/api/push", { body: { action: "test" } }))}>{t("Send a test notification")}</Button>
         )}
       </div>
     </>

@@ -1,6 +1,7 @@
 import { prisma } from "../lib/db";
 import { ACHIEVEMENT_BY_KEY, levelForXp, titleForLevel } from "../lib/progression";
 import { ITEM_BY_KEY } from "../lib/catalog";
+import { t } from "../lib/i18n";
 import { notify } from "./hub";
 import { HttpError } from "./http";
 import { moodOfUser } from "./needs";
@@ -38,7 +39,12 @@ export async function grant(userId: string, g: Grant, opts: { raw?: boolean } = 
     const gained = newLevel - oldLevel;
     const gems = Math.round(S.levelUpGems * gained);
     if (gems) await prisma.user.update({ where: { id: userId }, data: { gems: { increment: gems } } });
-    await notify(userId, { kind: "reward", title: `LEVEL UP! ${newLevel}`, body: `${titleForLevel(newLevel)} · +${3 * gained} attribute points, +${gained} Command Point${gained > 1 ? "s" : ""}${gems ? `, +${gems} 💎` : ""}` });
+    await notify(userId, () => ({
+      kind: "reward",
+      tag: "levelup",
+      title: t("LEVEL UP! {n}", { n: newLevel }),
+      body: `${titleForLevel(newLevel)} · ${t("+{points} attribute points, +{n, plural, one {# Command Point} other {# Command Points}}", { points: 3 * gained, n: gained })}${gems ? `, +${gems} 💎` : ""}`,
+    }));
   }
   return user;
 }
@@ -49,7 +55,7 @@ export async function unlock(userId: string, key: string) {
   const exists = await prisma.userAchievement.findUnique({ where: { userId_key: { userId, key } } });
   if (exists) return;
   await prisma.userAchievement.create({ data: { userId, key } });
-  await notify(userId, { kind: "reward", title: `${def.emoji} Achievement: ${def.name}`, body: `+${def.xp} XP${S.achievementGems ? ` · +${S.achievementGems} 💎` : ""}` });
+  await notify(userId, () => ({ kind: "reward", title: t("{emoji} Achievement: {name}", { emoji: def.emoji, name: t(def.name) }), body: `${t("+{n} XP", { n: def.xp })}${S.achievementGems ? ` · +${S.achievementGems} 💎` : ""}` }));
   await grant(userId, { xp: def.xp, gems: S.achievementGems });
 }
 
@@ -72,19 +78,19 @@ export async function checkClaimAchievements(userId: string, phase: string) {
 
 export async function spendCoins(userId: string, amount: number) {
   const res = await prisma.user.updateMany({ where: { id: userId, coins: { gte: amount } }, data: { coins: { decrement: amount } } });
-  if (res.count === 0) throw new HttpError(400, "Not enough coins");
+  if (res.count === 0) throw new HttpError(400, t("Not enough coins"));
 }
 
 export const itemLabel = (key: string) => {
   const i = ITEM_BY_KEY[key];
-  return i ? `${i.emoji} ${i.name}` : key;
+  return i ? `${i.emoji} ${t(i.name)}` : key;
 };
 
 /** Server-trusted player position: the last fix accepted by /api/loc (must be recent). */
 export async function lastKnownLocation(userId: string) {
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { lastLat: true, lastLng: true, lastSeenAt: true } });
   if (u?.lastLat == null || u.lastLng == null || !u.lastSeenAt || Date.now() - u.lastSeenAt.getTime() > 2 * 60_000) {
-    throw new HttpError(400, "No recent GPS fix — enable location and try again");
+    throw new HttpError(400, t("No recent GPS fix — enable location and try again"));
   }
   return { lat: u.lastLat, lng: u.lastLng };
 }

@@ -1,4 +1,5 @@
 // Faction superweapons, Generals: Zero Hour style. Pure — safe on client and server.
+import { msg } from "./i18n";
 import type { FactionKey } from "./rts";
 
 export type SuperKey = "nuke" | "particle" | "scud";
@@ -17,9 +18,9 @@ export type SuperDef = {
 };
 
 export const SUPERWEAPONS: Record<SuperKey, SuperDef> = {
-  nuke: { key: "nuke", faction: "dragon", name: "Nuclear Missile", emoji: "☢️", blurb: "Huge blast that leaves the ground radioactive for 10 minutes.", radius: 150, power: 1, chargeH: 8, warnS: 45, hazard: { minutes: 10, dps: 2.5, label: "radiation" }, interceptable: true },
-  particle: { key: "particle", faction: "coalition", name: "Particle Cannon", emoji: "🔆", blurb: "An orbital beam: tighter, hits hardest, can't be intercepted.", radius: 90, power: 1.35, chargeH: 6, warnS: 30, hazard: null, interceptable: false },
-  scud: { key: "scud", faction: "insurgency", name: "SCUD Storm", emoji: "🚀", blurb: "A salvo of missiles over a wide area, then a toxin cloud for 5 minutes.", radius: 200, power: 0.8, chargeH: 7, warnS: 45, hazard: { minutes: 5, dps: 2, label: "toxins" }, interceptable: true },
+  nuke: { key: "nuke", faction: "dragon", name: msg("Nuclear Missile"), emoji: "☢️", blurb: msg("Huge blast that leaves the ground radioactive for 10 minutes."), radius: 150, power: 1, chargeH: 8, warnS: 45, hazard: { minutes: 10, dps: 2.5, label: msg("radiation") }, interceptable: true },
+  particle: { key: "particle", faction: "coalition", name: msg("Particle Cannon"), emoji: "🔆", blurb: msg("An orbital beam: tighter, hits hardest, can't be intercepted."), radius: 90, power: 1.35, chargeH: 6, warnS: 30, hazard: null, interceptable: false },
+  scud: { key: "scud", faction: "insurgency", name: msg("SCUD Storm"), emoji: "🚀", blurb: msg("A salvo of missiles over a wide area, then a toxin cloud for 5 minutes."), radius: 200, power: 0.8, chargeH: 7, warnS: 45, hazard: { minutes: 5, dps: 2, label: msg("toxins") }, interceptable: true },
 };
 export const SUPER_BY_FACTION: Record<FactionKey, SuperDef> = { dragon: SUPERWEAPONS.nuke, coalition: SUPERWEAPONS.particle, insurgency: SUPERWEAPONS.scud };
 

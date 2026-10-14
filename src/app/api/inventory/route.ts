@@ -5,6 +5,7 @@ import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, actionRoute } from "@/server/http";
 import { grant } from "@/server/rewards";
+import { t } from "@/lib/i18n";
 
 // Sell one item type, or several at once from the bag's multi-select.
 const Schema = z.discriminatedUnion("action", [
@@ -21,7 +22,7 @@ export const POST = actionRoute(async (req) => {
   // merge duplicates so one item can't be counted twice
   const want = new Map<string, number>();
   for (const it of list) {
-    if (!ITEM_BY_KEY[it.itemKey]) throw new HttpError(404, "Unknown item");
+    if (!ITEM_BY_KEY[it.itemKey]) throw new HttpError(404, t("Unknown item"));
     want.set(it.itemKey, (want.get(it.itemKey) ?? 0) + it.qty);
   }
   let coins = 0;
@@ -36,9 +37,9 @@ export const POST = actionRoute(async (req) => {
     coins += price(itemKey) * qty;
     sold += qty;
   }
-  if (!sold) throw new HttpError(400, "You don't have that many");
+  if (!sold) throw new HttpError(400, t("You don't have that many"));
   await prisma.inventoryItem.deleteMany({ where: { userId: u.id, qty: { lte: 0 } } });
   await grant(u.id, { coins }, { raw: true });
   const what = want.size === 1 && !failed.length ? `${sold}× ${ITEM_BY_KEY[[...want.keys()][0]].name}` : `${sold} items`;
-  return { message: `💰 Sold ${what} for ${coins.toLocaleString()} coins${failed.length ? ` (skipped: ${failed.join(", ")})` : ""}`, coins };
+  return { message: `${t("💰 Sold {what} for {n} coins", { what, n: coins })}${failed.length ? ` ${t("(skipped: {items})", { items: failed.join(t(", ")) })}` : ""}`, coins };
 });

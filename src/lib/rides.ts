@@ -1,6 +1,7 @@
 // Ride hailing (Uber-style job): a rider requests a car, a nearby player drives them.
 // The fare is held in escrow and paid to the driver when the ride ends. Pure — client and server.
 import { distanceM, type LatLng } from "./geo";
+import { msg } from "./i18n";
 
 export const RIDE_MIN_FARE = 10;
 export const RIDE_MAX_FARE = 50_000;
@@ -15,12 +16,13 @@ export const RIDE_RIDER_DROPOFF_M = 200;
 
 export type RideStatus = "REQUESTED" | "ACCEPTED" | "ONBOARD" | "DONE" | "CANCELLED";
 
+/** Status labels — English keys, shown with t(RIDE_STATUS[status]). */
 export const RIDE_STATUS: Record<RideStatus, string> = {
-  REQUESTED: "🟡 Looking for a driver",
-  ACCEPTED: "🔵 Driver on the way",
-  ONBOARD: "🟣 On the road",
-  DONE: "✅ Arrived",
-  CANCELLED: "⚫ Cancelled",
+  REQUESTED: msg("🟡 Looking for a driver"),
+  ACCEPTED: msg("🔵 Driver on the way"),
+  ONBOARD: msg("🟣 On the road"),
+  DONE: msg("✅ Arrived"),
+  CANCELLED: msg("⚫ Cancelled"),
 };
 
 /** Suggested fare: base + per km, so riders have a sensible starting point. */

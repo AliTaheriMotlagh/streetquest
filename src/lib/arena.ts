@@ -1,6 +1,7 @@
 // FPS layer (Counter-Strike / CoD style): the arena layout is generated from the
 // match seed, so every client builds the same map with nothing sent over the wire.
 // Coordinates are metres on the XZ plane; the arena is centred on 0,0. Pure.
+import { msg } from "./i18n";
 import { rng } from "./geo";
 
 export type Box = { x: number; z: number; w: number; d: number; h: number; color: number };
@@ -16,10 +17,10 @@ export const HEAD_Y = 1.45; // hits above this height count as headshots
 export type Weapon = { name: string; dmg: number; headMult: number; intervalMs: number; mag: number; reloadMs: number; range: number; spread: number };
 /** The equipped weapon gear decides which gun you carry into a fight. */
 export const WEAPONS: Record<"ar" | "smg" | "dmr" | "lmg", Weapon> = {
-  ar: { name: "Assault Rifle", dmg: 20, headMult: 2, intervalMs: 110, mag: 30, reloadMs: 1800, range: 70, spread: 1 },
-  smg: { name: "SMG", dmg: 14, headMult: 1.8, intervalMs: 70, mag: 40, reloadMs: 1500, range: 45, spread: 1.7 },
-  dmr: { name: "Marksman Rifle", dmg: 46, headMult: 2.5, intervalMs: 420, mag: 10, reloadMs: 2200, range: 90, spread: 0.3 },
-  lmg: { name: "LMG", dmg: 18, headMult: 1.8, intervalMs: 95, mag: 80, reloadMs: 3600, range: 70, spread: 1.4 },
+  ar: { name: msg("Assault Rifle"), dmg: 20, headMult: 2, intervalMs: 110, mag: 30, reloadMs: 1800, range: 70, spread: 1 },
+  smg: { name: msg("SMG"), dmg: 14, headMult: 1.8, intervalMs: 70, mag: 40, reloadMs: 1500, range: 45, spread: 1.7 },
+  dmr: { name: msg("Marksman Rifle"), dmg: 46, headMult: 2.5, intervalMs: 420, mag: 10, reloadMs: 2200, range: 90, spread: 0.3 },
+  lmg: { name: msg("LMG"), dmg: 18, headMult: 1.8, intervalMs: 95, mag: 80, reloadMs: 3600, range: 70, spread: 1.4 },
 };
 export const weaponOf = (k: string | null | undefined) => WEAPONS[(k ?? "ar") as keyof typeof WEAPONS] ?? WEAPONS.ar;
 export const RIFLE = WEAPONS.ar;

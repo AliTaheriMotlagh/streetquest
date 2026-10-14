@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { pushPublicKey, pushTo } from "@/server/push";
+import { t } from "@/lib/i18n";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -20,8 +21,8 @@ export const POST = route(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   if (d.action === "subscribe") {
-    if (!pushPublicKey()) throw new HttpError(503, "Notifications aren't set up on this server yet");
-    if (!/^https:\/\//.test(d.sub.endpoint)) throw new HttpError(400, "Bad subscription");
+    if (!pushPublicKey()) throw new HttpError(503, t("Notifications aren't set up on this server yet"));
+    if (!/^https:\/\//.test(d.sub.endpoint)) throw new HttpError(400, t("Bad subscription"));
     await prisma.pushSub.upsert({
       where: { endpoint: d.sub.endpoint },
       create: { userId: u.id, endpoint: d.sub.endpoint, p256dh: d.sub.keys.p256dh, auth: d.sub.keys.auth },
@@ -30,13 +31,13 @@ export const POST = route(async (req) => {
     // Keep it tidy: at most 5 devices per player.
     const extra = await prisma.pushSub.findMany({ where: { userId: u.id }, orderBy: { createdAt: "desc" }, skip: 5, select: { id: true } });
     if (extra.length) await prisma.pushSub.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
-    return { message: "🔔 Notifications on for this device" };
+    return { message: t("🔔 Notifications on for this device") };
   }
   if (d.action === "unsubscribe") {
     await prisma.pushSub.deleteMany({ where: { userId: u.id, endpoint: d.endpoint } });
-    return { message: "🔕 Notifications off for this device" };
+    return { message: t("🔕 Notifications off for this device") };
   }
-  const sent = await pushTo(u.id, { title: "🔔 Notifications work!", body: "You'll hear about raids, rewards and your crew here.", kind: "info", tag: "test" }, { evenIfActive: true });
-  if (!sent) throw new HttpError(400, "No device to notify — turn notifications on first");
-  return { message: "Test notification sent" };
+  const sent = await pushTo(u.id, { title: t("🔔 Notifications work!"), body: t("You'll hear about raids, rewards and your crew here."), kind: "info", tag: "test" }, { evenIfActive: true });
+  if (!sent) throw new HttpError(400, t("No device to notify — turn notifications on first"));
+  return { message: t("Test notification sent") };
 });

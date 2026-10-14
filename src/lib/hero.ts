@@ -1,5 +1,6 @@
 // RPG layer: your commander is a hero. Class + attributes + gear + research + buffs
 // fold into one Bonus that every other layer reads (FPS, army, economy, XP). Pure.
+import { msg, t } from "./i18n";
 
 export type ArmorClass = "infantry" | "vehicle" | "air";
 
@@ -48,42 +49,42 @@ export type Bonus = {
 };
 
 export const MOD_LABEL: Record<ModKey, { name: string; pct: boolean; time?: boolean }> = {
-  fpsHp: { name: "FPS health", pct: false },
-  fpsDmg: { name: "FPS damage", pct: true },
-  fpsSpeed: { name: "Move speed", pct: true },
-  headBonus: { name: "Headshot ×", pct: false },
-  armyAtk: { name: "Army attack", pct: true },
-  armyHp: { name: "Army health", pct: true },
-  infantryAtk: { name: "Infantry attack", pct: true },
-  vehicleAtk: { name: "Vehicle attack", pct: true },
-  airAtk: { name: "Air attack", pct: true },
-  rocketAtk: { name: "Rocket attack", pct: true },
-  vehicleHp: { name: "Vehicle health", pct: true },
-  buildTime: { name: "Build speed", pct: true, time: true },
-  trainTime: { name: "Training speed", pct: true, time: true },
-  researchTime: { name: "Research speed", pct: true, time: true },
-  income: { name: "Income", pct: true },
-  loot: { name: "Loot", pct: true },
-  turret: { name: "Turret power", pct: true },
-  xp: { name: "XP", pct: true },
-  losses: { name: "Fewer losses", pct: true },
+  fpsHp: { name: msg("FPS health"), pct: false },
+  fpsDmg: { name: msg("FPS damage"), pct: true },
+  fpsSpeed: { name: msg("Move speed"), pct: true },
+  headBonus: { name: msg("Headshot ×"), pct: false },
+  armyAtk: { name: msg("Army attack"), pct: true },
+  armyHp: { name: msg("Army health"), pct: true },
+  infantryAtk: { name: msg("Infantry attack"), pct: true },
+  vehicleAtk: { name: msg("Vehicle attack"), pct: true },
+  airAtk: { name: msg("Air attack"), pct: true },
+  rocketAtk: { name: msg("Rocket attack"), pct: true },
+  vehicleHp: { name: msg("Vehicle health"), pct: true },
+  buildTime: { name: msg("Build speed"), pct: true, time: true },
+  trainTime: { name: msg("Training speed"), pct: true, time: true },
+  researchTime: { name: msg("Research speed"), pct: true, time: true },
+  income: { name: msg("Income"), pct: true },
+  loot: { name: msg("Loot"), pct: true },
+  turret: { name: msg("Turret power"), pct: true },
+  xp: { name: msg("XP"), pct: true },
+  losses: { name: msg("Fewer losses"), pct: true },
 };
 
 export const fmtMod = (k: ModKey, v: number) => {
   const l = MOD_LABEL[k];
-  if (!l.pct) return `+${k === "headBonus" ? v.toFixed(2) : Math.round(v)} ${l.name}`;
-  return `+${Math.round(v * 100)}% ${l.name}`;
+  if (!l.pct) return t("+{n} {stat}", { n: k === "headBonus" ? Math.round(v * 100) / 100 : Math.round(v), stat: t(l.name) });
+  return t("+{n}% {stat}", { n: Math.round(v * 100), stat: t(l.name) });
 };
 
 // ---------------------------------------------------------------- classes
 export type ClassKey = "vanguard" | "marksman" | "engineer" | "quartermaster" | "warlord";
 export type ClassDef = { key: ClassKey; name: string; emoji: string; blurb: string; mods: Mods };
 export const CLASSES: ClassDef[] = [
-  { key: "vanguard", name: "Vanguard", emoji: "🛡️", blurb: "Front-line tank. Soaks bullets and keeps the army standing.", mods: { fpsHp: 30, armyHp: 0.1, vehicleHp: 0.1 } },
-  { key: "marksman", name: "Marksman", emoji: "🎯", blurb: "One shot, one kill. Deadliest in first-person fights.", mods: { fpsDmg: 0.2, headBonus: 0.5, fpsSpeed: 0.05 } },
-  { key: "engineer", name: "Engineer", emoji: "🔧", blurb: "Builds faster, researches faster, turrets hit harder.", mods: { buildTime: 0.25, researchTime: 0.2, turret: 0.3 } },
-  { key: "quartermaster", name: "Quartermaster", emoji: "💰", blurb: "Runs the money. More supplies, more loot, more tribute.", mods: { income: 0.3, loot: 0.2, xp: 0.05 } },
-  { key: "warlord", name: "Warlord", emoji: "⚔️", blurb: "Born to command. Stronger, faster-trained armies.", mods: { armyAtk: 0.15, trainTime: 0.15, losses: 0.1 } },
+  { key: "vanguard", name: msg("Vanguard"), emoji: "🛡️", blurb: msg("Front-line tank. Soaks bullets and keeps the army standing."), mods: { fpsHp: 30, armyHp: 0.1, vehicleHp: 0.1 } },
+  { key: "marksman", name: msg("Marksman"), emoji: "🎯", blurb: msg("One shot, one kill. Deadliest in first-person fights."), mods: { fpsDmg: 0.2, headBonus: 0.5, fpsSpeed: 0.05 } },
+  { key: "engineer", name: msg("Engineer"), emoji: "🔧", blurb: msg("Builds faster, researches faster, turrets hit harder."), mods: { buildTime: 0.25, researchTime: 0.2, turret: 0.3 } },
+  { key: "quartermaster", name: msg("Quartermaster"), emoji: "💰", blurb: msg("Runs the money. More supplies, more loot, more tribute."), mods: { income: 0.3, loot: 0.2, xp: 0.05 } },
+  { key: "warlord", name: msg("Warlord"), emoji: "⚔️", blurb: msg("Born to command. Stronger, faster-trained armies."), mods: { armyAtk: 0.15, trainTime: 0.15, losses: 0.1 } },
 ];
 export const CLASS_BY_KEY = Object.fromEntries(CLASSES.map((c) => [c.key, c])) as Record<ClassKey, ClassDef>;
 export const classOf = (k: string | null | undefined) => (k && k in CLASS_BY_KEY ? CLASS_BY_KEY[k as ClassKey] : null);
@@ -92,10 +93,10 @@ export const classOf = (k: string | null | undefined) => (k && k in CLASS_BY_KEY
 export type AttrKey = "str" | "agi" | "int" | "cha";
 export const ATTR_BASE = 5;
 export const ATTRS: { key: AttrKey; name: string; emoji: string; blurb: string; per: Mods }[] = [
-  { key: "str", name: "Strength", emoji: "💪", blurb: "+3 FPS HP, +1% army HP", per: { fpsHp: 3, armyHp: 0.01 } },
-  { key: "agi", name: "Agility", emoji: "🏃", blurb: "+1.5% FPS damage, +0.6% speed", per: { fpsDmg: 0.015, fpsSpeed: 0.006 } },
-  { key: "int", name: "Intellect", emoji: "🧠", blurb: "+1.5% build, train & research speed", per: { buildTime: 0.015, trainTime: 0.015, researchTime: 0.015 } },
-  { key: "cha", name: "Charisma", emoji: "🗣️", blurb: "+1.5% income & loot, +0.5% army attack", per: { income: 0.015, loot: 0.015, armyAtk: 0.005 } },
+  { key: "str", name: msg("Strength"), emoji: "💪", blurb: msg("+3 FPS HP, +1% army HP"), per: { fpsHp: 3, armyHp: 0.01 } },
+  { key: "agi", name: msg("Agility"), emoji: "🏃", blurb: msg("+1.5% FPS damage, +0.6% speed"), per: { fpsDmg: 0.015, fpsSpeed: 0.006 } },
+  { key: "int", name: msg("Intellect"), emoji: "🧠", blurb: msg("+1.5% build, train & research speed"), per: { buildTime: 0.015, trainTime: 0.015, researchTime: 0.015 } },
+  { key: "cha", name: msg("Charisma"), emoji: "🗣️", blurb: msg("+1.5% income & loot, +0.5% army attack"), per: { income: 0.015, loot: 0.015, armyAtk: 0.005 } },
 ];
 export const POINTS_PER_LEVEL = 3;
 export const RESPEC_COST = 300;

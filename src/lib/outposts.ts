@@ -2,6 +2,7 @@
 // cell). Capture them with your army, garrison troops, collect tribute, and win the
 // faction war. Only ownership + garrison is stored. Pure.
 import { cellKey, hashStr, rng, type LatLng } from "./geo";
+import { fmtNum, msg, t } from "./i18n";
 import { S } from "./settings";
 
 export const OUTPOST_DEG = 0.008;
@@ -9,9 +10,17 @@ export let OUTPOST_INCOME_HOUR = S.outpostIncomeHour;
 export const OUTPOST_CAP_HOURS = 12;
 export const OUTPOST_SHIELD_MS = 30 * 60_000;
 export const OUTPOST_FORT = { atk: 25, hp: 200 }; // fortification of a held outpost
-const NATO = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Kilo", "Lima", "Mike", "Oscar", "Romeo", "Sierra", "Tango", "Victor", "Zulu"];
+const NATO = [msg("Alpha"), msg("Bravo"), msg("Charlie"), msg("Delta"), msg("Echo"), msg("Foxtrot"), msg("Golf"), msg("Hotel"), msg("India"), msg("Kilo"), msg("Lima"), msg("Mike"), msg("Oscar"), msg("Romeo"), msg("Sierra"), msg("Tango"), msg("Victor"), msg("Zulu")];
 
 export type OutpostSite = { id: string; name: string; lat: number; lng: number; guard: number };
+
+/** The call-sign part of an outpost's name ("Bravo-3"), in the reader's language. */
+export function outpostCode(name: string) {
+  const m = /^Outpost (\w+)-(\d+)$/.exec(name);
+  return m ? `${t(m[1])}-${fmtNum(Number(m[2]))}` : name;
+}
+/** "Outpost Bravo-3" in the reader's language. Names are stored in English. */
+export const outpostLabel = (name: string) => (/^Outpost /.test(name) ? t("Outpost {code}", { code: outpostCode(name) }) : name);
 
 function siteFor(cx: number, cy: number): OutpostSite | null {
   const rand = rng(hashStr(`outpost|${cx}_${cy}`));

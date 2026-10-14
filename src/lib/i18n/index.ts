@@ -16,6 +16,8 @@ export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 /** The player's language choice (1 year). Read by pages, API routes and the middleware. */
 export const LOCALE_COOKIE = "sq_lang";
+/** Set by the middleware when a page is opened with ?lang= (it wins over the cookie for that request). */
+export const LOCALE_HEADER = "x-sq-locale";
 
 export const LOCALE_META: Record<Locale, { name: string; dir: "ltr" | "rtl"; intl: string; og: string }> = {
   en: { name: "English", dir: "ltr", intl: "en-US", og: "en_US" },
@@ -223,3 +225,7 @@ export function fmtDate(d: Date | string | number, opts: Intl.DateTimeFormatOpti
   if (!f) dateFmt.set(key, (f = new Intl.DateTimeFormat(LOCALE_META[locale].intl, opts)));
   return f.format(new Date(d));
 }
+
+/** "Sat, Oct 14, 09:30" / "شنبه ۲۲ مهر، ۰۹:۳۰" — the game's usual timestamp. */
+export const fmtWhen = (d: Date | string | number, locale: Locale = getLocale()) =>
+  fmtDate(d, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }, locale);

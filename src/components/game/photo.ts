@@ -1,15 +1,16 @@
 "use client";
+import { t } from "@/lib/i18n";
 // Shrink a camera photo on the device before upload: ≤1024 px, JPEG, under ~380 KB.
 // Phones produce 3–12 MB images; uploading those would be slow and costly.
 export async function resizePhoto(file: File, maxSide = 1024, maxBytes = 380 * 1024): Promise<string> {
-  if (!file.type.startsWith("image/")) throw new Error("Pick an image");
+  if (!file.type.startsWith("image/")) throw new Error(t("Pick an image"));
   const bitmap = await createImageBitmap(file).catch(() => null);
   const img: CanvasImageSource & { width: number; height: number } =
     bitmap ??
     (await new Promise<HTMLImageElement>((res, rej) => {
       const i = new Image();
       i.onload = () => res(i);
-      i.onerror = () => rej(new Error("Couldn't read that image"));
+      i.onerror = () => rej(new Error(t("Couldn't read that image")));
       i.src = URL.createObjectURL(file);
     }));
   const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -22,5 +23,5 @@ export async function resizePhoto(file: File, maxSide = 1024, maxBytes = 380 * 1
     const url = canvas.toDataURL("image/jpeg", q);
     if ((url.length * 3) / 4 <= maxBytes) return url;
   }
-  throw new Error("That photo is too detailed — try another one");
+  throw new Error(t("That photo is too detailed — try another one"));
 }

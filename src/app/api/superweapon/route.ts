@@ -4,6 +4,7 @@ import { requireUser } from "@/server/auth";
 import { body, route, actionRoute } from "@/server/http";
 import { assertNotDowned } from "@/server/td";
 import { launch, superStatus } from "@/server/superweapons";
+import { t } from "@/lib/i18n";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -18,5 +19,5 @@ export const POST = actionRoute(async (req) => {
   const d = await body(req, Schema);
   await assertNotDowned(u);
   const s = await launch(u, d);
-  return { strikeId: s.id, impactAt: s.impactAt.getTime(), message: `Launch confirmed — impact in ${Math.round((s.impactAt.getTime() - Date.now()) / 1000)}s` };
+  return { strikeId: s.id, impactAt: s.impactAt.getTime(), message: t("Launch confirmed — impact in {s}s", { s: Math.round((s.impactAt.getTime() - Date.now()) / 1000) }) };
 });

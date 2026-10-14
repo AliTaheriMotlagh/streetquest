@@ -10,6 +10,7 @@ import { takeFire } from "@/server/td";
 import { trackStat } from "@/server/goals";
 import { S } from "@/lib/settings";
 import { nearbyLive } from "@/server/presence";
+import { t } from "@/lib/i18n";
 
 const Schema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), sim: z.boolean().optional(), acc: z.number().min(0).max(100_000).optional() });
 
@@ -19,7 +20,7 @@ export const POST = route(async (req) => {
   // Play from home: positions come from tapping the map, but travel is speed-capped.
   const remote = u.remotePlay;
   const trusted = canSimulate(u.role) && !remote;
-  if (d.sim && !trusted && !remote) throw new HttpError(403, "GPS simulator is not available");
+  if (d.sim && !trusted && !remote) throw new HttpError(403, t("GPS simulator is not available"));
   const moved = u.lastLat != null && u.lastLng != null ? distanceM({ lat: u.lastLat, lng: u.lastLng }, d) : 0;
   // Time since the stored position was *accepted*, not since the last ping: rejected
   // pings still refresh lastSeenAt, and measuring from that would reject every later fix
@@ -28,12 +29,12 @@ export const POST = route(async (req) => {
   const since = fixAt ? Math.max(1, (Date.now() - fixAt.getTime()) / 1000) : Infinity;
   if (remote && moved > 30 && moved / since > (S.remoteSpeedKmh / 3.6) * 1.5) {
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
-    throw new HttpError(409, "Travelling faster than your commander can move");
+    throw new HttpError(409, t("Travelling faster than your commander can move"));
   }
   if (!trusted && !remote && moved > 500 && moved / since > S.maxSpeedKmh / 3.6) {
     // Still count as online, but don't move them.
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
-    throw new HttpError(409, "GPS jump ignored — faster than any getaway car");
+    throw new HttpError(409, t("GPS jump ignored — faster than any getaway car"));
   }
   // Distance on foot feeds walking goals and sprints. Driving (faster than the on-foot
   // limit), GPS noise (tiny hops, poor accuracy) and test-mode teleports don't count.

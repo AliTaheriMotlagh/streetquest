@@ -5,7 +5,7 @@
 // quiet, the next human to poll takes over.
 import type { Match, MatchPlayer, User } from "@prisma/client";
 import { ARENA_HALF, buildArena, CAPTURE_SECONDS, MATCH_SECONDS, weaponOf, type ArenaKind } from "../lib/arena";
-import { resolveBoss } from "../lib/bosses";
+import { BOSS_DEFS, resolveBoss } from "../lib/bosses";
 import { prisma } from "../lib/db";
 import { distanceM } from "../lib/geo";
 import { BREACH_RANGE_M, factionOf, levelOf, SHIELD_MS } from "../lib/rts";
@@ -13,6 +13,7 @@ import { armyOf, loadBase } from "./army";
 import { bossHp, damageBoss } from "./boss";
 import { isOnline, notify, onlineSince } from "./hub";
 import { HttpError } from "./http";
+import { msg, t, type Vars } from "../lib/i18n";
 import { moodOfUser, bumpNeeds } from "./needs";
 import { areFriends } from "./rooms";
 import { grant, lastKnownLocation } from "./rewards";
@@ -37,8 +38,12 @@ export type Tick = {
 const isBotKey = (k: string) => k.startsWith("bot:") || k === "boss";
 const alive = (p: MatchPlayer, now = Date.now()) => p.hp > 0 && (isBotKey(p.key) || now - p.updatedAt.getTime() < STALE_MS);
 
-async function pushFeed(matchId: string, text: string) {
-  const entry = JSON.stringify([{ t: Date.now(), text }]);
+/**
+ * Add a line to the kill feed. Players in one fight may read different languages, so
+ * the feed stores the English message and its values; each reader gets it translated.
+ */
+async function pushFeed(matchId: string, text: string, vars: Vars) {
+  const entry = JSON.stringify([{ t: Date.now(), text, vars }]);
   await prisma.$executeRaw`UPDATE "Match" SET feed = feed || ${entry}::jsonb WHERE id = ${matchId}`;
 }
 
@@ -49,37 +54,37 @@ export async function openMatch(u: User, kind: ArenaKind, targetId: string) {
 
   if (kind === "breach") {
     const base = await loadBase({ id: targetId });
-    if (!base) throw new HttpError(404, "Base not found");
-    if (distanceM(here, base) > BREACH_RANGE_M) throw new HttpError(400, `Get within ${BREACH_RANGE_M} m of the base to breach it`);
+    if (!base) throw new HttpError(404, t("Base not found"));
+    if (distanceM(here, base) > BREACH_RANGE_M) throw new HttpError(400, t("Get within {m} m of the base to breach it", { m: BREACH_RANGE_M }));
     const defending = base.ownerId === u.id || (await areFriends(base.ownerId, u.id));
     if (live) return join(live, u, defending ? "D" : "A");
-    if (defending) throw new HttpError(400, "No attack on this base right now");
-    if (base.shieldUntil && base.shieldUntil > new Date()) throw new HttpError(400, "This base is under a cease-fire shield");
+    if (defending) throw new HttpError(400, t("No attack on this base right now"));
+    if (base.shieldUntil && base.shieldUntil > new Date()) throw new HttpError(400, t("This base is under a cease-fire shield"));
 
     // The FPS layer only kicks in when other humans are around; otherwise it's a siege.
     const near = await prisma.user.count({
       where: { id: { notIn: [u.id] }, banned: false, lastSeenAt: { gt: onlineSince() }, lastLat: { gte: base.lat - 0.014, lte: base.lat + 0.014 }, lastLng: { gte: base.lng - 0.02, lte: base.lng + 0.02 } },
     });
-    if (!isOnline(base.owner.lastSeenAt) && near === 0) throw new HttpError(400, "Nobody is online near this base — siege it with your army instead");
+    if (!isOnline(base.owner.lastSeenAt) && near === 0) throw new HttpError(400, t("Nobody is online near this base — siege it with your army instead"));
 
     const army = await armyOf(base.ownerId);
     const bots = Math.min(6, Math.max(2, 1 + levelOf(base.buildings, "turret") + Math.floor((army.ranger ?? 0) / 4) + (army.tank ?? 0)));
     const m = await createMatch("breach", targetId, bots, []);
-    await notify(base.ownerId, { kind: "event", title: `⚔️ ${u.username} is breaching ${base.name}!`, body: "Get there and defend it — or let the garrison hold." });
+    await notify(base.ownerId, () => ({ kind: "event", tag: "incoming", title: t("⚔️ {name} is breaching {base}!", { name: u.username, base: base.name }), body: t("Get there and defend it — or let the garrison hold.") }));
     const others = await prisma.user.findMany({
       where: { id: { notIn: [u.id, base.ownerId] }, lastSeenAt: { gt: onlineSince() }, lastLat: { gte: base.lat - 0.014, lte: base.lat + 0.014 }, lastLng: { gte: base.lng - 0.02, lte: base.lng + 0.02 } },
       select: { id: true },
       take: 30,
     });
-    for (const o of others) await notify(o.id, { kind: "event", title: `🔫 Firefight at ${base.name}`, body: "A breach just started nearby. Tap the base on the map to join." });
+    for (const o of others) await notify(o.id, () => ({ kind: "event", title: t("🔫 Firefight at {base}", { base: base.name }), body: t("A breach just started nearby. Tap the base on the map to join.") }));
     return join(m, u, "A");
   }
 
   const boss = resolveBoss(targetId);
-  if (!boss) throw new HttpError(410, "The boss has moved on");
-  if (distanceM(here, boss) > BREACH_RANGE_M) throw new HttpError(400, `Get within ${BREACH_RANGE_M} m of the boss to raid it`);
+  if (!boss) throw new HttpError(410, t("The boss has moved on"));
+  if (distanceM(here, boss) > BREACH_RANGE_M) throw new HttpError(400, t("Get within {m} m of the boss to raid it", { m: BREACH_RANGE_M }));
   const { hp, defeated } = await bossHp(boss);
-  if (defeated) throw new HttpError(400, "Already defeated");
+  if (defeated) throw new HttpError(400, t("Already defeated"));
   if (live) return join(live, u, "A");
   const m = await createMatch("raid", targetId, boss.def.key === "vex" ? 5 : 3, [{ key: "boss", name: `${boss.def.emoji} ${boss.def.name}`, hp, maxHp: boss.maxHp }]);
   return join(m, u, "A");
@@ -116,7 +121,7 @@ async function join(m: Match, u: User, team: "A" | "D") {
         weapon: hero.weapon, dmgMult: hero.bonus.fpsDmg, headBonus: hero.bonus.headBonus, speedMult: hero.bonus.fpsSpeed,
       },
     });
-    await pushFeed(m.id, `${u.username} joined ${team === "A" ? "the assault" : "the defense"}`);
+    await pushFeed(m.id, team === "A" ? msg("{name} joined the assault") : msg("{name} joined the defense"), { name: u.username });
   }
   return { matchId: m.id };
 }
@@ -132,7 +137,7 @@ async function hit(m: Match, from: MatchPlayer, key: string, dmg: number) {
     const r = await damageBoss(boss, from.userId, dmg);
     await prisma.matchPlayer.update({ where: { id: target.id }, data: { hp: r.hp } });
     await prisma.matchPlayer.update({ where: { id: from.id }, data: { damage: { increment: dmg }, ...(r.hp <= 0 ? { kills: { increment: 1 } } : {}) } });
-    if (r.hp <= 0) await pushFeed(m.id, `${from.name} landed the final blow on ${target.name}!`);
+    if (r.hp <= 0) await pushFeed(m.id, msg("{a} landed the final blow on {b}!"), { a: from.name, b: target.name });
     return;
   }
   const after = await prisma.matchPlayer.update({ where: { id: target.id, hp: { gt: 0 } }, data: { hp: { decrement: dmg } } }).catch(() => null);
@@ -140,26 +145,26 @@ async function hit(m: Match, from: MatchPlayer, key: string, dmg: number) {
   const killed = after.hp <= 0;
   if (killed) await prisma.matchPlayer.update({ where: { id: target.id }, data: { hp: 0 } });
   await prisma.matchPlayer.update({ where: { id: from.id }, data: { damage: { increment: dmg }, ...(killed ? { kills: { increment: 1 } } : {}) } });
-  if (killed) await pushFeed(m.id, `${from.name} ✖ ${target.name}`);
+  if (killed) await pushFeed(m.id, msg("{a} ✖ {b}"), { a: from.name, b: target.name });
 }
 
-export async function tick(u: User, matchId: string, t: Tick | null) {
+export async function tick(u: User, matchId: string, tk: Tick | null) {
   let m = await prisma.match.findUnique({ where: { id: matchId } });
-  if (!m) throw new HttpError(404, "Match not found");
+  if (!m) throw new HttpError(404, t("Match not found"));
   const me = await prisma.matchPlayer.findUnique({ where: { matchId_key: { matchId, key: u.id } } });
-  if (!me) throw new HttpError(403, "You're not in this match");
+  if (!me) throw new HttpError(403, t("You're not in this match"));
   const now = Date.now();
 
-  if (t && m.status === "LIVE") {
+  if (tk && m.status === "LIVE") {
     const dt = Math.min(2, (now - me.updatedAt.getTime()) / 1000);
     const lim = ARENA_HALF;
     let { x, z } = me;
     // Movement sanity: ignore teleports faster than a sprint.
-    if (me.hp > 0 && Math.hypot(t.x - me.x, t.z - me.z) <= dt * 9 * me.speedMult + 1.5) {
-      x = Math.max(-lim, Math.min(lim, t.x));
-      z = Math.max(-lim, Math.min(lim, t.z));
+    if (me.hp > 0 && Math.hypot(tk.x - me.x, tk.z - me.z) <= dt * 9 * me.speedMult + 1.5) {
+      x = Math.max(-lim, Math.min(lim, tk.x));
+      z = Math.max(-lim, Math.min(lim, tk.z));
     }
-    await prisma.matchPlayer.update({ where: { id: me.id }, data: { x, z, yaw: t.yaw, updatedAt: new Date(now) } });
+    await prisma.matchPlayer.update({ where: { id: me.id }, data: { x, z, yaw: tk.yaw, updatedAt: new Date(now) } });
 
     // Host election: the first human to poll after the host goes quiet takes over.
     const host = m.hostKey ? await prisma.matchPlayer.findUnique({ where: { matchId_key: { matchId, key: m.hostKey } } }) : null;
@@ -171,14 +176,14 @@ export async function tick(u: User, matchId: string, t: Tick | null) {
     if (me.hp > 0) {
       // Objective: attackers standing on the capture zone in front of the Command Center.
       const arena = buildArena(m.seed, m.kind as ArenaKind);
-      if (m.kind === "breach" && me.team === "A" && t.inZone && arena.zone && Math.hypot(x - arena.zone.x, z - arena.zone.z) <= arena.zone.r + 0.5) {
+      if (m.kind === "breach" && me.team === "A" && tk.inZone && arena.zone && Math.hypot(x - arena.zone.x, z - arena.zone.z) <= arena.zone.r + 0.5) {
         await prisma.match.update({ where: { id: matchId }, data: { capture: { increment: Math.min(0.5, dt) } } });
       }
       // The server computes damage from the shooter's gun + hero stats, and rate-limits
       // hits to what that gun can physically fire since the last poll.
       const w = weaponOf(me.weapon);
       const maxHits = Math.max(1, Math.min(8, Math.ceil((dt * 1000) / w.intervalMs)));
-      for (const h of (t.hits ?? []).slice(0, maxHits)) await hit(m, me, h.key, Math.round(w.dmg * me.dmgMult * (h.head ? w.headMult + me.headBonus : 1)));
+      for (const h of (tk.hits ?? []).slice(0, maxHits)) await hit(m, me, h.key, Math.round(w.dmg * me.dmgMult * (h.head ? w.headMult + me.headBonus : 1)));
     }
 
     if (m.hostKey === me.key) {
@@ -186,8 +191,8 @@ export async function tick(u: User, matchId: string, t: Tick | null) {
       const byKey = new Map(npcs.map((p) => [p.key, p]));
       const boss = m.kind === "raid" ? resolveBoss(m.targetId) : null;
       const shotAt = new Map<string, Date>();
-      for (const sh of (t.botShots ?? []).slice(0, 12)) shotAt.set(sh.from, new Date(Math.max(now - 1000, Math.min(now + 1500, sh.at))));
-      for (const b of (t.bots ?? []).slice(0, 12)) {
+      for (const sh of (tk.botShots ?? []).slice(0, 12)) shotAt.set(sh.from, new Date(Math.max(now - 1000, Math.min(now + 1500, sh.at))));
+      for (const b of (tk.bots ?? []).slice(0, 12)) {
         const row = byKey.get(b.key);
         const shot = shotAt.get(b.key);
         shotAt.delete(b.key);
@@ -197,7 +202,7 @@ export async function tick(u: User, matchId: string, t: Tick | null) {
         const row = byKey.get(key);
         if (row && row.hp > 0) await prisma.matchPlayer.update({ where: { id: row.id }, data: { lastShotAt: at } });
       }
-      for (const h of (t.botHits ?? []).slice(0, 10)) {
+      for (const h of (tk.botHits ?? []).slice(0, 10)) {
         const from = byKey.get(h.from);
         if (!from || from.hp <= 0) continue;
         const cap = from.key === "boss" ? (boss?.def.dmg ?? 15) * 2 : 15;
@@ -250,9 +255,9 @@ async function payout(m: Match, winner: "A" | "D", players: MatchPlayer[]) {
         const took = await prisma.user.updateMany({ where: { id: base.ownerId, coins: { gte: loot } }, data: { coins: { decrement: loot } } });
         lootEach = took.count && attackers.length ? Math.floor(loot / attackers.length) : 0;
         await prisma.base.update({ where: { id: base.id }, data: { hp: Math.max(0, base.hp - 300), shieldUntil: new Date(Date.now() + SHIELD_MS) } });
-        await notify(base.ownerId, { kind: "event", title: `💥 ${base.name} was breached`, body: `Lost ${loot} 🪙. Cease-fire shield is up for 2 h.` });
+        await notify(base.ownerId, () => ({ kind: "event", tag: "hurt", title: t("💥 {base} was breached", { base: base.name }), body: t("Lost {n} 🪙. Cease-fire shield is up for 2 h.", { n: loot }) }));
       } else {
-        await notify(base.ownerId, { kind: "reward", title: `🛡️ ${base.name} held!`, body: "Your defenders repelled the breach." });
+        await notify(base.ownerId, () => ({ kind: "reward", title: t("🛡️ {base} held!", { base: base.name }), body: t("Your defenders repelled the breach.") }));
       }
     }
   }
@@ -264,7 +269,7 @@ async function payout(m: Match, winner: "A" | "D", players: MatchPlayer[]) {
     if (p.kills) await questEvent(p.userId!, "kills", p.kills);
     if (m.kind === "raid" && p.damage) await questEvent(p.userId!, "boss_dmg", p.damage);
     if (won && m.kind === "breach") await questEvent(p.userId!, "breach_win");
-    if (won) await maybeGear(p.userId!, 0.4, { source: m.kind === "raid" ? "the raid" : "the firefight" });
+    if (won) await maybeGear(p.userId!, 0.4, { source: m.kind === "raid" ? msg("the raid") : msg("the firefight") });
     await bumpNeeds(p.userId!, { fun: 30, ...(crowd ? { social: 12 } : {}), energy: -8 });
     if (p.team === "A") {
       await prisma.battle.create({
@@ -285,7 +290,10 @@ async function payout(m: Match, winner: "A" | "D", players: MatchPlayer[]) {
 async function view(m: Match, meKey: string) {
   const players = await prisma.matchPlayer.findMany({ where: { matchId: m.id } });
   const now = Date.now();
-  const feed = (m.feed as { t: number; text: string }[]).slice(-6);
+  // In the reader's language (old entries without values stay as they were written).
+  const feed = (m.feed as { t: number; text: string; vars?: Vars }[]).slice(-6).map((f) =>
+    f.vars ? { t: f.t, text: t(f.text, Object.fromEntries(Object.entries(f.vars).map(([k, v]) => [k, typeof v === "string" ? fighterName(v) : v]))) } : { t: f.t, text: f.text },
+  );
   const boss = m.kind === "raid" ? resolveBoss(m.targetId) : null;
   return {
     id: m.id,
@@ -301,11 +309,11 @@ async function view(m: Match, meKey: string) {
     me: meKey,
     myWeapon: players.find((p) => p.key === meKey)?.weapon ?? "ar",
     mySpeed: players.find((p) => p.key === meKey)?.speedMult ?? 1,
-    boss: boss && { key: boss.def.key, name: boss.def.name, emoji: boss.def.emoji, color: boss.def.color, dmg: boss.def.dmg, speed: boss.def.speed },
+    boss: boss && { key: boss.def.key, name: t(boss.def.name), emoji: boss.def.emoji, color: boss.def.color, dmg: boss.def.dmg, speed: boss.def.speed },
     feed,
     players: players.map((p) => ({
       key: p.key,
-      name: p.name,
+      name: fighterName(p.name),
       team: p.team,
       bot: !p.userId,
       x: p.x,
@@ -320,3 +328,11 @@ async function view(m: Match, meKey: string) {
   };
 }
 export type MatchView = Awaited<ReturnType<typeof view>>;
+
+/** Bots and bosses are named in English when the match starts; show them in the reader's language. */
+function fighterName(name: string) {
+  const bot = /^(Guard|Garrison) (\d+)$/.exec(name);
+  if (bot) return bot[1] === "Guard" ? t("Guard {n}", { n: Number(bot[2]) }) : t("Garrison {n}", { n: Number(bot[2]) });
+  const boss = BOSS_DEFS.find((b) => name === `${b.emoji} ${b.name}`);
+  return boss ? `${boss.emoji} ${t(boss.name)}` : name;
+}

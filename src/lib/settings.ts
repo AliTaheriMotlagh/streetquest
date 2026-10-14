@@ -1,7 +1,8 @@
 // Live game settings. Every tunable the admin panel can edit lives here with its
 // default. The server loads overrides from the database (GameConfig) and the client
 // receives them with /api/me; both call applySettings(), which mutates `S` in place,
-// so game code just reads `S.someKey` at call time. Pure, no imports.
+// so game code just reads `S.someKey` at call time. Pure.
+import { msg } from "./i18n";
 
 export type GoalReward = { xp?: number; coins?: number; gems?: number };
 /** A goal counts one metric (see GOAL_METRICS) up to a target. */
@@ -101,41 +102,41 @@ const DEFAULTS = {
   // ---- goals
   goalsEnabled: true,
   worldGoals: [
-    { key: "w_collect", title: "Operation Scavenge", emoji: "🌍", metric: "collect", target: 5000, reward: { xp: 500, coins: 300, gems: 10 } },
-    { key: "w_boss", title: "Operation Titanfall", emoji: "🐉", metric: "boss_dmg", target: 250000, reward: { xp: 600, coins: 400, gems: 15 } },
-    { key: "w_walk", title: "Operation Long March", emoji: "🥾", metric: "walk_m", target: 2_000_000, reward: { xp: 500, coins: 300, gems: 10 } },
-    { key: "w_raiders", title: "Operation Iron Wall", emoji: "🛡️", metric: "raiders", target: 20000, reward: { xp: 500, coins: 300, gems: 10 } },
+    { key: "w_collect", title: msg("Operation Scavenge"), emoji: "🌍", metric: "collect", target: 5000, reward: { xp: 500, coins: 300, gems: 10 } },
+    { key: "w_boss", title: msg("Operation Titanfall"), emoji: "🐉", metric: "boss_dmg", target: 250000, reward: { xp: 600, coins: 400, gems: 15 } },
+    { key: "w_walk", title: msg("Operation Long March"), emoji: "🥾", metric: "walk_m", target: 2_000_000, reward: { xp: 500, coins: 300, gems: 10 } },
+    { key: "w_raiders", title: msg("Operation Iron Wall"), emoji: "🛡️", metric: "raiders", target: 20000, reward: { xp: 500, coins: 300, gems: 10 } },
   ] as GoalDef[],
   factionGoals: [
-    { key: "f_outpost", title: "Hold the Line", emoji: "🚩", metric: "outpost", target: 60, reward: { xp: 300, coins: 250, gems: 5 } },
-    { key: "f_train", title: "Mass Mobilization", emoji: "🪖", metric: "train", target: 3000, reward: { xp: 300, coins: 250, gems: 5 } },
-    { key: "f_siege", title: "Total War", emoji: "⚔️", metric: "siege_win", target: 150, reward: { xp: 350, coins: 300, gems: 6 } },
-    { key: "f_collect", title: "Supply Run", emoji: "📦", metric: "collect", target: 1500, reward: { xp: 300, coins: 200, gems: 5 } },
+    { key: "f_outpost", title: msg("Hold the Line"), emoji: "🚩", metric: "outpost", target: 60, reward: { xp: 300, coins: 250, gems: 5 } },
+    { key: "f_train", title: msg("Mass Mobilization"), emoji: "🪖", metric: "train", target: 3000, reward: { xp: 300, coins: 250, gems: 5 } },
+    { key: "f_siege", title: msg("Total War"), emoji: "⚔️", metric: "siege_win", target: 150, reward: { xp: 350, coins: 300, gems: 6 } },
+    { key: "f_collect", title: msg("Supply Run"), emoji: "📦", metric: "collect", target: 1500, reward: { xp: 300, coins: 200, gems: 5 } },
   ] as GoalDef[],
   personalGoals: [
-    { key: "p_walk", title: "Road Warrior", emoji: "🥾", metric: "walk_m", tiers: [1000, 5000, 20000, 50000, 100000], reward: { xp: 150, coins: 100, gems: 3 } },
-    { key: "p_collect", title: "Scavenger", emoji: "🎒", metric: "collect", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 80, gems: 2 } },
-    { key: "p_siege", title: "Conqueror", emoji: "⚔️", metric: "siege_win", tiers: [1, 5, 20, 50, 100], reward: { xp: 200, coins: 150, gems: 3 } },
-    { key: "p_train", title: "Warlord", emoji: "🪖", metric: "train", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 100, gems: 2 } },
-    { key: "p_boss", title: "Titan Slayer", emoji: "🐉", metric: "boss_dmg", tiers: [500, 2500, 10000, 50000], reward: { xp: 250, coins: 200, gems: 4 } },
-    { key: "p_gps", title: "Explorer", emoji: "🧭", metric: "gps_game", tiers: [1, 5, 15, 40, 100], reward: { xp: 150, coins: 100, gems: 3 } },
-    { key: "p_kills", title: "Sharpshooter", emoji: "🎯", metric: "kills", tiers: [5, 25, 100, 300], reward: { xp: 200, coins: 120, gems: 3 } },
-    { key: "p_story", title: "Storyteller", emoji: "📖", metric: "story", tiers: [1, 3, 6, 10], reward: { xp: 250, coins: 150, gems: 5 } },
+    { key: "p_walk", title: msg("Road Warrior"), emoji: "🥾", metric: "walk_m", tiers: [1000, 5000, 20000, 50000, 100000], reward: { xp: 150, coins: 100, gems: 3 } },
+    { key: "p_collect", title: msg("Scavenger"), emoji: "🎒", metric: "collect", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 80, gems: 2 } },
+    { key: "p_siege", title: msg("Conqueror"), emoji: "⚔️", metric: "siege_win", tiers: [1, 5, 20, 50, 100], reward: { xp: 200, coins: 150, gems: 3 } },
+    { key: "p_train", title: msg("Warlord"), emoji: "🪖", metric: "train", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 100, gems: 2 } },
+    { key: "p_boss", title: msg("Titan Slayer"), emoji: "🐉", metric: "boss_dmg", tiers: [500, 2500, 10000, 50000], reward: { xp: 250, coins: 200, gems: 4 } },
+    { key: "p_gps", title: msg("Explorer"), emoji: "🧭", metric: "gps_game", tiers: [1, 5, 15, 40, 100], reward: { xp: 150, coins: 100, gems: 3 } },
+    { key: "p_kills", title: msg("Sharpshooter"), emoji: "🎯", metric: "kills", tiers: [5, 25, 100, 300], reward: { xp: 200, coins: 120, gems: 3 } },
+    { key: "p_story", title: msg("Storyteller"), emoji: "📖", metric: "story", tiers: [1, 3, 6, 10], reward: { xp: 250, coins: 150, gems: 5 } },
   ] as MilestoneDef[],
 
   // ---- store & ads (monetization)
   storeEnabled: true,
   gemPacks: [
-    { key: "pouch", gems: 80, priceCents: 99, label: "Pouch of Gems" },
-    { key: "bag", gems: 500, priceCents: 499, label: "Bag of Gems", bonus: "+25%" },
-    { key: "box", gems: 1200, priceCents: 999, label: "Box of Gems", bonus: "Popular" },
-    { key: "chest", gems: 2800, priceCents: 1999, label: "Chest of Gems", bonus: "+40%" },
-    { key: "vault", gems: 7500, priceCents: 4999, label: "Vault of Gems", bonus: "Best value" },
+    { key: "pouch", gems: 80, priceCents: 99, label: msg("Pouch of Gems") },
+    { key: "bag", gems: 500, priceCents: 499, label: msg("Bag of Gems"), bonus: msg("+25%") },
+    { key: "box", gems: 1200, priceCents: 999, label: msg("Box of Gems"), bonus: msg("Popular") },
+    { key: "chest", gems: 2800, priceCents: 1999, label: msg("Chest of Gems"), bonus: msg("+40%") },
+    { key: "vault", gems: 7500, priceCents: 4999, label: msg("Vault of Gems"), bonus: msg("Best value") },
   ] as GemPack[],
   gemOffers: [
-    { key: "coins_s", gems: 10, coins: 500, label: "Coin Pouch" },
-    { key: "coins_m", gems: 45, coins: 2500, label: "Coin Sack" },
-    { key: "coins_l", gems: 160, coins: 10000, label: "Coin Crate" },
+    { key: "coins_s", gems: 10, coins: 500, label: msg("Coin Pouch") },
+    { key: "coins_m", gems: 45, coins: 2500, label: msg("Coin Sack") },
+    { key: "coins_l", gems: 160, coins: 10000, label: msg("Coin Crate") },
   ] as GemOffer[],
   healGems: 5,
   refreshGems: 5,
@@ -147,6 +148,18 @@ const DEFAULTS = {
   adCoins: 50,
   adDailyLimit: 5,
   adCreatives: [] as AdCreative[],
+
+  // ---- player shops
+  shopsEnabled: true,
+  shopOpenCost: 300,
+  shopRenewCost: 300,
+  shopDays: 30,
+  shopFeePct: 5,
+  shopMaxProducts: 60,
+  shopMaxFeatured: 8,
+  shopMaxPhotos: 5,
+  shopMaxPrice: 1_000_000,
+  shopOrderDays: 7,
 
   // ---- game data (stat overrides, edited in the admin "Game data" tab)
   catalog: {} as CatalogOverrides,
@@ -257,6 +270,16 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "adCoins", group: "Store & ads", label: "Coins per ad", help: "", min: 0, max: 100000 },
   { key: "adDailyLimit", group: "Store & ads", label: "Ads per player per day", help: "", min: 0, max: 100 },
   { key: "adCreatives", group: "Store & ads", label: "Sponsor ads", help: "Ads players watch. With none, the game shows its own invite-a-friend spot." },
+  { key: "shopsEnabled", group: "Player shops", label: "Player shops on", help: "Players can open a shop at a real place and sell items for coins." },
+  { key: "shopOpenCost", group: "Player shops", label: "Opening cost (coins)", help: "Paid once when a shop opens; covers its first month.", min: 0, max: 1000000 },
+  { key: "shopRenewCost", group: "Player shops", label: "Renewal cost (coins)", help: "Each renewal keeps the shop open for another period.", min: 0, max: 1000000 },
+  { key: "shopDays", group: "Player shops", label: "Days per period", help: "How long a shop stays open after opening or renewing.", min: 1, max: 365 },
+  { key: "shopFeePct", group: "Player shops", label: "Market fee (%)", help: "Taken from the seller's payout when an order is handed over.", min: 0, max: 50 },
+  { key: "shopMaxProducts", group: "Player shops", label: "Products per shop", help: "", min: 1, max: 500 },
+  { key: "shopMaxFeatured", group: "Player shops", label: "Shop window slots", help: "How many products a seller can feature in their shop window.", min: 1, max: 30 },
+  { key: "shopMaxPhotos", group: "Player shops", label: "Photos per product", help: "", min: 1, max: 10 },
+  { key: "shopMaxPrice", group: "Player shops", label: "Highest price (coins)", help: "", min: 10, max: 100000000 },
+  { key: "shopOrderDays", group: "Player shops", label: "Days to hand an order over", help: "Orders not handed over in time are refunded to the buyer automatically.", min: 1, max: 60 },
   { key: "catalog", group: "Game data", label: "Stat overrides", help: "Edited in the Game data tab." },
 ];
 

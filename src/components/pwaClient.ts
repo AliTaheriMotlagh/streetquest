@@ -1,4 +1,5 @@
 "use client";
+import { t } from "@/lib/i18n";
 // PWA helpers shared by the app shell and the settings screen: install prompt,
 // push notification subscribe/unsubscribe, and the registration handle.
 
@@ -56,16 +57,16 @@ export async function currentPushSub() {
 
 /** Ask permission, subscribe this device and register it with the server. Throws with a friendly message. */
 export async function enablePush() {
-  if (!pushSupported()) throw new Error(isIos() ? "On iPhone, add StreetQuest to your Home Screen first (Share → Add to Home Screen), then turn notifications on from the app." : "This browser can't show notifications.");
-  if (!swEnabled()) throw new Error("Notifications work in the installed / production app.");
+  if (!pushSupported()) throw new Error(isIos() ? t("On iPhone, add StreetQuest to your Home Screen first (Share → Add to Home Screen), then turn notifications on from the app.") : t("This browser can't show notifications."));
+  if (!swEnabled()) throw new Error(t("Notifications work in the installed / production app."));
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("Notifications are blocked — allow them in your browser's site settings.");
+  if (perm !== "granted") throw new Error(t("Notifications are blocked — allow them in your browser's site settings."));
   const keyRes = await fetch("/api/push").then((r) => r.json());
-  if (!keyRes.publicKey) throw new Error("Notifications aren't set up on the server yet.");
+  if (!keyRes.publicKey) throw new Error(t("Notifications aren't set up on the server yet."));
   const reg = await navigator.serviceWorker.ready;
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(keyRes.publicKey) }));
   const r = await fetch("/api/push", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "subscribe", sub: sub.toJSON() }) });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Couldn't turn notifications on");
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? t("Couldn't turn notifications on"));
   return true;
 }
 

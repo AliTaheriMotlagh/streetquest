@@ -4,6 +4,7 @@
 // and Low Power Mode / data saver / in-app browsers can block autoplay — then a ▶
 // button appears. Sound can only be switched on inside the tap itself on iOS
 // (unmuting later makes Safari pause the video), so the sound button lives here.
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 
 type Props = { src: string; poster?: string; className?: string; loop?: boolean; label?: string; soundButton?: boolean };
@@ -77,13 +78,13 @@ export function AutoVideo({ src, poster, className, loop = true, label, soundBut
         onError={() => setFailed(true)}
       />
       {(blocked || failed) && (
-        <button className="video-play" onClick={tapPlay} aria-label="Play video">
-          ▶<span>{failed ? "Retry" : "Tap to play"}</span>
+        <button className="video-play" onClick={tapPlay} aria-label={t("Play video")}>
+          ▶<span>{failed ? t("Retry") : t("Tap to play")}</span>
         </button>
       )}
       {soundButton && !blocked && !failed && (
-        <button className="ad-sound" onClick={toggleSound} aria-label={sound ? "Mute" : "Sound on"}>
-          {sound ? "🔊 Sound on" : "🔇 Tap for sound"}
+        <button className="ad-sound" onClick={toggleSound} aria-label={sound ? t("Mute") : t("Sound on")}>
+          {sound ? t("🔊 Sound on") : t("🔇 Tap for sound")}
         </button>
       )}
     </div>

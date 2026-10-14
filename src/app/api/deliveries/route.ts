@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route, actionRoute } from "@/server/http";
 import { spendCoins, track } from "@/server/rewards";
+import { t } from "@/lib/i18n";
 
 const pub = { select: { id: true, username: true, avatar: true } } as const;
 
@@ -33,11 +34,11 @@ export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const open = await prisma.delivery.count({ where: { senderId: u.id, status: { in: ["OPEN", "ACCEPTED", "PICKED_UP"] } } });
-  if (open >= 5) throw new HttpError(400, "You already have 5 active delivery requests");
+  if (open >= 5) throw new HttpError(400, t("You already have 5 active delivery requests"));
   await spendCoins(u.id, d.reward); // escrow
   const delivery = await prisma.delivery.create({
     data: { ...d, senderId: u.id, dropoffCode: String(Math.floor(1000 + Math.random() * 9000)) },
   });
   await track("delivery_created", { userId: u.id });
-  return { message: `Request posted. Give code ${delivery.dropoffCode} to the recipient.`, delivery };
+  return { message: t("Request posted. Give code {code} to the recipient.", { code: delivery.dropoffCode }), delivery };
 });

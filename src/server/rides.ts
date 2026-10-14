@@ -2,6 +2,7 @@
 import { prisma } from "../lib/db";
 import { RIDE_REQUEST_TTL_MS } from "../lib/rides";
 import { notify } from "./hub";
+import { t } from "../lib/i18n";
 
 /**
  * Requests nobody picked up in time are cancelled and the fare refunded. Runs lazily
@@ -17,7 +18,7 @@ export async function expireRides(where: { riderId?: string } = {}) {
     // Conditional move: a driver accepting at the same moment wins, and nothing is refunded twice.
     if (!(await prisma.ride.updateMany({ where: { id: r.id, status: "REQUESTED" }, data: { status: "CANCELLED", endedAt: new Date() } })).count) continue;
     await prisma.user.update({ where: { id: r.riderId }, data: { coins: { increment: r.fare } } });
-    await notify(r.riderId, { kind: "delivery", title: "🚕 No driver found", body: `Your ride to ${r.dropoffLabel} expired — ${r.fare} coins refunded` });
+    await notify(r.riderId, () => ({ kind: "delivery", title: t("🚕 No driver found"), body: t("Your ride to {place} expired — {n} coins refunded", { place: r.dropoffLabel, n: r.fare }) }));
     n++;
   }
   return n;

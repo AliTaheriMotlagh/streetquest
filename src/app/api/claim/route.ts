@@ -9,6 +9,7 @@ import { body, HttpError, actionRoute } from "@/server/http";
 import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "@/server/rewards";
 import { assertNotDowned } from "@/server/td";
 import { questEvent } from "@/server/quests";
+import { t } from "@/lib/i18n";
 
 const Schema = z.object({ spawnId: z.string().max(80), score: z.number().min(0).max(1000).optional() });
 
@@ -16,7 +17,7 @@ async function recordClaim(userId: string, spawnId: string, kind: string, cell: 
   try {
     await prisma.claim.create({ data: { userId, spawnId, kind, cell } });
   } catch {
-    throw new HttpError(409, "Already collected");
+    throw new HttpError(409, t("Already collected"));
   }
 }
 
@@ -31,26 +32,26 @@ export const POST = actionRoute(async (req) => {
   if (spawnId.startsWith("m:")) {
     const m = await prisma.adminMission.findUnique({ where: { id: spawnId.slice(2) } });
     const now = new Date();
-    if (!m || m.activeFrom > now || m.activeTo < now) throw new HttpError(404, "Mission is not active");
-    if (distanceM(here, m) > reach) throw new HttpError(400, "Get closer to the mission spot");
+    if (!m || m.activeFrom > now || m.activeTo < now) throw new HttpError(404, t("Mission is not active"));
+    if (distanceM(here, m) > reach) throw new HttpError(400, t("Get closer to the mission spot"));
     const { cx, cy } = cellOf(m);
     await recordClaim(u.id, spawnId, "mission", cellKey(cx, cy));
     await grant(u.id, { xp: m.rewardXp, coins: m.rewardCoins, items: { [m.itemKey]: 1 } });
     await checkClaimAchievements(u.id, dayPhase(m));
     await questEvent(u.id, "collect");
     await track("claim", { userId: u.id, campaign: m.sponsor ?? "admin_mission" });
-    return { message: `Mission complete: ${itemLabel(m.itemKey)}`, xp: m.rewardXp, coins: m.rewardCoins };
+    return { message: t("Mission complete: {item}", { item: itemLabel(m.itemKey) }), xp: m.rewardXp, coins: m.rewardCoins };
   }
 
   const s = resolveSpawn(spawnId);
-  if (!s) throw new HttpError(410, "This spawn has expired");
-  if (distanceM(here, s) > reach) throw new HttpError(400, `Get within ${INTERACT_RADIUS_M} m to interact`);
+  if (!s) throw new HttpError(410, t("This spawn has expired"));
+  if (distanceM(here, s) > reach) throw new HttpError(400, t("Get within {m} m to interact", { m: INTERACT_RADIUS_M }));
 
-  if (s.kind === "derrick") throw new HttpError(400, "Derricks are guarded — capture it with your army");
+  if (s.kind === "derrick") throw new HttpError(400, t("Derricks are guarded — capture it with your army"));
 
   if (s.kind === "run") {
     const active = await prisma.missionRun.findFirst({ where: { userId: u.id, status: "ACTIVE" } });
-    if (active) throw new HttpError(400, "Finish or abandon your current run first");
+    if (active) throw new HttpError(400, t("Finish or abandon your current run first"));
     await recordClaim(u.id, s.id, s.kind, s.cell);
     const run = await prisma.missionRun.create({
       data: {
@@ -64,11 +65,11 @@ export const POST = actionRoute(async (req) => {
         rewardCoins: s.rewardCoins,
       },
     });
-    return { message: `Run started: ${s.run!.title}. GO!`, run };
+    return { message: t("Run started: {title}. GO!", { title: t(s.run!.title) }), run };
   }
 
   // Chests and arcades are played as (multiplayer) mini-games through /api/lobby.
-  if (s.kind === "chest" || s.kind === "arcade") throw new HttpError(400, "Play the mini-game to win this one");
+  if (s.kind === "chest" || s.kind === "arcade") throw new HttpError(400, t("Play the mini-game to win this one"));
   await recordClaim(u.id, s.id, s.kind, s.cell);
 
   const coins = s.rewardCoins;

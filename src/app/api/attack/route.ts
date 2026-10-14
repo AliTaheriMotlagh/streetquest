@@ -14,6 +14,7 @@ import { grant, lastKnownLocation, unlock } from "@/server/rewards";
 import { areFriends } from "@/server/rooms";
 import { assertNotDowned, knockDown, maxHpOf, shotProtection } from "@/server/td";
 import { squadForce } from "@/server/warfare";
+import { t as tr } from "@/lib/i18n"; // `t` is the target in this file
 
 const Schema = z.object({ kind: z.enum(["player", "tower", "squad"]), id: z.string().max(40) });
 const ONLINE_MS = 2 * 60_000;
@@ -38,13 +39,13 @@ export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   await assertNotDowned(u);
-  if (shotProtection({ xp: u.xp, downedUntil: null })) throw new HttpError(400, "Rookies can't start fights — reach level 3 first");
+  if (shotProtection({ xp: u.xp, downedUntil: null })) throw new HttpError(400, tr("Rookies can't start fights — reach level 3 first"));
   const here = await lastKnownLocation(u.id);
 
   // Cooldown, claimed atomically so double-taps can't fire twice.
   const now = Date.now();
   const ready = await prisma.user.updateMany({ where: { id: u.id, OR: [{ shotAt: null }, { shotAt: { lt: new Date(now - SHOOT_COOLDOWN_MS) } }] }, data: { shotAt: new Date(now) } });
-  if (!ready.count) throw new HttpError(429, "Reloading…");
+  if (!ready.count) throw new HttpError(429, tr("Reloading…"));
   const refund = () => prisma.user.update({ where: { id: u.id }, data: { shotAt: null } });
 
   const { bonus } = await heroOf(u);
@@ -54,62 +55,62 @@ export const POST = actionRoute(async (req) => {
 
   if (d.kind === "player") {
     const t = await prisma.user.findUnique({ where: { id: d.id } });
-    if (!t || t.id === u.id) return refund().then(() => Promise.reject(new HttpError(404, "Target not found")));
-    if (await areFriends(u.id, t.id)) return refund().then(() => Promise.reject(new HttpError(400, "That's your crew")));
-    if (!t.lastSeenAt || now - t.lastSeenAt.getTime() > ONLINE_MS || t.lastLat == null || t.lastLng == null) return refund().then(() => Promise.reject(new HttpError(400, `${t.username} isn't on the street right now`)));
+    if (!t || t.id === u.id) return refund().then(() => Promise.reject(new HttpError(404, tr("Target not found"))));
+    if (await areFriends(u.id, t.id)) return refund().then(() => Promise.reject(new HttpError(400, tr("That's your crew"))));
+    if (!t.lastSeenAt || now - t.lastSeenAt.getTime() > ONLINE_MS || t.lastLat == null || t.lastLng == null) return refund().then(() => Promise.reject(new HttpError(400, tr("{name} isn't on the street right now", { name: t.username }))));
     const dist = distanceM(here, { lat: t.lastLat, lng: t.lastLng });
-    if (dist > SHOOT_RANGE_M) return refund().then(() => Promise.reject(new HttpError(400, `Out of range — get within ${SHOOT_RANGE_M} m of ${t.username}`)));
+    if (dist > SHOOT_RANGE_M) return refund().then(() => Promise.reject(new HttpError(400, tr("Out of range — get within {m} m of {name}", { m: SHOOT_RANGE_M, name: t.username }))));
     const why = shotProtection(t, now);
-    if (why) return refund().then(() => Promise.reject(new HttpError(400, `${t.username} ${why}`)));
+    if (why) return refund().then(() => Promise.reject(new HttpError(400, tr("{name} {why}", { name: t.username, why }))));
     const maxHp = await maxHpOf(t.id);
     const left = currentHp(t.hp, t.hpAt, maxHp, now) - dmg;
     if (left > 0) {
       await prisma.user.update({ where: { id: t.id }, data: { hp: left, hpAt: new Date(now) } });
-      await notify(t.id, { kind: "event", title: `🔫 ${u.username} shot you! −${dmg} HP`, body: `${left}/${maxHp} HP — fight back or run` });
+      await notify(t.id, () => ({ kind: "event", tag: "hurt", title: tr("🔫 {name} shot you! −{n} HP", { name: u.username, n: dmg }), body: tr("{left}/{max} HP — fight back or run", { left, max: maxHp }) }));
       await grant(u.id, { xp: 5 });
-      return { message: `${tag}🔫 Hit ${t.username} for ${dmg} (${left}/${maxHp} HP left)`, hp: left, maxHp };
+      return { message: `${tag}${tr("🔫 Hit {name} for {n} ({left}/{max} HP left)", { name: t.username, n: dmg, left, max: maxHp })}`, hp: left, maxHp };
     }
     const coins = await knockDown(t, maxHp, u.id);
     await prisma.user.update({ where: { id: u.id }, data: { trophies: { increment: 5 } } });
     await prisma.user.updateMany({ where: { id: t.id, trophies: { gte: 5 } }, data: { trophies: { decrement: 5 } } });
     await questEvent(u.id, "kills");
     await unlock(u.id, "first_blood");
-    await notify(t.id, { kind: "event", title: `☠️ ${u.username} took you down`, body: `Lost ${coins} 🪙 and 5 🏆 · back in 3 min — revenge is a tap away` });
-    return { message: `${tag}☠️ ${t.username} is DOWN! +${coins} 🪙 · +5 🏆`, downed: true };
+    await notify(t.id, () => ({ kind: "event", tag: "hurt", title: tr("☠️ {name} took you down", { name: u.username }), body: tr("Lost {n} 🪙 and 5 🏆 · back in 3 min — revenge is a tap away", { n: coins }) }));
+    return { message: `${tag}${tr("☠️ {name} is DOWN! +{n} 🪙 · +5 🏆", { name: t.username, n: coins })}`, downed: true };
   }
 
   const assetDmg = Math.round(dmg * SHOOT_ASSET_MULT);
 
   if (d.kind === "tower") {
     const t = await prisma.tower.findUnique({ where: { id: d.id } });
-    if (!t) return refund().then(() => Promise.reject(new HttpError(404, "That tower is gone")));
-    if (t.ownerId === u.id || (await areFriends(u.id, t.ownerId))) return refund().then(() => Promise.reject(new HttpError(400, "That tower is on your side")));
+    if (!t) return refund().then(() => Promise.reject(new HttpError(404, tr("That tower is gone"))));
+    if (t.ownerId === u.id || (await areFriends(u.id, t.ownerId))) return refund().then(() => Promise.reject(new HttpError(400, tr("That tower is on your side"))));
     const st = towerStats(t);
-    if (distanceM(here, t) > Math.max(SHOOT_RANGE_M, st.range) + 10) return refund().then(() => Promise.reject(new HttpError(400, `Out of range — get within ${Math.max(SHOOT_RANGE_M, st.range) + 10} m`)));
+    if (distanceM(here, t) > Math.max(SHOOT_RANGE_M, st.range) + 10) return refund().then(() => Promise.reject(new HttpError(400, tr("Out of range — get within {m} m", { m: Math.max(SHOOT_RANGE_M, st.range) + 10 }))));
     await prisma.tower.updateMany({ where: { id: t.id }, data: { hp: { decrement: assetDmg } } });
     const after = await prisma.tower.findUnique({ where: { id: t.id } });
     if (after && after.hp <= 0 && (await prisma.tower.deleteMany({ where: { id: t.id } })).count) {
       const coins = Math.round(TOWER_BY_KEY[t.type as TowerKey].cost * 0.3);
       await grant(u.id, { coins, xp: 120, scrap: 2 + t.level });
       await questEvent(u.id, "tower_down");
-      await notify(t.ownerId, { kind: "event", title: `💥 ${u.username} shot down your ${st.def.name}`, body: "Rebuild it from Base → Defense" });
-      return { message: `${tag}💥 ${st.def.name} destroyed! +${coins} 🪙`, destroyed: true };
+      await notify(t.ownerId, () => ({ kind: "event", tag: "hurt", title: tr("💥 {name} shot down your {tower}", { name: u.username, tower: tr(st.def.name) }), body: tr("Rebuild it from Base → Defense") }));
+      return { message: `${tag}${tr("💥 {tower} destroyed! +{n} 🪙", { tower: tr(st.def.name), n: coins })}`, destroyed: true };
     }
-    if (t.hp > st.maxHp * 0.5 && (after?.hp ?? 0) <= st.maxHp * 0.5) await notify(t.ownerId, { kind: "event", title: `🔫 ${u.username} is shooting up your ${st.def.name}`, body: `${after?.hp ?? 0}/${st.maxHp} HP` });
-    return { message: `${tag}🔫 Hit the ${st.def.name} for ${assetDmg} (${Math.max(0, after?.hp ?? 0)}/${st.maxHp})` };
+    if (t.hp > st.maxHp * 0.5 && (after?.hp ?? 0) <= st.maxHp * 0.5) await notify(t.ownerId, () => ({ kind: "event", title: tr("🔫 {name} is shooting up your {tower}", { name: u.username, tower: tr(st.def.name) }), body: tr("{hp}/{max} HP", { hp: after?.hp ?? 0, max: st.maxHp }) }));
+    return { message: `${tag}${tr("🔫 Hit the {tower} for {n} ({hp}/{max})", { tower: tr(st.def.name), n: assetDmg, hp: Math.max(0, after?.hp ?? 0), max: st.maxHp })}` };
   }
 
   // squad
   const s = await prisma.squad.findUnique({ where: { id: d.id } });
-  if (!s) return refund().then(() => Promise.reject(new HttpError(404, "That squad is gone")));
-  if (s.ownerId === u.id || (await areFriends(u.id, s.ownerId))) return refund().then(() => Promise.reject(new HttpError(400, "That squad is on your side")));
+  if (!s) return refund().then(() => Promise.reject(new HttpError(404, tr("That squad is gone"))));
+  if (s.ownerId === u.id || (await areFriends(u.id, s.ownerId))) return refund().then(() => Promise.reject(new HttpError(400, tr("That squad is on your side"))));
   const at = s.status === "HOLD" ? { lat: s.toLat, lng: s.toLng } : squadPos(s, now);
-  if (distanceM(here, at) > SHOOT_RANGE_M) return refund().then(() => Promise.reject(new HttpError(400, `Out of range — get within ${SHOOT_RANGE_M} m`)));
+  if (distanceM(here, at) > SHOOT_RANGE_M) return refund().then(() => Promise.reject(new HttpError(400, tr("Out of range — get within {m} m", { m: SHOOT_RANGE_M }))));
   const losses = casualties(s.units as Army, assetDmg);
   const killed = Object.values(losses).reduce((a, n) => a + (n ?? 0), 0);
-  if (!killed) return { message: `${tag}🔫 Hit the squad for ${assetDmg} — armor held. Keep shooting or bring heavier gear` };
+  if (!killed) return { message: `${tag}${tr("🔫 Hit the squad for {n} — armor held. Keep shooting or bring heavier gear", { n: assetDmg })}` };
   await squadForce(s).onLosses(losses, false);
   await grant(u.id, { xp: 15 * killed });
-  await notify(s.ownerId, { kind: "event", title: `🔫 ${u.username} is picking off your squad`, body: `Lost ${killed} unit${killed > 1 ? "s" : ""}` });
-  return { message: `${tag}🔫 Took out ${killed} unit${killed > 1 ? "s" : ""}!` };
+  await notify(s.ownerId, () => ({ kind: "event", title: tr("🔫 {name} is picking off your squad", { name: u.username }), body: tr("Lost {n, plural, one {# unit} other {# units}}", { n: killed }) }));
+  return { message: `${tag}${tr("🔫 Took out {n, plural, one {# unit} other {# units}}!", { n: killed })}` };
 });

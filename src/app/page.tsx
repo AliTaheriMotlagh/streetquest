@@ -4,36 +4,45 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { AutoVideo } from "@/components/AutoVideo";
 import { prisma } from "@/lib/db";
 import { SITE } from "@/lib/site";
+import { fmtNum, msg } from "@/lib/i18n";
+import { getT } from "@/server/i18n";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 const FEATURES = [
-  ["🏰", "Build a base on your street", "Pick a faction, plant your base where you really are, then build power, supply lines, barracks, factories and turrets on real timers."],
-  ["🎖️", "Command an army", "Train rangers, tanks, artillery and jets. Capture oil derricks in person and siege rival bases up to 5 km away."],
-  ["🔫", "Drop into first person", "Walk up to an enemy base while players are online and the fight turns into a live FPS breach — capture their Command Center."],
-  ["💀", "World bosses", "Mechs and warlords roam the map with shared HP. Raid them in first person with your crew or bombard them with your army."],
-  ["🛏️", "A life to look after", "Your commander gets hungry, tired and lonely. Eat, sleep at base and hang out with nearby players — a good mood means more XP."],
-  ["🗺️", "Your streets, your map", "Real GPS, real places. Missions, items and chests spawn around you wherever you are on Earth."],
-  ["🏁", "GTA-style timed runs", "Getaways, street races and dead drops — reach the target before the clock hits zero."],
-  ["🔓", "Chests & mini-games", "Crack locks, win arcade challenges and score rare loot — some only appear at night."],
-  ["📦", "Real package deliveries", "Players post real delivery requests. Carry them across town, hand over with a secret code, get paid."],
-  ["📍", "Messages at places", "Leave notes pinned to real locations. Only people who physically show up can read them."],
-  ["🤝", "Crews & live events", "Add friends, see who's online, chat, and set up group quests with squad XP bonuses."],
-  ["🌙", "Time matters", "Day, dusk and night change what spawns. Golden hour doubles XP — wherever your timezone is."],
-  ["🏆", "Levels, streaks, ranks", "Level up from Rookie to Street Legend, keep daily streaks and climb global and crew leaderboards."],
+  ["🏰", msg("Build a base on your street"), msg("Pick a faction, plant your base where you really are, then build power, supply lines, barracks, factories and turrets on real timers.")],
+  ["🎖️", msg("Command an army"), msg("Train rangers, tanks, artillery and jets. Capture oil derricks in person and siege rival bases up to 5 km away.")],
+  ["🔫", msg("Drop into first person"), msg("Walk up to an enemy base while players are online and the fight turns into a live FPS breach — capture their Command Center.")],
+  ["💀", msg("World bosses"), msg("Mechs and warlords roam the map with shared HP. Raid them in first person with your crew or bombard them with your army.")],
+  ["🛏️", msg("A life to look after"), msg("Your commander gets hungry, tired and lonely. Eat, sleep at base and hang out with nearby players — a good mood means more XP.")],
+  ["🗺️", msg("Your streets, your map"), msg("Real GPS, real places. Missions, items and chests spawn around you wherever you are on Earth.")],
+  ["🏁", msg("GTA-style timed runs"), msg("Getaways, street races and dead drops — reach the target before the clock hits zero.")],
+  ["🔓", msg("Chests & mini-games"), msg("Crack locks, win arcade challenges and score rare loot — some only appear at night.")],
+  ["📦", msg("Real package deliveries"), msg("Players post real delivery requests. Carry them across town, hand over with a secret code, get paid.")],
+  ["📍", msg("Messages at places"), msg("Leave notes pinned to real locations. Only people who physically show up can read them.")],
+  ["🤝", msg("Crews & live events"), msg("Add friends, see who's online, chat, and set up group quests with squad XP bonuses.")],
+  ["🌙", msg("Time matters"), msg("Day, dusk and night change what spawns. Golden hour doubles XP — wherever your timezone is.")],
+  ["🏆", msg("Levels, streaks, ranks"), msg("Level up from Rookie to Street Legend, keep daily streaks and climb global and crew leaderboards.")],
 ];
 
 const FAQ = [
-  ["Is StreetQuest free?", "Yes. StreetQuest is free to play in any modern mobile browser — no app store download needed. You can add it to your home screen like an app."],
-  ["Does it work in my city?", "Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns."],
-  ["How do real package deliveries work?", "A player posts a request with pickup and drop-off points and a coin reward held in escrow. A courier accepts, checks in at the pickup with GPS, and completes the delivery by entering a secret handover code the recipient receives from the sender."],
-  ["Is my location shared?", "Only friends see your precise position while you are online. Other players see an approximate location, and you can stop sharing anytime by closing the game."],
-  ["How is this different from Pokémon GO?", "StreetQuest is a strategy war game on real streets: you build a base, train an army and siege rivals, fight live first-person battles when players meet near a base, raid world bosses together, and keep your commander fed, rested and happy."],
-  ["When does a fight turn first-person?", "When you're within 200 m of an enemy base or a boss and other players are online nearby. Otherwise battles are auto-resolved with your army, Generals-style."],
+  ["Is StreetQuest free?", msg("Yes. StreetQuest is free to play in any modern mobile browser — no app store download needed. You can add it to your home screen like an app.")],
+  ["Does it work in my city?", msg("Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns.")],
+  ["How do real package deliveries work?", msg("A player posts a request with pickup and drop-off points and a coin reward held in escrow. A courier accepts, checks in at the pickup with GPS, and completes the delivery by entering a secret handover code the recipient receives from the sender.")],
+  ["Is my location shared?", msg("Only friends see your precise position while you are online. Other players see an approximate location, and you can stop sharing anytime by closing the game.")],
+  ["How is this different from Pokémon GO?", msg("StreetQuest is a strategy war game on real streets: you build a base, train an army and siege rivals, fight live first-person battles when players meet near a base, raid world bosses together, and keep your commander fed, rested and happy.")],
+  ["When does a fight turn first-person?", msg("When you're within 200 m of an enemy base or a boss and other players are online nearby. Otherwise battles are auto-resolved with your army, Generals-style.")],
+];
+
+const STEPS = [
+  ["1", msg("Open the map"), msg("Allow location. The world around you fills with loot, chests, runs and players.")],
+  ["2", msg("Walk there"), msg("Get within 40 m to interact. Crack locks, play mini-games, race the clock.")],
+  ["3", msg("Level up together"), msg("Add friends, chat, join events and climb the leaderboards.")],
 ];
 
 export default async function Home() {
+  const { t, locale } = await getT();
   const [announcements, players, events] = await Promise.all([
     prisma.announcement.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 2 }).catch(() => []),
     prisma.user.count().catch(() => 0),
@@ -46,7 +55,8 @@ export default async function Home() {
       "@type": "VideoGame",
       name: SITE.name,
       url: SITE.url,
-      description: SITE.description,
+      description: t(SITE.description),
+      inLanguage: locale,
       genre: ["Location-based game", "Adventure", "Augmented reality"],
       gamePlatform: ["Web browser", "iOS", "Android"],
       applicationCategory: "Game",
@@ -55,7 +65,7 @@ export default async function Home() {
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
+      mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: t(q), acceptedAnswer: { "@type": "Answer", text: t(a) } })),
     },
   ];
 
@@ -66,11 +76,11 @@ export default async function Home() {
       <div className="wrap">
         {announcements.map((a) => (
           <div className="announce" key={a.id}>
-            <b>📣 {a.title}</b>
-            <span className="grow muted" style={{ minWidth: 180 }}>{a.body}</span>
+            <b dir="auto">📣 {a.title}</b>
+            <span className="grow muted" style={{ minWidth: 180 }} dir="auto">{a.body}</span>
             {a.ctaUrl && (
               <a className="btn yellow small" href={a.ctaUrl}>
-                {a.ctaLabel ?? "Go"}
+                {a.ctaLabel ?? t("Go")}
               </a>
             )}
           </div>
@@ -79,82 +89,77 @@ export default async function Home() {
         <section className="hero">
           <div>
             <span className="tag" style={{ background: "rgba(255,46,136,.2)", color: "var(--pink)" }}>
-              Real-world GPS war game
+              {t("Real-world GPS war game")}
             </span>
             <h1 style={{ margin: "14px 0" }}>
-              Your city is <em>the game map.</em>
+              {t("Your city is")} <em>{t("the game map.")}</em>
             </h1>
             <p>
-              Build a base on your actual street, train an army and siege your rivals. Get close while they&apos;re online and it turns
-              into a first-person firefight. Hunt world bosses with your crew, and keep your commander fed, rested and happy.
+              {t("Build a base on your actual street, train an army and siege your rivals. Get close while they're online and it turns into a first-person firefight. Hunt world bosses with your crew, and keep your commander fed, rested and happy.")}
             </p>
             <div className="row wrap" style={{ marginTop: 24 }}>
               <Link href="/play" className="btn" style={{ fontSize: 16, padding: "16px 26px" }}>
-                ▶ Play now — no sign-up
+                {t("▶ Play now — no sign-up")}
               </Link>
               <Link href="/events" className="btn ghost">
-                Browse events
+                {t("Browse events")}
               </Link>
             </div>
             <p className="small muted" style={{ marginTop: 16 }}>
-              {players.toLocaleString()} players · {events} live & upcoming events · Works in your browser
+              {t("{n, plural, one {# player} other {# players}}", { n: players })} · {t("{n} live & upcoming events", { n: events })} · {t("Works in your browser")}
             </p>
           </div>
           <div className="phone">
             {/* The 15 s gameplay trailer (muted autoplay; tap for sound). */}
-            <AutoVideo className="phone-video" src="/media/streetquest-ad.mp4" poster="/media/streetquest-ad.jpg" label="StreetQuest gameplay trailer" />
+            <AutoVideo className="phone-video" src="/media/streetquest-ad.mp4" poster="/media/streetquest-ad.jpg" label={t("StreetQuest gameplay trailer")} />
           </div>
         </section>
 
-        <section className="features" aria-label="Features">
-          {FEATURES.map(([e, t, d]) => (
-            <article className="feature" key={t}>
+        <section className="features" aria-label={t("Features")}>
+          {FEATURES.map(([e, title, d]) => (
+            <article className="feature" key={title}>
               <div className="e">{e}</div>
-              <h3>{t}</h3>
-              <p>{d}</p>
+              <h3>{t(title)}</h3>
+              <p>{t(d)}</p>
             </article>
           ))}
         </section>
 
         <section className="section">
-          <h2>How it works</h2>
+          <h2>{t("How it works")}</h2>
           <div className="features" style={{ paddingTop: 0 }}>
-            {[
-              ["1", "Open the map", "Allow location. The world around you fills with loot, chests, runs and players."],
-              ["2", "Walk there", "Get within 40 m to interact. Crack locks, play mini-games, race the clock."],
-              ["3", "Level up together", "Add friends, chat, join events and climb the leaderboards."],
-            ].map(([n, t, d]) => (
+            {STEPS.map(([n, title, d]) => (
               <div className="feature" key={n}>
-                <div className="big-num" style={{ color: "var(--pink)" }}>{n}</div>
-                <h3>{t}</h3>
-                <p>{d}</p>
+                <div className="big-num" style={{ color: "var(--pink)" }}>{fmtNum(Number(n), locale)}</div>
+                <h3>{t(title)}</h3>
+                <p>{t(d)}</p>
               </div>
             ))}
           </div>
         </section>
 
         <section className="section faq">
-          <h2>FAQ</h2>
+          <h2>{t("FAQ")}</h2>
           {FAQ.map(([q, a]) => (
             <details key={q}>
-              <summary>{q}</summary>
-              <p>{a}</p>
+              <summary>{t(q)}</summary>
+              <p>{t(a)}</p>
             </details>
           ))}
         </section>
 
         <section className="section center">
-          <h2>The streets are waiting.</h2>
+          <h2>{t("The streets are waiting.")}</h2>
           <Link href="/play" className="btn yellow" style={{ marginTop: 10 }}>
-            Create your player
+            {t("Create your player")}
           </Link>
         </section>
       </div>
       <footer className="footer">
         <div className="wrap row wrap">
-          <span>© {new Date().getFullYear()} {SITE.name}</span>
+          <span>© {fmtNum(new Date().getFullYear(), locale).replace(/٬|,/g, "")} {t(SITE.name)}</span>
           <span className="grow" />
-          <span>Play safe: stay aware of your surroundings, respect private property and traffic laws.</span>
+          <span>{t("Play safe: stay aware of your surroundings, respect private property and traffic laws.")}</span>
         </div>
       </footer>
     </main>

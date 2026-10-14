@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { ITEM_BY_KEY } from "@/lib/catalog";
+import { getLocale, LOCALE_COOKIE, LOCALES, t } from "@/lib/i18n";
 import { prisma } from "@/lib/db";
 import { DAILY_REWARD, dayKey, levelProgress, titleForLevel } from "@/lib/progression";
 import { requireUser } from "@/server/auth";
@@ -35,13 +37,17 @@ export const GET = route(async (req) => {
   const lastResearch = await prisma.research.findFirst({ where: { userId: u.id, readyAt: { lte: new Date() } }, orderBy: { readyAt: "desc" }, select: { readyAt: true } });
   const doneAt = Math.max(0, lastResearch?.readyAt.getTime() ?? 0, ...(base?.buildings ?? []).map((b) => b.readyAt.getTime()).filter((t) => t <= now));
   const supply = base ? pendingSupply(base.buildings, base.lastCollectAt, now) : 0;
-  const [maxHp, settings, goals, gpsGame] = await Promise.all([
+  const [maxHp, settings, goals, gpsGame, shop] = await Promise.all([
     maxHpOf(u.id),
     settingOverrides(),
     goalsReady(u),
     prisma.gpsGame.findFirst({ where: { userId: u.id, status: "ACTIVE", endsAt: { gt: new Date() } }, select: { id: true, kind: true } }),
+    prisma.shop.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, expiresAt: true, _count: { select: { orders: { where: { status: "PENDING" } } } } } }),
   ]);
   const sw = base ? await superStatus(u) : null;
+  // Notifications and pushes are written in the language the player last used.
+  const locale = getLocale();
+  if (u.locale !== locale) await prisma.user.update({ where: { id: u.id }, data: { locale } });
   const quests = await questView(u.id, { heroClass: !!u.heroClass, base: !!base, equipped: equipped > 0 });
   const needs = needsOf(u);
   const prog = levelProgress(u.xp);
@@ -98,6 +104,8 @@ export const GET = route(async (req) => {
     walkedM: Math.round(u.walkedM),
     storyChapter: u.storyChapter,
     gpsGame,
+    // The Market badge: orders waiting to be handed over, a shop about to close.
+    shop: shop && { id: shop.id, name: shop.name, expiresAt: shop.expiresAt.getTime(), pending: shop._count.orders },
     superweapon: sw?.def && sw.level > 0 ? { key: sw.def.key, name: sw.def.name, emoji: sw.def.emoji, level: sw.level, readyAt: sw.readyAt, radius: sw.def.radius } : null,
   };
 });
@@ -107,6 +115,7 @@ const Patch = z.object({
   avatar: z.string().min(1).max(8).optional(),
   timezone: z.string().max(64).optional(),
   remotePlay: z.boolean().optional(),
+  locale: z.enum(LOCALES).optional(),
 });
 
 export const PATCH = route(async (req) => {
@@ -120,13 +129,14 @@ export const PATCH = route(async (req) => {
     }
   }
   if (d.remotePlay !== undefined && d.remotePlay !== u.remotePlay) {
-    if (d.remotePlay && !S.remoteEnabled) throw new HttpError(400, "Play from home is switched off right now");
+    if (d.remotePlay && !S.remoteEnabled) throw new HttpError(400, t("Play from home is switched off right now"));
     const active = await prisma.gpsGame.count({ where: { userId: u.id, status: "ACTIVE", kind: "sprint" } });
-    if (active) throw new HttpError(400, "Finish your sprint first");
+    if (active) throw new HttpError(400, t("Finish your sprint first"));
     // Back to GPS: forget the couch position so the next real fix is accepted wherever you are.
     if (!d.remotePlay) Object.assign(d, { lastLat: null, lastLng: null });
   }
-  if (d.username && d.username !== u.username && (await prisma.user.findUnique({ where: { username: d.username } }))) throw new HttpError(409, "That callsign is taken");
+  if (d.username && d.username !== u.username && (await prisma.user.findUnique({ where: { username: d.username } }))) throw new HttpError(409, t("That callsign is taken"));
+  if (d.locale) (await cookies()).set(LOCALE_COOKIE, d.locale, { maxAge: 60 * 60 * 24 * 365, path: "/", sameSite: "lax" });
   await prisma.user.update({ where: { id: u.id }, data: d });
   return { ok: true };
 });

@@ -1,17 +1,48 @@
 // Serverless-friendly "realtime": everything lives in Postgres and clients poll
 // /api/sync. Works on Vercel (no long-lived sockets) and anywhere else.
 import { prisma } from "../lib/db";
+import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../lib/i18n";
+import { withLocale } from "./i18n";
 import { pushTo } from "./push";
 
-export type Notice = { title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" };
+export type Notice = {
+  title: string;
+  body?: string;
+  kind?: "info" | "reward" | "social" | "delivery" | "event";
+  /** What the game does with it beyond showing it (sound, celebration) — never parse the text. */
+  tag?: "incoming" | "levelup" | "hurt";
+};
 
 /** A player counts as online if their client pinged within this window. */
 export const ONLINE_MS = 90_000;
 export const onlineSince = () => new Date(Date.now() - ONLINE_MS);
 export const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && Date.now() - lastSeenAt.getTime() < ONLINE_MS;
 
-export async function notify(userId: string, n: Notice) {
-  await prisma.notification.create({ data: { userId, kind: n.kind ?? "info", title: n.title, body: n.body } }).catch(() => {});
+/** The language a player reads the game in. */
+export async function localeOf(userId: string): Promise<Locale> {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { locale: true } }).catch(() => null);
+  return isLocale(u?.locale) ? u.locale : DEFAULT_LOCALE;
+}
+
+/** Run `fn` with t() speaking `userId`'s language (for text sent to someone else). */
+export async function asUser<T>(userId: string, fn: () => T): Promise<T> {
+  return withLocale(await localeOf(userId), fn);
+}
+
+/**
+ * Tell a player something (inbox + toast, and a push when they're away). Pass a
+ * builder that writes the text with t(): it runs in the *recipient's* language, which
+ * is often not the language of the request that caused it.
+ *
+ *   notify(t.id, () => ({ kind: "event", title: t("🔫 {name} shot you!", { name }) }))
+ */
+export async function notify(userId: string, n: Notice | (() => Notice)) {
+  const locale = await localeOf(userId);
+  const notice =
+    typeof n === "function"
+      ? withLocale(locale, n)
+      : { ...n, title: translate(locale, n.title), body: n.body && translate(locale, n.body) };
+  await prisma.notification.create({ data: { userId, kind: notice.kind ?? "info", tag: notice.tag, title: notice.title, body: notice.body } }).catch(() => {});
   // Also reach the phone when the game isn't open (fire-and-forget).
-  void pushTo(userId, { title: n.title, body: n.body, kind: n.kind });
+  void pushTo(userId, { title: notice.title, body: notice.body, kind: notice.kind });
 }

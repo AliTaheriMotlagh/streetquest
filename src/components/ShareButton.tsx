@@ -1,4 +1,5 @@
 "use client";
+import { t } from "@/lib/i18n";
 import { useState } from "react";
 import { Button } from "./Button";
 
@@ -16,7 +17,7 @@ export function ShareButton({ title, text, url }: { title: string; text?: string
   };
   return (
     <Button className="btn cyan" onClick={share}>
-      {copied ? "Link copied ✓" : "Share"}
+      {copied ? t("Link copied ✓") : t("Share")}
     </Button>
   );
 }

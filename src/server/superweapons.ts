@@ -11,6 +11,7 @@ import { squadPos, towerStats } from "../lib/td";
 import { loadBase } from "./army";
 import { HttpError } from "./http";
 import { notify, onlineSince } from "./hub";
+import { t } from "../lib/i18n";
 import { questEvent } from "./quests";
 import { grant, unlock } from "./rewards";
 import { friendIds } from "./rooms";
@@ -36,15 +37,15 @@ export async function superStatus(u: Pick<User, "id" | "faction">) {
 
 export async function launch(u: User, target: LatLng) {
   const { def, level, readyAt, base } = await superStatus(u);
-  if (!def || !base) throw new HttpError(400, "Plant a base and pick a faction first");
-  if (level < 1) throw new HttpError(400, `Build a ${def.name} at your base first (Command Center level 4)`);
-  if (readyAt! > Date.now()) throw new HttpError(400, `${def.name} is still charging`);
-  if (distanceM(base, target) > SUPER_RANGE_M) throw new HttpError(400, `Out of range — ${SUPER_RANGE_M / 1000} km from your base`);
+  if (!def || !base) throw new HttpError(400, t("Plant a base and pick a faction first"));
+  if (level < 1) throw new HttpError(400, t("Build a {name} at your base first (Command Center level 4)", { name: t(def.name) }));
+  if (readyAt! > Date.now()) throw new HttpError(400, t("{name} is still charging", { name: t(def.name) }));
+  if (distanceM(base, target) > SUPER_RANGE_M) throw new HttpError(400, t("Out of range — {km} km from your base", { km: SUPER_RANGE_M / 1000 }));
   const now = Date.now();
   // Claim the charge atomically: the latest launch must still be the one we saw.
   const s = await prisma.$transaction(async (tx) => {
     const last = await tx.superstrike.findFirst({ where: { ownerId: u.id }, orderBy: { launchAt: "desc" } });
-    if (last && last.launchAt.getTime() + chargeMs(def, level) > now) throw new HttpError(409, "Already fired");
+    if (last && last.launchAt.getTime() + chargeMs(def, level) > now) throw new HttpError(409, t("Already fired"));
     return tx.superstrike.create({
       data: { ownerId: u.id, kind: def.key, level, lat: target.lat, lng: target.lng, radius: def.radius, impactAt: new Date(now + def.warnS * 1000) },
     });
@@ -62,7 +63,8 @@ export async function launch(u: User, target: LatLng) {
     prisma.base.findMany({ where: { ...box(target, def.radius), ownerId: { not: u.id } }, select: { ownerId: true } }),
   ]);
   const ids = new Set([...near.map((x) => x.id), ...owners.flat().map((x) => x.ownerId)]);
-  for (const id of ids) await notify(id, { kind: "event", title: `${def.emoji} ${def.name.toUpperCase()} INCOMING — ${def.warnS}s!`, body: `${u.username} launched at a spot near you. Get out of the red circle!` });
+  for (const id of ids)
+    await notify(id, () => ({ kind: "event", tag: "incoming", title: t("{emoji} {name} INCOMING — {s}s!", { emoji: def.emoji, name: t(def.name).toUpperCase(), s: def.warnS }), body: t("{name} launched at a spot near you. Get out of the red circle!", { name: u.username }) }));
   return s;
 }
 
@@ -161,7 +163,7 @@ async function impact(s: { id: string; ownerId: string; kind: string; level: num
     if (!hit({ lat: p.lastLat, lng: p.lastLng }) || shotProtection(p, now)) continue;
     await knockDown(p, await maxHpOf(p.id), owner.id);
     r.downed++;
-    await notify(p.id, { kind: "event", title: `${def.emoji} You were caught in ${owner.username}'s ${def.name}`, body: "Down for 3 minutes" });
+    await notify(p.id, () => ({ kind: "event", tag: "hurt", title: t("{emoji} You were caught in {name}'s {weapon}", { emoji: def.emoji, name: owner.username, weapon: t(def.name) }), body: t("Down for 3 minutes") }));
   }
 
   const hazardUntil = def.hazard ? new Date(now + def.hazard.minutes * 60_000) : null;
@@ -169,15 +171,21 @@ async function impact(s: { id: string; ownerId: string; kind: string; level: num
   const score = r.towersDestroyed * 3 + r.towers + r.units + r.bases * 4 + r.downed * 3 + r.outposts * 2;
   await grant(owner.id, { xp: 150 + 25 * Math.min(30, score), scrap: Math.min(30, score) });
   await prisma.battle.create({ data: { attackerId: owner.id, kind: "superweapon", targetId: s.id, targetName: def.name, won: score > 0, loot: 0, log: r } });
-  for (const v of victims) await notify(v, { kind: "event", title: `${def.emoji} ${owner.username}'s ${def.name} hit your forces`, body: "Check your towers, squads and base" });
-  await notify(owner.id, {
+  for (const v of victims) await notify(v, () => ({ kind: "event", tag: "hurt", title: t("{emoji} {name}'s {weapon} hit your forces", { emoji: def.emoji, name: owner.username, weapon: t(def.name) }), body: t("Check your towers, squads and base") }));
+  await notify(owner.id, () => ({
     kind: "reward",
-    title: `${def.emoji} ${def.name} impact!`,
+    title: t("{emoji} {weapon} impact!", { emoji: def.emoji, weapon: t(def.name) }),
     body:
-      [r.intercepted ? `${r.intercepted}% intercepted by SAMs` : "", r.towersDestroyed ? `${r.towersDestroyed} towers destroyed` : r.towers ? `${r.towers} towers damaged` : "", r.units ? `${r.units} units killed` : "", r.bases ? `${r.bases} bases hit` : "", r.downed ? `${r.downed} commanders down` : ""]
+      [
+        r.intercepted ? t("{n}% intercepted by SAMs", { n: r.intercepted }) : "",
+        r.towersDestroyed ? t("{n} towers destroyed", { n: r.towersDestroyed }) : r.towers ? t("{n} towers damaged", { n: r.towers }) : "",
+        r.units ? t("{n} units killed", { n: r.units }) : "",
+        r.bases ? t("{n} bases hit", { n: r.bases }) : "",
+        r.downed ? t("{n} commanders down", { n: r.downed }) : "",
+      ]
         .filter(Boolean)
-        .join(" · ") || "Nothing was in the blast",
-  });
+        .join(" · ") || t("Nothing was in the blast"),
+  }));
 }
 
 export { levelOf };

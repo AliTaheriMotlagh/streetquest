@@ -3,6 +3,7 @@
 // "walking or from home?" question when a player comes back to the game.
 import { useEffect, useMemo, useState } from "react";
 import { S } from "@/lib/settings";
+import { msg, t } from "@/lib/i18n";
 import { browserInfo, browserLabel, desktopUnavailableSteps, locationSteps, openInBrowserUrl, preciseSteps } from "./location/browser";
 import type { GeoError, GeoState } from "./useLocation";
 import { TOUR_KEY } from "./Help";
@@ -10,11 +11,11 @@ import { Button } from "@/components/Button";
 
 // ---------------------------------------------------------------- "where are you?" screen
 const TITLE: Record<GeoError, string> = {
-  insecure: "Location needs a secure link",
-  unsupported: "No location in this browser",
-  denied: "Location is blocked",
-  unavailable: "Can't get a GPS fix",
-  timeout: "GPS is taking a while",
+  insecure: msg("Location needs a secure link"),
+  unsupported: msg("No location in this browser"),
+  denied: msg("Location is blocked"),
+  unavailable: msg("Can't get a GPS fix"),
+  timeout: msg("GPS is taking a while"),
 };
 
 export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void; onHome?: () => void }) {
@@ -33,9 +34,9 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
   if (b.inApp) {
     body = (
       <>
-        You opened the game inside <b>{b.inApp}</b>, which usually can&apos;t share your location.
+        {t("You opened the game inside {app}, which usually can't share your location.", { app: b.inApp })}
         <br />
-        {b.os === "ios" ? <>Tap <b>•••</b> or the share icon → <b>Open in browser</b>.</> : <>Open it in Chrome (or your usual browser).</>}
+        {b.os === "ios" ? t("Tap ••• or the share icon → Open in browser.") : t("Open it in Chrome (or your usual browser).")}
       </>
     );
   } else if (error === "denied") {
@@ -47,64 +48,64 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
       </ol>
     );
   } else if (error === "insecure") {
-    body = <>Phones only share GPS with <b>https://</b> sites. Open the game through its https link.</>;
+    body = <>{t("Phones only share GPS with https:// sites. Open the game through its https link.")}</>;
   } else if (error === "unsupported") {
-    body = <>{browserLabel(b)} can&apos;t share a location here. Try Chrome, Safari, Firefox or Samsung Internet.</>;
+    body = <>{t("{browser} can't share a location here. Try Chrome, Safari, Firefox or Samsung Internet.", { browser: browserLabel(b) })}</>;
   } else if (b.desktop && (error === "unavailable" || error === "timeout")) {
     // Computers have no GPS: they ask an online service where their Wi-Fi networks are.
     body = (
       <>
-        This computer couldn&apos;t work out where it is.
-        <ol className="steps" style={{ textAlign: "left" }}>
+        {t("This computer couldn't work out where it is.")}
+        <ol className="steps" style={{ textAlign: "start" }}>
           {desktopUnavailableSteps(b).map((s) => (
             <li key={s}>{s}</li>
           ))}
         </ol>
-        The game is made for walking with your phone — on a computer, <b>Play from home</b> works anywhere.
+        {t("The game is made for walking with your phone — on a computer, Play from home works anywhere.")}
       </>
     );
   } else if (error === "unavailable") {
-    body = <>Turn on Location/GPS on your phone (Wi-Fi helps too), step near a window, then Retry.</>;
+    body = <>{t("Turn on Location/GPS on your phone (Wi-Fi helps too), step near a window, then Retry.")}</>;
   } else if (error === "timeout") {
-    body = <>Still searching for satellites. Moving outdoors or near a window usually helps.</>;
+    body = <>{t("Still searching for satellites. Moving outdoors or near a window usually helps.")}</>;
   } else {
-    body = <>Tap <b>Allow</b> when {browserLabel(b)} asks for your location — the streets around you become the game map.</>;
+    body = <>{t("Tap Allow when {browser} asks for your location — the streets around you become the game map.", { browser: browserLabel(b) })}</>;
   }
 
   return (
     <div className="modal-bg" style={{ zIndex: 900 }}>
       <div className="modal" role="dialog" aria-labelledby="gate-title">
         <div style={{ fontSize: 50 }} aria-hidden>{error || b.inApp ? "⚠️" : "📡"}</div>
-        <h2 id="gate-title">{b.inApp ? `Open in ${b.os === "ios" ? "Safari" : "your browser"}` : error ? (b.desktop && (error === "unavailable" || error === "timeout") ? "Can't find this computer" : TITLE[error]) : "Finding you…"}</h2>
+        <h2 id="gate-title">{b.inApp ? (b.os === "ios" ? t("Open in Safari") : t("Open in your browser")) : error ? (b.desktop && (error === "unavailable" || error === "timeout") ? t("Can't find this computer") : t(TITLE[error])) : t("Finding you…")}</h2>
         <div className="muted small" style={{ lineHeight: 1.6, textAlign: error === "denied" && !b.inApp ? "start" : "center", margin: "10px 0 14px" }}>{body}</div>
         <div className="row wrap" style={{ justifyContent: "center" }}>
           {inApp && openUrl && (
             <a className="btn cyan" href={openUrl}>
-              Open in Chrome
+              {t("Open in Chrome")}
             </a>
           )}
           {inApp && !openUrl && (
             <Button className="btn cyan" onClick={copy}>
-              {copied ? "✓ Link copied" : "Copy link"}
+              {copied ? t("✓ Link copied") : t("Copy link")}
             </Button>
           )}
           {error && error !== "insecure" && error !== "unsupported" && !inApp && (
             <Button className="btn cyan" onClick={onRetry}>
-              Retry
+              {t("Retry")}
             </Button>
           )}
           {onHome && (
             <Button className="btn green" onClick={onHome}>
-              🛋️ Play from home
+              {t("🛋️ Play from home")}
             </Button>
           )}
           {onSimulate && (
             <Button className="btn yellow" onClick={onSimulate}>
-              🕹️ Test mode — no GPS
+              {t("🕹️ Test mode — no GPS")}
             </Button>
           )}
         </div>
-        {onHome && <p className="small muted" style={{ marginTop: 10 }}>No GPS needed: tap the map and your commander travels there, for {Math.round(S.remoteRewardMult * 100)}% of the usual XP and coins.</p>}
+        {onHome && <p className="small muted" style={{ marginTop: 10 }}>{t("No GPS needed: tap the map and your commander travels there, for {pct}% of the usual XP and coins.", { pct: Math.round(S.remoteRewardMult * 100) })}</p>}
       </div>
     </div>
   );
@@ -117,23 +118,23 @@ export function GpsChip({ geo }: { geo: GeoState }) {
   if (geo.simulated || !geo.pos) return null;
   if (geo.stale)
     return (
-      <Button className="chip small gps-chip lost" onClick={geo.retry} title="GPS stopped answering — tap to reconnect" aria-label="GPS signal lost, tap to reconnect">
-        📡 <span className="hide-sm">GPS LOST</span>
+      <Button className="chip small gps-chip lost" onClick={geo.retry} title={t("GPS stopped answering — tap to reconnect")} aria-label={t("GPS signal lost, tap to reconnect")}>
+        📡 <span className="hide-sm">{t("GPS LOST")}</span>
       </Button>
     );
   if (geo.approximate)
     return (
       <>
-        <Button className="chip small gps-chip lost" onClick={() => setHelp(true)} aria-label="Only an approximate location — tap for how to fix it">
-          📡 <span className="hide-sm">APPROX</span> ±{geo.accuracy && geo.accuracy >= 1000 ? `${(geo.accuracy / 1000).toFixed(1)} km` : "?"}
+        <Button className="chip small gps-chip lost" onClick={() => setHelp(true)} aria-label={t("Only an approximate location — tap for how to fix it")}>
+          📡 <span className="hide-sm">{t("APPROX")}</span> ±{geo.accuracy && geo.accuracy >= 1000 ? t("{n} km", { n: Math.round(geo.accuracy / 100) / 10 }) : "?"}
         </Button>
         {help && <PreciseHelp onClose={() => setHelp(false)} onRetry={() => (setHelp(false), geo.retry())} />}
       </>
     );
   if (geo.accuracy && geo.accuracy > 60)
     return (
-      <div className="chip small gps-chip weak" title="Weak GPS: your position may be off. Being outdoors helps." role="status">
-        📡 ±{Math.round(geo.accuracy)} m
+      <div className="chip small gps-chip weak" title={t("Weak GPS: your position may be off. Being outdoors helps.")} role="status">
+        📡 ±{t("{n} m", { n: Math.round(geo.accuracy) })}
       </div>
     );
   return null;
@@ -145,21 +146,21 @@ function PreciseHelp({ onClose, onRetry }: { onClose: () => void; onRetry: () =>
     <div className="modal-bg" style={{ zIndex: 900 }} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-labelledby="precise-title">
         <div style={{ fontSize: 50 }} aria-hidden>🎯</div>
-        <h2 id="precise-title">Your location is only approximate</h2>
+        <h2 id="precise-title">{t("Your location is only approximate")}</h2>
         <p className="muted small" style={{ lineHeight: 1.6 }}>
-          {browserLabel(b)} is sharing a spot that can be a few kilometres off, so the map can&apos;t follow you down the street. Turn on <b>Precise Location</b>:
+          {t("{browser} is sharing a spot that can be a few kilometres off, so the map can't follow you down the street. Turn on Precise Location:", { browser: browserLabel(b) })}
         </p>
-        <ol className="steps muted small" style={{ lineHeight: 1.6, textAlign: "left", margin: "10px 0 14px" }}>
+        <ol className="steps muted small" style={{ lineHeight: 1.6, textAlign: "start", margin: "10px 0 14px" }}>
           {preciseSteps(b).map((s) => (
             <li key={s}>{s}</li>
           ))}
         </ol>
         <div className="row wrap" style={{ justifyContent: "center" }}>
           <Button className="btn cyan" onClick={onRetry}>
-            Retry
+            {t("Retry")}
           </Button>
           <Button className="btn ghost" onClick={onClose}>
-            Close
+            {t("Close")}
           </Button>
         </div>
       </div>
@@ -214,11 +215,11 @@ export const markModeAsked = () => {
 /** The two ways to play as big pickable cards: the welcome-back prompt and Hero → Profile. */
 export function ModeCards({ home, onPick, homeLocked, focus }: { home: boolean; onPick: (home: boolean) => unknown; homeLocked?: boolean; focus?: boolean }) {
   const modes = [
-    { h: false, tone: "walk", ic: "🚶", title: "Walk with GPS", desc: "Move in the real world. Every goal counts.", pct: 100 },
-    { h: true, tone: "home", ic: "🛋️", title: "Play from home", desc: `Tap the map — your commander travels there at ${S.remoteSpeedKmh} km/h.`, pct: Math.round(S.remoteRewardMult * 100) },
+    { h: false, tone: "walk", ic: "🚶", title: t("Walk with GPS"), desc: t("Move in the real world. Every goal counts."), pct: 100 },
+    { h: true, tone: "home", ic: "🛋️", title: t("Play from home"), desc: t("Tap the map — your commander travels there at {n} km/h.", { n: S.remoteSpeedKmh }), pct: Math.round(S.remoteRewardMult * 100) },
   ];
   return (
-    <div className="mode-pick" role="group" aria-label="Play mode">
+    <div className="mode-pick" role="group" aria-label={t("Play mode")}>
       {modes.map((m) => {
         const on = m.h === home;
         return (
@@ -229,7 +230,7 @@ export function ModeCards({ home, onPick, homeLocked, focus }: { home: boolean; 
             <span className="mode-desc">{m.desc}</span>
             <span className="mode-reward">
               <span className="mode-meter"><i style={{ width: `${m.pct}%` }} /></span>
-              {m.pct}% XP &amp; coins
+              {t("{pct}% XP & coins", { pct: m.pct })}
             </span>
           </Button>
         );
@@ -257,17 +258,17 @@ export function ModePrompt({ name, home, onPick, onClose }: { name: string; home
   return (
     <div className="modal-bg" style={{ zIndex: 950 }} onClick={(e) => e.target === e.currentTarget && pick(home)}>
       <div className="modal mode-prompt" role="dialog" aria-modal="true" aria-labelledby="mode-title" aria-describedby="mode-sub">
-        <button className="close mode-x" onClick={() => pick(home)} aria-label="Keep the current mode" title="Keep the current mode">✕</button>
+        <button className="close mode-x" onClick={() => pick(home)} aria-label={t("Keep the current mode")} title={t("Keep the current mode")}>✕</button>
         <div className="mode-wave" aria-hidden>👋</div>
-        <span className="eyebrow">Play mode</span>
-        <h2 id="mode-title">Welcome back, {name}!</h2>
-        <p id="mode-sub" className="muted small">How are you playing right now?</p>
+        <span className="eyebrow">{t("Play mode")}</span>
+        <h2 id="mode-title">{t("Welcome back, {name}!", { name })}</h2>
+        <p id="mode-sub" className="muted small">{t("How are you playing right now?")}</p>
         <ModeCards home={home} onPick={pick} focus />
         <div className="mode-foot">
           <button type="button" className={`toggle ${never ? "on" : ""}`} aria-pressed={never} onClick={() => setNever(!never)}>
-            <i /> Don&apos;t ask again
+            <i /> {t("Don't ask again")}
           </button>
-          <span className="small muted">Change it any time in 🦸 Hero → Profile</span>
+          <span className="small muted">{t("Change it any time in 🦸 Hero → Profile")}</span>
         </div>
       </div>
     </div>

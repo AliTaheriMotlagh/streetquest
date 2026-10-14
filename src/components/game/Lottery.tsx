@@ -2,6 +2,7 @@
 // Lotteries at real places: buy tickets on the spot, one random ticket takes the pot at the draw.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { distanceM, formatDistance } from "@/lib/geo";
+import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
 import { LOTTERY_MAX_TICKETS, LOTTERY_MIN_PRICE, LOTTERY_RADIUS_M, winChance } from "@/lib/lottery";
 import { askConfirm } from "@/components/Dialogs";
 import { Button } from "@/components/Button";
@@ -13,21 +14,21 @@ import { MoveIcon, useGame } from "./ui";
 function useNow() {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
   return now;
 }
 
 export function fmtCountdown(ms: number) {
-  if (ms <= 0) return "now";
+  if (ms <= 0) return t("now");
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}:${String(s % 60).padStart(2, "0")}`;
+  if (d) return t("{d}d {h}h", { d, h });
+  if (h) return t("{h}h {m}m", { h, m });
+  return `${fmtNum(m)}:${fmtNum(s % 60).padStart(2, fmtNum(0))}`;
 }
 
 /** Everything about one lottery, plus the buy controls. Used on the map card and in the list. */
@@ -51,8 +52,8 @@ export function LotteryCard({ l, onChanged }: { l: WorldLottery; onChanged?: () 
   useEffect(() => {
     if (!due || asked.current) return;
     asked.current = true;
-    const t = setTimeout(() => (refresh(), onChanged?.()), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => (refresh(), onChanged?.()), 1500);
+    return () => clearTimeout(timer);
   }, [due, refresh, onChanged]);
 
   const buy = () =>
@@ -63,67 +64,67 @@ export function LotteryCard({ l, onChanged }: { l: WorldLottery; onChanged?: () 
       }
     });
   const cancel = () =>
-    askConfirm("Cancel this lottery?", { body: "Only possible while nobody else has bought tickets.", ok: "Cancel lottery", danger: true }).then(
+    askConfirm(t("Cancel this lottery?"), { body: t("Only possible while nobody else has bought tickets."), ok: t("Cancel lottery"), danger: true }).then(
       (ok) => ok && act(() => api(`/api/lotteries/${l.id}`, { body: { action: "cancel" } })).then((done) => done && onChanged?.()),
     );
 
   return (
     <div className={`lottery ${l.won ? "won" : ""}`}>
       <div className="lottery-pot">
-        <span className="small muted">{l.status === "DRAWN" ? "POT PAID OUT" : "JACKPOT"}</span>
-        <b>{l.pot.toLocaleString()} 🪙</b>
+        <span className="small muted">{l.status === "DRAWN" ? t("POT PAID OUT") : t("JACKPOT")}</span>
+        <b>{fmtNum(l.pot)} 🪙</b>
       </div>
       <div className="grid3">
-        <div className="stat"><b>{l.ticketPrice}</b><span>🪙 / ticket</span></div>
-        <div className="stat"><b>{l.players}</b><span>players</span></div>
-        <div className="stat"><b className={open && left < 60_000 ? "blink" : ""}>{open ? fmtCountdown(left) : l.status === "OPEN" ? "…" : "done"}</b><span>{open ? "until draw" : "draw"}</span></div>
+        <div className="stat"><b>{fmtNum(l.ticketPrice)}</b><span>{t("🪙 / ticket")}</span></div>
+        <div className="stat"><b>{fmtNum(l.players)}</b><span>{t("players")}</span></div>
+        <div className="stat"><b className={open && left < 60_000 ? "blink" : ""}>{open ? fmtCountdown(left) : l.status === "OPEN" ? "…" : t("done")}</b><span>{open ? t("until draw") : t("draw")}</span></div>
       </div>
       <p className="small muted" style={{ margin: "8px 0" }}>
-        Draw {fmtTime(l.drawAt)} · hosted by {l.mine ? "you" : l.host}{l.official ? " · ⭐ official" : ""} · {formatDistance(dist === Infinity ? 0 : dist)} away
+        {t("Draw {when}", { when: fmtTime(l.drawAt) })} · {l.mine ? t("hosted by you") : t("hosted by {name}", { name: l.host })}{l.official ? ` · ${t("⭐ official")}` : ""} · {t("{d} away", { d: formatDistance(dist === Infinity ? 0 : dist) })}
       </p>
 
       {l.myTickets > 0 && (
         <div className="card small">
-          🎟️ You hold <b>{l.myTickets}</b> of {l.totalTickets} tickets · <b>{Math.round(winChance(l.myTickets, l.totalTickets) * 100)}%</b> chance
+          {t("🎟️ You hold {mine} of {total} tickets · {pct}% chance", { mine: l.myTickets, total: l.totalTickets, pct: Math.round(winChance(l.myTickets, l.totalTickets) * 100) })}
         </div>
       )}
 
       {l.status === "DRAWN" && (
         <div className={`card ${l.won ? "hl" : ""}`} style={{ textAlign: "center" }}>
-          {l.won ? <b style={{ fontSize: 18 }}>🎉 YOU WON {l.pot.toLocaleString()} 🪙!</b> : <>🏆 Winner: <b>{l.winner}</b></>}
+          {l.won ? <b style={{ fontSize: 18 }}>{t("🎉 YOU WON {n} 🪙!", { n: l.pot })}</b> : <>{t("🏆 Winner:")} <b dir="auto">{l.winner}</b></>}
         </div>
       )}
-      {l.status === "REFUNDED" && <div className="card small">Called off — every ticket was refunded.</div>}
-      {l.status === "OPEN" && left <= 0 && <div className="card small">🎲 Drawing the winner…</div>}
+      {l.status === "REFUNDED" && <div className="card small">{t("Called off — every ticket was refunded.")}</div>}
+      {l.status === "OPEN" && left <= 0 && <div className="card small">{t("🎲 Drawing the winner…")}</div>}
 
       {open && (
         <>
           {canBuy > 0 ? (
             <>
               <div className="row qty-row">
-                <Button className="btn ghost small" disabled={n <= 1} onClick={() => setQty(n - 1)} aria-label="Fewer tickets">−</Button>
-                <span className="qty"><b>{n}</b> ticket{n > 1 ? "s" : ""}</span>
-                <Button className="btn ghost small" disabled={n >= canBuy} onClick={() => setQty(n + 1)} aria-label="More tickets">+</Button>
-                <span className="grow small muted" style={{ textAlign: "right" }}>→ {Math.round(after * 100)}% chance</span>
+                <Button className="btn ghost small" disabled={n <= 1} onClick={() => setQty(n - 1)} aria-label={t("Fewer tickets")}>−</Button>
+                <span className="qty">{t("{n, plural, one {# ticket} other {# tickets}}", { n })}</span>
+                <Button className="btn ghost small" disabled={n >= canBuy} onClick={() => setQty(n + 1)} aria-label={t("More tickets")}>+</Button>
+                <span className="grow small muted" style={{ textAlign: "end" }}>{t("→ {pct}% chance", { pct: Math.round(after * 100) })}</span>
               </div>
               {here ? (
                 <Button className="btn yellow block" disabled={cost > me.coins} onClick={buy}>
-                  🎟️ Buy {n} · {cost.toLocaleString()} 🪙
+                  {t("🎟️ Buy {n} · {cost} 🪙", { n, cost })}
                 </Button>
               ) : teleport ? (
-                <Button className="btn yellow block" onClick={() => teleport(l)}><MoveIcon /> Go there to buy · {formatDistance(dist)}</Button>
+                <Button className="btn yellow block" onClick={() => teleport(l)}><MoveIcon /> {t("Go there to buy · {d}", { d: formatDistance(dist) })}</Button>
               ) : (
                 <div className="row">
-                  <Button className="btn grow" disabled>Be within {l.radiusM} m to buy · {formatDistance(dist === Infinity ? 0 : dist)}</Button>
+                  <Button className="btn grow" disabled>{t("Be within {r} m to buy · {d}", { r: l.radiusM, d: formatDistance(dist === Infinity ? 0 : dist) })}</Button>
                   <GoTo lat={l.lat} lng={l.lng} />
                 </div>
               )}
-              {cost > me.coins && here && <p className="small muted">Not enough coins — you have {me.coins}.</p>}
+              {cost > me.coins && here && <p className="small muted">{t("Not enough coins — you have {n}.", { n: me.coins })}</p>}
             </>
           ) : (
-            <p className="small muted">You&apos;ve bought the maximum {l.maxTickets} tickets. Good luck!</p>
+            <p className="small muted">{t("You've bought the maximum {n} tickets. Good luck!", { n: l.maxTickets })}</p>
           )}
-          {l.mine && <Button className="btn ghost small" style={{ marginTop: 8 }} onClick={cancel}>Cancel lottery</Button>}
+          {l.mine && <Button className="btn ghost small" style={{ marginTop: 8 }} onClick={cancel}>{t("Cancel lottery")}</Button>}
         </>
       )}
     </div>
@@ -170,32 +171,30 @@ export function LotteryTab() {
 
   return (
     <>
-      <p className="small muted">
-        Go to a lottery spot, buy tickets, and at the draw time one random ticket wins <b>the whole pot</b>. More tickets, better odds.
-      </p>
+      <p className="small muted">{t("Go to a lottery spot, buy tickets, and at the draw time one random ticket wins the whole pot. More tickets, better odds.")}</p>
 
       {near.length ? (
         [...near].sort(byDist).map((l) => (
           <div key={l.id} className="card">
-            <b>🎰 {l.official ? "⭐ " : ""}{l.name}</b>
+            <b dir="auto">🎰 {l.official ? "⭐ " : ""}{l.name}</b>
             <LotteryCard l={l} onChanged={load} />
           </div>
         ))
       ) : (
-        <div className="empty">No lotteries near you yet — host the first one!</div>
+        <div className="empty">{t("No lotteries near you yet — host the first one!")}</div>
       )}
 
       {!!other.length && (
         <>
-          <label>Your lotteries</label>
+          <label>{t("Your lotteries")}</label>
           {other.map((l) => (
             <div key={l.id} className="card small">
               <div className="row">
-                <b className="grow">🎰 {l.name}</b>
-                <span className="tag">{l.status === "OPEN" ? fmtTime(l.drawAt) : l.status === "DRAWN" ? (l.won ? "🎉 won" : `🏆 ${l.winner}`) : "refunded"}</span>
+                <b className="grow" dir="auto">🎰 {l.name}</b>
+                <span className="tag">{l.status === "OPEN" ? fmtTime(l.drawAt) : l.status === "DRAWN" ? (l.won ? t("🎉 won") : `🏆 ${l.winner}`) : t("refunded")}</span>
               </div>
               <div className="muted">
-                Pot {l.pot.toLocaleString()} 🪙 · {l.players} players{l.myTickets ? ` · your tickets: ${l.myTickets}/${l.totalTickets}` : ""} · <GoTo lat={l.lat} lng={l.lng} />
+                {t("Pot {n} 🪙", { n: l.pot })} · {t("{n, plural, one {# player} other {# players}}", { n: l.players })}{l.myTickets ? ` · ${t("your tickets: {mine}/{total}", { mine: l.myTickets, total: l.totalTickets })}` : ""} · <GoTo lat={l.lat} lng={l.lng} />
               </div>
             </div>
           ))}
@@ -203,37 +202,35 @@ export function LotteryTab() {
       )}
 
       {!hosting ? (
-        <Button className="btn cyan block" style={{ marginTop: 10 }} onClick={() => setHosting(true)}>🎰 Host a lottery</Button>
+        <Button className="btn cyan block" style={{ marginTop: 10 }} onClick={() => setHosting(true)}>{t("🎰 Host a lottery")}</Button>
       ) : (
         <div className="card" style={{ marginTop: 10 }}>
-          <b>Host a lottery</b>
-          <label>Name</label>
-          <input value={f.name} maxLength={60} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Friday Night Jackpot" />
-          <LocationField label="Where players buy tickets" value={place} onChange={setPlace} />
+          <b>{t("Host a lottery")}</b>
+          <label>{t("Name")}</label>
+          <input value={f.name} maxLength={60} dir="auto" onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={t("Friday Night Jackpot")} />
+          <LocationField label={t("Where players buy tickets")} value={place} onChange={setPlace} />
           <div className="grid2">
             <div>
-              <label>Ticket price 🪙</label>
-              <input type="number" min={LOTTERY_MIN_PRICE} value={f.ticketPrice} onChange={(e) => setF({ ...f, ticketPrice: Math.floor(Number(e.target.value) || 0) })} />
+              <label>{t("Ticket price 🪙")}</label>
+              <input type="number" inputMode="numeric" min={LOTTERY_MIN_PRICE} value={f.ticketPrice} onChange={(e) => setF({ ...f, ticketPrice: Math.floor(Number(toAsciiDigits(e.target.value)) || 0) })} />
             </div>
             <div>
-              <label>Max tickets / player</label>
-              <input type="number" min={1} max={LOTTERY_MAX_TICKETS} value={f.maxTickets} onChange={(e) => setF({ ...f, maxTickets: Math.floor(Number(e.target.value) || 0) })} />
+              <label>{t("Max tickets / player")}</label>
+              <input type="number" inputMode="numeric" min={1} max={LOTTERY_MAX_TICKETS} value={f.maxTickets} onChange={(e) => setF({ ...f, maxTickets: Math.floor(Number(toAsciiDigits(e.target.value)) || 0) })} />
             </div>
           </div>
-          <label>Draw time</label>
+          <label>{t("Draw time")}</label>
           <input type="datetime-local" value={drawAt} onChange={(e) => setDrawAt(e.target.value)} />
           <div className="row wrap" style={{ marginTop: 6 }}>
-            {([["30 min", 30 * 60_000], ["1 h", 3_600_000], ["3 h", 3 * 3_600_000], ["1 day", 86_400_000]] as const).map(([label, ms]) => (
-              <Button key={label} className="btn ghost small" onClick={() => preset(ms)}>+{label}</Button>
+            {([[t("{n} min", { n: 30 }), 30 * 60_000], [t("{n} h", { n: 1 }), 3_600_000], [t("{n} h", { n: 3 }), 3 * 3_600_000], [t("1 day"), 86_400_000]] as const).map(([label, ms]) => (
+              <Button key={ms} className="btn ghost small" onClick={() => preset(ms)}>+{label}</Button>
             ))}
           </div>
-          <p className="small muted">
-            Players must stand within {LOTTERY_RADIUS_M} m of the spot to buy. It needs at least 2 players, otherwise everyone is refunded. The winner takes everything.
-          </p>
+          <p className="small muted">{t("Players must stand within {r} m of the spot to buy. It needs at least 2 players, otherwise everyone is refunded. The winner takes everything.", { r: LOTTERY_RADIUS_M })}</p>
           <div className="row">
-            <Button className="btn ghost" onClick={() => setHosting(false)}>Cancel</Button>
+            <Button className="btn ghost" onClick={() => setHosting(false)}>{t("Cancel")}</Button>
             <Button className="btn yellow grow" disabled={!place || f.name.trim().length < 3 || f.ticketPrice < LOTTERY_MIN_PRICE || f.maxTickets < 1} onClick={host}>
-              Start lottery
+              {t("Start lottery")}
             </Button>
           </div>
         </div>

@@ -2,6 +2,7 @@
 // In-app replacements for window.confirm / window.prompt. Call askConfirm() or
 // askText() from anywhere (they return Promises); <DialogHost /> in the root layout
 // renders them in the game's style instead of the browser's native pop-up.
+import { t } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 
 type Opts = { body?: string; ok?: string; cancel?: string; danger?: boolean };
@@ -82,8 +83,8 @@ export function DialogHost() {
         {req.body && <p className="small muted" style={{ margin: "0 0 12px" }}>{req.body}</p>}
         {req.kind === "text" && <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} style={{ marginBottom: 12 }} />}
         <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button type="button" className="btn ghost" onClick={() => done(false)}>{req.cancel ?? "Cancel"}</button>
-          <button ref={okRef} type="submit" className={`btn ${req.danger ? "" : "cyan"}`}>{req.ok ?? "OK"}</button>
+          <button type="button" className="btn ghost" onClick={() => done(false)}>{req.cancel ?? t("Cancel")}</button>
+          <button ref={okRef} type="submit" className={`btn ${req.danger ? "" : "cyan"}`}>{req.ok ?? t("OK")}</button>
         </div>
       </form>
     </div>

@@ -1,6 +1,7 @@
 // Seeded mini-games. Everyone in a lobby gets the same seed, so they play the exact
 // same round — the fair way to compete. The server uses the same generators to cap
 // scores. Pure — safe on client and server.
+import { msg } from "./i18n";
 import { rng } from "./geo";
 
 // ---------------------------------------------------------------- Shooting Range (arcades)
@@ -83,10 +84,10 @@ export const DEFUSE_MAX = 399;
 // ---------------------------------------------------------------- lobbies
 export type LobbyKind = "range" | "defuse" | "race" | "coop";
 export const LOBBY_INFO: Record<LobbyKind, { name: string; emoji: string; blurb: string; openMs: number; playMs: number }> = {
-  range: { name: "Shooting Range", emoji: "🎯", blurb: "Same targets for everyone. Highest score wins the pot.", openMs: 20_000, playMs: RANGE_MS },
-  defuse: { name: "Bomb Defuse", emoji: "💣", blurb: "Same bomb for everyone. Fastest clean defuse wins.", openMs: 20_000, playMs: DEFUSE_MS },
-  race: { name: "Street Race", emoji: "🏁", blurb: "Everyone races to the same finish. Podium pays +50% / +25%.", openMs: 45_000, playMs: 0 },
-  coop: { name: "Co-op Run", emoji: "🤝", blurb: "Run it together: +20% reward per teammate who joins.", openMs: 45_000, playMs: 0 },
+  range: { name: msg("Shooting Range"), emoji: "🎯", blurb: msg("Same targets for everyone. Highest score wins the pot."), openMs: 20_000, playMs: RANGE_MS },
+  defuse: { name: msg("Bomb Defuse"), emoji: "💣", blurb: msg("Same bomb for everyone. Fastest clean defuse wins."), openMs: 20_000, playMs: DEFUSE_MS },
+  race: { name: msg("Street Race"), emoji: "🏁", blurb: msg("Everyone races to the same finish. Podium pays +50% / +25%."), openMs: 45_000, playMs: 0 },
+  coop: { name: msg("Co-op Run"), emoji: "🤝", blurb: msg("Run it together: +20% reward per teammate who joins."), openMs: 45_000, playMs: 0 },
 };
 export const LOBBY_MAX_PLAYERS = 8;
 export const COUNTDOWN_MS = 3500;

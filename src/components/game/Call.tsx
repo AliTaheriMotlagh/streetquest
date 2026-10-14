@@ -4,6 +4,7 @@
 // polling, the same serverless-friendly "realtime" as chat. The caller always offers.
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../Button";
+import { msg, t } from "@/lib/i18n";
 import { api, statusOf } from "./client";
 import { browserInfo, cameraSteps, openInBrowserUrl } from "./location/browser";
 import { sfx } from "./sfx";
@@ -18,13 +19,13 @@ type Signal = { id: number; kind: "offer" | "answer" | "ice" | "state"; data: st
 type PeerState = { cam: boolean; mic: boolean };
 
 const END_TEXT: Record<string, string> = {
-  hangup: "Call ended",
-  declined: "Declined",
-  missed: "No answer",
-  busy: "Busy",
-  lost: "Connection lost",
-  failed: "Couldn't connect — the network blocked the call",
-  norelay: "Couldn't connect — this network blocks the call relay. Try Wi-Fi or another SIM",
+  hangup: msg("Call ended"),
+  declined: msg("Declined"),
+  missed: msg("No answer"),
+  busy: msg("Busy"),
+  lost: msg("Connection lost"),
+  failed: msg("Couldn't connect — the network blocked the call"),
+  norelay: msg("Couldn't connect — this network blocks the call relay. Try Wi-Fi or another SIM"),
 };
 
 /** Signals per request (the server accepts up to 60). */
@@ -52,10 +53,10 @@ const candProto = (line: string) => (/ tcp /i.test(line) ? "tcp" : "udp");
 type MediaProblem = "blocked" | "busy" | "inapp" | "insecure" | "nodevice";
 
 const PROBLEM_TITLE: Record<Exclude<MediaProblem, "nodevice">, string> = {
-  blocked: "Camera & mic are blocked",
-  busy: "Camera is busy",
-  inapp: "Open in your browser",
-  insecure: "Calls need https",
+  blocked: msg("Camera & mic are blocked"),
+  busy: msg("Camera is busy"),
+  inapp: msg("Open in your browser"),
+  insecure: msg("Calls need https"),
 };
 
 function classify(e: unknown): MediaProblem {
@@ -321,7 +322,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     const { stream, problem } = await getMedia();
     if (!problem) return stream;
     if (problem === "nodevice") {
-      toast({ kind: "info", title: stream ? "No camera found — voice only" : "No camera or mic found — you can still watch and listen" });
+      toast({ kind: "info", title: stream ? t("No camera found — voice only") : t("No camera or mic found — you can still watch and listen") });
       return stream;
     }
     helpStream.current = stream;
@@ -342,7 +343,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     if (!problem || problem === "nodevice") return helpDone.current?.(stream);
     helpStream.current = stream;
     setHelp({ problem, partial: stream });
-    toast({ kind: "error", title: "Still blocked — check the steps above" });
+    toast({ kind: "error", title: t("Still blocked — check the steps above") });
   };
 
   const handlers = {
@@ -361,7 +362,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     ended: (reason: string) => {
       helpStream.current?.getTracks().forEach((t) => t.stop());
       helpDone.current?.(null);
-      setEndText(role === "callee" && reason === "missed" ? "Missed call" : (END_TEXT[reason] ?? "Call ended"));
+      setEndText(role === "callee" && reason === "missed" ? t("Missed call") : t(END_TEXT[reason] ?? "Call ended"));
       setPhase("ended");
       setMini(false);
       if (reason === "failed" || reason === "lost" || reason === "busy") sfx("lose");
@@ -525,7 +526,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     try {
       track = await open(next);
     } catch {
-      toast({ kind: "error", title: "Couldn't switch camera" });
+      toast({ kind: "error", title: t("Couldn't switch camera") });
       used = facing;
       track = await open(facing).catch(() => null);
     }
@@ -538,17 +539,17 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
   };
 
   const status =
-    phase === "ringing" ? "📹 Incoming video call" : phase === "calling" ? "Calling…" : phase === "connecting" ? "Connecting…" : phase === "live" ? mmss(Date.now() - (liveAt ?? Date.now())) : endText;
+    phase === "ringing" ? t("📹 Incoming video call") : phase === "calling" ? t("Calling…") : phase === "connecting" ? t("Connecting…") : phase === "live" ? mmss(Date.now() - (liveAt ?? Date.now())) : endText;
   const showRemote = phase === "live" && remoteVideo && them.cam;
 
   return (
-    <div className={`call ${mini ? "mini" : ""} ${phase}`} role="dialog" aria-label={`Video call with ${peer.username}`} onClick={mini ? () => setMini(false) : undefined}>
+    <div className={`call ${mini ? "mini" : ""} ${phase}`} role="dialog" aria-label={t("Video call with {name}", { name: peer.username })} onClick={mini ? () => setMini(false) : undefined}>
       <video ref={remoteV} className={`call-remote ${showRemote ? "" : "hidden"}`} autoPlay playsInline />
       {!showRemote && (
         <div className="call-peer">
           <div className="call-avatar">{peer.avatar}</div>
-          {!mini && <h2>{peer.username}</h2>}
-          {!mini && phase === "live" && !them.cam && <p className="muted small">Camera off</p>}
+          {!mini && <h2 dir="auto">{peer.username}</h2>}
+          {!mini && phase === "live" && !them.cam && <p className="muted small">{t("Camera off")}</p>}
         </div>
       )}
 
@@ -567,24 +568,24 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
 
       {!mini && phase === "ringing" && (
         <div className="call-bar">
-          <Button className="call-btn end" onClick={decline} aria-label="Decline">📵</Button>
-          <Button className="call-btn answer" onClick={accept} aria-label="Answer">📹</Button>
+          <Button className="call-btn end" onClick={decline} aria-label={t("Decline")}>📵</Button>
+          <Button className="call-btn answer" onClick={accept} aria-label={t("Answer")}>📹</Button>
         </div>
       )}
       {!mini && (phase === "calling" || phase === "connecting" || phase === "live") && (
         <div className="call-bar">
-          <Button className={`call-btn ${mic ? "" : "off"}`} onClick={toggleMic} aria-label={mic ? "Mute" : "Unmute"} aria-pressed={!mic}>{mic ? "🎙️" : "🔇"}</Button>
-          {hasCam && <Button className={`call-btn ${cam ? "" : "off"}`} onClick={toggleCam} aria-label={cam ? "Camera off" : "Camera on"} aria-pressed={!cam}>{cam ? "📷" : "🚫"}</Button>}
-          {canFlip && <Button className="call-btn" onClick={flip} aria-label="Switch camera">🔄</Button>}
-          <Button className="call-btn" onClick={() => setMini(true)} aria-label="Minimize — keep playing">🗺️</Button>
-          <Button className="call-btn end" onClick={hangUp} aria-label="Hang up">📵</Button>
+          <Button className={`call-btn ${mic ? "" : "off"}`} onClick={toggleMic} aria-label={mic ? t("Mute") : t("Unmute")} aria-pressed={!mic}>{mic ? "🎙️" : "🔇"}</Button>
+          {hasCam && <Button className={`call-btn ${cam ? "" : "off"}`} onClick={toggleCam} aria-label={cam ? t("Camera off") : t("Camera on")} aria-pressed={!cam}>{cam ? "📷" : "🚫"}</Button>}
+          {canFlip && <Button className="call-btn" onClick={flip} aria-label={t("Switch camera")}>🔄</Button>}
+          <Button className="call-btn" onClick={() => setMini(true)} aria-label={t("Minimize — keep playing")}>🗺️</Button>
+          <Button className="call-btn end" onClick={hangUp} aria-label={t("Hang up")}>📵</Button>
         </div>
       )}
 
       {help && phase !== "ended" && !mini && (
         <div className="call-help" role="alertdialog" aria-labelledby="call-help-title">
           <div style={{ fontSize: 40 }} aria-hidden>📷</div>
-          <h3 id="call-help-title">{PROBLEM_TITLE[help.problem]}</h3>
+          <h3 id="call-help-title">{t(PROBLEM_TITLE[help.problem])}</h3>
           {help.problem === "blocked" && (
             <ol className="steps">
               {cameraSteps(b, installed).map((s) => (
@@ -592,22 +593,22 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
               ))}
             </ol>
           )}
-          {help.problem === "busy" && <p>Another app is using the camera, or camera access is switched off in your phone&apos;s quick settings. Close the other app (or turn access on), then tap Try again.</p>}
-          {help.problem === "inapp" && <p>You opened the game inside <b>{b.inApp}</b>, which can&apos;t use the camera. {b.os === "ios" ? "Tap ••• or the share icon → Open in browser." : "Open it in Chrome to make calls."}</p>}
-          {help.problem === "insecure" && <p>Browsers only allow the camera on <b>https://</b> pages. Open the game through its https link.</p>}
+          {help.problem === "busy" && <p>{t("Another app is using the camera, or camera access is switched off in your phone's quick settings. Close the other app (or turn access on), then tap Try again.")}</p>}
+          {help.problem === "inapp" && <p>{t("You opened the game inside {app}, which can't use the camera.", { app: b.inApp ?? "" })} {b.os === "ios" ? t("Tap ••• or the share icon → Open in browser.") : t("Open it in Chrome to make calls.")}</p>}
+          {help.problem === "insecure" && <p>{t("Browsers only allow the camera on https:// pages. Open the game through its https link.")}</p>}
           <div className="row wrap" style={{ justifyContent: "center" }}>
             {help.problem === "inapp" && openInBrowserUrl(b) && (
               <a className="btn cyan" href={openInBrowserUrl(b)!}>
-                Open in Chrome
+                {t("Open in Chrome")}
               </a>
             )}
             {(help.problem === "blocked" || help.problem === "busy") && (
               <Button className="btn cyan" onClick={retryMedia}>
-                Try again
+                {t("Try again")}
               </Button>
             )}
             <Button className="btn ghost" onClick={() => helpDone.current?.(help.partial)}>
-              {help.partial ? "Continue voice only" : "Continue without camera"}
+              {help.partial ? t("Continue voice only") : t("Continue without camera")}
             </Button>
           </div>
         </div>

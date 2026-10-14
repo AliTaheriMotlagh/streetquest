@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { prisma } from "../lib/db";
 import { notify } from "./hub";
+import { t } from "../lib/i18n";
 import { HttpError } from "./http";
 import { track } from "./rewards";
 import { S } from "../lib/settings";
@@ -51,14 +52,14 @@ export async function createAccount(d: NewAccount) {
       });
       if (referrer) {
         await prisma.user.update({ where: { id: referrer.id }, data: { coins: { increment: S.referralCoins } } });
-        await notify(referrer.id, { kind: "reward", title: "Referral bonus!", body: `${user.username} joined with your code: +${S.referralCoins} coins` });
+        await notify(referrer.id, () => ({ kind: "reward", title: t("Referral bonus!"), body: t("{name} joined with your code: +{n} coins", { name: user.username, n: S.referralCoins }) }));
       }
       await track("signup", { userId: user.id, source: user.utmSource ?? undefined, campaign: user.utmCampaign ?? undefined });
       return user;
     } catch (e) {
       // Random callsign collided with an existing player: roll another one.
       if ((e as { code?: string }).code === "P2002" && !d.username && attempt < 5) continue;
-      if ((e as { code?: string }).code === "P2002") throw new HttpError(409, "Username or email already taken");
+      if ((e as { code?: string }).code === "P2002") throw new HttpError(409, t("Username or email already taken"));
       throw e;
     }
   }

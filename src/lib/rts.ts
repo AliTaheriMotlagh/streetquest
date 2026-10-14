@@ -1,5 +1,6 @@
 // Strategy layer (Generals: Zero Hour style): factions, base buildings, units,
 // power, supply income and auto-resolved battles. Pure — safe on client and server.
+import { msg } from "./i18n";
 import { hashStr, rng } from "./geo";
 import { NO_BONUS, type ArmorClass, type Bonus, type Mods } from "./hero";
 import { S } from "./settings";
@@ -20,9 +21,9 @@ export type FactionDef = {
 };
 
 export const FACTIONS: FactionDef[] = [
-  { key: "coalition", name: "Coalition", emoji: "🦅", color: "#38bdf8", blurb: "High-tech army. Hits hardest, costs the most. Air power.", atk: 1.2, hp: 1, cost: 1.1, needsPower: true, loot: 1 },
-  { key: "dragon", name: "Dragon Army", emoji: "🐉", color: "#ff4d4d", blurb: "Hordes and heavy armor. Cheap, tough units. Power plants run hot.", atk: 1, hp: 1.2, cost: 0.9, needsPower: true, loot: 1 },
-  { key: "insurgency", name: "Insurgency", emoji: "🦂", color: "#3dff8f", blurb: "Guerrillas. No power grid needed, cheap units, +30% raid loot.", atk: 0.9, hp: 0.95, cost: 0.8, needsPower: false, loot: 1.3 },
+  { key: "coalition", name: msg("Coalition"), emoji: "🦅", color: "#38bdf8", blurb: msg("High-tech army. Hits hardest, costs the most. Air power."), atk: 1.2, hp: 1, cost: 1.1, needsPower: true, loot: 1 },
+  { key: "dragon", name: msg("Dragon Army"), emoji: "🐉", color: "#ff4d4d", blurb: msg("Hordes and heavy armor. Cheap, tough units. Power plants run hot."), atk: 1, hp: 1.2, cost: 0.9, needsPower: true, loot: 1 },
+  { key: "insurgency", name: msg("Insurgency"), emoji: "🦂", color: "#3dff8f", blurb: msg("Guerrillas. No power grid needed, cheap units, +30% raid loot."), atk: 0.9, hp: 0.95, cost: 0.8, needsPower: false, loot: 1.3 },
 ];
 export const FACTION_BY_KEY = Object.fromEntries(FACTIONS.map((f) => [f.key, f])) as Record<FactionKey, FactionDef>;
 export const factionOf = (key: string | null | undefined) => (key && key in FACTION_BY_KEY ? FACTION_BY_KEY[key as FactionKey] : null);
@@ -41,19 +42,19 @@ export type BuildingDef = {
 };
 
 export const BUILDINGS: BuildingDef[] = [
-  { key: "hq", name: "Command Center", emoji: "🏛️", blurb: "Heart of the base. Upgrading unlocks more buildings and higher levels.", cost: 400, minutes: 3, power: 5, hqLevel: 0 },
-  { key: "power", name: "Power Plant", emoji: "⚡", blurb: "+10 power per level. Low power slows everything and weakens turrets.", cost: 150, minutes: 1, power: 10, hqLevel: 1 },
-  { key: "supply", name: "Supply Center", emoji: "📦", blurb: "Trucks bring in supplies: +60 🪙/hour per level (stores up to 12 h).", cost: 200, minutes: 2, power: -2, hqLevel: 1 },
-  { key: "barracks", name: "Barracks", emoji: "🪖", blurb: "Trains infantry. Level 2 unlocks Rocket Squads.", cost: 200, minutes: 2, power: -2, hqLevel: 1 },
-  { key: "turret", name: "Defense Turret", emoji: "🗼", blurb: "Guards the base in sieges and spawns garrison bots in breaches.", cost: 250, minutes: 2, power: -3, hqLevel: 1 },
-  { key: "quarters", name: "Quarters", emoji: "🛏️", blurb: "Your commander's home. Better rest and a mess hall for meals.", cost: 150, minutes: 1, power: -1, hqLevel: 1 },
-  { key: "camp", name: "Army Camp", emoji: "⛺", blurb: "Housing for your troops: +20 housing space per level.", cost: 150, minutes: 1, power: 0, hqLevel: 1 },
-  { key: "builder", name: "Builder's Hut", emoji: "🔨", blurb: "Each level adds a builder, so more constructions run at once.", cost: 300, minutes: 1, power: 0, hqLevel: 1 },
-  { key: "vault", name: "Vault", emoji: "🏦", blurb: "Protects coins from raiders: 30% + 10% per level is untouchable.", cost: 250, minutes: 2, power: -1, hqLevel: 1 },
-  { key: "walls", name: "Walls", emoji: "🧱", blurb: "+300 structure HP per level. Raiders have to chew through them.", cost: 120, minutes: 1, power: 0, hqLevel: 1 },
-  { key: "factory", name: "War Factory", emoji: "🏭", blurb: "Builds tanks. Level 2 unlocks artillery.", cost: 500, minutes: 4, power: -4, hqLevel: 2 },
-  { key: "airfield", name: "Airfield", emoji: "✈️", blurb: "Launches strike jets.", cost: 800, minutes: 6, power: -5, hqLevel: 3 },
-  { key: "superweapon", name: "Superweapon", emoji: "☢️", blurb: "Your faction's doomsday weapon: Nuclear Missile, Particle Cannon or SCUD Storm. Charges for hours, hits anywhere within 5 km.", cost: 4000, minutes: 20, power: -10, hqLevel: 4 },
+  { key: "hq", name: msg("Command Center"), emoji: "🏛️", blurb: msg("Heart of the base. Upgrading unlocks more buildings and higher levels."), cost: 400, minutes: 3, power: 5, hqLevel: 0 },
+  { key: "power", name: msg("Power Plant"), emoji: "⚡", blurb: msg("+10 power per level. Low power slows everything and weakens turrets."), cost: 150, minutes: 1, power: 10, hqLevel: 1 },
+  { key: "supply", name: msg("Supply Center"), emoji: "📦", blurb: msg("Trucks bring in supplies: +60 🪙/hour per level (stores up to 12 h)."), cost: 200, minutes: 2, power: -2, hqLevel: 1 },
+  { key: "barracks", name: msg("Barracks"), emoji: "🪖", blurb: msg("Trains infantry. Level 2 unlocks Rocket Squads."), cost: 200, minutes: 2, power: -2, hqLevel: 1 },
+  { key: "turret", name: msg("Defense Turret"), emoji: "🗼", blurb: msg("Guards the base in sieges and spawns garrison bots in breaches."), cost: 250, minutes: 2, power: -3, hqLevel: 1 },
+  { key: "quarters", name: msg("Quarters"), emoji: "🛏️", blurb: msg("Your commander's home. Better rest and a mess hall for meals."), cost: 150, minutes: 1, power: -1, hqLevel: 1 },
+  { key: "camp", name: msg("Army Camp"), emoji: "⛺", blurb: msg("Housing for your troops: +20 housing space per level."), cost: 150, minutes: 1, power: 0, hqLevel: 1 },
+  { key: "builder", name: msg("Builder's Hut"), emoji: "🔨", blurb: msg("Each level adds a builder, so more constructions run at once."), cost: 300, minutes: 1, power: 0, hqLevel: 1 },
+  { key: "vault", name: msg("Vault"), emoji: "🏦", blurb: msg("Protects coins from raiders: 30% + 10% per level is untouchable."), cost: 250, minutes: 2, power: -1, hqLevel: 1 },
+  { key: "walls", name: msg("Walls"), emoji: "🧱", blurb: msg("+300 structure HP per level. Raiders have to chew through them."), cost: 120, minutes: 1, power: 0, hqLevel: 1 },
+  { key: "factory", name: msg("War Factory"), emoji: "🏭", blurb: msg("Builds tanks. Level 2 unlocks artillery."), cost: 500, minutes: 4, power: -4, hqLevel: 2 },
+  { key: "airfield", name: msg("Airfield"), emoji: "✈️", blurb: msg("Launches strike jets."), cost: 800, minutes: 6, power: -5, hqLevel: 3 },
+  { key: "superweapon", name: msg("Superweapon"), emoji: "☢️", blurb: msg("Your faction's doomsday weapon: Nuclear Missile, Particle Cannon or SCUD Storm. Charges for hours, hits anywhere within 5 km."), cost: 4000, minutes: 20, power: -10, hqLevel: 4 },
 ];
 /** Some buildings cap below MAX_LEVEL. */
 export const LEVEL_CAP: Partial<Record<BuildingKey, number>> = { superweapon: 3 };
@@ -120,11 +121,11 @@ export type UnitDef = {
 };
 
 export const UNITS: UnitDef[] = [
-  { key: "ranger", name: "Ranger", emoji: "🪖", cls: "infantry", building: "barracks", buildingLevel: 1, cost: 50, atk: 4, hp: 12, seconds: 20, housing: 1, vs: { infantry: 1.4, vehicle: 0.4, air: 0.6, structure: 0.7 }, role: "Cheap. Shreds infantry." },
-  { key: "rocket", name: "Rocket Squad", emoji: "🚀", cls: "infantry", building: "barracks", buildingLevel: 2, cost: 110, atk: 9, hp: 10, seconds: 35, housing: 2, vs: { infantry: 0.6, vehicle: 1.7, air: 1.5, structure: 1.1 }, role: "Tank & jet hunter." },
-  { key: "tank", name: "Battle Tank", emoji: "🛡️", cls: "vehicle", building: "factory", buildingLevel: 1, cost: 280, atk: 16, hp: 45, seconds: 60, housing: 5, vs: { infantry: 1.3, vehicle: 1.1, air: 0.2, structure: 1 }, role: "Tough all-rounder. Can't hit air." },
-  { key: "artillery", name: "Artillery", emoji: "💥", cls: "vehicle", building: "factory", buildingLevel: 2, cost: 420, atk: 28, hp: 20, seconds: 90, housing: 6, vs: { infantry: 1.3, vehicle: 0.9, air: 0.1, structure: 1.8 }, role: "Wrecks bases. Fragile." },
-  { key: "jet", name: "Strike Jet", emoji: "✈️", cls: "air", building: "airfield", buildingLevel: 1, cost: 650, atk: 40, hp: 30, seconds: 120, housing: 8, vs: { infantry: 0.9, vehicle: 1.6, air: 1, structure: 1.2 }, role: "Kills armor. Fears rockets." },
+  { key: "ranger", name: msg("Ranger"), emoji: "🪖", cls: "infantry", building: "barracks", buildingLevel: 1, cost: 50, atk: 4, hp: 12, seconds: 20, housing: 1, vs: { infantry: 1.4, vehicle: 0.4, air: 0.6, structure: 0.7 }, role: msg("Cheap. Shreds infantry.") },
+  { key: "rocket", name: msg("Rocket Squad"), emoji: "🚀", cls: "infantry", building: "barracks", buildingLevel: 2, cost: 110, atk: 9, hp: 10, seconds: 35, housing: 2, vs: { infantry: 0.6, vehicle: 1.7, air: 1.5, structure: 1.1 }, role: msg("Tank & jet hunter.") },
+  { key: "tank", name: msg("Battle Tank"), emoji: "🛡️", cls: "vehicle", building: "factory", buildingLevel: 1, cost: 280, atk: 16, hp: 45, seconds: 60, housing: 5, vs: { infantry: 1.3, vehicle: 1.1, air: 0.2, structure: 1 }, role: msg("Tough all-rounder. Can't hit air.") },
+  { key: "artillery", name: msg("Artillery"), emoji: "💥", cls: "vehicle", building: "factory", buildingLevel: 2, cost: 420, atk: 28, hp: 20, seconds: 90, housing: 6, vs: { infantry: 1.3, vehicle: 0.9, air: 0.1, structure: 1.8 }, role: msg("Wrecks bases. Fragile.") },
+  { key: "jet", name: msg("Strike Jet"), emoji: "✈️", cls: "air", building: "airfield", buildingLevel: 1, cost: 650, atk: 40, hp: 30, seconds: 120, housing: 8, vs: { infantry: 0.9, vehicle: 1.6, air: 1, structure: 1.2 }, role: msg("Kills armor. Fears rockets.") },
 ];
 export const UNIT_BY_KEY = Object.fromEntries(UNITS.map((u) => [u.key, u])) as Record<UnitKey, UnitDef>;
 export const unitCost = (u: UnitDef, f: FactionDef | null) => Math.round(u.cost * (f?.cost ?? 1) * S.unitCostMult);
@@ -136,10 +137,10 @@ export type Vets = Partial<Record<UnitKey, number>>;
 
 // ---------------------------------------------------------------- veterancy (Generals-style)
 export const VET_RANKS = [
-  { min: 0, name: "Rookie", stars: "", mult: 1 },
-  { min: 100, name: "Veteran", stars: "⭐", mult: 1.1 },
-  { min: 300, name: "Elite", stars: "⭐⭐", mult: 1.2 },
-  { min: 700, name: "Heroic", stars: "⭐⭐⭐", mult: 1.35 },
+  { min: 0, name: msg("Rookie"), stars: "", mult: 1 },
+  { min: 100, name: msg("Veteran"), stars: "⭐", mult: 1.1 },
+  { min: 300, name: msg("Elite"), stars: "⭐⭐", mult: 1.2 },
+  { min: 700, name: msg("Heroic"), stars: "⭐⭐⭐", mult: 1.35 },
 ];
 export const vetRank = (v = 0) => [...VET_RANKS].reverse().find((r) => v >= r.min)!;
 export const VET_GAIN = { fought: 30, won: 40 };
@@ -148,14 +149,14 @@ export const VET_GAIN = { fought: 30, won: 40 };
 export type ResearchKey = "drills" | "ap_rockets" | "composite" | "supply_lines" | "lasers" | "radar" | "afterburners" | "medics";
 export type ResearchDef = { key: ResearchKey; name: string; emoji: string; building: BuildingKey; level: number; coins: number; scrap: number; minutes: number; blurb: string; mods: Mods };
 export const RESEARCH: ResearchDef[] = [
-  { key: "drills", name: "Combat Drills", emoji: "🎖️", building: "barracks", level: 1, coins: 300, scrap: 5, minutes: 3, blurb: "+15% infantry attack", mods: { infantryAtk: 0.15 } },
-  { key: "ap_rockets", name: "AP Rockets", emoji: "🚀", building: "barracks", level: 2, coins: 450, scrap: 8, minutes: 5, blurb: "+30% Rocket Squad attack", mods: { rocketAtk: 0.3 } },
-  { key: "composite", name: "Composite Armor", emoji: "🛡️", building: "factory", level: 1, coins: 600, scrap: 12, minutes: 6, blurb: "+25% vehicle health", mods: { vehicleHp: 0.25 } },
-  { key: "supply_lines", name: "Supply Lines", emoji: "🚚", building: "supply", level: 2, coins: 500, scrap: 10, minutes: 5, blurb: "+25% supply & tribute income", mods: { income: 0.25 } },
-  { key: "lasers", name: "Laser Turrets", emoji: "🔆", building: "turret", level: 2, coins: 700, scrap: 15, minutes: 6, blurb: "+40% turret power", mods: { turret: 0.4 } },
-  { key: "radar", name: "Radar Uplink", emoji: "📡", building: "hq", level: 2, coins: 400, scrap: 6, minutes: 4, blurb: "See enemy garrisons on the map", mods: {} },
-  { key: "afterburners", name: "Afterburners", emoji: "✈️", building: "airfield", level: 1, coins: 900, scrap: 20, minutes: 8, blurb: "+25% air attack", mods: { airAtk: 0.25 } },
-  { key: "medics", name: "Field Medics", emoji: "⛑️", building: "quarters", level: 2, coins: 500, scrap: 10, minutes: 5, blurb: "-20% casualties in battle", mods: { losses: 0.2 } },
+  { key: "drills", name: msg("Combat Drills"), emoji: "🎖️", building: "barracks", level: 1, coins: 300, scrap: 5, minutes: 3, blurb: msg("+15% infantry attack"), mods: { infantryAtk: 0.15 } },
+  { key: "ap_rockets", name: msg("AP Rockets"), emoji: "🚀", building: "barracks", level: 2, coins: 450, scrap: 8, minutes: 5, blurb: msg("+30% Rocket Squad attack"), mods: { rocketAtk: 0.3 } },
+  { key: "composite", name: msg("Composite Armor"), emoji: "🛡️", building: "factory", level: 1, coins: 600, scrap: 12, minutes: 6, blurb: msg("+25% vehicle health"), mods: { vehicleHp: 0.25 } },
+  { key: "supply_lines", name: msg("Supply Lines"), emoji: "🚚", building: "supply", level: 2, coins: 500, scrap: 10, minutes: 5, blurb: msg("+25% supply & tribute income"), mods: { income: 0.25 } },
+  { key: "lasers", name: msg("Laser Turrets"), emoji: "🔆", building: "turret", level: 2, coins: 700, scrap: 15, minutes: 6, blurb: msg("+40% turret power"), mods: { turret: 0.4 } },
+  { key: "radar", name: msg("Radar Uplink"), emoji: "📡", building: "hq", level: 2, coins: 400, scrap: 6, minutes: 4, blurb: msg("See enemy garrisons on the map"), mods: {} },
+  { key: "afterburners", name: msg("Afterburners"), emoji: "✈️", building: "airfield", level: 1, coins: 900, scrap: 20, minutes: 8, blurb: msg("+25% air attack"), mods: { airAtk: 0.25 } },
+  { key: "medics", name: msg("Field Medics"), emoji: "⛑️", building: "quarters", level: 2, coins: 500, scrap: 10, minutes: 5, blurb: msg("-20% casualties in battle"), mods: { losses: 0.2 } },
 ];
 export const RESEARCH_BY_KEY = Object.fromEntries(RESEARCH.map((r) => [r.key, r])) as Record<ResearchKey, ResearchDef>;
 
@@ -309,13 +310,13 @@ export function trophySwing(atk: number, def: number, stars: number) {
 }
 
 export const LEAGUES = [
-  { min: 0, name: "Bronze", emoji: "🥉", bonus: 0 },
-  { min: 400, name: "Silver", emoji: "🥈", bonus: 0.1 },
-  { min: 800, name: "Gold", emoji: "🥇", bonus: 0.2 },
-  { min: 1400, name: "Crystal", emoji: "💠", bonus: 0.3 },
-  { min: 2000, name: "Master", emoji: "🔷", bonus: 0.4 },
-  { min: 2600, name: "Champion", emoji: "🏆", bonus: 0.5 },
-  { min: 3200, name: "Legend", emoji: "👑", bonus: 0.6 },
+  { min: 0, name: msg("Bronze"), emoji: "🥉", bonus: 0 },
+  { min: 400, name: msg("Silver"), emoji: "🥈", bonus: 0.1 },
+  { min: 800, name: msg("Gold"), emoji: "🥇", bonus: 0.2 },
+  { min: 1400, name: msg("Crystal"), emoji: "💠", bonus: 0.3 },
+  { min: 2000, name: msg("Master"), emoji: "🔷", bonus: 0.4 },
+  { min: 2600, name: msg("Champion"), emoji: "🏆", bonus: 0.5 },
+  { min: 3200, name: msg("Legend"), emoji: "👑", bonus: 0.6 },
 ];
 export const leagueOf = (trophies: number) => [...LEAGUES].reverse().find((l) => trophies >= l.min)!;
 
