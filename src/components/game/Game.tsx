@@ -37,7 +37,7 @@ import { SHOP_WARN_MS } from "@/lib/shops";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { useLocation, useWakeLock, type FireReport } from "./useLocation";
 import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
-import { AdModal, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
+import { AdModal, type AdOffer, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 import { Button } from "@/components/Button";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
@@ -113,7 +113,7 @@ export default function Game() {
   const [now, setNow] = useState(Date.now());
   const [match, setMatch] = useState<string | null>(null);
   const [meTab, setMeTab] = useState<HeroTabId>("hero");
-  const [adOpen, setAdOpen] = useState(false);
+  const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
 
   // ---- data loading
@@ -950,7 +950,7 @@ export default function Game() {
         {panel === "events" && <EventsPanel onClose={close} peek={peek} />}
         {panel === "inbox" && <InboxPanel onClose={close} peek={peek} onRead={() => setInbox(0)} />}
         {panel === "play" && <PlayPanel onClose={close} peek={peek} onStarted={loadMe} />}
-        {panel === "store" && <StorePanel onClose={close} peek={peek} onWatch={() => setAdOpen(true)} />}
+        {panel === "store" && <StorePanel onClose={close} peek={peek} onWatch={setAdOpen} />}
         {panel === "me" && (
           <ProfilePanel
             key={meTab}
@@ -1016,7 +1016,7 @@ export default function Game() {
         )}
 
         {lobby && <LobbyModal open={lobby} onClose={() => setLobby(null)} />}
-        {adOpen && <AdModal onClose={() => (setAdOpen(false), loadMe())} />}
+        {adOpen && <AdModal offer={adOpen} onClose={() => (setAdOpen(null), loadMe())} />}
         <CelebrationLayer />
         {askPush && (
           <div className="modal-bg" style={{ zIndex: 2500 }}>

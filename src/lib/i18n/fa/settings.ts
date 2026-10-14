@@ -142,6 +142,9 @@ const settings: Record<string, string> = {
   "Refills hunger, energy, social and fun.": "گرسنگی، انرژی، اجتماعی بودن و تفریح رو پر می‌کنه.",
   "4 h base shield (gems)": "سپر پایه ۴ ساعته (جم)",
   "Rewarded ads on": "تبلیغ پاداش‌دار روشن",
+  "Google video ads on": "تبلیغ ویدیویی گوگل روشن",
+  "Needs ADSENSE_CLIENT on the server. Players get a Google rewarded video first; where Google has no ad (some countries, ad blockers), they see a sponsor spot instead.":
+    "باید ADSENSE_CLIENT روی سرور تنظیم شده باشه. اول یه ویدیوی پاداش‌دار گوگل به بازیکن نشون داده می‌شه؛ جایی که گوگل تبلیغی نداره (بعضی کشورها، یا وقتی تبلیغ‌گیر روشنه)، به‌جاش تبلیغ حامی میاد.",
   "Ad length (s)": "طول تبلیغ (ثانیه)",
   "Gems per ad": "جم به ازای هر تبلیغ",
   "Coins per ad": "سکه به ازای هر تبلیغ",

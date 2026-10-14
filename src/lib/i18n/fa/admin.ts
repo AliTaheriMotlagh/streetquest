@@ -205,6 +205,7 @@ const admin: Record<string, string> = {
   "Edit gem packs and prices in Settings → Store & ads.": "بسته‌های جم و قیمت‌ها رو از تنظیمات ← فروشگاه و تبلیغات ویرایش کن.",
   "Things a goal can count:": "هدف می‌تونه این‌ها رو بشمره:",
   "House ad (invite friends)": "تبلیغ خانگی (دعوت از دوستان)",
+  "Google video ads": "تبلیغ ویدیویی گوگل",
   "Create a Stripe account and copy the secret key (Developers → API keys).": "یه حساب Stripe بساز و کلید secret رو از Developers ← API keys کپی کن.",
   "Set STRIPE_SECRET_KEY in your server environment (Vercel → Settings → Environment Variables) and redeploy.":
     "STRIPE_SECRET_KEY رو توی محیط سرورت (Vercel ← Settings ← Environment Variables) تنظیم کن و دوباره دیپلوی کن.",

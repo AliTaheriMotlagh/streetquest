@@ -635,6 +635,7 @@ const server: Record<string, string> = {
   "Claim your share in Hero → Goals": "سهمت رو از قهرمان ← هدف‌ها بگیر",
 
   // ---- store & sponsor spots
+  "Video ads aren't available right now": "الان تبلیغ ویدیویی در دسترس نیست",
   "Needs {n} 💎 — watch a sponsor spot or visit the gem store": "{n} 💎 لازمه — یه تبلیغ ببین یا به فروشگاه جم سر بزن",
   "Unknown offer": "پیشنهاد ناشناخته",
   "🪙 +{n} coins (−{gems} 💎)": "🪙 +{n} سکه (−{gems} 💎)",

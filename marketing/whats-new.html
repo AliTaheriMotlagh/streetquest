@@ -1,0 +1,172 @@
+<!doctype html>
+<!-- "All features" poster in the style of Apple's update keynotes.
+     Render: node marketing/render.mjs  →  marketing/whats-new-en.png, whats-new-fa.png
+     Open with #fa for the Persian version. -->
+<html>
+<head>
+<meta charset="utf-8" />
+<title>StreetQuest — All features</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=Lilita+One&display=block" rel="stylesheet" />
+<style>
+  @font-face { font-family: "Vazirmatn"; src: url("../public/fonts/Vazirmatn-UI-FD-Regular.woff2") format("woff2"); font-weight: 100 500; }
+  @font-face { font-family: "Vazirmatn"; src: url("../public/fonts/Vazirmatn-UI-FD-Bold.woff2") format("woff2"); font-weight: 600 800; }
+  @font-face { font-family: "Vazirmatn"; src: url("../public/fonts/Vazirmatn-UI-FD-Black.woff2") format("woff2"); font-weight: 900; }
+  :root {
+    --bg: #000; --tile: #121218; --tile2: #17171f; --line: rgba(255,255,255,.07);
+    --text: #f5f5f7; --muted: #8e8ea3;
+    --pink: #ff2e88; --cyan: #22e3ff; --yellow: #ffd23f; --green: #3dff8f; --red: #ff4d4d; --purple: #b26bff; --orange: #ff8a3d;
+    --display: "Lilita One", "Vazirmatn", sans-serif;
+    --body: "Inter", "Vazirmatn", system-ui, sans-serif;
+  }
+  [dir="rtl"] { --display: "Vazirmatn", sans-serif; --body: "Vazirmatn", sans-serif; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--body); width: 1600px; padding: 72px 64px 56px; -webkit-font-smoothing: antialiased; }
+
+  header { text-align: center; margin-bottom: 48px; }
+  .brand { display: inline-flex; align-items: center; gap: 14px; font: 400 34px var(--display); letter-spacing: .5px; color: #fff; }
+  [dir="rtl"] .brand { font-weight: 900; }
+  .brand img { width: 56px; height: 56px; border-radius: 14px; }
+  h1 { font: 400 132px/1 var(--display); margin: 26px 0 18px; letter-spacing: -1px;
+       background: linear-gradient(100deg, var(--yellow) 0%, var(--pink) 38%, var(--purple) 64%, var(--cyan) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; padding-bottom: 8px; }
+  [dir="rtl"] h1 { font-weight: 900; font-size: 118px; line-height: 1.25; letter-spacing: 0; }
+  .sub { font-size: 30px; color: var(--muted); font-weight: 600; }
+  .sub b { color: var(--text); }
+
+  .grid { display: grid; grid-template-columns: repeat(8, 1fr); grid-auto-rows: 132px; gap: 16px; grid-auto-flow: dense; }
+  .t { background: var(--tile); border: 1px solid var(--line); border-radius: 28px; padding: 24px 26px; display: flex; flex-direction: column; justify-content: flex-end; position: relative; overflow: hidden; }
+  .t .e { font-size: 40px; line-height: 1; margin-bottom: auto; filter: drop-shadow(0 6px 18px rgba(0,0,0,.4)); }
+  .t h3 { font-size: 22px; font-weight: 800; letter-spacing: -.2px; line-height: 1.2; }
+  .t p { font-size: 15.5px; color: var(--muted); margin-top: 6px; line-height: 1.4; font-weight: 400; }
+  [dir="rtl"] .t h3 { font-weight: 800; letter-spacing: 0; line-height: 1.45; }
+  [dir="rtl"] .t p { font-size: 16px; line-height: 1.7; }
+
+  /* sizes: columns × rows */
+  .s1 { grid-column: span 2; }                     /* 2×1 small: emoji left */
+  .s1 { flex-direction: row; align-items: center; gap: 16px; justify-content: flex-start; padding: 18px 22px; }
+  .s1 .e { margin: 0; font-size: 38px; }
+  .s1 h3 { font-size: 19px; }
+  .s1 p { font-size: 14px; margin-top: 3px; }
+  [dir="rtl"] .s1 p { font-size: 14.5px; line-height: 1.6; }
+  .m { grid-column: span 2; grid-row: span 2; }
+  .w { grid-column: span 4; grid-row: span 2; }
+  .l { grid-column: span 3; grid-row: span 2; }
+  .tall { grid-column: span 2; grid-row: span 4; }
+  .hero { grid-column: span 3; grid-row: span 4; }
+  .w5 { grid-column: span 5; grid-row: span 2; }
+
+  .big .e { font-size: 72px; }
+  .big h3 { font-size: 34px; }
+  .big p { font-size: 18px; }
+  [dir="rtl"] .big p { font-size: 18.5px; }
+  .glow::before { content: ""; position: absolute; inset: -40% -20% auto auto; width: 70%; aspect-ratio: 1; border-radius: 50%; background: var(--c); opacity: .22; filter: blur(70px); }
+  [dir="rtl"] .glow::before { inset: -40% auto auto -20%; }
+  .grad h3 { background: linear-gradient(90deg, var(--c), var(--c2, #fff)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* hero: the live map on a phone */
+  .hero { padding: 0; justify-content: flex-start; background: radial-gradient(120% 80% at 50% 100%, #3b1466 0%, #12121a 60%); }
+  .hero .copy { padding: 30px 30px 0; z-index: 1; }
+  .hero h3 { font: 400 46px/1.05 var(--display); background: linear-gradient(90deg, var(--yellow), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  [dir="rtl"] .hero h3 { font-weight: 900; font-size: 44px; line-height: 1.35; }
+  .hero p { font-size: 18px; margin-top: 10px; color: #c7c7d6; }
+  [dir="rtl"] .hero p { font-size: 18.5px; line-height: 1.75; }
+  .phone { position: absolute; left: 50%; bottom: -250px; transform: translateX(-50%) rotate(-4deg); width: 290px; aspect-ratio: 9/18.5; border-radius: 48px; background: #0b0b10; padding: 11px; box-shadow: 0 0 0 2px #2c2c36, 0 40px 80px rgba(0,0,0,.6), 0 0 120px rgba(178,107,255,.35); }
+  [dir="rtl"] .phone { transform: translateX(-50%) rotate(4deg); }
+  .phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 38px; display: block; }
+  .phone::after { content: ""; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 96px; height: 28px; border-radius: 20px; background: #000; }
+
+  /* the Persian tile */
+  .fa-tile { background: linear-gradient(160deg, #0f2d1e 0%, #121218 45%, #2d0f12 100%); }
+  .fa-word { font: 900 92px/1 "Vazirmatn", sans-serif; margin-bottom: auto; background: linear-gradient(90deg, var(--green), #fff 50%, var(--red)); -webkit-background-clip: text; background-clip: text; color: transparent; padding-top: 6px; }
+  .shop-tile { background: linear-gradient(160deg, #3a2a05 0%, #121218 60%); }
+  .shop-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .shop-tags span { font-size: 13px; font-weight: 700; padding: 6px 11px; border-radius: 99px; background: rgba(255,210,63,.13); color: var(--yellow); }
+  [dir="rtl"] .shop-tags span { font-size: 14px; }
+  .fps-tile { background: radial-gradient(90% 120% at 85% 10%, #4a0d22 0%, #121218 60%); }
+  [dir="rtl"] .fps-tile { background: radial-gradient(90% 120% at 15% 10%, #4a0d22 0%, #121218 60%); }
+  .call-tile { background: radial-gradient(90% 120% at 85% 10%, #08364a 0%, #121218 60%); }
+  [dir="rtl"] .call-tile { background: radial-gradient(90% 120% at 15% 10%, #08364a 0%, #121218 60%); }
+
+  footer { margin-top: 44px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 20px; font-weight: 600; }
+  footer b { color: var(--text); }
+  .pills { display: flex; gap: 10px; }
+  .pills span { border: 1px solid var(--line); background: var(--tile); border-radius: 99px; padding: 10px 18px; font-size: 16px; color: #c7c7d6; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><img src="../public/icons/icon-512.png" alt="" /><span data-k="brand"></span></div>
+  <h1 data-k="h1"></h1>
+  <div class="sub" data-k="sub"></div>
+</header>
+<main class="grid" id="grid"></main>
+<footer>
+  <div data-k="foot"></div>
+  <div class="pills" id="pills"></div>
+</footer>
+
+<script>
+const fa = location.hash === "#fa";
+document.documentElement.lang = fa ? "fa" : "en";
+document.documentElement.dir = fa ? "rtl" : "ltr";
+
+const L = (en, f) => (fa ? f : en);
+const text = {
+  brand: L("StreetQuest", "استریت‌کوئست"),
+  h1: L("All-new features", "همهٔ امکانات تازه"),
+  sub: L("Your city is the battlefield. <b>One game. Every genre.</b>", "شهرت، میدون جنگه. <b>یه بازی، همهٔ ژانرها.</b>"),
+  foot: L("Free to play · iPhone, Android & desktop · <b>No download needed</b>", "رایگان · آیفون، اندروید و کامپیوتر · <b>بدون نیاز به نصب</b>"),
+};
+for (const el of document.querySelectorAll("[data-k]")) el.innerHTML = text[el.dataset.k];
+document.getElementById("pills").innerHTML = (fa ? ["English", "فارسی", "نصب به‌عنوان اپ", "آفلاین"] : ["English", "فارسی", "Installable app", "Works offline"]).map((p) => `<span>${p}</span>`).join("");
+
+// [size, emoji, title, subtitle, accent, accent2, extra class]
+const tiles = [
+  ["hero", "", L("Play on real streets", "روی خیابون‌های واقعی بازی کن"), L("Walk, ride or drive — the GPS map is the game board, and everyone sees the same world.", "قدم بزن، رکاب بزن یا رانندگی کن — نقشهٔ GPS صفحهٔ بازیه و همه یه دنیای مشترک رو می‌بینن."), ""],
+  ["w5 big glow grad fps-tile", "🎯", L("First-person breach", "نفوذ اول‌شخص"), L("Walk up to an enemy base and storm it in a live FPS match. Capture the zone or wipe the defenders.", "برو نزدیک پایگاه دشمن و تو یه مسابقهٔ زندهٔ اول‌شخص بهش یورش ببر. منطقه رو بگیر یا مدافع‌ها رو از پا دربیار."), "#ff4d4d", "#ffd23f"],
+  ["m shop-tile glow", "🛍️", L("Player shops", "فروشگاه بازیکن‌ها"), L("Open your own store at a real place and sell anything.", "سر یه جای واقعی مغازهٔ خودت رو باز کن و هرچی خواستی بفروش."), "#ffd23f", "", "shop"],
+  ["l fa-tile", "", L("Speaks Persian", "کاملاً فارسی"), L("Every line written like a native, right-to-left, with Vazirmatn.", "همهٔ جمله‌ها روان و طبیعی، راست‌به‌چپ، با فونت وزیرمتن."), "", "", "fa"],
+  ["m glow", "🏰", L("Build your base", "پایگاهت رو بساز"), L("Power, barracks, factory and airfield on real timers.", "نیروگاه، سربازخونه، کارخونه و فرودگاه با زمان واقعی."), "#b26bff"],
+  ["m glow", "🐉", L("World bosses", "غول‌های جهانی"), L("Shared HP across the city. Raid together, split the loot.", "جونِ مشترک در کل شهر. با هم حمله کنید و غنیمت رو تقسیم کنید."), "#3dff8f"],
+  ["w big glow grad call-tile", "📹", L("Crew video calls", "تماس تصویری با اکیپ"), L("Ring your crew face to face — even on mobile data.", "رودررو به اکیپت زنگ بزن — حتی با اینترنت گوشی."), "#22e3ff", "#b26bff"],
+  ["m glow", "☢️", L("Superweapons", "ابرسلاح‌ها"), L("Nuke, Particle Cannon, SCUD Storm. Everyone nearby sees the countdown.", "موشک اتمی، توپ ذره‌ای، طوفان اسکاد. هرکی اون نزدیکیه شمارش معکوس رو می‌بینه."), "#ffd23f"],
+  ["w glow", "🚕", L("Ride requests", "درخواست ماشین"), L("Book a car right inside the game and follow it to your door.", "تو خود بازی ماشین بگیر و تا دم در مسیرش رو دنبال کن."), "#ffd23f"],
+  ["m glow", "🎰", L("Lucky draws", "قرعه‌کشی"), L("Buy a chance at a real place. One winner takes the pot.", "سر یه جای واقعی شانست رو بخر. یه نفر کل جایزه رو می‌بره."), "#ff2e88"],
+  ["m glow", "🗼", L("Tower defense", "دفاع با برج"), L("MG, Sniper, Cannon, SAM and Tesla guard your streets.", "مسلسل، تک‌تیرانداز، توپ، سام و تسلا از خیابون‌هات محافظت می‌کنن."), "#22e3ff"],
+  ["m glow", "🪖", L("Live armies", "ارتش زنده"), L("Squads march across the real map. Redirect or recall mid-march.", "جوخه‌ها روی نقشهٔ واقعی راه می‌افتن. وسط راه مسیرشون رو عوض کن یا برشون گردون."), "#3dff8f"],
+  ["m glow", "🦸", L("RPG heroes", "قهرمان نقش‌آفرینی"), L("5 classes, attribute points and loot in 4 rarities.", "۵ کلاس، امتیاز ویژگی و غنیمت در ۴ سطح کمیابی."), "#b26bff"],
+  ["m glow", "📦", L("Real deliveries", "تحویل واقعی بسته"), L("Coins held in escrow, GPS check-in at pickup, a handover code at the door.", "سکه امانت می‌مونه، موقع تحویل گرفتن با GPS ثبت می‌شه و دم در با کد تحویل داده می‌شه."), "#ff8a3d"],
+  ["s1", "🧬", L("Life sim", "شبیه‌ساز زندگی"), L("Hunger, energy, social, fun", "گرسنگی، انرژی، معاشرت، تفریح")],
+  ["s1", "🏆", L("Trophies & leagues", "جام و لیگ"), L("Bronze → Legend, ★★★ sieges", "برنز تا افسانه، محاصرهٔ سه‌ستاره")],
+  ["s1", "🚩", L("King of the hill", "پادشاه تپه"), L("Plant a flag, hold it, get paid", "پرچم بکار، نگهش دار، سود ببر")],
+  ["s1", "💰", L("Bounties", "جایزه برای سر"), L("Put coins on a rival's head", "روی سر رقیبت سکه بذار")],
+  ["s1", "📖", L("Story campaign", "کارزار داستانی"), L("Chapters played on your streets", "فصل‌هایی که تو محله‌ات بازی می‌شن")],
+  ["s1", "🧭", L("GPS mini-games", "مینی‌گیم‌های GPS"), L("Treasure hunt, sprint, rally", "گنج‌یابی، دوِ سرعت، رالی")],
+  ["s1", "💣", L("Arcade duels", "دوئل‌های آرکید"), L("Shooting range & bomb defuse", "میدان تیر و خنثی‌سازی بمب")],
+  ["s1", "🏎️", L("Squad runs", "مأموریت گروهی"), L("Race or co-op with friends", "مسابقه یا همکاری با رفقا")],
+  ["s1", "🌍", L("World operations", "عملیات جهانی"), L("Weekly goals for everyone", "هدف‌های هفتگی برای همه")],
+  ["s1", "🔬", L("Research & powers", "تحقیق و قدرت‌ها"), L("Paradrop, airstrike, spy drone", "چتربازها، حملهٔ هوایی، پهپاد")],
+  ["s1", "🏯", L("Outposts", "پاسگاه‌ها"), L("Capture, garrison, collect tribute", "تصرف کن، نیرو بذار، باج بگیر")],
+  ["s1", "📸", L("Place posts", "پست‌های مکانی"), L("Photos only seen on the spot", "عکس‌هایی که فقط همون‌جا دیده می‌شن")],
+  ["s1", "📍", L("Crew pings", "علامت به اکیپ"), L("Attack, help, rally, loot", "حمله، کمک، تجمع، غنیمت")],
+  ["s1", "🌅", L("Golden hour", "ساعت طلایی"), L("2× XP at real sunrise & sunset", "تجربهٔ دوبرابر در طلوع و غروب واقعی")],
+  ["s1", "🏠", L("Play from home", "بازی از خونه"), L("No walk? Still in the game", "حوصلهٔ پیاده‌روی نداری؟ باز هم بازی کن")],
+  ["s1", "🔔", L("Push alerts", "اعلان لحظه‌ای"), L("Raids, calls and crew news", "حمله‌ها، تماس‌ها و خبر اکیپ")],
+  ["s1", "💎", L("Free gems", "جم رایگان"), L("Daily rewards & video ads", "جایزهٔ روزانه و ویدیوی تبلیغاتی")],
+  ["s1", "⚔️", L("Three factions", "سه جناح"), L("Dragon Army, Coalition, Insurgency", "ارتش اژدها، ائتلاف، شورشیان")],
+  ["s1", "📊", L("Leaderboards", "جدول رده‌بندی"), L("Top commanders near you & worldwide", "برترین فرمانده‌های اطرافت و کل دنیا")],
+  ["s1", "💬", L("Friends & chat", "دوست‌ها و گفت‌وگو"), L("Crews, events, messages", "اکیپ، رویداد، پیام")],
+];
+
+const grid = document.getElementById("grid");
+grid.innerHTML = tiles.map(([size, e, title, sub, c, c2, extra]) => {
+  const style = c ? ` style="--c:${c};${c2 ? `--c2:${c2}` : ""}"` : "";
+  if (size === "hero") return `<div class="t hero"><div class="copy"><h3>${title}</h3><p>${sub}</p></div><div class="phone"><img src="../public/screens/map.jpg" alt="" /></div></div>`;
+  const top = extra === "fa" ? `<div class="fa-word">فارسی</div>` : `<div class="e">${e}</div>`;
+  const tags = extra === "shop" ? `<div class="shop-tags">${(fa ? ["ویترین", "تخفیف", "عکس محصول", "۳۰ روزه"] : ["Showcase", "Discounts", "Photos", "30-day stores"]).map((x) => `<span>${x}</span>`).join("")}</div>` : "";
+  const body = size === "s1" ? `${top}<div><h3>${title}</h3><p>${sub}</p></div>` : `${top}<h3>${title}</h3><p>${sub}</p>${tags}`;
+  return `<div class="t ${size}"${style}>${body}</div>`;
+}).join("");
+</script>
+</body>
+</html>

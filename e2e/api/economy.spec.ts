@@ -60,6 +60,19 @@ test.describe("economy", () => {
     await Promise.all([p.dispose(), other.dispose()]);
   });
 
+  test("Google video ads: refused without ADSENSE_CLIENT, sponsor spot still works", async ({ baseURL, request }) => {
+    test.skip(!!process.env.ADSENSE_CLIENT, "the test server has AdSense configured");
+    const p = await Player.create(baseURL!);
+    const store = expectOk(await p.get<{ ads: { network: unknown } }>("/api/store")).data;
+    expect(store.ads.network).toBeNull();
+    expect((await p.post("/api/ads", { action: "start", network: true })).status).toBe(400);
+    expectOk(await p.post("/api/ads", { action: "start" }));
+    const txt = await request.get("/ads.txt");
+    expect(txt.status()).toBe(200);
+    expect(txt.headers()["content-type"]).toContain("text/plain");
+    await p.dispose();
+  });
+
   test("selling items: exact payout, no overselling, no double-sell", async ({ baseURL }) => {
     const p = await Player.create(baseURL!);
     // Item spawns are deterministic; find one, walk to it, collect it.

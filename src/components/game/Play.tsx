@@ -11,6 +11,7 @@ import { askConfirm } from "@/components/Dialogs";
 import { api, type GpsView, type LatLng } from "./client";
 import { sfx } from "./sfx";
 import { duckMusic } from "./music";
+import { requestRewarded, type AdNetwork, type RewardedAd } from "./adNetwork";
 import { AutoVideo } from "@/components/AutoVideo";
 import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
 import { Button } from "@/components/Button";
@@ -419,6 +420,9 @@ function GoalCard({ kind, g, endsAt, onClaim, children }: { kind: string; g: Goa
 }
 
 // ---------------------------------------------------------------- Store
+/** What the Free gems card offers; the ad modal shows it again. */
+export type AdOffer = { gems: number; coins: number; network: AdNetwork | null };
+
 type StoreData = {
   enabled: boolean;
   payments: boolean;
@@ -427,7 +431,7 @@ type StoreData = {
   offers: { key: string; gems: number; coins: number; label: string }[];
   boosts: { heal: number; refresh: number; shield: number };
   gems: number;
-  ads: { enabled: boolean; left: number; seconds: number; gems: number; coins: number };
+  ads: AdOffer & { enabled: boolean; left: number; seconds: number };
 };
 
 const money = (cents: number, cur: string) => {
@@ -438,7 +442,7 @@ const money = (cents: number, cur: string) => {
   }
 };
 
-export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; peek: boolean; onWatch: () => void }) {
+export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; peek: boolean; onWatch: (offer: AdOffer) => void }) {
   const { act, me, toast } = useGame();
   const [d, setD] = useState<StoreData | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -477,9 +481,9 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
               <div className="gt-icon">📺</div>
               <div className="grow">
                 <b>{t("Free gems")}</b>
-                <div className="small muted">{t("Watch a {s}s sponsor spot: +{gems} 💎", { s: d.ads.seconds, gems: d.ads.gems })}{d.ads.coins ? ` +${fmtNum(d.ads.coins)} 🪙` : ""} · {t("{n} left today", { n: d.ads.left })}</div>
+                <div className="small muted">{d.ads.network ? t("Watch a short video: +{gems} 💎", { gems: d.ads.gems }) : t("Watch a {s}s sponsor spot: +{gems} 💎", { s: d.ads.seconds, gems: d.ads.gems })}{d.ads.coins ? ` +${fmtNum(d.ads.coins)} 🪙` : ""} · {t("{n} left today", { n: d.ads.left })}</div>
               </div>
-              <Button className="btn green" disabled={d.ads.left <= 0} onClick={onWatch}>{t("▶ Watch")}</Button>
+              <Button className="btn green" disabled={d.ads.left <= 0} onClick={() => onWatch(d.ads)}>{t("▶ Watch")}</Button>
             </div>
           )}
 
@@ -529,16 +533,70 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
 // ---------------------------------------------------------------- Rewarded sponsor spot
 type AdStart = { viewId: string; seconds: number; creative: { id: string; sponsor: string; title: string; body?: string; imageUrl?: string; videoUrl?: string; clickUrl?: string } };
 
-export function AdModal({ onClose }: { onClose: () => void }) {
-  const { act, toast } = useGame();
-  const [ad, setAd] = useState<(AdStart & { at: number }) | null>(null);
-  const [now, setNow] = useState(Date.now());
-  const started = useRef(false);
+/** Rewarded ad: a Google video when the network has one, otherwise the game's own sponsor spot. */
+export function AdModal({ onClose, offer }: { onClose: () => void; offer: AdOffer }) {
+  const { network } = offer;
+  // undefined while asking Google, null = no video (or no network): sponsor spot.
+  const [video, setVideo] = useState<RewardedAd | null | undefined>(network ? undefined : null);
   // The ad has its own soundtrack: pause the game music while it's open.
   useEffect(() => {
     duckMusic(true);
     return () => duckMusic(false);
   }, []);
+  useEffect(() => {
+    if (network) requestRewarded(network).then(setVideo);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (video === undefined) return <div className="modal-bg ad-bg"><div className="big-num">{t("LOADING…")}</div></div>;
+  return video ? <NetworkAd video={video} offer={offer} onClose={onClose} onFallback={() => setVideo(null)} /> : <SponsorAd onClose={onClose} />;
+}
+
+function NetworkAd({ video, offer, onClose, onFallback }: { video: RewardedAd; offer: AdOffer; onClose: () => void; onFallback: () => void }) {
+  const { act, toast } = useGame();
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const started = useRef(false);
+  // Open the server's view first so the tap on Play can start the video right away
+  // (browsers only let a tap start sound for a moment).
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    api<{ viewId: string }>("/api/ads", { body: { action: "start", network: true } })
+      .then((r) => setViewId(r.viewId))
+      .catch(onFallback);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const play = async () => {
+    if (!viewId || playing) return;
+    setPlaying(true);
+    const watched = await video.show({ onStart: () => setPlaying(true), onEnd: () => setPlaying(false) });
+    setPlaying(false);
+    if (!watched) {
+      toast({ kind: "error", title: t("Watch the whole spot to get the reward") });
+      return onClose();
+    }
+    const ok = await act(() => api("/api/ads", { body: { action: "claim", viewId } }));
+    if (ok) burst("💎", 6);
+    onClose();
+  };
+  return (
+    <div className="modal-bg ad-bg">
+      <div className="ad-card">
+        <div className="ad-media house">🎬</div>
+        <h2>{t("Your video is ready")}</h2>
+        <p className="small muted">{t("Watch it to the end for +{gems} 💎", { gems: offer.gems })}{offer.coins ? ` +${fmtNum(offer.coins)} 🪙` : ""}</p>
+        <div className="row wrap" style={{ justifyContent: "center" }}>
+          <Button className="btn yellow" disabled={!viewId || playing} onClick={play}>{playing ? "…" : t("▶ Play video")}</Button>
+          <Button className="btn ghost" onClick={onClose}>{t("Not now")}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SponsorAd({ onClose }: { onClose: () => void }) {
+  const { act, toast } = useGame();
+  const [ad, setAd] = useState<(AdStart & { at: number }) | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const started = useRef(false);
 
   useEffect(() => {
     if (started.current) return;

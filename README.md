@@ -167,6 +167,13 @@ Don't run the demo seed in production.
   in the app; Admin → Campaigns → live push can send to everyone. iPhone needs the app added to the Home Screen
   (iOS 16.4+).
 
+- **Real ads (Google AdSense):** sign up at adsense.google.com with your production domain, then apply for
+  **H5 Games Ads** (AdSense → Ads → By site → H5 games). Set `ADSENSE_CLIENT="ca-pub-…"` and redeploy: `/ads.txt`
+  is served automatically and the store's *Free gems* button plays a Google rewarded video first. Where Google has no
+  ad (Iran and other sanctioned countries, ad blockers, frequency caps) players get your sponsor spot instead, so the
+  button always works. `ADSENSE_TEST=on` shows Google's test ads while you try it. Admin → Game settings → Store & ads
+  → *Google video ads on* switches it live; views are counted as "Google video ads" in Admin → Revenue.
+
 - `/api/health` must say `"ok": true`.
 - Set `CRON_SECRET` on Vercel — `vercel.json` schedules `/api/cron/cleanup` daily (prunes old notifications,
   lobbies, pings, waves, matches and superweapon launches; refunds expired bounties).

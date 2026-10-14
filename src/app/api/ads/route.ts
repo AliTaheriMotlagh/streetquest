@@ -1,4 +1,4 @@
-// Rewarded sponsor spots: start → watch adSeconds → claim gems + coins.
+// Rewarded ads: start → watch (a Google video, or a sponsor spot for adSeconds) → claim gems + coins.
 import { z } from "zod";
 import { requireUser } from "@/server/auth";
 import { body, actionRoute } from "@/server/http";
@@ -8,7 +8,7 @@ import { trackStat } from "@/server/goals";
 import { t } from "@/lib/i18n";
 
 const Schema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("start") }),
+  z.object({ action: z.literal("start"), network: z.boolean().optional() }),
   z.object({ action: z.literal("claim"), viewId: z.string().max(40) }),
   z.object({ action: z.literal("click"), viewId: z.string().max(40) }),
 ]);
@@ -16,7 +16,7 @@ const Schema = z.discriminatedUnion("action", [
 export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
-  if (d.action === "start") return startAd(u.id);
+  if (d.action === "start") return startAd(u.id, d.network);
   if (d.action === "click") {
     await clickAd(u.id, d.viewId);
     return { ok: true };

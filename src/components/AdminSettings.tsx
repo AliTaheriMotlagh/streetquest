@@ -353,7 +353,7 @@ export function RevenueTab({ rev, config }: { rev: AdminRevenue; config: AdminCo
               const c = creatives.find((x) => x.id === a.creativeId);
               return (
                 <tr key={a.creativeId}>
-                  <td>{c ? <><b>{c.sponsor}</b> · {c.title}</> : a.creativeId === "house" ? t("House ad (invite friends)") : a.creativeId}</td>
+                  <td>{c ? <><b>{c.sponsor}</b> · {c.title}</> : a.creativeId === "house" ? t("House ad (invite friends)") : a.creativeId === "google" ? t("Google video ads") : a.creativeId}</td>
                   <td>{a.views}</td>
                   <td>{a.clicks}</td>
                   <td>{a.views ? `${((a.clicks / a.views) * 100).toFixed(1)}%` : "—"}</td>

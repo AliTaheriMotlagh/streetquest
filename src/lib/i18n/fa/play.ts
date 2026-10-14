@@ -104,6 +104,7 @@ const play: Record<string, string> = {
   "Watch a {s}s sponsor spot: +{gems} 💎": "یه تبلیغ {s} ثانیه‌ای ببین: +{gems} 💎",
   "{n} left today": "{n} بار دیگه امروز",
   "▶ Watch": "▶ تماشا",
+  "Watch a short video: +{gems} 💎": "یه ویدیوی کوتاه ببین: +{gems} 💎",
   "Gem packs": "بسته‌های جم",
   "Purchases open soon.": "خرید به‌زودی فعال می‌شه.",
   "Pouch of Gems": "کیسهٔ جم",
@@ -132,6 +133,9 @@ const play: Record<string, string> = {
   "Visit {name}": "سر زدن به {name}",
   "🎁 Collect reward": "🎁 گرفتن جایزه",
   "Reward in {s}s": "{s} ثانیه تا جایزه",
+  "Your video is ready": "ویدیوت آماده‌ست",
+  "Watch it to the end for +{gems} 💎": "تا آخر ببینش و +{gems} 💎 بگیر",
+  "▶ Play video": "▶ پخش ویدیو",
 
   // ---- GPS mini-games
   "A cache is hidden somewhere around you. No map marker — only a detector that beeps hotter as you get close.": "یه گنج یه جایی دور و برت پنهونه. نشانه‌ای روی نقشه نیست — فقط یه ردیاب که هر چی نزدیک‌تر بشی داغ‌تر بوق می‌زنه.",
