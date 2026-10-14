@@ -1,6 +1,7 @@
 // Web Push (VAPID). Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT to
 // enable it; without them everything still works, just without pushes.
 import webpush from "web-push";
+import { after } from "next/server";
 import { prisma } from "../lib/db";
 
 const PUB = process.env.VAPID_PUBLIC_KEY;
@@ -56,9 +57,10 @@ export async function pushTo(userId: string, p: PushPayload, opts: { evenIfActiv
           sent++;
           await prisma.pushSub.update({ where: { id: s.id }, data: { lastPush: new Date() } }).catch(() => {});
         } catch (e) {
-          const code = (e as { statusCode?: number }).statusCode;
+          const { statusCode: code, body } = e as { statusCode?: number; body?: string };
+          // Gone for good (unsubscribed, app deleted, iOS revoked it): forget the device.
           if (code === 404 || code === 410) await prisma.pushSub.delete({ where: { id: s.id } }).catch(() => {});
-          else console.error("push failed", code ?? e);
+          else console.error("push failed", code ?? e, body ?? "", new URL(s.endpoint).host);
         }
       }),
     );
@@ -67,4 +69,16 @@ export async function pushTo(userId: string, p: PushPayload, opts: { evenIfActiv
     console.error("push error", e);
     return 0;
   }
+}
+
+/**
+ * pushTo() without making the response wait for it. On serverless hosts (Vercel) work
+ * left running after the response is frozen and the push is never sent, so it's
+ * handed to after(); outside a request (cron jobs, scripts) it just runs.
+ */
+export function pushSoon(userId: string, p: PushPayload, opts: { evenIfActive?: boolean } = {}) {
+  const job = pushTo(userId, p, opts);
+  try {
+    after(job);
+  } catch {}
 }

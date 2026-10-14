@@ -1,7 +1,7 @@
 // Video calls between crew members. The media is peer-to-peer WebRTC; Postgres only
 // carries the handshake, polled by both phones while the call is up (see /api/calls).
 import { prisma } from "../lib/db";
-import { pushTo } from "./push";
+import { pushSoon } from "./push";
 import { t } from "../lib/i18n";
 import { asUser } from "./hub";
 
@@ -87,7 +87,7 @@ export async function endCall(c: CallRow, reason: string) {
     const n = await asUser(c.calleeId, () => ({ title: t("📵 Missed video call"), body: t("{name} tried to call you", { name: caller?.username ?? t("Someone") }) }));
     await prisma.notification.create({ data: { userId: c.calleeId, kind: "social", ...n } }).catch(() => {});
     // Same tag as the ringing notification, so it turns into "missed" instead of ringing on.
-    void pushTo(c.calleeId, { ...n, kind: "social", tag: `call-${c.id}`, call: c.id, url: "/play?panel=crew" }, { evenIfActive: true });
+    pushSoon(c.calleeId, { ...n, kind: "social", tag: `call-${c.id}`, call: c.id, url: "/play?panel=crew" }, { evenIfActive: true });
   }
   return count > 0;
 }

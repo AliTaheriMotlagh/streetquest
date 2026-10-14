@@ -3,7 +3,7 @@
 import { prisma } from "../lib/db";
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../lib/i18n";
 import { withLocale } from "./i18n";
-import { pushTo } from "./push";
+import { pushSoon } from "./push";
 
 export type Notice = {
   title: string;
@@ -44,5 +44,5 @@ export async function notify(userId: string, n: Notice | (() => Notice)) {
       : { ...n, title: translate(locale, n.title), body: n.body && translate(locale, n.body) };
   await prisma.notification.create({ data: { userId, kind: notice.kind ?? "info", tag: notice.tag, title: notice.title, body: notice.body } }).catch(() => {});
   // Also reach the phone when the game isn't open (fire-and-forget).
-  void pushTo(userId, { title: notice.title, body: notice.body, kind: notice.kind });
+  pushSoon(userId, { title: notice.title, body: notice.body, kind: notice.kind });
 }

@@ -622,6 +622,7 @@ const server: Record<string, string> = {
   "You'll hear about raids, rewards and your crew here.": "خبر حمله‌ها، جایزه‌ها و اکیپت اینجا بهت می‌رسه.",
   "No device to notify — turn notifications on first": "دستگاهی برای اعلان نیست — اول اعلان‌ها رو روشن کن",
   "Test notification sent": "اعلان آزمایشی فرستاده شد",
+  "Couldn't reach this device — turn notifications off and on again": "اعلان به این دستگاه نرسید — یک بار اعلان‌ها رو خاموش و دوباره روشن کن",
 
   // ---- goals
   "Goals are switched off": "هدف‌ها فعلاً خاموشن",

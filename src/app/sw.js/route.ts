@@ -129,9 +129,12 @@ self.addEventListener("push", (event) => {
   const tag = d.tag || "sq";
   event.waitUntil((async () => {
     if (d.call) {
-      // The game is on screen: it rings (or shows the missed call) by itself.
+      // The game is on screen: it rings (or shows the missed call) by itself. Every push
+      // must still show a notification — Safari/iOS revokes the subscription of a site
+      // that receives pushes silently — so show a quiet one and take it straight down.
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       if (wins.some((w) => w.visibilityState === "visible")) {
+        await self.registration.showNotification(d.title || "StreetQuest", { body: d.body || "", tag, silent: true, icon: "/icons/icon-192.png" }).catch(() => {});
         (await self.registration.getNotifications({ tag })).forEach((n) => n.close());
         return;
       }
@@ -164,7 +167,7 @@ self.addEventListener("notificationclick", (event) => {
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const w of wins) {
       if (new URL(w.url).pathname.startsWith("/play")) {
-        await w.focus();
+        try { await w.focus(); } catch { continue; }
         // The open game picks the call up straight away (it would otherwise wait for its next poll).
         if (d.ring && d.call) w.postMessage({ type: "CALL", call: d.call, answer });
         return;
@@ -173,4 +176,23 @@ self.addEventListener("notificationclick", (event) => {
     await self.clients.openWindow(target);
   })());
 });
+
+// The browser replaced (or dropped) this device's subscription: subscribe again with the
+// same server key and tell the server, or pushes would silently stop arriving.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil((async () => {
+    const old = event.oldSubscription;
+    const sub = event.newSubscription || (await self.registration.pushManager.subscribe(old ? old.options : { userVisibleOnly: true, applicationServerKey: await serverKey() }).catch(() => null));
+    if (old && (!sub || old.endpoint !== sub.endpoint)) await post({ action: "unsubscribe", endpoint: old.endpoint });
+    if (sub) await post({ action: "subscribe", sub: sub.toJSON() });
+  })());
+});
+async function serverKey() {
+  const { publicKey } = await fetch("/api/push", { credentials: "include" }).then((r) => r.json());
+  const raw = atob((publicKey + "=".repeat((4 - (publicKey.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+function post(body) {
+  return fetch("/api/push", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+}
 `;

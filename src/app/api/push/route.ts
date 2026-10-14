@@ -38,6 +38,10 @@ export const POST = route(async (req) => {
     return { message: t("🔕 Notifications off for this device") };
   }
   const sent = await pushTo(u.id, { title: t("🔔 Notifications work!"), body: t("You'll hear about raids, rewards and your crew here."), kind: "info", tag: "test" }, { evenIfActive: true });
-  if (!sent) throw new HttpError(400, t("No device to notify — turn notifications on first"));
+  if (!sent) {
+    // Every device was rejected (and the dead ones just forgotten): subscribing again fixes it.
+    if (await prisma.pushSub.count({ where: { userId: u.id } }).then((n) => n === 0)) throw new HttpError(400, t("No device to notify — turn notifications on first"));
+    throw new HttpError(502, t("Couldn't reach this device — turn notifications off and on again"));
+  }
   return { message: t("Test notification sent") };
 });

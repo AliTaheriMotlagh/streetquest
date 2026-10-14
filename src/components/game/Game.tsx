@@ -23,7 +23,7 @@ import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
 import { setMusicMood, startMusic } from "./music";
 import { InboxPanel } from "./Inbox";
 import { Tour, TOUR_KEY } from "./Help";
-import { enablePush, pushSupported, swEnabled } from "@/components/pwaClient";
+import { enablePush, pushSupported, swEnabled, syncPush } from "@/components/pwaClient";
 import { askConfirm, askText } from "@/components/Dialogs";
 import { BOUNTY_DAYS, BOUNTY_MAX, BOUNTY_MIN, CAPTURE_SECONDS, FLAG_RADIUS_M } from "@/lib/flags";
 import { SUPER_RANGE_M, SUPERWEAPONS } from "@/lib/superweapons";
@@ -284,6 +284,10 @@ export default function Game() {
       if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => setTour(true), 1200);
     } catch {}
   }, [me?.id, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Notifications already on: re-register this device for whoever is signed in now.
+  useEffect(() => {
+    if (me?.id) void syncPush();
+  }, [me?.id]);
   // Offer notifications: on first visit, and again after a first call ("call" wording).
   const [askPush, setAskPush] = useState<false | "general" | "call">(false);
   const endTour = useCallback(() => {

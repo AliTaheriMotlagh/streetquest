@@ -6,6 +6,7 @@
 //    every fix, so a fast stream of fixes can't starve it)
 //  - one request in flight; fixes that arrive meanwhile are coalesced into one follow-up
 //  - heartbeat every HEARTBEAT_MS so the player stays "online" when standing still
+//    (only while the game is on screen: in the background they get pushes instead)
 //  - network failure → retry with backoff; back on screen → report right away
 //  - another player physically near us: report faster, so both of us see each other live
 import { distanceM, type LatLng } from "@/lib/geo";
@@ -109,7 +110,10 @@ export class LocationReporter {
       return this.inflight;
     }
     const { pos, simulated, accuracy } = this.read();
-    if (!pos || this.stopped) return Promise.resolve();
+    // Not on screen: stay quiet. This ping is the presence heartbeat, and a player who
+    // still counts as "in the game" gets no push notifications (see server/push.ts).
+    // Coming back reports right away (onVisible).
+    if (!pos || this.stopped || document.visibilityState === "hidden") return Promise.resolve();
     this.dirty = false;
     this.clear();
     const p = (async () => {
