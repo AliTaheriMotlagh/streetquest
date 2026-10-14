@@ -88,6 +88,9 @@ const common: Record<string, string> = {
   // ---- dialogs
   Cancel: "انصراف",
   OK: "باشه",
+  Unauthorized: "دسترسی غیرمجاز",
+  "Cloudflare TURN {status}": "خطای سرویس TURN کلودفلر {status}",
+  "Metered TURN {status}": "خطای سرویس TURN (Metered) {status}",
 };
 
 export default common;

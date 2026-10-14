@@ -7,13 +7,14 @@ import { BOUNTY_DAYS } from "@/lib/flags";
 import { expireRides } from "@/server/rides";
 import { drawDue } from "@/server/lottery";
 import { shopHousekeeping } from "@/server/shops";
+import { t } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 const days = (n: number) => new Date(Date.now() - n * 86_400_000);
 
 export const GET = route(async (req) => {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) throw new HttpError(401, "Unauthorized");
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) throw new HttpError(401, t("Unauthorized"));
   const [notifications, lobbies, pings, waves, matches, strikes, locks, calls] = await Promise.all([
     prisma.notification.deleteMany({ where: { createdAt: { lt: days(14) } } }),
     prisma.lobby.deleteMany({ where: { createdAt: { lt: days(1) } } }), // players cascade

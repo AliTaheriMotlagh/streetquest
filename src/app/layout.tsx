@@ -22,14 +22,16 @@ const VAZIRMATN = ["/fonts/Vazirmatn-UI-FD-Regular.woff2", "/fonts/Vazirmatn-UI-
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getT();
   const s = siteText(t);
+  // The preview picture follows the page's language (crawlers don't send the cookie; ?lang= does).
+  const ogCard = { url: `/og-card?lang=${locale}`, width: 1200, height: 630, alt: `${SITE.name} — ${s.tagline}` };
   return {
     metadataBase: new URL(SITE.url),
     title: { default: `${SITE.name} — ${s.tagline}`, template: `%s · ${SITE.name}` },
     description: s.description,
     keywords: s.keywords,
     applicationName: SITE.name,
-    openGraph: { type: "website", siteName: SITE.name, title: `${SITE.name} — ${s.tagline}`, description: s.description, url: SITE.url, locale: LOCALE_META[locale].og },
-    twitter: { card: "summary_large_image", title: SITE.name, description: s.description },
+    openGraph: { type: "website", siteName: SITE.name, title: `${SITE.name} — ${s.tagline}`, description: s.description, url: SITE.url, locale: LOCALE_META[locale].og, images: [ogCard] },
+    twitter: { card: "summary_large_image", title: SITE.name, description: s.description, images: [ogCard.url] },
     appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: SITE.name },
     icons: { icon: [{ url: "/icons/favicon-64.png", sizes: "64x64", type: "image/png" }, { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }], apple: "/icons/apple-touch-icon.png" },
     manifest: "/manifest.webmanifest",

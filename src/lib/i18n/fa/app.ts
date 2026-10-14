@@ -41,6 +41,12 @@ const app: Record<string, string> = {
   "Couldn't read that image": "اون عکس خونده نشد",
   "That photo is too detailed — try another one": "این عکس خیلی پیچیده‌ست — یکی دیگه رو امتحان کن",
   "Link copied ✓": "لینک کپی شد ✓",
+  "My base": "پایگاه من",
+  "Story missions": "مأموریت‌های داستان",
+  Story: "داستان",
+  "Story missions on real streets": "مأموریت‌های داستان توی خیابون‌های واقعی",
+  "Weekly goals with your crew": "هدف‌های هفتگی با اکیپت",
+  "Your city is the map": "شهر تو همون نقشه‌ست",
 };
 
 export default app;

@@ -486,7 +486,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
           {d.enabled && (
             <>
               <label>{t("Gem packs")}</label>
-              {!d.payments && <p className="small muted">{t("Purchases open soon.")}{me.role === "ADMIN" && " (Admin: set STRIPE_SECRET_KEY on the server to take payments.)"}</p>}
+              {!d.payments && <p className="small muted">{t("Purchases open soon.")}{me.role === "ADMIN" && ` ${t("(Admin: set STRIPE_SECRET_KEY on the server to take payments.)")}`}</p>}
               <div className="store-grid">
                 {d.packs.map((p, i) => (
                   <Button key={p.key} className={`pack tier${Math.min(i, 4)}`} disabled={!d.payments || !!busy} onClick={() => buy(p.key)}>

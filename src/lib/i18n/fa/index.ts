@@ -29,6 +29,8 @@ import fps from "./fps";
 import app from "./app";
 import landing from "./landing";
 import pages from "./pages";
+import admin from "./admin";
+import settings from "./settings";
 
 const fa: Messages = {
   ...common,
@@ -49,6 +51,8 @@ const fa: Messages = {
   ...app,
   ...landing,
   ...pages,
+  ...admin,
+  ...settings,
 };
 
 export default fa;

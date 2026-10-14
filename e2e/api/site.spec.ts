@@ -40,10 +40,14 @@ test.describe("site & SEO", () => {
     expect(m.start_url).toBeTruthy();
   });
 
-  test("open graph image renders", async ({ request }) => {
-    const r = await request.get("/opengraph-image");
-    expect(r.status()).toBe(200);
-    expect(r.headers()["content-type"]).toContain("image/");
+  test("open graph cards render in English and Persian", async ({ request }) => {
+    const en = await request.get("/og-card?lang=en");
+    expect(en.status()).toBe(200);
+    expect(en.headers()["content-type"]).toContain("image/");
+    // Persian is a pre-rendered picture; the request follows the redirect to it.
+    const fa = await request.get("/og-card?lang=fa");
+    expect(fa.status()).toBe(200);
+    expect(fa.headers()["content-type"]).toContain("image/png");
   });
 
   test("security headers on pages, no-store on the API", async ({ request }) => {

@@ -5,8 +5,12 @@ import { redirect } from "next/navigation";
 import { AdminPanel } from "@/components/AdminPanel";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/server/auth";
+import { getT } from "@/server/i18n";
 
-export const metadata: Metadata = { title: "Admin", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Admin"), robots: { index: false } };
+}
 
 const keyMatches = (given: string | undefined) => {
   const want = process.env.ADMIN_KEY;
@@ -21,14 +25,15 @@ const keyMatches = (given: string | undefined) => {
 // There's no login: open /admin?key=<ADMIN_KEY> once in a browser that has played,
 // and that player becomes an admin.
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ key?: string }> }) {
+  const { t } = await getT();
   const u = await currentUser();
   if (!u)
     return (
       <main className="page">
         <div className="auth">
-          <h2>Admin</h2>
-          <p className="muted">Open the game once in this browser first, then come back.</p>
-          <Link className="btn" href="/play">Open the game</Link>
+          <h2>{t("Admin")}</h2>
+          <p className="muted">{t("Open the game once in this browser first, then come back.")}</p>
+          <Link className="btn" href="/play">{t("Open the game")}</Link>
         </div>
       </main>
     );

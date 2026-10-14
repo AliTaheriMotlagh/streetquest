@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { askConfirm, askText } from "@/components/Dialogs";
 import { GameDataTab, RevenueTab, SettingsTab, type AdminConfig, type AdminRevenue } from "@/components/AdminSettings";
 import { Button } from "./Button";
+import { t, msg } from "@/lib/i18n";
 
 type Data = {
   stats: { users: number; online: number; signups7: number; claims24: number; upcomingEvents: number; pageViews7: number; conversion7: number; deliveries: Record<string, number> };
@@ -27,25 +28,25 @@ type Tab = "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "ma
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
-  { group: "Overview", items: [{ id: "dash", icon: "📈", label: "Dashboard", desc: "Players, visits, sign-ups and activity over the last 7 days." }] },
+  { group: msg("Overview"), items: [{ id: "dash", icon: "📈", label: msg("Dashboard"), desc: msg("Players, visits, sign-ups and activity over the last 7 days.") }] },
   {
-    group: "Game",
+    group: msg("Game"),
     items: [
-      { id: "settings", icon: "⚙️", label: "Game settings", desc: "Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds." },
-      { id: "data", icon: "📊", label: "Game data", desc: "Stats of every unit, building, tower, item and research project. Change a number to override it; clear it to go back to the original." },
-      { id: "missions", icon: "📍", label: "Map drops", desc: "Place special missions on the map at real places for a time window — sponsored drops, store activations, city campaigns." },
+      { id: "settings", icon: "⚙️", label: msg("Game settings"), desc: msg("Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds.") },
+      { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every unit, building, tower, item and research project. Change a number to override it; clear it to go back to the original.") },
+      { id: "missions", icon: "📍", label: msg("Map drops"), desc: msg("Place special missions on the map at real places for a time window — sponsored drops, store activations, city campaigns.") },
     ],
   },
-  { group: "Money", items: [{ id: "revenue", icon: "💰", label: "Revenue", desc: "Gem sales, sponsor ad views and clicks, and how to switch on payments." }] },
+  { group: msg("Money"), items: [{ id: "revenue", icon: "💰", label: msg("Revenue"), desc: msg("Gem sales, sponsor ad views and clicks, and how to switch on payments.") }] },
   {
-    group: "Community",
+    group: msg("Community"),
     items: [
-      { id: "users", icon: "👥", label: "Players", desc: "Search players, gift coins or gems, make admins, ban cheaters." },
-      { id: "moderation", icon: "🛡️", label: "Moderation", desc: "Hide location posts and delete chat messages." },
-      { id: "deliveries", icon: "📦", label: "Jobs", desc: "Package deliveries and car rides between players, plus lotteries. Cancel a job to refund whoever paid; cancel a lottery to refund every ticket." },
+      { id: "users", icon: "👥", label: msg("Players"), desc: msg("Search players, gift coins or gems, make admins, ban cheaters.") },
+      { id: "moderation", icon: "🛡️", label: msg("Moderation"), desc: msg("Hide location posts and delete chat messages.") },
+      { id: "deliveries", icon: "📦", label: msg("Jobs"), desc: msg("Package deliveries and car rides between players, plus lotteries. Cancel a job to refund whoever paid; cancel a lottery to refund every ticket.") },
     ],
   },
-  { group: "Marketing", items: [{ id: "marketing", icon: "📣", label: "Campaigns", desc: "Where players come from, campaign links, in-game banners and live push messages." }] },
+  { group: msg("Marketing"), items: [{ id: "marketing", icon: "📣", label: msg("Campaigns"), desc: msg("Where players come from, campaign links, in-game banners and live push messages.") }] },
 ];
 const PAGE = Object.fromEntries(ADMIN_NAV.flatMap((g) => g.items.map((i) => [i.id, i]))) as Record<Tab, NavItem>;
 const fmt = (d: string) => new Date(d).toLocaleString();
@@ -58,7 +59,7 @@ function MiniBars({ title, values }: { title: string; values: [string, number][]
     <div className="card">
       <div className="row">
         <b className="grow">{title}</b>
-        <span className="small muted">{total.toLocaleString()} in 7 days</span>
+        <span className="small muted">{total.toLocaleString()} {t("in 7 days")}</span>
       </div>
       <div className="bars" role="img" aria-label={`${title}: ${values.map(([d, v]) => `${d} ${v}`).join(", ")}`}>
         {values.map(([day, v]) => (
@@ -82,8 +83,8 @@ export function AdminPanel() {
   const [saved, setSaved] = useState(0);
   useEffect(() => {
     if (!saved) return;
-    const t = setTimeout(() => setSaved(0), 2500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setSaved(0), 2500);
+    return () => clearTimeout(timer);
   }, [saved]);
   const [mission, setMission] = useState({ title: "", description: "", lat: "", lng: "", itemKey: "diamond", rewardXp: 300, rewardCoins: 100, activeFrom: toLocalInput(new Date()), activeTo: toLocalInput(new Date(Date.now() + 7 * 86400000)), sponsor: "" });
   const [ann, setAnn] = useState({ title: "", body: "", ctaLabel: "", ctaUrl: "" });
@@ -109,7 +110,7 @@ export function AdminPanel() {
   };
 
   if (err) return <main className="page wrap"><p className="err">{err}</p></main>;
-  if (!data) return <main className="page wrap"><p>Loading…</p></main>;
+  if (!data) return <main className="page wrap"><p>{t("Loading…")}</p></main>;
   const s = data.stats;
   const days = Object.entries(data.series);
   const utmUrl = `${location.origin}${utm.path}?utm_source=${encodeURIComponent(utm.source)}&utm_medium=${encodeURIComponent(utm.medium)}&utm_campaign=${encodeURIComponent(utm.campaign)}`;
@@ -119,61 +120,61 @@ export function AdminPanel() {
       {notice && (
         <div className="announce" role="alert" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--red)", marginBottom: 10 }}>
           <b className="grow small" style={{ color: "var(--red)" }}>⚠️ {notice}</b>
-          <Button className="close" onClick={() => setNotice(null)} aria-label="Dismiss">✕</Button>
+          <Button className="close" onClick={() => setNotice(null)} aria-label={t("Dismiss")}>✕</Button>
         </div>
       )}
       {saved > 0 && (
         <div className="announce" role="status" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--green)", marginBottom: 10 }}>
-          <b className="grow small" style={{ color: "var(--green)" }}>✅ Settings saved — live for players within ~15 seconds</b>
+          <b className="grow small" style={{ color: "var(--green)" }}>{t("✅ Settings saved — live for players within ~15 seconds")}</b>
         </div>
       )}
       <div className="admin-shell">
         <aside className="admin-side">
           <div className="admin-brand">
             <Link href="/" className="logo">STREET<span>QUEST</span></Link>
-            <span className="tag" style={{ color: "var(--yellow)" }}>ADMIN</span>
+            <span className="tag" style={{ color: "var(--yellow)" }}>{t("ADMIN")}</span>
           </div>
           <nav>
             {ADMIN_NAV.map((g) => (
               <div key={g.group} className="side-group">
-                <div className="side-label">{g.group}</div>
+                <div className="side-label">{t(g.group)}</div>
                 {g.items.map((it) => (
                   <Button key={it.id} className={`side-item ${tab === it.id ? "on" : ""}`} onClick={() => setTab(it.id)}>
                     <span>{it.icon}</span>
-                    {it.label}
+                    {t(it.label)}
                   </Button>
                 ))}
               </div>
             ))}
           </nav>
-          <Link href="/play" className="btn small block" style={{ marginTop: 12 }}>▶ Open game</Link>
+          <Link href="/play" className="btn small block" style={{ marginTop: 12 }}>{t("▶ Open game")}</Link>
         </aside>
         <section className="admin-main admin">
         <header className="admin-head">
-          <h1>{PAGE[tab].icon} {PAGE[tab].label}</h1>
-          <p className="muted">{PAGE[tab].desc}</p>
+          <h1>{PAGE[tab].icon} {t(PAGE[tab].label)}</h1>
+          <p className="muted">{t(PAGE[tab].desc)}</p>
         </header>
 
         {tab === "dash" && (
           <>
             <div className="kpis">
-              <div className="stat"><b>{s.users.toLocaleString()}</b><span>Players</span></div>
-              <div className="stat"><b><span className="dot on" /> {s.online}</b><span>Online now</span></div>
-              <div className="stat"><b>{s.signups7}</b><span>Signups · 7d</span></div>
-              <div className="stat"><b>{(s.conversion7 * 100).toFixed(1)}%</b><span>Visit → signup</span></div>
-              <div className="stat"><b>{s.claims24}</b><span>Collects · 24h</span></div>
-              <div className="stat"><b>{s.upcomingEvents}</b><span>Live/upcoming events</span></div>
+              <div className="stat"><b>{s.users.toLocaleString()}</b><span>{t("Players")}</span></div>
+              <div className="stat"><b><span className="dot on" /> {s.online}</b><span>{t("Online now")}</span></div>
+              <div className="stat"><b>{s.signups7}</b><span>{t("Signups · 7d")}</span></div>
+              <div className="stat"><b>{(s.conversion7 * 100).toFixed(1)}%</b><span>{t("Visit → signup")}</span></div>
+              <div className="stat"><b>{s.claims24}</b><span>{t("Collects · 24h")}</span></div>
+              <div className="stat"><b>{s.upcomingEvents}</b><span>{t("Live/upcoming events")}</span></div>
             </div>
             <div className="form-grid" style={{ gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-              <MiniBars title="Page views" values={days.map(([d, v]) => [d, v.page_view])} />
-              <MiniBars title="Signups" values={days.map(([d, v]) => [d, v.signup])} />
-              <MiniBars title="Collects" values={days.map(([d, v]) => [d, v.claim])} />
+              <MiniBars title={t("Page views")} values={days.map(([d, v]) => [d, v.page_view])} />
+              <MiniBars title={t("Signups")} values={days.map(([d, v]) => [d, v.signup])} />
+              <MiniBars title={t("Collects")} values={days.map(([d, v]) => [d, v.claim])} />
             </div>
             <div className="card">
-              <b>Deliveries by status</b>
+              <b>{t("Deliveries by status")}</b>
               <div className="row wrap" style={{ marginTop: 8 }}>
                 {Object.entries(s.deliveries).map(([k, v]) => <span key={k} className="tag">{k}: {v}</span>)}
-                {!Object.keys(s.deliveries).length && <span className="muted small">None yet</span>}
+                {!Object.keys(s.deliveries).length && <span className="muted small">{t("None yet")}</span>}
               </div>
             </div>
           </>
@@ -185,25 +186,25 @@ export function AdminPanel() {
 
         {tab === "users" && (
           <>
-            <input placeholder="Search name or email" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320, marginBottom: 10 }} />
+            <input placeholder={t("Search name or email")} value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320, marginBottom: 10 }} />
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Player</th><th>Email</th><th>Lvl</th><th>Coins</th><th>Gems</th><th>Source</th><th>Joined</th><th>Actions</th></tr></thead>
+                <thead><tr><th>{t("Player")}</th><th>{t("Email")}</th><th>{t("Lvl")}</th><th>{t("Coins")}</th><th>{t("Gems")}</th><th>{t("Source")}</th><th>{t("Joined")}</th><th>{t("Actions")}</th></tr></thead>
                 <tbody>
                   {data.users.map((u) => (
                     <tr key={u.id} style={{ opacity: u.banned ? 0.5 : 1 }}>
-                      <td><span className={`dot ${u.online ? "on" : ""}`} /> <b>{u.username}</b> {u.role === "ADMIN" && <span className="tag">admin</span>}</td>
+                      <td><span className={`dot ${u.online ? "on" : ""}`} /> <b>{u.username}</b> {u.role === "ADMIN" && <span className="tag">{t("admin")}</span>}</td>
                       <td className="muted">{u.email}</td>
                       <td>{u.level}</td>
                       <td>{u.coins}</td>
                       <td>{u.gems}</td>
-                      <td>{u.utmSource ?? "organic"}</td>
+                      <td>{u.utmSource ?? t("organic")}</td>
                       <td className="muted">{fmt(u.createdAt)}</td>
                       <td className="row">
-                        <Button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? "Unban" : "Ban"}</Button>
-                        <Button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? "Demote" : "Make admin"}</Button>
-                        <Button className="btn ghost small" onClick={() => askText(`Coins to grant ${u.username}`, "100", { body: "Use a negative number to remove coins.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Math.round(Number(c)), xp: 0 }); })}>🪙 Gift</Button>
-                        <Button className="btn ghost small" onClick={() => askText(`Gems to grant ${u.username}`, "50", { body: "Use a negative number to remove gems.", ok: "Grant" }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantGems", userId: u.id, gems: Math.round(Number(c)) }); })}>💎 Gift</Button>
+                        <Button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? t("Unban") : t("Ban")}</Button>
+                        <Button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? t("Demote") : t("Make admin")}</Button>
+                        <Button className="btn ghost small" onClick={() => askText(t("Coins to grant {name}", { name: u.username }), "100", { body: t("Use a negative number to remove coins."), ok: t("Grant") }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Math.round(Number(c)), xp: 0 }); })}>{t("🪙 Gift")}</Button>
+                        <Button className="btn ghost small" onClick={() => askText(t("Gems to grant {name}", { name: u.username }), "50", { body: t("Use a negative number to remove gems."), ok: t("Grant") }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantGems", userId: u.id, gems: Math.round(Number(c)) }); })}>{t("💎 Gift")}</Button>
                       </td>
                     </tr>
                   ))}
@@ -216,39 +217,39 @@ export function AdminPanel() {
         {tab === "missions" && (
           <>
             <div className="card">
-              <b>New mission drop</b>
-              <p className="small muted">Hand-placed missions appear on everyone&apos;s map at that spot during the active window — great for sponsored drops, store activations and city campaigns.</p>
+              <b>{t("New mission drop")}</b>
+              <p className="small muted">{t("Hand-placed missions appear on everyone's map at that spot during the active window — great for sponsored drops, store activations and city campaigns.")}</p>
               <div className="form-grid">
-                <div><label>Title</label><input value={mission.title} onChange={(e) => setMission({ ...mission, title: e.target.value })} /></div>
-                <div><label>Sponsor (optional)</label><input value={mission.sponsor} onChange={(e) => setMission({ ...mission, sponsor: e.target.value })} /></div>
-                <div><label>Latitude</label><input value={mission.lat} onChange={(e) => setMission({ ...mission, lat: e.target.value })} placeholder="51.5079" /></div>
-                <div><label>Longitude</label><input value={mission.lng} onChange={(e) => setMission({ ...mission, lng: e.target.value })} placeholder="-0.0877" /></div>
-                <div><label>Reward item</label><select value={mission.itemKey} onChange={(e) => setMission({ ...mission, itemKey: e.target.value })}>{data.items.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}</select></div>
-                <div><label>XP</label><input type="number" value={mission.rewardXp} onChange={(e) => setMission({ ...mission, rewardXp: Number(e.target.value) })} /></div>
-                <div><label>Coins</label><input type="number" value={mission.rewardCoins} onChange={(e) => setMission({ ...mission, rewardCoins: Number(e.target.value) })} /></div>
-                <div><label>Active from</label><input type="datetime-local" value={mission.activeFrom} onChange={(e) => setMission({ ...mission, activeFrom: e.target.value })} /></div>
-                <div><label>Active to</label><input type="datetime-local" value={mission.activeTo} onChange={(e) => setMission({ ...mission, activeTo: e.target.value })} /></div>
+                <div><label>{t("Title")}</label><input value={mission.title} onChange={(e) => setMission({ ...mission, title: e.target.value })} /></div>
+                <div><label>{t("Sponsor (optional)")}</label><input value={mission.sponsor} onChange={(e) => setMission({ ...mission, sponsor: e.target.value })} /></div>
+                <div><label>{t("Latitude")}</label><input value={mission.lat} onChange={(e) => setMission({ ...mission, lat: e.target.value })} placeholder="51.5079" /></div>
+                <div><label>{t("Longitude")}</label><input value={mission.lng} onChange={(e) => setMission({ ...mission, lng: e.target.value })} placeholder="-0.0877" /></div>
+                <div><label>{t("Reward item")}</label><select value={mission.itemKey} onChange={(e) => setMission({ ...mission, itemKey: e.target.value })}>{data.items.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}</select></div>
+                <div><label>{t("XP")}</label><input type="number" value={mission.rewardXp} onChange={(e) => setMission({ ...mission, rewardXp: Number(e.target.value) })} /></div>
+                <div><label>{t("Coins")}</label><input type="number" value={mission.rewardCoins} onChange={(e) => setMission({ ...mission, rewardCoins: Number(e.target.value) })} /></div>
+                <div><label>{t("Active from")}</label><input type="datetime-local" value={mission.activeFrom} onChange={(e) => setMission({ ...mission, activeFrom: e.target.value })} /></div>
+                <div><label>{t("Active to")}</label><input type="datetime-local" value={mission.activeTo} onChange={(e) => setMission({ ...mission, activeTo: e.target.value })} /></div>
               </div>
-              <label>Description</label>
+              <label>{t("Description")}</label>
               <textarea rows={2} value={mission.description} onChange={(e) => setMission({ ...mission, description: e.target.value })} />
               <div className="row" style={{ marginTop: 10 }}>
-                <Button className="btn ghost small" onClick={() => navigator.geolocation.getCurrentPosition((p) => setMission({ ...mission, lat: String(p.coords.latitude), lng: String(p.coords.longitude) }))}>📍 Use my location</Button>
+                <Button className="btn ghost small" onClick={() => navigator.geolocation.getCurrentPosition((p) => setMission({ ...mission, lat: String(p.coords.latitude), lng: String(p.coords.longitude) }))}>{t("📍 Use my location")}</Button>
                 <Button className="btn" onClick={async () => {
                   const ok = await post({ action: "createMission", ...mission, lat: Number(mission.lat), lng: Number(mission.lng), sponsor: mission.sponsor || undefined, activeFrom: new Date(mission.activeFrom), activeTo: new Date(mission.activeTo) });
                   if (ok) setMission({ ...mission, title: "", description: "" });
-                }}>Create mission</Button>
+                }}>{t("Create mission")}</Button>
               </div>
             </div>
             <table>
-              <thead><tr><th>Mission</th><th>Where</th><th>Window</th><th>Reward</th><th /></tr></thead>
+              <thead><tr><th>{t("Mission")}</th><th>{t("Where")}</th><th>{t("Window")}</th><th>{t("Reward")}</th><th /></tr></thead>
               <tbody>
                 {data.missions.map((m) => (
                   <tr key={m.id}>
                     <td><b>{m.title}</b> {m.sponsor && <span className="tag">{m.sponsor}</span>}</td>
                     <td className="mono small">{m.lat.toFixed(4)}, {m.lng.toFixed(4)}</td>
                     <td className="small muted">{fmt(m.activeFrom)} → {fmt(m.activeTo)}</td>
-                    <td>{m.itemKey} · {m.rewardXp} XP · {m.rewardCoins} 🪙</td>
-                    <td><Button className="btn ghost small" onClick={() => askConfirm("Delete mission?", { ok: "Delete", danger: true }).then((ok) => ok && post({ action: "deleteMission", id: m.id }))}>Delete</Button></td>
+                    <td>{m.itemKey} · {m.rewardXp} {t("XP ·")} {m.rewardCoins} 🪙</td>
+                    <td><Button className="btn ghost small" onClick={() => askConfirm(t("Delete mission?"), { ok: t("Delete"), danger: true }).then((ok) => ok && post({ action: "deleteMission", id: m.id }))}>{t("Delete")}</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -260,16 +261,16 @@ export function AdminPanel() {
           <>
             <div className="form-grid" style={{ gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
               <div className="card">
-                <b>Signups by source</b>
-                <table><tbody>{data.bySource.map((r) => <tr key={r.source}><td>{r.source}</td><td>{r.count}</td></tr>)}</tbody></table>
+                <b>{t("Signups by source")}</b>
+                <table><tbody>{data.bySource.map((r) => <tr key={r.source}><td>{t(r.source)}</td><td>{r.count}</td></tr>)}</tbody></table>
               </div>
               <div className="card">
-                <b>Signups by campaign</b>
-                <table><tbody>{data.byCampaign.map((r) => <tr key={r.campaign}><td>{r.campaign}</td><td>{r.count}</td></tr>)}{!data.byCampaign.length && <tr><td className="muted">No campaigns tracked yet</td></tr>}</tbody></table>
+                <b>{t("Signups by campaign")}</b>
+                <table><tbody>{data.byCampaign.map((r) => <tr key={r.campaign}><td>{r.campaign}</td><td>{r.count}</td></tr>)}{!data.byCampaign.length && <tr><td className="muted">{t("No campaigns tracked yet")}</td></tr>}</tbody></table>
               </div>
             </div>
             <div className="card">
-              <b>Campaign link builder</b>
+              <b>{t("Campaign link builder")}</b>
               <div className="form-grid">
                 {(["path", "source", "medium", "campaign"] as const).map((k) => (
                   <div key={k}><label>{k}</label><input value={utm[k]} onChange={(e) => setUtm({ ...utm, [k]: e.target.value })} /></div>
@@ -277,41 +278,41 @@ export function AdminPanel() {
               </div>
               <div className="row" style={{ marginTop: 10 }}>
                 <input readOnly value={utmUrl} className="mono small" />
-                <Button className="btn cyan small" onClick={() => navigator.clipboard.writeText(utmUrl)}>Copy</Button>
+                <Button className="btn cyan small" onClick={() => navigator.clipboard.writeText(utmUrl)}>{t("Copy")}</Button>
               </div>
             </div>
             <div className="card">
-              <b>Announcement banners</b>
-              <p className="small muted">Shown on the landing page and inside the game.</p>
+              <b>{t("Announcement banners")}</b>
+              <p className="small muted">{t("Shown on the landing page and inside the game.")}</p>
               <div className="form-grid">
-                <div><label>Title</label><input value={ann.title} onChange={(e) => setAnn({ ...ann, title: e.target.value })} /></div>
-                <div><label>Body</label><input value={ann.body} onChange={(e) => setAnn({ ...ann, body: e.target.value })} /></div>
-                <div><label>Button label</label><input value={ann.ctaLabel} onChange={(e) => setAnn({ ...ann, ctaLabel: e.target.value })} /></div>
-                <div><label>Button URL</label><input value={ann.ctaUrl} onChange={(e) => setAnn({ ...ann, ctaUrl: e.target.value })} /></div>
+                <div><label>{t("Title")}</label><input value={ann.title} onChange={(e) => setAnn({ ...ann, title: e.target.value })} /></div>
+                <div><label>{t("Body")}</label><input value={ann.body} onChange={(e) => setAnn({ ...ann, body: e.target.value })} /></div>
+                <div><label>{t("Button label")}</label><input value={ann.ctaLabel} onChange={(e) => setAnn({ ...ann, ctaLabel: e.target.value })} /></div>
+                <div><label>{t("Button URL")}</label><input value={ann.ctaUrl} onChange={(e) => setAnn({ ...ann, ctaUrl: e.target.value })} /></div>
               </div>
-              <Button className="btn small" style={{ marginTop: 10 }} onClick={async () => (await post({ action: "createAnnouncement", ...ann, ctaLabel: ann.ctaLabel || undefined, ctaUrl: ann.ctaUrl || undefined })) && setAnn({ title: "", body: "", ctaLabel: "", ctaUrl: "" })}>Publish</Button>
+              <Button className="btn small" style={{ marginTop: 10 }} onClick={async () => (await post({ action: "createAnnouncement", ...ann, ctaLabel: ann.ctaLabel || undefined, ctaUrl: ann.ctaUrl || undefined })) && setAnn({ title: "", body: "", ctaLabel: "", ctaUrl: "" })}>{t("Publish")}</Button>
               <table style={{ marginTop: 10 }}><tbody>
                 {data.announcements.map((a) => (
                   <tr key={a.id}>
                     <td><b>{a.title}</b> <span className="muted">{a.body}</span></td>
                     <td className="row">
-                      <Button className="btn ghost small" onClick={() => post({ action: "toggleAnnouncement", id: a.id, active: !a.active })}>{a.active ? "Hide" : "Show"}</Button>
-                      <Button className="btn ghost small" onClick={() => post({ action: "deleteAnnouncement", id: a.id })}>Delete</Button>
+                      <Button className="btn ghost small" onClick={() => post({ action: "toggleAnnouncement", id: a.id, active: !a.active })}>{a.active ? t("Hide") : t("Show")}</Button>
+                      <Button className="btn ghost small" onClick={() => post({ action: "deleteAnnouncement", id: a.id })}>{t("Delete")}</Button>
                     </td>
                   </tr>
                 ))}
               </tbody></table>
             </div>
             <div className="card">
-              <b>Live push to everyone online</b>
+              <b>{t("Live push to everyone online")}</b>
               <div className="row" style={{ marginTop: 8 }}>
-                <input placeholder="Title" value={push.title} onChange={(e) => setPush({ ...push, title: e.target.value })} />
-                <input placeholder="Body" value={push.body} onChange={(e) => setPush({ ...push, body: e.target.value })} />
-                <Button className="btn yellow small" disabled={!push.title} onClick={async () => (await post({ action: "broadcast", ...push })) && setPush({ title: "", body: "", push: push.push })}>Send</Button>
+                <input placeholder={t("Title")} value={push.title} onChange={(e) => setPush({ ...push, title: e.target.value })} />
+                <input placeholder={t("Body")} value={push.body} onChange={(e) => setPush({ ...push, body: e.target.value })} />
+                <Button className="btn yellow small" disabled={!push.title} onClick={async () => (await post({ action: "broadcast", ...push })) && setPush({ title: "", body: "", push: push.push })}>{t("Send")}</Button>
               </div>
               <div className="row" style={{ marginTop: 8 }}>
-                <Button className={`toggle ${push.push ? "on" : ""}`} onClick={() => setPush({ ...push, push: !push.push })} aria-pressed={push.push}><i /><span>Also send as a phone notification</span></Button>
-                <span className="small muted">{data.revenue.push ? `${data.revenue.pushDevices} devices subscribed` : "Phone notifications need VAPID keys on the server"}</span>
+                <Button className={`toggle ${push.push ? "on" : ""}`} onClick={() => setPush({ ...push, push: !push.push })} aria-pressed={push.push}><i /><span>{t("Also send as a phone notification")}</span></Button>
+                <span className="small muted">{data.revenue.push ? t("{n} devices subscribed", { n: data.revenue.pushDevices }) : t("Phone notifications need VAPID keys on the server")}</span>
               </div>
             </div>
           </>
@@ -320,23 +321,23 @@ export function AdminPanel() {
         {tab === "moderation" && (
           <div className="form-grid" style={{ gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             <div className="card">
-              <b>Location messages</b>
+              <b>{t("Location messages")}</b>
               <table><tbody>
                 {data.notes.map((n) => (
                   <tr key={n.id} style={{ opacity: n.hidden ? 0.4 : 1 }}>
                     <td><b>{n.author.username}</b>: {n.body}<div className="small muted mono">{n.lat.toFixed(4)}, {n.lng.toFixed(4)}</div></td>
-                    <td><Button className="btn ghost small" onClick={() => post({ action: "hideNote", id: n.id, hidden: !n.hidden })}>{n.hidden ? "Restore" : "Hide"}</Button></td>
+                    <td><Button className="btn ghost small" onClick={() => post({ action: "hideNote", id: n.id, hidden: !n.hidden })}>{n.hidden ? t("Restore") : t("Hide")}</Button></td>
                   </tr>
                 ))}
               </tbody></table>
             </div>
             <div className="card">
-              <b>Recent chat</b>
+              <b>{t("Recent chat")}</b>
               <table><tbody>
                 {data.messages.map((m) => (
                   <tr key={m.id}>
                     <td><span className="tag">{m.room.split(":")[0]}</span> <b>{m.author.username}</b>: {m.body}</td>
-                    <td><Button className="btn ghost small" onClick={() => post({ action: "deleteMessage", id: m.id })}>Delete</Button></td>
+                    <td><Button className="btn ghost small" onClick={() => post({ action: "deleteMessage", id: m.id })}>{t("Delete")}</Button></td>
                   </tr>
                 ))}
               </tbody></table>
@@ -346,9 +347,9 @@ export function AdminPanel() {
 
         {tab === "deliveries" && (
           <>
-          <h3>📦 Deliveries</h3>
+          <h3>{t("📦 Deliveries")}</h3>
           <table>
-            <thead><tr><th>Package</th><th>Sender</th><th>Courier</th><th>Reward</th><th>Status</th><th>Created</th><th /></tr></thead>
+            <thead><tr><th>{t("Package")}</th><th>{t("Sender")}</th><th>{t("Courier")}</th><th>{t("Reward")}</th><th>{t("Status")}</th><th>{t("Created")}</th><th /></tr></thead>
             <tbody>
               {data.deliveries.map((d) => (
                 <tr key={d.id}>
@@ -356,16 +357,16 @@ export function AdminPanel() {
                   <td>{d.sender.username}</td>
                   <td>{d.courier?.username ?? "—"}</td>
                   <td>{d.reward}</td>
-                  <td><span className="tag">{d.status}</span></td>
+                  <td><span className="tag">{t(d.status)}</span></td>
                   <td className="muted small">{fmt(d.createdAt)}</td>
-                  <td>{!["DELIVERED", "CANCELLED"].includes(d.status) && <Button className="btn ghost small" onClick={() => askConfirm("Cancel and refund sender?", { ok: "Cancel delivery", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelDelivery", id: d.id }))}>Cancel</Button>}</td>
+                  <td>{!["DELIVERED", "CANCELLED"].includes(d.status) && <Button className="btn ghost small" onClick={() => askConfirm(t("Cancel and refund sender?"), { ok: t("Cancel delivery"), cancel: t("Keep it"), danger: true }).then((ok) => ok && post({ action: "cancelDelivery", id: d.id }))}>{t("Cancel")}</Button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <h3>🚕 Rides</h3>
+          <h3>{t("🚕 Rides")}</h3>
           <table>
-            <thead><tr><th>Route</th><th>Rider</th><th>Driver</th><th>Fare</th><th>Status</th><th>Created</th><th /></tr></thead>
+            <thead><tr><th>{t("Route")}</th><th>{t("Rider")}</th><th>{t("Driver")}</th><th>{t("Fare")}</th><th>{t("Status")}</th><th>{t("Created")}</th><th /></tr></thead>
             <tbody>
               {data.rides.map((r) => (
                 <tr key={r.id}>
@@ -373,17 +374,17 @@ export function AdminPanel() {
                   <td>{r.rider.username}</td>
                   <td>{r.driver?.username ?? "—"}</td>
                   <td>{r.fare}</td>
-                  <td><span className="tag">{r.status}</span></td>
+                  <td><span className="tag">{t(r.status)}</span></td>
                   <td className="muted small">{fmt(r.createdAt)}</td>
-                  <td>{!["DONE", "CANCELLED"].includes(r.status) && <Button className="btn ghost small" onClick={() => askConfirm("Cancel and refund the rider?", { ok: "Cancel ride", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelRide", id: r.id }))}>Cancel</Button>}</td>
+                  <td>{!["DONE", "CANCELLED"].includes(r.status) && <Button className="btn ghost small" onClick={() => askConfirm(t("Cancel and refund the rider?"), { ok: t("Cancel ride"), cancel: t("Keep it"), danger: true }).then((ok) => ok && post({ action: "cancelRide", id: r.id }))}>{t("Cancel")}</Button>}</td>
                 </tr>
               ))}
-              {!data.rides.length && <tr><td colSpan={7} className="muted small">No rides yet</td></tr>}
+              {!data.rides.length && <tr><td colSpan={7} className="muted small">{t("No rides yet")}</td></tr>}
             </tbody>
           </table>
-          <h3>🎰 Lotteries</h3>
+          <h3>{t("🎰 Lotteries")}</h3>
           <table>
-            <thead><tr><th>Name</th><th>Host</th><th>Ticket</th><th>Pot</th><th>Players</th><th>Draw</th><th>Status</th><th /></tr></thead>
+            <thead><tr><th>{t("Name")}</th><th>{t("Host")}</th><th>{t("Ticket")}</th><th>{t("Pot")}</th><th>{t("Players")}</th><th>{t("Draw")}</th><th>{t("Status")}</th><th /></tr></thead>
             <tbody>
               {data.lotteries.map((l) => (
                 <tr key={l.id}>
@@ -393,16 +394,16 @@ export function AdminPanel() {
                   <td>{l.pot}</td>
                   <td>{l.players}</td>
                   <td className="muted small">{fmt(l.drawAt)}</td>
-                  <td><span className="tag">{l.status}{l.winner ? ` · ${l.winner.username}` : ""}</span></td>
+                  <td><span className="tag">{t(l.status)}{l.winner ? ` · ${l.winner.username}` : ""}</span></td>
                   <td>{l.status === "OPEN" && (
                     <>
-                      <Button className="btn ghost small" onClick={() => askConfirm("Draw the winner now?", { body: "Ticket sales close and one random ticket wins the pot.", ok: "Draw now" }).then((ok) => ok && post({ action: "drawLottery", id: l.id }))}>Draw now</Button>{" "}
-                      <Button className="btn ghost small" onClick={() => askConfirm("Cancel and refund every ticket?", { ok: "Cancel lottery", cancel: "Keep it", danger: true }).then((ok) => ok && post({ action: "cancelLottery", id: l.id }))}>Cancel</Button>
+                      <Button className="btn ghost small" onClick={() => askConfirm(t("Draw the winner now?"), { body: t("Ticket sales close and one random ticket wins the pot."), ok: t("Draw now") }).then((ok) => ok && post({ action: "drawLottery", id: l.id }))}>{t("Draw now")}</Button>{" "}
+                      <Button className="btn ghost small" onClick={() => askConfirm(t("Cancel and refund every ticket?"), { ok: t("Cancel lottery"), cancel: t("Keep it"), danger: true }).then((ok) => ok && post({ action: "cancelLottery", id: l.id }))}>{t("Cancel")}</Button>
                     </>
                   )}</td>
                 </tr>
               ))}
-              {!data.lotteries.length && <tr><td colSpan={8} className="muted small">No lotteries yet</td></tr>}
+              {!data.lotteries.length && <tr><td colSpan={8} className="muted small">{t("No lotteries yet")}</td></tr>}
             </tbody>
           </table>
           </>

@@ -31,7 +31,6 @@ export default async function EventPage({ params }: Props) {
   const e = await load((await params).slug);
   if (!e) notFound();
   const { t } = await getT();
-  // Structured data stays in English: it's for search engines, not the reader.
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Event",
@@ -41,7 +40,7 @@ export default async function EventPage({ params }: Props) {
     endDate: e.endsAt.toISOString(),
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
     eventStatus: "https://schema.org/EventScheduled",
-    location: { "@type": "Place", name: "Meeting point", geo: { "@type": "GeoCoordinates", latitude: e.lat, longitude: e.lng }, address: `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` },
+    location: { "@type": "Place", name: t("Meeting point"), geo: { "@type": "GeoCoordinates", latitude: e.lat, longitude: e.lng }, address: `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` },
     organizer: { "@type": "Organization", name: SITE.name, url: SITE.url },
     isAccessibleForFree: true,
   };

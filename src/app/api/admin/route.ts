@@ -15,6 +15,7 @@ import { TOWERS } from "@/lib/td";
 import { ITEMS } from "@/lib/catalog";
 import { stripeReady } from "@/server/store";
 import { pushReady, pushTo } from "@/server/push";
+import { t } from "@/lib/i18n";
 
 const day = 86_400_000;
 
@@ -96,7 +97,7 @@ export const GET = route(async (req) => {
     missions,
     announcements,
     messages,
-    items: Object.values(ITEM_BY_KEY).map((i) => ({ key: i.key, label: `${i.emoji} ${i.name}` })),
+    items: Object.values(ITEM_BY_KEY).map((i) => ({ key: i.key, label: `${i.emoji} ${t(i.name)}` })),
     config: {
       defs: SETTING_DEFS.map((d) => ({ ...d, type: settingType(d.key), def: settingDefault(d.key) })),
       values: S,
@@ -167,14 +168,14 @@ export const POST = route(async (req) => {
     }
     case "grantGems": {
       const target = await prisma.user.findUnique({ where: { id: d.userId }, select: { gems: true } });
-      if (!target) throw new HttpError(404, "Player not found");
+      if (!target) throw new HttpError(404, t("Player not found"));
       const gems = Math.max(-target.gems, d.gems);
       await prisma.user.update({ where: { id: d.userId }, data: { gems: { increment: gems } } });
-      if (gems > 0) await notify(d.userId, { kind: "reward", title: "🎁 Gift from HQ", body: `+${gems} 💎` });
+      if (gems > 0) await notify(d.userId, { kind: "reward", title: t("🎁 Gift from HQ"), body: `+${gems} 💎` });
       break;
     }
     case "ban":
-      if (d.userId === admin.id) throw new HttpError(400, "You can't ban yourself");
+      if (d.userId === admin.id) throw new HttpError(400, t("You can't ban yourself"));
       await prisma.user.update({ where: { id: d.userId }, data: { banned: d.banned } });
       break;
     case "role":
@@ -184,14 +185,14 @@ export const POST = route(async (req) => {
       {
         // Negative gifts take coins away, but never below zero.
         const target = await prisma.user.findUnique({ where: { id: d.userId }, select: { coins: true } });
-        if (!target) throw new HttpError(404, "Player not found");
+        if (!target) throw new HttpError(404, t("Player not found"));
         await grant(d.userId, { coins: Math.max(-target.coins, d.coins), xp: d.xp }, { raw: true });
       }
-      await notify(d.userId, { kind: "reward", title: "🎁 Gift from HQ", body: `${d.coins} coins, ${d.xp} XP` });
+      await notify(d.userId, { kind: "reward", title: t("🎁 Gift from HQ"), body: t("{coins} coins, {xp} XP", { coins: d.coins, xp: d.xp }) });
       break;
     case "createMission": {
       const { action: _a, ...data } = d;
-      if (!ITEM_BY_KEY[data.itemKey]) throw new HttpError(400, "Unknown item");
+      if (!ITEM_BY_KEY[data.itemKey]) throw new HttpError(400, t("Unknown item"));
       await prisma.adminMission.create({ data });
       break;
     }
@@ -217,23 +218,23 @@ export const POST = route(async (req) => {
       break;
     case "cancelDelivery": {
       const del = await prisma.delivery.findUnique({ where: { id: d.id } });
-      if (!del || del.status === "DELIVERED" || del.status === "CANCELLED") throw new HttpError(400, "Can't cancel");
+      if (!del || del.status === "DELIVERED" || del.status === "CANCELLED") throw new HttpError(400, t("Can't cancel"));
       // Conditional: two admins (or an admin and the courier) racing must not refund twice.
       const moved = await prisma.delivery.updateMany({ where: { id: d.id, status: del.status }, data: { status: "CANCELLED" } });
-      if (!moved.count) throw new HttpError(409, "The delivery just changed — refresh");
+      if (!moved.count) throw new HttpError(409, t("The delivery just changed — refresh"));
       await grant(del.senderId, { coins: del.reward }, { raw: true });
-      await notify(del.senderId, { kind: "delivery", title: "Delivery cancelled by admin", body: "Your coins were refunded" });
-      if (del.courierId) await notify(del.courierId, { kind: "delivery", title: "Delivery cancelled by admin", body: del.title });
+      await notify(del.senderId, { kind: "delivery", title: t("Delivery cancelled by admin"), body: t("Your coins were refunded") });
+      if (del.courierId) await notify(del.courierId, { kind: "delivery", title: t("Delivery cancelled by admin"), body: del.title });
       break;
     }
     case "cancelRide": {
       const ride = await prisma.ride.findUnique({ where: { id: d.id } });
-      if (!ride || ride.status === "DONE" || ride.status === "CANCELLED") throw new HttpError(400, "Can't cancel");
+      if (!ride || ride.status === "DONE" || ride.status === "CANCELLED") throw new HttpError(400, t("Can't cancel"));
       const moved = await prisma.ride.updateMany({ where: { id: d.id, status: ride.status }, data: { status: "CANCELLED", endedAt: new Date() } });
-      if (!moved.count) throw new HttpError(409, "The ride just changed — refresh");
+      if (!moved.count) throw new HttpError(409, t("The ride just changed — refresh"));
       await grant(ride.riderId, { coins: ride.fare }, { raw: true });
-      await notify(ride.riderId, { kind: "delivery", title: "Ride cancelled by admin", body: "Your fare was refunded" });
-      if (ride.driverId) await notify(ride.driverId, { kind: "delivery", title: "Ride cancelled by admin", body: `To ${ride.dropoffLabel}` });
+      await notify(ride.riderId, { kind: "delivery", title: t("Ride cancelled by admin"), body: t("Your fare was refunded") });
+      if (ride.driverId) await notify(ride.driverId, { kind: "delivery", title: t("Ride cancelled by admin"), body: t("To {place}", { place: ride.dropoffLabel }) });
       break;
     }
     case "cancelLottery":

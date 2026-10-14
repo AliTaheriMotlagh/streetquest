@@ -34,6 +34,12 @@ const landing: Record<string, string> = {
   "Level up from Rookie to Street Legend, keep daily streaks and climb global and crew leaderboards.": "از تازه‌کار تا اسطورهٔ خیابون سطح بگیر، رکورد روزهای پیاپی نگه دار و توی جدول جهانی و جدول اکیپ بالا برو.",
 
   // ---- FAQ
+  "Is StreetQuest free?": "آیا StreetQuest رایگانه؟",
+  "Does it work in my city?": "آیا توی شهر من هم کار می‌کنه؟",
+  "How do real package deliveries work?": "تحویل بسته‌های واقعی چطور کار می‌کنه؟",
+  "Is my location shared?": "آیا موقعیتم با بقیه به اشتراک گذاشته می‌شه؟",
+  "How is this different from Pokémon GO?": "این بازی با Pokémon GO چه فرقی داره؟",
+  "When does a fight turn first-person?": "کی نبرد به حالت اول‌شخص تبدیل می‌شه؟",
   "Yes. StreetQuest is free to play in any modern mobile browser — no app store download needed. You can add it to your home screen like an app.":
     "بله. StreetQuest توی هر مرورگر موبایل مدرنی رایگانه — نیازی به دانلود از فروشگاه نیست. مثل یه برنامه می‌تونی توی صفحهٔ اصلی گوشی‌ت بذاریش.",
   "Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns.":
@@ -73,6 +79,7 @@ const landing: Record<string, string> = {
   "The streets are waiting.": "خیابون‌ها منتظرن.",
   "Create your player": "بازیکنت رو بساز",
   "Play safe: stay aware of your surroundings, respect private property and traffic laws.": "با احتیاط بازی کن: مراقب اطرافت باش، به ملک خصوصی و قوانین رانندگی احترام بذار.",
+  "Missions · Chests · Real deliveries · Live events": "مأموریت · صندوق · تحویل واقعی · رویدادهای زنده",
 };
 
 export default landing;

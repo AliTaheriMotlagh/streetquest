@@ -27,12 +27,12 @@ const FEATURES = [
 ];
 
 const FAQ = [
-  ["Is StreetQuest free?", msg("Yes. StreetQuest is free to play in any modern mobile browser — no app store download needed. You can add it to your home screen like an app.")],
-  ["Does it work in my city?", msg("Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns.")],
-  ["How do real package deliveries work?", msg("A player posts a request with pickup and drop-off points and a coin reward held in escrow. A courier accepts, checks in at the pickup with GPS, and completes the delivery by entering a secret handover code the recipient receives from the sender.")],
-  ["Is my location shared?", msg("Only friends see your precise position while you are online. Other players see an approximate location, and you can stop sharing anytime by closing the game.")],
-  ["How is this different from Pokémon GO?", msg("StreetQuest is a strategy war game on real streets: you build a base, train an army and siege rivals, fight live first-person battles when players meet near a base, raid world bosses together, and keep your commander fed, rested and happy.")],
-  ["When does a fight turn first-person?", msg("When you're within 200 m of an enemy base or a boss and other players are online nearby. Otherwise battles are auto-resolved with your army, Generals-style.")],
+  [msg("Is StreetQuest free?"), msg("Yes. StreetQuest is free to play in any modern mobile browser — no app store download needed. You can add it to your home screen like an app.")],
+  [msg("Does it work in my city?"), msg("Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns.")],
+  [msg("How do real package deliveries work?"), msg("A player posts a request with pickup and drop-off points and a coin reward held in escrow. A courier accepts, checks in at the pickup with GPS, and completes the delivery by entering a secret handover code the recipient receives from the sender.")],
+  [msg("Is my location shared?"), msg("Only friends see your precise position while you are online. Other players see an approximate location, and you can stop sharing anytime by closing the game.")],
+  [msg("How is this different from Pokémon GO?"), msg("StreetQuest is a strategy war game on real streets: you build a base, train an army and siege rivals, fight live first-person battles when players meet near a base, raid world bosses together, and keep your commander fed, rested and happy.")],
+  [msg("When does a fight turn first-person?"), msg("When you're within 200 m of an enemy base or a boss and other players are online nearby. Otherwise battles are auto-resolved with your army, Generals-style.")],
 ];
 
 const STEPS = [

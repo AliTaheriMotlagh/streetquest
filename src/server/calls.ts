@@ -53,12 +53,12 @@ async function hostedTurn(): Promise<RTCIceServer[]> {
         body: JSON.stringify({ ttl: TURN_TTL_S }),
         signal: AbortSignal.timeout(5000),
       });
-      if (!r.ok) throw new Error(`Cloudflare TURN ${r.status}`);
+      if (!r.ok) throw new Error(t("Cloudflare TURN {status}", { status: r.status }));
       const d = (await r.json()) as { iceServers: RTCIceServer | RTCIceServer[] };
       servers = Array.isArray(d.iceServers) ? d.iceServers : [d.iceServers];
     } else if (app && meteredKey) {
       const r = await fetch(`https://${encodeURIComponent(app)}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(meteredKey)}`, { signal: AbortSignal.timeout(5000) });
-      if (!r.ok) throw new Error(`Metered TURN ${r.status}`);
+      if (!r.ok) throw new Error(t("Metered TURN {status}", { status: r.status }));
       servers = (await r.json()) as RTCIceServer[];
     }
   } catch (e) {

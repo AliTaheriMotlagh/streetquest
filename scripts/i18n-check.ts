@@ -96,7 +96,8 @@ function insideT(node: ts.Node): boolean {
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const isAdminOrDev = /AdminPanel|AdminSettings|admin\/|api\/health|api\/admin|api\/cron|scripts\//.test(file);
+  // Admin screens are translated too; only machine endpoints and CLI scripts stay English.
+  const isAdminOrDev = /api\/health|api\/cron|scripts\//.test(file);
 
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
@@ -129,7 +130,7 @@ for (const file of files) {
       }
     }
     // Server replies and notices: { message: "…" }, { title: "…", body: "…" }
-    if (lint && !isAdminOrDev && ts.isPropertyAssignment(node) && /^(message|title|body|label|desc|blurb|name|text)$/.test(node.name.getText(sf)) && !insideT(node)) {
+    if (lint && !isAdminOrDev && ts.isPropertyAssignment(node) && /^(message|title|body|label|desc|blurb|name|text|help|hint|description|subtitle|tagline|question|answer|tip|caption)$/.test(node.name.getText(sf)) && !insideT(node)) {
       const v = node.initializer;
       const raw = literalText(v) ?? (ts.isTemplateExpression(v) ? v.getText(sf) : null);
       if (raw && ENGLISH.test(staticText(raw).replace(/^`|`$/g, "")) && !IGNORE.test(raw)) candidates.push(`${where(sf, v)}  ${node.name.getText(sf)}: ${raw.slice(0, 90)}`);
