@@ -1117,7 +1117,33 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 }
 @supports (height: 100dvh) {
   @media (orientation: landscape) and (max-height: 500px) { .sheet { max-height: 92dvh; } }
+  /* Tablets/desktop: the side panel runs from top to bottom (the 78dvh cap above is for phones). */
+  @media (min-width: 768px) and (min-height: 600px) { .sheet { max-height: none; } }
 }
+
+/* Big screens: a roomier side panel. Everything that steps aside for it follows --sheet-w. */
+@media (min-width: 1100px) and (min-height: 600px) {
+  :root { --sheet-w: clamp(460px, 34vw, 600px); }
+  .sheet { width: var(--sheet-w); }
+  .game:has(.sheet) .fab-col { inset-inline-end: calc(var(--sheet-w) + 32px + var(--safe-e)); }
+  .game:has(.sheet) .wave-banner { inset-inline-end: calc(var(--sheet-w) + 40px + var(--safe-e)); }
+  .nav.with-sheet { inset-inline-end: calc(var(--sheet-w) + 32px + var(--safe-e)); }
+  .sheet-head { padding: 18px 22px 12px; }
+  .sheet-head h2 { font-size: 22px; }
+  .sheet-body { padding: 4px 22px 24px; font-size: 15px; }
+}
+
+/* Chat fills the panel: one scrolling list with the message box pinned under it, instead
+   of a fixed-height box scrolling inside a scrolling panel (the two fought over the swipe,
+   and the box could end up out of reach). */
+.chat-log > * { flex: none; }
+.sheet:has(.sheet-body > .chat) { height: 78vh; height: 78dvh; }
+.sheet-body:has(> .chat) { display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0; padding-bottom: 12px; }
+.sheet-body:has(> .chat) > * { flex: none; }
+.sheet-body > .chat { flex: 1 1 auto; min-height: 0; height: auto; }
+.sheet-body > .chat .chat-log { min-height: 0; scroll-behavior: auto; }
+@media (orientation: landscape) and (max-height: 500px) { .sheet:has(.sheet-body > .chat) { height: 92vh; height: 92dvh; } }
+@media (min-width: 768px) and (min-height: 600px) { .sheet:has(.sheet-body > .chat) { height: auto; } }
 
 /* ---------- Action buttons (components/Button.tsx) ---------- */
 /* No double-tap-to-zoom wait on taps, in every browser. */

@@ -724,6 +724,7 @@ function Chat({ room }: { room: string }) {
   useEffect(() => {
     setMsgs([]);
     newest.current = null;
+    shown.current = 0;
     let stop = false;
     const pull = async (first = false) => {
       try {
@@ -747,13 +748,28 @@ function Chat({ room }: { room: string }) {
     };
   }, [room]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep the newest message in view. Scroll only the log (scrollIntoView would also move
-  // the sheet/page), and use a block body: desktop Chrome's scroll methods return a
-  // Promise, and an effect must never return anything but a cleanup function.
+  // Keep the newest message in view — but only for a reader who is already at the bottom
+  // (or just sent one): someone scrolled up into the history stays where they are. Scroll
+  // only the log (scrollIntoView would also move the sheet/page), and use a block body:
+  // desktop Chrome's scroll methods return a Promise, and an effect must only return a cleanup.
+  const follow = useRef(true);
+  const shown = useRef(0);
+  const onScroll = () => {
+    const el = log.current;
+    if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
   useEffect(() => {
     const el = log.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [msgs]);
+    const first = shown.current === 0;
+    shown.current = msgs.length;
+    if (!el || !msgs.length) return;
+    if (first) {
+      el.scrollTop = el.scrollHeight; // opening a room: start at the newest, no animation
+      follow.current = true;
+    } else if (follow.current || msgs[msgs.length - 1].author.id === me.id) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [msgs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -772,7 +788,7 @@ function Chat({ room }: { room: string }) {
 
   return (
     <div className="chat">
-      <div className="chat-log" ref={log}>
+      <div className="chat-log" ref={log} onScroll={onScroll}>
         {msgs.length === 0 && <div className="empty">{t("No messages yet. Say hi 👋")}</div>}
         {msgs.map((m) => (
           <div key={m.id} className={`msg ${m.author.id === me.id ? "me" : ""}`}>

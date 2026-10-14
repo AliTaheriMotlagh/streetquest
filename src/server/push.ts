@@ -1,5 +1,6 @@
 // Web Push (VAPID). Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT to
 // enable it; without them everything still works, just without pushes.
+import { createHash } from "node:crypto";
 import webpush from "web-push";
 import { after } from "next/server";
 import { prisma } from "../lib/db";
@@ -31,7 +32,19 @@ export type PushPayload = {
   actions?: { answer: string; decline: string };
   /** Seconds the push service keeps trying to deliver it (default 6 h). */
   ttl?: number;
+  /** Show it even when the game is on screen (the test notification). */
+  always?: boolean;
 };
+
+/**
+ * A player who pinged within this window is in the game and sees the toast instead.
+ * The game reports "away" as soon as it leaves the screen (see /api/push), so the
+ * window only covers a phone that died or lost its connection mid-game.
+ */
+export const ACTIVE_MS = 45_000;
+
+/** The Topic header (an undelivered push with the same one is replaced): at most 32 URL-safe characters. */
+const topicOf = (tag: string) => createHash("sha256").update(tag).digest("base64url").slice(0, 32);
 
 /**
  * Push to every device of a player. Skipped while they're actively playing (the
@@ -42,7 +55,7 @@ export async function pushTo(userId: string, p: PushPayload, opts: { evenIfActiv
   try {
     if (!opts.evenIfActive) {
       const u = await prisma.user.findUnique({ where: { id: userId }, select: { lastSeenAt: true } });
-      if (u?.lastSeenAt && Date.now() - u.lastSeenAt.getTime() < 45_000) return 0;
+      if (u?.lastSeenAt && Date.now() - u.lastSeenAt.getTime() < ACTIVE_MS) return 0;
     }
     const subs = await prisma.pushSub.findMany({ where: { userId } });
     let sent = 0;
@@ -51,8 +64,8 @@ export async function pushTo(userId: string, p: PushPayload, opts: { evenIfActiv
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-            JSON.stringify({ title: p.title, body: p.body ?? "", url: p.url ?? "/play", tag: p.tag ?? p.kind ?? "sq", call: p.call, ring: p.ring, actions: p.actions }),
-            { TTL: p.ttl ?? 6 * 3600, urgency: p.kind === "reward" ? "normal" : "high", topic: (p.tag ?? p.kind ?? "sq").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) },
+            JSON.stringify({ title: p.title, body: p.body ?? "", url: p.url ?? "/play", tag: p.tag ?? p.kind ?? "sq", call: p.call, ring: p.ring, actions: p.actions, always: p.always }),
+            { TTL: p.ttl ?? 6 * 3600, urgency: p.kind === "reward" ? "normal" : "high", ...(p.tag ? { topic: topicOf(p.tag) } : {}) },
           );
           sent++;
           await prisma.pushSub.update({ where: { id: s.id }, data: { lastPush: new Date() } }).catch(() => {});

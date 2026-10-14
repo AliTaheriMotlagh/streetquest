@@ -128,12 +128,12 @@ self.addEventListener("push", (event) => {
   try { d = event.data ? event.data.json() : {}; } catch { d = { title: event.data && event.data.text() }; }
   const tag = d.tag || "sq";
   event.waitUntil((async () => {
-    if (d.call) {
-      // The game is on screen: it rings (or shows the missed call) by itself. Every push
-      // must still show a notification — Safari/iOS revokes the subscription of a site
-      // that receives pushes silently — so show a quiet one and take it straight down.
+    if (!d.always) {
+      // The game is on screen: it shows the toast (or rings) by itself. Every push must
+      // still show a notification — Safari/iOS revokes the subscription of a site that
+      // receives pushes silently — so show a quiet one and take it straight down.
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      if (wins.some((w) => w.visibilityState === "visible")) {
+      if (wins.some((w) => w.visibilityState === "visible" && new URL(w.url).pathname.startsWith("/play"))) {
         await self.registration.showNotification(d.title || "StreetQuest", { body: d.body || "", tag, silent: true, icon: "/icons/icon-192.png" }).catch(() => {});
         (await self.registration.getNotifications({ tag })).forEach((n) => n.close());
         return;
@@ -150,7 +150,11 @@ self.addEventListener("push", (event) => {
       requireInteraction: !!d.ring,
       actions: d.ring ? [{ action: "answer", title: (d.actions && d.actions.answer) || "📹 Answer" }, { action: "decline", title: (d.actions && d.actions.decline) || "Decline" }] : [],
       data: { url: d.url || "/play", call: d.call, ring: !!d.ring },
-    });
+    }).catch(() =>
+      // Some Android builds reject an option they don't know (badge, actions, vibrate):
+      // never lose the notification over it.
+      self.registration.showNotification(d.title || "StreetQuest", { body: d.body || "", icon: "/icons/icon-192.png", tag, data: { url: d.url || "/play", call: d.call, ring: !!d.ring } }),
+    );
   })());
 });
 

@@ -355,6 +355,8 @@ const server: Record<string, string> = {
   "That's not your call to answer": "این تماس مال تو نیست",
   "The call already ended": "تماس تموم شده",
   "📵 Missed video call": "📵 تماس تصویری بی‌پاسخ",
+  "💬 {name}": "💬 {name}",
+  "💬 {name} in your event": "💬 {name} توی رویدادت",
   "{name} tried to call you": "{name} می‌خواست باهات تماس بگیره",
 
   // ---- chat, friends, events

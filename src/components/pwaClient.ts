@@ -105,6 +105,14 @@ export async function syncPush() {
   } catch {}
 }
 
+/** The game left the screen: from now on this player gets pushes. keepalive outlives the page. */
+export function reportAway() {
+  try {
+    if (Notification.permission !== "granted") return;
+    void fetch("/api/push", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "away" }) }).catch(() => {});
+  } catch {}
+}
+
 export async function disablePush() {
   const sub = await currentPushSub();
   if (!sub) return;
