@@ -909,6 +909,9 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
                 <Button className="btn cyan small" onClick={() => dm(f)} aria-label={t("Message {name}", { name: f.username })}>
                   💬
                 </Button>
+                <Button className="btn green small" onClick={() => startCall(f, false)} aria-label={t("Voice call {name}", { name: f.username })}>
+                  📞
+                </Button>
                 <Button className="btn green small" onClick={() => startCall(f)} aria-label={t("Video call {name}", { name: f.username })}>
                   📹
                 </Button>

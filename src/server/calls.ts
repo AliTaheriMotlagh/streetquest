@@ -1,4 +1,4 @@
-// Video calls between crew members. The media is peer-to-peer WebRTC; Postgres only
+// Video and voice calls between crew members. The media is peer-to-peer WebRTC; Postgres only
 // carries the handshake, polled by both phones while the call is up (see /api/calls).
 import { prisma } from "../lib/db";
 import { pushSoon } from "./push";
@@ -10,7 +10,7 @@ export const RING_MS = 40_000;
 /** A side that hasn't polled for this long has closed the app or lost signal. */
 const LOST_MS = 25_000;
 
-type CallRow = { id: string; callerId: string; calleeId: string; status: string; createdAt: Date; callerSeen: Date; calleeSeen: Date };
+type CallRow = { id: string; callerId: string; calleeId: string; status: string; video: boolean; createdAt: Date; callerSeen: Date; calleeSeen: Date };
 
 /**
  * How phones find a path to each other. STUN finds each phone's public address —
@@ -84,7 +84,7 @@ export async function endCall(c: CallRow, reason: string) {
   const { count } = await prisma.call.updateMany({ where: { id: c.id, status: { not: "ENDED" } }, data: { status: "ENDED", endReason: reason, endedAt: new Date() } });
   if (count && c.status === "RINGING" && reason !== "declined" && reason !== "busy") {
     const caller = await prisma.user.findUnique({ where: { id: c.callerId }, select: { username: true } });
-    const n = await asUser(c.calleeId, () => ({ title: t("📵 Missed video call"), body: t("{name} tried to call you", { name: caller?.username ?? t("Someone") }) }));
+    const n = await asUser(c.calleeId, () => ({ title: c.video ? t("📵 Missed video call") : t("📵 Missed voice call"), body: t("{name} tried to call you", { name: caller?.username ?? t("Someone") }) }));
     await prisma.notification.create({ data: { userId: c.calleeId, kind: "social", ...n } }).catch(() => {});
     // Same tag as the ringing notification, so it turns into "missed" instead of ringing on.
     pushSoon(c.calleeId, { ...n, kind: "social", tag: `call-${c.id}`, call: c.id, url: "/play?panel=crew" }, { evenIfActive: true });

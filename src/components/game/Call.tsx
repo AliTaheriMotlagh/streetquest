@@ -1,5 +1,5 @@
 "use client";
-// 1:1 video calls with crew members. WebRTC carries the audio/video straight between the
+// 1:1 video and voice calls with crew members. WebRTC carries the audio/video straight between the
 // two phones; /api/calls relays only the handshake (offer, answer, ICE candidates) by
 // polling, the same serverless-friendly "realtime" as chat. The caller always offers.
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +12,7 @@ import { useGame } from "./ui";
 
 export type CallPeer = { id: string; username: string; avatar: string };
 /** A call to place (caller, no id yet) or one ringing this phone (callee). */
-export type CallInvite = { id?: string; peer: CallPeer; role: "caller" | "callee"; /** Answered from the notification. */ autoAnswer?: boolean };
+export type CallInvite = { id?: string; peer: CallPeer; role: "caller" | "callee"; /** false: a voice call, no cameras. */ video?: boolean; /** Answered from the notification. */ autoAnswer?: boolean };
 
 type Phase = "ringing" | "calling" | "connecting" | "live" | "ended";
 type Signal = { id: number; kind: "offer" | "answer" | "ice" | "state"; data: string };
@@ -27,6 +27,16 @@ const END_TEXT: Record<string, string> = {
   failed: msg("Couldn't connect — the network blocked the call"),
   norelay: msg("Couldn't connect — this network blocks the call relay. Try Wi-Fi or another SIM"),
 };
+
+/**
+ * What the camera captures. 720p: phones show the other side full screen, and anything
+ * smaller looks blurry once it's stretched to fill it. The encoder still scales down on
+ * its own when the network or the phone can't keep up.
+ */
+const CAMERA = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } };
+const MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+/** Video bitrate ceiling. Some browsers (Safari) cap it well below what 720p needs. */
+const VIDEO_BPS = 2_500_000;
 
 /** Signals per request (the server accepts up to 60). */
 const SIGNAL_BATCH = 30;
@@ -68,16 +78,17 @@ function classify(e: unknown): MediaProblem {
   return browserInfo().inApp ? "inapp" : "blocked";
 }
 
-/** Camera + mic; failing that, mic only (with the reason the camera failed). */
-async function getMedia(): Promise<{ stream: MediaStream | null; problem: MediaProblem | null }> {
+/** Camera + mic (just the mic for a voice call); failing that, mic only (with the reason the camera failed). */
+async function getMedia(video: boolean): Promise<{ stream: MediaStream | null; problem: MediaProblem | null }> {
   const md = navigator.mediaDevices;
   if (!md?.getUserMedia) return { stream: null, problem: browserInfo().inApp ? "inapp" : "insecure" };
   try {
-    return { stream: await md.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } }), problem: null };
+    return { stream: await md.getUserMedia({ audio: MIC, video: video && { ...CAMERA, facingMode: "user" } }), problem: null };
   } catch (e) {
     const problem = classify(e);
+    if (!video) return { stream: null, problem };
     try {
-      return { stream: await md.getUserMedia({ audio: true }), problem };
+      return { stream: await md.getUserMedia({ audio: MIC }), problem };
     } catch (e2) {
       const p2 = classify(e2);
       return { stream: null, problem: p2 === "nodevice" ? problem : p2 };
@@ -108,16 +119,16 @@ class Session {
     private on: { connected: () => void; ended: (reason: string) => void; track: () => void; peer: (s: PeerState) => void; accepted: () => void },
   ) {}
 
-  connect(iceServers: RTCIceServer[], offerer: boolean) {
+  connect(iceServers: RTCIceServer[], offerer: boolean, video: boolean) {
     // Hung up while this phone was still asking for the camera.
     if (this.closed) return this.local?.getTracks().forEach((t) => t.stop());
     this.offerer = offerer;
     const pc = (this.pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: forceRelay() ? "relay" : "all" }));
     for (const t of this.local?.getTracks() ?? []) pc.addTrack(t, this.local!);
-    // The offer always asks for both audio and video, even if this phone has no camera or
-    // mic. (The answering side reuses its addTrack senders for the offer's lines.)
+    // A video call's offer always asks for both audio and video, even if this phone has no
+    // camera or mic. (The answering side reuses its addTrack senders for the offer's lines.)
     if (offerer && !this.local?.getAudioTracks().length) pc.addTransceiver("audio", { direction: "recvonly" });
-    if (offerer && !this.local?.getVideoTracks().length) pc.addTransceiver("video", { direction: "recvonly" });
+    if (offerer && video && !this.local?.getVideoTracks().length) pc.addTransceiver("video", { direction: "recvonly" });
     pc.ontrack = (e) => {
       if (!this.remote.getTracks().includes(e.track)) this.remote.addTrack(e.track);
       this.on.track();
@@ -234,10 +245,12 @@ class Session {
         await pc.setLocalDescription(await pc.createAnswer());
         this.send("answer", pc.localDescription!.sdp);
         this.arm();
+        void this.tune();
       } else if (s.kind === "answer") {
         if (pc.signalingState === "have-local-offer") await pc.setRemoteDescription({ type: "answer", sdp: s.data });
         await this.drainIce();
         this.arm();
+        void this.tune();
       } else if (s.kind === "ice") {
         const c = JSON.parse(s.data) as RTCIceCandidateInit;
         const k = `${candType(c.candidate ?? "")}/${candProto(c.candidate ?? "")}`;
@@ -248,6 +261,21 @@ class Session {
     } catch (e) {
       if (s.kind !== "ice") this.finish("failed");
       else console.warn("bad ICE candidate", e);
+    }
+  }
+
+  /**
+   * Encoder settings, once negotiation has created the encoders: a higher video ceiling,
+   * and voice first when the network is congested — choppy video is bearable, choppy
+   * sound isn't.
+   */
+  private async tune() {
+    for (const sender of this.pc?.getSenders() ?? []) {
+      const kind = sender.track?.kind;
+      const p = sender.getParameters();
+      if (!kind || !p.encodings?.length) continue;
+      Object.assign(p.encodings[0], kind === "video" ? { maxBitrate: VIDEO_BPS, maxFramerate: 30 } : { priority: "high", networkPriority: "high" });
+      await sender.setParameters(p).catch(() => {});
     }
   }
 
@@ -294,6 +322,7 @@ const mmss = (ms: number) => {
 export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (callId?: string) => void }) {
   const { toast } = useGame();
   const { peer, role } = invite;
+  const video = invite.video ?? true;
   const [phase, setPhase] = useState<Phase>(role === "caller" ? "calling" : "ringing");
   const [endText, setEndText] = useState("");
   const [mic, setMic] = useState(true);
@@ -319,10 +348,10 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
 
   /** Camera + mic, or explain what's blocking them and let the player fix it or go on without. */
   const acquire = async (): Promise<MediaStream | null> => {
-    const { stream, problem } = await getMedia();
+    const { stream, problem } = await getMedia(video);
     if (!problem) return stream;
     if (problem === "nodevice") {
-      toast({ kind: "info", title: stream ? t("No camera found — voice only") : t("No camera or mic found — you can still watch and listen") });
+      toast({ kind: "info", title: !video ? t("No mic found — you can still listen") : stream ? t("No camera found — voice only") : t("No camera or mic found — you can still watch and listen") });
       return stream;
     }
     helpStream.current = stream;
@@ -339,7 +368,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
   const retryMedia = async () => {
     helpStream.current?.getTracks().forEach((t) => t.stop());
     helpStream.current = null;
-    const { stream, problem } = await getMedia();
+    const { stream, problem } = await getMedia(video);
     if (!problem || problem === "nodevice") return helpDone.current?.(stream);
     helpStream.current = stream;
     setHelp({ problem, partial: stream });
@@ -416,14 +445,14 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     if (gone.current) return stop();
     showLocal(stream);
     try {
-      const r = await api<{ callId: string; iceServers: RTCIceServer[] }>("/api/calls", { body: { action: "start", userId: peer.id } });
+      const r = await api<{ callId: string; iceServers: RTCIceServer[] }>("/api/calls", { body: { action: "start", userId: peer.id, video } });
       if (gone.current) {
         api("/api/calls", { body: { action: "end", callId: r.callId } }).catch(() => {});
         return stop();
       }
       callId.current = r.callId;
       const s = (sess.current = new Session(r.callId, stream, handlers));
-      s.connect(r.iceServers, true);
+      s.connect(r.iceServers, true, video);
       s.poll();
     } catch (e) {
       stop();
@@ -487,7 +516,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     if (gone.current) return stream?.getTracks().forEach((t) => t.stop());
     s.local = stream;
     showLocal(stream);
-    s.connect(iceServers, false);
+    s.connect(iceServers, false, video);
   };
 
   const decline = async () => {
@@ -520,7 +549,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
     const next = facing === "user" ? "environment" : "user";
     // Release the current camera first: iOS can't open both at once.
     local.getVideoTracks().forEach((t) => (t.stop(), local.removeTrack(t)));
-    const open = (mode: "user" | "environment") => navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: mode } } }).then((m) => m.getVideoTracks()[0]);
+    const open = (mode: "user" | "environment") => navigator.mediaDevices.getUserMedia({ video: { ...CAMERA, facingMode: { exact: mode } } }).then((m) => m.getVideoTracks()[0]);
     let track: MediaStreamTrack | null = null;
     let used: "user" | "environment" = next;
     try {
@@ -539,17 +568,17 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
   };
 
   const status =
-    phase === "ringing" ? t("📹 Incoming video call") : phase === "calling" ? t("Calling…") : phase === "connecting" ? t("Connecting…") : phase === "live" ? mmss(Date.now() - (liveAt ?? Date.now())) : endText;
-  const showRemote = phase === "live" && remoteVideo && them.cam;
+    phase === "ringing" ? (video ? t("📹 Incoming video call") : t("📞 Incoming voice call")) : phase === "calling" ? t("Calling…") : phase === "connecting" ? t("Connecting…") : phase === "live" ? mmss(Date.now() - (liveAt ?? Date.now())) : endText;
+  const showRemote = video && phase === "live" && remoteVideo && them.cam;
 
   return (
-    <div className={`call ${mini ? "mini" : ""} ${phase}`} role="dialog" aria-label={t("Video call with {name}", { name: peer.username })} onClick={mini ? () => setMini(false) : undefined}>
+    <div className={`call ${mini ? "mini" : ""} ${phase}`} role="dialog" aria-label={video ? t("Video call with {name}", { name: peer.username }) : t("Voice call with {name}", { name: peer.username })} onClick={mini ? () => setMini(false) : undefined}>
       <video ref={remoteV} className={`call-remote ${showRemote ? "" : "hidden"}`} autoPlay playsInline />
       {!showRemote && (
         <div className="call-peer">
           <div className="call-avatar">{peer.avatar}</div>
           {!mini && <h2 dir="auto">{peer.username}</h2>}
-          {!mini && phase === "live" && !them.cam && <p className="muted small">{t("Camera off")}</p>}
+          {!mini && phase === "live" && video && !them.cam && <p className="muted small">{t("Camera off")}</p>}
         </div>
       )}
 
@@ -569,7 +598,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
       {!mini && phase === "ringing" && (
         <div className="call-bar">
           <Button className="call-btn end" onClick={decline} aria-label={t("Decline")}>📵</Button>
-          <Button className="call-btn answer" onClick={accept} aria-label={t("Answer")}>📹</Button>
+          <Button className="call-btn answer" onClick={accept} aria-label={t("Answer")}>{video ? "📹" : "📞"}</Button>
         </div>
       )}
       {!mini && (phase === "calling" || phase === "connecting" || phase === "live") && (
@@ -585,7 +614,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
       {help && phase !== "ended" && !mini && (
         <div className="call-help" role="alertdialog" aria-labelledby="call-help-title">
           <div style={{ fontSize: 40 }} aria-hidden>📷</div>
-          <h3 id="call-help-title">{t(PROBLEM_TITLE[help.problem])}</h3>
+          <h3 id="call-help-title">{!video && help.problem === "blocked" ? t("Microphone is blocked") : t(PROBLEM_TITLE[help.problem])}</h3>
           {help.problem === "blocked" && (
             <ol className="steps">
               {cameraSteps(b, installed).map((s) => (
@@ -608,7 +637,7 @@ export function CallScreen({ invite, onDone }: { invite: CallInvite; onDone: (ca
               </Button>
             )}
             <Button className="btn ghost" onClick={() => helpDone.current?.(help.partial)}>
-              {help.partial ? t("Continue voice only") : t("Continue without camera")}
+              {help.partial ? t("Continue voice only") : video ? t("Continue without camera") : t("Continue without mic")}
             </Button>
           </div>
         </div>

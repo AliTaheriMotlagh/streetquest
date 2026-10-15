@@ -378,10 +378,10 @@ export default function Game() {
       if (document.hidden || busy) return;
       busy = true;
       try {
-        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; peer: CallPeer } | null }>(`/api/sync?since=${syncSince.current}`);
+        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; video: boolean; peer: CallPeer } | null }>(`/api/sync?since=${syncSince.current}`);
         if (stop) return;
         syncSince.current = r.now;
-        if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, role: "callee" });
+        if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, video: r.call.video, role: "callee" });
         setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
         for (const n of r.notifications) toast(n);
         // React to what a notification *is* (its tag), never to its translated text.
@@ -418,8 +418,8 @@ export default function Game() {
     async (id: string, answer: boolean) => {
       if (callRef.current || handledCalls.current.has(id)) return;
       try {
-        const r = await api<{ call: { id: string; peer: CallPeer } | null }>(`/api/sync?since=${Date.now()}`);
-        if (r.call?.id === id) setCall({ id, peer: r.call.peer, role: "callee", autoAnswer: answer });
+        const r = await api<{ call: { id: string; video: boolean; peer: CallPeer } | null }>(`/api/sync?since=${Date.now()}`);
+        if (r.call?.id === id) setCall({ id, peer: r.call.peer, video: r.call.video, role: "callee", autoAnswer: answer });
         else toast({ kind: "info", title: t("📵 That call already ended") });
       } catch {}
     },
@@ -608,9 +608,9 @@ export default function Game() {
           setChat({ room, label });
           setPanel("crew");
         },
-        startCall: (peer) => {
+        startCall: (peer, video = true) => {
           if (callRef.current) return toast({ kind: "error", title: t("You're already on a call") });
-          setCall({ peer, role: "caller" });
+          setCall({ peer, video, role: "caller" });
         },
         setPanel,
         openShop: (id) => {
@@ -1605,6 +1605,7 @@ function InfoCard({
       {p.friend ? (
         <div className="row">
           <Button className="btn cyan grow" onClick={() => openChat(`dm:${[me.id, p.id].sort().join(":")}`, p.username)}>💬 {t("Message")}</Button>
+          <Button className="btn green grow" onClick={() => startCall({ id: p.id, username: p.username, avatar: p.avatar }, false)}>📞 {t("Voice call")}</Button>
           <Button className="btn green grow" onClick={() => startCall({ id: p.id, username: p.username, avatar: p.avatar })}>📹 {t("Video call")}</Button>
         </div>
       ) : (

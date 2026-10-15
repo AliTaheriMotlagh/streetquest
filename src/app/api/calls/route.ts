@@ -1,4 +1,4 @@
-// Video call signaling. Each phone polls GET while a call is up (status + the other
+// Video and voice call signaling. Each phone polls GET while a call is up (status + the other
 // side's offer/answer/ICE) and POSTs its own. The video itself never touches the server.
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -24,11 +24,11 @@ export const GET = route(async (req) => {
           orderBy: { id: "asc" },
           select: { id: true, kind: true, data: true },
         });
-  return { status: c.status, endReason: c.endReason, signals };
+  return { status: c.status, endReason: c.endReason, video: c.video, signals };
 });
 
 const Schema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("start"), userId: z.string() }),
+  z.object({ action: z.literal("start"), userId: z.string(), video: z.boolean().default(true) }),
   z.object({ action: z.enum(["accept", "decline", "end"]), callId: z.string(), reason: z.enum(["failed", "norelay", "lost"]).optional(), diag: z.record(z.unknown()).optional() }),
   z.object({
     action: z.literal("signal"),
@@ -50,11 +50,15 @@ export const POST = route(async (req) => {
     if (mine) await endCall(mine, "hangup");
     const theirs = await liveCall(d.userId);
     if (theirs) throw new HttpError(409, t("They're on another call — try again in a bit"));
-    const call = await prisma.call.create({ data: { callerId: u.id, calleeId: d.userId } });
+    const call = await prisma.call.create({ data: { callerId: u.id, calleeId: d.userId, video: d.video } });
     // Ring the phone even if the app looks open: it may be in a pocket with the tab hidden.
     // It expires with the ring, so a phone that was offline doesn't ring hours later.
-    const ring = await asUser(d.userId, () => ({ title: t("📹 {name} is calling", { name: u.username }), body: t("Video call · tap to answer"), actions: { answer: t("📹 Answer"), decline: t("Decline") } }));
-  pushSoon(d.userId, { ...ring, tag: `call-${call.id}`, kind: "social", call: call.id, ring: true, url: `/play?call=${call.id}`, ttl: 40 }, { evenIfActive: true });
+    const ring = await asUser(d.userId, () =>
+      d.video
+        ? { title: t("📹 {name} is calling", { name: u.username }), body: t("Video call · tap to answer"), actions: { answer: t("📹 Answer"), decline: t("Decline") } }
+        : { title: t("📞 {name} is calling", { name: u.username }), body: t("Voice call · tap to answer"), actions: { answer: t("📞 Answer"), decline: t("Decline") } },
+    );
+    pushSoon(d.userId, { ...ring, tag: `call-${call.id}`, kind: "social", call: call.id, ring: true, url: `/play?call=${call.id}`, ttl: 40 }, { evenIfActive: true });
     return { callId: call.id, iceServers: await iceServers() };
   }
 

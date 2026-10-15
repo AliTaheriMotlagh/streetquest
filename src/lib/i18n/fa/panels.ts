@@ -174,6 +174,7 @@ const panels: Record<string, string> = {
   "Seen {when}": "آخرین بازدید {when}",
   "Message {name}": "پیام به {name}",
   "Video call {name}": "تماس تصویری با {name}",
+  "Voice call {name}": "تماس صوتی با {name}",
   "Remove {name}": "حذف {name}",
   "Remove {name}?": "{name} حذف بشه؟",
   "Pending: {names}": "در انتظار: {names}",

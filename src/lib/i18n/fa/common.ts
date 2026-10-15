@@ -30,6 +30,7 @@ const common: Record<string, string> = {
   Repair: "تعمیر",
   Message: "پیام",
   "Video call": "تماس تصویری",
+  "Voice call": "تماس صوتی",
   Bounty: "جایزهٔ سر",
   Hostile: "دشمن",
   HP: "جان",

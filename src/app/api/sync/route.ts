@@ -29,7 +29,7 @@ export const GET = route(async (req) => {
   const ring = await prisma.call.findFirst({
     where: { calleeId: u.id, status: "RINGING", createdAt: { gt: new Date(now.getTime() - RING_MS) } },
     orderBy: { createdAt: "desc" },
-    select: { id: true, caller: { select: { id: true, username: true, avatar: true } } },
+    select: { id: true, video: true, caller: { select: { id: true, username: true, avatar: true } } },
   });
-  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, peer: ring.caller } };
+  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, video: ring.video, peer: ring.caller } };
 });

@@ -17,8 +17,8 @@ export type GameCtx = {
   refresh: () => void;
   pick: (label: string, cb: (p: LatLng) => void) => void;
   openChat: (room: string, label: string) => void;
-  /** Ring a crew member for a video call. */
-  startCall: (peer: { id: string; username: string; avatar: string }) => void;
+  /** Ring a crew member: a video call, or a voice call with `video` false. */
+  startCall: (peer: { id: string; username: string; avatar: string }, video?: boolean) => void;
   setPanel: (p: PanelId | null) => void;
   /** Open the Market on one shop (tapped on the map). */
   openShop: (shopId: string) => void;

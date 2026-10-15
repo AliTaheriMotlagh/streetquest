@@ -78,6 +78,32 @@ test("crew members can video call each other", async ({ browser }) => {
   expect([...a.errors, ...b.errors]).toEqual([]);
 });
 
+test("crew members can voice call each other: sound only, no cameras", async ({ browser }) => {
+  const [a, b] = await Promise.all([open(browser), open(browser)]);
+  await json(a.page, "/api/friends", { action: "request", username: b.username });
+  const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
+  await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
+
+  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.getByRole("button", { name: `Voice call ${b.username}` }).click();
+  const aCall = a.page.getByRole("dialog", { name: `Voice call with ${b.username}` });
+  const bCall = b.page.getByRole("dialog", { name: `Voice call with ${a.username}` });
+  await expect(bCall).toContainText("Incoming voice call", { timeout: 15_000 });
+  await bCall.getByRole("button", { name: "Answer" }).click();
+
+  for (const d of [aCall, bCall]) await expect(d).toHaveClass(/\blive\b/, { timeout: 30_000 });
+  for (const p of [a.page, b.page]) {
+    // Audio flows, no video is sent, and there's no camera button.
+    await expect.poll(() => p.locator("video.call-remote").evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream | null)?.getAudioTracks().length ?? 0), { timeout: 15_000 }).toBeGreaterThan(0);
+    expect(await p.locator("video.call-remote").evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getVideoTracks().length)).toBe(0);
+    await expect(p.getByRole("button", { name: "Camera off" })).toHaveCount(0);
+  }
+
+  await a.page.getByRole("button", { name: "Hang up" }).click();
+  await expect(bCall).toContainText("Call ended", { timeout: 10_000 });
+  expect([...a.errors, ...b.errors]).toEqual([]);
+});
+
 test("mobile data drops requests: every lost handshake message is resent and the call still connects", async ({ browser }) => {
   const [a, b] = await Promise.all([open(browser), open(browser)]);
   // The first try of every offer / answer / ICE batch fails, as a weak LTE link does.

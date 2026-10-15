@@ -902,6 +902,7 @@ model Call {
   callerId   String
   calleeId   String
   status     String       @default("RINGING") // RINGING | ACTIVE | ENDED
+  video      Boolean      @default(true) // false: a voice call (no cameras)
   endReason  String? // hangup | declined | missed | busy | lost
   createdAt  DateTime     @default(now())
   answeredAt DateTime?
