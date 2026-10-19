@@ -49,8 +49,12 @@ export function Sheet({ title, onClose, children, peek, actions, help, tall }: {
     if (help) markHelpSeen(help);
     setShowHelp(false);
   };
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useSwipeToClose(ref, !peek, closeRef);
   return (
-    <div className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}`} role="dialog" aria-label={title}>
+    <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}`} role="dialog" aria-label={title}>
       <div className="sheet-grip" />
       <div className="sheet-head">
         <h2>{title}</h2>
@@ -72,6 +76,108 @@ export function Sheet({ title, onClose, children, peek, actions, help, tall }: {
   );
 }
 
+/** Scroll `el` into view inside its panel only (scrollIntoView would also move the sheet and the game). */
+export function revealInSheet(el: HTMLElement | null) {
+  const body = el?.closest<HTMLElement>(".sheet-body");
+  if (!el || !body) return;
+  const bb = body.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const dy = r.top < bb.top ? r.top - bb.top - 8 : r.bottom > bb.bottom ? Math.min(r.bottom - bb.bottom + 8, r.top - bb.top - 8) : 0;
+  if (dy) body.scrollBy({ top: dy, behavior: "smooth" });
+}
+
+/** Things inside a panel that own their own touch gestures. */
+const NO_DRAG = "input, textarea, select, canvas, video, [contenteditable], .arena, .hold-btn, .leaflet-container, [data-no-drag]";
+
+/**
+ * Bottom-sheet gesture for phones: drag the panel down (by its header anywhere, or by
+ * its content once that content is scrolled to the top) and let go to close it.
+ * Off where the panel is a side panel (tablets/desktop hide the grip).
+ */
+function useSwipeToClose(ref: React.RefObject<HTMLDivElement | null>, enabled: boolean, onClose: React.RefObject<() => void>) {
+  useEffect(() => {
+    const sheet = ref.current;
+    if (!sheet || !enabled) return;
+    let startY = 0, startX = 0, lastY = 0, lastT = 0, vel = 0;
+    let mode: "idle" | "maybe" | "drag" | "off" = "idle";
+    const grip = () => sheet.querySelector<HTMLElement>(".sheet-grip");
+    const atTop = (target: Element) => {
+      // Every scroller between the finger and the sheet must be at its top.
+      for (let el: Element | null = target; el && el !== sheet; el = el.parentElement) {
+        if (el.scrollTop > 0) return false;
+      }
+      return true;
+    };
+    const set = (dy: number, animate: boolean) => {
+      sheet.style.transition = animate ? "transform .22s cubic-bezier(.2,.9,.3,1)" : "none";
+      sheet.style.transform = dy ? `translateY(${dy}px)` : "";
+    };
+    const start = (e: TouchEvent) => {
+      const g = grip();
+      const target = e.target as Element;
+      // Touch screens only, and only where the panel is a bottom sheet (the grip shows).
+      if (e.touches.length !== 1 || !g || getComputedStyle(g).display === "none" || target.closest(NO_DRAG)) {
+        mode = "off";
+        return;
+      }
+      const inHead = !!target.closest(".sheet-head, .sheet-grip");
+      if (!inHead && !atTop(target)) {
+        mode = "off";
+        return;
+      }
+      mode = "maybe";
+      startY = lastY = e.touches[0].clientY;
+      startX = e.touches[0].clientX;
+      lastT = e.timeStamp;
+      vel = 0;
+    };
+    const move = (e: TouchEvent) => {
+      if (mode === "off" || mode === "idle") return;
+      const y = e.touches[0].clientY, dy = y - startY, dx = e.touches[0].clientX - startX;
+      if (mode === "maybe") {
+        // Sideways (tab rows, carousels) or upward: leave it to the content.
+        if (dy < 0 || Math.abs(dx) > Math.abs(dy)) {
+          if (Math.abs(dy) >= 4 || Math.abs(dx) >= 4) mode = "off";
+          return;
+        }
+        // Downward from the top: claim it now, or iOS starts its own scroll and won't let go.
+        if (e.cancelable) e.preventDefault();
+        if (dy < 8) return;
+        mode = "drag";
+      }
+      if (e.cancelable) e.preventDefault();
+      const dt = Math.max(1, e.timeStamp - lastT);
+      vel = (y - lastY) / dt;
+      lastY = y;
+      lastT = e.timeStamp;
+      set(Math.max(0, dy), false);
+    };
+    const end = () => {
+      if (mode === "drag") {
+        const dy = lastY - startY;
+        if (dy > Math.min(140, sheet.offsetHeight * 0.3) || (vel > 0.6 && dy > 40)) {
+          set(sheet.offsetHeight + 40, true);
+          setTimeout(() => onClose.current(), 200);
+        } else {
+          set(0, true);
+        }
+      }
+      mode = "idle";
+    };
+    sheet.addEventListener("touchstart", start, { passive: true });
+    sheet.addEventListener("touchmove", move, { passive: false });
+    sheet.addEventListener("touchend", end);
+    sheet.addEventListener("touchcancel", end);
+    return () => {
+      sheet.removeEventListener("touchstart", start);
+      sheet.removeEventListener("touchmove", move);
+      sheet.removeEventListener("touchend", end);
+      sheet.removeEventListener("touchcancel", end);
+      sheet.style.transform = "";
+      sheet.style.transition = "";
+    };
+  }, [ref, enabled, onClose]);
+}
+
 export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (v: T) => void; tabs: [T, string][] }) {
   const row = useRef<HTMLDivElement>(null);
   // More tabs before / after what's visible. Right-to-left rows start at scrollLeft 0
@@ -85,7 +191,16 @@ export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; on
   };
   // Keep the selected tab visible, and know whether there's more to either side.
   useEffect(() => {
-    row.current?.querySelector<HTMLElement>("button.on")?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    // Scroll only the row: scrollIntoView also scrolls every ancestor, which knocked the
+    // panel body (and the whole sheet) out of place on phones.
+    const r = row.current;
+    const on = r?.querySelector<HTMLElement>("button.on");
+    if (r && on) {
+      const rb = r.getBoundingClientRect(), b = on.getBoundingClientRect();
+      const pad = 24;
+      const dx = b.left < rb.left + pad ? b.left - rb.left - pad : b.right > rb.right - pad ? b.right - rb.right + pad : 0;
+      if (dx) r.scrollBy({ left: dx, behavior: "smooth" });
+    }
     const t = setTimeout(measure, 350);
     return () => clearTimeout(t);
   }, [value]);

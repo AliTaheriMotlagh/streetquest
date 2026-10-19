@@ -97,6 +97,38 @@ test.describe("in the game", () => {
     }
   });
 
+  test("panels fit the phone on every tab, and a swipe down closes them", async ({ page, context }) => {
+    const sheet = page.locator(".sheet[role=dialog]");
+    // Content wider than the panel let it slide sideways; a tab tap could knock it upward.
+    for (const label of ["Play", "Hero", "Market"]) {
+      await page.locator("nav.nav").getByRole("button", { name: new RegExp(label) }).click();
+      await expect(sheet).toBeVisible();
+      const tabs = sheet.locator(".tabs button");
+      for (let i = 0; i < (await tabs.count()); i++) {
+        await tabs.nth(i).click();
+        await page.waitForTimeout(400);
+        const m = await sheet.evaluate((s) => {
+          const b = s.querySelector(".sheet-body")!;
+          return { wide: b.scrollWidth - b.clientWidth, bottom: Math.round(s.getBoundingClientRect().bottom), vh: innerHeight };
+        });
+        expect(m.wide, `${label} tab ${i} is wider than the panel`).toBeLessThanOrEqual(1);
+        expect(m.bottom, `${label} tab ${i} moved off the bottom`).toBe(m.vh);
+      }
+      await sheet.getByRole("button", { name: "Close" }).click();
+      await expect(sheet).toHaveCount(0);
+    }
+    // Drag the header down and let go.
+    await page.locator("nav.nav").getByRole("button", { name: /Nearby/ }).click();
+    await expect(sheet).toBeVisible();
+    await page.waitForTimeout(500);
+    const top = (await sheet.boundingBox())!.y;
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 200, y: top + 30 }] });
+    for (let i = 1; i <= 12; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 200, y: top + 30 + i * 25 }] });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect(sheet).toHaveCount(0);
+  });
+
   test("daily reward: a frantic double-tap pays exactly once", async ({ page }) => {
     const gift = page.locator(".fab", { hasText: "🎁" });
     await expect(gift).toBeVisible();

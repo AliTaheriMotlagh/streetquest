@@ -1617,3 +1617,21 @@ html.lite .biz-bar i::after { animation: none; }
 .splash-bar { width: 180px; height: 10px; border-radius: 6px; background: rgba(255,255,255,.1); overflow: hidden; border: 1px solid rgba(255,255,255,.12); }
 .splash-bar i { display: block; height: 100%; width: 40%; border-radius: 6px; background: linear-gradient(90deg, var(--cyan), var(--pink)); animation: splashbar 1.1s ease-in-out infinite; }
 @keyframes splashbar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+/* =====================================================================
+   Panels on phones: the content always fits the panel and scrolls only up/down.
+   ===================================================================== */
+/* An emoji's screen-reader label is absolutely positioned: give it a box to sit in, or
+   inside a tab row it escapes the row's own scroll and widens the whole panel. */
+.art-txt, .art-w { position: relative; }
+.sheet { overflow: hidden; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-wrap: break-word; }
+.sheet-body img, .sheet-body video { max-width: 100%; }
+/* Nothing may scroll the game shell itself (it holds the map and the panels). */
+@supports (overflow: clip) { .game { overflow: clip; } }
+/* Tall panels (Play, Empire): the visible height, not one that hides under the URL bar. */
+@supports (height: 100dvh) { .sheet.tall { max-height: 92dvh; } }
+@media (min-width: 768px) and (min-height: 600px) { .sheet.tall { max-height: none; } }
+/* While dragging a panel down to close it. */
+.sheet-grip { touch-action: none; }
+.sheet-head { touch-action: pan-x; }

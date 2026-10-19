@@ -15,7 +15,7 @@ import { fmtCountdown } from "./Lottery";
 import { Directions } from "./Play";
 import { resizePhoto } from "./photo";
 import { sfx } from "./sfx";
-import { MoveIcon, Sheet, useGame } from "./ui";
+import { MoveIcon, revealInSheet, Sheet, useGame } from "./ui";
 
 const img = (id: string) => `/shop-img/${id}`;
 
@@ -991,7 +991,7 @@ function BuyerOrder({ o, fresh, onChanged, onShop }: { o: ShopOrder; fresh?: boo
   const { act } = useGame();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (fresh) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (fresh) revealInSheet(ref.current);
   }, [fresh]);
   return (
     <div ref={ref} className={`card order-card ${fresh ? "hl" : ""}`}>
