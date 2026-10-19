@@ -146,7 +146,7 @@ type Clutter =
   | { id: string; lat: number; lng: number; kind: "delivery"; data: WorldDelivery }
   | { id: string; lat: number; lng: number; kind: "ride"; data: WorldRide };
 
-const spawnEmoji = (s: WorldSpawn) => (s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji ?? "❔");
+const spawnEmoji = (s: WorldSpawn) => (s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🔋" : s.kind === "derrick" ? "🛢️" : s.item?.emoji ?? "❔");
 const clutterRank = (c: Clutter) => (c.kind === "spawn" ? (c.data.kind === "chest" ? 5 : RARITY_RANK[c.data.item?.rarity ?? ""] ?? 0) : -1);
 const clutterEmoji = (c: Clutter) => (c.kind === "spawn" ? spawnEmoji(c.data) : c.kind === "note" ? "💬" : c.kind === "ride" ? "🚕" : "📦");
 

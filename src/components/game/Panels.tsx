@@ -68,10 +68,10 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
           spawns.map((s) => (
             <div key={s.id} className="card list-item">
               <div className="icon-tile" style={{ boxShadow: s.item ? `inset 0 0 0 2px ${RARITY_COLOR[s.item.rarity]}` : undefined }}>
-                {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item?.emoji}
+                {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🔋" : s.kind === "derrick" ? "🛢️" : s.item?.emoji}
               </div>
               <div className="grow">
-                <b>{s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Locked Chest") : s.kind === "arcade" ? t("Arcade: Shooting Range") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item?.name ?? "")}</b>
+                <b>{s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Supply Chest") : s.kind === "arcade" ? t("Power Cell") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item?.name ?? "")}</b>
                 <div className="small muted">
                   {formatDistance(d(s))} · {t("+{n} XP", { n: s.rewardXp })} {s.goldenHour && "· ✨2×"}
                 </div>

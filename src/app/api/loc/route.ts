@@ -8,6 +8,7 @@ import { body, HttpError, route } from "@/server/http";
 import { canSimulate } from "@/server/session";
 import { takeFire } from "@/server/td";
 import { trackStat } from "@/server/goals";
+import { addGpsSteps } from "@/server/steps";
 import { S } from "@/lib/settings";
 import { nearbyLive } from "@/server/presence";
 import { t } from "@/lib/i18n";
@@ -41,7 +42,11 @@ export const POST = route(async (req) => {
   const onFoot = !d.sim && !remote && moved >= 3 && moved <= 400 && moved / since <= S.footSpeedKmh / 3.6 && (d.acc ?? 0) <= 50;
   const walked = onFoot ? moved : 0;
   await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date(), locAt: new Date(), ...(walked ? { walkedM: { increment: walked } } : {}) } });
-  if (walked) await trackStat(u.id, "walk_m", walked, u.faction);
+  if (walked) {
+    await trackStat(u.id, "walk_m", walked, u.faction);
+    // Steps from distance on foot, unless the phone's motion sensor is counting them.
+    await addGpsSteps(u, walked);
+  }
   // Tower defense: hostile towers and guard squads in range open fire.
   const dt = u.lastSeenAt ? (Date.now() - u.lastSeenAt.getTime()) / 1000 : 0;
   // Players right next to us, exact and live — only for a real, reasonably sharp GPS fix,

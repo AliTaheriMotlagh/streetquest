@@ -20,8 +20,6 @@ const landing: Record<string, string> = {
   "Real GPS, real places. Missions, items and chests spawn around you wherever you are on Earth.": "GPS واقعی، جاهای واقعی. مأموریت، آیتم و صندوق هرجا روی زمین که باشی دورت پیدا می‌شن.",
   "GTA-style timed runs": "مأموریت‌های زمان‌دار به سبک GTA",
   "Getaways, street races and dead drops — reach the target before the clock hits zero.": "فرار، مسابقهٔ خیابونی و تحویل مخفی — قبل از صفر شدن ساعت به هدف برس.",
-  "Chests & mini-games": "صندوق‌ها و مینی‌گیم‌ها",
-  "Crack locks, win arcade challenges and score rare loot — some only appear at night.": "قفل‌ها رو باز کن، چالش‌های آرکید رو ببر و غنیمت‌های کمیاب بگیر — بعضی‌هاشون فقط شب پیدا می‌شن.",
   "Real package deliveries": "تحویل بسته‌های واقعی",
   "Players post real delivery requests. Carry them across town, hand over with a secret code, get paid.": "بازیکن‌ها درخواست تحویل واقعی می‌ذارن. بسته‌ها رو توی شهر ببر، با کد مخفی تحویل بده و پولت رو بگیر.",
   "Messages at places": "پیام‌ها توی مکان‌ها",
@@ -57,7 +55,6 @@ const landing: Record<string, string> = {
   "Open the map": "نقشه رو باز کن",
   "Allow location. The world around you fills with loot, chests, runs and players.": "موقعیت رو مجاز کن. دنیای دورت پر می‌شه از غنیمت، صندوق، مأموریت و بازیکن.",
   "Walk there": "برو اونجا",
-  "Get within 40 m to interact. Crack locks, play mini-games, race the clock.": "برای تعامل، تا ۴۰ متری برو. قفل‌ها رو باز کن، مینی‌گیم بازی کن و با ساعت مسابقه بده.",
   "Level up together": "با هم سطح بگیرید",
   "Add friends, chat, join events and climb the leaderboards.": "دوست اضافه کن، گپ بزن، توی رویدادها شرکت کن و جدول‌ها رو بالا ببر.",
 

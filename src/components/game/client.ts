@@ -10,7 +10,7 @@ import type { QuestDef } from "@/lib/quests";
 import type { PowerKey } from "@/lib/powers";
 import type { Mood, Needs } from "@/lib/sims";
 import type { PingKind, Strike } from "@/lib/td";
-import type { LobbyKind } from "@/lib/minigames";
+import type { LobbyKind } from "@/lib/lobbies";
 import type { SuperKey } from "@/lib/superweapons";
 import type { OrderView, ProductView, ShopCard, ShopView } from "@/server/shops";
 

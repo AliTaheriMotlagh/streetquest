@@ -12,7 +12,7 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
   nearby: {
     title: msg("Nearby"),
     tips: [
-      ["🎯", msg("Everything around you, closest first: loot, chests, arcades, runs, bosses and players.")],
+      ["🎯", msg("Everything around you, closest first: loot, chests, power cells, runs, bosses and players.")],
       ["📍", msg("Get inside the dashed circle around you to interact — walk there, or travel there if you play from home.")],
       ["✨", msg("Dawn and dusk are golden hours: double XP on spawns. Spawns refresh every 20 minutes.")],
     ],
@@ -30,6 +30,8 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
   play: {
     title: msg("Play"),
     tips: [
+      ["🏙️", msg("Empire: an idle tycoon. Buy businesses, tap them to earn, hire managers so they earn on their own — even while you're away.")],
+      ["👟", msg("Every step you walk today boosts your empire's income, up to ×2 at 10,000 steps. Power cells 🔋 on the map double it for a while.")],
       ["📖", msg("Story: chapters played on real streets. A gold beacon on the map shows where to go next.")],
       ["🔍", msg("Some steps hide the target: search the gold circle and follow the hot/cold detector.")],
       ["🧭", msg("GPS games: treasure hunt, street sprint and checkpoint rally — quick rounds with rewards.")],
@@ -141,7 +143,8 @@ export const TOUR: TourStep[] = [
   { target: ".me-wrap", title: msg("Your reach"), body: msg("The dashed circle is your reach. Things inside it can be collected or played — tap any icon on the map to see what it is.") },
   { target: "[data-tour=nav-nearby]", title: msg("Nearby"), body: msg("Everything around you in one list, closest first.") },
   { target: "[data-tour=nav-base]", title: msg("Base"), body: msg("Plant your base, build, train troops and defend it. Start here after the tour!") },
-  { target: "[data-tour=nav-play]", title: msg("Play"), body: msg("Story missions, GPS mini-games and weekly goals with big rewards.") },
+  { target: "[data-tour=nav-play]", title: msg("Play"), body: msg("Your Street Empire idle game, story missions, GPS games and weekly goals with big rewards.") },
+  { target: "[data-tour=steps]", title: msg("Every step counts"), body: msg("Your steps today. Walking boosts your Street Empire's income up to ×2, and banked steps buy instant Step Rushes.") },
   { target: "[data-tour=nav-market]", title: msg("Market"), body: msg("Shops run by players around you — buy with coins, or open your own shop and sell.") },
   { target: "[data-tour=nav-crew]", title: msg("Crew"), body: msg("Friends, chat and teamwork. Red badges on these buttons mean something new — tap to see it and they clear.") },
   { target: "[data-tour=inbox]", title: msg("Inbox"), body: msg("Every reward, raid alert and message lands here.") },

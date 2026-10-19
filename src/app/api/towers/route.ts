@@ -21,7 +21,7 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("upgrade"), towerId: z.string().max(40) }),
   z.object({ action: z.literal("repair"), towerId: z.string().max(40) }),
   z.object({ action: z.literal("demolish"), towerId: z.string().max(40) }),
-  z.object({ action: z.literal("sabotage"), towerId: z.string().max(40), score: z.number().int().min(0).max(3) }),
+  z.object({ action: z.literal("sabotage"), towerId: z.string().max(40) }),
 ]);
 
 async function spendScrap(userId: string, scrap: number, refundCoins: number) {
@@ -75,11 +75,13 @@ export const POST = actionRoute(async (req) => {
     if (await areFriends(u.id, t.ownerId)) throw new HttpError(400, tr("That tower belongs to your crew"));
     await assertNotDowned(u);
     const here = await lastKnownLocation(u.id);
-    if (distanceM(here, t) > st.range + 15) throw new HttpError(400, tr("Get within {m} m to plant a charge", { m: st.range + 15 }));
+    const dist = distanceM(here, t);
+    if (dist > st.range + 15) throw new HttpError(400, tr("Get within {m} m to plant a charge", { m: st.range + 15 }));
     if (u.sabotageAt && Date.now() - u.sabotageAt.getTime() < SABOTAGE_COOLDOWN_MS) throw new HttpError(429, tr("Still wiring the next charge — give it a few seconds"));
     await prisma.user.update({ where: { id: u.id }, data: { sabotageAt: new Date() } });
-    if (d.score === 0) return { message: tr("💥 The charge fizzled. Try again!") };
-    const dmg = Math.round(SABOTAGE_DMG[d.score] * (await heroOf(u)).bonus.fpsDmg);
+    // The closer you dare to plant it, the bigger the blast (under the tower's guns).
+    const power = dist <= st.range * 0.35 ? 3 : dist <= st.range * 0.7 ? 2 : 1;
+    const dmg = Math.round(SABOTAGE_DMG[power] * (await heroOf(u)).bonus.fpsDmg);
     const res = await prisma.tower.updateMany({ where: { id: t.id }, data: { hp: { decrement: dmg } } });
     if (!res.count) throw new HttpError(404, tr("That tower is gone"));
     const after = await prisma.tower.findUnique({ where: { id: t.id } });

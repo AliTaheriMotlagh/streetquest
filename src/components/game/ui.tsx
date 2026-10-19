@@ -39,7 +39,7 @@ export const useGame = () => useContext(Ctx)!;
 /** The icon on "go there" buttons: 🕹️ test mode, 🛋️ play from home. */
 export const MoveIcon = () => <>{useGame().moveIcon}</>;
 
-export function Sheet({ title, onClose, children, peek, actions, help }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string }) {
+export function Sheet({ title, onClose, children, peek, actions, help, tall }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string; tall?: boolean }) {
   // "How this works" card: shown automatically the first time, then from the ? button.
   const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {
@@ -50,7 +50,7 @@ export function Sheet({ title, onClose, children, peek, actions, help }: { title
     setShowHelp(false);
   };
   return (
-    <div className={`sheet ${peek ? "peek" : ""}`} role="dialog" aria-label={title}>
+    <div className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}`} role="dialog" aria-label={title}>
       <div className="sheet-grip" />
       <div className="sheet-head">
         <h2>{title}</h2>

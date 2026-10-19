@@ -14,7 +14,6 @@ const settings: Record<string, string> = {
 
   // ---- Players & map
   "Player reach (m)": "برد بازیکن (متر)",
-  "How close a player must be to collect, start runs, play arcades and finish missions.": "بازیکن برای جمع‌آوری، شروع مسیر، بازی آرکید و تمام کردن مأموریت باید چقدر نزدیک باشه.",
   "GPS slack (m)": "حاشیهٔ GPS (متر)",
   "Extra metres the server forgives on top of the reach, to absorb GPS error.": "متر اضافه‌ای که سرور روی برد می‌بخشه تا خطای GPS جذب بشه.",
   "Spawns per area (min)": "پیدایش در هر منطقه (کمینه)",

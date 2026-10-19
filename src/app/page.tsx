@@ -18,7 +18,7 @@ const FEATURES = [
   ["🛏️", msg("A life to look after"), msg("Your commander gets hungry, tired and lonely. Eat, sleep at base and hang out with nearby players — a good mood means more XP.")],
   ["🗺️", msg("Your streets, your map"), msg("Real GPS, real places. Missions, items and chests spawn around you wherever you are on Earth.")],
   ["🏁", msg("GTA-style timed runs"), msg("Getaways, street races and dead drops — reach the target before the clock hits zero.")],
-  ["🔓", msg("Chests & mini-games"), msg("Crack locks, win arcade challenges and score rare loot — some only appear at night.")],
+  ["🏙️", msg("Idle street empire"), msg("Build a business empire that earns while you're away — and every step you walk makes it grow faster.")],
   ["📦", msg("Real package deliveries"), msg("Players post real delivery requests. Carry them across town, hand over with a secret code, get paid.")],
   ["📍", msg("Messages at places"), msg("Leave notes pinned to real locations. Only people who physically show up can read them.")],
   ["🤝", msg("Crews & live events"), msg("Add friends, see who's online, chat, and set up group quests with squad XP bonuses.")],
@@ -37,7 +37,7 @@ const FAQ = [
 
 const STEPS = [
   ["1", msg("Open the map"), msg("Allow location. The world around you fills with loot, chests, runs and players.")],
-  ["2", msg("Walk there"), msg("Get within 40 m to interact. Crack locks, play mini-games, race the clock.")],
+  ["2", msg("Walk there"), msg("Get within 40 m to interact. Open chests, grab power cells, race the clock.")],
   ["3", msg("Level up together"), msg("Add friends, chat, join events and climb the leaderboards.")],
 ];
 

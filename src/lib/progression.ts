@@ -52,7 +52,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { key: "first_blood", name: msg("First Blood"), emoji: "🔫", desc: msg("Down a rival commander in the street"), xp: 250 },
   { key: "tower_builder", name: msg("Fortifier"), emoji: "🗼", desc: msg("Build your first tower"), xp: 100 },
   { key: "wave_clear", name: msg("Hold the Line"), emoji: "🛡️", desc: msg("Stop a raider wave without a single leak"), xp: 400 },
-  { key: "duel_champ", name: msg("Top Gun"), emoji: "🏆", desc: msg("Win a multiplayer mini-game"), xp: 200 },
+  { key: "duel_champ", name: msg("Top Gun"), emoji: "🏆", desc: msg("Win a street race"), xp: 200 },
   { key: "superweapon", name: msg("Doomsday"), emoji: "☢️", desc: msg("Fire your faction's superweapon"), xp: 500 },
   { key: "shopkeeper", name: msg("Shopkeeper"), emoji: "🏪", desc: msg("Open your own shop"), xp: 150 },
   { key: "first_sale", name: msg("First Sale"), emoji: "🤝", desc: msg("Hand over your first order"), xp: 200 },

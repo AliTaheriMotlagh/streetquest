@@ -16,9 +16,11 @@ import { AutoVideo } from "@/components/AutoVideo";
 import { MoveIcon, Sheet, Tabs, useGame, type Toast } from "./ui";
 import { Button } from "@/components/Button";
 import { LotteryTab } from "./Lottery";
+import { EmpireTab } from "./Empire";
+import { Art } from "@/components/art/Art";
 
 // ---------------------------------------------------------------- celebrations
-type Celebration = { title: string; body?: string; emoji?: string };
+type Celebration = { title: string; body?: string; emoji?: string; art?: string };
 export const celebrate = (c: Celebration) => window.dispatchEvent(new CustomEvent("sq:celebrate", { detail: c }));
 /** Coins/gems flying up to the HUD after a reward. */
 export const burst = (emoji: string, n = 10) => window.dispatchEvent(new CustomEvent("sq:burst", { detail: { emoji, n } }));
@@ -57,7 +59,7 @@ export function CelebrationLayer() {
         <div className="celebrate" onClick={() => setShow(null)}>
           <div className="rays" />
           <div className="cel-card">
-            <div className="cel-emoji">{show.emoji ?? "🏆"}</div>
+            <div className="cel-emoji">{show.art ? <Art k={show.art} /> : show.emoji ?? "🏆"}</div>
             <div className="cel-title">{show.title}</div>
             {show.body && <div className="cel-body">{show.body}</div>}
           </div>
@@ -240,9 +242,9 @@ const fmtLeft = (ms: number) => {
   return h >= 24 ? t("{d}d {h}h", { d: Math.floor(h / 24), h: h % 24 }) : t("{h}h {m}m", { h, m: Math.floor((ms % 3_600_000) / 60_000) });
 };
 
-export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; peek: boolean; onStarted: () => void }) {
+export function PlayPanel({ onClose, peek, onStarted, initialTab }: { onClose: () => void; peek: boolean; onStarted: () => void; initialTab?: "empire" | "story" | "games" | "goals" | "lottery" }) {
   const { act, setPanel, me } = useGame();
-  const [tab, setTab] = useState<"story" | "games" | "goals" | "lottery">(me.goalsReady ? "goals" : "story");
+  const [tab, setTab] = useState<"empire" | "story" | "games" | "goals" | "lottery">(initialTab ?? (me.goalsReady ? "goals" : "empire"));
   const [d, setD] = useState<PlayData | null>(null);
   const [goals, setGoals] = useState<GoalsData | null>(null);
   const load = useCallback(() => {
@@ -268,8 +270,8 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
     });
 
   return (
-    <Sheet title={`🎮 ${t("Play")}`} onClose={onClose} peek={peek} help="play">
-      <Tabs value={tab} onChange={setTab} tabs={[["story", t("📖 Story")], ["games", t("🧭 GPS games")], ["goals", me.goalsReady ? t("🏆 Goals ({n})", { n: me.goalsReady }) : t("🏆 Goals")], ["lottery", t("🎰 Lottery")]]} />
+    <Sheet title={`🎮 ${t("Play")}`} onClose={onClose} peek={peek} help="play" tall={tab === "empire"}>
+      <Tabs value={tab} onChange={setTab} tabs={[["empire", t("🏙️ Empire")], ["story", t("📖 Story")], ["games", t("🧭 GPS games")], ["goals", me.goalsReady ? t("🏆 Goals ({n})", { n: me.goalsReady }) : t("🏆 Goals")], ["lottery", t("🎰 Lottery")]]} />
       {d?.active && (
         <div className="card hl small">▶️ {t("{title} is running — see the banner on the map.", { title: d.active.title })}</div>
       )}
@@ -317,7 +319,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
 
       {tab === "games" && d && (
         <>
-          <p className="small muted">{t("Real-world mini-games around wherever you are. You've walked {d} so far.", { d: t("{n} km", { n: Math.round(d.walkedM / 100) / 10 }) })}</p>
+          <p className="small muted">{t("Real-world GPS games around wherever you are. You've walked {d} so far.", { d: t("{n} km", { n: Math.round(d.walkedM / 100) / 10 }) })}</p>
           {d.games.map((g) => (
             <div key={g.kind} className="game-tile">
               <div className="gt-icon">{g.emoji}</div>
@@ -337,6 +339,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
         </>
       )}
 
+      {tab === "empire" && <EmpireTab />}
       {tab === "lottery" && <LotteryTab />}
 
       {tab === "goals" && goals && (
@@ -396,7 +399,7 @@ export function PlayPanel({ onClose, peek, onStarted }: { onClose: () => void; p
           )}
         </>
       )}
-      {!d && <div className="empty">{t("Loading…")}</div>}
+      {!d && tab !== "empire" && <div className="empty">{t("Loading…")}</div>}
     </Sheet>
   );
 }

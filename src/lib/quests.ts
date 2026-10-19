@@ -7,7 +7,7 @@ import { hashStr, rng } from "./geo";
 export type QuestKind =
   | "collect" | "chest" | "derrick" | "train" | "build" | "research" | "siege_win" | "breach_win" | "kills"
   | "boss_dmg" | "eat" | "rest" | "socialize" | "outpost" | "power" | "run" | "class" | "base" | "equip" | "forge"
-  | "arcade" | "duel_win" | "squad_run" | "tower" | "tower_down" | "raiders" | "squad" | "post";
+  | "arcade" | "duel_win" | "squad_run" | "tower" | "tower_down" | "raiders" | "squad" | "post" | "empire" | "steps";
 
 export type Reward = { xp: number; coins: number; scrap?: number; gear?: Rarity };
 export type QuestDef = { kind: QuestKind; target: number; title: string; desc: string; reward: Reward; lore?: string };
@@ -26,6 +26,8 @@ export const CAMPAIGN: QuestDef[] = [
   { kind: "siege_win", target: 1, title: msg("First Blood"), desc: msg("Win a siege against another player"), lore: msg("A rival commander has grown fat. Show them the cost of weakness."), reward: { xp: 400, coins: 250, gear: "epic" } },
   { kind: "kills", target: 5, title: msg("Boots and Bullets"), desc: msg("Get 5 kills in first-person fights"), lore: msg("Some battles have to be won up close."), reward: { xp: 400, coins: 200 } },
   { kind: "boss_dmg", target: 800, title: msg("Giant Slayer"), desc: msg("Deal 800 damage to world bosses"), lore: msg("The war machines roaming the city answer to no one. End them."), reward: { xp: 600, coins: 400, gear: "legendary" } },
+  { kind: "empire", target: 25, title: msg("Street Tycoon"), desc: msg("Make 25 buys in your Street Empire (Play tab)"), lore: msg("Wars are won with money. Build a business empire that earns while you march."), reward: { xp: 400, coins: 300 } },
+  { kind: "steps", target: 10_000, title: msg("Ten Thousand Steps"), desc: msg("Walk 10,000 steps"), lore: msg("Every step powers your empire. Get out there and walk."), reward: { xp: 500, coins: 300, gear: "epic" } },
 ];
 
 const DAILY_POOL: QuestDef[] = [
@@ -43,14 +45,16 @@ const DAILY_POOL: QuestDef[] = [
   { kind: "run", target: 1, title: msg("Wheelman"), desc: msg("Finish a timed run"), reward: { xp: 150, coins: 80 } },
   { kind: "siege_win", target: 1, title: msg("Conqueror"), desc: msg("Win a siege"), reward: { xp: 250, coins: 150, gear: "rare" } },
   { kind: "forge", target: 1, title: msg("Blacksmith"), desc: msg("Upgrade gear at the forge"), reward: { xp: 100, coins: 50, scrap: 4 } },
-  { kind: "arcade", target: 2, title: msg("Range Day"), desc: msg("Play 2 mini-games (range or bomb defuse)"), reward: { xp: 120, coins: 70 } },
-  { kind: "duel_win", target: 1, title: msg("Top Gun"), desc: msg("Win a multiplayer mini-game"), reward: { xp: 200, coins: 120, gear: "rare" } },
+  { kind: "arcade", target: 2, title: msg("Power Up"), desc: msg("Grab 2 power cells on the map"), reward: { xp: 120, coins: 70 } },
+  { kind: "duel_win", target: 1, title: msg("Top Gun"), desc: msg("Win a street race"), reward: { xp: 200, coins: 120, gear: "rare" } },
   { kind: "squad_run", target: 1, title: msg("Squad Goals"), desc: msg("Finish a run with a squad"), reward: { xp: 200, coins: 120 } },
   { kind: "tower", target: 1, title: msg("Fortify"), desc: msg("Build or upgrade a tower"), reward: { xp: 120, coins: 80, scrap: 3 } },
   { kind: "raiders", target: 8, title: msg("Hold the Line"), desc: msg("Kill 8 raiders with towers, squads or airstrikes"), reward: { xp: 200, coins: 150, scrap: 4 } },
   { kind: "tower_down", target: 1, title: msg("Demolition"), desc: msg("Destroy an enemy tower"), reward: { xp: 250, coins: 150, gear: "rare" } },
   { kind: "squad", target: 1, title: msg("Boots on the Map"), desc: msg("Deploy a squad onto the map"), reward: { xp: 100, coins: 60 } },
   { kind: "post", target: 1, title: msg("Leave Your Mark"), desc: msg("Pin a message or photo somewhere"), reward: { xp: 80, coins: 40 } },
+  { kind: "empire", target: 10, title: msg("Tycoon"), desc: msg("Make 10 buys in your Street Empire"), reward: { xp: 120, coins: 80 } },
+  { kind: "steps", target: 4000, title: msg("Daily Walk"), desc: msg("Walk 4,000 steps"), reward: { xp: 200, coins: 120, scrap: 3 } },
 ];
 
 export function dailyQuests(userId: string, day: string): (QuestDef & { key: string })[] {

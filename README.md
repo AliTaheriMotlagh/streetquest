@@ -27,7 +27,7 @@ Three games stacked on one real-world map:
 - **Tower defense on the real map** — build towers where you stand inside your territory (🔫 MG Nest, 🎯 Sniper,
   💣 Cannon, 🚀 SAM, ⚡ Tesla). Their range rings are on everyone's map and they **shoot rival commanders** who walk in:
   you have street HP, get downed (lose some coins to the tower owner, 3 min recovery), and rookies below level 3
-  are spared. Fight back by running in and wiring C4 (a Bomb Defuse mini-game) or by marching a squad at it.
+  are spared. Fight back by running in and planting C4 (hold to plant — closer means a bigger blast) or by marching a squad at it.
   **Raider waves** march on bases (HQ 2+) every hour or two — or provoke one for ×1.5 bounties. Towers, guard squads
   and base turrets (yours and your crew's) shoot them live on the map; commanders near the base call in ✈️ airstrikes;
   leakers steal coins.
@@ -35,9 +35,17 @@ Three games stacked on one real-world map:
   enemy composition is fogged without Radar), guard a spot (shoot rival commanders, defend against raiders,
   reinforce nearby bases/outposts), or attack an enemy tower, squad, base or outpost. Redirect or recall them
   mid-march. Base buildings are drawn around every base so you can scout rivals.
-- **Multiplayer mini-games** — arcades are a 🎯 Shooting Range (hostiles in windows, spare civilians, reload,
-  combos) and chests are a 💣 Bomb Defuse (memorise the wire sequence). Tapping one opens a lobby at that spawn,
-  everyone nearby is pinged, and all players get the same seeded round; the winner takes a pot bonus.
+- **Street Empire (idle tycoon)** — an AdVenture Capitalist-style idle game in 🎮 Play: 11 street businesses (hot dog cart →
+  spaceport), tap to run a cycle or hire a manager to automate it, count milestones (speed ×2), cash upgrades, offline
+  earnings (vault upgrades), fame stars (prestige, +2% each), empire ranks that pay coins and gems in the main game, and
+  dividends every 4 h. 🔋 Power cells on the map double income for 30 min (stack to 4 h).
+- **Every step counts** — a phone pedometer (accelerometer peaks gated by a walking rhythm, so shaking doesn't count)
+  reports steps while the game is open; GPS distance on foot fills in when the sensor can't. Steps today boost empire
+  income up to ×2 at 10,000; banked steps buy instant Step Rushes; step quests, milestones and a weekly world goal.
+  The server caps every report by a believable cadence. (A web page can't count while it's closed — a native wrapper
+  with HealthKit / Health Connect would be needed for that.)
+- **Chests open on the spot** (with a celebration) and **C4** is planted by holding a button — the closer you dare to
+  stand to the tower, the bigger the blast (decided by the server from your position).
 - **Squad runs** — start a run solo, as a 🏎️ race (podium pays +50% / +25%) or a 🤝 co-op run (+20% per teammate);
   squadmates' live positions show on the map. Crew **pings** (⚔️ attack / 🆘 help / 🚩 rally / 💰 loot) coordinate it all.
 
@@ -51,13 +59,16 @@ Three games stacked on one real-world map:
   standing on it for 60 s while none of your crew is there.
 - **Bounties** — put coins on a rival's head; whoever downs them (gun, tower, superweapon) collects.
 - **Photo & text posts** pinned to places — only visible to players who walk there; likes pay XP, reports hide abuse.
+- **3D art kit** — every emoji in the game (UI, server messages, translations, map markers) is drawn as a glossy,
+  outlined, top-lit vector icon with idle animations (`src/components/art`); preview them all with
+  `npx tsx scripts/art-preview.ts art.html`.
 - **Polish** — synthesized sound effects (Web Audio, no files; mute button), 3D game-feel animations, in-app
   dialogs instead of browser pop-ups, iPhone (notch/landscape) and iPad (side panels) layouts, achievements
   for every system.
 
 - **Story missions** — an 8-chapter campaign played on real streets: waypoints are placed around wherever you
   are, with *go* (reach a marker), *find* (hidden spot, hot/cold detector only) and *hold* (stay in a zone) steps.
-- **GPS mini-games** — 🧭 Treasure Hunt (hot/cold, the spot never leaves the server), 🏃 Street Sprint (distance on
+- **GPS games** — 🧭 Treasure Hunt (hot/cold, the spot never leaves the server), 🏃 Street Sprint (distance on
   foot; driving doesn't count) and 🏁 Checkpoint Rally.
 - **Goals** — a weekly 🌍 world operation everyone works on together, a weekly faction goal (with a live faction
   race) and permanent personal milestones with tiers. Everyone who contributed claims the shared rewards.
@@ -121,7 +132,10 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 | Life sim: needs decay computed from a stored snapshot + timestamp, so no background jobs; mood multiplies XP in `grant()` | `src/lib/sims.ts`, `src/server/needs.ts`, `src/app/api/sims` |
 | World bosses: deterministic per ~1.3 km region and 2 h window like spawns; only damage is stored. The killing hit pays every contributor | `src/lib/bosses.ts`, `src/server/boss.ts` |
 | FPS: the arena is generated from the match seed on every client. Clients POST position + hits ~7×/s; the server owns HP, kills, capture and the result. The first live human is the *host* and runs bot/boss AI; if it goes quiet the next player takes over | `src/lib/arena.ts`, `src/server/match.ts`, `src/components/fps/Fps.tsx` |
-| Multiplayer lobbies: one lobby per spawn, same seed for every player, state advances whenever a member polls (~1×/s); the server caps scores with the same generator | `src/lib/minigames.ts`, `src/server/lobby.ts`, `src/app/api/lobby` |
+| Squad-run lobbies (race / co-op): one lobby per run spawn, state advances whenever a member polls (~1×/s) | `src/lib/lobbies.ts`, `src/server/lobby.ts`, `src/app/api/lobby` |
+| Street Empire: pure economy rules shared by client and server; the server settles the stored snapshot to "now" on every request (no background jobs), the client runs the same maths between syncs | `src/lib/idle.ts`, `src/server/empire.ts`, `src/app/api/empire`, `src/components/game/Empire.tsx` |
+| Steps: accelerometer pedometer in the browser, batched reports capped by cadence per day, GPS-distance fallback in `/api/loc` | `src/components/game/steps.ts`, `src/lib/steps.ts`, `src/server/steps.ts`, `src/app/api/steps` |
+| Art kit: icons as vector shapes + shared gradient materials, one lazily-filled SVG sprite; a MutationObserver swaps emoji text for art without touching React's text nodes | `src/components/art` |
 | Tower defense: towers fire when a commander reports their position (`/api/loc` → `takeFire`), HP regenerates from a stored snapshot; raider waves are generated from a seed and fought by a deterministic simulation the server resolves once and clients animate | `src/lib/td.ts`, `src/server/td.ts`, `src/app/api/{towers,waves}` |
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Spawns: deterministic per ~450 m cell and 20-min window, so everyone sees the same world with zero storage; the server rebuilds a spawn from its id to verify claims | `src/lib/spawns.ts` |

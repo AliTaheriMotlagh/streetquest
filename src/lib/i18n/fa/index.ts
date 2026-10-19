@@ -22,7 +22,8 @@ import play from "./play";
 import hero from "./hero";
 import base from "./base";
 import lottery from "./lottery";
-import minigames from "./minigames";
+import lobbies from "./lobbies";
+import empire from "./empire";
 import location from "./location";
 import call from "./call";
 import fps from "./fps";
@@ -44,7 +45,8 @@ const fa: Messages = {
   ...hero,
   ...base,
   ...lottery,
-  ...minigames,
+  ...lobbies,
+  ...empire,
   ...location,
   ...call,
   ...fps,

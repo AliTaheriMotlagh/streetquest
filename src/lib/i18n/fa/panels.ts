@@ -34,7 +34,6 @@ const panels: Record<string, string> = {
   "Spawns ({n})": "غنیمت‌ها ({n})",
   "Posts ({n})": "پست‌ها ({n})",
   "🚩 Flags ({n})": "🚩 پرچم‌ها ({n})",
-  "Arcade: Shooting Range": "آرکید: میدان تیر",
   "Nothing left nearby. Walk a few blocks or wait for the next spawn wave.": "این اطراف چیزی نمونده. چند تا کوچه اون‌طرف‌تر برو یا منتظر موج بعدی غنیمت‌ها باش.",
   "Pin a post right here": "همین‌جا یه پست سنجاق کن",
   "Text and/or a photo. Only players who physically come within the radius can see it. Likes earn you XP.": "متن یا عکس. فقط بازیکن‌هایی که خودشون بیان تو این محدوده می‌بیننش. لایک‌ها برات تجربه میارن.",

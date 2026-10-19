@@ -243,8 +243,6 @@ const admin: Record<string, string> = {
   "Breaches won": "نفوذهای برده‌شده",
   "Outposts captured": "پاسگاه‌های تصرف‌شده",
   "Timed runs finished": "مأموریت‌های زمان‌دار تمام‌شده",
-  "Mini-games played": "مینی‌گیم‌های بازی‌شده",
-  "Mini-games won": "مینی‌گیم‌های برده‌شده",
   "Raiders killed": "غارتگرهای کشته‌شده",
   "Towers built/upgraded": "برج ساخته‌شده / ارتقا",
   "Enemy towers destroyed": "برج‌های دشمن نابودشده",

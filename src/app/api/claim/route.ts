@@ -1,4 +1,4 @@
-// Collect a spawn / crack a chest / play an arcade / start a run / grab an admin mission drop.
+// Collect a spawn / open a chest / grab a power cell / start a run / grab an admin mission drop.
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { cellKey, cellOf, dayPhase, distanceM } from "@/lib/geo";
@@ -9,7 +9,11 @@ import { body, HttpError, actionRoute } from "@/server/http";
 import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track } from "@/server/rewards";
 import { assertNotDowned } from "@/server/td";
 import { questEvent } from "@/server/quests";
-import { t } from "@/lib/i18n";
+import { msg, t } from "@/lib/i18n";
+import { maybeGear } from "@/server/hero";
+import { bumpNeeds } from "@/server/needs";
+import { addBoost } from "@/server/empire";
+import { BOOST_MINUTES } from "@/lib/idle";
 
 const Schema = z.object({ spawnId: z.string().max(80), score: z.number().min(0).max(1000).optional() });
 
@@ -68,9 +72,33 @@ export const POST = actionRoute(async (req) => {
     return { message: t("Run started: {title}. GO!", { title: t(s.run!.title) }), run };
   }
 
-  // Chests and arcades are played as (multiplayer) mini-games through /api/lobby.
-  if (s.kind === "chest" || s.kind === "arcade") throw new HttpError(400, t("Play the mini-game to win this one"));
   await recordClaim(u.id, s.id, s.kind, s.cell);
+
+  // Power cell ("arcade" spawns): doubles the Street Empire's income for a while.
+  if (s.kind === "arcade") {
+    await addBoost(u);
+    await grant(u.id, { xp: s.rewardXp });
+    await questEvent(u.id, "arcade");
+    await questEvent(u.id, "collect");
+    await bumpNeeds(u.id, { fun: 6 });
+    await checkClaimAchievements(u.id, s.phase);
+    await track("claim", { userId: u.id });
+    return { message: t("⚡ Power cell! Your Empire earns ×2 for {n} min", { n: BOOST_MINUTES }), xp: s.rewardXp, boost: true };
+  }
+
+  // Supply chest: loot, coins and a shot at gear.
+  if (s.kind === "chest") {
+    const items: Record<string, number> = s.item ? { [s.item.key]: 1 } : {};
+    await grant(u.id, { xp: s.rewardXp, coins: s.rewardCoins, items });
+    await questEvent(u.id, "collect");
+    await questEvent(u.id, "chest");
+    await bumpNeeds(u.id, { fun: 10 });
+    const gear = await maybeGear(u.id, 0.3, { source: msg("a supply crate") });
+    await checkClaimAchievements(u.id, s.phase);
+    await track("claim", { userId: u.id });
+    const loot = [...Object.keys(items).map(itemLabel), gear ? t("new gear!") : ""].filter(Boolean).join(t(", "));
+    return { message: t("🧰 Chest opened: {loot} · +{n} 🪙", { loot, n: s.rewardCoins }), xp: s.rewardXp, coins: s.rewardCoins, chest: true };
+  }
 
   const coins = s.rewardCoins;
   const items: Record<string, number> = {};
@@ -80,9 +108,9 @@ export const POST = actionRoute(async (req) => {
   await questEvent(u.id, "collect");
   await checkClaimAchievements(u.id, s.phase);
   await track("claim", { userId: u.id });
-  const loot = Object.keys(items).map(itemLabel).join(", ");
+  const loot = Object.keys(items).map(itemLabel).join(t(", "));
   return {
-    message: [loot, coins ? `${coins} coins` : ""].filter(Boolean).join(" + ") || "Collected",
+    message: [loot, coins ? t("+{n} 🪙", { n: coins }) : ""].filter(Boolean).join(" · ") || t("Collected"),
     xp: s.rewardXp,
     coins,
     golden: s.goldenHour,

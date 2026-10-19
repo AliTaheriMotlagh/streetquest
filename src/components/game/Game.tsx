@@ -16,7 +16,6 @@ import { UNITS } from "@/lib/rts";
 import type { HeroTabId } from "./Panels";
 import { NeedsHud } from "./Life";
 import { api, fmtTime, type LatLng, type LobbyView, type Me, type Selected, type World } from "./client";
-import { BombDefuse } from "./MiniGames";
 import { NoteCard } from "./Panels";
 import { LotteryCard } from "./Lottery";
 import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
@@ -39,6 +38,10 @@ import { useLocation, useWakeLock, type FireReport } from "./useLocation";
 import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
 import { AdModal, type AdOffer, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 import { Button } from "@/components/Button";
+import { EmojiArtLayer } from "@/components/art/EmojiArt";
+import { Art } from "@/components/art/Art";
+import { pedometer, useSteps } from "./steps";
+import { BOOST_MAX_H, BOOST_MINUTES, STEP_GOAL } from "@/lib/idle";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <div className="fps" /> });
@@ -85,7 +88,7 @@ export default function Game() {
   const [marketFocus, setMarketFocus] = useState<string | null>(null); // a shop tapped on the map
   const [selected, setSelected] = useState<Selected | null>(null);
   const [lobby, setLobby] = useState<{ spawnId: string; mode?: "race" | "coop" } | { lobbyId: string } | null>(null);
-  const [c4, setC4] = useState<{ towerId: string; seed: number; startAt: number } | null>(null);
+  const [c4, setC4] = useState<{ towerId: string } | null>(null);
   const [strike, setStrike] = useState<string | null>(null); // wave id while choosing an airstrike spot
   const [pingMenu, setPingMenu] = useState(false);
   const [runners, setRunners] = useState<LobbyView["players"] | undefined>(undefined);
@@ -585,14 +588,23 @@ export default function Game() {
     }
   };
 
-  const claim = (spawnId: string) =>
-    act(() => api("/api/claim", { body: { spawnId } })).then((ok) => {
+  const claim = (spawnId: string) => {
+    const kind = world?.spawns.find((x) => x.id === spawnId)?.kind;
+    return act(() => api("/api/claim", { body: { spawnId } })).then((ok) => {
       if (!ok) return;
+      if (kind === "chest") {
+        celebrate({ title: t("CHEST OPENED!"), art: "chestOpen" });
+        burst("🪙", 10);
+      } else if (kind === "arcade") {
+        celebrate({ title: t("POWER UP!"), art: "powerCell", body: t("Your Empire earns ×2 for {n} min", { n: BOOST_MINUTES }) });
+        sfx("win");
+      }
       setSelected(null);
       // Gone from the map right away; the refresh confirms it.
       const id = spawnId.replace(/^m:/, "");
       patchWorld((w) => (spawnId.startsWith("m:") ? { ...w, missions: w.missions.map((m) => (m.id === id ? { ...m, claimed: true } : m)) } : { ...w, spawns: w.spawns.map((x) => (x.id === id ? { ...x, claimed: true } : x)) }));
     });
+  };
 
   const ctx = useMemo<GameCtx | null>(
     () =>
@@ -646,7 +658,16 @@ export default function Game() {
             <Button className="btn" onClick={() => loadMe()}>{T("Retry")}</Button>
           </div>
         ) : (
-          <div className="big-num">{T("LOADING…")}</div>
+          <div className="splash">
+            <div className="splash-art">
+              <Art k="castle" size={120} anim="float" />
+              <Art k="coin" size={44} className="splash-coin" anim="spin" />
+              <Art k="sneaker" size={46} className="splash-shoe" anim="bounce" />
+            </div>
+            <div className="splash-title">StreetQuest</div>
+            <div className="splash-bar"><i /></div>
+            <div className="small muted">{T("LOADING…")}</div>
+          </div>
         )}
       </div>
     );
@@ -689,6 +710,7 @@ export default function Game() {
 
   return (
     <Ctx.Provider value={ctx}>
+      <EmojiArtLayer />
       <div className={`game ${shake ? "shake" : ""} ${match ? "in-fight" : ""}`}>
         <GameMap
           world={world}
@@ -730,6 +752,7 @@ export default function Game() {
             <div className="chip">🪙 {fmtNum(me.coins)}</div>
             <HpChip me={me} fire={fire} now={now} />
             <Button className="chip small gem-chip" onClick={() => setPanel("store")} title={t("Gem store")}>💎 {fmtNum(me.gems)} <span className="plus">+</span></Button>
+            <StepChip onOpen={() => openPanel("play")} />
             <div className="chip small hide-sm">{me.league.emoji} {fmtNum(me.trophies)}</div>
             {driving && !geo.simulated && <div className="chip small" title={t("Driving: the map zooms out and walking goals pause")}>🚗 {t("{n} km/h", { n: Math.round(geo.speed * 3.6) })}</div>}
             <GpsChip geo={geo} />
@@ -954,7 +977,7 @@ export default function Game() {
               setSelected(null);
               setLobby(l);
             }}
-            onC4={(towerId) => setC4({ towerId, seed: Math.floor(Math.random() * 2 ** 31), startAt: Date.now() + 2500 })}
+            onC4={(towerId) => setC4({ towerId })}
           />
         )}
 
@@ -1069,16 +1092,19 @@ export default function Game() {
 
         {c4 && (
           <div className="modal-bg">
-            <div className="modal" style={{ maxWidth: 420, padding: 14 }}>
-              <BombDefuse
-                title={t("💣 Wire the C4")}
-                seed={c4.seed}
-                startAt={c4.startAt}
-                onDone={(score) => {
+            <div className="modal c4-modal">
+              <Art k="dynamite" size={96} anim="wiggle" />
+              <h2>{t("Plant the C4")}</h2>
+              <p className="small muted">{t("Press and hold to wire the charge. The closer you stand to the tower, the bigger the blast — but its guns are on you.")}</p>
+              <HoldButton
+                label={t("HOLD TO PLANT")}
+                ms={2200}
+                onDone={() => {
                   const towerId = c4.towerId;
                   setC4(null);
-                  // Rounds cleared (0–3) decide the blast.
-                  act(() => api("/api/towers", { body: { action: "sabotage", towerId, score: Math.min(3, Math.floor(score / 100)) } })).then(() => loadWorld(true));
+                  sfx("explode");
+                  quake();
+                  act(() => api("/api/towers", { body: { action: "sabotage", towerId } })).then(() => loadWorld(true));
                 }}
               />
               <Button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setC4(null)}>{t("Abort")}</Button>
@@ -1087,6 +1113,79 @@ export default function Game() {
         )}
       </div>
     </Ctx.Provider>
+  );
+}
+
+// ---------------------------------------------------------------- hold-to-confirm
+/** A button you press and hold until the ring fills (no accidental taps). */
+function HoldButton({ label, ms, onDone }: { label: string; ms: number; onDone: () => void }) {
+  const [p, setP] = useState(0);
+  const start = useRef(0);
+  const raf = useRef(0);
+  const stop = () => {
+    cancelAnimationFrame(raf.current);
+    start.current = 0;
+    setP(0);
+  };
+  const tick = () => {
+    const x = Math.min(1, (performance.now() - start.current) / ms);
+    setP(x);
+    if (x >= 1) {
+      navigator.vibrate?.([60, 30, 120]);
+      start.current = 0;
+      onDone();
+      return;
+    }
+    if (Math.floor(x * 10) !== Math.floor((x - 0.016) * 10)) {
+      sfx("beep");
+      navigator.vibrate?.(12);
+    }
+    raf.current = requestAnimationFrame(tick);
+  };
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  return (
+    <button
+      className="hold-btn"
+      style={{ ["--p" as string]: p }}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        start.current = performance.now();
+        raf.current = requestAnimationFrame(tick);
+      }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <span>{p > 0 ? t("{n}%", { n: Math.floor(p * 100) }) : label}</span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------- HUD step counter
+function StepChip({ onOpen }: { onOpen: () => void }) {
+  const { today } = useSteps();
+  const [tick, setTick] = useState(false);
+  useEffect(
+    () =>
+      pedometer.onStep(() => {
+        setTick(true);
+        setTimeout(() => setTick(false), 360);
+      }),
+    [],
+  );
+  const R = 11;
+  const C = 2 * Math.PI * R;
+  return (
+    <Button className={`chip small step-chip ${tick ? "tick" : ""}`} onClick={onOpen} title={t("{n} of {goal} steps today — they power your Empire", { n: today, goal: STEP_GOAL })} data-tour="steps">
+      <span className="mini-ring">
+        <svg viewBox="0 0 26 26" aria-hidden="true">
+          <circle cx="13" cy="13" r={R} className="track" />
+          <circle cx="13" cy="13" r={R} className="fill" strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, today / STEP_GOAL))} />
+        </svg>
+        <Art k="sneaker" />
+      </span>
+      {fmtNum(today)}
+    </Button>
   );
 }
 
@@ -1156,17 +1255,17 @@ function InfoCard({
 
   if (sel.type === "spawn") {
     const s = sel.data;
-    const title = s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Locked Chest") : s.kind === "arcade" ? t("Arcade Machine") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item!.name);
-    const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🕹️" : s.kind === "derrick" ? "🛢️" : s.item!.emoji;
+    const title = s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Supply Chest") : s.kind === "arcade" ? t("Power Cell") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item!.name);
+    const emoji = s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🔋" : s.kind === "derrick" ? "🛢️" : s.item!.emoji;
     const desc =
       s.kind === "derrick"
         ? t("Neutral militia (strength {n}) guards this derrick. Lead your army here in person and take it: +{coins} 🪙.", { n: s.guard ?? 0, coins: s.rewardCoins })
         : s.kind === "run"
         ? `${t(s.run!.brief)} ${t("Target is {d} away — you have {n} min.", { d: formatDistance(s.run!.distanceM), n: Math.round(s.run!.timeLimitS / 60) })}`
         : s.kind === "chest"
-          ? t("A booby-trapped supply crate (maybe {emoji} inside). Defuse the bomb — flawless = double loot. Nearby players can join and race you for a winner's bonus.", { emoji: s.item!.emoji })
+          ? t("A supply crate (maybe {emoji} inside). Crack it open for loot, coins and a shot at new gear.", { emoji: s.item!.emoji })
           : s.kind === "arcade"
-            ? t("Shooting Range: 20 seconds, hostiles in the windows, spare the civilians. Players nearby can join — highest score takes the pot.")
+            ? t("Grab it to double your Street Empire's income for {n} minutes. Power cells stack up to {h} hours.", { n: BOOST_MINUTES, h: BOOST_MAX_H })
             : t(s.item!.blurb);
     return (
       <Sheet title={title} onClose={onClose}>
@@ -1189,10 +1288,10 @@ function InfoCard({
           <Button className="btn yellow block" disabled={!me.faction} onClick={() => act(() => api("/api/battle", { body: { kind: "derrick", targetId: s.id } })).then((ok) => ok && onClose())}>
             {me.faction ? t("🎖️ Attack with your army") : t("Join a faction first (Base tab)")}
           </Button>
-        ) : s.kind === "chest" || s.kind === "arcade" ? (
-          <Button className="btn yellow block" disabled={!!me.downedUntil} onClick={() => onLobby({ spawnId: s.id })}>
-            {s.lobby ? t("👥 Join {n, plural, one {# player} other {# players}} — {s}s", { n: s.lobby.players, s: Math.max(0, Math.ceil((s.lobby.openUntil - Date.now()) / 1000)) }) : s.kind === "chest" ? t("💣 Defuse it") : t("🎯 Play")}
-          </Button>
+        ) : s.kind === "chest" ? (
+          <Button className="btn yellow block big-btn" disabled={!!me.downedUntil} onClick={() => onClaim(s.id)}>{t("🧰 Open chest")}</Button>
+        ) : s.kind === "arcade" ? (
+          <Button className="btn green block big-btn" disabled={!!me.downedUntil} onClick={() => onClaim(s.id)}>{t("⚡ Grab power cell")}</Button>
         ) : s.kind === "run" ? (
           me.activeRun ? (
             <Button className="btn block" disabled>{t("Finish your current run first")}</Button>

@@ -9,7 +9,7 @@ export const NEEDS: { key: NeedKey; name: string; emoji: string; perHour: number
   { key: "hunger", name: msg("Hunger"), emoji: "🍔", perHour: 6, color: "#ffd23f", how: msg("Eat food you find on the streets, or the mess hall at your Quarters.") },
   { key: "energy", name: msg("Energy"), emoji: "⚡", perHour: 4, color: "#22e3ff", how: msg("Rest at your own base. Better Quarters, better sleep.") },
   { key: "social", name: msg("Social"), emoji: "💬", perHour: 5, color: "#ff2e88", how: msg("Hang out with players nearby, chat, fight alongside your crew.") },
-  { key: "fun", name: msg("Fun"), emoji: "🎮", perHour: 6, color: "#3dff8f", how: msg("Arcades, chests, firefights and boss raids.") },
+  { key: "fun", name: msg("Fun"), emoji: "🎮", perHour: 6, color: "#3dff8f", how: msg("Your empire, chests, firefights and boss raids.") },
 ];
 
 const clamp = (v: number) => Math.max(0, Math.min(100, v));

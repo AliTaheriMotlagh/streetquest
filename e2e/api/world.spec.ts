@@ -69,37 +69,27 @@ test.describe("map & location", () => {
     await p.dispose();
   });
 
-  test("chests are won through the mini-game, not claimed directly", async ({ baseURL }) => {
+  test("a chest opens on the spot and pays once", async ({ baseURL }) => {
     const p = await Player.create(baseURL!);
     const s = await findSpawn(p, "chest");
     await p.goTo(s);
-    const r = await p.post("/api/claim", { spawnId: s.id });
-    expect(r.status).toBe(400);
-    expect(r.data.error).toMatch(/mini-game/i);
+    const coins = (await p.me()).coins;
+    const r = expectOk(await p.post<{ chest: boolean; coins: number }>("/api/claim", { spawnId: s.id }));
+    expect(r.data.chest).toBe(true);
+    expect((await p.me()).coins).toBeGreaterThan(coins);
+    expect((await p.post("/api/claim", { spawnId: s.id })).status).toBe(409);
     await p.dispose();
   });
 
-  test("solo shooting range: open → start → score → paid once", async ({ baseURL }) => {
-    test.slow();
+  test("a power cell doubles the empire's income for a while", async ({ baseURL }) => {
     const p = await Player.create(baseURL!);
     const s = await findSpawn(p, "arcade");
     await p.goTo(s);
-    type L = { lobby: { id: string; status: string; startsAt: number | null; players: { userId: string; score: number | null; reward: string | null }[] }; now: number };
-    const open = expectOk(await p.post<L>("/api/lobby", { action: "open", spawnId: s.id })).data as L;
-    expect(open.lobby.status).toBe("OPEN");
-    const started = expectOk(await p.post<L>("/api/lobby", { action: "start", lobbyId: open.lobby.id })).data as L;
-    expect(started.lobby.status).toBe("LIVE");
-    // Scores before the countdown ends are refused.
-    expect((await p.post("/api/lobby", { action: "score", lobbyId: open.lobby.id, score: 40 })).status).toBe(400);
-    await new Promise((r) => setTimeout(r, Math.max(0, started.lobby.startsAt! - started.now) + 200));
-    const coins = (await p.me()).coins;
-    const done = expectOk(await p.post<L>("/api/lobby", { action: "score", lobbyId: open.lobby.id, score: 40 })).data as L;
-    expect(done.lobby.status).toBe("ENDED");
-    expect(done.lobby.players[0].reward).toBeTruthy();
-    expect((await p.me()).coins).toBeGreaterThan(coins);
-    expect((await p.post("/api/lobby", { action: "score", lobbyId: open.lobby.id, score: 40 })).status).toBe(400);
-    // The arcade is done for this player.
-    expect((await p.post("/api/lobby", { action: "open", spawnId: s.id })).status).toBe(409);
+    const r = expectOk(await p.post<{ boost: boolean }>("/api/claim", { spawnId: s.id }));
+    expect(r.data.boost).toBe(true);
+    const e = (await p.get<{ state: { boostUntil: number }; now: number }>("/api/empire")).data;
+    expect(e.state.boostUntil - e.now).toBeGreaterThan(25 * 60_000);
+    expect((await p.post("/api/claim", { spawnId: s.id })).status).toBe(409);
     await p.dispose();
   });
 

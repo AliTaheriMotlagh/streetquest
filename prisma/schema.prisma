@@ -10,119 +10,124 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  email        String   @unique
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String    @unique
   passwordHash String
-  role         String   @default("PLAYER") // PLAYER | ADMIN
-  banned       Boolean  @default(false)
-  avatar       String   @default("🕶️")
-  xp           Int      @default(0)
-  coins        Int      @default(100)
-  timezone     String   @default("UTC")
+  role         String    @default("PLAYER") // PLAYER | ADMIN
+  banned       Boolean   @default(false)
+  avatar       String    @default("🕶️")
+  xp           Int       @default(0)
+  coins        Int       @default(100)
+  timezone     String    @default("UTC")
   lastLat      Float?
   lastLng      Float?
   lastSeenAt   DateTime?
   locAt        DateTime? // when lastLat/lastLng was accepted (speed checks measure from here)
-  streak       Int      @default(0)
+  streak       Int       @default(0)
   lastDailyKey String? // YYYY-MM-DD in the user's own timezone
-  referralCode String   @unique
+  referralCode String    @unique
   referredById String?
   utmSource    String?
   utmMedium    String?
   utmCampaign  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   // Strategy layer
-  faction      String? // coalition | dragon | insurgency
+  faction String? // coalition | dragon | insurgency
 
   // Life-sim layer: needs (0-100) as of needsAt; they decay in real time.
-  hunger       Float    @default(80)
-  energy       Float    @default(80)
-  social       Float    @default(60)
-  fun          Float    @default(60)
-  needsAt      DateTime @default(now())
-  restedAt     DateTime?
-  socialAt     DateTime?
+  hunger   Float     @default(80)
+  energy   Float     @default(80)
+  social   Float     @default(60)
+  fun      Float     @default(60)
+  needsAt  DateTime  @default(now())
+  restedAt DateTime?
+  socialAt DateTime?
 
   // RPG layer
   heroClass    String?
-  str          Int      @default(5)
-  agi          Int      @default(5)
-  int          Int      @default(5)
-  cha          Int      @default(5)
-  scrap        Int      @default(0)
-  campaignStep Int      @default(0)
+  str          Int       @default(5)
+  agi          Int       @default(5)
+  int          Int       @default(5)
+  cha          Int       @default(5)
+  scrap        Int       @default(0)
+  campaignStep Int       @default(0)
   buffUntil    DateTime? // Battle Cry
-  buffMult     Float    @default(1)
+  buffMult     Float     @default(1)
 
   // Clash-style progression
-  trophies     Int      @default(0)
-  gems         Int      @default(25)
+  trophies Int @default(0)
+  gems     Int @default(25)
 
   // Tower-defense layer: the commander's own HP on the street (towers shoot it).
-  hp           Int      @default(100)
-  hpAt         DateTime @default(now()) // HP regenerates from this snapshot
-  downedUntil  DateTime?
-  sabotageAt   DateTime?
-  shotAt       DateTime? // street combat cooldown
+  hp          Int       @default(100)
+  hpAt        DateTime  @default(now()) // HP regenerates from this snapshot
+  downedUntil DateTime?
+  sabotageAt  DateTime?
+  shotAt      DateTime? // street combat cooldown
 
   // Lifetime distance moved on foot (metres, from accepted GPS fixes) and story progress.
-  walkedM      Float    @default(0)
-  storyChapter Int      @default(0)
+  walkedM      Float @default(0)
+  storyChapter Int   @default(0)
 
   // Play from home: move by tapping the map at a capped speed, for reduced rewards.
-  remotePlay   Boolean  @default(false)
+  remotePlay Boolean @default(false)
 
   // UI language ("en" | "fa"): notifications and pushes are written in it.
-  locale       String   @default("en")
+  locale String @default("en")
 
-  inventory     InventoryItem[]
-  claims        Claim[]
-  runs          MissionRun[]
-  achievements  UserAchievement[]
-  sentFriends   Friendship[]       @relation("requester")
-  recvFriends   Friendship[]       @relation("addressee")
-  messages      Message[]
-  geoNotes      GeoNote[]
-  deliveriesOut Delivery[]         @relation("sender")
-  deliveriesIn  Delivery[]         @relation("courier")
-  ridesTaken    Ride[]             @relation("rider")
-  ridesDriven   Ride[]             @relation("driver")
-  lotteriesHosted Lottery[]        @relation("lotteryHost")
-  lotteriesWon  Lottery[]          @relation("lotteryWinner")
-  lotteryTickets LotteryTicket[]
-  eventsCreated Event[]
-  eventsJoined  EventParticipant[]
-  notifications Notification[]
-  base          Base?
-  units         UnitStack[]
-  trainOrders   TrainOrder[]
-  battles       Battle[]
-  bossHits      BossHit[]
-  gear          Gear[]
-  research      Research[]
-  powers        PowerState[]
-  quests        QuestProgress[]
-  outposts      Outpost[]
-  lobbies       LobbyPlayer[]
-  towers        Tower[]
-  squads        Squad[]
-  pings         Ping[]
-  superstrikes  Superstrike[]
-  flags         Flag[]
-  noteReactions NoteReaction[]
-  bountiesOn    Bounty[]           @relation("bountyTarget")
-  bountiesPosted Bounty[]          @relation("bountyPoster")
-  goalClaims    GoalClaim[]
-  purchases     Purchase[]
-  adViews       AdView[]
-  gpsGames      GpsGame[]
-  pushSubs      PushSub[]
-  callsOut      Call[]             @relation("caller")
-  callsIn       Call[]             @relation("callee")
-  shop          Shop?
-  shopOrders    ShopOrder[]        @relation("shopBuyer")
+  // Steps walked, ever (the per-day breakdown is in StepDay).
+  stepsTotal Int @default(0)
+
+  inventory       InventoryItem[]
+  claims          Claim[]
+  runs            MissionRun[]
+  achievements    UserAchievement[]
+  sentFriends     Friendship[]       @relation("requester")
+  recvFriends     Friendship[]       @relation("addressee")
+  messages        Message[]
+  geoNotes        GeoNote[]
+  deliveriesOut   Delivery[]         @relation("sender")
+  deliveriesIn    Delivery[]         @relation("courier")
+  ridesTaken      Ride[]             @relation("rider")
+  ridesDriven     Ride[]             @relation("driver")
+  lotteriesHosted Lottery[]          @relation("lotteryHost")
+  lotteriesWon    Lottery[]          @relation("lotteryWinner")
+  lotteryTickets  LotteryTicket[]
+  eventsCreated   Event[]
+  eventsJoined    EventParticipant[]
+  notifications   Notification[]
+  base            Base?
+  units           UnitStack[]
+  trainOrders     TrainOrder[]
+  battles         Battle[]
+  bossHits        BossHit[]
+  gear            Gear[]
+  research        Research[]
+  powers          PowerState[]
+  quests          QuestProgress[]
+  outposts        Outpost[]
+  lobbies         LobbyPlayer[]
+  towers          Tower[]
+  squads          Squad[]
+  pings           Ping[]
+  superstrikes    Superstrike[]
+  flags           Flag[]
+  noteReactions   NoteReaction[]
+  bountiesOn      Bounty[]           @relation("bountyTarget")
+  bountiesPosted  Bounty[]           @relation("bountyPoster")
+  goalClaims      GoalClaim[]
+  purchases       Purchase[]
+  adViews         AdView[]
+  gpsGames        GpsGame[]
+  pushSubs        PushSub[]
+  callsOut        Call[]             @relation("caller")
+  callsIn         Call[]             @relation("callee")
+  shop            Shop?
+  shopOrders      ShopOrder[]        @relation("shopBuyer")
+  empire          Empire?
+  stepDays        StepDay[]
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -131,17 +136,17 @@ model User {
 
 // In-app notifications, delivered to clients by polling /api/sync.
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  kind      String   @default("info")
+  kind      String    @default("info")
   // What the game should do with it, independent of the (translated) text:
   // "incoming" (siren), "levelup" (celebration), "hurt".
   tag       String?
   title     String
   body      String?
   readAt    DateTime? // seen in the inbox
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
@@ -247,26 +252,26 @@ model GeoNote {
 
 // Real-world package transfer requested by a player, fulfilled by a courier.
 model Delivery {
-  id            String    @id @default(cuid())
-  senderId      String
-  courierId     String?
-  title         String
-  description   String
-  pickupLabel   String
-  pickupLat     Float
-  pickupLng     Float
-  dropoffLabel  String
-  dropoffLat    Float
-  dropoffLng    Float
-  reward        Int // coins held in escrow from the sender
-  dropoffCode   String // sender gives this to the recipient; courier enters it on handover
-  status        String    @default("OPEN") // OPEN | ACCEPTED | PICKED_UP | DELIVERED | CANCELLED
-  createdAt     DateTime  @default(now())
-  acceptedAt    DateTime?
-  pickedUpAt    DateTime?
-  deliveredAt   DateTime?
-  sender        User      @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
-  courier       User?     @relation("courier", fields: [courierId], references: [id])
+  id           String    @id @default(cuid())
+  senderId     String
+  courierId    String?
+  title        String
+  description  String
+  pickupLabel  String
+  pickupLat    Float
+  pickupLng    Float
+  dropoffLabel String
+  dropoffLat   Float
+  dropoffLng   Float
+  reward       Int // coins held in escrow from the sender
+  dropoffCode  String // sender gives this to the recipient; courier enters it on handover
+  status       String    @default("OPEN") // OPEN | ACCEPTED | PICKED_UP | DELIVERED | CANCELLED
+  createdAt    DateTime  @default(now())
+  acceptedAt   DateTime?
+  pickedUpAt   DateTime?
+  deliveredAt  DateTime?
+  sender       User      @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  courier      User?     @relation("courier", fields: [courierId], references: [id])
 
   @@index([status, pickupLat, pickupLng])
 }
@@ -325,12 +330,12 @@ model Lottery {
 }
 
 model LotteryTicket {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   lotteryId String
   userId    String
-  qty       Int      @default(0)
-  lottery   Lottery  @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qty       Int     @default(0)
+  lottery   Lottery @relation(fields: [lotteryId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([lotteryId, userId])
   @@index([userId])
@@ -461,20 +466,20 @@ model TrainOrder {
 
 // Auto-resolved fights (sieges, derrick raids, boss bombardments) and finished FPS matches.
 model Battle {
-  id         String   @id @default(cuid())
-  attackerId String
-  kind       String // siege | derrick | boss | breach | raid
-  targetId   String
-  targetName String
-  won        Boolean
-  loot       Int      @default(0)
-  stars      Int      @default(0)
-  destruction Int     @default(0)
-  trophies   Int      @default(0) // attacker's trophy change
-  defenderId String?
-  log        Json
-  createdAt  DateTime @default(now())
-  attacker   User     @relation(fields: [attackerId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  attackerId  String
+  kind        String // siege | derrick | boss | breach | raid
+  targetId    String
+  targetName  String
+  won         Boolean
+  loot        Int      @default(0)
+  stars       Int      @default(0)
+  destruction Int      @default(0)
+  trophies    Int      @default(0) // attacker's trophy change
+  defenderId  String?
+  log         Json
+  createdAt   DateTime @default(now())
+  attacker    User     @relation(fields: [attackerId], references: [id], onDelete: Cascade)
 
   @@index([attackerId, createdAt])
   @@index([targetId, createdAt])
@@ -502,26 +507,26 @@ model Match {
 }
 
 model MatchPlayer {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   matchId    String
   key        String // userId, or "bot:N" / "boss"
   userId     String?
   team       String // A | D
   name       String
-  x          Float    @default(0)
-  z          Float    @default(0)
-  yaw        Float    @default(0)
-  hp         Int      @default(100)
-  maxHp      Int      @default(100)
-  weapon     String   @default("ar") // from the hero's equipped weapon
-  dmgMult    Float    @default(1)
-  headBonus  Float    @default(0)
-  speedMult  Float    @default(1)
-  kills      Int      @default(0)
-  damage     Int      @default(0)
+  x          Float     @default(0)
+  z          Float     @default(0)
+  yaw        Float     @default(0)
+  hp         Int       @default(100)
+  maxHp      Int       @default(100)
+  weapon     String    @default("ar") // from the hero's equipped weapon
+  dmgMult    Float     @default(1)
+  headBonus  Float     @default(0)
+  speedMult  Float     @default(1)
+  kills      Int       @default(0)
+  damage     Int       @default(0)
   lastShotAt DateTime?
-  updatedAt  DateTime @default(now())
-  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  updatedAt  DateTime  @default(now())
+  match      Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([matchId, key])
 }
@@ -882,14 +887,14 @@ model GpsGame {
 // Web Push subscriptions (one per browser/device). Notifications are pushed when the
 // player isn't in the app; dead subscriptions (404/410 from the push service) are removed.
 model PushSub {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  endpoint  String   @unique
+  endpoint  String    @unique
   p256dh    String
   auth      String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   lastPush  DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -1030,4 +1035,41 @@ model ShopOrder {
   @@index([shopId, status])
   @@index([buyerId, status])
   @@index([status, createdAt])
+}
+
+// Street Empire (the idle tycoon). The economy is settled from this snapshot + tickAt
+// on every request (lib/idle.ts), so nothing runs in the background.
+model Empire {
+  userId      String    @id
+  cash        Float     @default(5)
+  run         Float     @default(0) // earned since the last fame reset
+  total       Float     @default(0) // earned ever
+  fame        Int       @default(0)
+  biz         Json // { [business]: { n, mgr?, at? } }
+  upg         String[]  @default([])
+  boostUntil  DateTime  @default(now())
+  tickAt      DateTime  @default(now())
+  stepsSpent  Int       @default(0) // on Step Rush
+  rushDay     String? // YYYY-MM-DD of the last rush (player's own day)
+  rushes      Int       @default(0) // rushes that day
+  rankClaimed Int       @default(0)
+  dividendAt  DateTime?
+  prestiges   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Steps per player per day (their own timezone). The phone's motion sensor counts
+// while the game is open; GPS distance on foot fills in when it can't.
+model StepDay {
+  id       String    @id @default(cuid())
+  userId   String
+  day      String // YYYY-MM-DD
+  motion   Int       @default(0)
+  gps      Int       @default(0)
+  motionAt DateTime? // last sensor report (GPS estimates pause while the sensor counts)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([day])
 }

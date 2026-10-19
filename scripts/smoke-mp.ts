@@ -3,7 +3,6 @@
 // time and give the test players resources.  `npx tsx scripts/smoke-mp.ts`
 import { prisma } from "../src/lib/db";
 import { offset } from "../src/lib/geo";
-import { defuseScore } from "../src/lib/minigames";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 type Client = { cookie: string; id?: string; name?: string };
@@ -40,60 +39,36 @@ for (const c of [A, B]) {
 }
 check("two guest players", !!A.id && !!B.id && A.id !== B.id);
 
-// ---------------------------------------------------------------- lobbies: arcade duel
+// ---------------------------------------------------------------- spawns: power cell + chest
 await go(A, home);
 let w = (await call(A, `/api/world?lat=${home.lat}&lng=${home.lng}`)).data;
 const find = (k: string) => (w.spawns as { id: string; kind: string; lat: number; lng: number; run?: { target: { lat: number; lng: number } } }[]).find((s) => s.kind === k);
-let arcade = find("arcade");
-for (let i = 0; !arcade && i < 6; i++) {
+let cell = find("arcade");
+for (let i = 0; !cell && i < 6; i++) {
   const p = offset(home, 1200 * (i + 1), 90);
   await go(A, p);
   w = (await call(A, `/api/world?lat=${p.lat}&lng=${p.lng}`)).data;
-  arcade = find("arcade");
+  cell = find("arcade");
 }
-check("found an arcade spawn", !!arcade);
-if (arcade) {
-  await go(A, arcade);
-  await go(B, arcade);
-  check("plain claim of arcade is refused", (await call(A, "/api/claim", { spawnId: arcade.id })).status === 400);
-  const la = await call(A, "/api/lobby", { action: "open", spawnId: arcade.id });
-  check("A opens a range lobby", la.status === 200 && la.data.lobby.kind === "range", la.data);
-  const lb = await call(B, "/api/lobby", { action: "open", spawnId: arcade.id });
-  check("B joins the same lobby", lb.data.lobby?.id === la.data.lobby.id && lb.data.lobby.players.length === 2, lb.data);
-  const notes = (await call(B, `/api/sync?since=${Date.now() - 20_000}`)).data.notifications as { title: string }[];
-  check("B was pinged about the nearby lobby", notes.some((n) => n.title.includes("opened a Shooting Range")), notes);
-  check("only host can start", (await call(B, "/api/lobby", { action: "start", lobbyId: la.data.lobby.id })).status === 403);
-  const st = await call(A, "/api/lobby", { action: "start", lobbyId: la.data.lobby.id });
-  check("host starts → LIVE", st.data.lobby.status === "LIVE", st.data);
-  check("early score rejected", (await call(A, "/api/lobby", { action: "score", lobbyId: la.data.lobby.id, score: 50 })).status === 400);
-  await sleep(3600);
-  await call(A, "/api/lobby", { action: "score", lobbyId: la.data.lobby.id, score: 220 });
-  const fin = await call(B, "/api/lobby", { action: "score", lobbyId: la.data.lobby.id, score: 999_999 });
-  const pl = fin.data.lobby?.players as { userId: string; place: number; score: number }[];
-  check("lobby ends when everyone scored", fin.data.lobby?.status === "ENDED", fin.data);
-  check("forged score is capped and ranked", pl?.find((p) => p.userId === B.id)!.score < 999_999 && pl.every((p) => p.place >= 1), pl);
-  check("can't replay the arcade", (await call(A, "/api/lobby", { action: "open", spawnId: arcade.id })).status === 409);
+check("found a power cell", !!cell);
+if (cell) {
+  await go(A, cell);
+  const r = await call(A, "/api/claim", { spawnId: cell.id });
+  check("grabbing a power cell boosts the empire", r.status === 200 && r.data.boost === true, r.data);
+  const e = (await call(A, "/api/empire")).data;
+  check("empire boost is on", e.state.boostUntil > Date.now(), e.state);
+  check("can't grab it twice", (await call(A, "/api/claim", { spawnId: cell.id })).status === 409);
 }
-
-// ---------------------------------------------------------------- chest: solo defuse
-let chest = find("chest");
+const chest = find("chest");
 if (chest) {
-  // B hosts this one: hosting new lobbies is rate-limited per player.
   await go(B, chest);
-  check("hosting lobbies is rate-limited", (await call(A, "/api/lobby", { action: "open", spawnId: chest.id })).status === 429 || true);
-  await prisma.lobby.deleteMany({ where: { spawnId: chest.id } });
-  const l = await call(B, "/api/lobby", { action: "open", spawnId: chest.id });
-  await call(B, "/api/lobby", { action: "start", lobbyId: l.data.lobby.id });
-  await sleep(3600);
-  const r = await call(B, "/api/lobby", { action: "score", lobbyId: l.data.lobby.id, score: defuseScore(3, 12_000) });
-  const me = (r.data.lobby.players as { userId: string; reward: string }[]).find((p) => p.userId === B.id)!;
-  check("solo bomb defuse pays loot", r.data.lobby.status === "ENDED" && /Flawless/.test(me.reward ?? ""), r.data);
+  const r = await call(B, "/api/claim", { spawnId: chest.id });
+  check("a chest opens straight away", r.status === 200 && r.data.chest === true, r.data);
 }
 
 // ---------------------------------------------------------------- squad run (race)
 const run = find("run");
 if (run) {
-  await sleep(15_000); // A's lobby-hosting cooldown
   await go(A, run);
   await go(B, run);
   const l = await call(A, "/api/lobby", { action: "open", spawnId: run.id, mode: "race" });

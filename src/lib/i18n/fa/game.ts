@@ -92,7 +92,6 @@ const game: Record<string, string> = {
   "Not now": "الان نه",
   "🔔 Notifications on": "🔔 اعلان‌ها روشن شد",
   "Turn on": "روشن کن",
-  "💣 Wire the C4": "💣 سیم‌کشی بمب",
   Abort: "لغو",
 
   // ---- map card: common
@@ -106,25 +105,16 @@ const game: Record<string, string> = {
   "March a squad": "اعزام جوخه",
 
   // ---- map card: spawns & missions
-  "Locked Chest": "صندوق قفل‌شده",
-  "Arcade Machine": "دستگاه آرکید",
   "Oil Derrick": "دکل نفت",
   "Neutral militia (strength {n}) guards this derrick. Lead your army here in person and take it: +{coins} 🪙.":
     "شبه‌نظامی‌های بی‌طرف (قدرت {n}) از این دکل محافظت می‌کنن. خودت ارتشت رو بیار اینجا و تصرفش کن: +{coins} 🪙.",
   "Target is {d} away — you have {n} min.": "هدف {d} اون‌طرف‌تره — {n} دقیقه وقت داری.",
-  "A booby-trapped supply crate (maybe {emoji} inside). Defuse the bomb — flawless = double loot. Nearby players can join and race you for a winner's bonus.":
-    "یه جعبهٔ تدارکات تله‌گذاری‌شده (شاید توش {emoji} باشه). بمب رو خنثی کن — بی‌نقص یعنی غنیمت دو برابر. بازیکن‌های نزدیک هم می‌تونن بیان و سر جایزهٔ برنده باهات رقابت کنن.",
-  "Shooting Range: 20 seconds, hostiles in the windows, spare the civilians. Players nearby can join — highest score takes the pot.":
-    "میدان تیر: ۲۰ ثانیه، دشمن‌ها پشت پنجره‌ها، به غیرنظامی‌ها شلیک نکن. بازیکن‌های نزدیک هم می‌تونن بیان — بیشترین امتیاز کل جایزه رو می‌بره.",
   "+{n} XP": "+{n} تجربه",
   "✨ golden hour 2×": "✨ ساعت طلایی، دو برابر",
   "despawns in {n} min": "{n} دقیقه تا ناپدید شدن",
   "Already collected": "قبلاً برداشتی",
   "🎖️ Attack with your army": "🎖️ حمله با ارتش",
   "Join a faction first (Base tab)": "اول به یه جناح بپیوند (بخش پایگاه)",
-  "👥 Join {n, plural, one {# player} other {# players}} — {s}s": "👥 پیوستن به {n} بازیکن — {s} ثانیه",
-  "💣 Defuse it": "💣 خنثی‌اش کن",
-  "🎯 Play": "🎯 بزن بریم",
   "Finish your current run first": "اول مأموریت فعلیت رو تموم کن",
   "👥 Join the co-op run ({n})": "👥 پیوستن به مأموریت گروهی ({n})",
   "👥 Join the race ({n})": "👥 پیوستن به مسابقه ({n})",

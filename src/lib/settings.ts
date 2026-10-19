@@ -106,6 +106,7 @@ const DEFAULTS = {
     { key: "w_boss", title: msg("Operation Titanfall"), emoji: "🐉", metric: "boss_dmg", target: 250000, reward: { xp: 600, coins: 400, gems: 15 } },
     { key: "w_walk", title: msg("Operation Long March"), emoji: "🥾", metric: "walk_m", target: 2_000_000, reward: { xp: 500, coins: 300, gems: 10 } },
     { key: "w_raiders", title: msg("Operation Iron Wall"), emoji: "🛡️", metric: "raiders", target: 20000, reward: { xp: 500, coins: 300, gems: 10 } },
+    { key: "w_steps", title: msg("Operation Ten Million Steps"), emoji: "👟", metric: "steps", target: 10_000_000, reward: { xp: 500, coins: 300, gems: 10 } },
   ] as GoalDef[],
   factionGoals: [
     { key: "f_outpost", title: msg("Hold the Line"), emoji: "🚩", metric: "outpost", target: 60, reward: { xp: 300, coins: 250, gems: 5 } },
@@ -114,6 +115,8 @@ const DEFAULTS = {
     { key: "f_collect", title: msg("Supply Run"), emoji: "📦", metric: "collect", target: 1500, reward: { xp: 300, coins: 200, gems: 5 } },
   ] as GoalDef[],
   personalGoals: [
+    { key: "p_steps", title: msg("Step Master"), emoji: "👟", metric: "steps", tiers: [10_000, 50_000, 200_000, 500_000, 1_000_000], reward: { xp: 200, coins: 150, gems: 4 } },
+    { key: "p_empire", title: msg("Tycoon"), emoji: "🏦", metric: "empire_rank", tiers: [1, 3, 5, 8, 12], reward: { xp: 200, coins: 150, gems: 4 } },
     { key: "p_walk", title: msg("Road Warrior"), emoji: "🥾", metric: "walk_m", tiers: [1000, 5000, 20000, 50000, 100000], reward: { xp: 150, coins: 100, gems: 3 } },
     { key: "p_collect", title: msg("Scavenger"), emoji: "🎒", metric: "collect", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 80, gems: 2 } },
     { key: "p_siege", title: msg("Conqueror"), emoji: "⚔️", metric: "siege_win", tiers: [1, 5, 20, 50, 100], reward: { xp: 200, coins: 150, gems: 3 } },
@@ -175,7 +178,7 @@ export type SettingDef = { key: SettingKey; group: string; label: string; help: 
 
 /** What the admin panel shows, grouped. Every key in DEFAULTS appears once. */
 export const SETTING_DEFS: SettingDef[] = [
-  { key: "interactRadius", group: msg("Players & map"), label: msg("Player reach (m)"), help: msg("How close a player must be to collect, start runs, play arcades and finish missions."), min: 10, max: 500 },
+  { key: "interactRadius", group: msg("Players & map"), label: msg("Player reach (m)"), help: msg("How close a player must be to collect, start runs, open chests and finish missions."), min: 10, max: 500 },
   { key: "claimSlack", group: msg("Players & map"), label: msg("GPS slack (m)"), help: msg("Extra metres the server forgives on top of the reach, to absorb GPS error."), min: 0, max: 200 },
   { key: "spawnMin", group: msg("Players & map"), label: msg("Spawns per area (min)"), help: msg("Fewest spawns in each ~450 m map cell per 20-minute window."), min: 0, max: 20 },
   { key: "spawnMax", group: msg("Players & map"), label: msg("Spawns per area (max)"), help: msg("Most spawns in each map cell per window."), min: 1, max: 30 },
@@ -339,8 +342,10 @@ export const GOAL_METRICS: Record<string, string> = {
   boss_dmg: msg("Boss damage"),
   outpost: msg("Outposts captured"),
   run: msg("Timed runs finished"),
-  arcade: msg("Mini-games played"),
-  duel_win: msg("Mini-games won"),
+  arcade: msg("Power cells grabbed"),
+  duel_win: msg("Street races won"),
+  steps: msg("Steps walked"),
+  empire_rank: msg("Empire ranks reached"),
   raiders: msg("Raiders killed"),
   tower: msg("Towers built/upgraded"),
   tower_down: msg("Enemy towers destroyed"),

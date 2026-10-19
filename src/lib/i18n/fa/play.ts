@@ -19,7 +19,6 @@ const play: Record<string, string> = {
   "{n} steps · about {m} min · walk it, the waypoints appear around you": "{n} مرحله · حدود {m} دقیقه · راه بیفت، نقطه‌ها دور و برت ظاهر می‌شن",
   "▶ Start chapter": "▶ شروع فصل",
   Chapters: "فصل‌ها",
-  "Real-world mini-games around wherever you are. You've walked {d} so far.": "مینی‌گیم‌های دنیای واقعی، هر جا که باشی. تا حالا {d} پیاده‌روی کردی.",
   "{n} min": "{n} دقیقه",
   "{n, plural, one {# checkpoint} other {# checkpoints}}": "{n} ایست‌بازرسی",
   "{min}–{max} m away": "{min} تا {max} متر دورتر",

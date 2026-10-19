@@ -1,26 +1,21 @@
-// Multiplayer lobbies at shared spawns. Arcades (Shooting Range) and chests (Bomb
-// Defuse) are played head-to-head on the same seed; runs become squad races or
-// co-op runs. State advances lazily whenever a member polls (no background jobs).
+// Squad-run lobbies at run spawns: a race or a co-op run, started together. State
+// advances lazily whenever a member polls (no background jobs).
 import type { Lobby, LobbyPlayer, User } from "@prisma/client";
 import { prisma } from "../lib/db";
 import { distanceM } from "../lib/geo";
-import { COUNTDOWN_MS, DEFUSE_MAX, defuseRoundsOf, LOBBY_INFO, LOBBY_MAX_PLAYERS, rangeMaxScore, type LobbyKind } from "../lib/minigames";
+import { COUNTDOWN_MS, isLobbyKind, LOBBY_INFO, LOBBY_MAX_PLAYERS, type LobbyKind } from "../lib/lobbies";
 import { INTERACT_RADIUS_M, resolveSpawn, type Spawn } from "../lib/spawns";
 import { S } from "../lib/settings";
-import { maybeGear } from "./hero";
 import { HttpError } from "./http";
 import { asUser, notify, onlineSince } from "./hub";
-import { msg, t } from "../lib/i18n";
-import { bumpNeeds } from "./needs";
+import { t } from "../lib/i18n";
 import { questEvent } from "./quests";
-import { checkClaimAchievements, grant, itemLabel, lastKnownLocation, track, unlock } from "./rewards";
+import { lastKnownLocation, unlock } from "./rewards";
 import { assertNotDowned } from "./td";
 
-const GRACE_MS = 8_000; // slow phones still get their score in
 type Full = Lobby & { players: LobbyPlayer[] };
 
-const kindFor = (s: Spawn, mode?: "race" | "coop"): LobbyKind | null => (s.kind === "arcade" ? "range" : s.kind === "chest" ? "defuse" : s.kind === "run" ? (mode ?? "race") : null);
-const isRun = (k: string) => k === "race" || k === "coop";
+const kindFor = (s: Spawn, mode?: "race" | "coop"): LobbyKind | null => (s.kind === "run" ? (mode ?? "race") : null);
 
 export async function loadLobby(id: string) {
   return prisma.lobby.findUnique({ where: { id }, include: { players: { orderBy: { joinedAt: "asc" } } } });
@@ -36,7 +31,7 @@ export async function openOrJoin(u: User, spawnId: string, mode?: "race" | "coop
   const here = await lastKnownLocation(u.id);
   if (distanceM(here, s) > INTERACT_RADIUS_M + S.claimSlack) throw new HttpError(400, t("Get within {m} m to join", { m: INTERACT_RADIUS_M }));
   if (await prisma.claim.findUnique({ where: { userId_spawnId: { userId: u.id, spawnId } } })) throw new HttpError(409, t("You already did this one"));
-  if (isRun(kind) && (await prisma.missionRun.findFirst({ where: { userId: u.id, status: "ACTIVE" } }))) throw new HttpError(400, t("Finish or abandon your current run first"));
+  if (await prisma.missionRun.findFirst({ where: { userId: u.id, status: "ACTIVE" } })) throw new HttpError(400, t("Finish or abandon your current run first"));
 
   // Already in a lobby here that hasn't finished? Just rejoin it.
   const mine = await prisma.lobbyPlayer.findFirst({ where: { userId: u.id, lobby: { spawnId, status: { in: ["OPEN", "LIVE"] } } } });
@@ -72,7 +67,7 @@ export async function openOrJoin(u: User, spawnId: string, mode?: "race" | "coop
     take: 30,
   });
   for (const n of near)
-    await notify(n.id, () => ({ kind: "event", title: t("{emoji} {name} opened a {game} nearby", { emoji: info.emoji, name: u.username, game: t(info.name) }), body: t("Tap the {icon} on the map within {s}s to join", { icon: s.kind === "run" ? "🏁" : s.kind === "chest" ? "🧰" : "🕹️", s: Math.round(info.openMs / 1000) }) }));
+    await notify(n.id, () => ({ kind: "event", title: t("{emoji} {name} opened a {game} nearby", { emoji: info.emoji, name: u.username, game: t(info.name) }), body: t("Tap the {icon} on the map within {s}s to join", { icon: "🏁", s: Math.round(info.openMs / 1000) }) }));
   return lobby.id;
 }
 
@@ -89,101 +84,35 @@ export async function leave(u: User, lobbyId: string) {
 export async function start(l: Full) {
   const info = LOBBY_INFO[l.kind as LobbyKind];
   const startsAt = new Date(Date.now() + COUNTDOWN_MS);
-  if (isRun(l.kind)) {
-    const s = resolveSpawn(l.spawnId);
-    if (!s?.run) {
-      await prisma.lobby.updateMany({ where: { id: l.id, status: "OPEN" }, data: { status: "ENDED" } });
-      return;
-    }
-    const deadline = new Date(startsAt.getTime() + s.run.timeLimitS * 1000);
-    const ok = await prisma.lobby.updateMany({ where: { id: l.id, status: "OPEN" }, data: { status: "LIVE", startsAt, endsAt: deadline } });
-    if (!ok.count) return;
-    for (const p of l.players) {
-      if (await prisma.missionRun.findFirst({ where: { userId: p.userId, status: "ACTIVE" } })) continue;
-      const claimed = await prisma.claim.create({ data: { userId: p.userId, spawnId: s.id, kind: "run", cell: s.cell } }).catch(() => null);
-      if (!claimed) continue;
-      await prisma.missionRun.create({
-        data: { userId: p.userId, spawnId: s.id, lobbyId: l.id, title: `${info.emoji} ${s.run.title}`, targetLat: s.run.target.lat, targetLng: s.run.target.lng, deadline, rewardXp: s.rewardXp, rewardCoins: s.rewardCoins },
-      });
-    }
+  const s = resolveSpawn(l.spawnId);
+  if (!s?.run) {
+    await prisma.lobby.updateMany({ where: { id: l.id, status: "OPEN" }, data: { status: "ENDED" } });
     return;
   }
-  await prisma.lobby.updateMany({ where: { id: l.id, status: "OPEN" }, data: { status: "LIVE", startsAt, endsAt: new Date(startsAt.getTime() + info.playMs + GRACE_MS) } });
+  const deadline = new Date(startsAt.getTime() + s.run.timeLimitS * 1000);
+  const ok = await prisma.lobby.updateMany({ where: { id: l.id, status: "OPEN" }, data: { status: "LIVE", startsAt, endsAt: deadline } });
+  if (!ok.count) return;
+  for (const p of l.players) {
+    if (await prisma.missionRun.findFirst({ where: { userId: p.userId, status: "ACTIVE" } })) continue;
+    const claimed = await prisma.claim.create({ data: { userId: p.userId, spawnId: s.id, kind: "run", cell: s.cell } }).catch(() => null);
+    if (!claimed) continue;
+    await prisma.missionRun.create({
+      data: { userId: p.userId, spawnId: s.id, lobbyId: l.id, title: `${info.emoji} ${s.run.title}`, targetLat: s.run.target.lat, targetLng: s.run.target.lng, deadline, rewardXp: s.rewardXp, rewardCoins: s.rewardCoins },
+    });
+  }
 }
 
 /** Advance a lobby's state machine. Safe to call from any request. */
 export async function tick(l: Full) {
   const now = Date.now();
-  if (l.status === "OPEN" && l.openUntil.getTime() <= now) await start(l);
-  else if (l.status === "LIVE" && l.endsAt && !isRun(l.kind) && (l.endsAt.getTime() <= now || l.players.every((p) => p.score != null))) await finish(l);
-  else if (l.status === "LIVE" && isRun(l.kind) && l.endsAt) {
+  // Lobbies of the retired arcade/chest mini-games: close them.
+  if (!isLobbyKind(l.kind) && l.status !== "ENDED") await prisma.lobby.updateMany({ where: { id: l.id }, data: { status: "ENDED" } });
+  else if (l.status === "OPEN" && l.openUntil.getTime() <= now) await start(l);
+  else if (l.status === "LIVE" && l.endsAt) {
     const active = await prisma.missionRun.count({ where: { lobbyId: l.id, status: "ACTIVE" } });
     if (!active || l.endsAt.getTime() + 60_000 <= now) await prisma.lobby.updateMany({ where: { id: l.id, status: "LIVE" }, data: { status: "ENDED" } });
   }
   return (await loadLobby(l.id))!;
-}
-
-// ---------------------------------------------------------------- scores + payout
-export async function submitScore(u: User, l: Full, score: number) {
-  if (isRun(l.kind)) throw new HttpError(400, t("Runs finish at the target"));
-  if (l.status !== "LIVE" || !l.startsAt) throw new HttpError(400, t("The game isn't running"));
-  if (Date.now() < l.startsAt.getTime() - 500) throw new HttpError(400, t("Wait for the countdown"));
-  const cap = l.kind === "range" ? rangeMaxScore(l.seed) : DEFUSE_MAX;
-  const clean = Math.max(-500, Math.min(cap, Math.round(score)));
-  const res = await prisma.lobbyPlayer.updateMany({ where: { lobbyId: l.id, userId: u.id, score: null }, data: { score: clean, finishedAt: new Date() } });
-  if (!res.count) throw new HttpError(409, t("Score already in"));
-  return tick((await loadLobby(l.id))!);
-}
-
-async function finish(l: Full) {
-  const ok = await prisma.lobby.updateMany({ where: { id: l.id, status: "LIVE" }, data: { status: "ENDED" } });
-  if (!ok.count) return;
-  const s = resolveSpawn(l.spawnId) ?? null;
-  const ranked = l.players.filter((p) => p.score != null).sort((a, b) => b.score! - a.score! || a.finishedAt!.getTime() - b.finishedAt!.getTime());
-  const n = l.players.length;
-  for (const [i, p] of ranked.entries()) {
-    const place = i + 1;
-    // Each player's result line is written in their own language.
-    const reward = await asUser(p.userId, () => (s ? payMini(p.userId, s, l.kind as LobbyKind, p.score!, place, n) : t("The spawn expired")));
-    await prisma.lobbyPlayer.update({ where: { id: p.id }, data: { place, reward } });
-  }
-  for (const p of l.players.filter((x) => x.score == null)) await prisma.lobbyPlayer.update({ where: { id: p.id }, data: { reward: await asUser(p.userId, () => t("Didn't finish")) } });
-}
-
-async function payMini(userId: string, s: Spawn, kind: LobbyKind, score: number, place: number, players: number): Promise<string> {
-  const duel = players >= 2;
-  const won = duel && place === 1;
-  await questEvent(userId, "arcade");
-  if (duel) await bumpNeeds(userId, { fun: 15, social: 8 });
-  else await bumpNeeds(userId, { fun: 12 });
-
-  if (kind === "defuse") {
-    const rounds = defuseRoundsOf(score);
-    if (rounds < 1) return t("💥 BOOM — the crate stayed shut. Try again!");
-    if (!(await prisma.claim.create({ data: { userId, spawnId: s.id, kind: s.kind, cell: s.cell } }).catch(() => null))) return t("Already opened");
-    const items: Record<string, number> = s.item ? { [s.item.key]: 1 + (rounds >= 3 ? 1 : 0) } : {};
-    const coins = s.rewardCoins + (won ? 25 * (players - 1) : 0);
-    await grant(userId, { xp: s.rewardXp + (won ? 50 : 0), coins, items });
-    await questEvent(userId, "collect");
-    await questEvent(userId, "chest");
-    if (won) await questEvent(userId, "duel_win");
-    if (won) await unlock(userId, "duel_champ");
-    await maybeGear(userId, (rounds >= 3 ? 0.4 : 0.2) + (won ? 0.3 : 0), { source: msg("a supply crate") });
-    await checkClaimAchievements(userId, s.phase);
-    await track("claim", { userId });
-    return [`${rounds >= 3 ? `${t("Flawless!")} ` : ""}${Object.keys(items).map(itemLabel).join(t(", "))}`, t("+{n} 🪙", { n: coins }), won ? t("🏆 winner bonus") : ""].filter(Boolean).join(" · ");
-  }
-
-  // Shooting range
-  if (!(await prisma.claim.create({ data: { userId, spawnId: s.id, kind: s.kind, cell: s.cell } }).catch(() => null))) return t("Already played");
-  const coins = Math.max(0, Math.min(90, Math.round(score / 4))) + (won ? 20 * (players - 1) : 0);
-  await grant(userId, { xp: s.rewardXp + (won ? 50 : 0), coins });
-  await questEvent(userId, "collect");
-  if (won) await questEvent(userId, "duel_win");
-  if (won) await unlock(userId, "duel_champ");
-  await checkClaimAchievements(userId, s.phase);
-  await track("claim", { userId });
-  return `${t("+{n} 🪙", { n: coins })}${won ? ` · ${t("🏆 winner bonus")}` : ""}`;
 }
 
 /** Bonus multiplier for a squad run finisher. */
@@ -200,6 +129,10 @@ export async function runBonus(lobbyId: string, userId: string) {
   const place = (await prisma.missionRun.count({ where: { lobbyId, status: "DONE" } })) + 1;
   await prisma.lobbyPlayer.updateMany({ where: { lobbyId, userId }, data: { finishedAt: new Date(), place } });
   const mult = place === 1 ? 1.5 : place === 2 ? 1.25 : 1;
+  if (place === 1) {
+    await questEvent(userId, "duel_win");
+    await unlock(userId, "duel_champ");
+  }
   const medal = place === 1 ? "🥇" : place === 2 ? "🥈" : place === 3 ? "🥉" : `#${place}`;
   return { mult, label: mult > 1 ? t("{medal} place +{n}%", { medal, n: Math.round((mult - 1) * 100) }) : t("{medal} place", { medal }), place };
 }

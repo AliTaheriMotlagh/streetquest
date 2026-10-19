@@ -1,11 +1,10 @@
 "use client";
-// Multiplayer lobby at a spawn: waiting room → synced countdown → everyone plays the
-// same seeded round → live scoreboard → podium. Squad runs hand off to the run HUD.
+// Squad-run lobby at a run spawn: waiting room → synced start → the run banner and
+// squadmates on the map take over.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LOBBY_INFO } from "@/lib/minigames";
+import { isLobbyKind, LOBBY_INFO } from "@/lib/lobbies";
 import { fmtNum, t } from "@/lib/i18n";
 import { api, type LobbyView } from "./client";
-import { BombDefuse, ShootingRange } from "./MiniGames";
 import { useGame } from "./ui";
 import { sfx } from "./sfx";
 import { Button } from "@/components/Button";
@@ -17,7 +16,6 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
   const { me, toast, refresh } = useGame();
   const [l, setL] = useState<LobbyView | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
   const offset = useRef(0); // server clock − local clock
   const [, setTick] = useState(0);
 
@@ -49,7 +47,7 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
     };
   }, [id, status, take]);
 
-  const isRun = l?.kind === "race" || l?.kind === "coop";
+  const isRun = !!l && isLobbyKind(l.kind);
   // Squad run started: the run banner + squadmates on the map take over.
   useEffect(() => {
     if (isRun && status === "LIVE") {
@@ -65,15 +63,6 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
     }
   }, [isRun, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submit = useCallback(
-    (score: number) => {
-      if (!id) return;
-      setSubmitted(true);
-      api<Resp>("/api/lobby", { body: { action: "score", lobbyId: id, score } }).then(take).catch((e) => toast({ kind: "error", title: (e as Error).message }));
-    },
-    [id, take, toast],
-  );
-
   const leave = () => {
     if (id && status === "OPEN") api("/api/lobby", { body: { action: "leave", lobbyId: id } }).catch(() => {});
     onClose();
@@ -88,10 +77,10 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
       </Shell>
     );
   if (!l) return <Shell onClose={onClose}><div className="big-num">…</div></Shell>;
+  if (!isLobbyKind(l.kind)) return <Shell onClose={onClose}><p>{t("This game has ended.")}</p><Button className="btn ghost" onClick={onClose}>{t("OK")}</Button></Shell>;
 
   const info = LOBBY_INFO[l.kind];
   const now = Date.now() + offset.current;
-  const local = (serverMs: number) => serverMs - offset.current;
   const meP = l.players.find((p) => p.userId === me.id);
 
   if (l.status === "OPEN") {
@@ -130,20 +119,11 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
     );
   }
 
-  if (l.status === "LIVE" && !isRun && meP && meP.score == null && !submitted && l.startsAt) {
-    return (
-      <Shell wide>
-        {l.kind === "range" ? <ShootingRange seed={l.seed} startAt={local(l.startsAt)} onDone={submit} /> : <BombDefuse seed={l.seed} startAt={local(l.startsAt)} onDone={submit} />}
-        {l.players.length > 1 && <Scores l={l} meId={me.id} />}
-      </Shell>
-    );
-  }
-
   if (l.status === "LIVE") {
     return (
       <Shell>
-        <div style={{ fontSize: 40 }}>{isRun ? "🏃" : "⏳"}</div>
-        <h2>{isRun ? t("Starting…") : t("Waiting for the others")}</h2>
+        <div style={{ fontSize: 40 }}>🏃</div>
+        <h2>{t("Starting…")}</h2>
         <Scores l={l} meId={me.id} />
       </Shell>
     );
@@ -161,7 +141,7 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
             <span style={{ width: 26 }}>{p.place ? MEDAL[p.place - 1] ?? `#${fmtNum(p.place)}` : "—"}</span>
             <span>{p.avatar}</span>
             <b className="grow" style={{ textAlign: "start" }} dir="auto">{p.name}</b>
-            <span className="mono">{p.score != null ? fmtNum(p.score) : t("DNF")}</span>
+            <span className="mono">{p.place ? "" : t("DNF")}</span>
           </div>
         ))}
       </div>
@@ -174,21 +154,21 @@ export function LobbyModal({ open, onClose }: { open: { spawnId: string; mode?: 
 function Scores({ l, meId }: { l: LobbyView; meId: string }) {
   return (
     <div className="lobby-players compact">
-      {[...l.players].sort((a, b) => (b.score ?? -1e9) - (a.score ?? -1e9)).map((p) => (
+      {[...l.players].sort((a, b) => Number(b.finished) - Number(a.finished)).map((p) => (
         <div key={p.userId} className={`lobby-player ${p.userId === meId ? "me" : ""}`}>
           <span>{p.avatar}</span>
           <b className="grow" style={{ textAlign: "start" }} dir="auto">{p.name}</b>
-          <span className="mono">{p.score != null ? fmtNum(p.score) : p.finished ? "✓" : t("playing…")}</span>
+          <span className="mono">{p.finished ? "✓" : t("running…")}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function Shell({ children, onClose, wide }: { children: React.ReactNode; onClose?: () => void; wide?: boolean }) {
+function Shell({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
   return (
     <div className="modal-bg">
-      <div className="modal" style={wide ? { maxWidth: 420, padding: 14 } : undefined}>
+      <div className="modal">
         {onClose && <Button className="close" style={{ float: "inline-end" }} onClick={onClose} aria-label={t("Close")}>✕</Button>}
         {children}
       </div>

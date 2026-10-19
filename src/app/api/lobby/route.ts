@@ -1,9 +1,9 @@
-// Multiplayer mini-games and squad runs. Clients poll GET ~1×/s while in a lobby.
+// Squad-run lobbies (race / co-op). Clients poll GET ~1×/s while in a lobby.
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route, actionRoute } from "@/server/http";
-import { leave, loadLobby, openOrJoin, start, submitScore, tick } from "@/server/lobby";
+import { leave, loadLobby, openOrJoin, start, tick } from "@/server/lobby";
 import { t } from "@/lib/i18n";
 
 async function view(id: string, userId: string) {
@@ -59,7 +59,6 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("open"), spawnId: z.string().max(80), mode: z.enum(["race", "coop"]).optional() }),
   z.object({ action: z.literal("start"), lobbyId: z.string().max(40) }),
   z.object({ action: z.literal("leave"), lobbyId: z.string().max(40) }),
-  z.object({ action: z.literal("score"), lobbyId: z.string().max(40), score: z.number().finite() }),
 ]);
 
 export const POST = actionRoute(async (req) => {
@@ -76,11 +75,7 @@ export const POST = actionRoute(async (req) => {
     await leave(u, l.id);
     return { ok: true };
   }
-  if (d.action === "start") {
-    if (l.hostId !== u.id) throw new HttpError(403, t("Only the host can start early"));
-    if (l.status === "OPEN") await start(l);
-    return view(l.id, u.id);
-  }
-  await submitScore(u, l, d.score);
+  if (l.hostId !== u.id) throw new HttpError(403, t("Only the host can start early"));
+  if (l.status === "OPEN") await start(l);
   return view(l.id, u.id);
 });
