@@ -3,6 +3,7 @@ import L from "leaflet";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { RARITY_COLOR } from "@/lib/catalog";
+import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BUILDING_BY_KEY, FACTION_BY_KEY, SIEGE_RANGE_M, type BuildingKey } from "@/lib/rts";
@@ -46,6 +47,8 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
 const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#22e3ff" : t.friend ? "#3dff8f" : "#ff4d4d");
 
 type Props = {
+  /** fantasy: illustrated storybook map · dark: night-ops · classic: plain street map. */
+  look?: "fantasy" | "dark" | "classic";
   travelTo?: LatLng | null;
   game?: GpsView | null;
   runners?: LobbyView["players"];
@@ -76,7 +79,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, runners, strikeMode, game, travelTo }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, runners, strikeMode, game, travelTo, look = "fantasy" }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -87,7 +90,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
   const [tuning] = useState(() => ({ touch: isTouch(), lite: isLite() }));
 
   return (
-    <div className={`map ${DARKEN ? "darken" : ""} ${tint} ${picking || strikeMode ? "picking" : ""} ${strikeMode ? "striking" : ""}`}>
+    <div className={`map ${look === "dark" && DARKEN ? "darken" : ""} ${look === "fantasy" ? "fantasy" : ""} ${tint} ${picking || strikeMode ? "picking" : ""} ${strikeMode ? "striking" : ""}`}>
       <MapContainer
         preferCanvas
         center={[center.lat, center.lng]}
@@ -104,6 +107,14 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         <Clicks onClick={onMapClick} />
         <Layers world={world} me={me} runners={runners} game={game} travelTo={travelTo} onSelect={onSelect} onUnfollow={onUnfollow} />
       </MapContainer>
+      {look === "fantasy" && (
+        <div className="fantasy-fx" aria-hidden>
+          <i className="cloud c1" />
+          <i className="cloud c2" />
+          <i className="cloud c3" />
+          <span className="compass-rose" />
+        </div>
+      )}
     </div>
   );
 }
@@ -301,6 +312,44 @@ function Layers({
           eventHandlers={{ click: () => onSelect({ type: "lottery", data: l }) }}
         />
       ))}
+
+      {/* Jobs at real places: the burger delivery starts at the real burger joint. */}
+      {lod !== "far" &&
+        world?.places.filter((m) => inView(m.place) && (lod === "near" || !m.done)).map((m) => {
+          const cat = PLACE_CATS[m.place.cat] ?? PLACE_CATS.shop;
+          return (
+            <Marker
+              key={`pl${m.id}`}
+              position={[m.place.lat, m.place.lng]}
+              zIndexOffset={320}
+              icon={icon(
+                `<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(m.place.name)}</span><span class="job">${m.kind === "deliver" ? "📦" : "✅"}</span>`,
+                `place ${m.done ? "claimed" : ""}`,
+                40,
+              )}
+              eventHandlers={{ click: () => onSelect({ type: "place", data: m }) }}
+            />
+          );
+        })}
+
+      {/* Real businesses that joined: their own sign, gold when featured. */}
+      {world?.businesses.filter((b) => inView(b) && (lod !== "far" || b.featured || b.mine)).map((b) => {
+        const open = b.campaigns.filter((c) => !c.visited).length;
+        const best = b.campaigns.reduce((n, c) => Math.max(n, c.rewardCoins), 0);
+        return (
+          <Marker
+            key={`bz${b.id}`}
+            position={[b.lat, b.lng]}
+            zIndexOffset={b.featured ? 700 : 360}
+            icon={icon(
+              `<span class="ring" style="color:${b.featured ? "#ffd23f" : b.mine ? "#22e3ff" : "#ff7ad9"}"></span>${esc(b.emoji)}<span class="nm">${esc(b.name)}</span>${open && !b.mine ? `<span class="deal">+${fmtNum(best)} 🪙</span>` : ""}${b.verified ? '<span class="shield">✔</span>' : ""}`,
+              `biz ${b.featured ? "featured" : ""} ${open ? "" : "claimed"}`,
+              b.featured ? 50 : 42,
+            )}
+            eventHandlers={{ click: () => onSelect({ type: "biz", data: b }) }}
+          />
+        );
+      })}
 
       {/* Player shops: street and neighbourhood level; zoomed out, only your own. */}
       {world?.shops.filter((s) => inView(s) && (lod !== "far" || s.mine)).map((s) => (

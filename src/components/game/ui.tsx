@@ -5,7 +5,7 @@ import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
 import type { LatLng, Me, World } from "./client";
 
 export type Toast = { id?: number; title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error"; tag?: string | null };
-export type PanelId = "nearby" | "base" | "jobs" | "market" | "crew" | "events" | "me" | "play" | "store" | "inbox";
+export type PanelId = "nearby" | "base" | "jobs" | "market" | "crew" | "events" | "me" | "play" | "store" | "inbox" | "social" | "biz";
 
 export type GameCtx = {
   me: Me;
@@ -32,6 +32,10 @@ export type GameCtx = {
   startTour: () => void;
   /** Drop into a first-person fight. */
   enterMatch: (matchId: string) => void;
+  /** Get in the car: the 3D city, optionally heading for a spot. Null when it can't open. */
+  drive: ((to?: LatLng) => void) | null;
+  /** A player's profile in the social feed. */
+  openProfile: (userId: string) => void;
 };
 
 export const Ctx = createContext<GameCtx | null>(null);

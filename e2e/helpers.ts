@@ -93,3 +93,25 @@ export function expectOk(r: Res) {
   if (r.status !== 200) throw new Error(`expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
   return r;
 }
+
+// ---------------------------------------------------------------- real places
+const CELL = 0.004; // lib/geo CELL_DEG
+export type TestPlace = { id: string; name: string; cat: string; lat: number; lng: number };
+
+/**
+ * Upload a map tile (as an admin) for the cell around `at`, with named places spread over
+ * it: half cafés, half groceries, so there are visit jobs and deliveries between them.
+ */
+export async function uploadPlaces(admin: Player, at: LatLng, n = 24) {
+  const cx = Math.floor(at.lng / CELL), cy = Math.floor(at.lat / CELL);
+  const tag = Math.random().toString(36).slice(2, 7);
+  const places: TestPlace[] = Array.from({ length: n }, (_, i) => ({
+    id: `n${tag}${i}`,
+    name: `${i % 2 ? "Corner Grocery" : "Test Café"} ${tag}-${i}`,
+    cat: i % 2 ? "grocery" : "cafe",
+    lat: cy * CELL + (0.05 + 0.9 * ((i * 7) % n) / n) * CELL,
+    lng: cx * CELL + (0.05 + 0.9 * ((i * 11) % n) / n) * CELL,
+  }));
+  expectOk(await admin.post("/api/city", { tile: { cx, cy, b: [], r: [{ l: [0, 0, 4000, 4000], w: 8, k: "minor" }], a: [], p: places } }));
+  return { cx, cy, places };
+}

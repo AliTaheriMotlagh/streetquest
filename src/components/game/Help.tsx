@@ -9,6 +9,24 @@ import { Button } from "@/components/Button";
 // ---------------------------------------------------------------- per-panel help
 // English text is the translation key (msg marks it; t() translates it where it's shown).
 export const HELP: Record<string, { title: string; tips: [string, string][] }> = {
+  social: {
+    title: msg("Social"),
+    tips: [
+      ["🏠", msg("Your feed: posts from the players you follow. Nearby shows what people are posting around you; Trending, the city's favourites.")],
+      ["📍", msg("Check in to tag the real café, shop or park you're at. Deliveries and store visits post themselves — at most one every 20 minutes.")],
+      ["❤️", msg("Like, comment and follow. Players who follow each other can message and call each other.")],
+      ["🚩", msg("Use ⋯ to report a post; reported posts are hidden until a moderator looks at them.")],
+    ],
+  },
+  biz: {
+    title: msg("Business center"),
+    tips: [
+      ["🏪", msg("Own a real store, café or restaurant? Claim it from inside the store and it shows on the map with its real name.")],
+      ["🎯", msg("Post missions: players check in at your door (a verified visit). Coupon missions give them a code to show at your till.")],
+      ["🎟️", msg("Type the player's code in “Redeem a coupon” when they pay — that's a sale the game brought you, and they get a bonus.")],
+      ["📈", msg("Watch visits, redemptions and repeat customers. Paid plans add more missions, coupons, a 3D billboard and pushes to people nearby.")],
+    ],
+  },
   nearby: {
     title: msg("Nearby"),
     tips: [
@@ -146,7 +164,8 @@ export const TOUR: TourStep[] = [
   { target: "[data-tour=nav-play]", title: msg("Play"), body: msg("Your Street Empire idle game, story missions, GPS games and weekly goals with big rewards.") },
   { target: "[data-tour=steps]", title: msg("Every step counts"), body: msg("Your steps today. Walking boosts your Street Empire's income up to ×2, and banked steps buy instant Step Rushes.") },
   { target: "[data-tour=nav-market]", title: msg("Market"), body: msg("Shops run by players around you — buy with coins, or open your own shop and sell.") },
-  { target: "[data-tour=nav-crew]", title: msg("Crew"), body: msg("Friends, chat and teamwork. Red badges on these buttons mean something new — tap to see it and they clear.") },
+  { target: "[data-tour=nav-social]", title: msg("Social"), body: msg("Your city's social network: posts, check-ins at real places, followers — and your crew's chat and calls. Red badges mean something new.") },
+  { target: "[data-tour=drive]", title: msg("Get in the car"), body: msg("See your real streets in 3D. Playing from home, you drive the car through the city to real shops and restaurants — every beacon is a job.") },
   { target: "[data-tour=inbox]", title: msg("Inbox"), body: msg("Every reward, raid alert and message lands here.") },
   { emoji: "🚶", title: msg("How do you want to play?"), body: msg("Walk the real streets with GPS for full rewards, or play from home: tap the map and your commander travels there, for reduced rewards. You can switch any time in Hero → Profile.") },
 ];

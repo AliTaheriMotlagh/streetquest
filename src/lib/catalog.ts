@@ -14,7 +14,8 @@ export type ItemDef = {
   phases?: DayPhase[]; // undefined = any time
   blurb: string;
   food?: number; // hunger restored when eaten
-
+  /** Only from real places (a café's coffee, a pharmacy's medkit) — never a random spawn. */
+  placeOnly?: boolean;
 };
 
 export const ITEMS: ItemDef[] = [
@@ -31,6 +32,14 @@ export const ITEMS: ItemDef[] = [
   { key: "goldwatch", name: msg("Gold Watch"), emoji: "⌚", rarity: "epic", value: 120, phases: ["dusk", "dawn"], blurb: msg("Golden-hour exclusive.") },
   { key: "diamond", name: msg("Diamond"), emoji: "💎", rarity: "legendary", value: 400, blurb: msg("The big score.") },
   { key: "crown", name: msg("Street Crown"), emoji: "👑", rarity: "legendary", value: 600, phases: ["night"], blurb: msg("Kingpin material.") },
+  // From real places: what the burger joint, café or pharmacy around the corner hands you.
+  { key: "pizza", name: msg("Pizza Slice"), emoji: "🍕", rarity: "common", value: 9, blurb: msg("From a real pizzeria on your street."), food: 40, placeOnly: true },
+  { key: "coffee", name: msg("Fresh Coffee"), emoji: "☕", rarity: "common", value: 6, blurb: msg("Brewed at a real café. Wakes your commander up."), food: 10, placeOnly: true },
+  { key: "cake", name: msg("Slice of Cake"), emoji: "🍰", rarity: "common", value: 8, blurb: msg("Straight from the bakery window."), food: 25, placeOnly: true },
+  { key: "icecream", name: msg("Ice Cream"), emoji: "🍦", rarity: "common", value: 6, blurb: msg("Eat it before it melts."), food: 15, placeOnly: true },
+  { key: "stew", name: msg("Hot Meal"), emoji: "🍲", rarity: "common", value: 10, blurb: msg("A proper dinner from a real restaurant."), food: 50, placeOnly: true },
+  { key: "groceries", name: msg("Grocery Bag"), emoji: "🛒", rarity: "common", value: 12, blurb: msg("Bread, fruit and milk from the corner shop."), food: 45, placeOnly: true },
+  { key: "medkit", name: msg("Medicine"), emoji: "🩹", rarity: "rare", value: 20, blurb: msg("From the pharmacy. Patches your commander up."), placeOnly: true },
 ];
 
 export const ITEM_BY_KEY = Object.fromEntries(ITEMS.map((i) => [i.key, i])) as Record<string, ItemDef>;

@@ -80,6 +80,9 @@ model User {
   // Steps walked, ever (the per-day breakdown is in StepDay).
   stepsTotal Int @default(0)
 
+  // Social profile: a short bio under the name, shown on the profile page.
+  bio String @default("")
+
   inventory       InventoryItem[]
   claims          Claim[]
   runs            MissionRun[]
@@ -128,6 +131,13 @@ model User {
   shopOrders      ShopOrder[]        @relation("shopBuyer")
   empire          Empire?
   stepDays        StepDay[]
+  business        Business[]
+  bizVisits       BizVisit[]
+  posts           Post[]
+  postLikes       PostLike[]
+  postComments    PostComment[]
+  following       Follow[]           @relation("follower")
+  followers       Follow[]           @relation("followee")
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -1072,4 +1082,162 @@ model StepDay {
 
   @@unique([userId, day])
   @@index([day])
+}
+
+// ---------------------------------------------------------------- Real places
+// OpenStreetMap data for one ~450 m world cell (lib/geo CELL_DEG): buildings, roads,
+// parks and water for the 3D drive, and named shops/restaurants/cafés for real-place
+// missions. Fetched once from Overpass and kept (refreshed after a month); `data` is
+// the compact CityTile from lib/city.ts.
+model CityTile {
+  key       String    @id // "<cx>_<cy>"
+  data      Json? // geometry for the 3D city (only /api/city reads it)
+  pois      Json? // Place[]: what missions and the map need, without the geometry
+  fetchedAt DateTime?
+  failedAt  DateTime? // last failed fetch (retried after a back-off)
+  fails     Int       @default(0)
+  createdAt DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------- Businesses
+// A real store, restaurant or café on the map, run by its owner. Businesses pay for a
+// plan (lib/business.ts) and post campaigns: missions players complete at the store
+// (check in on the spot, optionally redeem a coupon at the till). Every visit and
+// redemption is counted so the owner sees what the game brought in.
+model Business {
+  id        String        @id @default(cuid())
+  ownerId   String
+  name      String
+  category  String // lib/places PlaceCat
+  emoji     String        @default("🏪")
+  about     String        @default("")
+  address   String        @default("")
+  phone     String        @default("")
+  website   String        @default("")
+  lat       Float
+  lng       Float
+  osmId     String? // the OpenStreetMap place it claims ("n123" / "w456")
+  plan      String        @default("free") // free | starter | pro | chain
+  planUntil DateTime? // paid plans run until then, then fall back to free
+  trialUsed Boolean       @default(false)
+  verified  Boolean       @default(false) // checked by an admin
+  views     Int           @default(0) // times its card was opened in the game
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  campaigns BizCampaign[]
+
+  @@index([lat, lng])
+  @@index([ownerId])
+  @@index([osmId])
+}
+
+model BizCampaign {
+  id          String     @id @default(cuid())
+  businessId  String
+  title       String
+  description String     @default("")
+  kind        String     @default("visit") // visit (check in) | coupon (check in + redeem at the till)
+  offer       String     @default("") // what the coupon gets you, in the owner's words
+  rewardCoins Int        @default(40)
+  rewardXp    Int        @default(60)
+  bonusCoins  Int        @default(60) // extra when the coupon is redeemed in the store
+  maxVisits   Int        @default(100)
+  visits      Int        @default(0)
+  redeemed    Int        @default(0)
+  views       Int        @default(0)
+  activeFrom  DateTime   @default(now())
+  activeTo    DateTime
+  paused      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  visitRows   BizVisit[]
+
+  @@index([businessId])
+  @@index([activeTo])
+}
+
+// One per player per campaign: the check-in, and the coupon code shown at the till.
+model BizVisit {
+  id         String      @id @default(cuid())
+  campaignId String
+  userId     String
+  code       String
+  redeemedAt DateTime?
+  createdAt  DateTime    @default(now())
+  campaign   BizCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, userId])
+  @@unique([campaignId, code])
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------- Social network
+// Posts in the feed: what players write (optionally with a photo and a check-in at a
+// real place), plus moments the game posts for them (a delivery done, a store visited).
+model Post {
+  id        String        @id @default(cuid())
+  authorId  String
+  kind      String        @default("post") // post | checkin | mission | business
+  body      String        @default("")
+  placeName String?
+  placeCat  String?
+  lat       Float?
+  lng       Float?
+  photo     Bytes?
+  photoType String?
+  likes     Int           @default(0)
+  comments  Int           @default(0)
+  reports   Int           @default(0)
+  hidden    Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likeRows  PostLike[]
+  replies   PostComment[]
+
+  @@index([createdAt])
+  @@index([authorId, createdAt])
+  @@index([lat, lng])
+}
+
+model PostLike {
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+model PostReport {
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@id([postId, userId])
+}
+
+model Follow {
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+  follower   User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee   User     @relation("followee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followeeId])
+  @@index([followeeId])
 }

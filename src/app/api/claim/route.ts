@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { cellKey, cellOf, dayPhase, distanceM } from "@/lib/geo";
-import { INTERACT_RADIUS_M, resolveSpawn } from "@/lib/spawns";
+import { INTERACT_RADIUS_M, resolveSpawnCell } from "@/lib/spawns";
 import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, actionRoute } from "@/server/http";
@@ -14,6 +14,9 @@ import { maybeGear } from "@/server/hero";
 import { bumpNeeds } from "@/server/needs";
 import { addBoost } from "@/server/empire";
 import { BOOST_MINUTES } from "@/lib/idle";
+import { ITEM_BY_KEY } from "@/lib/catalog";
+import { realizeSpawns } from "@/lib/places";
+import { placesIn } from "@/server/city";
 
 const Schema = z.object({ spawnId: z.string().max(80), score: z.number().min(0).max(1000).optional() });
 
@@ -47,8 +50,12 @@ export const POST = actionRoute(async (req) => {
     return { message: t("Mission complete: {item}", { item: itemLabel(m.itemKey) }), xp: m.rewardXp, coins: m.rewardCoins };
   }
 
-  const s = resolveSpawn(spawnId);
-  if (!s) throw new HttpError(410, t("This spawn has expired"));
+  const cellSpawns = resolveSpawnCell(spawnId);
+  const raw = cellSpawns?.find((x) => x.id === spawnId);
+  if (!cellSpawns || !raw) throw new HttpError(410, t("This spawn has expired"));
+  // Food sits on real restaurants and cafés — the same move /api/world made, over the
+  // whole cell in the same order, so both pick the same place.
+  const s = realizeSpawns(cellSpawns, await placesIn([raw.cell]), (x, key) => ({ ...x, item: ITEM_BY_KEY[key] })).find((x) => x.id === spawnId)!;
   if (distanceM(here, s) > reach) throw new HttpError(400, t("Get within {m} m to interact", { m: INTERACT_RADIUS_M }));
 
   if (s.kind === "derrick") throw new HttpError(400, t("Derricks are guarded — capture it with your army"));

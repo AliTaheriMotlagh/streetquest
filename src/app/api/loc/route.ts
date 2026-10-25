@@ -28,7 +28,8 @@ export const POST = route(async (req) => {
   // after one bad one (a wifi fix 2 km off, a tunnel) and freeze the player for good.
   const fixAt = u.locAt ?? u.lastSeenAt;
   const since = fixAt ? Math.max(1, (Date.now() - fixAt.getTime()) / 1000) : Infinity;
-  if (remote && moved > 30 && moved / since > (S.remoteSpeedKmh / 3.6) * 1.5) {
+  // From home, the commander travels at tap-to-travel speed or drives the 3D city's car, whichever is faster.
+  if (remote && moved > 30 && moved / since > (Math.max(S.remoteSpeedKmh, S.driveSpeedKmh) / 3.6) * 1.5) {
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
     throw new HttpError(409, t("Travelling faster than your commander can move"));
   }

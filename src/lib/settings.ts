@@ -33,6 +33,17 @@ const DEFAULTS = {
   remoteEnabled: true,
   remoteRewardMult: 0.5,
   remoteSpeedKmh: 40,
+  driveSpeedKmh: 80,
+
+  // ---- real places & businesses
+  placeMissionShare: 0.35,
+  bizEnabled: true,
+  bizCampaignMaxCoins: 200,
+  bizTrialDays: 14,
+
+  // ---- social
+  socialEnabled: true,
+  socialPostsPerHour: 6,
 
   // ---- rewards & economy
   xpMult: 1,
@@ -195,6 +206,15 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "remoteEnabled", group: msg("Play from home"), label: msg("Play from home on"), help: msg("Players who don't want to walk can play from the couch: they move by tapping the map and travel at a capped speed.") },
   { key: "remoteRewardMult", group: msg("Play from home"), label: msg("Reward multiplier at home"), help: msg("XP and coins earned from home are multiplied by this (0.5 = half). Walking players always get full rewards."), min: 0, max: 1, step: 0.05 },
   { key: "remoteSpeedKmh", group: msg("Play from home"), label: msg("Travel speed at home (km/h)"), help: msg("How fast a home player's commander moves across the map toward where they tapped."), min: 5, max: 1000 },
+  { key: "driveSpeedKmh", group: msg("Play from home"), label: msg("3D car top speed (km/h)"), help: msg("Players driving the 3D city from home can move this fast; the server accepts positions up to this speed."), min: 10, max: 300 },
+
+  { key: "placeMissionShare", group: msg("Real places & businesses"), label: msg("Places with a mission"), help: msg("Share of real shops, restaurants and cafés that offer a mission in each 30-minute window (0.35 = about a third)."), min: 0, max: 1, step: 0.05 },
+  { key: "bizEnabled", group: msg("Real places & businesses"), label: msg("Business accounts on"), help: msg("Real stores can register, claim their place on the map and post campaigns.") },
+  { key: "bizCampaignMaxCoins", group: msg("Real places & businesses"), label: msg("Max coins per campaign visit"), help: msg("The most coins a business campaign can pay a player per check-in or redemption."), min: 0, max: 5000 },
+  { key: "bizTrialDays", group: msg("Real places & businesses"), label: msg("Free trial (days)"), help: msg("How long a new business can try the Starter plan for free (once)."), min: 0, max: 90 },
+
+  { key: "socialEnabled", group: msg("Social"), label: msg("Social feed on"), help: msg("Players can post, follow each other, like and comment.") },
+  { key: "socialPostsPerHour", group: msg("Social"), label: msg("Posts per hour (max)"), help: msg("How many posts one player can publish per hour — keeps the feed free of spam."), min: 1, max: 100 },
 
   { key: "xpMult", group: msg("Rewards & economy"), label: msg("Global XP ×"), help: msg("Multiplies all XP players earn (events, weekends…)."), min: 0, max: 20, step: 0.1 },
   { key: "coinMult", group: msg("Rewards & economy"), label: msg("Global coin ×"), help: msg("Multiplies coins created by the game (not transfers between players or refunds)."), min: 0, max: 20, step: 0.1 },

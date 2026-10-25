@@ -63,7 +63,7 @@ function useNow(on = true) {
 
 // ---------------------------------------------------------------- the panel
 export function MarketPanel({ onClose, peek, focus, onFocused }: { onClose: () => void; peek: boolean; focus?: string | null; onFocused?: () => void }) {
-  const { me } = useGame();
+  const { me, setPanel } = useGame();
   const [stack, setStack] = useState<View[]>(() => [focus ? { v: "shop", id: focus } : { v: "browse" }]);
   const view = stack[stack.length - 1];
   const go = useCallback((v: View) => setStack((s) => [...s, v]), []);
@@ -101,6 +101,13 @@ export function MarketPanel({ onClose, peek, focus, onFocused }: { onClose: () =
           📦 {t("Orders")} {pending > 0 && <span className="seg-n">{fmtNum(pending)}</span>}
         </button>
       </div>
+      {view.v === "browse" && (
+        <button className="biz-banner" onClick={() => setPanel("biz")}>
+          <span className="ic">🏪</span>
+          <span className="grow"><b>{t("Own a real store?")}</b><span className="small">{t("Put it on the game map and bring players through your door.")}</span></span>
+          <span aria-hidden>›</span>
+        </button>
+      )}
       {view.v === "browse" && <Browse onShop={(id) => go({ v: "shop", id })} onProduct={(shopId, productId) => go({ v: "product", shopId, productId })} onOpenMine={() => root("mine")} />}
       {view.v === "shop" && <ShopPage key={view.id} id={view.id} onProduct={(productId) => go({ v: "product", shopId: view.id, productId })} onManage={() => root("mine")} />}
       {view.v === "product" && (

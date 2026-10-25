@@ -81,6 +81,22 @@ Three games stacked on one real-world map:
 Every layer feeds the others: hero bonuses change battle maths, build times, income and FPS stats;
 mood scales XP; loot funds research; territory funds the army.
 
+- **Real places** — restaurants, cafés, shops, pharmacies, gyms and parks come from OpenStreetMap, with their real
+  names. Jobs happen *at* them: a 🍔 burger delivery starts at a real burger joint and ends at another real place, a ☕
+  check-in is at a real café, and food spawns sit on real restaurants instead of random street corners.
+- **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
+  footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). From home or in
+  test mode the car *is* your commander: where you drive is where you are, jobs are beacons of light, loot is collected by
+  driving through it. Walking with GPS, the car follows you. Cells without map data yet are drawn as a fantasy village.
+- **Fantasy map** — the 2D map is an illustrated parchment map (paper grain, drifting cloud shadows, compass rose, colours
+  of the hour). 🗺️ switches between fantasy, night-ops and plain street maps.
+- **Social network** — 🌐 Social: a feed (following / nearby / trending), posts with photos, check-ins at real places,
+  follows, likes, comments, reports, profiles; deliveries and store visits post themselves. Mutual followers can DM
+  and call. Crew chat lives inside Social.
+- **Business center** — real store owners claim their place from inside the store, post missions (check-in for coins)
+  and coupons (a code the cashier redeems at the till), and see visits, redemptions and repeat customers. Plans:
+  Free / Starter / Pro / Chain (Stripe), with a free trial. See `marketing/BUSINESS_PLAN.md` for the monetisation plan.
+
 Plus the original layer: Pokémon-GO-style spawns, GTA-style timed runs, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
 
@@ -138,6 +154,10 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 | Art kit: icons as vector shapes + shared gradient materials, one lazily-filled SVG sprite; a MutationObserver swaps emoji text for art without touching React's text nodes | `src/components/art` |
 | Tower defense: towers fire when a commander reports their position (`/api/loc` → `takeFire`), HP regenerates from a stored snapshot; raider waves are generated from a seed and fought by a deterministic simulation the server resolves once and clients animate | `src/lib/td.ts`, `src/server/td.ts`, `src/app/api/{towers,waves}` |
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
+| Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
+| 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`) | `src/components/drive` |
+| Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
+| Businesses: claim on the spot (≤150 m), campaigns limited by plan, check-in ≤80 m, 6-char coupon codes redeemed once by the owner; plans paid through the same Stripe Checkout + webhook as gems (`biz:<plan>:<id>` purchases) | `src/lib/business.ts`, `src/server/business.ts`, `/api/business`, `src/components/game/Business.tsx` |
 | Spawns: deterministic per ~450 m cell and 20-min window, so everyone sees the same world with zero storage; the server rebuilds a spawn from its id to verify claims | `src/lib/spawns.ts` |
 | Time of day: local *solar* time decides night/dawn/day/dusk items and golden-hour 2× XP anywhere on Earth; daily streaks reset at the player's own midnight | `src/lib/geo.ts`, `src/lib/progression.ts` |
 | Anti-cheat: claims use the server's trusted position, GPS jumps faster than 250 km/h are rejected | `src/app/api/loc`, `src/server/rewards.ts` |
@@ -199,6 +219,8 @@ Don't run the demo seed in production.
 
 ## Before going big
 
+- Real places / 3D city: public Overpass servers are slow and rate-limited. Tiles are cached a month per cell, but at
+  scale run your own Overpass and point `OVERPASS_URL` at it.
 - Map tiles: the default public OSM tile server is for light use only. Set
   `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia.
 - Chat/notifications poll every few seconds. For instant delivery at scale, plug in a hosted

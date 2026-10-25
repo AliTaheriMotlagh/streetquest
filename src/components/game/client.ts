@@ -13,6 +13,8 @@ import type { PingKind, Strike } from "@/lib/td";
 import type { LobbyKind } from "@/lib/lobbies";
 import type { SuperKey } from "@/lib/superweapons";
 import type { OrderView, ProductView, ShopCard, ShopView } from "@/server/shops";
+import type { PlaceMission } from "@/lib/places";
+import type { WorldBusiness } from "@/server/business";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
@@ -195,7 +197,9 @@ export type HeroView = {
   };
 };
 
-export type WorldSpawn = Spawn & { claimed: boolean; lobby: { id: string; kind: string; players: number; openUntil: number } | null };
+export type WorldPlace = PlaceMission & { done: boolean };
+export type { WorldBusiness };
+export type WorldSpawn = Spawn & { place?: { id: string; name: string; cat: string }; claimed: boolean; lobby: { id: string; kind: string; players: number; openUntil: number } | null };
 export type WorldMission = { id: string; title: string; description: string; lat: number; lng: number; item?: ItemDef; rewardXp: number; rewardCoins: number; sponsor: string | null; claimed: boolean; activeTo: string };
 export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null; hasPhoto: boolean; likes: number; mine: boolean };
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
@@ -335,6 +339,10 @@ export type World = {
   rides: WorldRide[];
   lotteries: WorldLottery[];
   shops: WorldShop[];
+  /** Missions at real places (restaurants, cafés, shops…) around the player. */
+  places: WorldPlace[];
+  /** Real businesses on the map, with their running campaigns. */
+  businesses: WorldBusiness[];
   players: WorldPlayer[];
   bases: WorldBase[];
   bosses: WorldBoss[];
@@ -357,6 +365,8 @@ export type Selected =
   | { type: "ride"; data: WorldRide }
   | { type: "lottery"; data: WorldLottery }
   | { type: "shop"; data: WorldShop }
+  | { type: "place"; data: WorldPlace }
+  | { type: "biz"; data: WorldBusiness }
   | { type: "player"; data: WorldPlayer }
   | { type: "base"; data: WorldBase }
   | { type: "boss"; data: WorldBoss }

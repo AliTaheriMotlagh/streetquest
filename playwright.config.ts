@@ -49,6 +49,8 @@ export default defineConfig({
           NEXT_PUBLIC_SITE_URL: `http://localhost:${PORT}`,
           // Real timers: tests rely on construction taking minutes, not milliseconds.
           GAME_SPEED: "1",
+          // No OpenStreetMap downloads for the random test spots: tests upload their own tiles.
+          OVERPASS_URL: "off",
           // No real push notifications or payments from tests.
           VAPID_PUBLIC_KEY: "",
           VAPID_PRIVATE_KEY: "",

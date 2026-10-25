@@ -42,9 +42,13 @@ import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
 import { pedometer, useSteps } from "./steps";
 import { BOOST_MAX_H, BOOST_MINUTES, STEP_GOAL } from "@/lib/idle";
+import { BizCard, PlaceCard } from "./PlaceCards";
+import { SocialPanel } from "./Social";
+import { BusinessPanel } from "./Business";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 const Fps = dynamic(() => import("../fps/Fps"), { ssr: false, loading: () => <div className="fps" /> });
+const Drive = dynamic(() => import("../drive/Drive"), { ssr: false, loading: () => <div className="drive drive-boot"><div className="splash-bar"><i /></div></div> });
 
 const NAV: [PanelId, string, string][] = [
   ["nearby", "🎯", msg("Nearby")],
@@ -52,11 +56,13 @@ const NAV: [PanelId, string, string][] = [
   ["play", "🎮", msg("Play")],
   ["market", "🛍️", msg("Market")],
   ["jobs", "📦", msg("Jobs")],
-  ["crew", "🤝", msg("Crew")],
+  ["social", "🌐", msg("Social")],
   ["me", "🦸", msg("Hero")],
 ];
 
 const TEST_MODE_KEY = "sq_test_mode";
+const MAP_LOOK_KEY = "sq_map_look";
+type MapLook = "fantasy" | "dark" | "classic";
 /** Longest an action waits for the latest position to reach the server. */
 const FLUSH_WAIT_MS = 2500;
 const TOAST_OUT_MS = 220;
@@ -115,6 +121,25 @@ export default function Game() {
   const [announce, setAnnounce] = useState<{ id: string; title: string; body: string; ctaLabel: string | null; ctaUrl: string | null } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [match, setMatch] = useState<string | null>(null);
+  // The 3D city (drive mode), optionally heading somewhere; and a profile to open in Social.
+  const [driveOn, setDriveOn] = useState<{ goal: LatLng | null } | null>(null);
+  const [profileFocus, setProfileFocus] = useState<string | null>(null);
+  // How the map looks: an illustrated fantasy map (default), dark ops, or plain street map.
+  const [mapStyle, setMapStyle] = useState<MapLook>("fantasy");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(MAP_LOOK_KEY);
+      if (v === "fantasy" || v === "dark" || v === "classic") setMapStyle(v);
+    } catch {}
+  }, []);
+  const cycleLook = () => {
+    const next: MapLook = mapStyle === "fantasy" ? "dark" : mapStyle === "dark" ? "classic" : "fantasy";
+    setMapStyle(next);
+    try {
+      localStorage.setItem(MAP_LOOK_KEY, next);
+    } catch {}
+    toast({ title: next === "fantasy" ? t("🗺️ Fantasy map") : next === "dark" ? t("🌃 Night-ops map") : t("🧭 Street map") });
+  };
   const [meTab, setMeTab] = useState<HeroTabId>("hero");
   const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
@@ -330,6 +355,19 @@ export default function Game() {
       .catch((e) => toast({ kind: "error", title: (e as Error).message }));
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Back from paying for a business plan.
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("bizpaid");
+    if (!id || !me) return;
+    history.replaceState(null, "", "/play");
+    api<{ message: string }>("/api/business", { body: { action: "confirm", sessionId: id } })
+      .then((r) => {
+        celebrate({ title: t("THANK YOU!"), body: r.message, emoji: "🏪" });
+        setPanel("biz");
+      })
+      .catch((e) => toast({ kind: "error", title: (e as Error).message }));
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- sound cues for things happening on the map
   const heard = useRef(new Set<string>());
   useEffect(() => {
@@ -412,7 +450,7 @@ export default function Game() {
   }, [toast, loadMe]);
 
   useEffect(() => {
-    if (panel === "crew") setUnread(0);
+    if (panel === "crew" || panel === "social") setUnread(0);
   }, [panel, unread]);
 
   // A call notification was tapped: ring right away (or answer, if they tapped Answer)
@@ -643,6 +681,17 @@ export default function Game() {
           setPanel(null);
           setMatch(id);
         },
+        drive: pos || me.lastPos ? (goal) => {
+          setSelected(null);
+          setPanel(null);
+          setTravel(null);
+          setDriveOn({ goal: goal ? { lat: goal.lat, lng: goal.lng } : null });
+        } : null,
+        openProfile: (id) => {
+          setSelected(null);
+          setProfileFocus(id);
+          setPanel("social");
+        },
       },
     [me, pos, world, toast, act, refresh, simMode, homeMode, !!homePos, setHomeMode], // eslint-disable-line react-hooks/exhaustive-deps
   );
@@ -680,7 +729,7 @@ export default function Game() {
     jobs: { n: (world?.deliveries.length ?? 0) + (world?.rides.length ?? 0), sig: [...(world?.deliveries ?? []), ...(world?.rides ?? [])].map((d) => d.id).sort().join(",") },
     // Orders waiting to be handed over, or the shop about to close.
     market: me.shop ? { n: me.shop.pending || (me.shop.expiresAt - Date.now() < SHOP_WARN_MS ? "!" : 0), sig: `${me.shop.pending}|${me.shop.expiresAt}` } : undefined,
-    crew: { n: unread + me.pendingFriends, sig: `${unread}|${me.pendingFriends}` },
+    social: { n: unread + me.pendingFriends, sig: `${unread}|${me.pendingFriends}` },
     me: {
       n: me.questsReady || me.freePoints || me.commandPoints || (me.dailyAvailable || me.mood.score < 30 ? "!" : 0),
       sig: `${me.questsReady}|${me.freePoints}|${me.commandPoints}|${me.dailyAvailable}|${me.mood.score < 30}|${me.level}`,
@@ -711,10 +760,11 @@ export default function Game() {
   return (
     <Ctx.Provider value={ctx}>
       <EmojiArtLayer />
-      <div className={`game ${shake ? "shake" : ""} ${match ? "in-fight" : ""}`}>
+      <div className={`game ${shake ? "shake" : ""} ${match ? "in-fight" : ""} ${driveOn ? "in-drive" : ""} map-${mapStyle}`}>
         <GameMap
           world={world}
           me={me}
+          look={mapStyle}
           follow={follow}
           picking={!!picker}
           runners={runners}
@@ -931,6 +981,9 @@ export default function Game() {
               }
             />
           )}
+          <Button className="fab" title={t("Map style")} aria-label={t("Map style")} onClick={cycleLook}>
+            {mapStyle === "fantasy" ? "🗺️" : mapStyle === "dark" ? "🌃" : "🧭"}
+          </Button>
           <Button className="fab" title={muted ? t("Sound off") : t("Sound on")} aria-label={muted ? t("Turn sound on") : t("Turn sound off")} onClick={() => setMuted(!muted)}>
             {muted ? "🔇" : "🔊"}
           </Button>
@@ -956,6 +1009,14 @@ export default function Game() {
             ◎
           </Button>
         </div>
+
+        {/* Get in the car: the 3D city */}
+        {!panel && !selected && !picker && !run && (pos || me.lastPos) && (
+          <Button className="drive-fab" data-tour="drive" onClick={() => ctx.drive?.()} title={homeMode || simMode ? t("Drive the 3D city") : t("See your street in 3D")}>
+            <span className="drive-fab-car">🚗</span>
+            <span className="drive-fab-lb">{homeMode || simMode ? t("DRIVE") : t("3D")}</span>
+          </Button>
+        )}
 
         {/* Toasts */}
         <div className="toasts">
@@ -990,6 +1051,8 @@ export default function Game() {
         {panel === "inbox" && <InboxPanel onClose={close} peek={peek} onRead={() => setInbox(0)} />}
         {panel === "play" && <PlayPanel onClose={close} peek={peek} onStarted={loadMe} />}
         {panel === "store" && <StorePanel onClose={close} peek={peek} onWatch={setAdOpen} />}
+        {panel === "social" && <SocialPanel onClose={close} peek={peek} profileId={profileFocus} onProfileShown={() => setProfileFocus(null)} />}
+        {panel === "biz" && <BusinessPanel onClose={close} peek={peek} />}
         {panel === "me" && (
           <ProfilePanel
             key={meTab}
@@ -1006,7 +1069,8 @@ export default function Game() {
         <nav className={`nav ${panel || selected ? "with-sheet" : ""}`}>
           {NAV.map(([id, ic, label]) => {
             const b = showBadge(id);
-            const on = panel === id;
+            // Crew & chat opens from Social, so Social stays lit (and closes it) while it's open.
+            const on = panel === id || (id === "social" && panel === "crew");
             return (
               <Button
                 key={id}
@@ -1035,6 +1099,17 @@ export default function Game() {
         </nav>
 
         {match && <Fps matchId={match} onExit={exitMatch} />}
+        {driveOn && (pos ?? me.lastPos) && (
+          <Drive
+            start={(pos ?? me.lastPos)!}
+            goal={driveOn.goal}
+            canDrive={simMode || homeMode}
+            follow={simMode || homeMode ? null : pos}
+            onMove={simMode ? setSimPos : homeMode ? setHomePos : null}
+            onClaim={(id) => claim(id).then(() => undefined)}
+            onExit={() => setDriveOn(null)}
+          />
+        )}
 
         {call && (
           <CallScreen
@@ -1203,8 +1278,8 @@ function InfoCard({
   onLobby: (l: { spawnId: string; mode?: "race" | "coop" }) => void;
   onC4: (towerId: string) => void;
 }) {
-  const { pos, act, me, world, openChat, startCall, setPanel, enterMatch, teleport, pick, openShop } = useGame();
-  const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.data;
+  const { pos, act, me, world, openChat, startCall, setPanel, enterMatch, teleport, pick, openShop, openProfile } = useGame();
+  const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "squad" ? squadPos(sel.data) : sel.type === "place" ? sel.data.place : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
@@ -1253,6 +1328,10 @@ function InfoCard({
     </Button>
   );
 
+  // Real places: a job at a real restaurant/café/shop, or a business and its missions.
+  if (sel.type === "place") return <PlaceCard m={world?.places.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
+  if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
+
   if (sel.type === "spawn") {
     const s = sel.data;
     const title = s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Supply Chest") : s.kind === "arcade" ? t("Power Cell") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item!.name);
@@ -1266,7 +1345,9 @@ function InfoCard({
           ? t("A supply crate (maybe {emoji} inside). Crack it open for loot, coins and a shot at new gear.", { emoji: s.item!.emoji })
           : s.kind === "arcade"
             ? t("Grab it to double your Street Empire's income for {n} minutes. Power cells stack up to {h} hours.", { n: BOOST_MINUTES, h: BOOST_MAX_H })
-            : t(s.item!.blurb);
+            : s.place
+              ? `${t(s.item!.blurb)} ${t("📍 At {place}, a real place near you.", { place: s.place.name })}`
+              : t(s.item!.blurb);
     return (
       <Sheet title={title} onClose={onClose}>
         <div className="row" style={{ marginBottom: 10 }}>
@@ -1696,7 +1777,7 @@ function InfoCard({
 
   const p = sel.data;
   return (
-    <Sheet title={`${p.avatar} ${p.username}`} onClose={onClose}>
+    <Sheet title={`${p.avatar} ${p.username}`} onClose={onClose} actions={<button className="close" onClick={() => openProfile(p.id)} title={t("Profile")} aria-label={t("Profile")}>👤</button>}>
       <p className="muted">
         {t("Level {n}", { n: p.level })} · {p.friend ? t("In your crew") : t("~ approximate location")}
         {p.bounty > 0 && <span style={{ color: "var(--yellow)" }}> · {t("💀 WANTED {n} 🪙", { n: p.bounty })}</span>}

@@ -10,6 +10,7 @@ import { SITE, siteText } from "@/lib/site";
 import { getT, pageLocale } from "@/server/i18n";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
+import "./world.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "800"], display: "swap", variable: "--font-inter" });

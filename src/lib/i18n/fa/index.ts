@@ -32,6 +32,7 @@ import landing from "./landing";
 import pages from "./pages";
 import admin from "./admin";
 import settings from "./settings";
+import world from "./world";
 
 const fa: Messages = {
   ...common,
@@ -55,6 +56,7 @@ const fa: Messages = {
   ...pages,
   ...admin,
   ...settings,
+  ...world,
 };
 
 export default fa;

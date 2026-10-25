@@ -29,6 +29,33 @@ async function stripe<T>(path: string, params?: Record<string, string>): Promise
   return data as T;
 }
 
+/**
+ * A one-off Checkout for anything sold for real money (gem packs, business plans).
+ * The Purchase row is what settleSession credits, exactly once.
+ */
+export async function stripeCheckout(
+  userId: string,
+  o: { pack: string; name: string; amountCents: number; gems?: number; metadata: Record<string, string>; successPath: string },
+  origin: string,
+) {
+  const params: Record<string, string> = {
+    mode: "payment",
+    "line_items[0][quantity]": "1",
+    "line_items[0][price_data][currency]": S.currency,
+    "line_items[0][price_data][unit_amount]": String(o.amountCents),
+    "line_items[0][price_data][product_data][name]": o.name,
+    client_reference_id: userId,
+    "metadata[userId]": userId,
+    success_url: `${origin}${o.successPath}`,
+    cancel_url: `${origin}/play?purchase=cancelled`,
+  };
+  for (const [k, v] of Object.entries(o.metadata)) params[`metadata[${k}]`] = v;
+  const session = await stripe<{ id: string; url: string }>("checkout/sessions", params);
+  await prisma.purchase.create({ data: { userId, ref: session.id, pack: o.pack, gems: o.gems ?? 0, amountCents: o.amountCents, currency: S.currency } });
+  await track("checkout_started", { userId, campaign: o.pack.split(":").slice(0, 2).join(":") });
+  return session.url;
+}
+
 export async function createCheckout(userId: string, packKey: string, origin: string) {
   if (!S.storeEnabled) throw new HttpError(400, t("The store is closed"));
   const pack = S.gemPacks.find((p) => p.key === packKey);
@@ -60,6 +87,14 @@ export async function settleSession(s: Session) {
   if (!row) return null;
   const flipped = await prisma.purchase.updateMany({ where: { ref: s.id, status: { not: "PAID" } }, data: { status: "PAID", paidAt: new Date(), amountCents: s.amount_total ?? row.amountCents, currency: s.currency ?? row.currency } });
   if (!flipped.count) return { gems: row.gems, already: true };
+  // Business plan ("biz:<plan>:<businessId>"): extend the plan instead of crediting gems.
+  if (row.pack.startsWith("biz:")) {
+    const [, plan, businessId] = row.pack.split(":");
+    const { extendPlan } = await import("./business");
+    await extendPlan(businessId, plan as Parameters<typeof extendPlan>[1]);
+    await track("biz_plan_paid", { userId: row.userId, campaign: plan });
+    return { gems: 0, already: false, plan };
+  }
   await prisma.user.update({ where: { id: row.userId }, data: { gems: { increment: row.gems } } });
   await notify(row.userId, () => ({ kind: "reward", title: t("💎 +{n} gems!", { n: row.gems }), body: t("Thanks for supporting the game, commander.") }));
   await track("purchase", { userId: row.userId, campaign: row.pack });

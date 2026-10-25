@@ -10,6 +10,13 @@ export async function areFriends(a: string, b: string) {
   return !!f;
 }
 
+/** Direct messages: crew members, or two players who follow each other. */
+export async function canDm(a: string, b: string) {
+  if (await areFriends(a, b)) return true;
+  const n = await prisma.follow.count({ where: { OR: [{ followerId: a, followeeId: b }, { followerId: b, followeeId: a }] } });
+  return n === 2;
+}
+
 export async function friendIds(userId: string) {
   const rows = await prisma.friendship.findMany({
     where: { status: "ACCEPTED", OR: [{ requesterId: userId }, { addresseeId: userId }] },
@@ -29,7 +36,7 @@ export async function roomAudience(userId: string, room: string): Promise<"broad
   if (room.startsWith("dm:")) {
     const [, a, b] = room.split(":");
     if (userId !== a && userId !== b) return null;
-    return (await areFriends(a, b)) ? [a, b] : null;
+    return (await canDm(a, b)) ? [a, b] : null;
   }
   if (room.startsWith("event:")) {
     const eventId = room.slice(6);

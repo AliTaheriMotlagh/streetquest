@@ -10,6 +10,7 @@ import { bumpNeeds } from "@/server/needs";
 import { questEvent } from "@/server/quests";
 import { runBonus } from "@/server/lobby";
 import { t } from "@/lib/i18n";
+import { finishPlaceRun } from "@/server/places";
 
 const Schema = z.object({ runId: z.string(), action: z.enum(["complete", "abandon"]) });
 
@@ -43,5 +44,7 @@ export const POST = actionRoute(async (req) => {
   await questEvent(u.id, "run");
   if (squad.label) await questEvent(u.id, "squad_run");
   await checkClaimAchievements(u.id, "day");
-  return { message: `${t("{title} complete! +{n} coins", { title: t(run.title), n: coins })}${squad.label ? ` · ${squad.label}` : ""}`, xp };
+  // A delivery from a real place: what you carried is yours, and it goes in the feed.
+  const item = run.spawnId.startsWith("p:") ? await finishPlaceRun(u.id, run.spawnId) : null;
+  return { message: `${t("{title} complete! +{n} coins", { title: t(run.title), n: coins })}${item ? ` · ${item}` : ""}${squad.label ? ` · ${squad.label}` : ""}`, xp };
 });

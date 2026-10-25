@@ -60,7 +60,7 @@ const RUN_TEMPLATES = [
 export const currentBucket = (now = Date.now()) => Math.floor(now / BUCKET_MS);
 
 function itemsFor(phase: DayPhase) {
-  return ITEMS.filter((i) => !i.phases || i.phases.includes(phase)).map((i) => ({
+  return ITEMS.filter((i) => !i.placeOnly && (!i.phases || i.phases.includes(phase))).map((i) => ({
     ...i,
     weight: RARITY_WEIGHT[i.rarity],
   }));
@@ -126,12 +126,17 @@ export function spawnsAround(p: LatLng, now = Date.now()): Spawn[] {
 
 /** Rebuild a spawn from its id. Accepts the current or previous window (grace period). */
 export function resolveSpawn(id: string, now = Date.now()): Spawn | null {
+  return resolveSpawnCell(id, now)?.find((s) => s.id === id) ?? null;
+}
+
+/** Every spawn in the cell (and window) a spawn id belongs to, or null if it's not valid now. */
+export function resolveSpawnCell(id: string, now = Date.now()): Spawn[] | null {
   const m = /^(\d+)\.(-?\d+)_(-?\d+)\.(\d+)$/.exec(id);
   if (!m) return null;
   const bucket = Number(m[1]);
   const cur = currentBucket(now);
   if (bucket !== cur && bucket !== cur - 1) return null;
-  return spawnsForCell(Number(m[2]), Number(m[3]), bucket).find((s) => s.id === id) ?? null;
+  return spawnsForCell(Number(m[2]), Number(m[3]), bucket);
 }
 
 /** Re-read the live admin settings (called by lib/config applyConfig). */

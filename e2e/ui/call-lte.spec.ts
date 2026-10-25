@@ -95,7 +95,8 @@ test("Android ↔ iPhone call connects through the TURN relay, both directions",
       [android, iphone],
       [iphone, android],
     ] as const) {
-      await caller.page.locator("[data-tour=nav-crew]").click();
+      await caller.page.locator("[data-tour=nav-social]").click();
+      await caller.page.getByRole("button", { name: "Crew & chat" }).click();
       await caller.page.getByRole("button", { name: `Video call ${callee.username}` }).click();
       const out = caller.page.getByRole("dialog", { name: `Video call with ${callee.username}` });
       const inc = callee.page.getByRole("dialog", { name: `Video call with ${caller.username}` });
@@ -119,7 +120,7 @@ test("Android ↔ iPhone call connects through the TURN relay, both directions",
       for (const p of [caller.page, callee.page]) expect(await route(p)).toMatchObject({ local: "relay" });
       await caller.page.getByRole("button", { name: "Hang up" }).click();
       await expect(inc).toHaveCount(0, { timeout: 15_000 });
-      await caller.page.locator("[data-tour=nav-crew]").click(); // close the crew panel for the next round
+      await caller.page.locator("[data-tour=nav-social]").click(); // close the crew panel for the next round
     }
     expect([...android.errors, ...iphone.errors]).toEqual([]);
   } finally {

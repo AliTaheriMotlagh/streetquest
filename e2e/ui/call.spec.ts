@@ -52,7 +52,8 @@ test("crew members can video call each other", async ({ browser }) => {
   await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
 
   // A calls B from the Crew panel.
-  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.locator("[data-tour=nav-social]").click();
+  await a.page.getByRole("button", { name: "Crew & chat" }).click();
   await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
   const aCall = a.page.getByRole("dialog", { name: `Video call with ${b.username}` });
   await expect(aCall).toContainText(/Calling|Connecting/);
@@ -84,7 +85,8 @@ test("crew members can voice call each other: sound only, no cameras", async ({ 
   const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
   await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
 
-  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.locator("[data-tour=nav-social]").click();
+  await a.page.getByRole("button", { name: "Crew & chat" }).click();
   await a.page.getByRole("button", { name: `Voice call ${b.username}` }).click();
   const aCall = a.page.getByRole("dialog", { name: `Voice call with ${b.username}` });
   const bCall = b.page.getByRole("dialog", { name: `Voice call with ${a.username}` });
@@ -122,7 +124,8 @@ test("mobile data drops requests: every lost handshake message is resent and the
   const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
   await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
 
-  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.locator("[data-tour=nav-social]").click();
+  await a.page.getByRole("button", { name: "Crew & chat" }).click();
   await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
   const aCall = a.page.getByRole("dialog", { name: `Video call with ${b.username}` });
   const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
@@ -139,7 +142,8 @@ test("a blocked camera explains how to fix it, and the call goes on once allowed
   const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
   await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
 
-  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.locator("[data-tour=nav-social]").click();
+  await a.page.getByRole("button", { name: "Crew & chat" }).click();
   await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
   const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
   await bCall.getByRole("button", { name: "Answer" }).click();
@@ -167,7 +171,8 @@ test("a call that can't connect gives up with a reason instead of hanging", asyn
   const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
   await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
 
-  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.locator("[data-tour=nav-social]").click();
+  await a.page.getByRole("button", { name: "Crew & chat" }).click();
   await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
   const aCall = a.page.getByRole("dialog", { name: `Video call with ${b.username}` });
   const bCall = b.page.getByRole("dialog", { name: `Video call with ${a.username}` });
@@ -184,7 +189,8 @@ test("answering from the notification opens the game straight into the call", as
   const fr = await b.page.evaluate(() => fetch("/api/friends").then((r) => r.json()));
   await json(b.page, "/api/friends", { action: "accept", friendshipId: fr.incoming[0].friendshipId });
 
-  await a.page.locator("[data-tour=nav-crew]").click();
+  await a.page.locator("[data-tour=nav-social]").click();
+  await a.page.getByRole("button", { name: "Crew & chat" }).click();
   await a.page.getByRole("button", { name: `Video call ${b.username}` }).click();
   // The notification's Answer button opens /play?call=<id>&answer=1.
   const callId = await expect.poll(() => b.page.evaluate(() => fetch(`/api/sync?since=${Date.now()}`).then((r) => r.json()).then((r) => r.call?.id ?? null))).not.toBeNull().then(() =>

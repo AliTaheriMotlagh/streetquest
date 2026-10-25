@@ -23,6 +23,9 @@ import { RIDE_REQUEST_TTL_MS } from "@/lib/rides";
 import { LOTTERY_SHOW_DRAWN_MS } from "@/lib/lottery";
 import { shopsInBox } from "@/server/shops";
 import { t } from "@/lib/i18n";
+import { realizeSpawns } from "@/lib/places";
+import { missionsAround } from "@/server/places";
+import { bizAround } from "@/server/business";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -32,7 +35,9 @@ export const GET = route(async (req) => {
   if (!Number.isFinite(here.lat) || !Number.isFinite(here.lng) || Math.abs(here.lat) > 90 || Math.abs(here.lng) > 180) throw new HttpError(400, t("lat/lng required"));
   const now = new Date();
 
-  const spawns = spawnsAround(here);
+  // Real places around: their missions, and food spawns moved onto real restaurants and cafés.
+  const real = await missionsAround(here);
+  const spawns = realizeSpawns(spawnsAround(here), real.byCell, (s, key) => ({ ...s, item: ITEM_BY_KEY[key] }));
   const claimed = new Set(
     (await prisma.claim.findMany({ where: { userId: u.id, spawnId: { in: spawns.map((s) => s.id) } }, select: { spawnId: true } })).map(
       (c) => c.spawnId,
@@ -113,6 +118,12 @@ export const GET = route(async (req) => {
     }),
     shopsInBox(wide, u.id),
   ]);
+  const [businesses, placeDone] = await Promise.all([
+    bizAround(here, u.id),
+    prisma.claim.findMany({ where: { userId: u.id, spawnId: { in: real.missions.map((m) => m.id) } }, select: { spawnId: true } }).then((r) => new Set(r.map((c) => c.spawnId))),
+  ]);
+  // A business that claimed an OpenStreetMap place stands in for it on the map.
+  const claimedOsm = new Set(businesses.map((b) => b.osmId).filter(Boolean));
   const wanted = new Map(bounties.map((b) => [b.targetId, b._sum.amount ?? 0]));
   const [towers, squads, waves, pings, lobbies] = await Promise.all([
     prisma.tower.findMany({ where: inBox(bbox(here, 3000)), include: { owner: { select: { username: true, faction: true } } }, take: 300 }),
@@ -186,6 +197,8 @@ export const GET = route(async (req) => {
     rides: rides.map(({ pin: _p, ...r }) => ({ ...r, distanceM: Math.round(distanceM(here, { lat: r.pickupLat, lng: r.pickupLng })) })),
     lotteries: lotteries.map((l) => lotteryView(l, u.id)),
     shops,
+    places: real.missions.filter((m) => !claimedOsm.has(m.place.id)).map((m) => ({ ...m, done: placeDone.has(m.id) })),
+    businesses,
     players,
     bases: bases.map((b) => ({
       id: b.id,

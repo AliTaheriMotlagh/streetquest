@@ -27,4 +27,4 @@ export function middleware(req: NextRequest) {
   return res;
 }
 
-export const config = { matcher: ["/((?!api|_next|rt|shop-img|fonts|.*\\..*).*)"] };
+export const config = { matcher: ["/((?!api|_next|rt|shop-img|post-img|fonts|.*\\..*).*)"] };
