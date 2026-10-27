@@ -528,14 +528,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 /* ---------- Performance on phones/tablets ----------
    Backdrop blur over a moving map is recomputed every frame; on touch devices use
    solid panels instead. Respect reduced-motion too. */
-@media (hover: none), (pointer: coarse) {
+@media (hover: none), (pointer: coarse), (any-pointer: coarse) {
   .chip, .player-card, .fab, .nav, .needs-hud, .ready-tray, .modal-bg,
   .sell-bar, .emp-buybar, .call-btn { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   :root { --panel: rgba(16, 16, 28, 0.96); }
-  /* A 3D tilt on :active promotes the row to its own layer the moment a finger lands
-     to scroll, then drops it again: on Android that flashed stale pixels in panels. */
-  .card.list-item:active { transform: scale(.99); }
-  .card.list-item:hover .icon-tile { transform: none; }
 }
 /* Under an open panel the map's looping markers kept the GPU recompositing behind
    every scroll frame; nobody can see them anyway. */
@@ -566,6 +562,27 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .tabs button { transition: transform .12s; }
 .tabs button:active { transform: scale(.94); }
 .tabs button.on { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+
+/* Phones and tablets: the same feedback, flat. A 3D transform or a looping animation
+   gives an element its own GPU layer; a panel full of them, re-rendered at once after a
+   pick or a purchase, outgrew budget Android's tile memory and half the panel turned to
+   noise. These come after the rules above so they win at the same specificity. */
+@media (hover: none), (pointer: coarse), (any-pointer: coarse) {
+  .btn { transition: transform .08s ease-out, box-shadow .08s ease-out; }
+  .fab:active { transform: scale(.92); }
+  .nav button:active { transform: scale(.94); }
+  .card.list-item:active { transform: scale(.99); }
+  .card.list-item:hover .icon-tile { transform: none; }
+  /* Popups (modals, the ⋯ menu) open flat: same name, so every rule using it follows. */
+  @keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* In panels, icons hold still (the drop shadow stays). */
+  .sheet .icon-tile .art, .sheet .gt-icon .art, .sheet .ms-ic .art,
+  .sheet .anim-float, .sheet .anim-spin, .sheet .anim-pulse, .sheet .anim-wiggle, .sheet .anim-bounce,
+  .sheet .biz-bar i::after { animation: none; }
+  /* Pausing the map's markers under a panel still kept a layer for each one; the panel
+     hides them on a phone, so drop the animation and the layer. */
+  .game:has(.sheet) .mk, .game:has(.sheet) .mk *, .game:has(.sheet) .me-marker::after { animation: none !important; will-change: auto !important; }
+}
 
 /* Markers drop onto the map once, with a little bounce (one-shot, not a loop). */
 .leaflet-marker-icon .mk { animation: drop .45s cubic-bezier(.3,1.5,.5,1) backwards; }
@@ -706,7 +723,7 @@ html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 .btn.ghost::before { display: none; }
 .btn.ghost { font-family: var(--body); font-weight: 800; text-shadow: none; }
 .btn.yellow, .btn.cyan, .btn.green { text-shadow: 0 1px 0 rgba(255,255,255,.4); }
-.btn:not(:disabled):hover { filter: brightness(1.08); }
+@media (hover: hover) { .btn:not(:disabled):hover { filter: brightness(1.08); } }
 .btn:not(:disabled):active { transform: translateY(3px) scale(.97); }
 .btn.big-btn { font-size: 18px; padding: 14px 18px; border-radius: 16px; }
 h2, .sheet-head h2 { text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 18px rgba(240,192,90,.12); }

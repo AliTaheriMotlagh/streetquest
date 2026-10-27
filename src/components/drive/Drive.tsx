@@ -182,6 +182,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   menuOpen.current = !!menu;
   const menuTab = useRef<MenuTab | null>(null);
   menuTab.current = menu;
+  /** Jobs waved away with ✕. The loop skips them, so the next job at the same spot shows,
+   * and forgets each one once you're out of its reach, so it's back when you return. */
+  const dismissed = useRef(new Set<string>());
   // Latest props/context for the render loop (it lives as long as the component).
   const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
   live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim };
@@ -1293,11 +1296,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         lastHud = now;
         const here = frame.toLatLng(st.x, st.z);
         let near: Job | null = null, nearD = Infinity;
+        const inReach = new Set<string>();
         if (low)
           for (const j of jobs) {
             const d = distanceM(here, j);
-            if (d <= j.reach && d < nearD) (near = j), (nearD = d);
+            if (d > j.reach) continue;
+            inReach.add(j.id);
+            if (d < nearD && !dismissed.current.has(j.id)) (near = j), (nearD = d);
           }
+        for (const id of dismissed.current) if (!inReach.has(id)) dismissed.current.delete(id);
         const navInfo = goalLL
           ? { label: rg?.label ?? (navGoal ? t("Destination") : t(L.me?.activeRun?.title ?? "")), dist: distanceM(here, goalLL), rel: ((bearingTo(here, goalLL) - (((-st.yaw * 180) / Math.PI) % 360) + 540) % 360) - 180 }
           : null;
@@ -1462,12 +1469,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
   }, [style, names]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The job button can be waved away; it comes back once you've left and returned.
-  const [dismissed, setDismissed] = useState<string | null>(null);
-  const nearId = hud?.near?.id ?? null;
-  useEffect(() => {
-    if (!nearId) setDismissed(null);
-  }, [nearId]);
+  // The job button can be waved away (see `dismissed`); hide it now, the loop picks the next.
+  const dismiss = (id: string) => {
+    dismissed.current.add(id);
+    setHud((h) => (h?.near?.id === id ? { ...h, near: null } : h));
+  };
 
   const runNear = async () => {
     if (!hud?.near || busy) return;
@@ -1694,7 +1700,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       )}
 
       {/* The job you're standing at: a button to do it, and ✕ to wave it away */}
-      {hud?.near && hud.near.id !== dismissed && (
+      {hud?.near && (
         <div key={hud.near.id} className={`drive-action ${busy ? "busy" : ""}`} style={{ "--job": hud.near.color } as React.CSSProperties}>
           <button className="da-main" disabled={busy} onClick={runNear} aria-busy={busy || undefined}>
             <span className="da-ic">{busy ? <i className="drive-spinner" aria-hidden /> : <Icon name={hud.near.icon} size={22} strokeWidth={2.2} />}</span>
@@ -1703,7 +1709,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               <span>{hud.near.where}</span>
             </span>
           </button>
-          <button className="da-x" onClick={() => setDismissed(hud.near!.id)} aria-label={t("Dismiss")} title={t("Dismiss")} disabled={busy}>✕</button>
+          <button className="da-x" onClick={() => dismiss(hud.near!.id)} aria-label={t("Dismiss")} title={t("Dismiss")} disabled={busy}>✕</button>
         </div>
       )}
 

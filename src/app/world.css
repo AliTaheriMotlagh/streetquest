@@ -40,6 +40,11 @@ html.lite .fantasy-fx .compass-rose { filter: none; }
 html.lite .map.fantasy .fantasy-fx::before { background: rgba(214, 170, 96, .2); }
 html.lite .map.fantasy.night-tint .fantasy-fx::before { background: rgba(14, 12, 60, .45); }
 html.lite .map.fantasy.dusk-tint .fantasy-fx::before, html.lite .map.fantasy.dawn-tint .fantasy-fx::before { background: rgba(200, 90, 60, .2); }
+/* Phones with a panel open: the drifting clouds (blurred, bigger than the screen) and the
+   blended grain kept the GPU compositing the whole map under every frame of the panel. */
+@media (hover: none), (pointer: coarse), (any-pointer: coarse) {
+  .game:has(.sheet) .fantasy-fx .cloud, .game:has(.sheet) .map.fantasy .leaflet-tile-pane::after { display: none; }
+}
 @media (prefers-reduced-motion: reduce) { .fantasy-fx .cloud { animation: none; } }
 /* Markers read better on the light parchment with a soft dark halo. */
 .map.fantasy .mk { text-shadow: 0 2px 4px rgba(60, 30, 0, .55); }
