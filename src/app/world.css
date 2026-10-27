@@ -105,8 +105,47 @@ html.lite .fantasy-fx .cloud { display: none; }
 .pedal.brake { width: 76px; height: 96px; background: linear-gradient(180deg, #ff8a9a, #e0244a); }
 .drive-drift { position: absolute; right: calc(126px + var(--safe-r)); bottom: calc(176px + var(--safe-b)); padding: 10px 14px; border-radius: 14px; border: 0; background: linear-gradient(180deg, #ffe27a, #ffb703); color: #2a2000; font-weight: 900; font-family: var(--display); box-shadow: 0 6px 16px rgba(0, 0, 0, .3); touch-action: none; }
 .drive-keys { position: absolute; bottom: calc(14px + var(--safe-b)); left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 12px; background: rgba(16, 16, 36, .6); color: #fff; white-space: nowrap; }
+/* Flying: climb / descend; altitude under the speed */
+.drive-alt { font-size: 10px; font-weight: 800; color: #9fe7ff; margin-top: 2px; }
+.drive-lift { pointer-events: auto; display: flex; flex-direction: column; gap: 10px; margin-inline: auto 14px; }
+.pedal.up, .pedal.down { width: 64px; height: 58px; font-size: 24px; background: linear-gradient(180deg, #8fd3ff, #2b86d6); }
+.pedal.down { background: linear-gradient(180deg, #c7c9ff, #6b6fd6); }
+/* The street you're on, sliding in when it changes */
+.drive-street { position: absolute; top: calc(78px + var(--safe-t)); left: 50%; transform: translateX(-50%); max-width: calc(100% - 180px); padding: 7px 14px; border-radius: 12px; background: rgba(12, 14, 22, .74); color: #fff; font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(6px); border: 1px solid rgba(255, 255, 255, .14); animation: streetIn .45s ease-out; pointer-events: none; }
+@keyframes streetIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.drive-hint { position: absolute; bottom: calc(196px + var(--safe-b)); left: 50%; transform: translateX(-50%); padding: 7px 12px; border-radius: 12px; background: rgba(16, 16, 36, .72); color: #fff; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
+/* Tapped something in the city */
+.drive-pick { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(312px + var(--safe-b)); z-index: 4; width: min(440px, calc(100% - 24px)); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 18px; background: var(--panel-solid); color: var(--text); border: 1px solid var(--line); box-shadow: 0 14px 34px rgba(0, 0, 0, .45); animation: bounceIn .3s; }
+.drive-pick .ic { font-size: 30px; }
+.drive-pick b, .drive-pick .small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-pick .grow { min-width: 0; }
+/* Garage and party panels */
+.drive-sheet { position: absolute; z-index: 5; right: calc(70px + var(--safe-r)); top: calc(140px + var(--safe-t)); width: min(380px, calc(100% - 90px)); max-height: calc(100% - 170px - var(--safe-t) - var(--safe-b)); overflow-y: auto; padding: 14px; border-radius: 20px; background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0, 0, 0, .5); color: var(--text); display: flex; flex-direction: column; gap: 10px; }
+.garage-grid, .party-games { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.party-games { grid-template-columns: 1fr; }
+.garage-car { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: start; padding: 10px; border-radius: 14px; border: 2px solid var(--line); background: rgba(255, 255, 255, .04); color: inherit; cursor: pointer; }
+.garage-car .ic { font-size: 30px; line-height: 1; }
+.garage-car.on { border-color: var(--yellow); background: rgba(255, 210, 63, .1); }
+.garage-car:disabled { opacity: .5; cursor: not-allowed; }
+.garage-stats { color: var(--yellow); font-weight: 800; }
+.garage-paints { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .25); cursor: pointer; }
+.swatch.on { border-color: #fff; box-shadow: 0 0 0 3px var(--yellow); }
+.seg { display: flex; gap: 8px; }
+.party-join input { flex: 1; min-width: 0; font-size: 18px; letter-spacing: .2em; text-transform: uppercase; }
+.party-code { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(255, 210, 63, .08); border: 1px dashed var(--yellow); }
+.party-code b { font-family: var(--display); font-size: 24px; letter-spacing: .14em; flex: 1; direction: ltr; }
+.fab.on { box-shadow: 0 0 0 3px var(--cyan, #22e3ff), 0 8px 20px rgba(0, 0, 0, .35); }
+/* Party round */
+.party-hud { position: absolute; top: calc(116px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 16px; border-radius: 16px; background: rgba(12, 14, 30, .82); color: #fff; border: 2px solid var(--yellow); box-shadow: 0 10px 26px rgba(0, 0, 0, .4); max-width: calc(100% - 24px); pointer-events: none; }
+.party-hud.is-it { border-color: #ff2e55; animation: blink 1s infinite; }
+.party-results { pointer-events: auto; width: min(360px, calc(100% - 24px)); align-items: stretch; background: var(--panel-solid); color: var(--text); }
+.party-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 10px; }
+.party-row.me { background: rgba(255, 210, 63, .12); }
+.drive-countdown { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; pointer-events: none; font-family: var(--display); font-size: 140px; color: #fff; text-shadow: 0 8px 30px rgba(0, 0, 0, .55); animation: pop .6s; }
 @media (max-width: 380px) { .drive-wheel-zone { width: 140px; } .pedal.gas { width: 80px; } .drive-mini { width: 96px; height: 96px; } }
-@media (orientation: landscape) and (max-height: 500px) { .drive-pad { height: 150px; } .drive-wheel-zone { height: 120px; } .pedal.gas { height: 116px; } .drive-action { bottom: calc(140px + var(--safe-b)); } }
+@media (orientation: landscape) and (max-height: 500px) { .drive-pad { height: 150px; } .drive-wheel-zone { height: 120px; } .pedal.gas { height: 116px; } .drive-action, .drive-hint { bottom: calc(140px + var(--safe-b)); } .drive-pick { bottom: calc(206px + var(--safe-b)); } .drive-sheet { top: calc(70px + var(--safe-t)); max-height: calc(100% - 90px); } }
+@media (max-width: 480px) { .drive-sheet { right: calc(8px + var(--safe-r)); left: calc(8px + var(--safe-l)); width: auto; top: calc(80px + var(--safe-t)); max-height: calc(100% - 270px - var(--safe-t) - var(--safe-b)); } .drive-street { top: calc(136px + var(--safe-t)); max-width: calc(100% - 150px); } .party-hud { top: calc(176px + var(--safe-t)); } .drive-banner { top: calc(232px + var(--safe-t)); } .drive-loading { top: calc(270px + var(--safe-t)); } }
 
 /* The "get in the car" button on the map. */
 .drive-fab {
@@ -204,3 +243,72 @@ html.lite .drive-fab, html.lite .drive-fab-car { animation: none; }
 .form label { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .chips .chip { cursor: pointer; font-size: 12px; box-shadow: none; }
+
+/* =====================================================================
+   3D city HUD, redesigned: me (start) · the street (middle) · map, dial and two
+   buttons (end). One tabbed menu instead of a column of buttons. Text panels follow
+   the language's direction; the driving controls stay where thumbs expect them.
+   ===================================================================== */
+.drive-top { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 10px; }
+.drive-start, .drive-end, .drive-mid { pointer-events: none; }
+.drive-start > *, .drive-end > *, .drive-mid > * { pointer-events: auto; }
+.drive-start { display: flex; gap: 8px; align-items: center; }
+.drive-round { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; border: 1px solid rgba(255, 255, 255, .16); background: rgba(14, 16, 26, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 6px 18px rgba(0, 0, 0, .35); color: #fff; cursor: pointer; position: relative; }
+.drive-round.on { border-color: var(--yellow); box-shadow: 0 0 0 2px var(--yellow), 0 6px 18px rgba(0, 0, 0, .35); }
+.drive-me { display: flex; align-items: center; gap: 9px; padding: 4px 12px 4px 4px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .16); background: rgba(14, 16, 26, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 6px 18px rgba(0, 0, 0, .35); color: #fff; cursor: pointer; min-width: 0; }
+.drive-me-av { position: relative; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 21px; background: linear-gradient(135deg, var(--pink), var(--purple)); flex: none; }
+.drive-me-av i { position: absolute; bottom: -4px; right: -4px; font-style: normal; font-family: var(--display); font-size: 10px; background: var(--yellow); color: #000; border: 2px solid #000; border-radius: 8px; padding: 0 4px; line-height: 14px; }
+.drive-me-tx { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; }
+.drive-me-tx b { font-size: 13px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-me-tx span { font-size: 12px; font-weight: 800; color: var(--yellow); }
+.drive-mid { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding-top: 4px; }
+.drive-street { position: static; transform: none; max-width: 100%; padding: 8px 16px; border-radius: 14px; background: linear-gradient(180deg, rgba(20, 70, 140, .92), rgba(12, 44, 96, .92)); border: 2px solid rgba(255, 255, 255, .85); color: #fff; font-weight: 800; font-size: 15px; box-shadow: 0 8px 22px rgba(0, 0, 0, .35); animation: streetIn .45s ease-out; }
+@keyframes streetIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.drive-nav { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 12px; max-width: 100%; border: 1px solid rgba(255, 46, 136, .5); }
+.drive-nav b { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.drive-end { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.drive-mini-wrap { position: relative; border-radius: 50%; }
+.drive-mini-wrap .drive-mini { margin: 0; width: 108px; height: 108px; display: block; }
+.drive-mini-wrap.loading::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--yellow); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.drive-dial { position: relative; width: 84px; height: 84px; border-radius: 50%; background: rgba(10, 12, 20, .78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 18px rgba(0, 0, 0, .4); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
+.drive-dial svg { position: absolute; inset: 0; transform: rotate(135deg); }
+.drive-dial circle { fill: none; stroke-linecap: round; }
+.drive-dial .track { stroke: rgba(255, 255, 255, .12); stroke-width: 5; stroke-dasharray: 160 300; }
+.drive-dial .fill { stroke: var(--cyan); stroke-width: 5; transition: stroke-dashoffset .15s linear; }
+.drive-dial .rpm { stroke: #ff7a59; stroke-width: 3; opacity: .85; transition: stroke-dashoffset .1s linear; }
+.drive-dial b { font-family: var(--display); font-size: 24px; line-height: 1; position: relative; }
+.drive-dial span { font-size: 9px; font-weight: 800; color: var(--yellow); position: relative; }
+.drive-dial .gear { position: absolute; bottom: 6px; font-style: normal; font-weight: 900; font-size: 11px; color: #ff9a7a; }
+.drive .drive-side { position: static; display: flex; flex-direction: row; gap: 8px; }
+.drive-credit { top: auto; bottom: calc(4px + var(--safe-b)); left: 50%; transform: translateX(-50%); }
+/* The menu: tabs on top, then the tab */
+.drive-menu { top: calc(10px + var(--safe-t)); right: calc(132px + var(--safe-r)); width: min(400px, calc(100% - 150px)); max-height: calc(100% - 210px - var(--safe-t) - var(--safe-b)); z-index: 6; }
+.drive-tabs { display: flex; gap: 6px; align-items: center; position: sticky; top: -14px; margin: -14px -14px 0; padding: 12px 12px 8px; background: var(--panel-solid); z-index: 1; border-bottom: 1px solid var(--line); }
+.drive-tabs button[role="tab"] { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--muted); font-weight: 800; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.drive-tabs button[role="tab"].on { color: var(--text); border-color: var(--yellow); background: rgba(255, 210, 63, .12); }
+.drive-tabs .ic { font-size: 18px; }
+.drive-tabs .close { margin-inline-start: auto; flex: none; }
+.drive-tab { display: flex; flex-direction: column; gap: 10px; }
+/* Touch: the extras sit between wheel and pedals */
+.drive-pad-mid { pointer-events: auto; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: flex-end; }
+.drive-chip-btn { padding: 9px 14px; border-radius: 14px; border: 0; background: linear-gradient(180deg, #ffe27a, #ffb703); color: #2a2000; font-weight: 900; font-family: var(--display); box-shadow: 0 6px 16px rgba(0, 0, 0, .3); touch-action: none; cursor: pointer; }
+.drive-pad .pedal.up, .drive-pad .pedal.down { width: 58px; height: 50px; }
+/* Persian: every text panel reads right to left */
+html[dir="rtl"] .drive :is(.drive-sheet, .drive-pick, .party-hud, .drive-street, .drive-nav, .drive-banner, .drive-loading, .drive-hint, .drive-keys, .drive-me-tx, .drive-action, .drive-tab, .drive-tabs) { direction: rtl; }
+html[dir="rtl"] .drive-me { padding: 4px 4px 4px 12px; flex-direction: row-reverse; }
+html[dir="rtl"] .drive-me-tx { align-items: flex-end; }
+@media (max-width: 560px) {
+  .drive-top { grid-template-columns: 1fr auto; }
+  .drive-mid { position: absolute; top: 58px; left: 0; right: 108px; align-items: flex-start; }
+  .drive-street { font-size: 14px; padding: 6px 12px; }
+  .drive-me-tx b { max-width: 90px; }
+  .drive-mini-wrap .drive-mini { width: 92px; height: 92px; }
+  .drive-dial { width: 72px; height: 72px; }
+  .drive-dial b { font-size: 20px; }
+  .drive-menu { top: auto; bottom: calc(8px + var(--safe-b)); right: calc(8px + var(--safe-r)); left: calc(8px + var(--safe-l)); width: auto; max-height: 62vh; }
+  .drive-tabs .lb { display: none; }
+  .drive-pick { bottom: calc(266px + var(--safe-b)); }
+  .drive-action { bottom: calc(196px + var(--safe-b)); }
+  .party-hud { top: calc(120px + var(--safe-t)); }
+}

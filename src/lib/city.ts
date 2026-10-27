@@ -11,16 +11,49 @@ import { catOfTags, type Place } from "./places";
 
 export const TILE_DEG = CELL_DEG;
 const Q = 1e6;
+/**
+ * Tile format version. v2 added building colours and roof shapes, multipolygon
+ * buildings, footways, rail, land use and street furniture; older stored tiles are
+ * still served while a fresh copy is fetched in the background.
+ */
+export const TILE_V = 2;
 
 export type BuildingKind = "house" | "apartments" | "shop" | "office" | "industrial" | "civic" | "church" | "tower";
-export type RoadKind = "major" | "minor" | "path";
-export type AreaKind = "park" | "water" | "forest" | "grass" | "pitch";
+export type RoadKind = "major" | "minor" | "path" | "foot" | "rail";
+export type AreaKind = "park" | "water" | "forest" | "grass" | "pitch" | "parking" | "plaza" | "sand" | "farm" | "residential" | "commercial" | "industrial" | "cemetery";
+export type RoofShape = "flat" | "gabled" | "hipped" | "pyramidal" | "dome" | "skillion";
+/** Street furniture, stored as [x, y, kind] triples in CityTile.o. */
+export const PROP = { tree: 0, lamp: 1, signal: 2, bus: 3 } as const;
 
-export type CityBuilding = { r: number[]; h: number; k: BuildingKind; n?: string };
-export type CityRoad = { l: number[]; w: number; k: RoadKind; n?: string };
+export type CityBuilding = {
+  r: number[];
+  h: number;
+  k: BuildingKind;
+  n?: string;
+  /** Height where the walls start (an overhang, a canopy on pillars). */
+  mh?: number;
+  rf?: RoofShape;
+  /** Wall / roof colour from the map ("#rrggbb"). */
+  c?: string;
+  rc?: string;
+  /** Not on the map: filled in along a street with no buildings mapped (see drive/vectorTile.ts). */
+  g?: 1;
+};
+export type CityRoad = {
+  l: number[];
+  w: number;
+  k: RoadKind;
+  n?: string;
+  /** Lanes (both directions). */
+  ln?: number;
+  /** One-way. */
+  ow?: 1;
+  /** Only carries the street's name (the asphalt is drawn from another line). */
+  x?: 1;
+};
 export type CityArea = { r: number[]; k: AreaKind };
 export type CityTile = {
-  v: 1;
+  v: number;
   key: string;
   cx: number;
   cy: number;
@@ -30,6 +63,8 @@ export type CityTile = {
   r: CityRoad[];
   a: CityArea[];
   p: Place[];
+  /** Street furniture: [x, y, PROP kind] triples. */
+  o?: number[];
 };
 
 export const tileOf = (p: LatLng) => ({ cx: Math.floor(p.lng / TILE_DEG), cy: Math.floor(p.lat / TILE_DEG) });
@@ -63,12 +98,67 @@ export function makeFrame(origin: LatLng) {
 export type Frame = ReturnType<typeof makeFrame>;
 
 // ---------------------------------------------------------------- from OpenStreetMap
-type OsmEl = { type: "node" | "way" | "relation"; id: number; lat?: number; lon?: number; tags?: Record<string, string>; geometry?: { lat: number; lon: number }[] };
+type OsmPt = { lat: number; lon: number };
+type OsmEl = {
+  type: "node" | "way" | "relation";
+  id: number;
+  lat?: number;
+  lon?: number;
+  tags?: Record<string, string>;
+  geometry?: OsmPt[];
+  members?: { type: string; role: string; geometry?: OsmPt[] }[];
+};
 
 const MAJOR = /^(motorway|trunk|primary|secondary)(_link)?$/;
 const MINOR = /^(tertiary|tertiary_link|unclassified|residential|living_street|road)$/;
 const PATH = /^(service|pedestrian)$/;
-const ROAD_W: Record<RoadKind, number> = { major: 12, minor: 8, path: 4.5 };
+const FOOT = /^(footway|cycleway|path|steps|track)$/;
+const RAIL = /^(rail|tram|light_rail|narrow_gauge)$/;
+const ROAD_W: Record<RoadKind, number> = { major: 12, minor: 8, path: 4.5, foot: 2.2, rail: 3 };
+const LANE_W = 3.3;
+
+const ROOFS: Record<string, RoofShape> = { flat: "flat", gabled: "gabled", saltbox: "gabled", gambrel: "gabled", mansard: "hipped", hipped: "hipped", half_hipped: "hipped", pyramidal: "pyramidal", dome: "dome", onion: "dome", round: "dome", skillion: "skillion", lean_to: "skillion" };
+const NAMED_COLOURS: Record<string, string> = {
+  white: "#f2f2ee", black: "#2b2b2b", grey: "#8f9296", gray: "#8f9296", lightgrey: "#c8c9cb", lightgray: "#c8c9cb", darkgrey: "#5a5c60", darkgray: "#5a5c60", silver: "#c0c2c6",
+  red: "#a8443a", darkred: "#7a2b25", maroon: "#6b2a24", brown: "#7b5a43", tan: "#cdb28c", beige: "#e3d6b8", cream: "#efe6cc", ivory: "#f3eedd", wheat: "#e6d3a8",
+  yellow: "#e2c66a", orange: "#d98a4a", pink: "#e2b0b0", green: "#6f8f5e", darkgreen: "#3f5a3a", blue: "#5a7fa8", lightblue: "#a9c3dc", navy: "#2f3f63", sandybrown: "#d8a76a", terracotta: "#b8603e",
+};
+/** An OSM colour tag ("#abc", "#aabbcc", "red", "light grey") as "#rrggbb", or undefined. */
+export function osmColour(v: string | undefined) {
+  if (!v) return undefined;
+  const s = v.trim().toLowerCase().replace(/[\s_-]/g, "");
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  return NAMED_COLOURS[s];
+}
+
+/** Underground or covered: nothing to draw at street level. */
+const underground = (tags: Record<string, string>) => (!!tags.tunnel && tags.tunnel !== "no") || tags.location === "underground" || tags.covered === "yes" || parseFloat(tags.layer ?? "0") < 0;
+
+/** A multipolygon's outer ways joined end to end into closed rings. */
+function outerRings(members: NonNullable<OsmEl["members"]>): OsmPt[][] {
+  const parts = members.filter((m) => m.type === "way" && m.role !== "inner" && m.geometry && m.geometry.length >= 2).map((m) => [...m.geometry!]);
+  const same = (a: OsmPt, b: OsmPt) => a.lat === b.lat && a.lon === b.lon;
+  const rings: OsmPt[][] = [];
+  while (parts.length) {
+    const ring = parts.shift()!;
+    let grew = true;
+    while (!same(ring[0], ring[ring.length - 1]) && grew) {
+      grew = false;
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i], end = ring[ring.length - 1];
+        if (same(p[0], end)) ring.push(...p.slice(1));
+        else if (same(p[p.length - 1], end)) ring.push(...p.reverse().slice(1));
+        else continue;
+        parts.splice(i, 1);
+        grew = true;
+        break;
+      }
+    }
+    if (ring.length >= 4 && same(ring[0], ring[ring.length - 1])) rings.push(ring);
+  }
+  return rings;
+}
 
 function buildingKind(tags: Record<string, string>): BuildingKind {
   const b = tags.building;
@@ -120,11 +210,35 @@ function centroid(geom: { lat: number; lon: number }[]) {
 export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTile {
   const sw = tileSW(cx, cy);
   const inside = (p: LatLng) => p.lat >= sw.lat && p.lat < sw.lat + TILE_DEG && p.lng >= sw.lng && p.lng < sw.lng + TILE_DEG;
-  const tile: CityTile = { v: 1, key: tileKey(cx, cy), cx, cy, real: true, b: [], r: [], a: [], p: [] };
+  const tile: CityTile = { v: TILE_V, key: tileKey(cx, cy), cx, cy, real: true, b: [], r: [], a: [], p: [], o: [] };
+  const props = tile.o!;
   const seenPlace = new Set<string>();
+  const addBuilding = (geom: OsmPt[], tags: Record<string, string>, id: number) => {
+    if (!inside(centroid(geom)) || tile.b.length >= 3000) return;
+    const k = buildingKind(tags);
+    const r = pack(geom, sw, true);
+    if (r.length < 6) return;
+    const h = heightOf(tags, k, id);
+    const mh = parseFloat(tags.min_height ?? "") || (parseFloat(tags["building:min_level"] ?? "") || 0) * 3.2;
+    const rf = ROOFS[tags["roof:shape"] ?? ""];
+    const c = osmColour(tags["building:colour"]), rc = osmColour(tags["roof:colour"]);
+    tile.b.push({
+      r, h: Math.round(h * 10) / 10, k: h > 60 ? "tower" : k,
+      ...(tags.name && (k === "church" || k === "civic" || h > 40) ? { n: tags.name.slice(0, 40) } : {}),
+      ...(mh > 0 && mh < h - 1 ? { mh: Math.round(mh * 10) / 10 } : {}),
+      ...(rf && rf !== "flat" ? { rf } : {}),
+      ...(c ? { c } : {}),
+      ...(rc ? { rc } : {}),
+    });
+  };
   for (const el of elements) {
     const tags = el.tags ?? {};
     const geom = el.geometry;
+    // Street furniture: real trees, lamps, traffic lights and bus stops.
+    if (el.type === "node" && el.lat != null && el.lon != null && props.length < 6000) {
+      const kind = tags.natural === "tree" ? PROP.tree : tags.highway === "street_lamp" ? PROP.lamp : tags.highway === "traffic_signals" ? PROP.signal : tags.highway === "bus_stop" ? PROP.bus : -1;
+      if (kind >= 0 && inside({ lat: el.lat, lng: el.lon })) props.push(Math.round((el.lon - sw.lng) * Q), Math.round((el.lat - sw.lat) * Q), kind);
+    }
     // Named places (nodes, or the centre of a building/area that is the place).
     const cat = catOfTags(tags);
     const name = tags.name || tags["name:en"] || tags.brand;
@@ -136,24 +250,33 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
         tile.p.push({ id, name: name.slice(0, 60), cat, lat: Math.round(at.lat * Q) / Q, lng: Math.round(at.lng * Q) / Q, ...(tags.brand && tags.brand !== name ? { brand: tags.brand.slice(0, 40) } : {}) });
       }
     }
-    if (el.type !== "way" || !geom || geom.length < 2) continue;
-    if (tags.building && tags.building !== "no" && geom.length >= 4) {
-      if (!inside(centroid(geom)) || tile.b.length >= 2500) continue;
-      const k = buildingKind(tags);
-      const r = pack(geom, sw, true);
-      if (r.length < 6) continue;
-      const h = heightOf(tags, k, el.id);
-      tile.b.push({ r, h: Math.round(h * 10) / 10, k: h > 60 ? "tower" : k, ...(tags.name && (k === "church" || k === "civic" || h > 40) ? { n: tags.name.slice(0, 40) } : {}) });
+    // Big buildings drawn as multipolygons (courtyards, malls, stations).
+    if (el.type === "relation" && tags.building && tags.building !== "no" && el.members && !underground(tags)) {
+      for (const ring of outerRings(el.members)) addBuilding(ring, tags, el.id);
       continue;
     }
-    const hw = tags.highway;
-    if (hw) {
-      const k: RoadKind | null = MAJOR.test(hw) ? "major" : MINOR.test(hw) ? "minor" : PATH.test(hw) ? "path" : null;
-      if (!k || tile.r.length >= 1500) continue;
+    if (el.type !== "way" || !geom || geom.length < 2) continue;
+    if (tags.building && tags.building !== "no" && geom.length >= 4) {
+      if (!underground(tags)) addBuilding(geom, tags, el.id);
+      continue;
+    }
+    const hw = tags.highway, rw = tags.railway;
+    if ((hw || rw) && tags.area !== "yes") {
+      const k: RoadKind | null = hw ? (MAJOR.test(hw) ? "major" : MINOR.test(hw) ? "minor" : PATH.test(hw) ? "path" : FOOT.test(hw) ? "foot" : null) : RAIL.test(rw) ? "rail" : null;
+      if (!k || tile.r.length >= 2500 || underground(tags)) continue;
+      const lanes = parseInt(tags.lanes ?? "", 10);
+      const ow = tags.oneway === "yes" || tags.junction === "roundabout" || /^motorway/.test(hw ?? "");
+      const w = k === "major" || k === "minor" ? Math.max(ROAD_W[k] * (ow ? 0.6 : 1), lanes > 0 ? Math.min(8, lanes) * LANE_W : 0) : ROAD_W[k];
       // Keep the runs of segments whose midpoint is in this tile.
       let run: { lat: number; lon: number }[] = [];
       const flush = () => {
-        if (run.length >= 2) tile.r.push({ l: pack(run, sw, false), w: ROAD_W[k], k, ...(tags.name ? { n: tags.name.slice(0, 40) } : {}) });
+        if (run.length >= 2)
+          tile.r.push({
+            l: pack(run, sw, false), w: Math.round(w * 10) / 10, k,
+            ...(tags.name ? { n: tags.name.slice(0, 40) } : {}),
+            ...(lanes > 0 ? { ln: Math.min(8, lanes) } : {}),
+            ...(ow ? { ow: 1 as const } : {}),
+          });
         run = [];
       };
       for (let i = 1; i < geom.length; i++) {
@@ -166,14 +289,23 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
       flush();
       continue;
     }
+    const lu = tags.landuse;
     const area: AreaKind | null =
-      tags.natural === "water" || tags.waterway === "riverbank" || tags.landuse === "reservoir" ? "water"
-      : tags.leisure === "park" || tags.leisure === "garden" || tags.landuse === "recreation_ground" || tags.landuse === "village_green" ? "park"
-      : tags.natural === "wood" || tags.landuse === "forest" ? "forest"
+      tags.natural === "water" || tags.waterway === "riverbank" || lu === "reservoir" || lu === "basin" ? "water"
+      : tags.leisure === "park" || tags.leisure === "garden" || lu === "recreation_ground" || lu === "village_green" ? "park"
+      : tags.natural === "wood" || lu === "forest" ? "forest"
       : tags.leisure === "pitch" ? "pitch"
-      : tags.landuse === "grass" || tags.landuse === "meadow" ? "grass"
+      : lu === "grass" || lu === "meadow" || tags.natural === "scrub" || tags.natural === "grassland" ? "grass"
+      : tags.amenity === "parking" && tags.parking !== "underground" && tags.parking !== "multi-storey" ? "parking"
+      : hw === "pedestrian" || tags.place === "square" || tags.amenity === "marketplace" ? "plaza"
+      : tags.natural === "sand" || tags.natural === "beach" ? "sand"
+      : lu === "farmland" || lu === "orchard" || lu === "vineyard" || lu === "allotments" ? "farm"
+      : lu === "cemetery" || tags.amenity === "grave_yard" ? "cemetery"
+      : lu === "residential" ? "residential"
+      : lu === "commercial" || lu === "retail" ? "commercial"
+      : lu === "industrial" || lu === "railway" ? "industrial"
       : null;
-    if (area && geom.length >= 4 && inside(centroid(geom)) && tile.a.length < 300) {
+    if (area && geom.length >= 4 && inside(centroid(geom)) && tile.a.length < 400) {
       const r = pack(geom, sw, true);
       if (r.length >= 6) tile.a.push({ r, k: area });
     }
@@ -185,12 +317,18 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
 export function overpassQuery(cx: number, cy: number) {
   const sw = tileSW(cx, cy);
   const bb = `${sw.lat.toFixed(6)},${sw.lng.toFixed(6)},${(sw.lat + TILE_DEG).toFixed(6)},${(sw.lng + TILE_DEG).toFixed(6)}`;
-  return `[out:json][timeout:50][bbox:${bb}];(
+  return `[out:json][timeout:60][bbox:${bb}];(
 way["building"];
-way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|road|service|pedestrian)(_link)?$"];
+relation["building"]["type"="multipolygon"];
+way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|road|service|pedestrian|footway|cycleway|path|steps|track)(_link)?$"];
+way["railway"~"^(rail|tram|light_rail|narrow_gauge)$"];
 way["leisure"~"^(park|garden|pitch)$"];
-way["landuse"~"^(grass|forest|meadow|recreation_ground|village_green|reservoir)$"];
-way["natural"~"^(water|wood)$"];
+way["landuse"~"^(grass|forest|meadow|recreation_ground|village_green|reservoir|basin|farmland|orchard|vineyard|allotments|cemetery|residential|commercial|retail|industrial|railway)$"];
+way["natural"~"^(water|wood|scrub|grassland|sand|beach)$"];
+way["amenity"~"^(parking|marketplace|grave_yard)$"];
+way["place"="square"];
+node["natural"="tree"];
+node["highway"~"^(street_lamp|traffic_signals|bus_stop)$"];
 node["amenity"~"^(fast_food|restaurant|cafe|bar|pub|ice_cream|pharmacy|fuel|bank|cinema|theatre|library)$"]["name"];
 node["shop"]["name"];
 node["leisure"~"^(fitness_centre|sports_centre)$"]["name"];
@@ -205,7 +343,7 @@ const GRID = 0.0008; // street spacing in degrees (~90 m north–south)
  * line up across tiles), blocks of cottages, towers and shops, the odd park and pond.
  */
 export function villageTile(cx: number, cy: number): CityTile {
-  const tile: CityTile = { v: 1, key: tileKey(cx, cy), cx, cy, real: false, b: [], r: [], a: [], p: [] };
+  const tile: CityTile = { v: TILE_V, key: tileKey(cx, cy), cx, cy, real: false, b: [], r: [], a: [], p: [] };
   const n = Math.round(TILE_DEG / GRID);
   const span = Math.round(TILE_DEG * Q);
   const step = Math.round(GRID * Q);

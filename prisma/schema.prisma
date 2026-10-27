@@ -1241,3 +1241,67 @@ model Follow {
   @@id([followerId, followeeId])
   @@index([followeeId])
 }
+
+// ---------------------------------------------------------------- 3D city: who's driving, and party games
+// Where each player's vehicle is in the 3D city, streamed a few times a second while
+// they drive (server/drive.ts). Separate from User.lastLat/lastLng: that's the game
+// position (anti-cheat, rewards); this is what other drivers see, with heading,
+// altitude and the vehicle. Rows go stale on their own — readers only look at fresh ones.
+model DriveState {
+  userId    String   @id
+  name      String   @default("")
+  avatar    String   @default("🙂")
+  level     Int      @default(1)
+  lat       Float
+  lng       Float
+  alt       Float    @default(0)
+  yaw       Float    @default(0)
+  speed     Float    @default(0)
+  vehicle   String   @default("car")
+  color     String   @default("#d7263d")
+  virtual   Boolean  @default(true) // Driving from home / test mode (a virtual position), not following real GPS.
+  startLat  Float // Where this drive started: strangers only see you once you've driven away from it.
+  startLng  Float
+  partyId   String?
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt, lat, lng])
+  @@index([partyId])
+}
+
+// A group of friends hanging out in the 3D city. The host picks a game; the server
+// referees each round from the members' DriveState (state = lib/party PartyState).
+model DriveParty {
+  id        String             @id @default(cuid())
+  code      String             @unique
+  hostId    String
+  game      String             @default("race") // race | tag | coins
+  status    String             @default("LOBBY") // LOBBY | LIVE | ENDED
+  state     Json?
+  version   Int                @default(0) // Optimistic lock: every state write bumps it, so concurrent position updates never overwrite each other.
+  invited   String[]           @default([])
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  members   DrivePartyMember[]
+
+  @@index([status, updatedAt])
+}
+
+model DrivePartyMember {
+  id         String     @id @default(cuid())
+  partyId    String
+  userId     String
+  name       String
+  avatar     String
+  score      Int        @default(0)
+  place      Int?
+  reward     String?
+  rewardedAt DateTime?
+  joinedAt   DateTime   @default(now())
+  party      DriveParty @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([partyId, userId])
+  @@index([userId, rewardedAt])
+}

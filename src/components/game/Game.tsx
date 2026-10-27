@@ -97,6 +97,7 @@ export default function Game() {
   const [c4, setC4] = useState<{ towerId: string } | null>(null);
   const [strike, setStrike] = useState<string | null>(null); // wave id while choosing an airstrike spot
   const [pingMenu, setPingMenu] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [runners, setRunners] = useState<LobbyView["players"] | undefined>(undefined);
   const [toasts, setToasts] = useState<(Toast & { out?: boolean })[]>([]);
   const [picker, setPicker] = useState<{ label: string; cb: (p: LatLng) => void } | null>(null);
@@ -777,51 +778,57 @@ export default function Game() {
           onSelect={handleSelect}
         />
 
-        {/* HUD */}
+        {/* HUD: who I am on one side, my wallet and status on the other — one tidy row. */}
         <div className="hud">
-          <div className="player-card" onClick={() => setPanel("me")}>
+          <div className="player-card" onClick={() => setPanel("me")} role="button" title={t("Profile")}>
             <div className="avatar">
               {me.avatar}
               <span className="lvl">{me.level}</span>
             </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>{me.username}</div>
-              <div className="small" style={{ color: "var(--yellow)" }}>{me.title}</div>
+            <div className="pc-text">
+              <div className="pc-name">{me.username}</div>
+              <div className="pc-title small">{me.title}</div>
               <div className="xpbar">
                 <i style={{ width: `${me.levelPct * 100}%` }} />
               </div>
             </div>
           </div>
-          <NeedsHud
-            onClick={() => {
-              setMeTab("life");
-              setPanel("me");
-            }}
-          />
           <div className="hud-right" data-tour="wallet">
-            <div className="chip">🪙 {fmtNum(me.coins)}</div>
-            <HpChip me={me} fire={fire} now={now} />
-            <Button className="chip small gem-chip" onClick={() => setPanel("store")} title={t("Gem store")}>💎 {fmtNum(me.gems)} <span className="plus">+</span></Button>
-            <StepChip onOpen={() => openPanel("play")} />
-            <div className="chip small hide-sm">{me.league.emoji} {fmtNum(me.trophies)}</div>
-            {driving && !geo.simulated && <div className="chip small" title={t("Driving: the map zooms out and walking goals pause")}>🚗 {t("{n} km/h", { n: Math.round(geo.speed * 3.6) })}</div>}
-            <GpsChip geo={geo} />
-            {world && (
-              <div className="chip phase">
-                {PHASE_ICON[world.phase]} <span className="hide-sm">{t(PHASE_LABEL[world.phase])}</span>
-                {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>{t("2× XP")}</span>}
-              </div>
-            )}
-            {homeMode && (
-              <Button className="chip small home-chip" onClick={() => (setMeTab("stats"), setPanel("me"))} title={t("Playing from home — tap to switch back to GPS")}>
-                🛋️ <span className="hide-sm">{t("HOME")}</span> ×{fmtNum(S.remoteRewardMult)}
+            <div className="hud-wallet">
+              <div className="chip">🪙 {fmtNum(me.coins)}</div>
+              <Button className="chip small gem-chip" onClick={() => setPanel("store")} title={t("Gem store")}>💎 {fmtNum(me.gems)} <span className="plus">+</span></Button>
+              <Button className="chip small bell-chip" data-tour="inbox" title={t("Inbox")} aria-label={inbox ? t("Inbox, {n} new", { n: inbox }) : t("Inbox")} onClick={() => setPanel("inbox")}>
+                🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? `${fmtNum(99)}+` : fmtNum(inbox)}</span>}
               </Button>
-            )}
-            {geo.simulated && !homeMode && (
-              <Button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title={t("Turn test mode off")}>
-                🕹️ <span className="hide-sm">{t("TEST MODE")}</span><span className="show-sm">{t("TEST")}</span>
-              </Button>
-            )}
+            </div>
+            <div className="hud-status">
+              <NeedsHud
+                onClick={() => {
+                  setMeTab("life");
+                  setPanel("me");
+                }}
+              />
+              <HpChip me={me} fire={fire} now={now} />
+              <StepChip onOpen={() => openPanel("play")} />
+              {driving && !geo.simulated && <div className="chip small" title={t("Driving: the map zooms out and walking goals pause")}>🚗 {t("{n} km/h", { n: Math.round(geo.speed * 3.6) })}</div>}
+              <GpsChip geo={geo} />
+              {world && (
+                <div className="chip small phase" title={t(PHASE_LABEL[world.phase])}>
+                  {PHASE_ICON[world.phase]}
+                  {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>{t("2× XP")}</span>}
+                </div>
+              )}
+              {homeMode && (
+                <Button className="chip small home-chip" onClick={() => (setMeTab("stats"), setPanel("me"))} title={t("Playing from home — tap to switch back to GPS")}>
+                  🛋️ ×{fmtNum(S.remoteRewardMult)}
+                </Button>
+              )}
+              {geo.simulated && !homeMode && (
+                <Button className="chip small" style={{ color: "var(--yellow)", cursor: "pointer" }} onClick={toggleSim} title={t("Turn test mode off")}>
+                  🕹️ <span>{t("TEST")}</span>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -945,16 +952,8 @@ export default function Game() {
           </div>
         )}
 
-        {/* Floating buttons */}
+        {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
-          <Button className="fab" data-tour="inbox" title={t("Inbox")} aria-label={inbox ? t("Inbox, {n} new", { n: inbox }) : t("Inbox")} onClick={() => setPanel("inbox")}>
-            🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? `${fmtNum(99)}+` : fmtNum(inbox)}</span>}
-          </Button>
-          {me.canSimulate && (
-            <Button className="fab" title={simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")} onClick={toggleSim} style={{ outline: simMode ? "2px solid var(--yellow)" : undefined }}>
-              🕹️
-            </Button>
-          )}
           {me.dailyAvailable && (
             <Button className="fab" title={t("Daily reward")} onClick={() => act(() => api("/api/daily", { body: {} }))}>
               🎁<span className="badge">!</span>
@@ -981,15 +980,27 @@ export default function Game() {
               }
             />
           )}
-          <Button className="fab" title={t("Map style")} aria-label={t("Map style")} onClick={cycleLook}>
-            {mapStyle === "fantasy" ? "🗺️" : mapStyle === "dark" ? "🌃" : "🧭"}
+          <Button className="fab" title={t("More")} aria-label={t("More")} aria-expanded={moreOpen} onClick={() => (setMoreOpen(!moreOpen), setPingMenu(false))} style={{ outline: moreOpen ? "2px solid var(--yellow)" : undefined }}>
+            ⋯
           </Button>
-          <Button className="fab" title={muted ? t("Sound off") : t("Sound on")} aria-label={muted ? t("Turn sound on") : t("Turn sound off")} onClick={() => setMuted(!muted)}>
-            {muted ? "🔇" : "🔊"}
-          </Button>
-          <Button className="fab" title={t("Ping your crew")} onClick={() => setPingMenu(!pingMenu)} style={{ outline: pingMenu ? "2px solid var(--yellow)" : undefined }}>
-            📣
-          </Button>
+          {moreOpen && (
+            <div className="more-menu" role="menu">
+              {me.canSimulate && (
+                <Button role="menuitem" onClick={() => (toggleSim(), setMoreOpen(false))} className={simMode ? "on" : ""}>
+                  🕹️ {simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")}
+                </Button>
+              )}
+              <Button role="menuitem" onClick={cycleLook}>
+                {mapStyle === "fantasy" ? "🗺️" : mapStyle === "dark" ? "🌃" : "🧭"} {t("Map style")}
+              </Button>
+              <Button role="menuitem" onClick={() => setMuted(!muted)}>
+                {muted ? "🔇" : "🔊"} {muted ? t("Turn sound on") : t("Turn sound off")}
+              </Button>
+              <Button role="menuitem" onClick={() => (setPingMenu(!pingMenu), setMoreOpen(false))}>
+                📣 {t("Ping your crew")}
+              </Button>
+            </div>
+          )}
           {pingMenu && (
             <div className="ping-menu">
               {(Object.keys(PINGS) as PingKind[]).map((k) => (
@@ -1104,9 +1115,18 @@ export default function Game() {
             start={(pos ?? me.lastPos)!}
             goal={driveOn.goal}
             canDrive={simMode || homeMode}
+            sim={simMode}
             follow={simMode || homeMode ? null : pos}
             onMove={simMode ? setSimPos : homeMode ? setHomePos : null}
             onClaim={(id) => claim(id).then(() => undefined)}
+            onSelect={(s) => {
+              setDriveOn(null);
+              handleSelect(s);
+            }}
+            onProfile={() => {
+              setDriveOn(null);
+              setPanel("me");
+            }}
             onExit={() => setDriveOn(null)}
           />
         )}

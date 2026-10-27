@@ -125,7 +125,7 @@ const world: Record<string, string> = {
   Destination: "مقصد",
   "3D city": "شهر سه‌بعدی",
   "Back to the map": "برگشت به نقشه",
-  "km/h": "کیلومتر",
+  "km/h": "کیلومتر/ساعت",
   "Following your real GPS — switch to Play from home to drive anywhere": "دنبال GPS واقعی‌ات می‌ره — برای رانندگی آزاد، «بازی از خونه» رو روشن کن",
   "Drawing this neighbourhood from the real map…": "داریم این محله رو از روی نقشهٔ واقعی می‌کشیم…",
   "Loading the city…": "شهر داره بار می‌شه…",

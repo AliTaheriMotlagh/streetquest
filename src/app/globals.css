@@ -1635,3 +1635,45 @@ html.lite .biz-bar i::after { animation: none; }
 /* While dragging a panel down to close it. */
 .sheet-grip { touch-action: none; }
 .sheet-head { touch-action: pan-x; }
+
+/* =====================================================================
+   Map HUD, tidied: profile card + mood on one side, wallet row + a wrapping
+   strip of small status chips on the other. Logical properties only, so
+   Persian (RTL) mirrors cleanly and nothing stacks into a tall column.
+   ===================================================================== */
+.player-card { padding-block: 6px; padding-inline: 6px 12px; min-width: 0; flex: 0 1 auto; }
+.pc-text { min-width: 0; }
+.pc-name { font-weight: 800; font-size: 14px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-title { color: var(--yellow); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud-right { gap: 6px; min-width: 0; max-width: 58%; }
+.hud-wallet { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.hud-status { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+.hud-status:empty { display: none; }
+.hud-status .chip { font-size: 12px; padding: 4px 9px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+.bell-chip { position: relative; padding-inline: 10px; cursor: pointer; }
+.bell-chip .badge { top: -7px; inset-inline-end: -7px; }
+/* Mood: a compact widget in the status strip */
+.hud-status .needs-hud { height: 30px; padding: 4px 8px; border-radius: 999px; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+.hud-status .needs-hud .mood { font-size: 16px; }
+.hud-status .needs-hud .need { height: 18px; width: 5px; }
+/* The quest: one compact line under the profile card. */
+.quest-hud { max-width: min(340px, calc(100% - 20px)); flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
+.quest-hud b, .quest-hud span { overflow: hidden; text-overflow: ellipsis; }
+.quest-hud b { flex: 0 1 auto; max-width: 45%; }
+.quest-hud span { flex: 1 1 auto; min-width: 0; }
+/* Everything that isn't needed every second, behind ⋯ */
+.fab-col { gap: 8px; }
+.fab-col:has(.more-menu, .ping-menu) { z-index: 650; }
+.more-menu { position: absolute; inset-inline-end: 60px; bottom: 0; display: flex; flex-direction: column; gap: 6px; min-width: 220px; padding: 8px; border-radius: 18px; background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.5); animation: pop .18s; }
+.more-menu button { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; border-radius: 12px; background: rgba(255,255,255,.04); color: var(--text); font-weight: 700; font-size: 14px; text-align: start; cursor: pointer; white-space: normal; }
+.more-menu button.on { background: rgba(255,210,63,.14); color: var(--yellow); }
+.ping-menu { top: auto; bottom: 0; }
+@media (max-width: 440px) {
+  .hud-right { max-width: 54%; }
+  .pc-name, .pc-title { max-width: 86px; }
+  .player-card .xpbar { width: 86px; }
+  .hud-wallet .chip { font-size: 12px; padding: 5px 8px; }
+  .quest-hud { top: calc(72px + var(--safe-t)); max-width: calc(46% - 10px); font-size: 12px; }
+  .quest-hud span { display: none; }
+  .quest-hud b { max-width: none; }
+}

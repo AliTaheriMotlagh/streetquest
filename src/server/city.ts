@@ -10,7 +10,7 @@
 import { after } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/db";
-import { fromOverpass, overpassQuery, parseTileKey, tileKey, tileOf, type CityTile } from "../lib/city";
+import { fromOverpass, overpassQuery, parseTileKey, TILE_V, tileKey, tileOf, type CityTile } from "../lib/city";
 import type { LatLng } from "../lib/geo";
 import type { Place } from "../lib/places";
 
@@ -90,9 +90,12 @@ function keepAlive(p: Promise<unknown>) {
   }
 }
 
-const due = (row: { fetchedAt: Date | null; failedAt: Date | null; fails: number } | null) => {
+type Row = { fetchedAt: Date | null; failedAt: Date | null; fails: number; data?: unknown };
+/** Fetch (again)? Never fetched, older than a month, or stored in an older tile format. */
+const due = (row: Row | null) => {
   if (!row) return true;
   if (row.failedAt && Date.now() - row.failedAt.getTime() < backoffMs(row.fails)) return false;
+  if (row.data && ((row.data as { v?: number }).v ?? 1) < TILE_V) return true;
   return !row.fetchedAt || Date.now() - row.fetchedAt.getTime() > REFRESH_MS;
 };
 
@@ -110,6 +113,39 @@ export async function getTile(cx: number, cy: number, waitMs = 6000): Promise<{ 
   const res = await Promise.race([p, new Promise<"wait">((r) => setTimeout(() => r("wait"), waitMs))]);
   if (res === "wait") return { tile: stored, pending: !stored };
   return { tile: res ?? stored, pending: false };
+}
+
+/**
+ * Several tiles in one round trip (the 3D city asks for the 3×3 or 5×5 around the car).
+ * Tiles we already have come back at once, even if a fresher copy is being fetched;
+ * missing ones are waited for up to `waitMs` together, then reported as pending.
+ */
+export async function getTiles(cells: { cx: number; cy: number }[], waitMs = 0): Promise<Record<string, { tile: CityTile | null; pending: boolean }>> {
+  const keys = cells.map((c) => tileKey(c.cx, c.cy));
+  const rows = new Map((await prisma.cityTile.findMany({ where: { key: { in: keys } } })).map((r) => [r.key, r]));
+  const out: Record<string, { tile: CityTile | null; pending: boolean }> = {};
+  const waits: Promise<void>[] = [];
+  const deadline = new Promise<"wait">((r) => setTimeout(() => r("wait"), waitMs));
+  for (const { cx, cy } of cells) {
+    const key = tileKey(cx, cy);
+    const row = rows.get(key) ?? null;
+    const stored = (row?.data as CityTile | null) ?? null;
+    out[key] = { tile: stored, pending: false };
+    if (!due(row) || !endpoints().length) continue;
+    const p = fetchTile(cx, cy);
+    keepAlive(p);
+    if (stored) continue;
+    out[key].pending = true;
+    if (waitMs > 0)
+      waits.push(
+        Promise.race([p, deadline]).then((res) => {
+          if (res !== "wait" && res) out[key] = { tile: res, pending: false };
+          else if (res !== "wait") out[key] = { tile: null, pending: false };
+        }),
+      );
+  }
+  await Promise.all(waits);
+  return out;
 }
 
 // ---------------------------------------------------------------- places, for the map and missions

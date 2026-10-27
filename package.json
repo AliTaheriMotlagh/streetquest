@@ -22,11 +22,13 @@
     "test:e2e:ui": "playwright test --project=mobile"
   },
   "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^2.4.3",
     "jose": "^5.10.0",
     "leaflet": "1.9",
     "next": "^15.5.27",
+    "pbf": "^4.0.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-leaflet": "^5.0.0",
