@@ -185,6 +185,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   /** Jobs waved away with ✕. The loop skips them, so the next job at the same spot shows,
    * and forgets each one once you're out of its reach, so it's back when you return. */
   const dismissed = useRef(new Set<string>());
+  /** The job the player chose to drive to. Only that one (and the active delivery) gets the
+   * action button; pickups and check-ins you merely drive past don't pop one up. */
+  const wanted = useRef<string | null>(null);
   // Latest props/context for the render loop (it lives as long as the component).
   const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
   live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim };
@@ -947,7 +950,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       st.cruise = 0;
     };
     api3d.current = {
-      setGoal: (p) => (navGoal = p),
+      setGoal: (p) => ((navGoal = p), (wanted.current = null)),
       cycleCam,
       horn,
       land,
@@ -1297,12 +1300,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const here = frame.toLatLng(st.x, st.z);
         let near: Job | null = null, nearD = Infinity;
         const inReach = new Set<string>();
+        // The job at the destination becomes the wanted one, and stays so after arriving clears the goal.
+        if (navGoal) for (const j of jobs) if (distanceM(navGoal, j) <= j.reach) wanted.current = j.id;
         if (low)
           for (const j of jobs) {
             const d = distanceM(here, j);
             if (d > j.reach) continue;
             inReach.add(j.id);
-            if (d < nearD && !dismissed.current.has(j.id)) (near = j), (nearD = d);
+            const chosen = j.id === wanted.current || j.kind === "deliver";
+            if (chosen && d < nearD && !dismissed.current.has(j.id)) (near = j), (nearD = d);
           }
         for (const id of dismissed.current) if (!inReach.has(id)) dismissed.current.delete(id);
         const navInfo = goalLL
@@ -1472,6 +1478,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   // The job button can be waved away (see `dismissed`); hide it now, the loop picks the next.
   const dismiss = (id: string) => {
     dismissed.current.add(id);
+    if (wanted.current === id) wanted.current = null;
     setHud((h) => (h?.near?.id === id ? { ...h, near: null } : h));
   };
 
