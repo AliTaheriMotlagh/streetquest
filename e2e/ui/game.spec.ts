@@ -49,9 +49,10 @@ test.describe("first visit", () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText("game map");
     await page.getByRole("link", { name: /Play now — no sign-up/ }).click();
     await expect(page).toHaveURL(/\/play/);
-    // HUD: callsign, coins and the bottom nav.
+    // HUD: callsign, the toman wallet first, coins, and the bottom nav.
     await expect(page.locator(".player-card")).toBeVisible();
-    await expect(page.locator(".hud-right .chip").first()).toContainText("🪙");
+    await expect(page.locator(".hud-right .chip").first()).toContainText("💵");
+    await expect(page.locator(".hud-right .coin-chip")).toContainText("🪙");
     await expect(page.locator("nav.nav")).toBeVisible();
     // A real map, not the location gate.
     await expect(page.locator(".leaflet-container")).toBeVisible();
@@ -84,9 +85,9 @@ test.describe("in the game", () => {
   test("bottom nav opens and closes every panel", async ({ page }) => {
     for (const [label, title] of [
       ["Nearby", /nearby/i],
-      ["Base", /base|faction/i],
+      ["Wallet", /wallet/i],
       ["Play", /play|game/i],
-      ["Hero", /.+/],
+      ["Profile", /profile/i],
     ] as const) {
       await page.locator("nav.nav").getByRole("button", { name: new RegExp(label) }).click();
       const sheet = page.locator(".sheet[role=dialog]");
@@ -100,7 +101,7 @@ test.describe("in the game", () => {
   test("panels fit the phone on every tab, and a swipe down closes them", async ({ page, context }) => {
     const sheet = page.locator(".sheet[role=dialog]");
     // Content wider than the panel let it slide sideways; a tab tap could knock it upward.
-    for (const label of ["Play", "Hero", "Market"]) {
+    for (const label of ["Play", "Profile", "Market", "Wallet"]) {
       await page.locator("nav.nav").getByRole("button", { name: new RegExp(label) }).click();
       await expect(sheet).toBeVisible();
       const tabs = sheet.locator(".tabs button");
@@ -130,24 +131,25 @@ test.describe("in the game", () => {
   });
 
   test("daily reward: a frantic double-tap pays exactly once", async ({ page }) => {
-    const gift = page.locator(".fab", { hasText: "🎁" });
+    // The daily drop waits in the Ready tray under the profile card.
+    await page.locator(".ready-tray.has-items").click();
+    const gift = page.locator(".rl-item", { hasText: "Daily reward" });
     await expect(gift).toBeVisible();
     const replies: number[] = [];
     page.on("response", (r) => r.url().endsWith("/api/daily") && replies.push(r.status()));
     await gift.dblclick();
-    await expect(page.locator(".toast.reward").filter({ hasText: /streak/i })).toBeVisible();
+    await expect(page.locator(".cel-card")).toBeVisible();
     await expect(gift).toHaveCount(0);
     expect(replies.filter((s) => s === 200)).toHaveLength(1);
     await expect(page.locator(".toast.error")).toHaveCount(0);
   });
 
-  test("store: buying coins with gems updates the wallet; heal is off at full health", async ({ page }) => {
+  test("store: buying coins with gems updates the wallet", async ({ page }) => {
     await page.locator(".gem-chip").click();
     const store = page.locator(".sheet[role=dialog]");
     await expect(store.locator("h2").first()).toContainText("Store");
-    await expect(store.getByRole("button", { name: /Instant heal/ })).toBeDisabled();
     // Starting gems (25) cover the 10-gem Coin Pouch.
-    const coins = page.locator(".hud-right .chip").first();
+    const coins = page.locator(".hud-right .coin-chip");
     const before = Number((await coins.innerText()).replace(/\D/g, ""));
     await store.getByRole("button", { name: /Coin Pouch/ }).click();
     await expect(page.locator(".toast.reward").filter({ hasText: /coins/ })).toBeVisible();
@@ -170,88 +172,21 @@ test.describe("in the game", () => {
   });
 });
 
-test.describe("map & fight on a phone", () => {
-  test("zooming out clusters the clutter instead of piling up markers", async ({ page }) => {
+test.describe("map on a phone", () => {
+  test("the map shows only money and stores — at most 10 of them", async ({ page }) => {
     await returningPlayer(page);
     await withGps(page);
     await page.goto("/play");
-    const map = page.locator(".leaflet-container");
-    await expect(map).toHaveClass(/lod-near/);
-    await expect.poll(() => page.locator(".leaflet-marker-icon .mk").count()).toBeGreaterThan(3);
-    // Zoom out step by step (wheel over the map centre).
-    const box = (await map.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    const zoomOutTo = async (cls: RegExp) => {
-      for (let i = 0; i < 8 && !cls.test((await map.getAttribute("class")) ?? ""); i++) {
-        await page.mouse.wheel(0, 240);
-        await page.waitForTimeout(450);
-      }
-      await expect(map).toHaveClass(cls);
-    };
-    await zoomOutTo(/lod-mid/);
-    await expect(page.locator(".mk.cluster").first()).toBeVisible();
-    await zoomOutTo(/lod-far/);
-    // City view: only landmarks, no loot.
-    await expect(page.locator(".mk.cluster.loot")).toHaveCount(0);
-    await expect(page.locator(".mk.item, .mk.chest")).toHaveCount(0);
+    const items = page.locator(".leaflet-marker-icon .mk.money, .leaflet-marker-icon .mk.place, .leaflet-marker-icon .mk.biz");
+    await expect.poll(() => page.locator(".leaflet-marker-icon .mk.money").count(), { timeout: 30_000 }).toBeGreaterThan(0);
+    expect(await items.count()).toBeLessThanOrEqual(10);
+    // None of the old war-game layers.
+    await expect(page.locator(".mk.base, .mk.tower, .mk.boss, .mk.outpost, .mk.flag, .mk.item, .mk.chest")).toHaveCount(0);
+    // Tap one: its card shows the amount in toman.
+    await page.locator(".leaflet-marker-icon .mk.money").first().click();
+    await expect(page.locator(".sheet[role=dialog]")).toContainText(/toman/);
   });
 
-  test("boss raid: touch controls, rotating the phone, back to the map", async ({ page, baseURL }) => {
-    // Bosses are deterministic: find one with a throwaway player, then stand on it.
-    const scout = await Player.create(baseURL!);
-    let boss: (LatLng & { id: string }) | undefined;
-    for (let i = 0; i < 10 && !boss; i++) {
-      const here = randomSpot();
-      await scout.goTo(here);
-      boss = (await scout.get<{ bosses: (LatLng & { id: string })[] }>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data.bosses[0];
-    }
-    await scout.dispose();
-    expect(boss).toBeTruthy();
-
-    await returningPlayer(page);
-    await page.context().grantPermissions(["geolocation"]);
-    await page.context().setGeolocation({ latitude: boss!.lat, longitude: boss!.lng, accuracy: 8 });
-    const reported = page.waitForResponse((r) => r.url().endsWith("/api/loc") && r.ok());
-    await page.goto("/play");
-    await expect(page.locator(".player-card")).toBeVisible();
-    await reported;
-    const r = await page.request.post("/api/match", { data: { kind: "raid", targetId: boss!.id } });
-    expect(r.status()).toBe(200);
-    const { matchId } = await r.json();
-
-    await page.goto(`/play?match=${matchId}`);
-    const fire = page.locator(".fps-fire");
-    await expect(page.locator(".fps-view canvas")).toBeVisible();
-    await expect(fire).toBeVisible();
-    await expect(page.locator(".fps-bar.boss")).toContainText("HP");
-    // The map underneath stops rendering while the fight is open.
-    await expect(page.locator(".game.in-fight .map")).toBeHidden();
-
-    // Hold FIRE and drag to aim: ammo goes down.
-    const ammo = () => page.locator(".fps-ammo b").first().innerText().then(Number).catch(() => NaN);
-    const before = await ammo();
-    const box = (await fire.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x - 40, box.y + box.height / 2, { steps: 8 });
-    await page.waitForTimeout(400);
-    await page.mouse.up();
-    await expect.poll(ammo).toBeLessThan(before);
-
-    // Portrait ↔ landscape a few times: the canvas follows every time.
-    const canvas = page.locator(".fps-view canvas");
-    for (const [w, h] of [[915, 412], [412, 915], [915, 412], [412, 915]]) {
-      await page.setViewportSize({ width: w, height: h });
-      await expect.poll(async () => (await canvas.boundingBox())?.width).toBe(w);
-    }
-
-    await page.locator(".fps-corner").getByRole("button", { name: /Leave/ }).click();
-    await expect(page.locator(".fps")).toHaveCount(0);
-    await expect(page.locator(".leaflet-container")).toBeVisible();
-  });
-});
-
-test.describe("pages", () => {
   test("offline page renders", async ({ page }) => {
     await page.goto("/offline");
     await expect(page.locator("body")).toContainText(/offline/i);

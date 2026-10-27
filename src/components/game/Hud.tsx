@@ -1,18 +1,22 @@
 "use client";
 // HUD pieces: the wallet (counters that roll and catch flying rewards) and the Ready
 // tray — one place under the profile card for everything waiting on you (daily drop,
-// supplies, quests, goals, dividends, points to spend), instead of a button for each.
+// quests, goals, dividends, a cash-out you can ask for), instead of a button for each.
 // With nothing waiting it shows the current quest.
 import { useEffect, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
+import { S } from "@/lib/settings";
 import { Button } from "@/components/Button";
 import { api, type Me } from "./client";
 import { useGame } from "./ui";
 import { RollingNumber, celebrate } from "./Rewards";
 
-export function Wallet({ me, onStore, onInbox, inbox }: { me: Me; onStore: () => void; onInbox: () => void; inbox: number }) {
+export function Wallet({ me, onWallet, onStore, onInbox, inbox }: { me: Me; onWallet: () => void; onStore: () => void; onInbox: () => void; inbox: number }) {
   return (
     <div className="hud-wallet">
+      <Button className="chip toman-chip" data-fx-target="cash" onClick={onWallet} title={t("Your toman — tap to cash out")} data-tour="toman">
+        💵 <RollingNumber value={me.toman} kind="cash" />
+      </Button>
       <div className="chip coin-chip" data-fx-target="coin" title={t("Coins")}>
         🪙 <RollingNumber value={me.coins} kind="coin" />
       </div>
@@ -55,13 +59,11 @@ export function ReadyTray({ me, now, onQuest, hidden, news, onNewsSeen }: { me: 
           (ok) => ok && celebrate({ title: t("Day {n} reward", { n: me.streak + 1 }), emoji: "🎁", rewards: me.dailyReward }),
         ),
     });
-  if (me.baseAlert && me.baseAlert.supply >= 50)
-    items.push({ key: "supply", icon: "📦", title: t("Supplies"), sub: t("+{n} 🪙 at your base", { n: me.baseAlert.supply }), claim: true, go: () => act(() => api("/api/base", { body: { action: "collect" } })) });
   if (me.questsReady) items.push({ key: "quests", icon: "📜", title: t("{n, plural, one {# quest to claim} other {# quests to claim}}", { n: me.questsReady }), go: () => openLink("me:quests") });
   if (me.goalsReady) items.push({ key: "goals", icon: "🏆", title: t("{n, plural, one {# goal reward} other {# goal rewards}}", { n: me.goalsReady }), go: () => openLink("play") });
   if (me.empire && me.empire.rank >= 1 && me.empire.dividendAt <= now) items.push({ key: "dividend", icon: "🏦", title: t("Empire dividend"), sub: t("Play → Empire"), go: () => openLink("play") });
   if (me.empire?.rankUp) items.push({ key: "rank", icon: "👑", title: t("Empire rank reward"), sub: t("Play → Empire"), go: () => openLink("play") });
-  if (me.freePoints) items.push({ key: "points", icon: "💪", title: t("{n, plural, one {# attribute point} other {# attribute points}}", { n: me.freePoints }), sub: t("Spend them in Hero"), go: () => openLink("me:hero") });
+  if (me.toman >= S.cashoutMin && !me.cashoutPending) items.push({ key: "cashout", icon: "💸", title: t("You can cash out!"), sub: t("{n} toman in your wallet", { n: me.toman }), go: () => openLink("wallet") });
   if (me.shop?.pending) items.push({ key: "orders", icon: "🛍️", title: t("{n, plural, one {# order to hand over} other {# orders to hand over}}", { n: me.shop.pending }), go: () => openLink("market") });
   // An admin announcement rides along as the last item; opening it follows its link.
   if (news)

@@ -14,41 +14,38 @@ export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 /** The three big reasons to play, with their art. */
 const PILLARS = [
-  ["raceCar", msg("Drive your real streets in 3D"), msg("Real buildings, shops and street names from the map. Drive, ride or fly over your neighbourhood — and race your friends through it."), true],
-  ["castle", msg("Build a base on your street"), msg("Pick a faction, plant your base where you really are, then build power, supply lines, barracks, factories and turrets on real timers."), false],
-  ["rifle", msg("Drop into first person"), msg("Walk up to an enemy base while players are online and the fight turns into a live FPS breach — capture their Command Center."), false],
+  ["cash", msg("Pick up real money on your streets"), msg("Money appears around you on the map. Walk to it and it's yours — 10,000 toman a pickup, and 1,000 when you play from home."), true],
+  ["bank", msg("Cash out to your bank card"), msg("Reach 1,000,000 toman and ask for a payout to your card or Sheba number. We check it and pay it."), false],
+  ["shop", msg("A job at every store"), msg("Cafés, bakeries, groceries and pharmacies on the map each have a mission: check in, or pick up an order and deliver it for more toman."), false],
 ] as const;
 
 const FEATURES = [
-  ["swords", msg("Command an army"), msg("Train rangers, tanks, artillery and jets. Capture oil derricks in person and siege rival bases up to 5 km away.")],
-  ["robot", msg("World bosses"), msg("Mechs and warlords roam the map with shared HP. Raid them in first person with your crew or bombard them with your army.")],
-  ["bed", msg("A life to look after"), msg("Your commander gets hungry, tired and lonely. Eat, sleep at base and hang out with nearby players — a good mood means more XP.")],
-  ["map", msg("Your streets, your map"), msg("Real GPS, real places. Missions, items and chests spawn around you wherever you are on Earth.")],
-  ["stopwatch", msg("GTA-style timed runs"), msg("Getaways, street races and dead drops — reach the target before the clock hits zero.")],
+  ["raceCar", msg("Drive your real streets in 3D"), msg("Real buildings, shops and street names. Drive through your neighbourhood and pick money up as you pass.")],
+  ["moneybag", msg("Special money drops"), msg("Gold money appears on busy streets and at store openings — worth more, and gone when it's gone.")],
+  ["map", msg("Your streets, your map"), msg("Real GPS, real places. Money appears around you wherever you are, every 20 minutes.")],
   ["bizTower", msg("Idle street empire"), msg("Build a business empire that earns while you're away — and every step you walk makes it grow faster.")],
   ["box", msg("Real package deliveries"), msg("Players post real delivery requests. Carry them across town, hand over with a secret code, get paid.")],
   ["pin", msg("Messages at places"), msg("Leave notes pinned to real locations. Only people who physically show up can read them.")],
-  ["people", msg("Crews & live events"), msg("Add friends, see who's online, chat, and set up group quests with squad XP bonuses.")],
-  ["moon", msg("Time matters"), msg("Day, dusk and night change what spawns. Golden hour doubles XP — wherever your timezone is.")],
-  ["trophy", msg("Levels, streaks, ranks"), msg("Level up from Rookie to Street Legend, keep daily streaks and climb global and crew leaderboards.")],
+  ["people", msg("Crews & live events"), msg("Add friends, see who's online, chat, call, and meet up at real places.")],
+  ["trophy", msg("Levels, streaks, ranks"), msg("Level up, keep daily streaks and climb the leaderboards.")],
 ] as const;
 
 const FAQ = [
   [msg("Is StreetQuest free?"), msg("Yes. StreetQuest is free to play in any modern mobile browser — no app store download needed. You can add it to your home screen like an app.")],
-  [msg("Does it work in my city?"), msg("Yes. The world is generated from GPS coordinates, so missions and items spawn everywhere on Earth, from big cities to small towns.")],
+  [msg("How much is the money on the map worth?"), msg("Each pickup is 10,000 toman when you walk there with GPS, and 1,000 toman when you play from home. Store missions and special drops can pay more.")],
+  [msg("How do I cash out?"), msg("Once your wallet reaches 1,000,000 toman, open Wallet, enter your name, mobile number and card or Sheba number, and ask for a payout. We check it and pay it to your account.")],
+  [msg("Does it work in my city?"), msg("Yes. Money appears from GPS coordinates, so it's everywhere on Earth, from big cities to small towns.")],
   [msg("How do real package deliveries work?"), msg("A player posts a request with pickup and drop-off points and a coin reward held in escrow. A courier accepts, checks in at the pickup with GPS, and completes the delivery by entering a secret handover code the recipient receives from the sender.")],
   [msg("Is my location shared?"), msg("Only friends see your precise position while you are online. Other players see an approximate location, and you can stop sharing anytime by closing the game.")],
-  [msg("How is this different from Pokémon GO?"), msg("StreetQuest is a strategy war game on real streets: you build a base, train an army and siege rivals, fight live first-person battles when players meet near a base, raid world bosses together, and keep your commander fed, rested and happy.")],
-  [msg("When does a fight turn first-person?"), msg("When you're within 200 m of an enemy base or a boss and other players are online nearby. Otherwise battles are auto-resolved with your army, Generals-style.")],
 ];
 
 const STEPS = [
-  [msg("Open the map"), msg("Allow location. The world around you fills with loot, chests, runs and players.")],
-  [msg("Walk there"), msg("Get within 40 m to interact. Open chests, grab power cells, race the clock.")],
-  [msg("Level up together"), msg("Add friends, chat, join events and climb the leaderboards.")],
+  [msg("Open the map"), msg("Allow location, or play from home. Money and stores fill the map around you.")],
+  [msg("Walk there"), msg("Get close to the money and pick it up. Do store missions for more.")],
+  [msg("Cash out"), msg("Reach 1,000,000 toman and get paid to your bank card.")],
 ];
 
-const ART = ["coin", "shield", ...PILLARS.map((p) => p[0]), ...FEATURES.map((f) => f[0])];
+const ART = ["cash", "moneybag", ...PILLARS.map((p) => p[0]), ...FEATURES.map((f) => f[0])];
 
 export default async function Home() {
   const { t, locale } = await getT();
@@ -100,13 +97,13 @@ export default async function Home() {
           <div className="lp-hero-copy">
             <span className="lp-eyebrow">
               <i className="lp-live" aria-hidden />
-              {t("Real-world GPS war game")}
+              {t("Real-world GPS money game")}
             </span>
             <h1>
               {t("Your city is")} <em>{t("the game map.")}</em>
             </h1>
             <p className="lp-lead">
-              {t("Build a base on your actual street, train an army and siege your rivals. Get close while they're online and it turns into a first-person firefight. Hunt world bosses with your crew, and keep your commander fed, rested and happy.")}
+              {t("Money is lying around your real streets. Walk to it and pick it up — or play from home — then cash it out to your bank card.")}
             </p>
             <div className="lp-cta">
               <Link href="/play" className="lp-btn primary">
@@ -140,17 +137,17 @@ export default async function Home() {
               </div>
             </div>
             <div className="lp-float a" aria-hidden>
-              <ArtUse k="coin" size={30} />
+              <ArtUse k="cash" size={30} />
               <span>
-                <b>+{fmtNum(250, locale)}</b>
-                <small>{t("Delivery paid")}</small>
+                <b>+{fmtNum(10000, locale)}</b>
+                <small>{t("toman picked up")}</small>
               </span>
             </div>
             <div className="lp-float b" aria-hidden>
-              <ArtUse k="shield" size={30} />
+              <ArtUse k="moneybag" size={30} />
               <span>
-                <b>{t("Base defended")}</b>
-                <small>{t("Golden hour · 2× XP")}</small>
+                <b>{t("Cashed out")}</b>
+                <small>{t("Paid to your card")}</small>
               </span>
             </div>
           </div>

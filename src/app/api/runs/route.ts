@@ -1,14 +1,12 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { distanceM } from "@/lib/geo";
-import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, actionRoute } from "@/server/http";
 import { checkClaimAchievements, grant, lastKnownLocation } from "@/server/rewards";
-import { bumpNeeds } from "@/server/needs";
 import { questEvent } from "@/server/quests";
-import { runBonus } from "@/server/lobby";
 import { t } from "@/lib/i18n";
 import { finishPlaceRun } from "@/server/places";
 
@@ -31,20 +29,16 @@ export const POST = actionRoute(async (req) => {
   const here = await lastKnownLocation(u.id);
   if (distanceM(here, { lat: run.targetLat, lng: run.targetLng }) > INTERACT_RADIUS_M + S.claimSlack) throw new HttpError(400, t("You're not at the target yet"));
 
-  // Squad runs: race placement / co-op team bonus (computed before this run counts as done).
-  const squad = run.lobbyId ? await runBonus(run.lobbyId, u.id) : { mult: 1, label: "" };
   const done = await prisma.missionRun.updateMany({ where: { id: run.id, status: "ACTIVE" }, data: { status: "DONE" } });
   if (!done.count) throw new HttpError(409, t("Run already finished"));
   const secondsLeft = Math.round((run.deadline.getTime() - Date.now()) / 1000);
   const speedBonus = Math.round(run.rewardCoins * Math.min(0.5, secondsLeft / 600));
-  const coins = Math.round((run.rewardCoins + speedBonus) * squad.mult);
-  const xp = Math.round(run.rewardXp * squad.mult);
+  const coins = run.rewardCoins + speedBonus;
+  const xp = run.rewardXp;
   await grant(u.id, { xp, coins });
-  await bumpNeeds(u.id, { energy: -10, hunger: -8, fun: 10, ...(squad.label ? { social: 15 } : {}) });
   await questEvent(u.id, "run");
-  if (squad.label) await questEvent(u.id, "squad_run");
   await checkClaimAchievements(u.id, "day");
-  // A delivery from a real place: what you carried is yours, and it goes in the feed.
-  const item = run.spawnId.startsWith("p:") ? await finishPlaceRun(u.id, run.spawnId) : null;
-  return { message: `${t("{title} complete! +{n} coins", { title: t(run.title), n: coins })}${item ? ` · ${item}` : ""}${squad.label ? ` · ${squad.label}` : ""}`, xp };
+  // A delivery from a real place: the toman, what you carried, and a post in the feed.
+  const paid = run.spawnId.startsWith("p:") ? await finishPlaceRun(u, run) : null;
+  return { message: [t("{title} — delivered!", { title: t(run.title) }), coins ? t("+{n} 🪙", { n: coins }) : "", paid ?? ""].filter(Boolean).join(" · "), xp };
 });

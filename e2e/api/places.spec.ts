@@ -3,8 +3,8 @@
 import { expect, test } from "@playwright/test";
 import { adminPlayer, expectOk, offset, Player, randomSpot, uploadPlaces, type LatLng, type TestPlace } from "../helpers";
 
-type Mission = { id: string; kind: "deliver" | "visit"; place: TestPlace; dest: (LatLng & { name: string }) | null; rewardCoins: number; done: boolean; item: string | null };
-type World = { places: Mission[]; businesses: unknown[] };
+type Mission = { id: string; kind: "deliver" | "visit"; place: TestPlace; dest: (LatLng & { name: string }) | null; done: boolean; item: string | null; rewardXp: number };
+type World = { places: (Mission & { toman: number })[]; businesses: unknown[] };
 
 async function setup(baseURL: string) {
   const admin = await adminPlayer(baseURL);
@@ -13,7 +13,8 @@ async function setup(baseURL: string) {
   const p = await Player.create(baseURL);
   const center = tile.places[0];
   await p.goTo(center);
-  const w = (await p.get<World>(`/api/world?lat=${center.lat}&lng=${center.lng}`)).data;
+  // Every job around (the map itself only shows the nearest few).
+  const w = { places: (await p.get<{ missions: Mission[] }>(`/api/places?lat=${center.lat}&lng=${center.lng}`)).data.missions };
   return { admin, p, tile, w };
 }
 
@@ -35,10 +36,10 @@ test.describe("real places", () => {
     await Promise.all([admin.dispose(), p.dispose()]);
   });
 
-  test("jobs appear at the real places, with real drop-offs", async ({ baseURL }) => {
+  test("every store has a job, with real drop-offs", async ({ baseURL }) => {
     const { admin, p, tile, w } = await setup(baseURL!);
     const ids = new Set(tile.places.map((x) => x.id));
-    expect(w.places.length).toBeGreaterThan(0);
+    expect(new Set(w.places.map((m) => m.place.id)).size).toBe(tile.places.length);
     for (const m of w.places) {
       expect(ids.has(m.place.id)).toBe(true);
       if (m.kind === "deliver") {
@@ -62,11 +63,12 @@ test.describe("real places", () => {
     const both = await Promise.all([p.post("/api/places", { id: v!.id }), p.post("/api/places", { id: v!.id })]);
     expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
     const after = await p.me();
-    expect(after.coins).toBe(before.coins + v!.rewardCoins);
+    expect(after.xp).toBeGreaterThan(before.xp);
+    expect(after.toman).toBe(0); // test mode never earns toman
     if (v!.item) expect(after.inventory.some((i) => i.key === v!.item)).toBe(true);
-    // It shows as done on the map, and it's in the player's feed.
+    // It's off the map now, and it's in the player's feed.
     const again = (await p.get<World>(`/api/world?lat=${v!.place.lat}&lng=${v!.place.lng}`)).data;
-    expect(again.places.find((m) => m.id === v!.id)?.done).toBe(true);
+    expect(again.places.some((m) => m.id === v!.id)).toBe(false);
     const feed = await p.get<{ posts: { kind: string; place: { name: string } | null }[] }>("/api/social?tab=following");
     expect(feed.data.posts.some((x) => x.kind === "mission" && x.place?.name === v!.place.name)).toBe(true);
     // Forged ids are refused.
@@ -90,8 +92,21 @@ test.describe("real places", () => {
     const before = await p.me();
     expectOk(await p.post("/api/runs", { runId: run.id, action: "complete" }));
     const after = await p.me();
-    expect(after.coins).toBeGreaterThan(before.coins);
+    expect(after.xp).toBeGreaterThan(before.xp);
     if (d!.item) expect(after.inventory.some((i) => i.key === d!.item)).toBe(true);
     await Promise.all([admin.dispose(), p.dispose()]);
+  });
+
+  test("a check-in on GPS pays toman", async ({ baseURL }) => {
+    const { admin, p, w } = await setup(baseURL!);
+    const v = w.places.find((m) => m.kind === "visit");
+    test.skip(!v, "no visit job rolled this window");
+    // A fresh player (setup moved in test mode): the first real fix is accepted anywhere.
+    const q = await Player.create(baseURL!);
+    expectOk(await q.post("/api/loc", { ...v!.place, acc: 8 }));
+    const r = expectOk(await q.post<{ toman: number }>("/api/places", { id: v!.id }));
+    expect(r.data.toman).toBe(10_000);
+    expect((await q.me()).toman).toBe(10_000);
+    await Promise.all([admin.dispose(), p.dispose(), q.dispose()]);
   });
 });

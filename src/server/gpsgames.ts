@@ -6,11 +6,10 @@ import { prisma } from "../lib/db";
 import { distanceM, offset, type LatLng } from "../lib/geo";
 import { S } from "../lib/settings";
 import { FIND_RADIUS_M, GPS_GAMES, heatOf, HOLD_RADIUS_M, MAX_REROUTES, STORY, type GpsGameKind } from "../lib/story";
-import { giveGear } from "./hero";
 import { HttpError } from "./http";
 import { msg, t } from "../lib/i18n";
-import { RARITY_LABEL } from "../lib/catalog";
 import { trackStat } from "./goals";
+import { questEvent } from "./quests";
 import { grant, lastKnownLocation } from "./rewards";
 
 // last = distance at the latest check, prev = the one before (the hot/cold trend compares them)
@@ -136,15 +135,13 @@ async function win(u: User, g: GpsGame, title: string) {
     const r = { xp: Math.round(ch.def.reward.xp * half), coins: Math.round(ch.def.reward.coins * half), gems: Math.round(ch.def.reward.gems * half) };
     await prisma.user.updateMany({ where: { id: u.id, storyChapter: d.chapter }, data: { storyChapter: { increment: 1 } } });
     await grant(u.id, r);
-    if (ch.def.reward.gear && !d.replay) await giveGear(u.id, { floor: ch.def.reward.gear, source: ch.def.title });
     await trackStat(u.id, "story", 1, u.faction);
-    const gear = ch.def.reward.gear && !d.replay ? ` + ${t("{rarity} gear", { rarity: t(RARITY_LABEL[ch.def.reward.gear]) })}` : "";
-    return { won: true, message: `${t("📖 Chapter complete: {title}!", { title: t(ch.def.title) })} ${t("+{n} XP", { n: r.xp })} +${r.coins} 🪙 +${r.gems} 💎${gear}`, outro: t(ch.def.outro) };
+    return { won: true, message: `${t("📖 Chapter complete: {title}!", { title: t(ch.def.title) })} ${t("+{n} XP", { n: r.xp })} +${r.coins} 🪙 +${r.gems} 💎`, outro: t(ch.def.outro) };
   }
   const xp = g.kind === "hunt" ? S.huntXp : g.kind === "sprint" ? S.sprintXp : S.rallyXp;
   const coins = g.kind === "hunt" ? S.huntCoins : g.kind === "sprint" ? S.sprintCoins : S.rallyCoins;
   await grant(u.id, { xp, coins, gems: S.gpsGameGems });
-  await trackStat(u.id, "gps_game", 1, u.faction);
+  await questEvent(u.id, "gps_game"); // also counts it for goals
   return { won: true, message: `${t(title)} ${t("+{n} XP", { n: xp })} +${coins} 🪙${S.gpsGameGems ? ` +${S.gpsGameGems} 💎` : ""}` };
 }
 

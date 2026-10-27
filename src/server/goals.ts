@@ -3,8 +3,7 @@
 // trackStat() (questEvent calls it for every quest kind), so no background jobs.
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/db";
-import { S, type GoalDef, type GoalReward, type MilestoneDef } from "../lib/settings";
-import { FACTION_BY_KEY, type FactionKey } from "../lib/rts";
+import { GOAL_METRICS, S, type GoalDef, type GoalReward, type MilestoneDef } from "../lib/settings";
 import { HttpError } from "./http";
 import { isLocale, translate, t, type Vars } from "../lib/i18n";
 
@@ -16,8 +15,10 @@ export const weekKey = (t = Date.now()) => `wk${weekIndex(t)}`;
 export const weekEndsAt = (t = Date.now()) => (weekIndex(t) + 1) * WEEK - 3 * DAY;
 
 const pick = <T,>(list: T[], i: number) => (list.length ? list[((i % list.length) + list.length) % list.length] : null);
-export const worldGoal = (t = Date.now()) => pick<GoalDef>(S.worldGoals, weekIndex(t));
-export const factionGoal = (t = Date.now()) => pick<GoalDef>(S.factionGoals, weekIndex(t));
+// Goals saved by an admin before the war game was removed may count metrics nothing feeds any more.
+const live = <T extends { metric: string }>(list: T[]) => list.filter((g) => g.metric in GOAL_METRICS);
+export const worldGoal = (t = Date.now()) => pick<GoalDef>(live(S.worldGoals), weekIndex(t));
+export const factionGoal = (t = Date.now()) => pick<GoalDef>(live(S.factionGoals), weekIndex(t));
 
 type Scope = "user" | "faction" | "world";
 const bump = (scope: Scope, scopeId: string, period: string, metric: string, n: number) =>
@@ -45,9 +46,8 @@ export async function trackStat(userId: string, metric: string, n = 1, faction?:
     if (f && fgoal?.metric === metric) {
       const row = rows[rows.length - 1];
       if (crossed(row.value, fgoal.target)) {
-        const fd = FACTION_BY_KEY[f as FactionKey];
         const members = await prisma.user.findMany({ where: { faction: f, lastSeenAt: { gt: new Date(Date.now() - 7 * DAY) } }, select: { id: true, locale: true }, take: 2000 });
-        await prisma.notification.createMany({ data: members.map((m) => inLocale(m, "{emoji} Faction goal complete: {title}", "Claim your share in Hero → Goals", { emoji: fd?.emoji ?? "🚩", title: fgoal.title })) });
+        await prisma.notification.createMany({ data: members.map((m) => inLocale(m, "{emoji} Faction goal complete: {title}", "Claim your share in Hero → Goals", { emoji: "🚩", title: fgoal.title })) });
       }
     }
   } catch (e) {
@@ -74,7 +74,7 @@ export async function goalsView(u: Pick<User, "id" | "faction">) {
   const wk = weekKey();
   const world = worldGoal();
   const fgoal = u.faction ? factionGoal() : null;
-  const personal = S.personalGoals as MilestoneDef[];
+  const personal = live(S.personalGoals as MilestoneDef[]);
   const metrics = [...new Set(personal.map((p) => p.metric))];
   const [mine, mineWeek, worldRow, factionRow, claims, top, factionTop] = await Promise.all([
     prisma.goalCounter.findMany({ where: { scope: "user", scopeId: u.id, period: "all", metric: { in: metrics } } }),

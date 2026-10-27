@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtNum, getLocale, LOCALE_META, msg, t } from "@/lib/i18n";
 import { bearingTo, distanceM, formatDistance } from "@/lib/geo";
-import { FACTION_BY_KEY, type FactionKey } from "@/lib/rts";
 import { RARITY_LABEL } from "@/lib/catalog";
 import { askConfirm } from "@/components/Dialogs";
 import { api, type GpsView, type LatLng } from "./client";
@@ -305,21 +304,6 @@ export function PlayPanel({ onClose, peek, onStarted, initialTab }: { onClose: (
               )}
             </GoalCard>
           )}
-          {goals.enabled && goals.faction && (
-            <GoalCard kind={`${me.faction ? FACTION_BY_KEY[me.faction as FactionKey]?.emoji : "🚩"} ${t("FACTION GOAL")}`} g={goals.faction} endsAt={goals.endsAt} onClaim={claim}>
-              <div className="top-list">
-                {goals.factionRace.map((r) => {
-                  const f = FACTION_BY_KEY[r.faction as FactionKey];
-                  return (
-                    <div key={r.faction} className={r.faction === me.faction ? "me" : ""}>
-                      {f?.emoji} <span style={{ color: f?.color }}>{f ? t(f.name) : r.faction}</span> <b>{fmtMetric(goals.faction!.metric, r.value)}</b>
-                    </div>
-                  );
-                })}
-              </div>
-            </GoalCard>
-          )}
-          {goals.enabled && !goals.faction && <div className="card small muted">{t("🚩 Join a faction (Base tab) to unlock weekly faction goals.")}</div>}
           {goals.enabled && (
             <>
               <label>🎯 {t("Personal milestones")}</label>
@@ -379,7 +363,6 @@ type StoreData = {
   currency: string;
   packs: { key: string; gems: number; priceCents: number; label: string; bonus?: string }[];
   offers: { key: string; gems: number; coins: number; label: string }[];
-  boosts: { heal: number; refresh: number; shield: number };
   gems: number;
   ads: AdOffer & { enabled: boolean; left: number; seconds: number };
 };
@@ -420,7 +403,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
         <span className="gem-big">💎</span>
         <div>
           <b className="mono" style={{ fontSize: 26 }}>{fmtNum(me.gems)}</b>
-          <div className="small muted">{t("gems · rush timers, buy coins, heal, shield your base")}</div>
+          <div className="small muted">{t("gems · rush timers, buy coins")}</div>
         </div>
       </div>
       {!d && <div className="empty">{t("Loading…")}</div>}
@@ -467,12 +450,6 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
             ))}
           </div>
 
-          <label>{t("Boosts")}</label>
-          <div className="boosts">
-            <Button className="btn ghost" disabled={me.gems < d.boosts.heal || (me.hp >= me.maxHp && !me.downedUntil)} title={me.hp >= me.maxHp && !me.downedUntil ? t("You're at full health") : undefined} onClick={() => spend({ action: "heal" })}>{t("❤️ Instant heal · 💎{n}", { n: d.boosts.heal })}</Button>
-            <Button className="btn ghost" disabled={me.gems < d.boosts.refresh} onClick={() => spend({ action: "refresh" })}>{t("🥤 Energy drink · 💎{n}", { n: d.boosts.refresh })}</Button>
-            <Button className="btn ghost" disabled={!me.base || me.gems < d.boosts.shield} onClick={() => spend({ action: "shield" })}>{t("🛡️ 4 h base shield · 💎{n}", { n: d.boosts.shield })}</Button>
-          </div>
           <p className="small muted" style={{ marginTop: 10 }}>{t("Gems also come from levels, quests, achievements, goals, story chapters and GPS games.")}</p>
         </>
       )}

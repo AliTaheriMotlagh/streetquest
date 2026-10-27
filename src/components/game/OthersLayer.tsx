@@ -25,8 +25,8 @@ type Entry = { marker: L.Marker; html: string; data: WorldPlayer; near: NearPlay
 
 const htmlOf = (p: WorldPlayer, live: boolean) =>
   [
-    `${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${p.level}</span>${p.bounty ? `<span class="wanted">💀${p.bounty}</span>` : ""}`,
-    `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""} ${live ? "live" : ""}`,
+    `${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${p.level}</span>`,
+    `player ${p.friend ? "friend" : ""} ${live ? "live" : ""}`,
   ] as const;
 
 export function OthersLayer({ players, onSelect }: { players: WorldPlayer[]; onSelect: (s: Selected) => void }) {
@@ -113,7 +113,7 @@ export function OthersLayer({ players, onSelect }: { players: WorldPlayer[]; onS
       for (const p of playersRef.current) want.set(p.id, { data: p, near: live.get(p.id) ?? null });
       // Someone just walked up who isn't in the (slower) world list yet.
       for (const n of live.values()) {
-        if (!want.has(n.id)) want.set(n.id, { data: { id: n.id, username: n.username, avatar: n.avatar, level: n.level, friend: false, bounty: 0, home: n.home, lat: n.last.lat, lng: n.last.lng }, near: n });
+        if (!want.has(n.id)) want.set(n.id, { data: { id: n.id, username: n.username, avatar: n.avatar, level: n.level, friend: false, home: n.home, lat: n.last.lat, lng: n.last.lng }, near: n });
       }
 
       for (const [id, e] of entries) {

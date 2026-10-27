@@ -49,7 +49,15 @@ html.lite .fantasy-fx .cloud { display: none; }
 .mk.biz.featured .ring { animation: glow 1.4s infinite; box-shadow: 0 0 18px #f0c05a; border-color: #f0c05a; }
 .mk.biz .deal { position: absolute; top: -14px; inset-inline-end: -18px; background: var(--yellow); color: #2a2000; font-size: 10px; font-weight: 900; padding: 0 5px; border-radius: 7px; line-height: 16px; box-shadow: 0 2px 6px rgba(0, 0, 0, .45); white-space: nowrap; }
 .mk.biz .shield { position: absolute; bottom: -4px; inset-inline-start: -8px; font-size: 11px; background: var(--cyan); color: #032029; border-radius: 50%; width: 16px; height: 16px; display: grid; place-items: center; font-weight: 900; }
+/* Money: a bill with its amount underneath; admin drops are gold and pulse. */
+.mk.money { font-size: 28px; animation: bob 2.4s ease-in-out infinite; }
+.mk.money .ring { border-width: 3px; box-shadow: 0 0 12px currentColor; background: radial-gradient(circle, rgba(91, 211, 140, .45), rgba(91, 211, 140, .05) 70%); }
+.mk.money.drop { font-size: 32px; }
+.mk.money.drop .ring { animation: glow 1.2s infinite; background: radial-gradient(circle, rgba(240, 192, 90, .55), rgba(240, 192, 90, .05) 70%); }
+.mk.money .nm { position: absolute; top: 36px; white-space: nowrap; font-size: 10px; font-weight: 900; color: #c9ffd9; background: rgba(8, 40, 20, .88); padding: 1px 6px; border-radius: 6px; }
+.mk.money.drop .nm { top: 40px; color: #2a1d00; background: var(--yellow); }
 .lod-mid .mk.place .nm, .lod-mid .mk.place .job { display: none; }
+.lod-far .mk.money:not(.drop) .nm { display: none; }
 .lod-mid .mk.biz.featured .nm { display: block; }
 
 .place-card { border-radius: 18px; padding: 12px; margin-bottom: 12px; background: linear-gradient(160deg, color-mix(in srgb, var(--cat, #63b3f2) 22%, transparent), rgba(255, 255, 255, .03)); border: 1px solid color-mix(in srgb, var(--cat, #63b3f2) 45%, transparent); }
@@ -148,28 +156,29 @@ html.lite .fantasy-fx .cloud { display: none; }
 .drive.has-pad .drive-hint { bottom: calc(var(--pad-h) + 14px + var(--safe-b)); }
 .drive-keys { position: absolute; bottom: calc(14px + var(--safe-b)); left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 12px; background: var(--hud-bg); border: 1px solid var(--hud-line); color: #fff; white-space: nowrap; }
 
-/* ---- the job you're at: one big, unmissable button */
+/* ---- the job you're at: a compact button (with ✕ to wave it away) */
 .drive-action {
   --job: var(--dpad-accent);
   position: absolute; left: 50%; bottom: calc(60px + var(--safe-b)); transform: translateX(-50%); z-index: 4;
-  width: min(440px, calc(100% - 32px)); min-height: 78px; display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 10px;
-  border-radius: 22px; border: 1px solid rgba(255, 255, 255, .14); color: #fff; text-align: start; cursor: pointer; touch-action: manipulation; font: inherit;
-  background: linear-gradient(180deg, rgba(26, 29, 38, .96), rgba(12, 14, 20, .96));
-  box-shadow: 0 18px 40px rgba(0, 0, 0, .5), 0 0 0 1.5px color-mix(in srgb, var(--job) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, .08);
-  animation: daIn .32s cubic-bezier(.2, .9, .3, 1.2) backwards; transition: transform .1s ease-out;
+  width: min(340px, calc(100% - 32px)); display: flex; align-items: center; gap: 4px; padding: 5px;
+  border-radius: 16px; border: 1px solid rgba(255, 255, 255, .14); color: #fff;
+  background: linear-gradient(180deg, rgba(26, 29, 38, .94), rgba(12, 14, 20, .94));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .45), 0 0 0 1.5px color-mix(in srgb, var(--job) 55%, transparent);
+  animation: daIn .28s cubic-bezier(.2, .9, .3, 1.2) backwards;
 }
-.drive.has-pad .drive-action { bottom: calc(var(--pad-h) + 14px + var(--safe-b)); }
-.drive-action:active:not(:disabled) { transform: translateX(-50%) scale(.97); }
-.drive-action:disabled { cursor: progress; }
-.da-ic { flex: none; width: 58px; height: 58px; border-radius: 17px; display: grid; place-items: center; background: var(--job); color: #101116; animation: daPulse 1.8s ease-out infinite; }
-.da-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.da-tx b { font: 800 21px/1.1 var(--body); letter-spacing: .02em; text-transform: uppercase; }
-.da-tx span { font-size: 13px; color: rgba(255, 255, 255, .72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.da-go { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .1); }
+.drive.has-pad .drive-action { bottom: calc(var(--pad-h) + 12px + var(--safe-b)); }
+.da-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 2px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; touch-action: manipulation; transition: transform .1s ease-out; }
+.da-main:active:not(:disabled) { transform: scale(.97); }
+.da-main:disabled { cursor: progress; }
+.da-ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--job); color: #101116; animation: daPulse 1.8s ease-out infinite; }
+.da-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.da-tx b { font: 800 15px/1.15 var(--body); letter-spacing: .02em; text-transform: uppercase; }
+.da-tx span { font-size: 12px; color: rgba(255, 255, 255, .72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.da-x { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(255, 255, 255, .1); color: #fff; font-size: 14px; cursor: pointer; touch-action: manipulation; }
+.da-x:active { background: rgba(255, 255, 255, .2); }
 .drive-action.busy .da-ic { animation: none; }
-.drive-action.busy .da-go { opacity: .3; }
-@keyframes daIn { from { opacity: 0; transform: translate(-50%, 18px) scale(.95); } }
-@keyframes daPulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--job) 65%, transparent); } to { box-shadow: 0 0 0 14px transparent; } }
+@keyframes daIn { from { opacity: 0; transform: translate(-50%, 14px) scale(.96); } }
+@keyframes daPulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--job) 65%, transparent); } to { box-shadow: 0 0 0 10px transparent; } }
 html[lang="fa"] .da-tx b { text-transform: none; }
 
 /* ---- tapped something in the city */
@@ -293,7 +302,6 @@ html[lang="fa"] .pedal-lb { letter-spacing: 0; font-size: 11px; }
 html[dir="rtl"] .drive :is(.drive-sheet, .drive-pick, .party-hud, .drive-street, .drive-nav, .drive-banner, .drive-loading, .drive-hint, .drive-keys, .drive-me-tx, .drive-action, .drive-tab, .drive-tabs) { direction: rtl; }
 html[dir="rtl"] .drive-me { padding: 4px 4px 4px 12px; flex-direction: row-reverse; }
 html[dir="rtl"] .drive-me-tx { align-items: flex-end; }
-html[dir="rtl"] .da-go svg { transform: scaleX(-1); }
 
 /* ---- lite devices: no looping glows */
 html.lite .da-ic, html.lite .drive-mini-wrap.loading::after { animation: none; }
@@ -342,7 +350,7 @@ html.lite .pedal-v2.on .pedal-plate { box-shadow: inset 0 1px 0 rgba(255, 255, 2
   .pedal-v2.brake { width: 72px; height: 86px; }
   .dsteer { width: 70px; height: 92px; }
   .dpad-tool { height: 40px; min-width: 40px; }
-  .drive.has-pad .drive-action { bottom: calc(16px + var(--safe-b)); width: min(380px, calc(100% - 440px)); min-width: 240px; min-height: 66px; }
+  .drive.has-pad .drive-action { bottom: calc(16px + var(--safe-b)); width: min(340px, calc(100% - 440px)); min-width: 220px; }
   .da-ic { width: 48px; height: 48px; border-radius: 14px; }
   .da-tx b { font-size: 17px; }
   .drive.has-pad .drive-pick { bottom: calc(96px + var(--safe-b)); width: min(380px, calc(100% - 440px)); min-width: 240px; }

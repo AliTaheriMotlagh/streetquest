@@ -16,8 +16,8 @@ export type Notice = {
 };
 
 /** Panels a notification can open; "me:<tab>" opens a Hero tab. */
-export type NoticeLink = "base" | "play" | "jobs" | "market" | "social" | "events" | "biz" | "store" | "me" | "me:quests" | "me:life" | "me:hero";
-const LINK_BY_KIND: Partial<Record<NonNullable<Notice["kind"]>, NoticeLink>> = { delivery: "jobs", social: "social", event: "base" };
+export type NoticeLink = "wallet" | "play" | "jobs" | "market" | "social" | "events" | "biz" | "store" | "me" | "me:quests" | "me:hero";
+const LINK_BY_KIND: Partial<Record<NonNullable<Notice["kind"]>, NoticeLink>> = { delivery: "jobs", social: "social", event: "events" };
 
 /** A player counts as online if their client pinged within this window. */
 export const ONLINE_MS = 90_000;

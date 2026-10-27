@@ -6,7 +6,6 @@ import { distanceM } from "@/lib/geo";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { canSimulate } from "@/server/session";
-import { takeFire } from "@/server/td";
 import { trackStat } from "@/server/goals";
 import { addGpsSteps } from "@/server/steps";
 import { S } from "@/lib/settings";
@@ -34,25 +33,25 @@ export const POST = route(async (req) => {
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
     throw new HttpError(409, t("Travelling faster than your commander can move"));
   }
-  if (!trusted && !remote && moved > 500 && moved / since > S.maxSpeedKmh / 3.6) {
+  const jumped = moved > 500 && moved / since > S.maxSpeedKmh / 3.6;
+  if (!trusted && !remote && jumped) {
     // Still count as online, but don't move them.
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
     throw new HttpError(409, t("GPS jump ignored — faster than any getaway car"));
   }
   // Distance on foot feeds walking goals and sprints. Driving (faster than the on-foot
   // limit), GPS noise (tiny hops, poor accuracy) and test-mode teleports don't count.
+  // A teleport, flagged or not, is test mode: it never earns toman (see server/money).
   const onFoot = !d.sim && !remote && moved >= 3 && moved <= 400 && moved / since <= S.footSpeedKmh / 3.6 && (d.acc ?? 0) <= 50;
   const walked = onFoot ? moved : 0;
-  await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date(), locAt: new Date(), ...(walked ? { walkedM: { increment: walked } } : {}) } });
+  await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date(), locAt: new Date(), locSim: !remote && (!!d.sim || jumped), ...(walked ? { walkedM: { increment: walked } } : {}) } });
   if (walked) {
     await trackStat(u.id, "walk_m", walked, u.faction);
     // Steps from distance on foot, unless the phone's motion sensor is counting them.
     await addGpsSteps(u, walked);
   }
-  // Tower defense: hostile towers and guard squads in range open fire.
-  const dt = u.lastSeenAt ? (Date.now() - u.lastSeenAt.getTime()) / 1000 : 0;
   // Players right next to us, exact and live — only for a real, reasonably sharp GPS fix,
   // so test-mode teleports and play-from-home can't be used to pinpoint anyone.
-  const [fire, near] = await Promise.all([takeFire(u, d, dt), !d.sim && !remote && (d.acc ?? 0) <= 100 ? nearbyLive(u.id, d) : []]);
-  return { ok: true, fire, near, serverTime: Date.now() };
+  const near = !d.sim && !remote && (d.acc ?? 0) <= 100 ? await nearbyLive(u.id, d) : [];
+  return { ok: true, near, serverTime: Date.now() };
 });

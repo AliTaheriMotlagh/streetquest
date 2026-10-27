@@ -74,6 +74,7 @@ a { color: var(--sky); }
 .hud-wallet .chip { height: 34px; font-family: var(--display); font-size: 15px; font-weight: 600; letter-spacing: 0.01em; padding-inline: 7px 11px; }
 .coin-chip .roll { color: #f8e2a8; }
 .gem-chip { color: #c3ecf8; cursor: pointer; }
+.toman-chip { color: #b8f5c8; cursor: pointer; font-weight: 800; }
 .gem-chip .plus { width: 18px; height: 18px; border-radius: 6px; margin-inline-start: 2px; background: var(--gold); color: #2b1d04; font-family: var(--body); font-weight: 800; font-size: 13px; box-shadow: none; display: inline-grid; place-items: center; }
 .bell-chip { width: 34px; padding: 0; justify-content: center; font-size: 16px; position: relative; }
 .bell-chip.has-new .art { animation: bellRing 1.6s ease-in-out 1; transform-origin: 50% 10%; }
@@ -364,3 +365,16 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
   .sheet { border-radius: 24px; border-bottom: 1px solid var(--line-strong); animation: slideSide 0.3s var(--ease-out); }
   .toasts { top: calc(12px + var(--safe-t)); }
 }
+
+/* ---- toman wallet */
+.wallet-card { text-align: center; }
+.wallet-big { font: 900 34px/1.1 var(--display); color: #b8f5c8; margin: 4px 0 8px; }
+.wallet-big .small { font-family: var(--body); font-weight: 700; }
+.wallet-how { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+
+/* ---- admin: placing money drops */
+.admin-map { height: min(380px, 55vh); border-radius: 12px; overflow: hidden; margin: 8px 0; background: #1b1e27; }
+.admin-map .leaflet-container { cursor: crosshair; }
+.money-tile { background: radial-gradient(circle, rgba(91, 211, 140, .25), transparent 70%); }
+.money-tile.gold { background: radial-gradient(circle, rgba(240, 192, 90, .35), transparent 70%); box-shadow: 0 0 18px rgba(240, 192, 90, .45); }
+.money-amount { color: #b8f5c8; font-size: 1.15em; }

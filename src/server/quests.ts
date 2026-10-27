@@ -1,7 +1,7 @@
 // Quest engine: game routes call questEvent(); progress is stored per quest key.
 import { prisma } from "../lib/db";
 import { dayKey } from "../lib/progression";
-import { CAMPAIGN, campaignKey, dailyQuests, STATE_KINDS, type QuestDef, type QuestKind } from "../lib/quests";
+import { CAMPAIGN, campaignKey, dailyQuests, type QuestDef, type QuestKind } from "../lib/quests";
 import { HttpError } from "./http";
 import { notify } from "./hub";
 import { t } from "../lib/i18n";
@@ -15,7 +15,7 @@ async function activeQuests(userId: string) {
   return list;
 }
 
-/** Record progress, e.g. questEvent(id, "train", 5). Never throws — quests must not break gameplay. */
+/** Record progress, e.g. questEvent(id, "money"). Never throws — quests must not break gameplay. */
 export async function questEvent(userId: string, kind: QuestKind, n = 1) {
   await trackStat(userId, kind, n);
   try {
@@ -28,20 +28,19 @@ export async function questEvent(userId: string, kind: QuestKind, n = 1) {
   }
 }
 
-export async function questView(userId: string, state: { heroClass: boolean; base: boolean; equipped: boolean }) {
+export async function questView(userId: string) {
   const quests = await activeQuests(userId);
   const rows = await prisma.questProgress.findMany({ where: { userId, key: { in: quests.map((q) => q.key) } } });
   const by = new Map(rows.map((r) => [r.key, r]));
-  const stateDone: Partial<Record<QuestKind, boolean>> = { class: state.heroClass, base: state.base, equip: state.equipped };
   return quests.map((q) => {
     const r = by.get(q.key);
-    const progress = STATE_KINDS.includes(q.kind) && stateDone[q.kind] ? q.target : Math.min(q.target, r?.progress ?? 0);
+    const progress = Math.min(q.target, r?.progress ?? 0);
     return { ...q, progress, done: progress >= q.target, claimed: !!r?.claimed };
   });
 }
 
-export async function claimQuest(userId: string, key: string, state: Parameters<typeof questView>[1]) {
-  const q = (await questView(userId, state)).find((x) => x.key === key);
+export async function claimQuest(userId: string, key: string) {
+  const q = (await questView(userId)).find((x) => x.key === key);
   if (!q) throw new HttpError(404, t("Quest not found"));
   if (!q.done) throw new HttpError(400, t("Quest not finished yet"));
   if (q.claimed) throw new HttpError(409, t("Already claimed"));

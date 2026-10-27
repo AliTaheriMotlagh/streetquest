@@ -3,7 +3,6 @@
 // drive achievements. Protected by CRON_SECRET (Vercel sends it as a Bearer token).
 import { prisma } from "@/lib/db";
 import { route, HttpError } from "@/server/http";
-import { BOUNTY_DAYS } from "@/lib/flags";
 import { expireRides } from "@/server/rides";
 import { drawDue } from "@/server/lottery";
 import { shopHousekeeping } from "@/server/shops";
@@ -28,9 +27,9 @@ export const GET = route(async (req) => {
     // Call handshakes are useless once the call is over (signals cascade).
     prisma.call.deleteMany({ where: { createdAt: { lt: days(1) } } }),
   ]);
-  // Refund week-old unclaimed bounties to whoever posted them.
+  // Street combat is gone, so nobody can collect a bounty any more: refund every open one.
   let refunded = 0;
-  for (const b of await prisma.bounty.findMany({ where: { claimedAt: null, createdAt: { lt: days(BOUNTY_DAYS) } }, take: 500 })) {
+  for (const b of await prisma.bounty.findMany({ where: { claimedAt: null }, take: 500 })) {
     if ((await prisma.bounty.deleteMany({ where: { id: b.id, claimedAt: null } })).count) {
       await prisma.user.update({ where: { id: b.posterId }, data: { coins: { increment: b.amount } } });
       refunded++;

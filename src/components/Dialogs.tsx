@@ -83,7 +83,9 @@ export function DialogHost() {
         {req.body && <p className="small muted" style={{ margin: "0 0 12px" }}>{req.body}</p>}
         {req.kind === "text" && <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} style={{ marginBottom: 12 }} />}
         <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button type="button" className="btn ghost" onClick={() => done(false)}>{req.cancel ?? t("Cancel")}</button>
+          {/* "Cancel" reads like the action itself when the action cancels something (in
+              Persian both are «انصراف»), so a yes/no question backs out with "Go back". */}
+          <button type="button" className="btn ghost" onClick={() => done(false)}>{req.cancel ?? (req.kind === "confirm" ? t("Go back") : t("Cancel"))}</button>
           <button ref={okRef} type="submit" className={`btn ${req.danger ? "" : "cyan"}`}>{req.ok ?? t("OK")}</button>
         </div>
       </form>

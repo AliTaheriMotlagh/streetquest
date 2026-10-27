@@ -6,16 +6,8 @@ import { prisma } from "@/lib/db";
 import { DAILY_REWARD, dayKey, levelProgress, titleForLevel } from "@/lib/progression";
 import { requireUser } from "@/server/auth";
 import { canSimulate } from "@/server/session";
-import { needsOf } from "@/server/needs";
-import { moodOf } from "@/lib/sims";
-import { attrPointsFree } from "@/lib/hero";
-import { commandPoints } from "@/lib/powers";
-import { leagueOf, pendingSupply } from "@/lib/rts";
 import { questView } from "@/server/quests";
 import { body, HttpError, route } from "@/server/http";
-import { currentHp, ROOKIE_LEVEL } from "@/lib/td";
-import { maxHpOf } from "@/server/td";
-import { superStatus } from "@/server/superweapons";
 import { settingOverrides } from "@/server/settings";
 import { goalsReady } from "@/server/goals";
 import { S } from "@/lib/settings";
@@ -24,34 +16,24 @@ import { DIVIDEND_H, rankOf } from "@/lib/idle";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
-  const [inventory, achievements, runs, pendingFriends, base, powers, equipped] = await Promise.all([
+  const [inventory, achievements, runs, pendingFriends, cashout] = await Promise.all([
     prisma.inventoryItem.findMany({ where: { userId: u.id, qty: { gt: 0 } } }),
     prisma.userAchievement.findMany({ where: { userId: u.id } }),
     prisma.missionRun.findMany({ where: { userId: u.id, status: "ACTIVE" } }),
     prisma.friendship.count({ where: { addresseeId: u.id, status: "PENDING" } }),
-    prisma.base.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, lat: true, lng: true, lastCollectAt: true, buildings: { select: { type: true, level: true, readyAt: true } } } }),
-    prisma.powerState.findMany({ where: { userId: u.id }, select: { rank: true } }),
-    prisma.gear.count({ where: { userId: u.id, equipped: true } }),
+    prisma.cashout.findFirst({ where: { userId: u.id, status: "PENDING" }, select: { amount: true } }),
   ]);
-  // What's new at the base (finished builds/research, supplies piling up) — drives the nav badge.
-  const now = Date.now();
-  const lastResearch = await prisma.research.findFirst({ where: { userId: u.id, readyAt: { lte: new Date() } }, orderBy: { readyAt: "desc" }, select: { readyAt: true } });
-  const doneAt = Math.max(0, lastResearch?.readyAt.getTime() ?? 0, ...(base?.buildings ?? []).map((b) => b.readyAt.getTime()).filter((t) => t <= now));
-  const supply = base ? pendingSupply(base.buildings, base.lastCollectAt, now) : 0;
-  const [maxHp, settings, goals, gpsGame, shop, empire] = await Promise.all([
-    maxHpOf(u.id),
+  const [settings, goals, gpsGame, shop, empire] = await Promise.all([
     settingOverrides(),
     goalsReady(u),
     prisma.gpsGame.findFirst({ where: { userId: u.id, status: "ACTIVE", endsAt: { gt: new Date() } }, select: { id: true, kind: true } }),
     prisma.shop.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, expiresAt: true, _count: { select: { orders: { where: { status: "PENDING" } } } } } }),
     prisma.empire.findUnique({ where: { userId: u.id }, select: { dividendAt: true, total: true, rankClaimed: true } }),
   ]);
-  const sw = base ? await superStatus(u) : null;
   // Notifications and pushes are written in the language the player last used.
   const locale = getLocale();
   if (u.locale !== locale) await prisma.user.update({ where: { id: u.id }, data: { locale } });
-  const quests = await questView(u.id, { heroClass: !!u.heroClass, base: !!base, equipped: equipped > 0 });
-  const needs = needsOf(u);
+  const quests = await questView(u.id);
   const prog = levelProgress(u.xp);
   const today = dayKey(u.timezone);
   return {
@@ -61,6 +43,9 @@ export const GET = route(async (req) => {
     role: u.role,
     xp: u.xp,
     coins: u.coins,
+    toman: u.toman,
+    /** Toman waiting in a cash-out request (already out of the wallet). */
+    cashoutPending: cashout?.amount ?? 0,
     timezone: u.timezone,
     level: prog.level,
     levelPct: prog.pct,
@@ -75,27 +60,9 @@ export const GET = route(async (req) => {
     achievements: achievements.map((a) => a.key),
     activeRun: runs[0] ?? null,
     pendingFriends,
-    faction: u.faction,
-    base: base && { id: base.id, name: base.name, lat: base.lat, lng: base.lng },
-    baseAlert: base ? { doneAt, supply } : null,
-    needs,
-    needsAt: Date.now(),
-    mood: moodOf(needs),
-    restedAt: u.restedAt,
-    socialAt: u.socialAt,
-    heroClass: u.heroClass,
-    scrap: u.scrap,
     gems: u.gems,
-    trophies: u.trophies,
-    league: leagueOf(u.trophies),
-    freePoints: attrPointsFree(prog.level, u),
-    commandPoints: commandPoints(prog.level, powers.reduce((s, p) => s + p.rank, 0)),
     quest: quests[0] ? { title: quests[0].title, desc: quests[0].desc, progress: quests[0].progress, target: quests[0].target, done: quests[0].done, campaign: quests[0].campaign } : null,
     questsReady: quests.filter((q) => q.done && !q.claimed).length,
-    hp: currentHp(u.hp, u.hpAt, maxHp),
-    maxHp,
-    downedUntil: u.downedUntil && u.downedUntil.getTime() > Date.now() ? u.downedUntil.getTime() : null,
-    rookie: prog.level < ROOKIE_LEVEL,
     settings,
     remotePlay: u.remotePlay,
     lastPos: u.lastLat != null && u.lastLng != null ? { lat: u.lastLat, lng: u.lastLng } : null,
@@ -110,7 +77,6 @@ export const GET = route(async (req) => {
     shop: shop && { id: shop.id, name: shop.name, expiresAt: shop.expiresAt.getTime(), pending: shop._count.orders },
     // The Ready tray: a dividend to claim (0 = right away), an empire rank reward waiting.
     empire: empire && { rank: rankOf(empire.total), dividendAt: empire.dividendAt ? empire.dividendAt.getTime() + DIVIDEND_H * 3600_000 : 0, rankUp: rankOf(empire.total) > empire.rankClaimed },
-    superweapon: sw?.def && sw.level > 0 ? { key: sw.def.key, name: sw.def.name, emoji: sw.def.emoji, level: sw.level, readyAt: sw.readyAt, radius: sw.def.radius } : null,
   };
 });
 

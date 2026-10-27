@@ -30,30 +30,28 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
   nearby: {
     title: msg("Nearby"),
     tips: [
-      ["🎯", msg("Everything around you, closest first: loot, chests, power cells, runs, bosses and players.")],
-      ["📍", msg("Get inside the dashed circle around you to interact — walk there, or travel there if you play from home.")],
-      ["✨", msg("Dawn and dusk are golden hours: double XP on spawns. Spawns refresh every 20 minutes.")],
+      ["💵", msg("The money and store missions closest to you. The map only shows the nearest few — pick some up and more appear.")],
+      ["📍", msg("Get inside the dashed circle around you to pick money up — walk there, or travel there if you play from home.")],
+      ["✨", msg("Gold money is a special drop. New money appears every 20 minutes.")],
     ],
   },
-  base: {
-    title: msg("Your base"),
+  wallet: {
+    title: msg("Wallet"),
     tips: [
-      ["🏛️", msg("Pick a faction, then plant your base where you stand. Everything else grows from here.")],
-      ["⚡", msg("Build a Power Plant and Supply Center first: power keeps things fast, supplies earn coins while you're away.")],
-      ["🪖", msg("Train troops in the Army tab — they join one by one as each finishes. Army Camps add room.")],
-      ["🗼", msg("Defense: towers shoot rivals and raiders near your base. Research makes everything stronger.")],
-      ["💎", msg("Out of patience? Gems finish any timer instantly.")],
+      ["💵", msg("Every pickup on the map pays toman: more when you walk there with GPS, less from home.")],
+      ["🏪", msg("Stores on the map have missions — check in, or pick up an order and deliver it — for more toman.")],
+      ["💸", msg("Once your wallet reaches the minimum, cash out to your bank card or Sheba. We check it and pay it.")],
     ],
   },
   play: {
     title: msg("Play"),
     tips: [
       ["🏙️", msg("Empire: an idle tycoon. Buy businesses, tap them to earn, hire managers so they earn on their own — even while you're away.")],
-      ["👟", msg("Every step you walk today boosts your empire's income, up to ×2 at 10,000 steps. Power cells 🔋 on the map double it for a while.")],
+      ["👟", msg("Every step you walk today boosts your empire's income, up to ×2 at 10,000 steps.")],
       ["📖", msg("Story: chapters played on real streets. A gold beacon on the map shows where to go next.")],
       ["🔍", msg("Some steps hide the target: search the gold circle and follow the hot/cold detector.")],
       ["🧭", msg("GPS games: treasure hunt, street sprint and checkpoint rally — quick rounds with rewards.")],
-      ["🏆", msg("Goals: a world operation everyone shares, a faction goal and your own milestones. Claim them here.")],
+      ["🏆", msg("Goals: a world operation everyone shares and your own milestones. Claim them here.")],
       ["🎰", msg("Lottery: buy tickets at the 🎰 spot on the map. At the draw time one random ticket wins the whole pot.")],
     ],
   },
@@ -70,7 +68,7 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
     title: msg("Gems"),
     tips: [
       ["📺", msg("Free gems: watch a short sponsor spot (a few per day).")],
-      ["💎", msg("Gems rush timers, buy coins, heal you instantly and shield your base.")],
+      ["💎", msg("Gems rush timers and buy coins.")],
       ["🎁", msg("You also earn gems from levels, quests, achievements, goals and story chapters.")],
     ],
   },
@@ -86,9 +84,8 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
   crew: {
     title: msg("Crew"),
     tips: [
-      ["🤝", msg("Add friends to see them exactly on the map and defend each other's bases.")],
+      ["🤝", msg("Add friends to see them exactly on the map.")],
       ["💬", msg("Chat with your crew, nearby players or everyone.")],
-      ["📣", msg("Use the 📣 button on the map to ping your crew: attack, help, rally or loot.")],
     ],
   },
   events: {
@@ -99,18 +96,17 @@ export const HELP: Record<string, { title: string; tips: [string, string][] }> =
     ],
   },
   hero: {
-    title: msg("Your hero"),
+    title: msg("Profile"),
     tips: [
-      ["🦸", msg("Pick a class, then spend points from every level on attributes.")],
-      ["🎒", msg("Gear drops from chests, battles and quests — equip it, forge it, salvage what you don't need.")],
-      ["📜", msg("Quests guide you through the game; Powers are special abilities bought with Command Points.")],
-      ["⚙️", msg("Profile: change your name, language, play mode (walk or from home), sound and music, or replay the tutorial.")],
+      ["📜", msg("Quests guide you through the game and pay coins and gems.")],
+      ["🎒", msg("Your bag holds what store missions hand you — sell what you don't need.")],
+      ["⚙️", msg("Settings: change your name, language, play mode (walk or from home), sound and music, or replay the tutorial.")],
     ],
   },
   inbox: {
     title: msg("Inbox"),
     tips: [
-      ["🔔", msg("Everything the game told you: rewards, raids on your base, crew news. Opening it clears the badge.")],
+      ["🔔", msg("Everything the game told you: rewards, cash-outs, crew news. Opening it clears the badge.")],
       ["✕", msg("Tap ✕ to dismiss one, or Clear all.")],
     ],
   },
@@ -154,20 +150,17 @@ export type TourStep = { target?: string; title: string; body: string; emoji?: s
 export const TOUR_KEY = "sq_tour_v2";
 
 export const TOUR: TourStep[] = [
-  { emoji: "👋", title: msg("Welcome, commander!"), body: msg("Your real city is the game map. Collect loot, build a base, raise an army and team up with players around you. This quick tour shows you around.") },
-  { target: ".player-card", title: msg("This is you"), body: msg("Your level and XP. Tap it any time to open your hero: stats, gear, quests and settings.") },
-  { target: ".needs-hud", title: msg("Keep your commander happy"), body: msg("Hunger, energy, social and fun drain over time. A happy commander earns more XP — eat, rest at your base and hang out with players.") },
-  { target: "[data-tour=wallet]", title: msg("Coins & gems"), body: msg("Coins build and train. Gems speed things up — tap the green + for the store and free gems.") },
-  { target: ".me-wrap", title: msg("Your reach"), body: msg("The dashed circle is your reach. Things inside it can be collected or played — tap any icon on the map to see what it is.") },
-  { target: "[data-tour=nav-nearby]", title: msg("Nearby"), body: msg("Everything around you in one list, closest first.") },
-  { target: "[data-tour=nav-base]", title: msg("Base"), body: msg("Plant your base, build, train troops and defend it. Start here after the tour!") },
+  { emoji: "👋", title: msg("Welcome!"), body: msg("Your real city is the game map, and there's money on it. Walk to it, pick it up, and cash it out once you have enough. This quick tour shows you around.") },
+  { target: "[data-tour=toman]", title: msg("Your toman"), body: msg("Every pickup lands here. Tap it to see your wallet and cash out to your bank card.") },
+  { target: ".me-wrap", title: msg("Your reach"), body: msg("The dashed circle is your reach. Money inside it can be picked up — tap any 💵 on the map.") },
+  { target: "[data-tour=nav-nearby]", title: msg("Nearby"), body: msg("The money and store missions closest to you, in one list.") },
+  { target: "[data-tour=nav-wallet]", title: msg("Wallet"), body: msg("Your toman, how to earn more, and cash-out.") },
   { target: "[data-tour=nav-play]", title: msg("Play"), body: msg("Your Street Empire idle game, story missions, GPS games and weekly goals with big rewards.") },
-  { target: "[data-tour=steps]", title: msg("Every step counts"), body: msg("Your steps today. Walking boosts your Street Empire's income up to ×2, and banked steps buy instant Step Rushes.") },
   { target: "[data-tour=nav-market]", title: msg("Market"), body: msg("Shops run by players around you — buy with coins, or open your own shop and sell.") },
   { target: "[data-tour=nav-social]", title: msg("Social"), body: msg("Your city's social network: posts, check-ins at real places, followers — and your crew's chat and calls. Red badges mean something new.") },
-  { target: "[data-tour=drive]", title: msg("Get in the car"), body: msg("See your real streets in 3D. Playing from home, you drive the car through the city to real shops and restaurants — every beacon is a job.") },
-  { target: "[data-tour=inbox]", title: msg("Inbox"), body: msg("Every reward, raid alert and message lands here.") },
-  { emoji: "🚶", title: msg("How do you want to play?"), body: msg("Walk the real streets with GPS for full rewards, or play from home: tap the map and your commander travels there, for reduced rewards. You can switch any time in Hero → Profile.") },
+  { target: "[data-tour=drive]", title: msg("Get in the car"), body: msg("See your real streets in 3D. Playing from home, you drive through the city and pick money up as you pass.") },
+  { target: "[data-tour=inbox]", title: msg("Inbox"), body: msg("Every reward, cash-out and message lands here.") },
+  { emoji: "🚶", title: msg("How do you want to play?"), body: msg("Walk the real streets with GPS for the full amount on every pickup, or play from home: tap the map and you travel there, for less. You can switch any time in Profile → Settings.") },
 ];
 
 export function Tour({ onDone, onChooseHome }: { onDone: () => void; onChooseHome?: (home: boolean) => void }) {

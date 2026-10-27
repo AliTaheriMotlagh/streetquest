@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
-import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { CUSTOMER_DOOR, PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { ITEM_BY_KEY } from "@/lib/catalog";
@@ -67,7 +67,7 @@ export function PlaceCard({ m, onClose }: { m: WorldPlace; onClose: () => void }
           </div>
         )}
         <div className="small muted" style={{ marginTop: 6 }}>
-          {t("+{n} XP", { n: m.rewardXp })} · +{fmtNum(m.rewardCoins)} 🪙{item ? ` · ${item.emoji} ${t(item.name)}` : ""}
+          <b className="money-amount">💵 {t("{n} toman", { n: m.toman })}</b> · {t("+{n} XP", { n: m.rewardXp })}{item ? ` · ${item.emoji} ${t(item.name)}` : ""}
           {m.kind === "deliver" ? ` · ⏱️ ${t("{n} min", { n: Math.round(m.timeLimitS / 60) })}` : ""} · {t("new jobs in {n} min", { n: left })}
         </div>
       </div>
@@ -76,11 +76,11 @@ export function PlaceCard({ m, onClose }: { m: WorldPlace; onClose: () => void }
       ) : !here ? (
         <GoThere to={m.place} dist={dist} />
       ) : m.kind === "deliver" ? (
-        <Button className="btn yellow block big-btn" disabled={!!me.activeRun || !!me.downedUntil} onClick={start}>
-          {me.activeRun ? t("Finish your current run first") : t("📦 Pick up the order")}
+        <Button className="btn yellow block big-btn" disabled={!!me.activeRun} onClick={start}>
+          {me.activeRun ? t("Finish your current delivery first") : t("📦 Pick up the order")}
         </Button>
       ) : (
-        <Button className="btn green block big-btn" disabled={!!me.downedUntil} onClick={start}>{t("✅ Check in")}</Button>
+        <Button className="btn green block big-btn" onClick={start}>{t("✅ Check in")}</Button>
       )}
     </Sheet>
   );

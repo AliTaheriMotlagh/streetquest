@@ -1,30 +1,36 @@
 "use client";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { askConfirm, askText } from "@/components/Dialogs";
 import { GameDataTab, RevenueTab, SettingsTab, type AdminConfig, type AdminRevenue } from "@/components/AdminSettings";
 import { Button } from "./Button";
-import { t, msg } from "@/lib/i18n";
+import { fmtNum, t, msg } from "@/lib/i18n";
+
+const AdminDropMap = dynamic(() => import("./AdminDropMap"), { ssr: false, loading: () => <div className="admin-map" /> });
+
+type Drop = { batch: string; label: string; sponsor: string | null; points: { lat: number; lng: number }[]; amount: number; maxClaims: number | null; claims: number; paid: number; activeFrom: string; activeTo: string };
+type Cashout = { id: string; user: string; wallet: number; joined: string; amount: number; fullName: string; phone: string; account: string; status: "PENDING" | "PAID" | "REJECTED"; note: string | null; createdAt: string; decidedAt: string | null };
+type MoneyData = { wallets: number; paid: number; pending: number; pendingCount: number; earned24: number; pickups24: number; drops: Drop[]; cashouts: Cashout[] };
 
 type Data = {
   stats: { users: number; online: number; signups7: number; claims24: number; upcomingEvents: number; pageViews7: number; conversion7: number; deliveries: Record<string, number> };
   bySource: { source: string; count: number }[];
   byCampaign: { campaign: string; count: number }[];
   series: Record<string, { page_view: number; signup: number; claim: number }>;
-  users: { id: string; username: string; email: string; role: string; banned: boolean; level: number; coins: number; gems: number; createdAt: string; utmSource: string | null; online: boolean; lastSeenAt: string | null }[];
+  users: { id: string; username: string; email: string; role: string; banned: boolean; level: number; coins: number; gems: number; toman: number; createdAt: string; utmSource: string | null; online: boolean; lastSeenAt: string | null }[];
   deliveries: { id: string; title: string; status: string; reward: number; createdAt: string; sender: { username: string }; courier: { username: string } | null }[];
   rides: { id: string; pickupLabel: string; dropoffLabel: string; status: string; fare: number; createdAt: string; rider: { username: string }; driver: { username: string } | null }[];
   lotteries: { id: string; name: string; status: string; pot: number; ticketPrice: number; drawAt: string; players: number; official: boolean; host: { username: string }; winner: { username: string } | null }[];
   notes: { id: string; body: string; hidden: boolean; lat: number; lng: number; createdAt: string; author: { username: string } }[];
-  missions: { id: string; title: string; itemKey: string; lat: number; lng: number; activeFrom: string; activeTo: string; sponsor: string | null; rewardXp: number; rewardCoins: number }[];
   announcements: { id: string; title: string; body: string; active: boolean; ctaUrl: string | null }[];
   messages: { id: string; room: string; body: string; createdAt: string; author: { username: string } }[];
-  items: { key: string; label: string }[];
   config: AdminConfig;
   revenue: AdminRevenue;
+  money: MoneyData;
 };
 
-type Tab = "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type Tab = "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -33,11 +39,17 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     group: msg("Game"),
     items: [
       { id: "settings", icon: "⚙️", label: msg("Game settings"), desc: msg("Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds.") },
-      { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every unit, building, tower, item and research project. Change a number to override it; clear it to go back to the original.") },
-      { id: "missions", icon: "📍", label: msg("Map drops"), desc: msg("Place special missions on the map at real places for a time window — sponsored drops, store activations, city campaigns.") },
+      { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every item. Change a number to override it; clear it to go back to the original.") },
     ],
   },
-  { group: msg("Money"), items: [{ id: "revenue", icon: "💰", label: msg("Revenue"), desc: msg("Gem sales, sponsor ad views and clicks, and how to switch on payments.") }] },
+  {
+    group: msg("Money"),
+    items: [
+      { id: "money", icon: "💵", label: msg("Money drops"), desc: msg("Drop money on a spot or along a street to bring players there — for sponsors, store openings or a street you want to trend. Each player can pick up each drop once.") },
+      { id: "cashouts", icon: "💸", label: msg("Cash-outs"), desc: msg("Players asking to be paid their toman. Pay it to the account shown, then mark it paid with the bank reference — or decline it to put the toman back in their wallet.") },
+      { id: "revenue", icon: "💰", label: msg("Revenue"), desc: msg("Gem sales, sponsor ad views and clicks, and how to switch on payments.") },
+    ],
+  },
   {
     group: msg("Community"),
     items: [
@@ -75,7 +87,7 @@ function MiniBars({ title, values }: { title: string; values: [string, number][]
 }
 
 export function AdminPanel() {
-  const [tab, setTab] = useState<Tab>("dash");
+  const [tab, setTab] = useState<Tab>("money");
   const [data, setData] = useState<Data | null>(null);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
@@ -86,7 +98,9 @@ export function AdminPanel() {
     const timer = setTimeout(() => setSaved(0), 2500);
     return () => clearTimeout(timer);
   }, [saved]);
-  const [mission, setMission] = useState({ title: "", description: "", lat: "", lng: "", itemKey: "diamond", rewardXp: 300, rewardCoins: 100, activeFrom: toLocalInput(new Date()), activeTo: toLocalInput(new Date(Date.now() + 7 * 86400000)), sponsor: "" });
+  const [drop, setDrop] = useState({ label: "", sponsor: "", count: 10, spreadM: 60, amount: 10000, maxClaims: "", activeFrom: toLocalInput(new Date()), activeTo: toLocalInput(new Date(Date.now() + 7 * 86400000)) });
+  const [points, setPoints] = useState<{ lat: number; lng: number }[]>([]);
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const [ann, setAnn] = useState({ title: "", body: "", ctaLabel: "", ctaUrl: "" });
   const [push, setPush] = useState({ title: "", body: "", push: true });
   const [utm, setUtm] = useState({ path: "/", source: "instagram", medium: "social", campaign: "launch" });
@@ -189,13 +203,14 @@ export function AdminPanel() {
             <input placeholder={t("Search name or email")} value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320, marginBottom: 10 }} />
             <div className="table-scroll">
               <table>
-                <thead><tr><th>{t("Player")}</th><th>{t("Email")}</th><th>{t("Lvl")}</th><th>{t("Coins")}</th><th>{t("Gems")}</th><th>{t("Source")}</th><th>{t("Joined")}</th><th>{t("Actions")}</th></tr></thead>
+                <thead><tr><th>{t("Player")}</th><th>{t("Email")}</th><th>{t("Lvl")}</th><th>{t("Toman")}</th><th>{t("Coins")}</th><th>{t("Gems")}</th><th>{t("Source")}</th><th>{t("Joined")}</th><th>{t("Actions")}</th></tr></thead>
                 <tbody>
                   {data.users.map((u) => (
                     <tr key={u.id} style={{ opacity: u.banned ? 0.5 : 1 }}>
                       <td><span className={`dot ${u.online ? "on" : ""}`} /> <b>{u.username}</b> {u.role === "ADMIN" && <span className="tag">{t("admin")}</span>}</td>
                       <td className="muted">{u.email}</td>
                       <td>{u.level}</td>
+                      <td>{fmtNum(u.toman)}</td>
                       <td>{u.coins}</td>
                       <td>{u.gems}</td>
                       <td>{u.utmSource ?? t("organic")}</td>
@@ -203,6 +218,7 @@ export function AdminPanel() {
                       <td className="row">
                         <Button className="btn ghost small" onClick={() => post({ action: "ban", userId: u.id, banned: !u.banned })}>{u.banned ? t("Unban") : t("Ban")}</Button>
                         <Button className="btn ghost small" onClick={() => post({ action: "role", userId: u.id, role: u.role === "ADMIN" ? "PLAYER" : "ADMIN" })}>{u.role === "ADMIN" ? t("Demote") : t("Make admin")}</Button>
+                        <Button className="btn ghost small" onClick={() => askText(t("Toman to give {name}", { name: u.username }), "10000", { body: t("Use a negative number to take toman away."), ok: t("Give") }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantToman", userId: u.id, toman: Math.round(Number(c)) }); })}>{t("💵 Toman")}</Button>
                         <Button className="btn ghost small" onClick={() => askText(t("Coins to grant {name}", { name: u.username }), "100", { body: t("Use a negative number to remove coins."), ok: t("Grant") }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grant", userId: u.id, coins: Math.round(Number(c)), xp: 0 }); })}>{t("🪙 Gift")}</Button>
                         <Button className="btn ghost small" onClick={() => askText(t("Gems to grant {name}", { name: u.username }), "50", { body: t("Use a negative number to remove gems."), ok: t("Grant") }).then((c) => { if (c && Number.isFinite(Number(c))) post({ action: "grantGems", userId: u.id, gems: Math.round(Number(c)) }); })}>{t("💎 Gift")}</Button>
                       </td>
@@ -214,47 +230,114 @@ export function AdminPanel() {
           </>
         )}
 
-        {tab === "missions" && (
+        {tab === "money" && (
           <>
-            <div className="card">
-              <b>{t("New mission drop")}</b>
-              <p className="small muted">{t("Hand-placed missions appear on everyone's map at that spot during the active window — great for sponsored drops, store activations and city campaigns.")}</p>
-              <div className="form-grid">
-                <div><label>{t("Title")}</label><input value={mission.title} onChange={(e) => setMission({ ...mission, title: e.target.value })} /></div>
-                <div><label>{t("Sponsor (optional)")}</label><input value={mission.sponsor} onChange={(e) => setMission({ ...mission, sponsor: e.target.value })} /></div>
-                <div><label>{t("Latitude")}</label><input value={mission.lat} onChange={(e) => setMission({ ...mission, lat: e.target.value })} placeholder="51.5079" /></div>
-                <div><label>{t("Longitude")}</label><input value={mission.lng} onChange={(e) => setMission({ ...mission, lng: e.target.value })} placeholder="-0.0877" /></div>
-                <div><label>{t("Reward item")}</label><select value={mission.itemKey} onChange={(e) => setMission({ ...mission, itemKey: e.target.value })}>{data.items.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}</select></div>
-                <div><label>{t("XP")}</label><input type="number" value={mission.rewardXp} onChange={(e) => setMission({ ...mission, rewardXp: Number(e.target.value) })} /></div>
-                <div><label>{t("Coins")}</label><input type="number" value={mission.rewardCoins} onChange={(e) => setMission({ ...mission, rewardCoins: Number(e.target.value) })} /></div>
-                <div><label>{t("Active from")}</label><input type="datetime-local" value={mission.activeFrom} onChange={(e) => setMission({ ...mission, activeFrom: e.target.value })} /></div>
-                <div><label>{t("Active to")}</label><input type="datetime-local" value={mission.activeTo} onChange={(e) => setMission({ ...mission, activeTo: e.target.value })} /></div>
-              </div>
-              <label>{t("Description")}</label>
-              <textarea rows={2} value={mission.description} onChange={(e) => setMission({ ...mission, description: e.target.value })} />
-              <div className="row" style={{ marginTop: 10 }}>
-                <Button className="btn ghost small" onClick={() => navigator.geolocation.getCurrentPosition((p) => setMission({ ...mission, lat: String(p.coords.latitude), lng: String(p.coords.longitude) }))}>{t("📍 Use my location")}</Button>
-                <Button className="btn" onClick={async () => {
-                  const ok = await post({ action: "createMission", ...mission, lat: Number(mission.lat), lng: Number(mission.lng), sponsor: mission.sponsor || undefined, activeFrom: new Date(mission.activeFrom), activeTo: new Date(mission.activeTo) });
-                  if (ok) setMission({ ...mission, title: "", description: "" });
-                }}>{t("Create mission")}</Button>
-              </div>
+            <div className="kpis">
+              <div className="stat"><b>{fmtNum(data.money.earned24)}</b><span>{t("Toman earned · 24h")}</span></div>
+              <div className="stat"><b>{fmtNum(data.money.pickups24)}</b><span>{t("Pickups · 24h")}</span></div>
+              <div className="stat"><b>{fmtNum(data.money.wallets)}</b><span>{t("In players' wallets")}</span></div>
+              <div className="stat"><b>{fmtNum(data.money.pending)}</b><span>{t("Waiting to be paid ({n})", { n: data.money.pendingCount })}</span></div>
+              <div className="stat"><b>{fmtNum(data.money.paid)}</b><span>{t("Paid out")}</span></div>
             </div>
+            <div className="card">
+              <b>{t("New money drop")}</b>
+              <p className="small muted">{t("Tap the map once to drop money on a spot (spread around it), or tap along a street to lay it evenly from point to point. Drops show in gold on players' maps, ahead of everything else.")}</p>
+              <AdminDropMap points={points} center={here} existing={data.money.drops.map((d) => ({ points: d.points, active: new Date(d.activeTo).getTime() > Date.now() }))} onPick={(p) => setPoints((ps) => (ps.length >= 20 ? ps : [...ps, p]))} />
+              <div className="row wrap" style={{ marginTop: 8 }}>
+                <span className="small muted grow">
+                  {points.length === 0 ? t("No points yet — tap the map") : points.length === 1 ? t("One spot: the drops are spread around it") : t("A street through {n} points", { n: points.length })}
+                </span>
+                <Button className="btn ghost small" disabled={!points.length} onClick={() => setPoints((ps) => ps.slice(0, -1))}>{t("Undo point")}</Button>
+                <Button className="btn ghost small" disabled={!points.length} onClick={() => setPoints([])}>{t("Clear")}</Button>
+                <Button className="btn ghost small" onClick={() => navigator.geolocation.getCurrentPosition((p) => setHere({ lat: p.coords.latitude, lng: p.coords.longitude }))}>{t("📍 Use my location")}</Button>
+              </div>
+              <div className="form-grid">
+                <div><label>{t("Name players see")}</label><input value={drop.label} onChange={(e) => setDrop({ ...drop, label: e.target.value })} placeholder={t("e.g. Grand opening")} /></div>
+                <div><label>{t("Sponsor (optional)")}</label><input value={drop.sponsor} onChange={(e) => setDrop({ ...drop, sponsor: e.target.value })} /></div>
+                <div><label>{t("How many drops")}</label><input type="number" min={1} max={200} value={drop.count} onChange={(e) => setDrop({ ...drop, count: Number(e.target.value) })} /></div>
+                {points.length === 1 && <div><label>{t("Spread around the spot (m)")}</label><input type="number" min={0} max={2000} value={drop.spreadM} onChange={(e) => setDrop({ ...drop, spreadM: Number(e.target.value) })} /></div>}
+                <div><label>{t("Toman per pickup (GPS)")}</label><input type="number" min={100} step={1000} value={drop.amount} onChange={(e) => setDrop({ ...drop, amount: Number(e.target.value) })} /></div>
+                <div><label>{t("Max pickups in total (optional)")}</label><input type="number" min={1} value={drop.maxClaims} onChange={(e) => setDrop({ ...drop, maxClaims: e.target.value })} placeholder={t("unlimited")} /></div>
+                <div><label>{t("Active from")}</label><input type="datetime-local" value={drop.activeFrom} onChange={(e) => setDrop({ ...drop, activeFrom: e.target.value })} /></div>
+                <div><label>{t("Active to")}</label><input type="datetime-local" value={drop.activeTo} onChange={(e) => setDrop({ ...drop, activeTo: e.target.value })} /></div>
+              </div>
+              <p className="small muted">
+                {t("Budget: up to {n} toman", { n: (drop.maxClaims ? Number(drop.maxClaims) : drop.count) * drop.amount })}
+                {!drop.maxClaims && ` ${t("per player who finds them all (each player can pick up each drop once)")}`}
+              </p>
+              <Button
+                className="btn green"
+                disabled={!points.length || drop.label.trim().length < 2 || drop.count < 1 || drop.amount < 100}
+                onClick={async () => {
+                  const ok = await post({
+                    action: "dropMoney",
+                    label: drop.label,
+                    sponsor: drop.sponsor || undefined,
+                    points,
+                    count: drop.count,
+                    spreadM: points.length === 1 ? drop.spreadM : 0,
+                    amount: drop.amount,
+                    maxClaims: drop.maxClaims ? Number(drop.maxClaims) : undefined,
+                    activeFrom: new Date(drop.activeFrom),
+                    activeTo: new Date(drop.activeTo),
+                  });
+                  if (ok) setPoints([]);
+                }}
+              >
+                💵 {t("Drop {n} × {amount} toman", { n: drop.count, amount: drop.amount })}
+              </Button>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>{t("Drop")}</th><th>{t("Where")}</th><th>{t("Window")}</th><th>{t("Toman")}</th><th>{t("Picked up")}</th><th /></tr></thead>
+                <tbody>
+                  {data.money.drops.map((d) => {
+                    const live = new Date(d.activeTo).getTime() > Date.now();
+                    return (
+                      <tr key={d.batch} style={{ opacity: live ? 1 : 0.5 }}>
+                        <td><b>{d.label}</b> {d.sponsor && <span className="tag">{d.sponsor}</span>}</td>
+                        <td className="mono small" dir="ltr">{d.points[0].lat.toFixed(4)}, {d.points[0].lng.toFixed(4)}{d.points.length > 1 ? ` (+${d.points.length - 1})` : ""}</td>
+                        <td className="small muted">{fmt(d.activeFrom)} → {fmt(d.activeTo)}</td>
+                        <td>{fmtNum(d.amount)}</td>
+                        <td>{fmtNum(d.claims)}{d.maxClaims ? ` / ${fmtNum(d.maxClaims)}` : ""} · {fmtNum(d.paid)}</td>
+                        <td>{live && <Button className="btn ghost small" onClick={() => askConfirm(t("End this drop now?"), { body: t("It disappears from every map. What players already picked up stays theirs."), ok: t("End drop"), cancel: t("Keep it"), danger: true }).then((ok) => ok && post({ action: "deleteDrop", batch: d.batch }))}>{t("End")}</Button>}</td>
+                      </tr>
+                    );
+                  })}
+                  {!data.money.drops.length && <tr><td colSpan={6} className="muted small">{t("No drops yet")}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {tab === "cashouts" && (
+          <div className="table-scroll">
             <table>
-              <thead><tr><th>{t("Mission")}</th><th>{t("Where")}</th><th>{t("Window")}</th><th>{t("Reward")}</th><th /></tr></thead>
+              <thead><tr><th>{t("Player")}</th><th>{t("Amount")}</th><th>{t("Name · phone")}</th><th>{t("Card / Sheba")}</th><th>{t("Asked")}</th><th>{t("Status")}</th><th /></tr></thead>
               <tbody>
-                {data.missions.map((m) => (
-                  <tr key={m.id}>
-                    <td><b>{m.title}</b> {m.sponsor && <span className="tag">{m.sponsor}</span>}</td>
-                    <td className="mono small">{m.lat.toFixed(4)}, {m.lng.toFixed(4)}</td>
-                    <td className="small muted">{fmt(m.activeFrom)} → {fmt(m.activeTo)}</td>
-                    <td>{m.itemKey} · {m.rewardXp} {t("XP ·")} {m.rewardCoins} 🪙</td>
-                    <td><Button className="btn ghost small" onClick={() => askConfirm(t("Delete mission?"), { ok: t("Delete"), danger: true }).then((ok) => ok && post({ action: "deleteMission", id: m.id }))}>{t("Delete")}</Button></td>
+                {data.money.cashouts.map((c) => (
+                  <tr key={c.id} style={{ opacity: c.status === "PENDING" ? 1 : 0.55 }}>
+                    <td><b>{c.user}</b><div className="small muted">{t("joined {when}", { when: fmt(c.joined) })} · {t("wallet {n}", { n: c.wallet })}</div></td>
+                    <td><b>{fmtNum(c.amount)}</b></td>
+                    <td>{c.fullName}<div className="small muted mono" dir="ltr">{c.phone}</div></td>
+                    <td className="mono small" dir="ltr">{c.account}</td>
+                    <td className="small muted">{fmt(c.createdAt)}</td>
+                    <td><span className="tag">{t(c.status)}</span>{c.note && <div className="small muted">{c.note}</div>}</td>
+                    <td className="row">
+                      {c.status === "PENDING" && (
+                        <>
+                          <Button className="btn green small" onClick={() => askText(t("Mark {n} toman to {name} as paid?", { n: c.amount, name: c.fullName }), "", { body: t("Bank reference (optional) — the player sees it."), ok: t("Mark paid"), cancel: t("Go back") }).then((ref) => ref !== null && post({ action: "cashout", id: c.id, paid: true, note: ref || undefined }))}>{t("Paid")}</Button>
+                          <Button className="btn ghost small" onClick={() => askText(t("Decline this cash-out?"), "", { body: t("The toman goes back to the player's wallet. Reason (optional) — the player sees it."), ok: t("Decline"), cancel: t("Go back") }).then((why) => why !== null && post({ action: "cashout", id: c.id, paid: false, note: why || undefined }))}>{t("Decline")}</Button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
+                {!data.money.cashouts.length && <tr><td colSpan={7} className="muted small">{t("No cash-out requests yet")}</td></tr>}
               </tbody>
             </table>
-          </>
+          </div>
         )}
 
         {tab === "marketing" && (

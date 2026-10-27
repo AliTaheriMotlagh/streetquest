@@ -83,6 +83,11 @@ model User {
   // Social profile: a short bio under the name, shown on the profile page.
   bio String @default("")
 
+  // Money on the map: the toman wallet (cash-out at S.cashoutMin) and whether the
+  // last accepted position came from test mode (which never earns toman).
+  toman  Int     @default(0)
+  locSim Boolean @default(false)
+
   inventory       InventoryItem[]
   claims          Claim[]
   runs            MissionRun[]
@@ -134,6 +139,7 @@ model User {
   business        Business[]
   bizVisits       BizVisit[]
   posts           Post[]
+  cashouts        Cashout[]
   postLikes       PostLike[]
   postComments    PostComment[]
   following       Follow[]           @relation("follower")
@@ -188,6 +194,7 @@ model Claim {
   spawnId   String
   kind      String
   cell      String
+  toman     Int      @default(0) // toman paid for it (money pickups, store missions)
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -392,6 +399,47 @@ model EventParticipant {
 }
 
 // Hand-placed missions from the admin panel (sponsored drops, campaigns...).
+// Money an admin dropped on the map (a spot, or a street as a row of drops sharing a
+// batch). Each player can pick each drop up once; maxClaims caps the total budget.
+model MoneyDrop {
+  id         String   @id @default(cuid())
+  batch      String
+  label      String
+  sponsor    String?
+  lat        Float
+  lng        Float
+  amount     Int // toman for a player on GPS (from home: scaled by S.moneyHome / S.moneyGps)
+  maxClaims  Int? // null = unlimited
+  claims     Int      @default(0)
+  paid       Int      @default(0) // toman paid out so far
+  activeFrom DateTime
+  activeTo   DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([lat, lng])
+  @@index([batch])
+}
+
+// A player asking to be paid their toman. The amount leaves the wallet on request and
+// comes back if an admin rejects it.
+model Cashout {
+  id        String    @id @default(cuid())
+  userId    String
+  amount    Int
+  fullName  String
+  phone     String
+  account   String // 16-digit bank card or IR Sheba
+  status    String    @default("PENDING") // PENDING | PAID | REJECTED
+  note      String?
+  createdAt DateTime  @default(now())
+  decidedAt DateTime?
+  decidedBy String?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
 model AdminMission {
   id          String   @id @default(cuid())
   title       String

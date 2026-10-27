@@ -2,17 +2,11 @@
 import L from "leaflet";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
-import { RARITY_COLOR } from "@/lib/catalog";
 import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, t } from "@/lib/i18n";
-import { INTERACT_RADIUS_M } from "@/lib/spawns";
-import { BUILDING_BY_KEY, FACTION_BY_KEY, SIEGE_RANGE_M, type BuildingKey } from "@/lib/rts";
-import { offset } from "@/lib/geo";
-import { PINGS, towerStats } from "@/lib/td";
-import { outpostCode } from "@/lib/outposts";
-import type { GpsView, LatLng, LobbyView, Me, Selected, World, WorldDelivery, WorldNote, WorldPlayer, WorldRide, WorldSpawn } from "./client";
+import { INTERACT_RADIUS_M } from "@/lib/reach";
+import type { GpsView, LatLng, Me, Selected, World, WorldPlayer } from "./client";
 import { esc, icon } from "./mapIcons";
-import { LiveLayer } from "./LiveLayer";
 import { PlayerLayer, type Guide } from "./PlayerLayer";
 import { OthersLayer } from "./OthersLayer";
 import { cellFor, cluster, groupBounds, lodFor, type Group, type Lod } from "./mapLod";
@@ -44,15 +38,11 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
   return null;
 }
 
-const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#63b3f2" : t.friend ? "#5bd38c" : "#ef6461");
-
 type Props = {
   /** fantasy: illustrated storybook map · dark: night-ops · classic: plain street map. */
   look?: "fantasy" | "dark" | "classic";
   travelTo?: LatLng | null;
   game?: GpsView | null;
-  runners?: LobbyView["players"];
-  strikeMode?: boolean;
   world: World | null;
   me: Me | null;
   follow: boolean;
@@ -79,7 +69,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, runners, strikeMode, game, travelTo, look = "fantasy" }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, look = "fantasy" }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -90,7 +80,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
   const [tuning] = useState(() => ({ touch: isTouch(), lite: isLite() }));
 
   return (
-    <div className={`map ${look === "dark" && DARKEN ? "darken" : ""} ${look === "fantasy" ? "fantasy" : ""} ${tint} ${picking || strikeMode ? "picking" : ""} ${strikeMode ? "striking" : ""}`}>
+    <div className={`map ${look === "dark" && DARKEN ? "darken" : ""} ${look === "fantasy" ? "fantasy" : ""} ${tint} ${picking ? "picking" : ""}`}>
       <MapContainer
         preferCanvas
         center={[center.lat, center.lng]}
@@ -105,7 +95,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         <PlayerLayer follow={follow} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} runners={runners} game={game} travelTo={travelTo} onSelect={onSelect} onUnfollow={onUnfollow} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} onSelect={onSelect} onUnfollow={onUnfollow} />
       </MapContainer>
       {look === "fantasy" && (
         <div className="fantasy-fx" aria-hidden>
@@ -149,27 +139,11 @@ function useMapView() {
   return view;
 }
 
-const RARITY_RANK: Record<string, number> = { legendary: 4, epic: 3, rare: 2, uncommon: 1 };
-
-type Clutter =
-  | { id: string; lat: number; lng: number; kind: "spawn"; data: WorldSpawn }
-  | { id: string; lat: number; lng: number; kind: "note"; data: WorldNote }
-  | { id: string; lat: number; lng: number; kind: "delivery"; data: WorldDelivery }
-  | { id: string; lat: number; lng: number; kind: "ride"; data: WorldRide };
-
-const spawnEmoji = (s: WorldSpawn) => (s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🔋" : s.kind === "derrick" ? "🛢️" : s.item?.emoji ?? "❔");
-const clutterRank = (c: Clutter) => (c.kind === "spawn" ? (c.data.kind === "chest" ? 5 : RARITY_RANK[c.data.item?.rarity ?? ""] ?? 0) : -1);
-const clutterEmoji = (c: Clutter) => (c.kind === "spawn" ? spawnEmoji(c.data) : c.kind === "note" ? "💬" : c.kind === "ride" ? "🚕" : "📦");
-
-function Layers({
-  world,
-  me,
-  runners,
-  game,
-  travelTo,
-  onSelect,
-  onUnfollow,
-}: Pick<Props, "world" | "me" | "runners" | "game" | "travelTo" | "onSelect" | "onUnfollow">) {
+/**
+ * What the map shows: money to pick up and stores with a mission (the server sends only
+ * the nearest few), other players, and where you're headed. Nothing else.
+ */
+function Layers({ world, me, game, travelTo, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "onSelect" | "onUnfollow">) {
   const map = useMap();
   const view = useMapView();
   const lod: Lod = lodFor(view.zoom);
@@ -193,21 +167,6 @@ function Layers({
   );
   const clusterIcon = (emoji: string, n: number, cls: string) => icon(`<span class="ring"></span>${emoji}<span class="cl-n">${n > 99 ? "99+" : n}</span>`, `cluster ${cls}`, 42);
 
-  const inView = (p: { lat: number; lng: number }) => view.bounds.contains([p.lat, p.lng]);
-
-  // Small things you walk up to: one marker each at street level, bubbles further out.
-  const clutter = useMemo(() => {
-    if (!world || lod === "far") return [];
-    const list: Clutter[] = [];
-    const b = view.bounds;
-    const keep = (p: { lat: number; lng: number }) => b.contains([p.lat, p.lng]);
-    for (const s of world.spawns) if (keep(s) && !(lod !== "near" && s.claimed)) list.push({ id: `s${s.id}`, lat: s.lat, lng: s.lng, kind: "spawn", data: s });
-    for (const n of world.notes) if (keep(n)) list.push({ id: `n${n.id}`, lat: n.lat, lng: n.lng, kind: "note", data: n });
-    for (const d of world.deliveries) if (keep({ lat: d.pickupLat, lng: d.pickupLng })) list.push({ id: `d${d.id}`, lat: d.pickupLat, lng: d.pickupLng, kind: "delivery", data: d });
-    for (const r of world.rides) if (keep({ lat: r.pickupLat, lng: r.pickupLng })) list.push({ id: `r${r.id}`, lat: r.pickupLat, lng: r.pickupLng, kind: "ride", data: r });
-    return cluster(list, view.zoom, cell, "cl");
-  }, [world, view, lod, cell]);
-
   // Other players further out: grouped. At street level OthersLayer animates them.
   const playerGroups = useMemo(() => {
     if (!world || lod === "near") return [];
@@ -219,121 +178,48 @@ function Layers({
     return cluster(list.filter((p) => view.bounds.contains([p.lat, p.lng])), view.zoom, cell, "pl");
   }, [world, view, lod, cell]);
 
-  // Zoomed far out, rival bases bunch up too; yours always stands alone.
-  const baseGroups = useMemo(() => {
-    if (!world) return [];
-    const list = world.bases.filter((b) => view.bounds.contains([b.lat, b.lng]));
-    if (lod !== "far") return list.map((b) => ({ key: b.id, lat: b.lat, lng: b.lng, items: [b] }));
-    return [...list.filter((b) => b.mine).map((b) => ({ key: b.id, lat: b.lat, lng: b.lng, items: [b] })), ...cluster(list.filter((b) => !b.mine), view.zoom, cell, "bs")];
-  }, [world, view, lod, cell]);
-
-  const spawnMarker = (s: WorldSpawn) => {
-    const color = s.kind === "derrick" ? "#f0c05a" : s.item ? RARITY_COLOR[s.item.rarity] : "#63b3f2";
-    const cls = `${s.kind} ${s.item?.rarity ?? ""} ${s.claimed ? "claimed" : ""}`;
-    return (
-      <Marker
-        key={s.id}
-        position={[s.lat, s.lng]}
-        icon={icon(`<span class="ring" style="color:${color}"></span>${spawnEmoji(s)}`, cls)}
-        eventHandlers={{ click: () => onSelect({ type: "spawn", data: s }) }}
-      />
-    );
-  };
-  const clutterMarker = (c: Clutter) =>
-    c.kind === "spawn" ? (
-      spawnMarker(c.data)
-    ) : c.kind === "note" ? (
-      <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon(c.data.unlocked ? "💬" : "📍", "note", 32)} eventHandlers={{ click: () => onSelect({ type: "note", data: c.data }) }} />
-    ) : c.kind === "ride" ? (
-      <Marker key={c.id} position={[c.lat, c.lng]} icon={icon(`<span class="ring" style="color:#f0c05a"></span>🚕<span class="nm">${fmtNum(c.data.fare)} 🪙</span>`, "ride")} eventHandlers={{ click: () => onSelect({ type: "ride", data: c.data }) }} />
-    ) : (
-      <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon("📦", "")} eventHandlers={{ click: () => onSelect({ type: "delivery", data: c.data }) }} />
-    );
   const playerMarker = (p: WorldPlayer) => (
     <Marker
       key={p.id}
       position={[p.lat, p.lng]}
-      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${fmtNum(p.level)}</span>${p.bounty ? `<span class="wanted">💀${fmtNum(p.bounty)}</span>` : ""}`, `player ${p.friend ? "friend" : ""} ${p.bounty ? "is-wanted" : ""}`, 34)}
+      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${fmtNum(p.level)}</span>`, `player ${p.friend ? "friend" : ""}`, 34)}
       eventHandlers={{ click: () => onSelect({ type: "player", data: p }) }}
     />
   );
-  const baseMarker = (b: World["bases"][number]) => {
-    const f = b.faction ? FACTION_BY_KEY[b.faction] : null;
-    const color = b.mine ? "#63b3f2" : b.friend ? "#5bd38c" : (f?.color ?? "#ef6461");
-    return (
-      <Marker
-        key={b.id}
-        position={[b.lat, b.lng]}
-        zIndexOffset={500}
-        icon={icon(
-          `<span class="ring" style="color:${color}"></span>🏰<span class="nm" style="color:${color}">${esc(b.name)} · ${fmtNum(b.hq)}</span>${b.liveMatch ? '<span class="fight">⚔️</span>' : ""}${b.shielded ? '<span class="shield">🛡️</span>' : ""}`,
-          `base ${b.mine ? "mine" : ""} ${b.owner.online ? "online" : ""}`,
-          48,
-        )}
-        eventHandlers={{ click: () => onSelect({ type: "base", data: b }) }}
-      />
-    );
-  };
 
   return (
     <>
-      {world?.events.map((e) => (
-        <Circle key={`ec${e.id}`} center={[e.lat, e.lng]} radius={e.radiusM} pathOptions={{ color: e.official ? "#f0c05a" : "#a48bfa", weight: 1, fillOpacity: 0.08 }} />
-      ))}
-
-      {clutter.map((g) => {
-        if (g.items.length === 1) return clutterMarker(g.items[0]);
-        const top = g.items.reduce((a, c) => (clutterRank(c) > clutterRank(a) ? c : a));
-        return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={100} icon={clusterIcon(clutterEmoji(top), g.items.length, "loot")} eventHandlers={{ click: () => zoomInto(g) }} />;
-      })}
-
-      {world?.missions.filter(inView).map((m) => (
+      {/* Money: green bills, gold for admin drops; the amount shows at street level. */}
+      {world?.money.map((m) => (
         <Marker
           key={m.id}
           position={[m.lat, m.lng]}
-          icon={icon(`<span class="ring" style="color:#f0c05a"></span>${m.item?.emoji ?? "⭐"}`, `legendary ${m.claimed ? "claimed" : ""}`, 46)}
-          eventHandlers={{ click: () => onSelect({ type: "mission", data: m }) }}
+          zIndexOffset={m.drop ? 800 : 600}
+          icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : "#5bd38c"}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : ""}`, m.drop ? 48 : 42)}
+          eventHandlers={{ click: () => onSelect({ type: "money", data: m }) }}
         />
       ))}
 
-      {world?.lotteries.map((l) => (
-        <Circle key={`lc${l.id}`} center={[l.lat, l.lng]} radius={l.radiusM} pathOptions={{ color: "#ee7fae", weight: 1, dashArray: "4 4", fillOpacity: l.status === "OPEN" ? 0.08 : 0.02 }} />
-      ))}
-      {world?.lotteries.filter(inView).map((l) => (
-        <Marker
-          key={`l${l.id}`}
-          position={[l.lat, l.lng]}
-          zIndexOffset={300}
-          icon={icon(
-            `<span class="ring" style="color:#ee7fae"></span>🎰<span class="nm">${l.status === "OPEN" ? `${fmtNum(l.pot)} 🪙` : l.status === "DRAWN" ? `🏆 ${esc(l.winner ?? "")}` : esc(t("refunded"))}</span>${l.myTickets ? `<span class="shield">🎟️</span>` : ""}`,
-            `lottery ${l.status === "OPEN" ? "" : "drawn"}`,
-            42,
-          )}
-          eventHandlers={{ click: () => onSelect({ type: "lottery", data: l }) }}
-        />
-      ))}
-
-      {/* Jobs at real places: the burger delivery starts at the real burger joint. */}
-      {lod !== "far" &&
-        world?.places.filter((m) => inView(m.place) && (lod === "near" || !m.done)).map((m) => {
-          const cat = PLACE_CATS[m.place.cat] ?? PLACE_CATS.shop;
-          return (
-            <Marker
-              key={`pl${m.id}`}
-              position={[m.place.lat, m.place.lng]}
-              zIndexOffset={320}
-              icon={icon(
-                `<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(m.place.name)}</span><span class="job">${m.kind === "deliver" ? "📦" : "✅"}</span>`,
-                `place ${m.done ? "claimed" : ""}`,
-                40,
-              )}
-              eventHandlers={{ click: () => onSelect({ type: "place", data: m }) }}
-            />
-          );
-        })}
+      {/* Store missions: the burger delivery starts at the real burger joint. */}
+      {world?.places.map((m) => {
+        const cat = PLACE_CATS[m.place.cat] ?? PLACE_CATS.shop;
+        return (
+          <Marker
+            key={`pl${m.id}`}
+            position={[m.place.lat, m.place.lng]}
+            zIndexOffset={320}
+            icon={icon(
+              `<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(m.place.name)}</span><span class="job">${m.kind === "deliver" ? "📦" : "✅"}</span>`,
+              "place",
+              40,
+            )}
+            eventHandlers={{ click: () => onSelect({ type: "place", data: m }) }}
+          />
+        );
+      })}
 
       {/* Real businesses that joined: their own sign, gold when featured. */}
-      {world?.businesses.filter((b) => inView(b) && (lod !== "far" || b.featured || b.mine)).map((b) => {
+      {world?.businesses.map((b) => {
         const open = b.campaigns.filter((c) => !c.visited).length;
         const best = b.campaigns.reduce((n, c) => Math.max(n, c.rewardCoins), 0);
         return (
@@ -351,165 +237,13 @@ function Layers({
         );
       })}
 
-      {/* Player shops: street and neighbourhood level; zoomed out, only your own. */}
-      {world?.shops.filter((s) => inView(s) && (lod !== "far" || s.mine)).map((s) => (
-        <Marker
-          key={`sh${s.id}`}
-          position={[s.lat, s.lng]}
-          zIndexOffset={350}
-          icon={icon(
-            `<span class="ring" style="color:${s.mine ? "#63b3f2" : "#5bd38c"}"></span>${esc(s.emoji)}<span class="nm">${esc(s.name)}</span>${s.deal && s.live ? `<span class="deal">${esc(t("−{n}%", { n: s.deal }))}</span>` : ""}`,
-            `shop ${s.live ? "" : "closed"}`,
-            40,
-          )}
-          eventHandlers={{ click: () => onSelect({ type: "shop", data: s }) }}
-        />
-      ))}
-
-      {world?.events.filter(inView).map((e) => (
-        <Marker key={e.id} position={[e.lat, e.lng]} icon={icon(e.official ? "⭐" : "🎉", "event")} eventHandlers={{ click: () => onSelect({ type: "event", data: e }) }} />
-      ))}
-
-      {baseGroups.map((g) =>
-        g.items.length === 1 ? baseMarker(g.items[0]) : <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={500} icon={clusterIcon("🏰", g.items.length, "bases")} eventHandlers={{ click: () => zoomInto(g) }} />,
-      )}
-
-      {/* Outposts: all at street level; zoomed out, only the ones someone holds. */}
-      {lod !== "far" &&
-        world?.outposts.filter((o) => inView(o) && (lod === "near" || o.owner)).map((o) => {
-          const f = o.owner?.faction ? FACTION_BY_KEY[o.owner.faction as keyof typeof FACTION_BY_KEY] : null;
-          const color = o.mine ? "#63b3f2" : f?.color ?? "#9ca3af";
-          return (
-            <Marker
-              key={o.id}
-              position={[o.lat, o.lng]}
-              zIndexOffset={400}
-              icon={icon(`<span class="ring" style="color:${color}"></span>${o.owner ? "🚩" : "🏴"}<span class="nm" style="color:${color}">${esc(outpostCode(o.name))}</span>`, `outpost ${o.mine ? "mine" : ""}`, 40)}
-              eventHandlers={{ click: () => onSelect({ type: "outpost", data: o }) }}
-            />
-          );
-        })}
-
-      {/* Base buildings, laid out around each base so you can see what a rival has built */}
-      {lod === "near" &&
-        world?.bases.filter(inView).flatMap((b) => {
-          const list = b.buildings.filter((x) => x.type !== "hq");
-          return list.map((x, i) => {
-            const p = offset(b, 30 + (i % 2) * 9, (i * 360) / Math.max(1, list.length));
-            const def = BUILDING_BY_KEY[x.type as BuildingKey];
-            return (
-              <Marker
-                key={`bb${b.id}${x.type}`}
-                position={[p.lat, p.lng]}
-                zIndexOffset={300}
-                icon={icon(`${x.building ? "🚧" : def?.emoji ?? "🏠"}<span class="lv">${Math.max(1, x.level)}</span>`, `bldg ${b.mine ? "mine" : ""}`, 24)}
-                eventHandlers={{ click: () => onSelect({ type: "base", data: b }) }}
-              />
-            );
-          });
-        })}
-
-      {/* Towers: range rings — red ones will shoot you. Zoomed out, only the dangerous rings. */}
-      {lod !== "far" &&
-        world?.towers.filter(inView).map((t) => {
-          const st = towerStats(t);
-          const color = towerColor(t);
-          const ready = t.readyAt <= Date.now();
-          const hostile = !t.mine && !t.friend && ready;
-          if (lod === "mid" && !hostile) return null;
-          return (
-            <Circle
-              key={`tr${t.id}`}
-              center={[t.lat, t.lng]}
-              radius={st.range}
-              pathOptions={{ color, weight: 1, opacity: ready ? 0.5 : 0.2, fillOpacity: hostile ? 0.08 : 0.03, dashArray: ready ? undefined : "3 6" }}
-            />
-          );
-        })}
-      {lod !== "far" &&
-        world?.towers.filter(inView).map((t) => {
-          const st = towerStats(t);
-          const color = towerColor(t);
-          const ready = t.readyAt <= Date.now();
-          return (
-            <Marker
-              key={`tw${t.id}`}
-              position={[t.lat, t.lng]}
-              zIndexOffset={450}
-              icon={icon(
-                `<span class="ring" style="color:${color}"></span>${ready ? st.def.emoji : "🚧"}<span class="lv">${"▲".repeat(t.level)}</span><span class="hpbar"><i style="width:${Math.max(0, Math.min(100, (t.hp / st.maxHp) * 100))}%;background:${color}"></i></span>`,
-                `tower ${t.mine ? "mine" : t.friend ? "friend" : "enemy"}`,
-                34,
-              )}
-              eventHandlers={{ click: () => onSelect({ type: "tower", data: t }) }}
-            />
-          );
-        })}
-
-      {world?.pings.map((p) => (
-        <Marker
-          key={`pg${p.id}`}
-          position={[p.lat, p.lng]}
-          zIndexOffset={900}
-          icon={icon(`${PINGS[p.kind]?.emoji ?? "📍"}<span class="nm">${esc(p.by)}</span>`, "ping", 40)}
-          eventHandlers={{ click: () => onSelect({ type: "ping", data: p }) }}
-        />
-      ))}
-
-      <LiveLayer world={world} me={me} runners={runners} onSelect={onSelect} />
-
-      {me?.base && <Circle center={[me.base.lat, me.base.lng]} radius={SIEGE_RANGE_M} pathOptions={{ color: "#63b3f2", weight: 1, opacity: 0.25, fill: false, dashArray: "2 10" }} />}
-
-      {world?.bosses.map((b) => (
-        <Marker
-          key={b.id}
-          position={[b.lat, b.lng]}
-          zIndexOffset={600}
-          icon={icon(
-            `<span class="ring" style="color:${b.def.color}"></span>${b.def.emoji}<span class="hpbar"><i style="width:${(b.hp / b.maxHp) * 100}%"></i></span>${b.liveMatch ? '<span class="fight">⚔️</span>' : ""}`,
-            "boss",
-            60,
-          )}
-          eventHandlers={{ click: () => onSelect({ type: "boss", data: b }) }}
-        />
-      ))}
-
-      {/* King-of-the-hill flags */}
-      {lod !== "far" &&
-        world?.flags.filter(inView).map((f) => {
-          const color = f.mine ? "#63b3f2" : f.friend ? "#5bd38c" : "#ef6461";
-          return (
-            <Marker
-              key={`fl${f.id}`}
-              position={[f.lat, f.lng]}
-              zIndexOffset={480}
-              icon={icon(
-                `<span class="ring" style="color:${color}"></span>🚩<span class="nm" style="color:${color}">${esc(f.name)}</span>${f.capture ? '<span class="cap">⚔️</span>' : ""}`,
-                `flag ${f.capture ? "contested" : ""}`,
-                40,
-              )}
-              eventHandlers={{ click: () => onSelect({ type: "flag", data: f }) }}
-            />
-          );
-        })}
-
-      {/* Superweapon strikes: public target circle + countdown, then the fallout zone */}
-      {world?.strikes.map((x) => (
-        <Circle
-          key={`sw${x.id}`}
-          center={[x.lat, x.lng]}
-          radius={x.radius}
-          pathOptions={{ color: x.resolved ? "#a3e635" : "#ff2e2e", weight: 3, dashArray: x.resolved ? "4 8" : undefined, fillOpacity: x.resolved ? 0.12 : 0.18 }}
-          eventHandlers={{ click: () => onSelect({ type: "strike", data: x }) }}
-        />
-      ))}
-
       {/* Other players: animated + live at street level, grouped further out */}
       {lod === "near" && world && <OthersLayer players={world.players} onSelect={onSelect} />}
       {playerGroups.map((g) =>
         g.items.length === 1 ? playerMarker(g.items[0]) : <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={850} icon={clusterIcon("👥", g.items.length, "players")} eventHandlers={{ click: () => zoomInto(g) }} />,
       )}
 
+      {/* A store delivery under way: the drop-off. */}
       {run && (
         <>
           <Marker position={[run.targetLat, run.targetLng]} icon={icon("🎯", "target", 46)} />

@@ -49,13 +49,9 @@ const drive: Record<string, string> = {
   "Working…": "در حال انجام…",
 
   // ---- driving & flying
-  "Drive through it to collect": "از روش رد شو تا برش داری",
   "Fly low (under {m} m) to pick things up and check in": "برای برداشتن چیزها و چک‌این، پایین پرواز کن (زیر {m} متر)",
-  Climb: "بالا برو",
-  Descend: "پایین بیا",
   LAND: "فرود",
   "W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera": "W/↑ جلو · S/↓ عقب · A D/← → چرخش · R/E بالا · F/Q پایین · L فرود · H بوق · C دوربین",
-  "Oil derrick": "چاه نفت",
   "Switch to Play from home to drive the 3D city": "برای رانندگی توی شهر سه‌بعدی، «بازی از خونه» رو روشن کن",
 
   // ---- party games

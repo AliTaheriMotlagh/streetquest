@@ -228,11 +228,6 @@ export function EmpireTab() {
           <span className="pill" title={t("Steps walked today boost income, up to ×2 at {n}", { n: STEP_GOAL })}>
             <Art k="sneaker" /> ×{fmtNum(Math.round(sMult * 100) / 100)}
           </span>
-          {v.moodMult > 1 && (
-            <span className="pill" title={t("Your commander's good mood (Hero → Life) boosts income")}>
-              🤩 ×{fmtNum(Math.round(v.moodMult * 100) / 100)}
-            </span>
-          )}
           {s.fame > 0 && (
             <span className="pill">
               <Art k="fame" /> ×{fmtNum(Math.round(fameMult(s.fame) * 100) / 100)}

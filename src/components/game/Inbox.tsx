@@ -80,7 +80,7 @@ export function InboxPanel({ onClose, peek, onRead }: { onClose: () => void; pee
         <div className="empty inbox-empty">
           <div className="ie-art">📭</div>
           <b>{t("All caught up")}</b>
-          <span className="small muted">{t("Rewards, raids, crew news and finished builds show up here.")}</span>
+          <span className="small muted">{t("Rewards, cash-outs and crew news show up here.")}</span>
         </div>
       )}
       <div className="inbox">

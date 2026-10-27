@@ -8,6 +8,7 @@
 import { distanceM, hashStr, rng, type LatLng } from "./geo";
 import { msg } from "./i18n";
 import { S } from "./settings";
+import { tomanFor } from "./money";
 
 export type PlaceCat =
   | "burger" | "pizza" | "restaurant" | "cafe" | "bakery" | "icecream" | "bar"
@@ -114,7 +115,7 @@ const TEMPLATES: Record<PlaceCat, Template[]> = {
   bar: [{ kind: "visit", title: msg("Meet the regulars"), brief: msg("The crew hangs out at {place}. Swing by and say hi.") }],
   grocery: [
     { kind: "deliver", title: msg("Grocery haul"), brief: msg("A neighbour at {dest} can't get out today. Pick up their groceries at {place}."), item: "groceries" },
-    { kind: "visit", title: msg("Fresh supplies"), brief: msg("Stock up at {place} — your commander is hungry.") },
+    { kind: "visit", title: msg("Fresh supplies"), brief: msg("Stock up at {place} for the week.") },
   ],
   pharmacy: [{ kind: "deliver", title: msg("Urgent medicine"), brief: msg("A prescription is ready at {place}. Rush it to {dest} — someone is waiting."), item: "medkit" }],
   fuel: [{ kind: "visit", title: msg("Fill the tank"), brief: msg("Pull into {place} and refuel before the next job.") }],
@@ -133,6 +134,12 @@ const TEMPLATES: Record<PlaceCat, Template[]> = {
 
 const pick = <T,>(list: T[], r: number) => list[Math.floor(r * list.length) % list.length];
 
+/** A store with no believable drop-off nearby still has something to do: drop in. */
+const VISIT: Template = { kind: "visit", title: msg("Drop in"), brief: msg("Check in at {place} and see what's new.") };
+
+/** Toman a store mission pays this player. */
+export const placeToman = (kind: PlaceMissionKind, home: boolean) => tomanFor(kind === "deliver" ? S.placeDeliverToman : S.placeVisitToman, home);
+
 /** The default drop-off when no real place is close enough: a customer's door nearby. */
 export const CUSTOMER_DOOR = msg("a customer's door");
 
@@ -147,7 +154,7 @@ export function placeMissions(cell: string, places: Place[], pool: Place[], buck
   for (const p of places) {
     const rand = rng(hashStr(`${bucket}|${p.id}`));
     if (rand() > share) continue;
-    const tpl = pick(TEMPLATES[p.cat] ?? TEMPLATES.shop, rand());
+    let tpl = pick(TEMPLATES[p.cat] ?? TEMPLATES.shop, rand());
     let dest: PlaceMission["dest"] = null;
     let d = 0;
     if (tpl.kind === "deliver") {
@@ -158,11 +165,11 @@ export function placeMissions(cell: string, places: Place[], pool: Place[], buck
         const o = pick(options, rand());
         dest = { lat: o.q.lat, lng: o.q.lng, name: o.q.name };
         d = o.d;
-      } else continue; // no believable drop-off: no delivery job here this time
+      } else tpl = VISIT; // no believable drop-off: a check-in instead
     }
     const cfg = PLACE_CATS[p.cat];
     const rewardXp = Math.round(tpl.kind === "deliver" ? 40 + d * 0.35 : 45);
-    const rewardCoins = Math.round(tpl.kind === "deliver" ? 15 + d / 7 : 20);
+    const rewardCoins = 0; // store missions pay toman (placeToman)
     out.push({
       id: `p:${bucket}:${cell}:${p.id}`,
       kind: tpl.kind,

@@ -8,10 +8,8 @@ import { distanceM, formatDistance, regionKey } from "@/lib/geo";
 import { api, fmtTime, type LatLng, type WorldDelivery, type WorldEvent, type WorldNote, type WorldRide } from "./client";
 import { RIDE_MAX_FARE, RIDE_MIN_FARE, RIDE_MIN_TRIP_M, RIDE_STATUS, suggestFare, type RideStatus } from "@/lib/rides";
 import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
-import { LifeTab } from "./Life";
-import { GearTab, HeroTab, PowersTab, QuestsTab } from "./Hero";
+import { QuestsTab } from "./Hero";
 import { askConfirm } from "@/components/Dialogs";
-import { CAPTURE_SECONDS, FLAG_COST, FLAG_INCOME_HOUR } from "@/lib/flags";
 import { resizePhoto } from "./photo";
 import { isMuted, onMuteChange, setMuted, sfx } from "./sfx";
 import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
@@ -43,44 +41,40 @@ export function LocationField({ label, value, onChange }: { label: string; value
 
 // ---------------------------------------------------------------- Nearby
 export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: boolean }) {
-  const { world, pos, act, toast } = useGame();
-  const [tab, setTab] = useState<"spawns" | "notes" | "flags">("spawns");
+  const { world, pos, act, toast, teleport } = useGame();
+  const [tab, setTab] = useState<"money" | "stores" | "notes">("money");
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
-  const [flagName, setFlagName] = useState("");
   const [radius, setRadius] = useState(50);
   const d = (p: LatLng) => (pos ? distanceM(pos, p) : 0);
 
-  const spawns = (world?.spawns ?? []).filter((s) => !s.claimed).sort((a, b) => d(a) - d(b));
-  const phaseInfo = world && t({
-    night: msg("🌙 Night — Moon Shards & Street Crowns are out"),
-    dawn: msg("🌅 Dawn — golden hour, double XP!"),
-    day: msg("☀️ Daytime — Sun Stones are spawning"),
-    dusk: msg("🌇 Dusk — golden hour, double XP!"),
-  }[world.phase]);
+  const money = (world?.money ?? []).slice().sort((a, b) => d(a) - d(b));
+  const stores = (world?.places ?? []).slice().sort((a, b) => d(a.place) - d(b.place));
+  const row = (key: string, icon: string, title: string, sub: string, to: LatLng, gold?: boolean) => (
+    <div key={key} className="card list-item">
+      <div className={`icon-tile ${gold ? "money-tile gold" : ""}`}>{icon}</div>
+      <div className="grow">
+        <b>{title}</b>
+        <div className="small muted">{sub}</div>
+      </div>
+      {teleport && d(to) > 40 && <Button className="btn ghost small" onClick={() => teleport(to)}><MoveIcon /></Button>}
+    </div>
+  );
 
   return (
     <Sheet title={t("Nearby")} onClose={onClose} peek={peek} help="nearby">
-      {phaseInfo && <div className="card small">{phaseInfo}</div>}
-      <Tabs value={tab} onChange={setTab} tabs={[["spawns", t("Spawns ({n})", { n: spawns.length })], ["notes", t("Posts ({n})", { n: world?.notes.length ?? 0 })], ["flags", t("🚩 Flags ({n})", { n: world?.flags.length ?? 0 })]]} />
-      {tab === "spawns" &&
-        (spawns.length ? (
-          spawns.map((s) => (
-            <div key={s.id} className="card list-item">
-              <div className="icon-tile" style={{ boxShadow: s.item ? `inset 0 0 0 2px ${RARITY_COLOR[s.item.rarity]}` : undefined }}>
-                {s.kind === "chest" ? "🧰" : s.kind === "run" ? "🏁" : s.kind === "arcade" ? "🔋" : s.kind === "derrick" ? "🛢️" : s.item?.emoji}
-              </div>
-              <div className="grow">
-                <b>{s.kind === "run" ? t(s.run!.title) : s.kind === "chest" ? t("Supply Chest") : s.kind === "arcade" ? t("Power Cell") : s.kind === "derrick" ? t("Oil Derrick") : t(s.item?.name ?? "")}</b>
-                <div className="small muted">
-                  {formatDistance(d(s))} · {t("+{n} XP", { n: s.rewardXp })} {s.goldenHour && "· ✨2×"}
-                </div>
-              </div>
-              <span className="small muted">{t("{n}m", { n: Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000)) })}</span>
-            </div>
-          ))
+      <Tabs value={tab} onChange={setTab} tabs={[["money", t("💵 Money ({n})", { n: money.length })], ["stores", t("🏪 Stores ({n})", { n: stores.length })], ["notes", t("Posts ({n})", { n: world?.notes.length ?? 0 })]]} />
+      {tab === "money" &&
+        (money.length ? (
+          money.map((m) => row(m.id, "💵", m.drop ? `✨ ${m.drop.label}` : t("{n} toman", { n: m.amount }), `${m.drop ? `${t("{n} toman", { n: m.amount })} · ` : ""}${formatDistance(d(m))}`, m, !!m.drop))
         ) : (
-          <div className="empty">{t("Nothing left nearby. Walk a few blocks or wait for the next spawn wave.")}</div>
+          <div className="empty">{t("No money left nearby. Walk a few blocks — new money appears every 20 minutes.")}</div>
+        ))}
+      {tab === "stores" &&
+        (stores.length ? (
+          stores.map((m) => row(m.id, m.emoji, `${t(m.title)} · ${m.place.name}`, `${t("{n} toman", { n: m.toman })} · ${formatDistance(d(m.place))}`, m.place))
+        ) : (
+          <div className="empty">{t("No store missions around here right now.")}</div>
         ))}
       {tab === "notes" && (
         <>
@@ -142,41 +136,6 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
           {world?.notes.map((n) => (
             <NoteCard key={n.id} n={n} dist={d(n)} />
           ))}
-        </>
-      )}
-      {tab === "flags" && (
-        <>
-          <div className="card">
-            <b>🚩 {t("King of the hill")}</b>
-            <p className="small muted" style={{ margin: "4px 0 8px" }}>
-              {t("Plant a flag where you stand ({cost} 🪙). It pays {income} 🪙/hour while you hold it. Rivals capture it by standing on it for {s}s while nobody from your crew is there — so defend it in person!", { cost: FLAG_COST, income: FLAG_INCOME_HOUR, s: CAPTURE_SECONDS })}
-            </p>
-            <div className="row">
-              <input value={flagName} onChange={(e) => setFlagName(e.target.value)} maxLength={24} placeholder={t("Flag name, e.g. Taco Hill")} dir="auto" />
-              <Button className="btn small" disabled={flagName.trim().length < 2} onClick={async () => (await act(() => api("/api/flags", { body: { action: "plant", name: flagName } }))) && setFlagName("")}>
-                {t("Plant")}
-              </Button>
-            </div>
-            <Button className="btn yellow small" style={{ marginTop: 8 }} onClick={() => act(() => api("/api/flags", { body: { action: "collect" } }))}>
-              🪙 {t("Collect flag tribute")}
-            </Button>
-          </div>
-          {(world?.flags ?? [])
-            .slice()
-            .sort((a, b) => d(a) - d(b))
-            .map((f) => (
-              <div key={f.id} className="card list-item">
-                <div className="icon-tile">🚩</div>
-                <div className="grow">
-                  <b style={{ color: f.mine ? "var(--cyan)" : f.friend ? "var(--green)" : "var(--red)" }} dir="auto">{f.name}</b>
-                  <div className="small muted">
-                    {f.mine ? t("Yours") : `${f.ownerAvatar} ${f.owner}`} · {formatDistance(d(f))}
-                    {f.capture && <span style={{ color: "var(--red)" }}> · {t("⚔️ being captured")}</span>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          {!world?.flags.length && <div className="empty">{t("No flags around. Be the first — plant one at your favorite spot.")}</div>}
         </>
       )}
     </Sheet>
@@ -811,13 +770,12 @@ function Chat({ room }: { room: string }) {
 
 export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => void; peek: boolean; chat: { room: string; label: string } | null; setChat: (c: { room: string; label: string } | null) => void }) {
   const { act, pos, me, startCall } = useGame();
-  const [tab, setTab] = useState<"friends" | "chat" | "ranks" | "wanted">(chat ? "chat" : "friends");
-  const [wanted, setWanted] = useState<{ id: string; username: string; avatar: string; amount: number }[] | null>(null);
+  const [tab, setTab] = useState<"friends" | "chat" | "ranks">(chat ? "chat" : "friends");
   const [data, setData] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }>({ friends: [], incoming: [], outgoing: [] });
   const [name, setName] = useState("");
   const [scope, setScope] = useState<"global" | "friends">("global");
-  const [by, setBy] = useState<"xp" | "trophies">("trophies");
-  const [board, setBoard] = useState<{ top: { id: string; username: string; avatar: string; level: number; xp: number; trophies: number; league: { emoji: string }; me: boolean }[]; myRank: number } | null>(null);
+  const [by, setBy] = useState<"xp" | "toman">("toman");
+  const [board, setBoard] = useState<{ top: { id: string; username: string; avatar: string; level: number; xp: number; toman: number; me: boolean }[]; myRank: number } | null>(null);
   const [events, setEvents] = useState<WorldEvent[]>([]);
 
   const load = useCallback(() => api<typeof data>("/api/friends").then(setData).catch(() => {}), []);
@@ -831,7 +789,6 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
     if (chat) setTab("chat");
   }, [chat]);
   useEffect(() => {
-    if (tab === "wanted") api<{ wanted: NonNullable<typeof wanted> }>("/api/bounties").then((r) => setWanted(r.wanted)).catch(() => {});
     if (tab === "ranks") api<NonNullable<typeof board>>(`/api/leaderboard?scope=${scope}&by=${by}`).then(setBoard).catch(() => {});
   }, [tab, scope, by]);
 
@@ -848,21 +805,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
 
   return (
     <Sheet title={t("Crew")} onClose={onClose} peek={peek} help="crew">
-      <Tabs value={tab} onChange={setTab} tabs={[["friends", data.incoming.length ? t("Friends ({n})", { n: data.incoming.length }) : t("Friends")], ["chat", t("Chat")], ["ranks", t("Ranks")], ["wanted", t("💀 Wanted")]]} />
-
-      {tab === "wanted" && (
-        <>
-          <p className="small muted">{t("Most wanted commanders. Down one in the street (🔫), with towers or a superweapon to collect the whole bounty. Put a price on someone from their card on the map.")}</p>
-          {wanted?.map((w, i) => (
-            <div key={w.id} className="card list-item">
-              <div className="icon-tile">{i === 0 ? "👑" : w.avatar}</div>
-              <b className="grow">{w.username}</b>
-              <span className="tag" style={{ color: "var(--yellow)" }}>💀 {fmtNum(w.amount)} 🪙</span>
-            </div>
-          ))}
-          {wanted && !wanted.length && <div className="empty">{t("Nobody is wanted right now. Peace… for now.")}</div>}
-        </>
-      )}
+      <Tabs value={tab} onChange={setTab} tabs={[["friends", data.incoming.length ? t("Friends ({n})", { n: data.incoming.length }) : t("Friends")], ["chat", t("Chat")], ["ranks", t("Ranks")]]} />
 
       {tab === "friends" && (
         <>
@@ -940,7 +883,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
       {tab === "ranks" && (
         <>
           <Tabs value={scope} onChange={setScope} tabs={[["global", t("🌍 World")], ["friends", t("🤝 Crew")]]} />
-          <Tabs value={by} onChange={setBy} tabs={[["trophies", t("🏆 Trophies")], ["xp", t("⭐ XP")]]} />
+          <Tabs value={by} onChange={setBy} tabs={[["toman", t("💵 Toman")], ["xp", t("⭐ XP")]]} />
           {board && <p className="small muted">{t("Your rank: #{n}", { n: board.myRank })}</p>}
           {board?.top.map((p, i) => (
             <div key={p.id} className={`card list-item ${p.me ? "hl" : ""}`}>
@@ -948,7 +891,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
               <span style={{ fontSize: 22 }}>{p.avatar}</span>
               <b className="grow">{p.username}</b>
               <span className="small muted">{t("Lv {n}", { n: p.level })}</span>
-              <span className="small">{by === "trophies" ? `${p.league.emoji} ${fmtNum(p.trophies)} 🏆` : t("{n} XP", { n: p.xp })}</span>
+              <span className="small">{by === "toman" ? t("{n} toman", { n: p.toman }) : t("{n} XP", { n: p.xp })}</span>
             </div>
           ))}
         </>
@@ -1078,15 +1021,15 @@ export function EventsPanel({ onClose, peek }: { onClose: () => void; peek: bool
 // ---------------------------------------------------------------- Profile
 const AVATARS = ["🕶️", "😎", "🦊", "🐺", "🐯", "🤖", "👽", "🥷", "🧛", "🦸", "🐉", "💀"];
 
-export type HeroTabId = "hero" | "gear" | "quests" | "powers" | "life" | "bag" | "awards" | "stats";
-export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: () => void; peek: boolean; initialTab?: HeroTabId }) {
+export type HeroTabId = "quests" | "bag" | "awards" | "stats";
+export function ProfilePanel({ onClose, peek, initialTab = "quests" }: { onClose: () => void; peek: boolean; initialTab?: HeroTabId }) {
   const { me, act, refresh, setHomeMode, startTour } = useGame();
   const [tab, setTab] = useState<HeroTabId>(initialTab);
   const refLink = typeof window !== "undefined" ? `${location.origin}/?ref=${me.referralCode}` : "";
 
   return (
-    <Sheet title={t("Hero")} onClose={onClose} peek={peek} help="hero">
-      {tab !== "hero" && <div className="row" style={{ marginBottom: 12 }}>
+    <Sheet title={t("Profile")} onClose={onClose} peek={peek} help="hero">
+      <div className="row" style={{ marginBottom: 12 }}>
         <div className="avatar" style={{ width: 64, height: 64, fontSize: 36 }}>
           {me.avatar}
           <span className="lvl">{me.level}</span>
@@ -1103,7 +1046,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
             {t("{xp} / {next} XP", { xp: me.xp, next: me.nextLevelXp })}
           </div>
         </div>
-      </div>}
+      </div>
 
       {me.dailyAvailable && (
         <div className="card hl row">
@@ -1120,9 +1063,8 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
       )}
 
       <div className="res-bar">
-        <span>{me.league.emoji} {fmtNum(me.trophies)} 🏆</span>
+        <span>💵 {t("{n} toman", { n: me.toman })}</span>
         <span>💎 {fmtNum(me.gems)}</span>
-        <span>🔩 {fmtNum(me.scrap)}</span>
         <span>🪙 {fmtNum(me.coins)}</span>
       </div>
 
@@ -1130,12 +1072,8 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
         value={tab}
         onChange={setTab}
         tabs={[
-          ["hero", me.freePoints ? t("🦸 Hero ({n})", { n: me.freePoints }) : t("🦸 Hero")],
-          ["gear", t("🎒 Gear")],
           ["quests", me.questsReady ? t("📜 Quests ({n})", { n: me.questsReady }) : t("📜 Quests")],
-          ["powers", me.commandPoints ? t("⭐ Powers ({n})", { n: me.commandPoints }) : t("⭐ Powers")],
-          ["life", `${me.mood.emoji} ${t("Life")}`],
-          ["stats", t("⚙️ Profile")],
+          ["stats", t("⚙️ Settings")],
           ["bag", t("Bag ({n})", { n: me.inventory.reduce((s, i) => s + i.qty, 0) })],
           ["awards", t("Awards ({n})", { n: me.achievements.length })],
         ]}
@@ -1147,7 +1085,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
           <LanguagePicker />
           <label>{t("Play mode")}</label>
           <ModeCards home={!!me.remotePlay} homeLocked={!S.remoteEnabled} onPick={(h) => h !== !!me.remotePlay && setHomeMode(h)} />
-          <p className="small muted">{t("The percentage is how much XP and coins you earn. Sprints and walking goals need real walking.")}</p>
+          <p className="small muted">{t("Each money pickup pays {gps} toman when you walk there, {home} toman from home. Sprints and walking goals need real walking.", { gps: S.moneyGps, home: S.moneyHome })}</p>
           <AppSettings />
           <SoundSettings />
           <GraphicsSettings />
@@ -1156,7 +1094,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
             <Button className="btn ghost small" onClick={() => { try { Object.keys(localStorage).filter((k) => k.startsWith("sq_help_")).forEach((k) => localStorage.removeItem(k)); } catch {} }}>💡 {t("Show all tips again")}</Button>
           </div>
           <div className="grid3">
-            <div className="stat"><b>{fmtNum(me.coins)}</b><span>{t("Coins")}</span></div>
+            <div className="stat"><b>{fmtNum(me.toman)}</b><span>{t("Toman")}</span></div>
             <div className="stat"><b>🔥 {fmtNum(me.streak)}</b><span>{t("Streak")}</span></div>
             <div className="stat"><b>{fmtNum(me.achievements.length)}</b><span>{t("Awards")}</span></div>
           </div>
@@ -1210,11 +1148,7 @@ export function ProfilePanel({ onClose, peek, initialTab = "hero" }: { onClose: 
         </>
       )}
 
-      {tab === "life" && <LifeTab />}
-      {tab === "hero" && <HeroTab onTab={setTab} />}
-      {tab === "gear" && <GearTab />}
       {tab === "quests" && <QuestsTab />}
-      {tab === "powers" && <PowersTab />}
 
       {tab === "bag" && <BagTab />}
 
@@ -1407,7 +1341,7 @@ function AppSettings() {
       } else {
         await enablePush();
         setPush("on");
-        toast({ kind: "reward", title: t("🔔 Notifications on"), body: t("We'll tell you about raids, rewards and your crew.") });
+        toast({ kind: "reward", title: t("🔔 Notifications on"), body: t("We'll tell you about money drops, cash-outs and your crew.") });
       }
     } catch (e) {
       toast({ kind: "error", title: (e as Error).message });

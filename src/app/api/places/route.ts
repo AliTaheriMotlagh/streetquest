@@ -4,7 +4,6 @@ import { z } from "zod";
 import { requireUser } from "@/server/auth";
 import { actionRoute, body, route } from "@/server/http";
 import { lastKnownLocation } from "@/server/rewards";
-import { assertNotDowned } from "@/server/td";
 import { missionsAround, startPlaceMission } from "@/server/places";
 import { HttpError } from "@/server/http";
 import { t } from "@/lib/i18n";
@@ -23,6 +22,5 @@ const Schema = z.object({ id: z.string().max(80) });
 export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const { id } = await body(req, Schema);
-  await assertNotDowned(u);
-  return startPlaceMission(u.id, id, await lastKnownLocation(u.id));
+  return startPlaceMission(u, id, await lastKnownLocation(u.id));
 });

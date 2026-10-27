@@ -46,7 +46,7 @@ export const POST = route(async (req) => {
     await prisma.user.updateMany({ where: { id: u.id, lastSeenAt: { gt: away } }, data: { lastSeenAt: away } });
     return { ok: true };
   }
-  const sent = await pushTo(u.id, { title: t("🔔 Notifications work!"), body: t("You'll hear about raids, rewards and your crew here."), kind: "info", tag: "test", always: true }, { evenIfActive: true });
+  const sent = await pushTo(u.id, { title: t("🔔 Notifications work!"), body: t("You'll hear about money drops, cash-outs and your crew here."), kind: "info", tag: "test", always: true }, { evenIfActive: true });
   if (!sent) {
     // Every device was rejected (and the dead ones just forgotten): subscribing again fixes it.
     if (await prisma.pushSub.count({ where: { userId: u.id } }).then((n) => n === 0)) throw new HttpError(400, t("No device to notify — turn notifications on first"));

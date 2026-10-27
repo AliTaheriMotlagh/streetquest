@@ -8,7 +8,6 @@ const common: Record<string, string> = {
   Market: "بازار",
   Jobs: "کارها",
   Crew: "اکیپ",
-  Hero: "قهرمان",
   Go: "برو",
   "Go here": "برو اینجا",
   "Go there": "برو اونجا",
@@ -21,21 +20,12 @@ const common: Record<string, string> = {
   "Check in": "ثبت حضور",
   Chat: "گفتگو",
   Collect: "برداشتن",
-  Completed: "انجام شد",
-  Defend: "دفاع",
-  Capture: "تصرف",
   Abandon: "رها کردن",
-  Move: "جابه‌جایی",
-  Recall: "فراخوانی",
-  Repair: "تعمیر",
   Message: "پیام",
   "Video call": "تماس تصویری",
   "Voice call": "تماس صوتی",
-  Bounty: "جایزهٔ سر",
-  Hostile: "دشمن",
   HP: "جان",
   Range: "برد",
-  Kills: "کشته",
   "Level {n}": "سطح {n}",
   "Lv {n}": "سطح {n}",
   ", ": "، ",
@@ -47,8 +37,6 @@ const common: Record<string, string> = {
   "{n} m": "{n} متر",
   "{n} km": "{n} کیلومتر",
   "{n} km/h": "{n} کیلومتر بر ساعت",
-  "{n}h": "{n}س",
-  "{n}m": "{n} دقیقه",
 
   // ---- rarity
   Common: "معمولی",
@@ -72,8 +60,6 @@ const common: Record<string, string> = {
 
   // ---- the site (marketing copy: polite written Persian)
   "Your city is the game map.": "شهر شما، نقشهٔ بازی است.",
-  "StreetQuest is a real-world GPS war game. Build a base on your actual streets, train an army, siege rivals and take down roaming bosses — and when enemies are online nearby, the fight drops into first person. Your commander eats, sleeps and socializes too.":
-    "استریت‌کوئست یک بازی جنگی با GPS در دنیای واقعی است. در خیابان‌های واقعی خودتان پایگاه بسازید، ارتش آموزش دهید، رقیبان را محاصره کنید و غول‌های سرگردان را از پا درآورید — و وقتی دشمنان آنلاین و در نزدیکی شما باشند، نبرد اول‌شخص می‌شود. فرماندهٔ شما هم غذا می‌خورد، می‌خوابد و با دیگران معاشرت می‌کند.",
   "GPS game": "بازی GPS",
   "location-based game": "بازی مکان‌محور",
   "real world game": "بازی در دنیای واقعی",
@@ -83,8 +69,6 @@ const common: Record<string, string> = {
   geocaching: "گنج‌یابی با GPS",
   "outdoor game": "بازی در فضای باز",
   "courier game": "بازی پیک",
-  "GPS strategy game": "بازی استراتژی GPS",
-  "location-based shooter": "بازی تیراندازی مکان‌محور",
 
   // ---- dialogs
   Cancel: "انصراف",

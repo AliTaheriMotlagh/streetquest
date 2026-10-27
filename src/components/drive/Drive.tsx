@@ -17,7 +17,7 @@ import * as THREE from "three";
 import { bearingTo, distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import { makeFrame, tileKey, tileOf, villageTile, type CityTile } from "@/lib/city";
 import { CUSTOMER_DOOR, PLACE_CATS } from "@/lib/places";
-import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { S } from "@/lib/settings";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
@@ -60,7 +60,8 @@ type Props = {
   sim?: boolean;
   follow: LatLng | null;
   onMove: ((p: LatLng) => void) | null;
-  onClaim: (spawnId: string) => Promise<void> | void;
+  /** Pick up money (driving through it). */
+  onCollect: (id: string) => Promise<void> | void;
   /** Open something's card in the game (leaves the 3D city). */
   onSelect: (s: Selected) => void;
   /** Open my profile (leaves the 3D city). */
@@ -135,7 +136,7 @@ const store = {
   },
 };
 
-export default function Drive({ start, goal, canDrive, sim, follow, onMove, onClaim, onSelect, onProfile, onExit }: Props) {
+export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCollect, onSelect, onProfile, onExit }: Props) {
   const { me, world, act, refresh, toast } = useGame();
   const mount = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
@@ -175,8 +176,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
   const menuTab = useRef<MenuTab | null>(null);
   menuTab.current = menu;
   // Latest props/context for the render loop (it lives as long as the component).
-  const live = useRef({ world, me, follow, canDrive, onMove, onClaim, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
-  live.current = { ...live.current, world, me, follow, canDrive, onMove, onClaim, onSelect, act, refresh, vehicle, paint, sim: !!sim };
+  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
+  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim };
   const api3d = useRef<{
     setGoal: (p: LatLng | null) => void;
     cycleCam: () => void;
@@ -525,21 +526,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         scene.add(b.group);
         beacons.set(j.id, b);
       }
-      // Loot on the street: items, chests and power cells you drive through.
-      const wantLoot = (w?.spawns ?? []).filter((s) => !s.claimed && (s.kind === "item" || s.kind === "chest" || s.kind === "arcade"));
+      // Money on the street: drive through it to pick it up (admin drops are gold).
+      const wantLoot = w?.money ?? [];
       const lootKeep = new Set(wantLoot.map((s) => s.id));
       for (const [id, l] of loot) if (!lootKeep.has(id)) (scene.remove(l.group), l.dispose(), loot.delete(id));
       for (const s of wantLoot) {
         if (loot.has(s.id)) continue;
         const p = frame.toXZ(s.lat, s.lng);
-        const emoji = s.kind === "chest" ? "🧰" : s.kind === "arcade" ? "🔋" : s.item?.emoji ?? "🪙";
-        const l = Object.assign(makeLoot(emoji, s.kind === "chest" ? "#f0c05a" : "#63b3f2"), { id: s.id, taken: false });
+        const l = Object.assign(makeLoot("💵", s.drop ? "#f0c05a" : "#5bd38c"), { id: s.id, taken: false });
         l.icon.userData = { pick: { kind: "loot", id: s.id } };
         l.group.position.set(p.x, 0, p.z);
         scene.add(l.group);
         loot.set(s.id, l);
       }
-      markers.set(markersOf(w, Date.now()));
+      markers.set(markersOf(w));
       others.setWalkers(w?.players ?? []);
     };
 
@@ -913,15 +913,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         const j = beacons.get(pick.id)?.job;
         if (j) setPicked({ emoji: j.emoji, title: j.label, sub: formatDistance(distanceM(here, j)), lat: j.lat, lng: j.lng, sel: j.sel });
       } else if (pick.kind === "loot") {
-        const s = L.world?.spawns.find((x) => x.id === pick.id);
-        if (s) setPicked({ emoji: s.kind === "chest" ? "🧰" : s.item?.emoji ?? "🪙", title: s.item ? t(s.item.name) : t("Loot"), sub: t("Drive through it to collect"), lat: s.lat, lng: s.lng, sel: { type: "spawn", data: s } });
+        const s = L.world?.money.find((x) => x.id === pick.id);
+        if (s) setPicked({ emoji: "💵", title: s.drop?.label ?? t("{n} toman", { n: s.amount }), sub: t("Drive through it to pick it up"), lat: s.lat, lng: s.lng, sel: { type: "money", data: s } });
       } else if (pick.kind === "marker") {
         const m = markers.get(pick.id);
         if (m) setPicked({ emoji: m.emoji, title: m.label, sub: formatDistance(distanceM(here, m)), lat: m.lat, lng: m.lng, sel: m.sel });
       } else if (pick.kind === "player") {
         const o = others.driver(pick.id);
         const w = L.world?.players.find((x) => x.id === pick.id);
-        const data: WorldPlayer | null = w ?? (o ? { id: o.id, username: o.name, avatar: o.avatar, level: o.level, friend: o.friend, bounty: 0, home: true, lat: o.lat, lng: o.lng } : null);
+        const data: WorldPlayer | null = w ?? (o ? { id: o.id, username: o.name, avatar: o.avatar, level: o.level, friend: o.friend, home: true, lat: o.lat, lng: o.lng } : null);
         if (data) setPicked({ emoji: data.avatar, title: `${data.username} · ${data.level}`, sub: o ? `${VEHICLES[o.vehicle].emoji} ${t(VEHICLES[o.vehicle].name)} · ${formatDistance(distanceM(here, o))}` : formatDistance(distanceM(here, data)), lat: data.lat, lng: data.lng, sel: { type: "player", data } });
       }
     };
@@ -979,7 +979,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       dustMat.opacity = p === "night" ? 0.95 : 0.35;
       dustMat.color.set(p === "night" ? "#b8ff7a" : "#fff3b0");
     };
-    applyPhase((live.current.world?.phase as Phase) ?? "day");
+    // Always daylight in the 3D city: night scenes were too dark to see the streets, and
+    // the headlight and lit windows cost frames on phones.
+    applyPhase("day");
 
     const tick = () => {
       if (disposed) return;
@@ -992,7 +994,6 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       const L = live.current;
       if (L.world !== lastWorld) {
         lastWorld = L.world;
-        if (L.world && L.world.phase !== phase) applyPhase(L.world.phase as Phase);
         syncWorld();
       }
       if (`${currentKey()}|${L.paint}` !== modelKey) rebuildModel();
@@ -1227,7 +1228,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           if (Math.hypot(l.group.position.x - st.x, l.group.position.z - st.z) < LOOT_PICKUP_M) {
             l.taken = true;
             l.group.visible = false;
-            void Promise.resolve(L.onClaim(l.id));
+            void Promise.resolve(L.onCollect(l.id));
           }
         }
         if (L.canDrive && L.onMove && now - st0.lastReport > 1000 && Math.hypot(st.x - st0.reported.x, st.z - st0.reported.z) > 2) {
@@ -1454,6 +1455,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     };
   }, [style, names]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The job button can be waved away; it comes back once you've left and returned.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const nearId = hud?.near?.id ?? null;
+  useEffect(() => {
+    if (!nearId) setDismissed(null);
+  }, [nearId]);
+
   const runNear = async () => {
     if (!hud?.near || busy) return;
     setBusy(true);
@@ -1529,7 +1537,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
               </span>
               <span className="drive-me-tx">
                 <b>{me.username}</b>
-                <span><Art k="coin" size={13} /> {fmtNum(me.coins)}</span>
+                <span>💵 {fmtNum(me.toman)}</span>
               </span>
             </button>
           )}
@@ -1678,16 +1686,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         </div>
       )}
 
-      {/* The job you're standing at: one big button to do it */}
-      {hud?.near && (
-        <button key={hud.near.id} className={`drive-action ${busy ? "busy" : ""}`} style={{ "--job": hud.near.color } as React.CSSProperties} disabled={busy} onClick={runNear} aria-busy={busy || undefined}>
-          <span className="da-ic">{busy ? <i className="drive-spinner" aria-hidden /> : <Icon name={hud.near.icon} size={30} strokeWidth={2.2} />}</span>
-          <span className="da-tx">
-            <b>{busy ? t("Working…") : hud.near.verb}</b>
-            <span>{hud.near.where}</span>
-          </span>
-          <span className="da-go" aria-hidden><Icon name="right" size={22} strokeWidth={2.6} /></span>
-        </button>
+      {/* The job you're standing at: a button to do it, and ✕ to wave it away */}
+      {hud?.near && hud.near.id !== dismissed && (
+        <div key={hud.near.id} className={`drive-action ${busy ? "busy" : ""}`} style={{ "--job": hud.near.color } as React.CSSProperties}>
+          <button className="da-main" disabled={busy} onClick={runNear} aria-busy={busy || undefined}>
+            <span className="da-ic">{busy ? <i className="drive-spinner" aria-hidden /> : <Icon name={hud.near.icon} size={22} strokeWidth={2.2} />}</span>
+            <span className="da-tx">
+              <b>{busy ? t("Working…") : hud.near.verb}</b>
+              <span>{hud.near.where}</span>
+            </span>
+          </button>
+          <button className="da-x" onClick={() => setDismissed(hud.near!.id)} aria-label={t("Dismiss")} title={t("Dismiss")} disabled={busy}>✕</button>
+        </div>
       )}
 
       {canDrive && touch && <DrivePad input={input} kind={v.flies ? "air" : v.key === "moto" ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}

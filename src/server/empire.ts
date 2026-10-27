@@ -28,7 +28,6 @@ import {
   type EmpireState,
 } from "../lib/idle";
 import { HttpError } from "./http";
-import { bumpNeeds, moodOfUser } from "./needs";
 import { questEvent } from "./quests";
 import { grant } from "./rewards";
 import { stepsToday } from "./steps";
@@ -67,7 +66,7 @@ async function save(userId: string, s: EmpireState, extra: Partial<Pick<Empire, 
 export async function settled(u: User) {
   const row = await loadRow(u);
   const steps = await stepsToday(u);
-  const mood = moodOfUser(u).empireMult;
+  const mood = 1;
   const { s, earned, away } = settle(toState(row), { now: Date.now(), stepsToday: steps, mood });
   await save(u.id, s);
   return { row, s, steps, mood, offline: away >= AWAY_REPORT_S && earned > 0 ? { earned, seconds: Math.round(away) } : null };
@@ -194,7 +193,6 @@ export async function act(u: User, a: EmpireAction): Promise<{ message?: string 
       const coins = dividendCoins(rankOf(s.total));
       await save(u.id, s, { dividendAt: new Date() });
       await grant(u.id, { coins, xp: 20 });
-      await bumpNeeds(u.id, { fun: 10 });
       return { message: t("💰 Dividend paid: +{n} 🪙", { n: coins }) };
     }
     case "rank": {

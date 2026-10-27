@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { cancelLottery, drawDue } from "@/server/lottery";
 import { prisma } from "@/lib/db";
-import { ITEM_BY_KEY } from "@/lib/catalog";
 import { levelForXp } from "@/lib/progression";
 import { requireAdmin } from "@/server/auth";
 import { isOnline, notify, onlineSince } from "@/server/hub";
@@ -10,8 +9,9 @@ import { grant } from "@/server/rewards";
 import { saveSettings, settingOverrides } from "@/server/settings";
 import { GOAL_METRICS, S, SETTING_DEFS, settingDefault, settingType } from "@/lib/settings";
 import { catalogOriginals, EDITABLE } from "@/lib/config";
-import { BUILDINGS, RESEARCH, UNITS } from "@/lib/rts";
-import { TOWERS } from "@/lib/td";
+import { decideCashout } from "@/server/money";
+import { distanceM, offset } from "@/lib/geo";
+import { randomBytes } from "node:crypto";
 import { ITEMS } from "@/lib/catalog";
 import { stripeReady } from "@/server/store";
 import { pushReady, pushTo } from "@/server/push";
@@ -54,21 +54,39 @@ export const GET = route(async (req) => {
     prisma.adView.groupBy({ by: ["creativeId"], where: { startedAt: { gt: since30 } }, _count: true }),
     prisma.adView.groupBy({ by: ["creativeId"], where: { startedAt: { gt: since30 }, clicked: true }, _count: true }),
   ]);
+  const [drops, cashouts, tomanOut, tomanPaid, tomanPending, money24] = await Promise.all([
+    prisma.moneyDrop.findMany({ where: { activeTo: { gt: new Date(Date.now() - 7 * day) } }, orderBy: { createdAt: "desc" }, take: 300 }),
+    prisma.cashout.findMany({ orderBy: [{ status: "desc" }, { createdAt: "desc" }], take: 100, include: { user: { select: { username: true, toman: true, createdAt: true } } } }),
+    prisma.user.aggregate({ _sum: { toman: true } }),
+    prisma.cashout.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
+    prisma.cashout.aggregate({ where: { status: "PENDING" }, _sum: { amount: true }, _count: true }),
+    prisma.claim.aggregate({ where: { createdAt: { gt: since1 }, toman: { gt: 0 } }, _sum: { toman: true }, _count: true }),
+  ]);
+  // A street drop is one batch of points: show it as one row.
+  const batches = new Map<string, { batch: string; label: string; sponsor: string | null; points: { lat: number; lng: number }[]; amount: number; maxClaims: number | null; claims: number; paid: number; activeFrom: Date; activeTo: Date }>();
+  for (const d of drops) {
+    const b = batches.get(d.batch);
+    if (b) {
+      b.points.push({ lat: d.lat, lng: d.lng });
+      b.claims += d.claims;
+      b.paid += d.paid;
+      b.maxClaims = b.maxClaims == null || d.maxClaims == null ? null : b.maxClaims + d.maxClaims;
+    } else batches.set(d.batch, { batch: d.batch, label: d.label, sponsor: d.sponsor, points: [{ lat: d.lat, lng: d.lng }], amount: d.amount, maxClaims: d.maxClaims, claims: d.claims, paid: d.paid, activeFrom: d.activeFrom, activeTo: d.activeTo });
+  }
   const recentPurchases = await prisma.purchase.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { user: { select: { username: true } } } });
   const clicksBy = new Map(adClicks.map((c) => [c.creativeId, c._count]));
   const pick = (list: { key: string }[], cat: keyof typeof EDITABLE) =>
     list.map((e) => ({ key: e.key, name: (e as { name?: string }).name ?? e.key, emoji: (e as { emoji?: string }).emoji ?? "", values: Object.fromEntries(EDITABLE[cat].map((f) => [f, (e as unknown as Record<string, unknown>)[f] ?? null])) }));
 
-  const [userList, deliveries, notes, missions, announcements, messages, rides, lotteries] = await Promise.all([
+  const [userList, deliveries, notes, announcements, messages, rides, lotteries] = await Promise.all([
     prisma.user.findMany({
       where: q ? { OR: [{ username: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }] } : {},
       orderBy: { createdAt: "desc" },
       take: 50,
-      select: { id: true, username: true, email: true, role: true, banned: true, xp: true, coins: true, gems: true, createdAt: true, utmSource: true, lastSeenAt: true },
+      select: { id: true, username: true, email: true, role: true, banned: true, xp: true, coins: true, gems: true, toman: true, createdAt: true, utmSource: true, lastSeenAt: true },
     }),
     prisma.delivery.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { sender: { select: { username: true } }, courier: { select: { username: true } } } }),
     prisma.geoNote.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { author: { select: { username: true } } } }),
-    prisma.adminMission.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.announcement.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.message.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { author: { select: { username: true } } } }),
     prisma.ride.findMany({ orderBy: { createdAt: "desc" }, take: 30, include: { rider: { select: { username: true } }, driver: { select: { username: true } } } }),
@@ -94,17 +112,25 @@ export const GET = route(async (req) => {
     rides: rides.map(({ pin: _p, ...r }) => r),
     lotteries: lotteries.map(({ _count, ...l }) => ({ ...l, players: _count.tickets })),
     notes,
-    missions,
     announcements,
     messages,
-    items: Object.values(ITEM_BY_KEY).map((i) => ({ key: i.key, label: `${i.emoji} ${t(i.name)}` })),
     config: {
       defs: SETTING_DEFS.map((d) => ({ ...d, type: settingType(d.key), def: settingDefault(d.key) })),
       values: S,
       overrides,
       metrics: GOAL_METRICS,
-      catalog: { units: pick(UNITS, "units"), buildings: pick(BUILDINGS, "buildings"), towers: pick(TOWERS, "towers"), items: pick(ITEMS, "items"), research: pick(RESEARCH, "research") },
+      catalog: { items: pick(ITEMS, "items") },
       originals: catalogOriginals(),
+    },
+    money: {
+      wallets: tomanOut._sum.toman ?? 0,
+      paid: tomanPaid._sum.amount ?? 0,
+      pending: tomanPending._sum.amount ?? 0,
+      pendingCount: tomanPending._count,
+      earned24: money24._sum.toman ?? 0,
+      pickups24: money24._count,
+      drops: [...batches.values()],
+      cashouts: cashouts.map((c) => ({ id: c.id, user: c.user.username, wallet: c.user.toman, joined: c.user.createdAt, amount: c.amount, fullName: c.fullName, phone: c.phone, account: c.account, status: c.status, note: c.note, createdAt: c.createdAt, decidedAt: c.decidedAt })),
     },
     revenue: {
       stripe: stripeReady(),
@@ -124,20 +150,6 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("role"), userId: z.string(), role: z.enum(["PLAYER", "ADMIN"]) }),
   z.object({ action: z.literal("grant"), userId: z.string(), coins: z.number().int().min(-1e6).max(1e6), xp: z.number().int().min(0).max(1e6).default(0) }),
   z.object({
-    action: z.literal("createMission"),
-    title: z.string().min(2).max(80),
-    description: z.string().max(500).default(""),
-    lat: z.number(),
-    lng: z.number(),
-    itemKey: z.string(),
-    rewardXp: z.number().int().min(0).max(100_000),
-    rewardCoins: z.number().int().min(0).max(100_000),
-    activeFrom: z.coerce.date(),
-    activeTo: z.coerce.date(),
-    sponsor: z.string().max(60).optional(),
-  }),
-  z.object({ action: z.literal("deleteMission"), id: z.string() }),
-  z.object({
     action: z.literal("createAnnouncement"),
     title: z.string().min(1).max(100),
     body: z.string().max(500),
@@ -156,7 +168,45 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("broadcast"), title: z.string().min(1).max(100), body: z.string().max(300).optional(), push: z.boolean().optional() }),
   z.object({ action: z.literal("saveSettings"), data: z.record(z.unknown()) }),
   z.object({ action: z.literal("grantGems"), userId: z.string(), gems: z.number().int().min(-1e6).max(1e6) }),
+  z.object({
+    action: z.literal("dropMoney"),
+    label: z.string().trim().min(2).max(80),
+    sponsor: z.string().trim().max(60).optional(),
+    // One point drops money on a spot; two or more lay a row of drops along the street between them.
+    points: z.array(z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })).min(1).max(20),
+    count: z.number().int().min(1).max(200),
+    spreadM: z.number().min(0).max(2000).default(0),
+    amount: z.number().int().min(100).max(100_000_000),
+    maxClaims: z.number().int().min(1).max(1_000_000).optional(),
+    activeFrom: z.coerce.date(),
+    activeTo: z.coerce.date(),
+  }),
+  z.object({ action: z.literal("deleteDrop"), batch: z.string().max(40) }),
+  z.object({ action: z.literal("cashout"), id: z.string().max(40), paid: z.boolean(), note: z.string().trim().max(200).optional() }),
+  z.object({ action: z.literal("grantToman"), userId: z.string(), toman: z.number().int().min(-1e9).max(1e9) }),
 ]);
+
+/** `count` spots spread evenly along a path (one point: scattered within `spreadM`). */
+function layDrops(points: { lat: number; lng: number }[], count: number, spreadM: number) {
+  if (points.length === 1) {
+    if (count === 1 || !spreadM) return Array.from({ length: count }, () => points[0]);
+    // A ring pattern around the spot so they don't stack.
+    return Array.from({ length: count }, (_, i) => offset(points[0], spreadM * Math.sqrt((i + 0.5) / count), i * 137.5));
+  }
+  const legs = points.slice(1).map((p, i) => ({ a: points[i], b: p, len: distanceM(points[i], p) }));
+  const total = legs.reduce((s, l) => s + l.len, 0) || 1;
+  return Array.from({ length: count }, (_, i) => {
+    let at = count === 1 ? total / 2 : (i * total) / (count - 1);
+    for (const l of legs) {
+      if (at <= l.len || l === legs[legs.length - 1]) {
+        const f = l.len ? Math.min(1, at / l.len) : 0;
+        return { lat: l.a.lat + (l.b.lat - l.a.lat) * f, lng: l.a.lng + (l.b.lng - l.a.lng) * f };
+      }
+      at -= l.len;
+    }
+    return points[0];
+  });
+}
 
 export const POST = route(async (req) => {
   const admin = await requireAdmin();
@@ -174,6 +224,39 @@ export const POST = route(async (req) => {
       if (gems > 0) await notify(d.userId, { kind: "reward", title: t("🎁 Gift from HQ"), body: `+${gems} 💎` });
       break;
     }
+    case "dropMoney": {
+      if (d.activeTo <= d.activeFrom) throw new HttpError(400, t("The end must be after the start"));
+      const batch = randomBytes(6).toString("hex");
+      const spots = layDrops(d.points, d.count, d.spreadM);
+      // The budget is for the whole drop: shared out over its spots.
+      const per = d.maxClaims ? Math.max(1, Math.ceil(d.maxClaims / spots.length)) : null;
+      await prisma.moneyDrop.createMany({
+        data: spots.map((p) => ({ batch, label: d.label, sponsor: d.sponsor || null, lat: p.lat, lng: p.lng, amount: d.amount, maxClaims: per, activeFrom: d.activeFrom, activeTo: d.activeTo })),
+      });
+      return { ok: true, batch, dropped: spots.length };
+    }
+    case "deleteDrop":
+      // Ends it now (claims stay on record, so nobody can pick the same drop up again).
+      await prisma.moneyDrop.updateMany({ where: { batch: d.batch }, data: { activeTo: new Date() } });
+      break;
+    case "cashout": {
+      const c = await decideCashout(d.id, admin.id, d.paid, d.note);
+      // Written in the player's language, not the admin's.
+      await notify(c.userId, () =>
+        d.paid
+          ? { kind: "reward", link: "wallet", title: t("💸 Cash-out paid: {n} toman", { n: c.amount }), body: d.note ? t("Bank reference: {ref}", { ref: d.note }) : t("Check your bank account") }
+          : { kind: "info", link: "wallet", title: t("Cash-out declined — {n} toman is back in your wallet", { n: c.amount }), body: d.note || t("Contact support if you have questions") },
+      );
+      break;
+    }
+    case "grantToman": {
+      const target = await prisma.user.findUnique({ where: { id: d.userId }, select: { toman: true } });
+      if (!target) throw new HttpError(404, t("Player not found"));
+      const toman = Math.max(-target.toman, d.toman);
+      await prisma.user.update({ where: { id: d.userId }, data: { toman: { increment: toman } } });
+      if (toman > 0) await notify(d.userId, () => ({ kind: "reward", link: "wallet", title: t("🎁 Gift from HQ"), body: t("💵 +{n} toman", { n: toman }) }));
+      break;
+    }
     case "ban":
       if (d.userId === admin.id) throw new HttpError(400, t("You can't ban yourself"));
       await prisma.user.update({ where: { id: d.userId }, data: { banned: d.banned } });
@@ -189,15 +272,6 @@ export const POST = route(async (req) => {
         await grant(d.userId, { coins: Math.max(-target.coins, d.coins), xp: d.xp }, { raw: true });
       }
       await notify(d.userId, { kind: "reward", title: t("🎁 Gift from HQ"), body: t("{coins} coins, {xp} XP", { coins: d.coins, xp: d.xp }) });
-      break;
-    case "createMission": {
-      const { action: _a, ...data } = d;
-      if (!ITEM_BY_KEY[data.itemKey]) throw new HttpError(400, t("Unknown item"));
-      await prisma.adminMission.create({ data });
-      break;
-    }
-    case "deleteMission":
-      await prisma.adminMission.delete({ where: { id: d.id } });
       break;
     case "createAnnouncement": {
       const { action: _a, ...data } = d;

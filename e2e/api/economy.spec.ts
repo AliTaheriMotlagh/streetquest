@@ -1,7 +1,7 @@
 // Money paths: daily reward, selling, gem store, sponsor spots — and what happens when
 // the same request arrives twice at once (double-tap, network retry).
 import { expect, test } from "@playwright/test";
-import { adminPlayer, expectOk, fund, Player, randomSpot } from "../helpers";
+import { adminPlayer, expectOk, fund, Player, randomSpot, uploadPlaces } from "../helpers";
 
 test.describe("economy", () => {
   test("daily reward pays once per day, even when double-tapped", async ({ baseURL }) => {
@@ -37,17 +37,6 @@ test.describe("economy", () => {
     await Promise.all([p.dispose(), admin.dispose()]);
   });
 
-  test("instant heal isn't sold to a player at full health", async ({ baseURL }) => {
-    const p = await Player.create(baseURL!);
-    const me = await p.me();
-    expect(me.hp).toBe(me.maxHp);
-    const r = await p.post("/api/store", { action: "heal" });
-    expect(r.status).toBe(400);
-    expect(r.data.error).toMatch(/full health/i);
-    expect((await p.me()).gems).toBe(me.gems);
-    await p.dispose();
-  });
-
   test("sponsor spot: must be watched, pays once", async ({ baseURL }) => {
     const p = await Player.create(baseURL!);
     const start = expectOk(await p.post<{ viewId: string; seconds: number }>("/api/ads", { action: "start" })).data as { viewId: string };
@@ -74,16 +63,17 @@ test.describe("economy", () => {
   });
 
   test("selling items: exact payout, no overselling, no double-sell", async ({ baseURL }) => {
+    // Store check-ins hand over an item (a coffee at a café, groceries at a grocery…).
+    const admin = await adminPlayer(baseURL!);
+    const tile = await uploadPlaces(admin, randomSpot());
     const p = await Player.create(baseURL!);
-    // Item spawns are deterministic; find one, walk to it, collect it.
-    const here = randomSpot();
-    await p.goTo(here);
-    const world = (await p.get<{ spawns: { id: string; kind: string; lat: number; lng: number; item?: { key: string } }[] }>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data;
-    const spawn = world.spawns.find((s) => s.kind === "item");
-    test.skip(!spawn, "no item spawn around this random spot");
-    await p.goTo(spawn!);
-    expectOk(await p.post("/api/claim", { spawnId: spawn!.id }));
-    const key = spawn!.item!.key;
+    const at = tile.places[0];
+    const missions = (await p.get<{ missions: { id: string; kind: string; item: string | null; place: { lat: number; lng: number } }[] }>(`/api/places?lat=${at.lat}&lng=${at.lng}`)).data.missions;
+    const visit = missions.find((m) => m.kind === "visit" && m.item);
+    test.skip(!visit, "no check-in with an item rolled this window");
+    await p.goTo(visit!.place);
+    expectOk(await p.post("/api/places", { id: visit!.id }));
+    const key = visit!.item!;
     const before = await p.me();
     expect(before.inventory.find((i) => i.key === key)?.qty).toBe(1);
 
@@ -94,6 +84,6 @@ test.describe("economy", () => {
     expect(after.inventory.find((i) => i.key === key)).toBeUndefined();
     expect(after.coins).toBeGreaterThan(before.coins);
     expect((await p.post("/api/inventory", { action: "sell", itemKey: "not-an-item", qty: 1 })).status).toBe(404);
-    await p.dispose();
+    await Promise.all([p.dispose(), admin.dispose()]);
   });
 });

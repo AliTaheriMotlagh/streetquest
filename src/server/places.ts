@@ -4,16 +4,16 @@
 import { prisma } from "../lib/db";
 import { cellKey, distanceM, type LatLng } from "../lib/geo";
 import { tileOf } from "../lib/city";
-import { CUSTOMER_DOOR, parsePlaceMissionId, placeBucket, placeMissions, PLACE_CATS, type Place, type PlaceCat, type PlaceMission } from "../lib/places";
-import { INTERACT_RADIUS_M } from "../lib/spawns";
+import { CUSTOMER_DOOR, parsePlaceMissionId, placeBucket, placeMissions, placeToman, PLACE_CATS, type Place, type PlaceCat, type PlaceMission } from "../lib/places";
+import { INTERACT_RADIUS_M } from "../lib/reach";
 import { S } from "../lib/settings";
 import { msg, t } from "../lib/i18n";
 import { placesAround, placesIn } from "./city";
 import { HttpError } from "./http";
 import { checkClaimAchievements, grant, itemLabel, track } from "./rewards";
-import { bumpNeeds } from "./needs";
 import { questEvent } from "./quests";
 import { autoPost } from "./social";
+import { earnsToman, payToman, TEST_MODE_NOTE } from "./money";
 
 /** The cell keys around one cell (its own first). */
 function ring(cell: string) {
@@ -64,13 +64,6 @@ export async function nearestPlace(here: LatLng, maxM = 80): Promise<Place | nul
   return best;
 }
 
-/** How a visit lifts the commander's needs, by kind of place. */
-const NEEDS_AT: Partial<Record<PlaceCat, Partial<Record<"hunger" | "energy" | "social" | "fun", number>>>> = {
-  burger: { hunger: 25 }, pizza: { hunger: 25 }, restaurant: { hunger: 35, social: 10 }, cafe: { energy: 20, social: 5 }, bakery: { hunger: 15, fun: 5 },
-  icecream: { fun: 15 }, bar: { social: 25, fun: 10 }, grocery: { hunger: 15 }, gym: { fun: 15, energy: -10 }, park: { fun: 20, social: 10 },
-  cinema: { fun: 30, social: 10 }, books: { fun: 10 },
-};
-
 const reach = () => INTERACT_RADIUS_M + S.claimSlack;
 
 async function recordClaim(userId: string, id: string) {
@@ -83,7 +76,8 @@ async function recordClaim(userId: string, id: string) {
 }
 
 /** Start a delivery (at the pickup) or check in at a place (visit). */
-export async function startPlaceMission(userId: string, id: string, here: LatLng) {
+export async function startPlaceMission(u: { id: string; remotePlay: boolean; locSim: boolean }, id: string, here: LatLng) {
+  const userId = u.id;
   const m = await resolvePlaceMission(id);
   if (!m || m.expiresAt < Date.now()) throw new HttpError(410, t("This job is gone — check the map for new ones"));
   const vars = { place: m.place.name, dest: m.dest?.name ?? t(CUSTOMER_DOOR) };
@@ -100,23 +94,31 @@ export async function startPlaceMission(userId: string, id: string, here: LatLng
     return { message: t("{emoji} Picked up at {place} — deliver to {dest}!", { emoji: m.emoji, ...vars }), run };
   }
 
-  await recordClaim(userId, id);
+  const toman = earnsToman(u) ? placeToman("visit", u.remotePlay) : 0;
+  await payToman(userId, id, "place", parsePlaceMissionId(id)?.cell ?? "", toman).catch((e) => {
+    throw e instanceof HttpError && e.status === 409 ? new HttpError(409, t("You already did this one — new jobs here every 30 minutes")) : e;
+  });
   const items = m.item ? { [m.item]: 1 } : undefined;
-  await grant(userId, { xp: m.rewardXp, coins: m.rewardCoins, items });
-  const needs = NEEDS_AT[m.place.cat];
-  if (needs) await bumpNeeds(userId, needs);
-  await questEvent(userId, "collect");
+  await grant(userId, { xp: m.rewardXp, items });
+  await questEvent(userId, "place");
   await checkClaimAchievements(userId, "day");
   await track("place_mission", { userId, campaign: m.place.cat });
   await autoPost(userId, "mission", { t: msg("{emoji} Checked in at {place}"), v: { emoji: PLACE_CATS[m.place.cat].emoji, place: m.place.name } }, { name: m.place.name, cat: m.place.cat, lat: m.place.lat, lng: m.place.lng });
-  return { message: [t("{emoji} {title} at {place}", { emoji: m.emoji, title: t(m.title), place: m.place.name }), m.item ? itemLabel(m.item) : "", t("+{n} 🪙", { n: m.rewardCoins })].filter(Boolean).join(" · ") };
+  return { message: [t("{emoji} {title} at {place}", { emoji: m.emoji, title: t(m.title), place: m.place.name }), m.item ? itemLabel(m.item) : "", toman ? t("💵 +{n} toman", { n: toman }) : t(TEST_MODE_NOTE)].filter(Boolean).join(" · "), toman };
 }
 
-/** A finished delivery run from a real place: the item and the feed post. */
-export async function finishPlaceRun(userId: string, spawnId: string) {
-  const m = await resolvePlaceMission(spawnId);
+/** A finished delivery run from a real place: the toman, the item and the feed post. */
+export async function finishPlaceRun(u: { id: string; remotePlay: boolean; locSim: boolean }, run: { id: string; spawnId: string }) {
+  const userId = u.id;
+  const m = await resolvePlaceMission(run.spawnId);
   if (!m) return null;
+  let toman = 0;
+  if (earnsToman(u)) {
+    toman = placeToman("deliver", u.remotePlay);
+    await payToman(userId, `done:${run.id}`, "place", parsePlaceMissionId(run.spawnId)?.cell ?? "", toman).catch(() => (toman = 0));
+  }
+  await questEvent(userId, "place");
   if (m.item) await grant(userId, { items: { [m.item]: 1 } }, { raw: true });
   await autoPost(userId, "mission", { t: msg("{emoji} Delivered from {place} to {dest}"), v: { emoji: m.emoji, place: m.place.name, dest: m.dest?.name ?? "" } }, { name: m.place.name, cat: m.place.cat, lat: m.place.lat, lng: m.place.lng });
-  return m.item ? itemLabel(m.item) : "";
+  return [toman ? t("💵 +{n} toman", { n: toman }) : "", m.item ? itemLabel(m.item) : ""].filter(Boolean).join(" · ");
 }

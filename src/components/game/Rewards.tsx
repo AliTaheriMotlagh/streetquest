@@ -13,7 +13,7 @@ import { ensureArt } from "@/components/art/sprite";
 import { Art } from "@/components/art/Art";
 import { sfx } from "./sfx";
 
-export type RewardBag = { coins?: number; gems?: number; xp?: number };
+export type RewardBag = { toman?: number; coins?: number; gems?: number; xp?: number };
 export type Celebration = { title: string; body?: string; emoji?: string; art?: string; rewards?: RewardBag };
 type FxKind = "coin" | "gem" | "xp" | "cash";
 
@@ -42,11 +42,12 @@ const calm = () =>
 const DIGITS: Record<string, string> = { "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9" };
 const num = (s: string) => Number(s.replace(/[۰-۹]/g, (d) => DIGITS[d]).replace(/[,٬\s]/g, ""));
 const REWARD_RE = {
+  toman: /\+([\d۰-۹,٬]+)\s?(?:toman\b|تومان)/i,
   coins: /\+([\d۰-۹,٬]+)\s?(?:🪙|coins?\b|سکه)/i,
   gems: /\+([\d۰-۹,٬]+)\s?(?:💎|gems?\b|جم)/i,
   xp: /\+([\d۰-۹,٬]+)\s?(?:XP\b|تجربه)/i,
 };
-/** "+80 🪙 · +40 XP" → { coins: 80, xp: 40 } (English or Persian, either digits). */
+/** "+10,000 toman · +80 🪙 · +40 XP" → { toman: 10000, coins: 80, xp: 40 } (English or Persian, either digits). */
 export function parseRewards(text: string | undefined | null): RewardBag {
   const out: RewardBag = {};
   if (!text) return out;
@@ -56,7 +57,7 @@ export function parseRewards(text: string | undefined | null): RewardBag {
   }
   return out;
 }
-const hasRewards = (b: RewardBag) => !!(b.coins || b.gems || b.xp);
+const hasRewards = (b: RewardBag) => !!(b.toman || b.coins || b.gems || b.xp);
 
 // ---------------------------------------------------------------- particles
 let layer: HTMLDivElement | null = null;
@@ -130,6 +131,7 @@ function flyKind(kind: FxKind, n: number, from = origin()) {
 
 /** Send a reward bag flying into the HUD, from a point (default: the last tap). */
 export function flyRewards(b: RewardBag, from?: { x: number; y: number }) {
+  if (b.toman) flyKind("cash", Math.round(4 + Math.log10(b.toman + 1) * 1.5), from);
   if (b.coins) flyKind("coin", Math.round(4 + Math.log10(b.coins + 1) * 3), from);
   if (b.gems) setTimeout(() => flyKind("gem", Math.min(8, 2 + b.gems!), from), 90);
   if (b.xp) setTimeout(() => flyKind("xp", Math.round(3 + Math.log10(b.xp! + 1) * 2), from), 180);
@@ -234,6 +236,7 @@ function CountUp({ to, delay = 0 }: { to: number; delay?: number }) {
 }
 
 const ROWS: { k: keyof RewardBag; kind: FxKind; label: string }[] = [
+  { k: "toman", kind: "cash", label: msg("toman") },
   { k: "coins", kind: "coin", label: msg("coins") },
   { k: "gems", kind: "gem", label: msg("gems") },
   { k: "xp", kind: "xp", label: msg("XP") },
@@ -242,7 +245,7 @@ const ROWS: { k: keyof RewardBag; kind: FxKind; label: string }[] = [
 /** Body text without the reward amounts the card already shows as rows. */
 const strip = (body: string) =>
   body
-    .replace(/\+[\d۰-۹,٬]+\s?(?:🪙|💎|coins?\b|gems?\b|XP\b|سکه|جم|تجربه)/gi, "")
+    .replace(/\+[\d۰-۹,٬]+\s?(?:🪙|💎|toman\b|coins?\b|gems?\b|XP\b|تومان|سکه|جم|تجربه)/gi, "")
     .replace(/^[\s·,،:|—-]+|[\s·,،:|—-]+$/g, "")
     .replace(/\s*[·,،]\s*(?=[·,،]|$)/g, "")
     .trim();

@@ -14,19 +14,23 @@ export type AdCreative = { id: string; sponsor: string; title: string; body?: st
 export type GemOffer = { key: string; gems: number; coins: number; label: string };
 
 const DEFAULTS = {
+  // ---- money on the map (toman)
+  moneyGps: 10_000,
+  moneyHome: 1_000,
+  moneyPerCell: 4,
+  mapMaxItems: 10,
+  placeVisitToman: 10_000,
+  placeDeliverToman: 20_000,
+  moneyDailyCap: 0,
+  cashoutMin: 1_000_000,
+  cashoutEnabled: true,
+
   // ---- players & map
   interactRadius: 60,
   claimSlack: 15,
-  spawnMin: 3,
-  spawnMax: 6,
-  goldenHourMult: 2,
   maxSpeedKmh: 250,
   footSpeedKmh: 25,
   viewRadiusKm: 8,
-  breachRange: 200,
-  siegeRange: 5000,
-  shootRange: 60,
-  baseSpacing: 250,
   testMode: false,
 
   // ---- play from home
@@ -36,7 +40,7 @@ const DEFAULTS = {
   driveSpeedKmh: 80,
 
   // ---- real places & businesses
-  placeMissionShare: 0.35,
+  placeMissionShare: 1,
   bizEnabled: true,
   bizCampaignMaxCoins: 200,
   bizTrialDays: 14,
@@ -62,47 +66,6 @@ const DEFAULTS = {
   achievementGems: 5,
   questGemsCampaign: 5,
   questGemsDaily: 2,
-  rushMinutesPerGem: 1,
-
-  // ---- base & army
-  buildTimeMult: 1,
-  trainTimeMult: 1,
-  researchTimeMult: 1,
-  buildCostMult: 1,
-  unitCostMult: 1,
-  supplyPerLevelHour: 60,
-  supplyCapHours: 12,
-  relocateCost: 500,
-  shieldHours: 2,
-  siegeCooldownMin: 30,
-
-  // ---- life sim
-  hungerPerHour: 4,
-  energyPerHour: 3,
-  socialPerHour: 3,
-  funPerHour: 4,
-  needsFloor: 20,
-  sleepHours: 6,
-  sleepEnergy: 80,
-  messHallCost: 15,
-  restCooldownMin: 30,
-  moodEmpireBonus: 0.2,
-
-  // ---- territory
-  outpostIncomeHour: 40,
-  flagIncomeHour: 30,
-  flagCost: 300,
-  flagCaptureSeconds: 60,
-  flagRadius: 30,
-
-  // ---- street combat
-  playerMaxHp: 100,
-  hpRegenS: 6,
-  downedMin: 3,
-  rookieLevel: 3,
-  downedCoinLoss: 0.05,
-  shootDmg: 16,
-  shootCooldownS: 6,
 
   // ---- GPS games & story
   huntMinM: 150,
@@ -125,28 +88,19 @@ const DEFAULTS = {
   // ---- goals
   goalsEnabled: true,
   worldGoals: [
-    { key: "w_collect", title: msg("Operation Scavenge"), emoji: "🌍", metric: "collect", target: 5000, reward: { xp: 500, coins: 300, gems: 10 } },
-    { key: "w_boss", title: msg("Operation Titanfall"), emoji: "🐉", metric: "boss_dmg", target: 250000, reward: { xp: 600, coins: 400, gems: 15 } },
+    { key: "w_money", title: msg("Operation Cash Rain"), emoji: "💵", metric: "money", target: 20000, reward: { xp: 500, coins: 300, gems: 10 } },
+    { key: "w_place", title: msg("Operation Main Street"), emoji: "🏪", metric: "place", target: 5000, reward: { xp: 500, coins: 300, gems: 10 } },
     { key: "w_walk", title: msg("Operation Long March"), emoji: "🥾", metric: "walk_m", target: 2_000_000, reward: { xp: 500, coins: 300, gems: 10 } },
-    { key: "w_raiders", title: msg("Operation Iron Wall"), emoji: "🛡️", metric: "raiders", target: 20000, reward: { xp: 500, coins: 300, gems: 10 } },
     { key: "w_steps", title: msg("Operation Ten Million Steps"), emoji: "👟", metric: "steps", target: 10_000_000, reward: { xp: 500, coins: 300, gems: 10 } },
   ] as GoalDef[],
-  factionGoals: [
-    { key: "f_outpost", title: msg("Hold the Line"), emoji: "🚩", metric: "outpost", target: 60, reward: { xp: 300, coins: 250, gems: 5 } },
-    { key: "f_train", title: msg("Mass Mobilization"), emoji: "🪖", metric: "train", target: 3000, reward: { xp: 300, coins: 250, gems: 5 } },
-    { key: "f_siege", title: msg("Total War"), emoji: "⚔️", metric: "siege_win", target: 150, reward: { xp: 350, coins: 300, gems: 6 } },
-    { key: "f_collect", title: msg("Supply Run"), emoji: "📦", metric: "collect", target: 1500, reward: { xp: 300, coins: 200, gems: 5 } },
-  ] as GoalDef[],
+  factionGoals: [] as GoalDef[],
   personalGoals: [
+    { key: "p_money", title: msg("Money Hunter"), emoji: "💵", metric: "money", tiers: [10, 50, 200, 500, 1000], reward: { xp: 150, coins: 100, gems: 3 } },
+    { key: "p_place", title: msg("Regular"), emoji: "🏪", metric: "place", tiers: [5, 25, 100, 300, 1000], reward: { xp: 150, coins: 100, gems: 3 } },
     { key: "p_steps", title: msg("Step Master"), emoji: "👟", metric: "steps", tiers: [10_000, 50_000, 200_000, 500_000, 1_000_000], reward: { xp: 200, coins: 150, gems: 4 } },
     { key: "p_empire", title: msg("Tycoon"), emoji: "🏦", metric: "empire_rank", tiers: [1, 3, 5, 8, 12], reward: { xp: 200, coins: 150, gems: 4 } },
     { key: "p_walk", title: msg("Road Warrior"), emoji: "🥾", metric: "walk_m", tiers: [1000, 5000, 20000, 50000, 100000], reward: { xp: 150, coins: 100, gems: 3 } },
-    { key: "p_collect", title: msg("Scavenger"), emoji: "🎒", metric: "collect", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 80, gems: 2 } },
-    { key: "p_siege", title: msg("Conqueror"), emoji: "⚔️", metric: "siege_win", tiers: [1, 5, 20, 50, 100], reward: { xp: 200, coins: 150, gems: 3 } },
-    { key: "p_train", title: msg("Warlord"), emoji: "🪖", metric: "train", tiers: [10, 50, 200, 500, 1000], reward: { xp: 120, coins: 100, gems: 2 } },
-    { key: "p_boss", title: msg("Titan Slayer"), emoji: "🐉", metric: "boss_dmg", tiers: [500, 2500, 10000, 50000], reward: { xp: 250, coins: 200, gems: 4 } },
     { key: "p_gps", title: msg("Explorer"), emoji: "🧭", metric: "gps_game", tiers: [1, 5, 15, 40, 100], reward: { xp: 150, coins: 100, gems: 3 } },
-    { key: "p_kills", title: msg("Sharpshooter"), emoji: "🎯", metric: "kills", tiers: [5, 25, 100, 300], reward: { xp: 200, coins: 120, gems: 3 } },
     { key: "p_story", title: msg("Storyteller"), emoji: "📖", metric: "story", tiers: [1, 3, 6, 10], reward: { xp: 250, coins: 150, gems: 5 } },
   ] as MilestoneDef[],
 
@@ -164,9 +118,6 @@ const DEFAULTS = {
     { key: "coins_m", gems: 45, coins: 2500, label: msg("Coin Sack") },
     { key: "coins_l", gems: 160, coins: 10000, label: msg("Coin Crate") },
   ] as GemOffer[],
-  healGems: 5,
-  refreshGems: 5,
-  shieldGems: 30,
   currency: "usd",
   adsEnabled: true,
   adNetworkEnabled: true,
@@ -196,31 +147,33 @@ export type Settings = typeof DEFAULTS;
 export type SettingKey = keyof Settings;
 export type SettingType = "number" | "bool" | "text" | "json";
 /** Per-entry stat overrides for the game catalogs: { units: { tank: { atk: 20 } }, ... } */
-export type CatalogOverrides = Partial<Record<"units" | "buildings" | "towers" | "items" | "research", Record<string, Record<string, number>>>>;
+export type CatalogOverrides = Partial<Record<"items", Record<string, Record<string, number>>>>;
 export type SettingDef = { key: SettingKey; group: string; label: string; help: string; min?: number; max?: number; step?: number };
 
 /** What the admin panel shows, grouped. Every key in DEFAULTS appears once. */
 export const SETTING_DEFS: SettingDef[] = [
-  { key: "interactRadius", group: msg("Players & map"), label: msg("Player reach (m)"), help: msg("How close a player must be to collect, start runs, open chests and finish missions."), min: 10, max: 500 },
+  { key: "moneyGps", group: msg("Money & cash-out"), label: msg("Money per pickup on GPS (toman)"), help: msg("What one pickup on the map pays a player who walks there with real GPS."), min: 0, max: 10_000_000 },
+  { key: "moneyHome", group: msg("Money & cash-out"), label: msg("Money per pickup from home (toman)"), help: msg("What one pickup pays a player in Play from home. Admin drops and store missions are scaled by the same ratio."), min: 0, max: 10_000_000 },
+  { key: "moneyPerCell", group: msg("Money & cash-out"), label: msg("Money pickups per area"), help: msg("How many pickups the game places in each ~450 m map cell every 20 minutes. 0 = only admin drops."), min: 0, max: 20 },
+  { key: "mapMaxItems", group: msg("Money & cash-out"), label: msg("Items visible on the map"), help: msg("Most money pickups and store missions shown to a player at once — the nearest ones, admin drops first."), min: 1, max: 50 },
+  { key: "placeVisitToman", group: msg("Money & cash-out"), label: msg("Store check-in mission (toman)"), help: msg("Paid for checking in at a store on GPS."), min: 0, max: 10_000_000 },
+  { key: "placeDeliverToman", group: msg("Money & cash-out"), label: msg("Store delivery mission (toman)"), help: msg("Paid for delivering an order from a store on GPS."), min: 0, max: 10_000_000 },
+  { key: "moneyDailyCap", group: msg("Money & cash-out"), label: msg("Daily earning cap per player (toman)"), help: msg("Most toman one player can earn in a day. 0 = no cap."), min: 0, max: 1_000_000_000 },
+  { key: "cashoutMin", group: msg("Money & cash-out"), label: msg("Minimum cash-out (toman)"), help: msg("Players can ask to be paid once their wallet reaches this."), min: 1000, max: 1_000_000_000 },
+  { key: "cashoutEnabled", group: msg("Money & cash-out"), label: msg("Cash-out requests on"), help: msg("Turn off to pause new cash-out requests (pending ones stay in the list).") },
+  { key: "interactRadius", group: msg("Players & map"), label: msg("Player reach (m)"), help: msg("How close a player must be to pick up money and do store missions."), min: 10, max: 500 },
   { key: "claimSlack", group: msg("Players & map"), label: msg("GPS slack (m)"), help: msg("Extra metres the server forgives on top of the reach, to absorb GPS error."), min: 0, max: 200 },
-  { key: "spawnMin", group: msg("Players & map"), label: msg("Spawns per area (min)"), help: msg("Fewest spawns in each ~450 m map cell per 20-minute window."), min: 0, max: 20 },
-  { key: "spawnMax", group: msg("Players & map"), label: msg("Spawns per area (max)"), help: msg("Most spawns in each map cell per window."), min: 1, max: 30 },
-  { key: "goldenHourMult", group: msg("Players & map"), label: msg("Golden-hour XP ×"), help: msg("Spawn XP multiplier at dawn and dusk."), min: 1, max: 10, step: 0.1 },
   { key: "maxSpeedKmh", group: msg("Players & map"), label: msg("Anti-cheat max speed (km/h)"), help: msg("GPS jumps faster than this are ignored. Cars and trains are fine at the default."), min: 50, max: 2000 },
   { key: "footSpeedKmh", group: msg("Players & map"), label: msg("On-foot speed limit (km/h)"), help: msg("Movement faster than this doesn't count toward walking goals and sprints (so driving doesn't count)."), min: 5, max: 200 },
-  { key: "viewRadiusKm", group: msg("Players & map"), label: msg("Map view radius (km)"), help: msg("How far away other players, bases and events show on the map."), min: 1, max: 50, step: 0.5 },
-  { key: "breachRange", group: msg("Players & map"), label: msg("FPS breach range (m)"), help: msg("Walk this close to an enemy base or boss to fight it in first person."), min: 20, max: 2000 },
-  { key: "siegeRange", group: msg("Players & map"), label: msg("Army range from base (m)"), help: msg("Armies can siege and march this far from your base."), min: 500, max: 50000 },
-  { key: "shootRange", group: msg("Players & map"), label: msg("Street-combat range (m)"), help: msg("Shoot rival commanders, towers and squads within this distance."), min: 10, max: 500 },
-  { key: "baseSpacing", group: msg("Players & map"), label: msg("Min distance between bases (m)"), help: "", min: 0, max: 5000 },
-  { key: "testMode", group: msg("Players & map"), label: msg("Test mode for everyone"), help: msg("Instant teleports with full rewards — for testing. Off by default in production (admins always have it; local dev always has it). Players use Play from home instead.") },
+  { key: "viewRadiusKm", group: msg("Players & map"), label: msg("Map view radius (km)"), help: msg("How far away other players and events are loaded."), min: 1, max: 50, step: 0.5 },
+  { key: "testMode", group: msg("Players & map"), label: msg("Test mode for everyone"), help: msg("Instant teleports for testing — they never earn toman, and while this is on nobody earns toman on GPS. Off by default in production (admins always have it; local dev always has it). Players use Play from home instead.") },
 
   { key: "remoteEnabled", group: msg("Play from home"), label: msg("Play from home on"), help: msg("Players who don't want to walk can play from the couch: they move by tapping the map and travel at a capped speed.") },
-  { key: "remoteRewardMult", group: msg("Play from home"), label: msg("Reward multiplier at home"), help: msg("XP and coins earned from home are multiplied by this (0.5 = half). Walking players always get full rewards."), min: 0, max: 1, step: 0.05 },
+  { key: "remoteRewardMult", group: msg("Play from home"), label: msg("Reward multiplier at home"), help: msg("XP and coins earned from home are multiplied by this (0.5 = half). Toman from home is set under Money & cash-out."), min: 0, max: 1, step: 0.05 },
   { key: "remoteSpeedKmh", group: msg("Play from home"), label: msg("Travel speed at home (km/h)"), help: msg("How fast a home player's commander moves across the map toward where they tapped."), min: 5, max: 1000 },
   { key: "driveSpeedKmh", group: msg("Play from home"), label: msg("3D car top speed (km/h)"), help: msg("Players driving the 3D city from home can move this fast; the server accepts positions up to this speed."), min: 10, max: 300 },
 
-  { key: "placeMissionShare", group: msg("Real places & businesses"), label: msg("Places with a mission"), help: msg("Share of real shops, restaurants and cafés that offer a mission in each 30-minute window (0.35 = about a third)."), min: 0, max: 1, step: 0.05 },
+  { key: "placeMissionShare", group: msg("Real places & businesses"), label: msg("Places with a mission"), help: msg("Share of real shops, restaurants and cafés that offer a mission in each 30-minute window (1 = every store)."), min: 0, max: 1, step: 0.05 },
   { key: "bizEnabled", group: msg("Real places & businesses"), label: msg("Business accounts on"), help: msg("Real stores can register, claim their place on the map and post campaigns.") },
   { key: "bizCampaignMaxCoins", group: msg("Real places & businesses"), label: msg("Max coins per campaign visit"), help: msg("The most coins a business campaign can pay a player per check-in or redemption."), min: 0, max: 5000 },
   { key: "bizTrialDays", group: msg("Real places & businesses"), label: msg("Free trial (days)"), help: msg("How long a new business can try the Starter plan for free (once)."), min: 0, max: 90 },
@@ -244,43 +197,6 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "achievementGems", group: msg("Rewards & economy"), label: msg("Gems per achievement"), help: "", min: 0, max: 1000 },
   { key: "questGemsCampaign", group: msg("Rewards & economy"), label: msg("Gems per campaign quest"), help: "", min: 0, max: 1000 },
   { key: "questGemsDaily", group: msg("Rewards & economy"), label: msg("Gems per daily quest"), help: "", min: 0, max: 1000 },
-  { key: "rushMinutesPerGem", group: msg("Rewards & economy"), label: msg("Rush: minutes per gem"), help: msg("Finishing a timer instantly costs 1 gem per this many minutes left."), min: 0.1, max: 600, step: 0.1 },
-
-  { key: "buildTimeMult", group: msg("Base & army"), label: msg("Build time ×"), help: msg("Multiplies every construction timer."), min: 0.01, max: 20, step: 0.01 },
-  { key: "trainTimeMult", group: msg("Base & army"), label: msg("Training time ×"), help: "", min: 0.01, max: 20, step: 0.01 },
-  { key: "researchTimeMult", group: msg("Base & army"), label: msg("Research time ×"), help: "", min: 0.01, max: 20, step: 0.01 },
-  { key: "buildCostMult", group: msg("Base & army"), label: msg("Building cost ×"), help: "", min: 0, max: 20, step: 0.05 },
-  { key: "unitCostMult", group: msg("Base & army"), label: msg("Unit cost ×"), help: "", min: 0, max: 20, step: 0.05 },
-  { key: "supplyPerLevelHour", group: msg("Base & army"), label: msg("Supply income (coins/hour per level)"), help: "", min: 0, max: 100000 },
-  { key: "supplyCapHours", group: msg("Base & army"), label: msg("Supply storage (hours)"), help: "", min: 1, max: 168 },
-  { key: "relocateCost", group: msg("Base & army"), label: msg("Move-base cost (coins)"), help: "", min: 0, max: 1000000 },
-  { key: "shieldHours", group: msg("Base & army"), label: msg("Shield per star lost (hours)"), help: "", min: 0, max: 72, step: 0.25 },
-  { key: "siegeCooldownMin", group: msg("Base & army"), label: msg("Siege cooldown (min)"), help: "", min: 0, max: 1440 },
-
-  { key: "hungerPerHour", group: msg("Life sim"), label: msg("Hunger drain (per hour)"), help: msg("How fast each need drops in real time. Lower is gentler on players who play once or twice a day."), min: 0, max: 50, step: 0.5 },
-  { key: "energyPerHour", group: msg("Life sim"), label: msg("Energy drain (per hour)"), help: "", min: 0, max: 50, step: 0.5 },
-  { key: "socialPerHour", group: msg("Life sim"), label: msg("Social drain (per hour)"), help: "", min: 0, max: 50, step: 0.5 },
-  { key: "funPerHour", group: msg("Life sim"), label: msg("Fun drain (per hour)"), help: "", min: 0, max: 50, step: 0.5 },
-  { key: "needsFloor", group: msg("Life sim"), label: msg("Needs floor"), help: msg("Time alone never drags a need below this, so a player coming back is tired, not miserable. Actions (gym, runs, fights) can still go lower."), min: 0, max: 60 },
-  { key: "sleepHours", group: msg("Life sim"), label: msg("Sleep after (hours away)"), help: msg("A break this long counts as a night's sleep: energy comes back up. 0 turns it off."), min: 0, max: 24, step: 0.5 },
-  { key: "sleepEnergy", group: msg("Life sim"), label: msg("Energy after sleeping"), help: "", min: 0, max: 100 },
-  { key: "messHallCost", group: msg("Life sim"), label: msg("Mess hall meal (coins)"), help: "", min: 0, max: 10000 },
-  { key: "restCooldownMin", group: msg("Life sim"), label: msg("Nap cooldown (min)"), help: "", min: 0, max: 1440 },
-  { key: "moodEmpireBonus", group: msg("Life sim"), label: msg("Inspired mood: Empire income bonus"), help: msg("A happy commander runs a better business: Inspired adds this share to Street Empire income (Happy adds half). 0.2 = +20%."), min: 0, max: 2, step: 0.05 },
-
-  { key: "outpostIncomeHour", group: msg("Territory"), label: msg("Outpost income (coins/hour)"), help: "", min: 0, max: 100000 },
-  { key: "flagIncomeHour", group: msg("Territory"), label: msg("Flag income (coins/hour)"), help: "", min: 0, max: 100000 },
-  { key: "flagCost", group: msg("Territory"), label: msg("Flag cost (coins)"), help: "", min: 0, max: 100000 },
-  { key: "flagCaptureSeconds", group: msg("Territory"), label: msg("Flag capture time (s)"), help: "", min: 5, max: 3600 },
-  { key: "flagRadius", group: msg("Territory"), label: msg("Flag capture radius (m)"), help: "", min: 5, max: 500 },
-
-  { key: "playerMaxHp", group: msg("Street combat"), label: msg("Commander HP"), help: "", min: 10, max: 10000 },
-  { key: "hpRegenS", group: msg("Street combat"), label: msg("HP regen (seconds per HP)"), help: "", min: 0.1, max: 600, step: 0.1 },
-  { key: "downedMin", group: msg("Street combat"), label: msg("Downed time (min)"), help: "", min: 0.1, max: 120, step: 0.1 },
-  { key: "rookieLevel", group: msg("Street combat"), label: msg("Rookie protection below level"), help: msg("Players below this level can't be shot or shoot."), min: 1, max: 100 },
-  { key: "downedCoinLoss", group: msg("Street combat"), label: msg("Coins lost when downed (share)"), help: msg("0.05 = 5%, capped at 300."), min: 0, max: 1, step: 0.01 },
-  { key: "shootDmg", group: msg("Street combat"), label: msg("Street shot damage"), help: "", min: 1, max: 1000 },
-  { key: "shootCooldownS", group: msg("Street combat"), label: msg("Shot cooldown (s)"), help: "", min: 0, max: 600 },
 
   { key: "huntMinM", group: msg("GPS games & story"), label: msg("Treasure hunt: min distance (m)"), help: "", min: 20, max: 5000 },
   { key: "huntMaxM", group: msg("GPS games & story"), label: msg("Treasure hunt: max distance (m)"), help: "", min: 20, max: 10000 },
@@ -308,9 +224,6 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "gemPacks", group: msg("Store & ads"), label: msg("Gem packs (real money)"), help: msg("priceCents is in the currency below (e.g. 499 = 4.99).") },
   { key: "currency", group: msg("Store & ads"), label: msg("Currency"), help: msg("ISO code Stripe charges in, e.g. usd, eur, gbp.") },
   { key: "gemOffers", group: msg("Store & ads"), label: msg("Coin offers (paid in gems)"), help: "" },
-  { key: "healGems", group: msg("Store & ads"), label: msg("Instant heal (gems)"), help: msg("Full HP and get back up when downed.") },
-  { key: "refreshGems", group: msg("Store & ads"), label: msg("Energy drink (gems)"), help: msg("Refills hunger, energy, social and fun.") },
-  { key: "shieldGems", group: msg("Store & ads"), label: msg("4 h base shield (gems)"), help: "" },
   { key: "adsEnabled", group: msg("Store & ads"), label: msg("Rewarded ads on"), help: msg("Players watch a sponsor spot to earn gems and coins.") },
   { key: "adNetworkEnabled", group: msg("Store & ads"), label: msg("Google video ads on"), help: msg("Needs ADSENSE_CLIENT on the server. Players get a Google rewarded video first; where Google has no ad (some countries, ad blockers), they see a sponsor spot instead.") },
   { key: "adSeconds", group: msg("Store & ads"), label: msg("Ad length (s)"), help: "", min: 3, max: 120 },
@@ -373,25 +286,11 @@ export function applySettings(over: unknown) {
 
 /** Metrics that goals can count. Game events feed them (see server/goals.ts). */
 export const GOAL_METRICS: Record<string, string> = {
-  collect: msg("Items collected"),
-  chest: msg("Chests opened"),
-  derrick: msg("Derricks captured"),
-  train: msg("Units trained"),
-  build: msg("Buildings built/upgraded"),
-  research: msg("Research started"),
-  siege_win: msg("Sieges won"),
-  breach_win: msg("Breaches won"),
-  kills: msg("FPS kills"),
-  boss_dmg: msg("Boss damage"),
-  outpost: msg("Outposts captured"),
-  run: msg("Timed runs finished"),
-  arcade: msg("Power cells grabbed"),
-  duel_win: msg("Street races won"),
+  money: msg("Money picked up"),
+  place: msg("Store missions done"),
+  run: msg("Deliveries finished"),
   steps: msg("Steps walked"),
   empire_rank: msg("Empire ranks reached"),
-  raiders: msg("Raiders killed"),
-  tower: msg("Towers built/upgraded"),
-  tower_down: msg("Enemy towers destroyed"),
   post: msg("Posts pinned"),
   walk_m: msg("Metres walked"),
   gps_game: msg("GPS games won"),

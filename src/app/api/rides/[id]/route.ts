@@ -6,7 +6,6 @@ import { driverXp, RIDE_CHECKIN_M, RIDE_REQUEST_TTL_MS, RIDE_RIDER_DROPOFF_M } f
 import { requireUser } from "@/server/auth";
 import { notify } from "@/server/hub";
 import { body, HttpError, actionRoute } from "@/server/http";
-import { bumpNeeds } from "@/server/needs";
 import { grant, lastKnownLocation, unlock } from "@/server/rewards";
 import { t } from "@/lib/i18n";
 
@@ -36,8 +35,6 @@ export const POST = actionRoute(async (req, ctx) => {
     await grant(ride.driverId!, { xp: driverXp(km) });
     await grant(ride.riderId, { xp: 40 });
     // A shared ride is a hangout too (life-sim layer).
-    await bumpNeeds(ride.driverId!, { social: 15, fun: 5 });
-    await bumpNeeds(ride.riderId, { social: 15, fun: 5 });
     const done = await prisma.ride.count({ where: { driverId: ride.driverId, status: "DONE" } });
     await unlock(ride.driverId!, "driver_1");
     if (done >= 10) await unlock(ride.driverId!, "driver_10");

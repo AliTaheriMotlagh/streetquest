@@ -105,7 +105,7 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
             </Button>
           )}
         </div>
-        {onHome && <p className="small muted" style={{ marginTop: 10 }}>{t("No GPS needed: tap the map and your commander travels there, for {pct}% of the usual XP and coins.", { pct: Math.round(S.remoteRewardMult * 100) })}</p>}
+        {onHome && <p className="small muted" style={{ marginTop: 10 }}>{t("No GPS needed: tap the map and you travel there. Each pickup pays {n} toman instead of {gps}.", { n: S.moneyHome, gps: S.moneyGps })}</p>}
       </div>
     </div>
   );
@@ -215,8 +215,8 @@ export const markModeAsked = () => {
 /** The two ways to play as big pickable cards: the welcome-back prompt and Hero → Profile. */
 export function ModeCards({ home, onPick, homeLocked, focus }: { home: boolean; onPick: (home: boolean) => unknown; homeLocked?: boolean; focus?: boolean }) {
   const modes = [
-    { h: false, tone: "walk", ic: "🚶", title: t("Walk with GPS"), desc: t("Move in the real world. Every goal counts."), pct: 100 },
-    { h: true, tone: "home", ic: "🛋️", title: t("Play from home"), desc: t("Tap the map — your commander travels there at {n} km/h.", { n: S.remoteSpeedKmh }), pct: Math.round(S.remoteRewardMult * 100) },
+    { h: false, tone: "walk", ic: "🚶", title: t("Walk with GPS"), desc: t("Move in the real world. Every goal counts."), toman: S.moneyGps },
+    { h: true, tone: "home", ic: "🛋️", title: t("Play from home"), desc: t("Tap the map — you travel there at {n} km/h.", { n: S.remoteSpeedKmh }), toman: S.moneyHome },
   ];
   return (
     <div className="mode-pick" role="group" aria-label={t("Play mode")}>
@@ -229,8 +229,8 @@ export function ModeCards({ home, onPick, homeLocked, focus }: { home: boolean; 
             <b>{m.title}</b>
             <span className="mode-desc">{m.desc}</span>
             <span className="mode-reward">
-              <span className="mode-meter"><i style={{ width: `${m.pct}%` }} /></span>
-              {t("{pct}% XP & coins", { pct: m.pct })}
+              <span className="mode-meter"><i style={{ width: `${Math.min(100, (100 * m.toman) / Math.max(1, S.moneyGps))}%` }} /></span>
+              {t("{n} toman per pickup", { n: m.toman })}
             </span>
           </Button>
         );

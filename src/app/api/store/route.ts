@@ -5,8 +5,6 @@ import { S } from "@/lib/settings";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route, actionRoute } from "@/server/http";
 import { confirmCheckout, createCheckout, stripeReady } from "@/server/store";
-import { maxHpOf } from "@/server/td";
-import { currentHp } from "@/lib/td";
 import { adStatus } from "@/server/ads";
 import { t } from "@/lib/i18n";
 
@@ -18,7 +16,6 @@ export const GET = route(async () => {
     currency: S.currency,
     packs: S.gemPacks,
     offers: S.gemOffers,
-    boosts: { heal: S.healGems, refresh: S.refreshGems, shield: S.shieldGems },
     gems: u.gems,
     ads: await adStatus(u.id),
   };
@@ -28,9 +25,6 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("checkout"), pack: z.string().max(40) }),
   z.object({ action: z.literal("confirm"), sessionId: z.string().max(200) }),
   z.object({ action: z.literal("offer"), key: z.string().max(40) }),
-  z.object({ action: z.literal("heal") }),
-  z.object({ action: z.literal("refresh") }),
-  z.object({ action: z.literal("shield") }),
 ]);
 
 async function spendGems(userId: string, gems: number) {
@@ -57,24 +51,5 @@ export const POST = actionRoute(async (req) => {
     await prisma.user.update({ where: { id: u.id }, data: { coins: { increment: o.coins } } });
     return { message: t("🪙 +{n} coins (−{gems} 💎)", { n: o.coins, gems: o.gems }) };
   }
-  if (d.action === "heal") {
-    const max = await maxHpOf(u.id);
-    const downed = !!u.downedUntil && u.downedUntil.getTime() > Date.now();
-    if (!downed && currentHp(u.hp, u.hpAt, max) >= max) throw new HttpError(400, t("You're already at full health"));
-    await spendGems(u.id, S.healGems);
-    await prisma.user.update({ where: { id: u.id }, data: { hp: max, hpAt: new Date(), downedUntil: null } });
-    return { message: t("❤️ Fully healed (−{n} 💎)", { n: S.healGems }) };
-  }
-  if (d.action === "refresh") {
-    await spendGems(u.id, S.refreshGems);
-    await prisma.user.update({ where: { id: u.id }, data: { hunger: 100, energy: 100, social: 100, fun: 100, needsAt: new Date() } });
-    return { message: t("🥤 Fully refreshed (−{n} 💎)", { n: S.refreshGems }) };
-  }
-  // shield
-  const base = await prisma.base.findUnique({ where: { ownerId: u.id } });
-  if (!base) throw new HttpError(400, t("Plant a base first"));
-  await spendGems(u.id, S.shieldGems);
-  const from = Math.max(Date.now(), base.shieldUntil?.getTime() ?? 0);
-  await prisma.base.update({ where: { id: base.id }, data: { shieldUntil: new Date(from + 4 * 3600_000) } });
-  return { message: t("🛡️ Base shielded for 4 more hours (−{n} 💎)", { n: S.shieldGems }) };
+  throw new HttpError(400, t("Unknown offer"));
 });

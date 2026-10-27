@@ -4,22 +4,19 @@ import { ITEM_BY_KEY } from "../lib/catalog";
 import { t } from "../lib/i18n";
 import { notify } from "./hub";
 import { HttpError } from "./http";
-import { moodOfUser } from "./needs";
-import { bonusOf } from "./hero";
 import { S } from "../lib/settings";
 
 export type Grant = { xp?: number; coins?: number; scrap?: number; gems?: number; items?: Record<string, number> };
 
 /**
- * Give rewards. Earned XP is scaled by the commander's mood (life-sim layer) and the
- * admin's global XP multiplier; coins the game creates by the global coin multiplier.
+ * Give rewards. Earned XP is scaled by the admin's global XP multiplier; coins the game creates by the global coin multiplier.
  * Pass raw for transfers between players, refunds and sales — they're never scaled.
  */
 export async function grant(userId: string, g: Grant, opts: { raw?: boolean } = {}) {
-  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, hunger: true, energy: true, social: true, fun: true, needsAt: true, remotePlay: true } });
+  const before = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { xp: true, remotePlay: true } });
   // Playing from home (not walking) earns less.
   const home = before.remotePlay ? S.remoteRewardMult : 1;
-  const xp = g.xp && g.xp > 0 && !opts.raw ? Math.round(g.xp * moodOfUser(before).xpMult * (await bonusOf(userId)).xp * S.xpMult * home) : (g.xp ?? 0);
+  const xp = g.xp && g.xp > 0 && !opts.raw ? Math.round(g.xp * S.xpMult * home) : (g.xp ?? 0);
   const coins = g.coins && g.coins > 0 && !opts.raw ? Math.round(g.coins * S.coinMult * home) : (g.coins ?? 0);
   const user = await prisma.user.update({
     where: { id: userId },
@@ -44,7 +41,7 @@ export async function grant(userId: string, g: Grant, opts: { raw?: boolean } = 
       tag: "levelup",
       link: "me:hero",
       title: t("LEVEL UP! {n}", { n: newLevel }),
-      body: `${titleForLevel(newLevel)} · ${t("+{points} attribute points, +{n, plural, one {# Command Point} other {# Command Points}}", { points: 3 * gained, n: gained })}${gems ? `, +${gems} 💎` : ""}`,
+      body: `${titleForLevel(newLevel)}${gems ? ` · +${gems} 💎` : ""}`,
     }));
   }
   return user;

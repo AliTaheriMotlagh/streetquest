@@ -1,5 +1,5 @@
-// Shared helpers: each test plays as its own fresh guest commander, somewhere random on
-// the map so bases, towers and flags never collide between tests running in parallel.
+// Shared helpers: each test plays as its own fresh guest player, somewhere random on
+// the map so money, drops and stores never collide between tests running in parallel.
 import { request, type APIRequestContext } from "@playwright/test";
 import { ADMIN_KEY } from "../playwright.config";
 
@@ -66,11 +66,9 @@ export type Me = {
   gems: number;
   xp: number;
   role: string;
-  faction: string | null;
-  base: { id: string; lat: number; lng: number } | null;
+  toman: number;
+  cashoutPending: number;
   dailyAvailable: boolean;
-  hp: number;
-  maxHp: number;
   inventory: { key: string; qty: number }[];
 };
 

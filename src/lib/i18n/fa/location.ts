@@ -25,7 +25,6 @@ const location: Record<string, string> = {
   // ---- playing without GPS
   "🛋️ Play from home": "🛋️ بازی از خونه",
   "🕹️ Test mode — no GPS": "🕹️ حالت آزمایشی — بدون GPS",
-  "No GPS needed: tap the map and your commander travels there, for {pct}% of the usual XP and coins.": "نیازی به GPS نیست: روی نقشه بزن تا فرماندهت اونجا بره، با {pct}٪ تجربه و سکهٔ معمول.",
 
   // ---- GPS status badges
   "GPS stopped answering — tap to reconnect": "GPS جواب نمی‌ده — برای وصل شدن دوباره بزن",
@@ -40,8 +39,6 @@ const location: Record<string, string> = {
   // ---- mode picker
   "Walk with GPS": "با GPS راه برو",
   "Move in the real world. Every goal counts.": "توی دنیای واقعی حرکت کن. هر هدف حساب می‌شه.",
-  "Tap the map — your commander travels there at {n} km/h.": "روی نقشه بزن — فرماندهت با سرعت {n} کیلومتر در ساعت اونجا می‌ره.",
-  "{pct}% XP & coins": "{pct}٪ تجربه و سکه",
   "Keep the current mode": "همین حالت رو نگه دار",
   "Welcome back, {name}!": "خوش برگشتی، {name}!",
   "How are you playing right now?": "الان داری چطوری بازی می‌کنی؟",

@@ -1,6 +1,6 @@
 "use client";
 // Admin: live game settings (every tunable in lib/settings.ts), per-entry stat
-// overrides for units/buildings/towers/items/research, and store & ad revenue.
+// overrides for items, and store & ad revenue.
 import { useMemo, useState } from "react";
 import { askConfirm } from "@/components/Dialogs";
 import { Button } from "./Button";
@@ -145,17 +145,15 @@ function ListEditor({ k, rows, metrics, onChange }: { k: string; rows: Record<st
 }
 
 // ---------------------------------------------------------------- settings tab
-const GROUP_ICON: Record<string, string> = { "Players & map": "🗺️", "Play from home": "🛋️", "Rewards & economy": "🪙", "Base & army": "🏰", Territory: "🚩", "Street combat": "🔫", "GPS games & story": "🧭", Goals: "🏆", "Store & ads": "💎" };
+const GROUP_ICON: Record<string, string> = { "Money & cash-out": "💵", "Players & map": "🗺️", "Play from home": "🛋️", "Rewards & economy": "🪙", "GPS games & story": "🧭", Goals: "🏆", "Store & ads": "💎" };
 const GROUP_DESC: Record<string, string> = {
-  "Players & map": msg("How close players must be, how much spawns, how far they see."),
+  "Money & cash-out": msg("What money on the map pays (on GPS and from home), how many items the map shows, store missions, the daily cap and cash-out."),
+  "Players & map": msg("How close players must be, anti-cheat, how far they see."),
   "Play from home": msg("Players who don't walk: on/off, their reward cut and travel speed."),
   "Rewards & economy": msg("XP, coins and gems the game hands out."),
-  "Base & army": msg("Costs and timers for buildings, troops and research."),
-  Territory: msg("Outposts and king-of-the-hill flags."),
-  "Street combat": msg("Player health and shooting on the street."),
   "GPS games & story": msg("Treasure hunt, sprint, rally and story missions."),
   Goals: msg("Weekly world and faction goals, and personal milestones."),
-  "Store & ads": msg("Gem packs, gem offers, boosts and sponsor ads."),
+  "Store & ads": msg("Gem packs, gem offers and sponsor ads."),
 };
 export function SettingsTab({ config, post }: { config: AdminConfig; post: Post }) {
   const [draft, setDraft] = useState<Record<string, unknown>>(() => clone(config.values));
@@ -256,7 +254,7 @@ const FIELD_LABEL: Record<string, string> = { cost: msg("Cost"), atk: msg("Attac
 const CAT_LABEL: Record<string, string> = { units: msg("🪖 Units"), buildings: msg("🏗️ Buildings"), towers: msg("🗼 Towers"), items: msg("🎒 Items"), research: msg("🔬 Research") };
 
 export function GameDataTab({ config, post }: { config: AdminConfig; post: Post }) {
-  const [cat, setCat] = useState("units");
+  const [cat, setCat] = useState("items");
   const [draft, setDraft] = useState<Record<string, Record<string, Record<string, number>>>>(() => clone((config.values.catalog as Record<string, Record<string, Record<string, number>>>) ?? {}));
   const entries = config.catalog[cat] ?? [];
   const fields = useMemo(() => Object.keys(entries[0]?.values ?? {}), [entries]);
@@ -284,7 +282,7 @@ export function GameDataTab({ config, post }: { config: AdminConfig; post: Post 
   };
   return (
     <>
-      <p className="small muted">{t("Every unit, building, tower, item and research project. Change a number to override it (highlighted); clear a cell to go back to the built-in value. Costs and times here are before the global multipliers in Settings.")}</p>
+      <p className="small muted">{t("Every item in the game. Change a number to override it (highlighted); clear a cell to go back to the built-in value.")}</p>
       <div className="settings-bar">
         <div className="tabs" style={{ margin: 0 }}>
           {Object.keys(config.catalog).map((c) => <Button key={c} className={cat === c ? "on" : ""} onClick={() => setCat(c)}>{t(CAT_LABEL[c] ?? c)}</Button>)}

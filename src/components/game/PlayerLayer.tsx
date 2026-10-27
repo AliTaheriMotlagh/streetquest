@@ -7,7 +7,7 @@
 import L from "leaflet";
 import { useEffect, useRef } from "react";
 import { useMap, useMapEvents } from "react-leaflet";
-import { INTERACT_RADIUS_M } from "@/lib/spawns";
+import { INTERACT_RADIUS_M } from "@/lib/reach";
 import type { LatLng } from "./client";
 import { meIcon } from "./mapIcons";
 import { getLocation, subscribeLocation, type LocationSnapshot } from "./useLocation";

@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { roomAudience } from "@/server/rooms";
-import { bumpNeeds } from "@/server/needs";
 import { t } from "@/lib/i18n";
 import { asUser } from "@/server/hub";
 import { pushSoon } from "@/server/push";
@@ -36,7 +35,6 @@ export const POST = route(async (req) => {
     data: { room: d.room, authorId: u.id, body: d.body },
     include: { author: { select: { id: true, username: true, avatar: true } } },
   });
-  await bumpNeeds(u.id, { social: 2 });
   // Private rooms (DMs, my events) reach the others' phones when they're away. One
   // notification per room: a new message replaces the last one instead of piling up.
   if (Array.isArray(audience)) {

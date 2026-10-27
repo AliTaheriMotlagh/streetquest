@@ -13,11 +13,6 @@ const admin: Record<string, string> = {
   "Game settings": "تنظیمات بازی",
   "Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds.":
     "همهٔ قوانین بازی: جایزه‌ها، بردها، تایمرها، بازی از خونه، هدف‌ها، فروشگاه و تبلیغات. یه دسته انتخاب کن، مقدارها رو عوض کن، بعد ذخیره کن — تا ۱۵ ثانیه دیگه برای بازیکن‌ها اعمال می‌شه.",
-  "Stats of every unit, building, tower, item and research project. Change a number to override it; clear it to go back to the original.":
-    "آمار هر یگان، ساختمان، برج، آیتم و پروژهٔ تحقیق. با عوض کردن یک عدد، آن مقدار جایگزین می‌شه؛ برای برگشتن به مقدار اصلی، خانه را خالی کن.",
-  "Map drops": "مأموریت‌های نقشه",
-  "Place special missions on the map at real places for a time window — sponsored drops, store activations, city campaigns.":
-    "مأموریت‌های ویژه رو در مکان‌های واقعی و برای یک بازهٔ زمانی روی نقشه بذار — پخش حمایتی، فعال‌سازی فروشگاه، کمپین‌های شهری.",
   Revenue: "درآمد",
   "Gem sales, sponsor ad views and clicks, and how to switch on payments.": "فروش جم، بازدید و کلیک روی تبلیغ حامی، و نحوهٔ فعال کردن پرداخت.",
   Players: "بازیکن‌ها",
@@ -77,22 +72,13 @@ const admin: Record<string, string> = {
   "🎁 Gift from HQ": "🎁 هدیه از ستاد",
 
   // ---- map drops (missions)
-  "New mission drop": "مأموریت ویژهٔ جدید",
-  "Hand-placed missions appear on everyone's map at that spot during the active window — great for sponsored drops, store activations and city campaigns.":
-    "مأموریت‌های ویژه در بازهٔ فعال، روی نقشهٔ همه در همان نقطه ظاهر می‌شن — برای پخش حمایتی، فعال‌سازی فروشگاه و کمپین‌های شهری عالیه.",
   "Sponsor (optional)": "حامی (اختیاری)",
-  Latitude: "عرض جغرافیایی",
-  Longitude: "طول جغرافیایی",
-  "Reward item": "آیتم جایزه",
   "Active from": "فعال از",
   "Active to": "فعال تا",
   "📍 Use my location": "📍 از موقعیت من استفاده کن",
-  "Create mission": "ساخت مأموریت",
-  Mission: "مأموریت",
   Where: "کجا",
   Window: "بازه",
   Reward: "جایزه",
-  "Delete mission?": "این مأموریت حذف بشه؟",
   Delete: "حذف",
 
   // ---- announcements & push
@@ -151,7 +137,6 @@ const admin: Record<string, string> = {
   "No lotteries yet": "هنوز قرعه‌کشی‌ای نیست",
 
   // ---- common admin words
-  "XP ·": "تجربه ·",
   "🔎 Search settings": "🔎 جستجو در تنظیمات",
   "Saving…": "در حال ذخیره…",
 
@@ -192,16 +177,9 @@ const admin: Record<string, string> = {
   "New offer": "پیشنهاد جدید",
   "Move up": "بالا ببر",
   "Results for “{q}” in all categories": "نتایج برای «{q}» در همهٔ دسته‌ها",
-  "Every unit, building, tower, item and research project. Change a number to override it (highlighted); clear a cell to go back to the built-in value. Costs and times here are before the global multipliers in Settings.":
-    "هر یگان، ساختمان، برج، آیتم و پروژهٔ تحقیق. با عوض کردن یک عدد، آن جایگزین می‌شه (هایلایت می‌شه)؛ برای برگشت به مقدار داخلی، خانه را خالی کن. هزینه‌ها و زمان‌های اینجا قبل از ضریب‌های سراسری تنظیمات هستن.",
-  "Costs and timers for buildings, troops and research.": "هزینه و تایمر ساختمان‌ها، نیروها و تحقیقات.",
-  "Gem packs, gem offers, boosts and sponsor ads.": "بسته‌های جم، پیشنهادهای جم، تقویت‌ها و تبلیغات حامی.",
   "Weekly world and faction goals, and personal milestones.": "هدف‌های جهانی و جناح هفتگی، و نقطه‌عطف‌های شخصی.",
   "XP, coins and gems the game hands out.": "تجربه، سکه و جمی که بازی می‌ده.",
-  "Outposts and king-of-the-hill flags.": "پاسگاه‌ها و پرچم‌های «شاه تپه».",
-  "Player health and shooting on the street.": "جان بازیکن و شلیک در خیابون.",
   "Players who don't walk: on/off, their reward cut and travel speed.": "بازیکن‌هایی که پیاده نمی‌رن: روشن/خاموش، سهم جایزه و سرعت جابه‌جایی‌شون.",
-  "How close players must be, how much spawns, how far they see.": "بازیکن‌ها باید چقدر نزدیک باشن، چقدر پیدایش داشته باشن و چقدر دور ببینن.",
   "Edit gem packs and prices in Settings → Store & ads.": "بسته‌های جم و قیمت‌ها رو از تنظیمات ← فروشگاه و تبلیغات ویرایش کن.",
   "Things a goal can count:": "هدف می‌تونه این‌ها رو بشمره:",
   "House ad (invite friends)": "تبلیغ خانگی (دعوت از دوستان)",
@@ -234,18 +212,6 @@ const admin: Record<string, string> = {
   When: "زمان",
   "(Admin: set STRIPE_SECRET_KEY on the server to take payments.)": "(ادمین: برای گرفتن پرداخت، STRIPE_SECRET_KEY رو روی سرور تنظیم کن.)",
   // ---- metrics, catalog fields, categories
-  "Chests opened": "صندوق بازشده",
-  "Derricks captured": "دکل‌های تصرف‌شده",
-  "Units trained": "یگان‌های آموزش‌دیده",
-  "Buildings built/upgraded": "ساختمان ساخته‌شده / ارتقا",
-  "Research started": "تحقیق شروع‌شده",
-  "Sieges won": "محاصره‌های برده‌شده",
-  "Breaches won": "نفوذهای برده‌شده",
-  "Outposts captured": "پاسگاه‌های تصرف‌شده",
-  "Timed runs finished": "مأموریت‌های زمان‌دار تمام‌شده",
-  "Raiders killed": "غارتگرهای کشته‌شده",
-  "Towers built/upgraded": "برج ساخته‌شده / ارتقا",
-  "Enemy towers destroyed": "برج‌های دشمن نابودشده",
   "Posts pinned": "یادداشت‌های سنجاق‌شده",
   "Metres walked": "متر پیاده‌روی‌شده",
   "Story chapters finished": "فصل‌های داستان تمام‌شده",

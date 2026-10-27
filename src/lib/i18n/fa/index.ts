@@ -6,7 +6,8 @@
 // • Use the half-space (ZWNJ, U+200C) inside words: «می‌شود»، «بازی‌ها»، «پایگاه‌ات».
 // • Numbers come in as {placeholders} and are formatted with Persian digits automatically.
 // • Persian nouns don't take a plural after numbers: «۳ بازیکن»، never «۳ بازیکن‌ها».
-// • Game glossary: coins = سکه، gems = جم، XP = تجربه، HP = جان، level = سطح،
+// • Game glossary: toman = تومان، wallet = کیف پول، cash out = برداشت، pickup = پول،
+//   coins = سکه، gems = جم، XP = تجربه، HP = جان، level = سطح،
 //   base = پایگاه، army = ارتش، squad = جوخه، crew = اکیپ، quest = مأموریت،
 //   tower = برج، raid = یورش، siege = محاصره، breach = نفوذ، shop = مغازه، market = بازار،
 //   showcase = ویترین، discount = تخفیف، order = سفارش.
@@ -19,14 +20,10 @@ import data from "./data";
 import server from "./server";
 import panels from "./panels";
 import play from "./play";
-import hero from "./hero";
-import base from "./base";
 import lottery from "./lottery";
-import lobbies from "./lobbies";
 import empire from "./empire";
 import location from "./location";
 import call from "./call";
-import fps from "./fps";
 import app from "./app";
 import landing from "./landing";
 import pages from "./pages";
@@ -34,6 +31,7 @@ import admin from "./admin";
 import settings from "./settings";
 import world from "./world";
 import drive from "./drive";
+import money from "./money";
 
 const fa: Messages = {
   ...common,
@@ -44,14 +42,10 @@ const fa: Messages = {
   ...server,
   ...panels,
   ...play,
-  ...hero,
-  ...base,
   ...lottery,
-  ...lobbies,
   ...empire,
   ...location,
   ...call,
-  ...fps,
   ...app,
   ...landing,
   ...pages,
@@ -59,6 +53,7 @@ const fa: Messages = {
   ...settings,
   ...world,
   ...drive,
+  ...money,
 };
 
 export default fa;
