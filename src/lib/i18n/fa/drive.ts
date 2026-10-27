@@ -26,6 +26,28 @@ const drive: Record<string, string> = {
   Cartoon: "کارتونی",
   "{n} frames a second — the picture sharpens or softens on its own to keep it smooth.": "{n} فریم در ثانیه — کیفیت تصویر خودش کم و زیاد می‌شه تا بازی روون بمونه.",
 
+  // ---- touch controls & instruments
+  Steering: "فرمان",
+  Wheel: "فرمان",
+  Buttons: "دکمه‌ها",
+  Tilt: "کج کردن گوشی",
+  "This phone didn't allow motion access, so tilt steering can't work here.": "این گوشی اجازهٔ حسگر حرکت رو نداد، برای همین فرمان با کج کردن اینجا کار نمی‌کنه.",
+  "Flying uses the stick: left and right to turn, up and down to climb and descend.": "پرواز با دسته‌ست: چپ و راست برای چرخیدن، بالا و پایین برای اوج گرفتن و پایین اومدن.",
+  "Steering: drag left or right": "فرمان: به چپ یا راست بکش",
+  "Steer left": "فرمان به چپ",
+  "Steer right": "فرمان به راست",
+  "Tilt to steer — tap to re-centre": "گوشی رو کج کن تا بپیچی — برای صاف کردن بزن",
+  "Tap to centre": "بزن تا صاف شه",
+  "Stick: left and right to turn, up and down to climb and descend": "دسته: چپ و راست برای چرخیدن، بالا و پایین برای اوج گرفتن و پایین اومدن",
+  Handbrake: "ترمز دستی",
+  Land: "فرود",
+  GAS: "گاز",
+  BRAKE: "ترمز",
+  Forward: "جلو",
+  Speedometer: "سرعت‌سنج",
+  "Pick up": "بردار",
+  "Working…": "در حال انجام…",
+
   // ---- driving & flying
   "Drive through it to collect": "از روش رد شو تا برش داری",
   "Fly low (under {m} m) to pick things up and check in": "برای برداشتن چیزها و چک‌این، پایین پرواز کن (زیر {m} متر)",

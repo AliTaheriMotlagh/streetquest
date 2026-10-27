@@ -1,10 +1,19 @@
 "use client";
 // The garage: pick what you drive (or fly) and its paint, and how the city looks.
-import { fmtNum, t } from "@/lib/i18n";
+import { useState } from "react";
+import { fmtNum, msg, t } from "@/lib/i18n";
 import { PAINTS, unlocked, VEHICLE_KEYS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { PARTY_GAMES, type PartyGame } from "@/lib/party";
 import { Button } from "@/components/Button";
 import type { Style } from "./tileMesh";
+import { askTilt, type SteerMode } from "./DrivePad";
+import { Icon, type IconName } from "./icons";
+
+const CTL: { key: SteerMode; icon: IconName; label: string }[] = [
+  { key: "wheel", icon: "wheel", label: msg("Wheel") },
+  { key: "buttons", icon: "pad", label: msg("Buttons") },
+  { key: "tilt", icon: "tilt", label: msg("Tilt") },
+];
 
 type Props = {
   level: number;
@@ -14,16 +23,26 @@ type Props = {
   fps: number;
   /** A ground-only round is running: flyers are parked until it ends. */
   locked: PartyGame | null;
+  /** How you steer on a touch screen (null: no touch controls here). */
+  ctl: SteerMode | null;
   onVehicle: (k: VehicleKey) => void;
   onPaint: (c: string) => void;
   onStyle: (s: Style) => void;
+  onCtl: (m: SteerMode) => void;
   onClose: () => void;
   /** Inside the drive menu: no window of its own. */
   embedded?: boolean;
 };
 
-export function DriveGarage({ level, vehicle, paint, style, fps, locked, onVehicle, onPaint, onStyle, onClose, embedded }: Props) {
+export function DriveGarage({ level, vehicle, paint, style, fps, locked, ctl, onVehicle, onPaint, onStyle, onCtl, onClose, embedded }: Props) {
   const groundOnly = !!locked && PARTY_GAMES[locked].groundOnly;
+  const [tiltError, setTiltError] = useState(false);
+  const pickCtl = async (m: SteerMode) => {
+    // Tilt needs motion access, which iOS only grants from a tap like this one.
+    if (m === "tilt" && !(await askTilt())) return setTiltError(true);
+    setTiltError(false);
+    onCtl(m);
+  };
   return (
     <div className={embedded ? "drive-tab" : "drive-sheet"} role={embedded ? undefined : "dialog"} aria-label={t("Garage")}>
       {!embedded && (
@@ -56,6 +75,21 @@ export function DriveGarage({ level, vehicle, paint, style, fps, locked, onVehic
           <button key={c} className={`swatch ${paint === c ? "on" : ""}`} style={{ background: c }} onClick={() => onPaint(c)} aria-label={c} aria-pressed={paint === c} />
         ))}
       </div>
+      {ctl && (
+        <>
+          <b className="small">{t("Steering")}</b>
+          <div className="ctl-pick" role="radiogroup" aria-label={t("Steering")}>
+            {CTL.map((c) => (
+              <button key={c.key} role="radio" aria-checked={ctl === c.key} className={ctl === c.key ? "on" : ""} onClick={() => pickCtl(c.key)}>
+                <Icon name={c.icon} size={24} />
+                <span>{t(c.label)}</span>
+              </button>
+            ))}
+          </div>
+          {tiltError && <p className="small" style={{ color: "var(--red)", margin: 0 }}>{t("This phone didn't allow motion access, so tilt steering can't work here.")}</p>}
+          {VEHICLES[vehicle].flies && <p className="small muted" style={{ margin: 0 }}>{t("Flying uses the stick: left and right to turn, up and down to climb and descend.")}</p>}
+        </>
+      )}
       <b className="small">{t("Graphics")}</b>
       <div className="seg">
         <Button className={`btn small ${style === "real" ? "yellow" : "ghost"}`} onClick={() => onStyle("real")}>🏙️ {t("Realistic")}</Button>

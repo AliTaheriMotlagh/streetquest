@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { useT } from "@/components/I18nProvider";
 import { RARITY_COLOR, RARITY_LABEL } from "@/lib/catalog";
@@ -40,6 +40,7 @@ import { AdModal, type AdOffer, burst, celebrate, CelebrationLayer, Directions, 
 import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
+import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { BOOST_MAX_H, BOOST_MINUTES, STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard } from "./PlaceCards";
@@ -91,6 +92,10 @@ export default function Game() {
   const pos = geo.pos;
   const [follow, setFollow] = useState(true);
   const [panel, setPanel] = useState<PanelId | null>(null);
+  // Opening a panel mounts a lot of UI. It renders as a transition, so the tapped tab
+  // lights up at once and the phone stays responsive while the panel builds.
+  const [panelPending, startPanel] = useTransition();
+  const [navTo, setNavTo] = useState<PanelId | null>(null);
   const [marketFocus, setMarketFocus] = useState<string | null>(null); // a shop tapped on the map
   const [selected, setSelected] = useState<Selected | null>(null);
   const [lobby, setLobby] = useState<{ spawnId: string; mode?: "race" | "coop" } | { lobbyId: string } | null>(null);
@@ -247,8 +252,6 @@ export default function Game() {
     api<{ announcements: NonNullable<typeof announce>[] }>("/api/announcements").then((r) => setAnnounce(r.announcements[0] ?? null)).catch(() => {});
     // keep the server's notion of our timezone fresh (travelers!)
     api("/api/me", { method: "PATCH", body: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } }).catch(() => {});
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
   }, [loadMe]);
 
   useEffect(() => {
@@ -301,6 +304,17 @@ export default function Game() {
 
   // ---- GPS mini-games & story chapters
   const gps = useGpsGame(me?.gpsGame?.id ?? null, loadMe, toast);
+
+  // The clock behind every countdown on screen. Each tick re-renders the whole game,
+  // open panels included, so it only ticks every second while a countdown is showing.
+  const countdowns =
+    !!me?.activeRun || !!gps.view || liveWaves.length > 0 || (!!me?.downedUntil && me.downedUntil > now) || (!!me?.superweapon?.readyAt && me.superweapon.readyAt > now) ||
+    (!!fire && now - fire.at < 60_000) || !!world?.strikes.some((x) => now - x.impactAt < 4000);
+  useEffect(() => {
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), countdowns ? 1000 : 15_000);
+    return () => clearInterval(t);
+  }, [countdowns]);
   // Keep the screen on while moving (driving with the map open) or playing a GPS game.
   useWakeLock(geo.speed > 2 || !!gps.view);
   const driving = geo.speed > 7;
@@ -1024,7 +1038,7 @@ export default function Game() {
         {/* Get in the car: the 3D city */}
         {!panel && !selected && !picker && !run && (pos || me.lastPos) && (
           <Button className="drive-fab" data-tour="drive" onClick={() => ctx.drive?.()} title={homeMode || simMode ? t("Drive the 3D city") : t("See your street in 3D")}>
-            <span className="drive-fab-car">🚗</span>
+            <span className="drive-fab-ic"><Icon name="wheel" size={22} /></span>
             <span className="drive-fab-lb">{homeMode || simMode ? t("DRIVE") : t("3D")}</span>
           </Button>
         )}
@@ -1081,7 +1095,8 @@ export default function Game() {
           {NAV.map(([id, ic, label]) => {
             const b = showBadge(id);
             // Crew & chat opens from Social, so Social stays lit (and closes it) while it's open.
-            const on = panel === id || (id === "social" && panel === "crew");
+            const showing = panelPending && navTo ? navTo : panel;
+            const on = showing === id || (id === "social" && showing === "crew");
             return (
               <Button
                 key={id}
@@ -1095,9 +1110,12 @@ export default function Game() {
                     if (id === "me") setMeTab("hero");
                     return;
                   }
-                  setSelected(null);
-                  if (panel === "me") setMeTab("hero");
-                  openPanel(id);
+                  setNavTo(id);
+                  startPanel(() => {
+                    setSelected(null);
+                    if (panel === "me") setMeTab("hero");
+                    openPanel(id);
+                  });
                 }}
                 className={`${on ? "on" : ""} ${id === "base" && !me.base ? "pulse" : ""}`}
               >

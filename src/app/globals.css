@@ -227,6 +227,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .topbar { display: flex; align-items: center; gap: 12px; padding-top: 16px; padding-bottom: 16px; }
 .logo { font-family: var(--display); font-size: 22px; text-decoration: none; color: var(--text); }
 .logo span { color: var(--pink); }
+.logo { display: inline-flex; align-items: center; gap: 8px; }
+.logo-mark { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 4px 10px rgba(255,46,136,.45)); }
 .hero { padding: 60px 0 40px; display: grid; gap: 40px; grid-template-columns: 1.1fr .9fr; align-items: center; }
 .hero h1 { font-size: clamp(38px, 7vw, 72px); line-height: 1; }
 .hero h1 em { font-style: normal; color: var(--yellow); text-shadow: 0 0 30px rgba(255,210,63,.4); }

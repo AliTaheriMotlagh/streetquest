@@ -46,6 +46,13 @@ export function Pwa() {
 
   // Desktop: wheel + drag scrolling for every horizontal tab/chip row.
   useEffect(() => installHScroll(), []);
+  // iOS Safari only shows :active (every button's pressed look) on pages that listen
+  // for touches. Without this, taps there feel dead until the result appears.
+  useEffect(() => {
+    const noop = () => {};
+    document.addEventListener("touchstart", noop, { passive: true });
+    return () => document.removeEventListener("touchstart", noop);
+  }, []);
 
   useEffect(() => {
     setOffline(!navigator.onLine);

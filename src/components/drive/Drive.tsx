@@ -10,7 +10,7 @@
 // from the server in batches (tiles.ts), geometry is built on Web Workers (tileMesh.ts),
 // at most one finished tile is added per frame (nearest first), far tiles drop their
 // street furniture, and the render resolution adapts to keep the frame rate up.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { bearingTo, distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import { makeFrame, tileKey, tileOf, villageTile, type CityTile } from "@/lib/city";
@@ -22,6 +22,7 @@ import { fmtNum, getLocale, t } from "@/lib/i18n";
 import { allowedVehicle, isPaint, LAND_ALT_M, PAINTS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { CHECKPOINT_M, type PartyGame, type PartyView } from "@/lib/party";
 import { Button } from "@/components/Button";
+import { Art } from "@/components/art/Art";
 import { api, type Selected, type World, type WorldPlayer } from "../game/client";
 import { useGame } from "../game/ui";
 import { audioOut, isMuted, sfx } from "../game/sfx";
@@ -29,6 +30,8 @@ import { celebrate } from "../game/Play";
 import { isLite, isTouch } from "../perf";
 import { layCourse } from "./course";
 import { DriveGarage } from "./DriveGarage";
+import { DrivePad, STEER_MODES, type SteerMode } from "./DrivePad";
+import { Icon, type IconName } from "./icons";
 import { DriveParty, PartyHud } from "./DriveParty";
 import { Markers, markersOf } from "./markers";
 import { DriveNet, type NetState } from "./net";
@@ -68,8 +71,10 @@ type Job = {
   emoji: string;
   color: string;
   label: string;
-  /** What the action button says when you're there. */
-  action: string;
+  /** The action button when you're there: what you do, where, and its icon. */
+  verb: string;
+  where: string;
+  icon: IconName;
   reach: number;
   sel: Selected | null;
   run: () => Promise<boolean>;
@@ -77,13 +82,9 @@ type Job = {
 
 type CamMode = "cockpit" | "chase" | "far" | "top";
 type MenuTab = "jobs" | "garage" | "party";
-const CAM_ICON: Record<CamMode, string> = { cockpit: "👁️", chase: "🎥", far: "🚁", top: "🗺️" };
+const CAM_LABEL: Record<CamMode, string> = { cockpit: "1P", chase: "3P", far: "FAR", top: "TOP" };
 type Picked = { emoji: string; title: string; sub: string; lat: number; lng: number; sel: Selected | null };
 type Hud = {
-  gear: string | null;
-  rpm: number;
-  speed: number;
-  alt: number;
   flying: boolean;
   low: boolean;
   near: Job | null;
@@ -107,6 +108,7 @@ const DETAIL_M = 320; // street furniture only this close
 const LOOT_PICKUP_M = 16;
 const CAMS: CamMode[] = ["cockpit", "chase", "far", "top"];
 const CAM_KEY = "sq_drive_cam";
+const CTL_KEY = "sq_drive_ctl";
 
 const store = {
   get: (k: string) => {
@@ -146,7 +148,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
   const [picked, setPicked] = useState<Picked | null>(null);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
   const input = useRef({ gas: 0, brake: 0, steer: 0, lift: 0, hand: false, keys: new Set<string>() });
-  const wheelRef = useRef<HTMLDivElement>(null);
+  const [ctl, setCtl] = useState<SteerMode>(() => {
+    const c = store.get(CTL_KEY) as SteerMode | null;
+    return c && STEER_MODES.includes(c) ? c : "wheel";
+  });
+  const gauge = useRef<HTMLDivElement>(null);
+  const menuOpen = useRef(false);
+  menuOpen.current = !!menu;
   // Latest props/context for the render loop (it lives as long as the component).
   const live = useRef({ world, me, follow, canDrive, onMove, onClaim, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
   live.current = { ...live.current, world, me, follow, canDrive, onMove, onClaim, onSelect, act, refresh, vehicle, paint, sim: !!sim };
@@ -437,7 +445,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       const run = m?.activeRun;
       if (run)
         out.push({
-          id: `run:${run.id}`, kind: "deliver", lat: run.targetLat, lng: run.targetLng, emoji: "🎯", color: "#ff2e88", label: t(run.title), action: t("🏁 Deliver"), reach: INTERACT_RADIUS_M, sel: null,
+          id: `run:${run.id}`, kind: "deliver", lat: run.targetLat, lng: run.targetLng, emoji: "🎯", color: "#ff2e88", label: t(run.title), verb: t("Deliver"), where: t(run.title), icon: "flag", reach: INTERACT_RADIUS_M, sel: null,
           run: () => live.current.act(() => api("/api/runs", { body: { runId: run.id, action: "complete" } })).then((ok) => (ok && celebrate({ title: t("DELIVERED!"), art: "box", body: t(run.title) }), ok)),
         });
       for (const p of w?.places ?? []) {
@@ -445,7 +453,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         const cat = PLACE_CATS[p.place.cat] ?? PLACE_CATS.shop;
         out.push({
           id: p.id, kind: p.kind === "deliver" ? "pickup" : "visit", lat: p.place.lat, lng: p.place.lng, emoji: p.emoji, color: p.kind === "deliver" ? "#ffd23f" : "#3dff8f",
-          label: `${t(p.title)} · ${p.place.name}`, action: p.kind === "deliver" ? t("📦 Pick up · {place}", { place: p.place.name }) : t("✅ Check in · {place}", { place: p.place.name }), reach: INTERACT_RADIUS_M,
+          label: `${t(p.title)} · ${p.place.name}`, verb: p.kind === "deliver" ? t("Pick up") : t("Check in"), where: p.place.name, icon: p.kind === "deliver" ? "box" : "check", reach: INTERACT_RADIUS_M,
           sel: { type: "place", data: p },
           run: () => live.current.act(() => api("/api/places", { body: { id: p.id } })).then((ok) => {
             if (ok) celebrate({ title: p.kind === "deliver" ? t("ORDER PICKED UP!") : t("CHECKED IN!"), body: p.kind === "deliver" ? t("Deliver to {dest}", { dest: p.dest?.name ?? t(CUSTOMER_DOOR) }) : p.place.name, emoji: cat.emoji });
@@ -457,7 +465,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         for (const c of b.campaigns) {
           if (c.visited || b.mine) continue;
           out.push({
-            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: b.featured ? "#ff7ad9" : "#22e3ff", label: `${c.title} · ${b.name}`, action: t("✅ Check in · {place}", { place: b.name }), reach: BIZ_CHECKIN_M,
+            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: b.featured ? "#ff7ad9" : "#22e3ff", label: `${c.title} · ${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
             sel: { type: "biz", data: b },
             run: () => live.current.act(() => api<{ message: string; code: string | null }>("/api/business", { body: { action: "checkin", campaignId: c.id } }).then((r) => {
               celebrate({ title: t("CHECKED IN!"), body: r.code ? t("Coupon code: {code}", { code: r.code }) : b.name, emoji: b.emoji });
@@ -857,7 +865,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
 
     // ---- the loop
     let last = performance.now();
-    let lastSlow = 0, lastHud = 0, lastMini = 0, lastQuality = performance.now(), frames = 0, fps = 60, goodFor = 0, lastWorld: World | null = null;
+    let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, lastQuality = performance.now(), frames = 0, fps = 60, goodFor = 0, lastWorld: World | null = null;
     let phase: Phase = "day";
     let streetName: string | null = null;
     const maxV = () => (Math.max(10, S.driveSpeedKmh) / 3.6) * 0.95 * def().speed;
@@ -1154,7 +1162,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         } else goodFor = 0;
       }
 
-      // -- HUD (React, ~6 Hz)
+      // -- instruments (~20 Hz, straight into the DOM: a moving needle never re-renders React)
+      if (now - lastGauge > 50) {
+        lastGauge = now;
+        paintGauge(gauge.current, {
+          speed: Math.round(st.speed * 3.6),
+          dial: Math.min(1, st.speed / Math.max(1, maxV() / 0.95)),
+          rpm: gearbox.rpm,
+          gear: D.flies ? null : gearbox.gear === 0 ? "R" : st.speed < 0.5 ? "N" : fmtNum(gearbox.gear),
+          flying: D.flies,
+          alt: Math.round(st.alt),
+        });
+      }
+
+      // -- HUD (React, ~6 Hz — and only when something on it actually changed)
       if (now - lastHud > 160) {
         lastHud = now;
         const here = frame.toLatLng(st.x, st.z);
@@ -1169,25 +1190,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           : null;
         let village = false;
         for (const s of tiles.values()) if (!s.real && s.dist < 1) village = true;
-        setHud({
-          gear: D.flies ? null : gearbox.gear === 0 ? "R" : st.speed < 0.5 ? "N" : String(gearbox.gear),
-          rpm: gearbox.rpm,
-          speed: Math.round(st.speed * 3.6),
-          alt: Math.round(st.alt),
-          flying: D.flies,
-          low,
-          near,
-          nav: navInfo,
-          loading: vsource.loading + [...fallback].filter((k) => tiles.has(k)).length * (source.loading ? 1 : 0),
-          village,
-          cam: camMode,
-          night: phase === "night",
-          street: streetName,
-          fps: Math.round(fps),
-          serverNow,
-          jobs: jobs.map((j) => ({ id: j.id, emoji: j.emoji, label: j.label, dist: distanceM(here, j), lat: j.lat, lng: j.lng })).sort((a, b) => a.dist - b.dist).slice(0, 30),
-        });
-        if (wheelRef.current) wheelRef.current.style.transform = `rotate(${-st.steer * 160}deg)`;
+        const loading = vsource.loading + [...fallback].filter((k) => tiles.has(k)).length * (source.loading ? 1 : 0);
+        const list = jobs.map((j) => ({ id: j.id, emoji: j.emoji, label: j.label, dist: distanceM(here, j), lat: j.lat, lng: j.lng })).sort((a, b) => a.dist - b.dist).slice(0, 30);
+        const sig = [
+          near?.id, near?.verb, navInfo && `${navInfo.label}|${Math.round(navInfo.dist / 5)}|${Math.round(navInfo.rel / 4)}`, loading, village, camMode, phase, streetName, D.flies, low,
+          menuOpen.current ? list.map((j) => `${j.id}:${Math.round(j.dist / 10)}`).join(",") : list.length,
+          menuOpen.current ? Math.round(fps) : 0,
+          partyNow ? Math.floor(serverNow / 250) : 0,
+        ].join("~");
+        if (sig !== hudSig) {
+          hudSig = sig;
+          setHud({ flying: D.flies, low, near, nav: navInfo, loading, village, cam: camMode, night: phase === "night", street: streetName, fps: Math.round(fps), serverNow, jobs: list });
+        }
       }
 
       // -- minimap (~8 Hz): roads around us, heading up
@@ -1270,7 +1284,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, scene, camera, tiles, renderer, mats, live, input, collision, others, markers, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, renderer, mats, live, input, collision, others, markers, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1333,31 +1347,6 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     };
   }, [style]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- touch controls
-  const hold = (k: "gas" | "brake" | "lift", v: number) => ({
-    onPointerDown: (e: React.PointerEvent) => {
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-      input.current[k] = v;
-    },
-    onPointerUp: () => (input.current[k] = 0),
-    onPointerCancel: () => (input.current[k] = 0),
-    onLostPointerCapture: () => (input.current[k] = 0),
-  });
-  const steerPad = useRef<{ id: number; x: number } | null>(null);
-  const padHandlers = {
-    onPointerDown: (e: React.PointerEvent) => {
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      steerPad.current = { id: e.pointerId, x: e.clientX };
-    },
-    onPointerMove: (e: React.PointerEvent) => {
-      if (steerPad.current?.id !== e.pointerId) return;
-      // Drag left/right like turning a wheel: 70 px is full lock.
-      input.current.steer = Math.max(-1, Math.min(1, -(e.clientX - steerPad.current.x) / 70));
-    },
-    onPointerUp: () => ((steerPad.current = null), (input.current.steer = 0)),
-    onPointerCancel: () => ((steerPad.current = null), (input.current.steer = 0)),
-  };
-
   const runNear = async () => {
     if (!hud?.near || busy) return;
     setBusy(true);
@@ -1381,28 +1370,36 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     setStyle(s);
     store.set(STYLE_KEY, s);
   };
-  // ➤ points right; 0° relative bearing is straight ahead (up).
-  const arrowStyle = hud?.nav ? { transform: `rotate(${hud.nav.rel - 90}deg)` } : undefined;
+  const pickCtl = (m: SteerMode) => {
+    setCtl(m);
+    store.set(CTL_KEY, m);
+  };
+  // Stable, so the memoised touch controls never re-render while driving.
+  const onHorn = useCallback(() => api3d.current?.horn(), []);
+  const onLand = useCallback(() => api3d.current?.land(), []);
+  // The arrow points up; 0° relative bearing is straight ahead.
+  const arrowStyle = hud?.nav ? { transform: `rotate(${hud.nav.rel}deg)` } : undefined;
   const v = VEHICLES[vehicle];
   const live2 = party?.status === "LIVE";
   const countdown = live2 && party?.startsAt && hud ? Math.ceil((party.startsAt - hud.serverNow) / 1000) : 0;
 
-  const dial = hud ? Math.min(1, hud.speed / Math.max(1, S.driveSpeedKmh * v.speed)) : 0;
-  const R = 34, C = 2 * Math.PI * R;
-  const tabs: { key: MenuTab; icon: string; label: string; badge?: number }[] = [
-    { key: "jobs", icon: "📋", label: t("Jobs nearby"), badge: hud?.jobs.length },
-    { key: "garage", icon: v.emoji, label: t("Garage") },
-    { key: "party", icon: "🎉", label: t("Party games"), badge: party?.members.length },
+  const tabs: { key: MenuTab; icon: IconName; label: string; badge?: number }[] = [
+    { key: "jobs", icon: "list", label: t("Jobs nearby"), badge: hud?.jobs.length },
+    { key: "garage", icon: "garage", label: t("Garage") },
+    { key: "party", icon: "people", label: t("Party games"), badge: party?.members.length },
   ];
+  const cam = hud?.cam ?? "cockpit";
 
   return (
-    <div className="drive" role="application" aria-label={t("3D city")}>
+    <div className={`drive ${canDrive && touch ? "has-pad" : ""}`} role="application" aria-label={t("3D city")}>
       <div className="drive-canvas" ref={mount} />
 
-      {/* Top: me · the street I'm on · where I am */}
+      {/* Top: me · the street I'm on · map, instruments and the two buttons */}
       <div className="drive-top">
         <div className="drive-start">
-          <Button className="drive-round" onClick={onExit} aria-label={t("Back to the map")} title={t("Back to the map")}>🗺️</Button>
+          <Button className="drive-round" onClick={onExit} aria-label={t("Back to the map")} title={t("Back to the map")}>
+            <Icon name="back" />
+          </Button>
           {me && (
             <button className="drive-me" onClick={onProfile} title={t("Profile")} aria-label={t("Profile")}>
               <span className="drive-me-av">
@@ -1411,7 +1408,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
               </span>
               <span className="drive-me-tx">
                 <b>{me.username}</b>
-                <span>🪙 {fmtNum(me.coins)}</span>
+                <span><Art k="coin" size={13} /> {fmtNum(me.coins)}</span>
               </span>
             </button>
           )}
@@ -1420,9 +1417,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           {hud?.street && <div className="drive-street" key={banner?.at ?? 0}>{hud.street}</div>}
           {hud?.nav && (
             <div className="drive-nav">
-              <span className="drive-nav-arrow" style={arrowStyle}>➤</span>
-              <b>{hud.nav.label}</b>
-              <span className="small">{formatDistance(hud.nav.dist)}</span>
+              <span className="drive-nav-arrow" style={arrowStyle}><Icon name="nav" size={18} fill="currentColor" strokeWidth={1.5} /></span>
+              <span className="drive-nav-tx">
+                <b>{hud.nav.label}</b>
+                <span>{formatDistance(hud.nav.dist)}</span>
+              </span>
             </div>
           )}
         </div>
@@ -1430,20 +1429,26 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           <div className={`drive-mini-wrap ${hud && hud.loading > 0 ? "loading" : ""}`} title={hud && hud.loading > 0 ? t("Loading the city…") : undefined}>
             <canvas className="drive-mini" ref={mini} width={256} height={256} />
           </div>
-          <div className="drive-dial" aria-label={`${fmtNum(hud?.speed ?? 0)} ${t("km/h")}`}>
+          <div className="dgauge" ref={gauge} role="img" aria-label={t("Speedometer")}>
             <svg viewBox="0 0 80 80" aria-hidden>
-              <circle cx="40" cy="40" r={R} className="track" />
-              <circle cx="40" cy="40" r={R} className="fill" strokeDasharray={`${C * 0.75}`} strokeDashoffset={C * 0.75 * (1 - dial)} />
-              <circle cx="40" cy="40" r={R - 7} className="rpm" strokeDasharray={`${(C - 44) * 0.75}`} strokeDashoffset={(C - 44) * 0.75 * (1 - (hud?.rpm ?? 0))} />
+              {GAUGE_TICKS}
+              <circle cx="40" cy="40" r={G_R} className="dg-track" strokeDasharray={`${G_C * 0.75} ${G_C}`} />
+              <circle cx="40" cy="40" r={G_R} className="dg-fill" strokeDasharray={`0 ${G_C}`} />
+              <circle cx="40" cy="40" r={G_R2} className="dg-track thin" strokeDasharray={`${G_C2 * 0.75} ${G_C2}`} />
+              <circle cx="40" cy="40" r={G_R2} className="dg-rpm" strokeDasharray={`0 ${G_C2}`} />
             </svg>
-            <b>{fmtNum(hud?.speed ?? 0)}</b>
-            <span>{hud?.flying ? `↥ ${fmtNum(hud.alt)} m` : t("km/h")}</span>
-            {hud?.gear && <i className="gear">{hud.gear === "R" || hud.gear === "N" ? hud.gear : fmtNum(Number(hud.gear))}</i>}
+            <b className="dg-speed">0</b>
+            <span className="dg-unit">{t("km/h")}</span>
+            <i className="dg-gear" />
           </div>
           <div className="drive-side">
-            <Button className="drive-round" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} title={t("Camera")}>{CAM_ICON[hud?.cam ?? "cockpit"]}</Button>
+            <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} title={t("Camera")}>
+              <Icon name="camera" size={20} />
+              <small>{CAM_LABEL[cam]}</small>
+            </Button>
             <Button className={`drive-round ${menu ? "on" : ""}`} onClick={() => setMenu(menu ? null : "jobs")} aria-label={t("Menu")} title={t("Menu")} aria-expanded={!!menu}>
-              ☰{(hud?.jobs.length ?? 0) + (party ? 1 : 0) > 0 && <span className="badge">{fmtNum((hud?.jobs.length ?? 0))}</span>}
+              <Icon name="menu" />
+              {(hud?.jobs.length ?? 0) > 0 && <span className="badge">{fmtNum(hud?.jobs.length ?? 0)}</span>}
             </Button>
           </div>
         </div>
@@ -1451,8 +1456,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
 
       <a className="drive-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
       {!canDrive && <div className="drive-banner">🚶 {t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
-      {hud?.village && hud.loading > 0 && <div className="drive-loading">🗺️ {t("Drawing this neighbourhood from the real map…")}</div>}
-      {hud?.flying && !hud.low && hud.near === null && <div className="drive-hint small">🛬 {t("Fly low (under {m} m) to pick things up and check in", { m: LAND_ALT_M })}</div>}
+      {hud?.village && hud.loading > 0 && (
+        <div className="drive-loading">
+          <i className="drive-spinner" aria-hidden />
+          {t("Drawing this neighbourhood from the real map…")}
+        </div>
+      )}
+      {hud?.flying && !hud.low && hud.near === null && <div className="drive-hint small">{t("Fly low (under {m} m) to pick things up and check in", { m: LAND_ALT_M })}</div>}
 
       {party && <PartyHud party={party} meId={me?.id ?? ""} serverNow={hud?.serverNow ?? Date.now()} />}
       {countdown > 0 && countdown <= 5 && <div className="drive-countdown" key={countdown}>{fmtNum(countdown)}</div>}
@@ -1462,7 +1472,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           <div className="drive-tabs" role="tablist">
             {tabs.map((tb) => (
               <button key={tb.key} role="tab" aria-selected={menu === tb.key} className={menu === tb.key ? "on" : ""} onClick={() => setMenu(tb.key)}>
-                <span className="ic">{tb.icon}</span>
+                <Icon name={tb.icon} size={18} />
                 <span className="lb">{tb.label}</span>
                 {!!tb.badge && <span className="badge">{fmtNum(tb.badge)}</span>}
               </button>
@@ -1490,9 +1500,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
               style={style}
               fps={hud?.fps ?? 0}
               locked={live2 ? party?.game ?? null : null}
+              ctl={touch && canDrive ? ctl : null}
               onVehicle={pickVehicle}
               onPaint={pickPaint}
               onStyle={pickStyle}
+              onCtl={pickCtl}
               onClose={() => setMenu(null)}
             />
           )}
@@ -1518,42 +1530,25 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
             <b>{picked.title}</b>
             <span className="small muted">{picked.sub}</span>
           </div>
-          <Button className="btn small" onClick={() => (api3d.current?.setGoal({ lat: picked.lat, lng: picked.lng }), toast({ title: t("🧭 Heading to {place}", { place: picked.title }) }), setPicked(null))}>🧭 {t("Go")}</Button>
+          <Button className="btn small" onClick={() => (api3d.current?.setGoal({ lat: picked.lat, lng: picked.lng }), toast({ title: t("🧭 Heading to {place}", { place: picked.title }) }), setPicked(null))}>{t("Go")}</Button>
           {picked.sel && <Button className="btn small yellow" onClick={() => onSelect(picked.sel!)}>{t("Open")}</Button>}
           <button className="close" onClick={() => setPicked(null)} aria-label={t("Close")}>✕</button>
         </div>
       )}
 
+      {/* The job you're standing at: one big button to do it */}
       {hud?.near && (
-        <Button className="btn yellow big-btn drive-action" disabled={busy} onClick={runNear}>{hud.near.action}</Button>
+        <button key={hud.near.id} className={`drive-action ${busy ? "busy" : ""}`} style={{ "--job": hud.near.color } as React.CSSProperties} disabled={busy} onClick={runNear} aria-busy={busy || undefined}>
+          <span className="da-ic">{busy ? <i className="drive-spinner" aria-hidden /> : <Icon name={hud.near.icon} size={30} strokeWidth={2.2} />}</span>
+          <span className="da-tx">
+            <b>{busy ? t("Working…") : hud.near.verb}</b>
+            <span>{hud.near.where}</span>
+          </span>
+          <span className="da-go" aria-hidden><Icon name="right" size={22} strokeWidth={2.6} /></span>
+        </button>
       )}
 
-      {canDrive && touch && (
-        <div className="drive-pad">
-          <div className="drive-wheel-zone" {...padHandlers}>
-            <div className="drive-wheel" ref={wheelRef}>{v.flies ? "🕹️" : "☸️"}</div>
-            <span className="small">{t("drag to steer")}</span>
-          </div>
-          <div className="drive-pad-mid">
-            {v.flies ? (
-              <>
-                <button className="pedal up" aria-label={t("Climb")} {...hold("lift", 1)}>⤒</button>
-                <button className="pedal down" aria-label={t("Descend")} {...hold("lift", -1)}>⤓</button>
-                <button className="drive-chip-btn" onClick={() => api3d.current?.land()}>🛬 {t("LAND")}</button>
-              </>
-            ) : (
-              <>
-                <button className="drive-chip-btn" onPointerDown={() => (input.current.hand = true)} onPointerUp={() => (input.current.hand = false)} onPointerCancel={() => (input.current.hand = false)}>{t("DRIFT")}</button>
-                <button className="drive-chip-btn" onClick={() => api3d.current?.horn()} aria-label={t("Horn")}>📯</button>
-              </>
-            )}
-          </div>
-          <div className="drive-pedals">
-            <button className="pedal brake" aria-label={t("Brake / reverse")} {...hold("brake", 1)}>◼</button>
-            <button className="pedal gas" aria-label={t("Gas")} {...hold("gas", 1)}>▲</button>
-          </div>
-        </div>
-      )}
+      {canDrive && touch && <DrivePad input={input} kind={v.flies ? "air" : v.key === "moto" ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
       {canDrive && !touch && showKeys && (
         <div className="drive-keys small">
           {v.flies ? t("W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera") : t("W/↑ gas · S/↓ brake · A D/← → steer · Space drift · H horn · C camera")}
@@ -1561,4 +1556,31 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       )}
     </div>
   );
+}
+
+// ---- the speedometer: speed on the outer arc, revs on the inner one, 270° each
+const G_R = 33, G_R2 = 27;
+const G_C = 2 * Math.PI * G_R, G_C2 = 2 * Math.PI * G_R2;
+const GAUGE_TICKS = (
+  <g className="dg-ticks">
+    {Array.from({ length: 11 }, (_, i) => {
+      const a = (i * 27 * Math.PI) / 180, r1 = i % 5 === 0 ? 35.5 : 36.5, r2 = 39;
+      return <line key={i} x1={40 + Math.cos(a) * r1} y1={40 + Math.sin(a) * r1} x2={40 + Math.cos(a) * r2} y2={40 + Math.sin(a) * r2} className={i >= 9 ? "red" : undefined} />;
+    })}
+  </g>
+);
+
+/** Paint the speedometer straight into its DOM nodes. */
+function paintGauge(el: HTMLDivElement | null, g: { speed: number; dial: number; rpm: number; gear: string | null; flying: boolean; alt: number }) {
+  if (!el) return;
+  const text = (sel: string, v: string) => {
+    const n = el.querySelector(sel);
+    if (n && n.textContent !== v) n.textContent = v;
+  };
+  el.querySelector(".dg-fill")?.setAttribute("stroke-dasharray", `${(G_C * 0.75 * g.dial).toFixed(1)} ${G_C}`);
+  el.querySelector(".dg-rpm")?.setAttribute("stroke-dasharray", `${(G_C2 * 0.75 * g.rpm).toFixed(1)} ${G_C2}`);
+  text(".dg-speed", fmtNum(g.speed));
+  text(".dg-unit", g.flying ? `↥ ${fmtNum(g.alt)} m` : t("km/h"));
+  text(".dg-gear", g.gear ?? "");
+  el.classList.toggle("redline", !g.flying && g.rpm > 0.88);
 }
