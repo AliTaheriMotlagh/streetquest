@@ -248,11 +248,20 @@ html[lang="fa"] .pedal-lb { letter-spacing: 0; font-size: 11px; }
 .drive-tabs { position: sticky; top: -14px; z-index: 1; display: flex; gap: 6px; align-items: center; margin: -14px -14px 0; padding: 12px 12px 10px; background: var(--hud-solid); border-bottom: 1px solid var(--hud-line); }
 .drive-tabs button[role="tab"] { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 11px; border-radius: 11px; border: 1px solid transparent; background: rgba(255, 255, 255, .05); color: var(--muted); font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap; transition: background .12s, color .12s; }
 .drive-tabs button[role="tab"].on { color: #1a1200; background: var(--dpad-accent); }
+/* Four tabs in one row: icons, and the open tab's name. */
+.drive-tabs button[role="tab"]:not(.on) .lb { display: none; }
+.drive-menu { overflow-x: hidden; }
 .drive-tabs .close { margin-inline-start: auto; flex: none; }
 .drive-tab { display: flex; flex-direction: column; gap: 10px; }
 .drive-job { display: flex; align-items: center; gap: 10px; width: 100%; text-align: start; padding: 10px; border-radius: 12px; border: 1px solid var(--hud-line); background: rgba(255, 255, 255, .04); color: inherit; cursor: pointer; }
 .drive-job .ic { font-size: 22px; }
 .drive-job:active { background: rgba(255, 255, 255, .09); }
+.drive-search { width: 100%; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--hud-line); background: rgba(255, 255, 255, .06); color: inherit; font: inherit; }
+.drive-place { padding: 0; gap: 0; cursor: default; }
+.drive-place-go { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.drive-place-go .grow { min-width: 0; display: flex; flex-direction: column; }
+.drive-place-go b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-place .btn { margin-inline-end: 8px; flex: none; }
 .garage-grid, .party-games { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .party-games { grid-template-columns: 1fr; }
 .garage-car { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: start; padding: 10px; border-radius: 14px; border: 1.5px solid var(--hud-line); background: rgba(255, 255, 255, .04); color: inherit; cursor: pointer; transition: border-color .12s, background .12s; }

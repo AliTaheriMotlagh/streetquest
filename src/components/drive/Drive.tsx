@@ -1,7 +1,8 @@
 "use client";
 // The 3D city: drive (or fly) through the real streets around you — real buildings,
-// roads with their names, parks, water and street furniture from OpenStreetMap; real
-// shops with their signs; every job, base, boss, flag and player from the game standing
+// roads with their names (painted on the asphalt and on signs at the corners, in the
+// language the player picks), parks, water and street furniture from OpenStreetMap; every
+// real shop with its sign, a pin over its roof and a line in the Places list; every job, base, boss, flag and player from the game standing
 // where it is on the map; friends driving alongside, and party games with them.
 // From home (or in test mode) the vehicle *is* your commander: where you drive is where
 // you are in the game. Walking with GPS, the vehicle follows you instead.
@@ -10,11 +11,12 @@
 // from the server in batches (tiles.ts), geometry is built on Web Workers (tileMesh.ts),
 // at most one finished tile is added per frame (nearest first), far tiles drop their
 // street furniture, and the render resolution adapts to keep the frame rate up.
+// Solid things are solid: walls, trees, posts, shelters and other players' cars.
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { bearingTo, distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import { makeFrame, tileKey, tileOf, villageTile, type CityTile } from "@/lib/city";
-import { CUSTOMER_DOOR, PLACE_CATS, type Place, type PlaceCat } from "@/lib/places";
+import { CUSTOMER_DOOR, PLACE_CATS } from "@/lib/places";
 import { INTERACT_RADIUS_M } from "@/lib/spawns";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { S } from "@/lib/settings";
@@ -36,12 +38,15 @@ import { DriveParty, PartyHud } from "./DriveParty";
 import { Markers, markersOf } from "./markers";
 import { DriveNet, type NetState } from "./net";
 import { Others } from "./others";
+import { StorePins, type Pin } from "./pins";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, TileSource, VectorSource } from "./tiles";
-import type { Style } from "./tileMesh";
+import type { Label, Style } from "./tileMesh";
+import { oneLine, tradeOf } from "./trades";
+import { NAME_MODES, type NameMode } from "./vectorTile";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
 import {
-  makeBeacon, makeClouds, makeCoin, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, setNight, tileMeshes,
+  makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, setNight, tileMeshes,
   type Board, type Phase, type TileMeshes,
 } from "./world3d";
 
@@ -81,7 +86,9 @@ type Job = {
 };
 
 type CamMode = "cockpit" | "chase" | "far" | "top";
-type MenuTab = "jobs" | "garage" | "party";
+type MenuTab = "jobs" | "places" | "garage" | "party";
+/** A line in the Places list: a real shop from the map, a player's shop or a business. */
+type PlaceRow = { id: string; emoji: string; name: string; sub: string; dist: number; lat: number; lng: number; sel: Selected | null };
 const CAM_LABEL: Record<CamMode, string> = { cockpit: "1P", chase: "3P", far: "FAR", top: "TOP" };
 type Picked = { emoji: string; title: string; sub: string; lat: number; lng: number; sel: Selected | null };
 type Hud = {
@@ -109,6 +116,9 @@ const LOOT_PICKUP_M = 16;
 const CAMS: CamMode[] = ["cockpit", "chase", "far", "top"];
 const CAM_KEY = "sq_drive_cam";
 const CTL_KEY = "sq_drive_ctl";
+const NAMES_KEY = "sq_drive_names";
+const PIN_M = 650; // shop pins this far
+const CORNER_M = 170; // street-name signs at corners this close
 
 const store = {
   get: (k: string) => {
@@ -144,6 +154,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     const c = store.get(COLOR_KEY);
     return isPaint(c) ? c : PAINTS[0];
   });
+  const [names, setNames] = useState<NameMode>(() => {
+    const n = store.get(NAMES_KEY) as NameMode | null;
+    return n && NAME_MODES.includes(n) ? n : "mine";
+  });
+  const [places, setPlaces] = useState<PlaceRow[]>([]);
+  const [query, setQuery] = useState("");
+  const placeQuery = useRef("");
   const [party, setParty] = useState<PartyView | null>(null);
   const [picked, setPicked] = useState<Picked | null>(null);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
@@ -155,6 +172,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
   const gauge = useRef<HTMLDivElement>(null);
   const menuOpen = useRef(false);
   menuOpen.current = !!menu;
+  const menuTab = useRef<MenuTab | null>(null);
+  menuTab.current = menu;
   // Latest props/context for the render loop (it lives as long as the component).
   const live = useRef({ world, me, follow, canDrive, onMove, onClaim, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
   live.current = { ...live.current, world, me, follow, canDrive, onMove, onClaim, onSelect, act, refresh, vehicle, paint, sim: !!sim };
@@ -225,6 +244,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     const mats = makeMaterials(style);
     const tpl = makeTemplates(style);
     const collision = new CollisionWorld();
+    // Street furniture apart from the buildings: it stops the vehicle, but never the
+    // camera, a landing flyer or the search for a street to start on.
+    const obstacles = new CollisionWorld();
 
     // Fireflies around the car in the storybook city.
     const dustN = style === "toon" ? (lite ? 90 : 220) : 0;
@@ -288,7 +310,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     // cell those can't reach; a placeholder village only if a cell has no map at all.
     const vtPool = new BuildPool(1);
     const fallback = new Set<string>();
-    const vsource = new VectorSource(vtPool, getLocale(), true, take, (key) => {
+    const vsource = new VectorSource(vtPool, getLocale(), true, names, take, (key) => {
       fallback.add(key);
       const slot = tiles.get(key);
       if (slot) slot.villageAt = performance.now() + 20_000;
@@ -329,6 +351,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         if (s.dist > DROP_M) {
           if (s.mesh) (scene.remove(s.mesh.group), s.mesh.dispose());
           collision.remove(k);
+          obstacles.remove(k);
           source.forget(k);
           vsource.forget(k);
           tiles.delete(k);
@@ -382,7 +405,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       job.mesh.detail.visible = slot.dist < DETAIL_M;
       scene.add(job.mesh.group);
       collision.add(job.key, job.mesh.footprints);
-      labelsDirty = signsDirty = true;
+      obstacles.add(job.key, job.mesh.obstacles);
+      labelsDirty = true;
       // Snap onto a street once our own cell is drawn — and again when its real map
       // arrives, unless the player has already driven off. GPS fixes are often indoors.
       const mine = tileOf(frame.toLatLng(st.x, st.z));
@@ -428,12 +452,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     const beacons = new Map<string, Beacon>();
     type Loot = ReturnType<typeof makeLoot> & { id: string; taken: boolean };
     const loot = new Map<string, Loot>();
-    const signs = new Map<string, ReturnType<typeof makeSign>>();
     const labels = new Map<string, ReturnType<typeof makeStreetLabel> & { x: number; z: number; angle: number }>();
     const boards = new Map<string, Board>();
+    const corners = new Map<string, Board>();
     let boardNight = 0.15;
-    const names = new Map<string, ReturnType<typeof makeSign>>();
-    let signsDirty = true, labelsDirty = true;
+    const titles = new Map<string, ReturnType<typeof makeSign>>();
+    const pins = new StorePins(scene);
+    let labelsDirty = true;
     let jobs: Job[] = [];
     let navGoal: LatLng | null = live.current.goal;
     const others = new Others(scene, frame, style, lite);
@@ -516,7 +541,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       }
       markers.set(markersOf(w, Date.now()));
       others.setWalkers(w?.players ?? []);
-      signsDirty = true;
+    };
+
+    /** A shop label by its id (`tile key:index`), from the tile it's on. */
+    const shopById = (id: string): Label | null => {
+      const cut = id.lastIndexOf(":");
+      const l = tiles.get(id.slice(0, cut))?.mesh?.labels[Number(id.slice(cut + 1))];
+      return l?.kind === "shop" ? l : null;
     };
 
     /** Storefront boards and house numbers on the walls close by (placed by the worker). */
@@ -525,7 +556,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       for (const s of tiles.values()) {
         if (!s.mesh || s.dist > 160) continue;
         s.mesh.labels.forEach((l, i) => {
-          if (l.kind !== "shop" && l.kind !== "num") return;
+          if ((l.kind !== "shop" || l.noBoard) && l.kind !== "num") return;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d < (l.kind === "num" ? 55 : 150)) want.push({ id: `${s.key}:${i}`, l, d });
         });
@@ -540,33 +571,83 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         b.group.position.set(l.x, l.y, l.z);
         b.group.rotation.y = l.angle;
         if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
+        if (l.kind === "shop") b.group.traverse((o) => (o.userData = { pick: { kind: "store", id } }));
         scene.add(b.group);
         boards.set(id, b);
       }
     };
 
-    /** Floating name pills for places on tiles without storefront data (server tiles). */
-    const syncSigns = () => {
-      signsDirty = false;
-      const places: Place[] = [];
-      for (const s of tiles.values()) if (s.real && s.data && s.dist < 300 && !(s.data as { s?: unknown[] }).s) places.push(...s.data.p);
-      const taken = new Set([...beacons.values()].map((b) => `${b.job.lat.toFixed(5)},${b.job.lng.toFixed(5)}`));
-      const near = places
-        .map((p) => ({ p, q: frame.toXZ(p.lat, p.lng) }))
-        .map((x) => ({ ...x, d: Math.hypot(x.q.x - st.x, x.q.z - st.z) }))
-        .filter((x) => x.d < 230 && !taken.has(`${x.p.lat.toFixed(5)},${x.p.lng.toFixed(5)}`))
-        .sort((a, b) => a.d - b.d)
-        .slice(0, lite ? 14 : 32);
-      const keep = new Set(near.map((x) => x.p.id));
-      for (const [id, s] of signs) if (!keep.has(id)) (scene.remove(s.sprite), s.dispose(), signs.delete(id));
-      for (const { p, q } of near) {
-        if (signs.has(p.id)) continue;
-        const cat = PLACE_CATS[p.cat as PlaceCat] ?? PLACE_CATS.shop;
-        const s = makeSign(cat.emoji, p.name, cat.color);
-        s.sprite.position.set(q.x, 6.5, q.z);
-        scene.add(s.sprite);
-        signs.set(p.id, s);
+    /** Street-name signs on their poles at the corners close by. */
+    const syncCorners = () => {
+      const want: { id: string; l: Label; d: number }[] = [];
+      for (const s of tiles.values()) {
+        if (!s.mesh || s.dist > CORNER_M) continue;
+        s.mesh.labels.forEach((l, i) => {
+          if (l.kind !== "corner") return;
+          const d = Math.hypot(l.x - st.x, l.z - st.z);
+          if (d < CORNER_M) want.push({ id: `${s.key}:${i}`, l, d });
+        });
       }
+      want.sort((a, b) => a.d - b.d);
+      const pick = want.slice(0, lite ? 6 : 16);
+      const keep = new Set(pick.map((w) => w.id));
+      for (const [id, b] of corners) if (!keep.has(id)) (scene.remove(b.group), b.dispose(), corners.delete(id));
+      for (const { id, l } of pick) {
+        if (corners.has(id)) continue;
+        const b = makeCornerSign(l.plates ?? [], style);
+        b.group.position.set(l.x, l.y, l.z);
+        scene.add(b.group);
+        corners.set(id, b);
+      }
+    };
+
+    /** A pin over every shop around (the nearest few hundred), boards or not. */
+    const syncPins = () => {
+      const want: (Pin & { d: number })[] = [];
+      for (const s of tiles.values()) {
+        if (!s.mesh || s.dist > PIN_M) continue;
+        s.mesh.labels.forEach((l, i) => {
+          if (l.kind !== "shop") return;
+          const id = `${s.key}:${i}`;
+          const d = Math.hypot(l.x - st.x, l.z - st.z);
+          // Right next to its board the pin adds nothing.
+          if (d > PIN_M || (d < 22 && boards.has(id))) return;
+          want.push({ id, x: l.x, y: Math.min(60, l.top ?? 4) + 3.4, z: l.z, cls: l.cls, d });
+        });
+      }
+      want.sort((a, b) => a.d - b.d);
+      const pxPerUnit = renderer.domElement.height / 2 / Math.tan((camera.fov * Math.PI) / 360);
+      pins.set(want.slice(0, lite ? 90 : 240), pxPerUnit, dpr);
+    };
+
+    /** The Places list (only while it's open): shops on the map, players' shops, businesses. */
+    let placesSig = "";
+    const syncPlaces = () => {
+      const q = placeQuery.current.trim().toLowerCase();
+      const match = (...texts: string[]) => !q || texts.some((x) => x.toLowerCase().includes(q));
+      const here = frame.toLatLng(st.x, st.z);
+      const rows: PlaceRow[] = [];
+      for (const s of tiles.values()) {
+        if (!s.mesh) continue;
+        s.mesh.labels.forEach((l, i) => {
+          if (l.kind !== "shop") return;
+          const tr = tradeOf(l.cls), name = oneLine(l.text), sub = t(tr.label);
+          if (!match(name, sub)) return;
+          const at = frame.toLatLng(l.x, l.z);
+          rows.push({ id: `${s.key}:${i}`, emoji: tr.emoji, name, sub, dist: Math.hypot(l.x - st.x, l.z - st.z), lat: at.lat, lng: at.lng, sel: null });
+        });
+      }
+      const w = live.current.world;
+      for (const sh of w?.shops ?? [])
+        if ((sh.live || sh.mine) && match(sh.name, t("Player shop"))) rows.push({ id: `sh:${sh.id}`, emoji: sh.emoji, name: sh.name, sub: sh.deal ? `${t("Player shop")} · −${fmtNum(sh.deal)}%` : t("Player shop"), dist: distanceM(here, sh), lat: sh.lat, lng: sh.lng, sel: { type: "shop", data: sh } });
+      for (const b of w?.businesses ?? [])
+        if (match(b.name, t("Business"))) rows.push({ id: `bz:${b.id}`, emoji: b.emoji, name: b.name, sub: t("Business"), dist: distanceM(here, b), lat: b.lat, lng: b.lng, sel: { type: "biz", data: b } });
+      rows.sort((a, b) => a.dist - b.dist);
+      const top = rows.slice(0, 80);
+      const sig = `${q}|${rows.length}|${top.map((r) => `${r.id}:${Math.round(r.dist / 10)}`).join(",")}`;
+      if (sig === placesSig) return;
+      placesSig = sig;
+      setPlaces(top);
     };
 
     /** Street names painted on the road near us, and names over landmark buildings. */
@@ -585,7 +666,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       const streets = want.filter((w) => !w.building).slice(0, lite ? 8 : 20), blds = want.filter((w) => w.building).slice(0, lite ? 4 : 10);
       const keepS = new Set(streets.map((w) => w.id)), keepB = new Set(blds.map((w) => w.id));
       for (const [id, l] of labels) if (!keepS.has(id)) (scene.remove(l.mesh), l.dispose(), labels.delete(id));
-      for (const [id, n] of names) if (!keepB.has(id)) (scene.remove(n.sprite), n.dispose(), names.delete(id));
+      for (const [id, n] of titles) if (!keepB.has(id)) (scene.remove(n.sprite), n.dispose(), titles.delete(id));
       for (const w of streets) {
         if (labels.has(w.id)) continue;
         const l = Object.assign(makeStreetLabel(w.text, w.w, style), { x: w.x, z: w.z, angle: w.angle });
@@ -594,11 +675,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         labels.set(w.id, l);
       }
       for (const w of blds) {
-        if (names.has(w.id)) continue;
+        if (titles.has(w.id)) continue;
         const n = makeSign("🏛️", w.text, "#ffffff");
         n.sprite.position.set(w.x, w.y, w.z);
         scene.add(n.sprite);
-        names.set(w.id, n);
+        titles.set(w.id, n);
       }
     };
 
@@ -815,13 +896,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...others.pickables()];
+      const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
       const hit = ray.intersectObjects(targets, false)[0];
-      const pick = hit?.object.userData.pick as { kind: string; id: string } | undefined;
+      // Nothing solid under the finger: a shop's pin, maybe.
+      const pinId = hit ? null : pins.pick(camera, r, cx, cy);
+      const pick = (hit?.object.userData.pick as { kind: string; id: string } | undefined) ?? (pinId ? { kind: "store", id: pinId } : undefined);
       if (!pick) return setPicked(null);
       const here = frame.toLatLng(st.x, st.z);
       const L = live.current;
-      if (pick.kind === "job") {
+      if (pick.kind === "store") {
+        const l = shopById(pick.id);
+        if (!l) return setPicked(null);
+        const tr = tradeOf(l.cls), at = frame.toLatLng(l.x, l.z);
+        setPicked({ emoji: tr.emoji, title: oneLine(l.text), sub: `${t(tr.label)} · ${formatDistance(distanceM(here, at))}`, lat: at.lat, lng: at.lng, sel: null });
+      } else if (pick.kind === "job") {
         const j = beacons.get(pick.id)?.job;
         if (j) setPicked({ emoji: j.emoji, title: j.label, sub: formatDistance(distanceM(here, j)), lat: j.lat, lng: j.lng, sel: j.sel });
       } else if (pick.kind === "loot") {
@@ -951,13 +1039,23 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         // Two circles (nose and tail) on wheels; one around a flyer.
         let hit = null as { nx: number; nz: number } | null;
         const offs = D.flies || D.key === "moto" ? [0] : [1.15, -1.15];
-        for (const off of offs) {
-          const r = collision.collide(nx + nfx * off, nz + nfz * off, D.radius, st.alt, model.height);
-          if (r.hit) {
-            nx = r.x - nfx * off;
-            nz = r.z - nfz * off;
-            hit = r.hit;
+        for (const off of offs)
+          for (const world of [collision, obstacles]) {
+            const r = world.collide(nx + nfx * off, nz + nfz * off, D.radius, st.alt, model.height);
+            if (r.hit) {
+              nx = r.x - nfx * off;
+              nz = r.z - nfz * off;
+              hit = r.hit;
+            }
           }
+        // Other players' cars are solid too (flyers pass over each other).
+        for (const o of others.positions()) {
+          if (Math.abs(o.y - st.alt) > 2) continue;
+          const dx = nx - o.x, dz = nz - o.z, d = Math.hypot(dx, dz), min = D.radius + o.radius;
+          if (d >= min || d < 1e-3) continue;
+          nx = o.x + (dx / d) * min;
+          nz = o.z + (dz / d) * min;
+          hit = { nx: dx / d, nz: dz / d };
         }
         if (hit) {
           const into = st.vx * hit.nx + st.vz * hit.nz;
@@ -1037,9 +1135,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         const want = camMode === "top" ? new THREE.Vector3(st.x + nfx * 6, st.alt + height, st.z + nfz * 6 + 0.01) : new THREE.Vector3(st.x - nfx * dist, st.alt + height, st.z - nfz * dist);
         camPos.lerp(want, 1 - Math.exp(-dt * (camMode === "top" ? 6 : 4.5)));
         // Don't let the camera end up inside a building: pull it in toward the vehicle.
-        if (camMode !== "top") {
-          const r = collision.collide(camPos.x, camPos.z, 1, camPos.y - 1, 2);
-          if (r.hit) camPos.set(r.x, camPos.y, r.z);
+        // (Pushing it out sideways can strand it behind the building: walk out from the
+        // vehicle instead and stop at the last clear spot on the way.)
+        if (camMode !== "top" && collision.collide(camPos.x, camPos.z, 1, camPos.y - 1, 2).hit) {
+          let k = 0;
+          for (let s = 1; s <= 12; s++) {
+            const f = s / 12;
+            if (collision.collide(st.x + (camPos.x - st.x) * f, st.z + (camPos.z - st.z) * f, 1, camPos.y - 1, 2).hit) break;
+            k = f;
+          }
+          camPos.set(st.x + (camPos.x - st.x) * k, camPos.y, st.z + (camPos.z - st.z) * k);
         }
         camera.position.copy(camPos);
         if (camMode === "top") camera.up.set(nfx, 0, nfz);
@@ -1112,12 +1217,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       if (now - lastSlow > 250) {
         lastSlow = now;
         ensureTiles();
-        if (signsDirty || Math.random() < 0.25) syncSigns();
-        if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards());
+        if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncPins());
+        if (menuTab.current === "places") syncPlaces();
         markers.sync(st.x, st.z);
         // Signs right next to the camera would fill the screen: hide them up close.
         for (const b of beacons.values()) b.sign.visible = Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z) > 30;
-        for (const sg of signs.values()) sg.sprite.visible = Math.hypot(sg.sprite.position.x - camPos.x, sg.sprite.position.z - camPos.z) > 24;
         for (const l of loot.values()) {
           if (l.taken || !low) continue;
           if (Math.hypot(l.group.position.x - st.x, l.group.position.z - st.z) < LOOT_PICKUP_M) {
@@ -1131,7 +1235,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           st0.reported = { x: st.x, z: st.z };
           L.onMove(frame.toLatLng(st.x, st.z));
         }
-        const name = streetHere();
+        const found = streetHere();
+        const name = found && oneLine(found);
         if (name && name !== streetName) setBanner({ text: name, at: now });
         streetName = name;
       }
@@ -1244,6 +1349,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
             g.arc((x - st.x) * scale, (z - st.z) * scale, r, 0, Math.PI * 2);
             g.fill();
           };
+          for (const p of pins.dots()) if (Math.abs(p.x - st.x) < 250 && Math.abs(p.z - st.z) < 250) dot(p.x, p.z, p.color, 2.2);
           for (const m of markers.dots()) dot(m.x, m.z, m.color, 3.2);
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
           for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#f0c05a", 4);
@@ -1284,7 +1390,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, renderer, mats, live, input, collision, others, markers, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1321,10 +1427,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       for (const r of ready) r.mesh.dispose();
       for (const b of beacons.values()) b.dispose();
       for (const l of loot.values()) l.dispose();
-      for (const s of signs.values()) s.dispose();
       for (const l of labels.values()) l.dispose();
-      for (const n of names.values()) n.dispose();
+      for (const n of titles.values()) n.dispose();
       for (const b of boards.values()) b.dispose();
+      for (const b of corners.values()) b.dispose();
+      pins.dispose();
       for (const g of gates) g.dispose();
       for (const cn of coins) cn.dispose();
       others.dispose();
@@ -1345,7 +1452,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       renderer.domElement.remove();
       api3d.current = null;
     };
-  }, [style]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [style, names]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runNear = async () => {
     if (!hud?.near || busy) return;
@@ -1370,6 +1477,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     setStyle(s);
     store.set(STYLE_KEY, s);
   };
+  const pickNames = (n: NameMode) => {
+    setNames(n);
+    store.set(NAMES_KEY, n);
+  };
+  const onQuery = (q: string) => {
+    setQuery(q);
+    placeQuery.current = q;
+  };
+  const goTo = (p: { lat: number; lng: number }, label: string) => {
+    api3d.current?.setGoal({ lat: p.lat, lng: p.lng });
+    setMenu(null);
+    toast({ title: t("🧭 Heading to {place}", { place: label }) });
+  };
   const pickCtl = (m: SteerMode) => {
     setCtl(m);
     store.set(CTL_KEY, m);
@@ -1385,6 +1505,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
 
   const tabs: { key: MenuTab; icon: IconName; label: string; badge?: number }[] = [
     { key: "jobs", icon: "list", label: t("Jobs nearby"), badge: hud?.jobs.length },
+    { key: "places", icon: "store", label: t("Places") },
     { key: "garage", icon: "garage", label: t("Garage") },
     { key: "party", icon: "people", label: t("Party games"), badge: party?.members.length },
   ];
@@ -1483,11 +1604,30 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
             <div className="drive-tab">
               {hud.jobs.length === 0 && <p className="small muted">{t("No jobs around here yet — drive on, or check back in a few minutes.")}</p>}
               {hud.jobs.map((j) => (
-                <button key={j.id} className="drive-job" onClick={() => (api3d.current?.setGoal({ lat: j.lat, lng: j.lng }), setMenu(null), toast({ title: t("🧭 Heading to {place}", { place: j.label }) }))}>
+                <button key={j.id} className="drive-job" onClick={() => goTo(j, j.label)}>
                   <span className="ic">{j.emoji}</span>
                   <span className="grow">{j.label}</span>
                   <span className="small muted">{formatDistance(j.dist)}</span>
                 </button>
+              ))}
+            </div>
+          )}
+          {menu === "places" && (
+            <div className="drive-tab">
+              <input className="drive-search" type="search" value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t("Search shops, banks, cafés…")} aria-label={t("Search places")} />
+              {places.length === 0 && <p className="small muted">{query.trim() ? t("Nothing called “{q}” around here.", { q: query.trim() }) : t("No places found around here yet — drive on and the map fills in.")}</p>}
+              {places.map((p) => (
+                <div key={p.id} className="drive-job drive-place">
+                  <button className="drive-place-go" onClick={() => goTo(p, p.name)}>
+                    <span className="ic">{p.emoji}</span>
+                    <span className="grow">
+                      <b>{p.name}</b>
+                      <span className="small muted">{p.sub}</span>
+                    </span>
+                    <span className="small muted">{formatDistance(p.dist)}</span>
+                  </button>
+                  {p.sel && <Button className="btn small yellow" onClick={() => onSelect(p.sel!)}>{t("Open")}</Button>}
+                </div>
               ))}
             </div>
           )}
@@ -1498,12 +1638,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
               vehicle={vehicle}
               paint={paint}
               style={style}
+              names={names}
               fps={hud?.fps ?? 0}
               locked={live2 ? party?.game ?? null : null}
               ctl={touch && canDrive ? ctl : null}
               onVehicle={pickVehicle}
               onPaint={pickPaint}
               onStyle={pickStyle}
+              onNames={pickNames}
               onCtl={pickCtl}
               onClose={() => setMenu(null)}
             />

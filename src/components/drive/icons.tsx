@@ -24,6 +24,7 @@ const PATHS = {
   people: "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-6 9a6 6 0 0 1 12 0m1.5-9a3 3 0 1 0 0-6m1.5 15h3a5 5 0 0 0-4-4.9",
   list: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
   garage: "M3 10 12 4l9 6v10H3V10Zm4 10v-6h10v6M7 17h10",
+  store: "M4 9.5 5.5 4h13L20 9.5M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M5 11.5V20h14v-8.5M10 20v-5h4v5",
 } as const;
 
 export type IconName = keyof typeof PATHS;

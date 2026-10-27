@@ -11,7 +11,7 @@ import { TILE_V, type CityTile } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { api } from "../game/client";
 import { buildTileArrays, type Style, type TileArrays } from "./tileMesh";
-import { vtKey, vtTilesForCell, type VtCell } from "./vectorTile";
+import { vtKey, vtTilesForCell, type NameMode, type VtCell } from "./vectorTile";
 
 // ---------------------------------------------------------------- IndexedDB cache
 const DB = "sq-city";
@@ -277,10 +277,10 @@ export class BuildPool {
   }
 
   /** Download and slice one zoom-14 street-map tile (needs a working worker). */
-  slice(x: number, y: number, locale: string, infill: boolean): Promise<{ cells: VtCell[]; empty: boolean }> {
+  slice(x: number, y: number, locale: string, infill: boolean, names: NameMode): Promise<{ cells: VtCell[]; empty: boolean }> {
     const slot = !this.broken ? this.workers.find((s) => !s.busy) : undefined;
     if (!slot) return Promise.reject(new Error(this.broken || !this.workers.length ? "no worker" : "busy"));
-    return this.send(slot, { kind: "vt", x, y, locale, infill });
+    return this.send(slot, { kind: "vt", x, y, locale, infill, names });
   }
 
   /** Workers exist and haven't failed. */
@@ -321,11 +321,11 @@ export class VectorSource {
    * `onTile`: a finished cell (real map data). `onFail`: this cell's map couldn't be
    * reached — the caller falls back to another source.
    */
-  constructor(private pool: BuildPool, private locale: string, private infill: boolean, private onTile: (t: CityTile) => void, private onFail: (key: string) => void) {
+  constructor(private pool: BuildPool, private locale: string, private infill: boolean, private names: NameMode, private onTile: (t: CityTile) => void, private onFail: (key: string) => void) {
     this.timer = setInterval(() => this.pump(), 300);
   }
 
-  private cacheKey = (cell: string) => `vt${VT_CELL_V}:${this.locale}:${this.infill ? 1 : 0}:${cell}`;
+  private cacheKey = (cell: string) => `vt${VT_CELL_V}:${this.locale}:${this.names}:${this.infill ? 1 : 0}:${cell}`;
 
   want(keys: string[]) {
     for (const key of keys) {
@@ -387,7 +387,7 @@ export class VectorSource {
       const tile = this.tiles.get(t)!;
       tile.state = "loading";
       this.pool
-        .slice(x, y, this.locale, this.infill)
+        .slice(x, y, this.locale, this.infill, this.names)
         .then(({ cells }) => {
           tile.state = "done";
           for (const c of cells) tile.cells.set(c.key, c);

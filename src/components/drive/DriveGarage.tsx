@@ -1,11 +1,13 @@
 "use client";
-// The garage: pick what you drive (or fly) and its paint, and how the city looks.
+// The garage: pick what you drive (or fly) and its paint, how the city looks, and which
+// names its streets and shops show.
 import { useState } from "react";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { PAINTS, unlocked, VEHICLE_KEYS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { PARTY_GAMES, type PartyGame } from "@/lib/party";
 import { Button } from "@/components/Button";
 import type { Style } from "./tileMesh";
+import type { NameMode } from "./vectorTile";
 import { askTilt, type SteerMode } from "./DrivePad";
 import { Icon, type IconName } from "./icons";
 
@@ -15,11 +17,18 @@ const CTL: { key: SteerMode; icon: IconName; label: string }[] = [
   { key: "tilt", icon: "tilt", label: msg("Tilt") },
 ];
 
+const NAMES: { key: NameMode; label: string }[] = [
+  { key: "mine", label: msg("My language") },
+  { key: "local", label: msg("As on the street") },
+  { key: "both", label: msg("Both") },
+];
+
 type Props = {
   level: number;
   vehicle: VehicleKey;
   paint: string;
   style: Style;
+  names: NameMode;
   fps: number;
   /** A ground-only round is running: flyers are parked until it ends. */
   locked: PartyGame | null;
@@ -28,13 +37,14 @@ type Props = {
   onVehicle: (k: VehicleKey) => void;
   onPaint: (c: string) => void;
   onStyle: (s: Style) => void;
+  onNames: (n: NameMode) => void;
   onCtl: (m: SteerMode) => void;
   onClose: () => void;
   /** Inside the drive menu: no window of its own. */
   embedded?: boolean;
 };
 
-export function DriveGarage({ level, vehicle, paint, style, fps, locked, ctl, onVehicle, onPaint, onStyle, onCtl, onClose, embedded }: Props) {
+export function DriveGarage({ level, vehicle, paint, style, names, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onCtl, onClose, embedded }: Props) {
   const groundOnly = !!locked && PARTY_GAMES[locked].groundOnly;
   const [tiltError, setTiltError] = useState(false);
   const pickCtl = async (m: SteerMode) => {
@@ -94,6 +104,14 @@ export function DriveGarage({ level, vehicle, paint, style, fps, locked, ctl, on
       <div className="seg">
         <Button className={`btn small ${style === "real" ? "yellow" : "ghost"}`} onClick={() => onStyle("real")}>🏙️ {t("Realistic")}</Button>
         <Button className={`btn small ${style === "toon" ? "yellow" : "ghost"}`} onClick={() => onStyle("toon")}>🧸 {t("Cartoon")}</Button>
+      </div>
+      <b className="small">{t("Street and shop names")}</b>
+      <div className="seg" role="radiogroup" aria-label={t("Street and shop names")}>
+        {NAMES.map((n) => (
+          <Button key={n.key} role="radio" aria-checked={names === n.key} className={`btn small ${names === n.key ? "yellow" : "ghost"}`} onClick={() => onNames(n.key)}>
+            {t(n.label)}
+          </Button>
+        ))}
       </div>
       {fps > 0 && <p className="small muted">{t("{n} frames a second — the picture sharpens or softens on its own to keep it smooth.", { n: fps })}</p>}
     </div>

@@ -4,7 +4,9 @@
 //
 // Per tile: a handful of merged layers (ground, water, asphalt, road markings, walls,
 // glass façades, roofs), instance matrices for street furniture (trees, lamps, traffic
-// lights, bus stops), building footprints for collisions and the street names to paint.
+// lights, bus stops), building footprints for collisions, small solid footprints for the
+// furniture (a car stops at a tree or a lamp post), and the text to show: street names,
+// corner street-name signs, every shop and house number.
 import * as THREE from "three";
 import { hashStr, rng, type LatLng } from "@/lib/geo";
 import { insidePacked, makeFrame, PROP, type BuildingKind, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
@@ -19,15 +21,34 @@ export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: n
 /**
  * Text to show in the city: street names on the asphalt, landmark names over buildings,
  * storefront signs on the wall nearest a shop ("shop", with its OSM class in `cls`; on a
- * pole when there's no wall close by) and house-number plaques ("num").
+ * pole when there's no wall close by; `noBoard` when its wall is already full — it still
+ * gets a pin and a line in the Places list; `top`: the roof over it), house-number
+ * plaques ("num") and street-name signs on a pole at a corner ("corner", one plate per
+ * street in `plates`, each turned to run along its street). Names may hold a second
+ * line after "\n" (trades.ts nameLines).
  */
-export type Label = { text: string; x: number; z: number; angle: number; w: number; y: number; kind: "street" | "building" | "shop" | "num"; cls?: string; pole?: boolean };
+export type Label = {
+  text: string;
+  x: number;
+  z: number;
+  angle: number;
+  w: number;
+  y: number;
+  kind: "street" | "building" | "shop" | "num" | "corner";
+  cls?: string;
+  pole?: boolean;
+  noBoard?: boolean;
+  top?: number;
+  plates?: { text: string; angle: number }[];
+};
 export type TileArrays = {
   key: string;
   real: boolean;
   layers: Layer[];
   props: Instances[];
   footprints: Footprint[];
+  /** Street furniture you can hit: trunks, posts, poles, bus shelters. */
+  obstacles: Footprint[];
   roads: Float32Array[];
   roadWidths: number[];
   roadKinds: RoadKind[];
@@ -234,6 +255,86 @@ function disc(b: Builder, x: number, z: number, rad: number, y: number, c: THREE
     b.vert(px, y, pz, 0, 1, 0, c, px * uvScale, pz * uvScale);
   }
   for (let k = 0; k < seg; k++) up(b, center, center + 2 + k, center + 1 + k);
+}
+
+// ---------------------------------------------------------------- streets nearby
+type Seg = { ax: number; az: number; bx: number; bz: number; w: number };
+const RG = 24;
+
+/** The tile's drivable asphalt in a 24 m grid: which street is nearest, is a spot on one. */
+function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], drawn: boolean[]) {
+  const segs: Seg[] = [];
+  const grid = new Map<string, Seg[]>();
+  lines.forEach((p, li) => {
+    if (!drawn[li] || !DRIVABLE.includes(kinds[li])) return;
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: widths[li] };
+      segs.push(sg);
+      const pad = sg.w / 2 + 2;
+      for (let gx = Math.floor((Math.min(sg.ax, sg.bx) - pad) / RG); gx <= Math.floor((Math.max(sg.ax, sg.bx) + pad) / RG); gx++)
+        for (let gz = Math.floor((Math.min(sg.az, sg.bz) - pad) / RG); gz <= Math.floor((Math.max(sg.az, sg.bz) + pad) / RG); gz++) {
+          const k = `${gx}_${gz}`;
+          const l = grid.get(k);
+          if (l) l.push(sg);
+          else grid.set(k, [sg]);
+        }
+    }
+  });
+  const project = (sg: Seg, x: number, z: number) => {
+    const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, l2 = dx * dx + dz * dz || 1;
+    const k = Math.max(0, Math.min(1, ((x - sg.ax) * dx + (z - sg.az) * dz) / l2));
+    const px = sg.ax + dx * k, pz = sg.az + dz * k, len = Math.sqrt(l2);
+    return { px, pz, dx: dx / len, dz: dz / len, w: sg.w, d: Math.hypot(px - x, pz - z) };
+  };
+  const nearest = (x: number, z: number, reach: number) => {
+    let best: ReturnType<typeof project> | null = null;
+    const r = Math.ceil(reach / RG);
+    const gx = Math.floor(x / RG), gz = Math.floor(z / RG);
+    for (let i = -r; i <= r; i++)
+      for (let j = -r; j <= r; j++)
+        for (const sg of grid.get(`${gx + i}_${gz + j}`) ?? []) {
+          const q = project(sg, x, z);
+          if (q.d <= reach && (!best || q.d < best.d)) best = q;
+        }
+    return best;
+  };
+  return {
+    nearest,
+    /** On the asphalt (or within `pad` metres of its edge). */
+    on(x: number, z: number, pad: number) {
+      for (const sg of grid.get(`${Math.floor(x / RG)}_${Math.floor(z / RG)}`) ?? []) if (project(sg, x, z).d < sg.w / 2 + pad) return true;
+      return false;
+    },
+    /**
+     * A post that the map puts on the road itself (traffic lights and bus stops are often
+     * mapped on the centreline): moved to the kerb, `out` metres past the edge, on the
+     * side it was on. Returns the spot and the yaw that faces the street.
+     */
+    kerb(x: number, z: number, out: number) {
+      const q = nearest(x, z, 40);
+      if (!q) return null;
+      const nx = -q.dz, nz = q.dx;
+      const side = Math.sign((x - q.px) * nx + (z - q.pz) * nz) || 1;
+      const yaw = Math.atan2(-nx * side, -nz * side);
+      if (q.d >= q.w / 2 + out * 0.6) return { x, z, yaw }; // already on the pavement
+      return { x: q.px + nx * side * (q.w / 2 + out), z: q.pz + nz * side * (q.w / 2 + out), yaw };
+    },
+  };
+}
+
+/** A small solid for the collision world: an octagon (trunk, post) or a turned box. */
+function post(x: number, z: number, r: number, h: number): Footprint {
+  const pts = new Float32Array(16);
+  for (let k = 0; k < 8; k++) (pts[k * 2] = x + Math.cos((k / 8) * Math.PI * 2) * r), (pts[k * 2 + 1] = z + Math.sin((k / 8) * Math.PI * 2) * r);
+  return { pts, minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, h, mh: 0 };
+}
+function box(x: number, z: number, hw: number, hd: number, yaw: number, h: number): Footprint {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const pts = new Float32Array(8);
+  [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].forEach(([lx, lz], i) => ((pts[i * 2] = x + lx * c + lz * s), (pts[i * 2 + 1] = z - lx * s + lz * c)));
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < 8; i += 2) (minX = Math.min(minX, pts[i])), (maxX = Math.max(maxX, pts[i])), (minZ = Math.min(minZ, pts[i + 1])), (maxZ = Math.max(maxZ, pts[i + 1]));
+  return { pts, minX, maxX, minZ, maxZ, h, mh: 0 };
 }
 
 // ---------------------------------------------------------------- the tile
@@ -496,39 +597,41 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
 
   // ---- street furniture
   const blocked = (x: number, z: number, pad: number) => footprints.some((f) => x >= f.minX - pad && x <= f.maxX + pad && z >= f.minZ - pad && z <= f.maxZ + pad && insidePacked(f.pts, x, z));
+  const road = roadIndex(roadLines, roadWidths, roadKinds, roadDrawn);
   const lamps: { x: number; z: number; yaw: number }[] = [], signals: { x: number; z: number; yaw: number }[] = [], buses: { x: number; z: number; yaw: number }[] = [];
   /** Facing the nearest street: the yaw that points from (x, z) to it. */
   const faceRoad = (x: number, z: number) => {
-    let best = Infinity, yaw = 0;
-    for (let ri = 0; ri < roadLines.length; ri++) {
-      if (!DRIVABLE.includes(roadKinds[ri])) continue;
-      const p = roadLines[ri];
-      for (let i = 0; i + 3 < p.length; i += 2) {
-        const dx = p[i + 2] - p[i], dz = p[i + 3] - p[i + 1], l2 = dx * dx + dz * dz || 1;
-        const k = Math.max(0, Math.min(1, ((x - p[i]) * dx + (z - p[i + 1]) * dz) / l2));
-        const qx = p[i] + dx * k - x, qz = p[i + 1] + dz * k - z, d = qx * qx + qz * qz;
-        if (d < best) (best = d), (yaw = Math.atan2(qx, qz));
-      }
-    }
-    return yaw;
+    const q = road.nearest(x, z, 60);
+    return q ? Math.atan2(q.px - x, q.pz - z) : rand() * Math.PI * 2;
   };
+  /** Not a second traffic light (or shelter) on the same corner. */
+  const near = (list: { x: number; z: number }[], x: number, z: number, m: number) => list.some((p) => Math.hypot(p.x - x, p.z - z) < m);
   const o = tile.o ?? [];
   let osmTrees = 0, osmLamps = 0;
   for (let i = 0; i + 2 < o.length; i += 3) {
     const [x, z] = frame.unpack(tile.cx, tile.cy, [o[i], o[i + 1]]);
     const kind = o[i + 2];
-    if (kind === PROP.tree) (treeSpots.push({ x, z, s: 0.7 + rand() * 0.6 }), osmTrees++);
-    else if (kind === PROP.lamp && !lite) (lamps.push({ x, z, yaw: faceRoad(x, z) }), osmLamps++);
-    else if (kind === PROP.signal) signals.push({ x, z, yaw: faceRoad(x, z) });
-    else if (kind === PROP.bus && !lite) buses.push({ x, z, yaw: faceRoad(x, z) + Math.PI });
+    if (kind === PROP.tree) {
+      if (!road.on(x, z, 0.8)) (treeSpots.push({ x, z, s: 0.7 + rand() * 0.6 }), osmTrees++);
+      continue;
+    }
+    if ((kind === PROP.lamp || kind === PROP.bus) && lite) continue;
+    // Posts mapped on the road itself go to the kerb, facing the street.
+    const k = road.kerb(x, z, kind === PROP.bus ? 2.1 : kind === PROP.signal ? 0.9 : 1.1) ?? { x, z, yaw: faceRoad(x, z) };
+    if (blocked(k.x, k.z, 0.2)) continue;
+    if (kind === PROP.lamp) (lamps.push(k), osmLamps++);
+    else if (kind === PROP.signal && !near(signals, k.x, k.z, 5)) signals.push(k);
+    else if (kind === PROP.bus && !near(buses, k.x, k.z, 8)) buses.push({ ...k, yaw: k.yaw + Math.PI });
   }
+  // Park trees and the like never stand on a street running through.
+  for (let i = treeSpots.length - 1; i >= 0; i--) if (road.on(treeSpots[i].x, treeSpots[i].z, 1)) treeSpots.splice(i, 1);
   // Street trees and lamps along the bigger roads where the map has none.
   const roadside = (lite ? 40 : 110) * (osmTrees > 20 ? 0.3 : 1);
   let planted = 0, lit = 0;
   const lampCap = osmLamps > 5 ? 0 : lite ? 0 : 140;
   roadLines.forEach((pts, ri) => {
     const k = roadKinds[ri], w = roadWidths[ri];
-    if (k !== "major" && k !== "minor") return;
+    if ((k !== "major" && k !== "minor") || !roadDrawn[ri]) return;
     for (let i = 0; i + 3 < pts.length; i += 2) {
       const x0 = pts[i], z0 = pts[i + 1], x1 = pts[i + 2], z1 = pts[i + 3];
       const len = Math.hypot(x1 - x0, z1 - z0);
@@ -538,14 +641,15 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
         for (let s = 9; s < len - 4 && planted < roadside; s += 20 + rand() * 16) {
           const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 2.3 + rand() * 0.6;
           const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
-          if (blocked(x, z, 1.5)) continue;
+          // Not in a building, nor out on the cross street at a junction.
+          if (blocked(x, z, 1.5) || road.on(x, z, 1)) continue;
           treeSpots.push({ x, z, s: 0.5 + rand() * 0.3 });
           planted++;
         }
       for (let s = 6, side = 1; s < len - 2 && lit < lampCap; s += 34, side = -side) {
         const off = w / 2 + 1.1;
         const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
-        if (blocked(x, z, 0.5)) continue;
+        if (blocked(x, z, 0.5) || road.on(x, z, 0.3)) continue;
         lamps.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
         lit++;
       }
@@ -572,17 +676,88 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   pack("signal", signals);
   pack("bus", buses);
 
+  // What a car can hit: the trunk (and canopy, for low flyers), posts and shelters.
+  const obstacles: Footprint[] = [];
+  for (const t of treeSpots) obstacles.push(post(t.x, t.z, 0.32 * t.s, 6 * t.s));
+  for (const l of lamps) obstacles.push(post(l.x, l.z, 0.15, 6.6));
+  for (const g of signals) obstacles.push(post(g.x, g.z, 0.15, 4.5));
+  for (const b of buses) obstacles.push(box(b.x, b.z, 1.6, 0.75, b.yaw, 2.6));
+
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs")].filter((l): l is Layer => !!l);
-  placeSigns(tile as VtCell, frame, footprints, labels, faceRoad);
-  return { key: tile.key, real: tile.real, layers, props, footprints, roads: roadLines, roadWidths, roadKinds, roadNames, roadDrawn, labels };
+  cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
+  placeSigns(tile as VtCell, frame, footprints, labels, obstacles, faceRoad);
+  return { key: tile.key, real: tile.real, layers, props, footprints, obstacles, roads: roadLines, roadWidths, roadKinds, roadNames, roadDrawn, labels };
+}
+
+/**
+ * Street-name signs where two named streets cross: a pole on the pavement at a corner,
+ * one plate per street, each running along its own street — the way they hang in a real
+ * city. Found by intersecting the named lines themselves (in vector tiles the name and
+ * the asphalt are separate lines, so shared vertices can't be relied on).
+ */
+function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typeof roadIndex>, blocked: (x: number, z: number, pad: number) => boolean, labels: Label[], obstacles: Footprint[], lite: boolean) {
+  type NSeg = { ax: number; az: number; bx: number; bz: number; w: number; n: string };
+  const G = 30;
+  const grid = new Map<string, NSeg[]>();
+  tile.r.forEach((r, ri) => {
+    if (!r.n || !DRIVABLE.includes(r.k)) return;
+    const p = lines[ri];
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: r.w, n: r.n };
+      for (let gx = Math.floor(Math.min(sg.ax, sg.bx) / G); gx <= Math.floor(Math.max(sg.ax, sg.bx) / G); gx++)
+        for (let gz = Math.floor(Math.min(sg.az, sg.bz) / G); gz <= Math.floor(Math.max(sg.az, sg.bz) / G); gz++) {
+          const k = `${gx}_${gz}`;
+          const l = grid.get(k);
+          if (l) l.push(sg);
+          else grid.set(k, [sg]);
+        }
+    }
+  });
+  const cap = lite ? 12 : 40;
+  const done: { x: number; z: number; pair: string }[] = [];
+  for (const list of grid.values()) {
+    for (let i = 0; i < list.length && done.length < cap; i++)
+      for (let j = i + 1; j < list.length && done.length < cap; j++) {
+        const a = list[i], b = list[j];
+        if (a.n === b.n) continue;
+        // Where the two centre lines cross (both parameters within their segments).
+        const rx = a.bx - a.ax, rz = a.bz - a.az, sx = b.bx - b.ax, sz = b.bz - b.az;
+        const den = rx * sz - rz * sx;
+        if (Math.abs(den) < 1e-6) continue;
+        const qx = b.ax - a.ax, qz = b.az - a.az;
+        const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+        if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+        const px = a.ax + rx * t, pz = a.az + rz * t;
+        const pair = a.n < b.n ? `${a.n}|${b.n}` : `${b.n}|${a.n}`;
+        if (done.some((d) => d.pair === pair && Math.hypot(d.x - px, d.z - pz) < 40)) continue;
+        const la = Math.hypot(rx, rz) || 1, lb = Math.hypot(sx, sz) || 1;
+        const ax = rx / la, az = rz / la, bx = sx / lb, bz = sz / lb;
+        // Try the four corners for one on the pavement, clear of buildings and asphalt.
+        let spot: { x: number; z: number } | null = null;
+        for (const [sa, sb] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+          const x = px + ax * sa * (b.w / 2 + 1.8) + bx * sb * (a.w / 2 + 1.8), z = pz + az * sa * (b.w / 2 + 1.8) + bz * sb * (a.w / 2 + 1.8);
+          if (road.on(x, z, 0.5) || blocked(x, z, 0.4)) continue;
+          spot = { x, z };
+          break;
+        }
+        if (!spot) continue;
+        done.push({ x: px, z: pz, pair });
+        // Plate angle: its face turned square to the street, so it runs along it.
+        const plate = (dx: number, dz: number) => Math.atan2(dz, -dx);
+        labels.push({ text: a.n, x: spot.x, z: spot.z, angle: 0, w: 0, y: 4.2, kind: "corner", pole: true, plates: [{ text: a.n, angle: plate(ax, az) }, { text: b.n, angle: plate(bx, bz) }] });
+        obstacles.push(post(spot.x, spot.z, 0.1, 4.2));
+      }
+  }
 }
 
 /**
  * Storefront signs and house numbers, mounted where they'd really be: on the wall of the
  * nearest building, facing the street, at first-floor height. Two shops on the same
- * stretch of wall stack instead of overlapping. No wall within reach: a sign on a pole.
+ * stretch of wall stack instead of overlapping; a wall with no room left keeps the shop
+ * (pin and Places list) without a board. No wall within reach: a sign on a pole.
+ * Server (Overpass) tiles carry places instead of storefronts: they're shops here too.
  */
-function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprints: Footprint[], labels: Label[], faceRoad: (x: number, z: number) => number) {
+function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprints: Footprint[], labels: Label[], obstacles: Footprint[], faceRoad: (x: number, z: number) => number) {
   const placed: { x: number; z: number; y: number; w: number }[] = [];
   const nearestWall = (x: number, z: number, reach: number) => {
     let best = reach, hit: { x: number; z: number; nx: number; nz: number; len: number; f: Footprint } | null = null;
@@ -603,12 +778,24 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
     }
     return hit;
   };
-  for (const s of tile.s ?? []) {
+  const shops: { x: number; z: number; n: string; c: string }[] = (tile.s ?? []).map((s) => {
     const [x, z] = frame.unpack(tile.cx, tile.cy, [s.x, s.y]);
-    const w = Math.max(2.6, Math.min(7.5, s.n.length * 0.36 + 1.6));
+    return { x, z, n: s.n, c: s.c };
+  });
+  if (!tile.s)
+    for (const pl of tile.p ?? []) {
+      if (pl.cat === "park") continue;
+      const q = frame.toXZ(pl.lat, pl.lng);
+      shops.push({ x: q.x, z: q.z, n: pl.name, c: pl.cat });
+    }
+  for (const s of shops) {
+    const { x, z } = s;
+    const long = s.n.split("\n")[0];
+    const w = Math.max(2.6, Math.min(7.5, long.length * 0.36 + 1.6));
     const wall = nearestWall(x, z, 22);
     if (!wall) {
-      labels.push({ text: s.n, x, z, angle: faceRoad(x, z), w: Math.min(w, 4), y: 2.6, kind: "shop", cls: s.c, pole: true });
+      labels.push({ text: s.n, x, z, angle: faceRoad(x, z), w: Math.min(w, 4), y: 2.6, kind: "shop", cls: s.c, pole: true, top: 3.2 });
+      obstacles.push(post(x, z, 0.1, 3.2));
       continue;
     }
     const sw = Math.min(w, wall.len * 0.92);
@@ -616,9 +803,9 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
     let y = Math.max(2.4, Math.min(3.6, wall.f.h - 0.7));
     // Same stretch of wall already has a sign: go one row up (at most three rows).
     for (let row = 0; row < 3 && placed.some((o) => Math.abs(o.y - y) < 0.6 && Math.hypot(o.x - px, o.z - pz) < (o.w + sw) / 2); row++) y += 1.05;
-    if (y > wall.f.h - 0.3) continue;
-    placed.push({ x: px, z: pz, y, w: sw });
-    labels.push({ text: s.n, x: px, z: pz, angle: Math.atan2(wall.nx, wall.nz), w: sw, y, kind: "shop", cls: s.c });
+    const full = y > wall.f.h - 0.3 || placed.some((o) => Math.abs(o.y - y) < 0.6 && Math.hypot(o.x - px, o.z - pz) < (o.w + sw) / 2);
+    if (!full) placed.push({ x: px, z: pz, y, w: sw });
+    labels.push({ text: s.n, x: px, z: pz, angle: Math.atan2(wall.nx, wall.nz), w: sw, y, kind: "shop", cls: s.c, top: wall.f.h, ...(full ? { noBoard: true } : {}) });
   }
   for (const h of tile.hn ?? []) {
     const [x, z] = frame.unpack(tile.cx, tile.cy, [h.x, h.y]);

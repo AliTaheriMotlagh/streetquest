@@ -6,7 +6,9 @@
 //    tiles carry around their edges never draws a building or street twice.
 //  - Each feature goes to the one cell its centre falls in (roads: each segment run by
 //    its midpoint), like the Overpass tiles (lib/city fromOverpass).
-//  - Names come in the player's language when the map has it (Persian in Tehran).
+//  - Names follow the player's choice (NameMode): their language when the map has it
+//    (Persian in Tehran), the local name as written on the street, or both — two lines
+//    joined by "\n", theirs first.
 //  - Street frontage: where OpenStreetMap has no buildings mapped along a street in a
 //    built-up area (common in Tehran), blocks of flats are filled in along the real
 //    kerb line — never on a road, park or water, never over a mapped building. They're
@@ -116,8 +118,11 @@ const flatRoofRegion = (lat: number, lng: number) => lat > 12 && lat < 42 && lng
 export type Storefront = { x: number; y: number; n: string; c: string };
 export type HouseNumber = { x: number; y: number; n: string };
 export type VtCell = CityTile & { s?: Storefront[]; hn?: HouseNumber[] };
+/** Which name streets and shops show: the player's language, the local one, or both. */
+export type NameMode = "mine" | "local" | "both";
+export const NAME_MODES: NameMode[] = ["mine", "local", "both"];
 
-export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale: string, opts: { infill: boolean }): VtCell[] {
+export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale: string, opts: { infill: boolean; names?: NameMode }): VtCell[] {
   const vt = new VectorTile(new Pbf(new Uint8Array(buf)) as unknown as ConstructorParameters<typeof VectorTile>[0]);
   const n = 2 ** VT_ZOOM;
   const lngOf = (x: number, E: number) => ((tx + x / E) / n) * 360 - 180;
@@ -149,10 +154,20 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
     for (const p of pts) (x += p.x), (y += p.y);
     return { x: x / pts.length, y: y / pts.length };
   };
+  const names = opts.names ?? "mine";
   const nameOf = (props: Record<string, unknown>) => {
     const s = (k: string) => (typeof props[k] === "string" && (props[k] as string).trim()) || "";
-    const local = locale === "fa" ? s("name:fa") || s("name") : s(`name:${locale}`) || s("name:en") || s("name_en") || s("name_int") || s("name");
-    return local.slice(0, 48);
+    // `name` is what's written on the street; the rest are translations.
+    const local = s("name");
+    const english = s("name:en") || s("name_en");
+    const mine = locale === "fa" ? s("name:fa") || local : s(`name:${locale}`) || english || s("name_int") || local;
+    if (names === "local") return (local || mine).slice(0, 48);
+    if (names === "both") {
+      // Theirs, then the local name — or English when the two are the same (Tehran's signs are bilingual too).
+      const second = local && local !== mine ? local : english && english !== mine ? english : "";
+      if (mine && second) return `${mine.slice(0, 40)}\n${second.slice(0, 40)}`;
+    }
+    return mine.slice(0, 48);
   };
   // Metres per tile unit (Mercator is uniform enough across 2 km).
   const tileM = (360 / n) * 111_320 * Math.cos((midLat * Math.PI) / 180);

@@ -8,7 +8,7 @@
 //  - Everyone else on the map (walking, or privacy-fuzzed) as a figure on the pavement.
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
-import type { VehicleKey } from "@/lib/vehicles";
+import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import type { WorldPlayer } from "../game/client";
 import type { OtherDriver } from "./net";
 import { makeVehicle, type VehicleModel } from "./vehicles3d";
@@ -123,7 +123,7 @@ export class Others {
 
   /** Where a driver is drawn right now (for the minimap and party HUD). */
   positions() {
-    return [...this.drivers.values()].map((d) => ({ id: d.id, x: d.model.group.position.x, z: d.model.group.position.z, color: d.data.party ? "#63b3f2" : d.data.friend ? "#5bd38c" : "#ffffff" }));
+    return [...this.drivers.values()].map((d) => ({ id: d.id, x: d.model.group.position.x, y: d.model.group.position.y, z: d.model.group.position.z, radius: VEHICLES[d.data.vehicle as VehicleKey]?.radius ?? 1.25, color: d.data.party ? "#63b3f2" : d.data.friend ? "#5bd38c" : "#ffffff" }));
   }
 
   /** Objects you can tap: players' name tags and figures. */

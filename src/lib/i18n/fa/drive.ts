@@ -114,6 +114,31 @@ const drive: Record<string, string> = {
   "{game} needs at least {n} players": "{game} حداقل {n} بازیکن لازم داره",
   "Start the round from where your car is": "دور رو از همون جایی که ماشینت هست شروع کن",
   "{emoji} {game} is starting!": "{emoji} {game} داره شروع می‌شه!",
+
+  // ---- places & names in the city
+  Places: "مکان‌ها",
+  "Search places": "جستجوی مکان‌ها",
+  "Search shops, banks, cafés…": "جستجوی مغازه، بانک، کافه…",
+  "Nothing called “{q}” around here.": "این اطراف چیزی به اسم «{q}» نیست.",
+  "No places found around here yet — drive on and the map fills in.": "هنوز این اطراف جایی پیدا نشده — برون، نقشه کم‌کم پر می‌شه.",
+  "Player shop": "مغازه‌ی بازیکن",
+  Business: "کسب‌وکار",
+  "Street and shop names": "اسم خیابون‌ها و مغازه‌ها",
+  "My language": "به زبان من",
+  "As on the street": "همون که روی تابلوئه",
+  Both: "هر دو",
+  "Food & drink": "خوراکی و نوشیدنی",
+  Health: "درمان و سلامت",
+  Beauty: "آرایشی و زیبایی",
+  "Place of worship": "مسجد و عبادتگاه",
+  "Cars & fuel": "خودرو و پمپ‌بنزین",
+  "Public office": "اداره‌ی دولتی",
+  "Flowers & garden": "گل و گیاه",
+  "Home & hardware": "خونه و ابزار",
+  "Travel & agents": "مسافرتی و بنگاه",
+  Office: "دفتر کار",
+  Parking: "پارکینگ",
+  "Cinema & culture": "سینما و فرهنگ",
 };
 
 export default drive;

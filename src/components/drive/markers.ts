@@ -1,6 +1,6 @@
 "use client";
 // Everything else on the game map, standing in the 3D city: bases, bosses, outposts,
-// towers, flags, events, lotteries, player shops, notes, missions, deliveries, rides,
+// towers, flags, events, lotteries, player shops, businesses, notes, missions, deliveries, rides,
 // pings, missile strikes, marching squads and run/derrick spawns. Each is a marker you
 // can tap (→ its card in the game, or navigate there). Only the nearest ones are built,
 // and their name signs show up close.
@@ -31,6 +31,10 @@ export function markersOf(w: World | null, now: number): MarkerInfo[] {
   for (const d of w.deliveries) push({ id: `d:${d.id}`, sel: { type: "delivery", data: d }, emoji: "📦", color: "#ffb347", label: d.title, lat: d.pickupLat, lng: d.pickupLng });
   for (const r of w.rides) push({ id: `r:${r.id}`, sel: { type: "ride", data: r }, emoji: "🚕", color: "#f0c05a", label: r.pickupLabel, lat: r.pickupLat, lng: r.pickupLng });
   for (const l of w.lotteries) if (l.status === "OPEN") push({ id: `l:${l.id}`, sel: { type: "lottery", data: l }, emoji: "🎟️", color: "#c084fc", label: l.name, lat: l.lat, lng: l.lng, tall: l.official });
+  // Businesses with an open campaign are job beacons (Drive.jobsFrom); the rest stand here.
+  for (const b of w.businesses)
+    if (b.mine || !b.campaigns.some((c) => !c.visited))
+      push({ id: `bz:${b.id}`, sel: { type: "biz", data: b }, emoji: b.emoji, color: b.featured ? "#f0c05a" : b.mine ? FRIEND : "#ff7ad9", label: b.name, lat: b.lat, lng: b.lng, tall: b.featured });
   for (const s of w.shops) if (s.live || s.mine) push({ id: `sh:${s.id}`, sel: { type: "shop", data: s }, emoji: s.emoji, color: s.deal ? "#ff7ad9" : "#63b3f2", label: s.deal ? `${s.name} · −${s.deal}%` : s.name, lat: s.lat, lng: s.lng });
   for (const b of w.bases) push({ id: `b:${b.id}`, sel: { type: "base", data: b }, emoji: "🏰", color: side(b.mine, b.friend), label: `${b.name} · ${b.owner.username}`, lat: b.lat, lng: b.lng, tall: true, size: 1.2 });
   for (const b of w.bosses) if (b.hp > 0) push({ id: `boss:${b.id}`, sel: { type: "boss", data: b }, emoji: b.def.emoji, color: "#ff2e55", label: t(b.def.name), lat: b.lat, lng: b.lng, tall: true, size: 1.5 });

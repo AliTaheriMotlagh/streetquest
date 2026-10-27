@@ -13,6 +13,7 @@ import { artFor } from "../art/emoji";
 import { ICONS } from "../art/icons";
 import { materialDefs, render } from "../art/kit";
 import type { Footprint, Label, PropKind, Style, TileArrays } from "./tileMesh";
+import { nameLines, oneLine, tradeOf } from "./trades";
 
 export type Phase = "night" | "dawn" | "day" | "dusk";
 export type { Style };
@@ -399,6 +400,7 @@ export type TileMeshes = {
   /** Street furniture: hidden when the tile is far away. */
   detail: THREE.Group;
   footprints: Footprint[];
+  obstacles: Footprint[];
   roads: Float32Array[];
   roadWidths: number[];
   roadKinds: TileArrays["roadKinds"];
@@ -451,6 +453,7 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     group,
     detail,
     footprints: a.footprints,
+    obstacles: a.obstacles,
     roads: a.roads,
     roadWidths: a.roadWidths,
     roadKinds: a.roadKinds,
@@ -490,7 +493,7 @@ function artImage(emoji: string): Promise<HTMLImageElement | null> {
 }
 
 /** Draw an emoji now, and swap in its art-kit drawing when that's ready. */
-function drawIcon(g: CanvasRenderingContext2D, emoji: string, x: number, y: number, size: number, done: () => void) {
+export function drawIcon(g: CanvasRenderingContext2D, emoji: string, x: number, y: number, size: number, done: () => void) {
   g.save();
   g.textAlign = "center";
   g.textBaseline = "middle";
@@ -525,7 +528,8 @@ export function makeSign(emoji: string, text: string, color: string, opts: { big
   const font = `800 ${Math.round(H * 0.4)}px ${TEXT_FONT}`;
   const probe = canvas(4).g;
   probe.font = font;
-  const label = text.length > 28 ? `${text.slice(0, 27)}…` : text;
+  const flat = oneLine(text);
+  const label = flat.length > 28 ? `${flat.slice(0, 27)}…` : flat;
   const w = Math.min(1024, Math.ceil(probe.measureText(label).width + H * 1.5));
   const { c, g } = canvas(w, H);
   const r = H / 2;
@@ -556,26 +560,34 @@ export function makeSign(emoji: string, text: string, color: string, opts: { big
 
 /** A street's name painted flat on the asphalt, the way navigation apps show it. */
 export function makeStreetLabel(text: string, roadW: number, style: Style) {
-  const H = 64;
-  const font = `700 ${Math.round(H * 0.62)}px ${TEXT_FONT}`;
+  const [main, second] = nameLines(text);
+  // One line 64 px tall; a second name goes underneath, smaller.
+  const L1 = 64, L2 = second ? 42 : 0, H = L1 + L2;
+  const font1 = `700 ${Math.round(L1 * 0.62)}px ${TEXT_FONT}`, font2 = `600 ${Math.round(L2 * 0.62)}px ${TEXT_FONT}`;
   const probe = canvas(4).g;
-  probe.font = font;
-  const w = Math.min(1024, Math.ceil(probe.measureText(text).width + 24));
+  probe.font = font1;
+  let tw = probe.measureText(main).width;
+  if (second) (probe.font = font2), (tw = Math.max(tw, probe.measureText(second).width));
+  const w = Math.min(1024, Math.ceil(tw + 24));
   const { c, g } = canvas(w, H);
-  g.font = font;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.direction = /[؀-ۿ]/.test(text) ? "rtl" : "ltr";
   g.lineWidth = 6;
   g.strokeStyle = style === "real" ? "rgba(0,0,0,.55)" : "rgba(40,40,80,.6)";
-  g.strokeText(text, w / 2, H / 2 + 2);
   g.fillStyle = style === "real" ? "rgba(255,255,255,.92)" : "#ffffff";
-  g.fillText(text, w / 2, H / 2 + 2);
+  const line = (tx: string, font: string, y: number) => {
+    g.font = font;
+    g.direction = /[؀-ۿ]/.test(tx) ? "rtl" : "ltr";
+    g.strokeText(tx, w / 2, y, w - 8);
+    g.fillText(tx, w / 2, y, w - 8);
+  };
+  line(main, font1, L1 / 2 + 2);
+  if (second) line(second, font2, L1 + L2 / 2 - 2);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
   const mat = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: true });
-  const height = Math.min(3.2, Math.max(1.6, roadW * 0.34));
+  const height = Math.min(3.2, Math.max(1.6, roadW * 0.34)) * (H / L1);
   const geo = new THREE.PlaneGeometry((w / H) * height, height);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.order = "YXZ";
@@ -725,29 +737,6 @@ export function makeCoin() {
 }
 
 // ---------------------------------------------------------------- storefronts
-type Trade = { emoji: string; bg: [string, string]; fg: string };
-const TRADES: [RegExp, Trade][] = [
-  [/^(restaurant|fast_food|food_court|cafe|bakery|ice_cream|confectionery|pastry|deli|juice|bar|pub|coffee)$/, { emoji: "🍽️", bg: ["#c0392b", "#8e1f14"], fg: "#fff" }],
-  [/^(pharmacy|chemist|clinic|doctors|dentist|hospital|veterinary|medical_supply|optician|laboratory)$/, { emoji: "⚕️", bg: ["#1e8f5a", "#0f5c38"], fg: "#fff" }],
-  [/^(bank|atm|bureau_de_change|money_lender|insurance)$/, { emoji: "🏦", bg: ["#1f4f9a", "#12305e"], fg: "#fff" }],
-  [/^(supermarket|convenience|grocery|greengrocer|butcher|general|kiosk|seafood|dairy|beverages|nuts)$/, { emoji: "🛒", bg: ["#2e9e44", "#1b6b2c"], fg: "#fff" }],
-  [/^(clothes|clothing_store|shoes|boutique|jewelry|bag|fabric|tailor|fashion|watches)$/, { emoji: "👗", bg: ["#a83279", "#6e1d4f"], fg: "#fff" }],
-  [/^(mobile_phone|electronics|computer|telecommunication|hifi|appliance)$/, { emoji: "📱", bg: ["#2c3e50", "#151f29"], fg: "#7fd6ff" }],
-  [/^(hairdresser|beauty|cosmetics|perfumery|massage)$/, { emoji: "💇", bg: ["#7d3c98", "#4e2560"], fg: "#fff" }],
-  [/^(school|university|college|kindergarten|educational_institution|library|books|stationery)$/, { emoji: "📚", bg: ["#d4a017", "#946f0d"], fg: "#1b1300" }],
-  [/^(place_of_worship|muslim|mosque|christian|church)$/, { emoji: "🕌", bg: ["#17806d", "#0d5248"], fg: "#fff" }],
-  [/^(hotel|lodging|hostel|guest_house|motel)$/, { emoji: "🏨", bg: ["#5b2c6f", "#381a45"], fg: "#ffd98a" }],
-  [/^(fuel|car|car_repair|car_parts|tyres|car_wash)$/, { emoji: "🚗", bg: ["#e67e22", "#a8560f"], fg: "#fff" }],
-  [/^(fitness_centre|sports_centre|sports|swimming_pool|stadium)$/, { emoji: "💪", bg: ["#c0392b", "#7b2218"], fg: "#fff" }],
-  [/^(police|fire_station|townhall|town_hall|courthouse|government|post_office)$/, { emoji: "🏛️", bg: ["#34495e", "#1d2833"], fg: "#fff" }],
-  [/^(florist|garden_centre)$/, { emoji: "💐", bg: ["#27ae60", "#16733f"], fg: "#fff" }],
-  [/^(hardware|doityourself|paint|furniture|interior_decoration|houseware|carpet)$/, { emoji: "🔧", bg: ["#8e5a2b", "#5c3817"], fg: "#fff" }],
-  [/^(travel_agency|taxi|estate_agent)$/, { emoji: "✈️", bg: ["#2980b9", "#1a5276"], fg: "#fff" }],
-  [/^(office|company|lawyer|notary|publisher|ngo|diplomatic|association)$/, { emoji: "🏢", bg: ["#4a5560", "#2a3138"], fg: "#e8eef5" }],
-  [/^(parking)$/, { emoji: "🅿️", bg: ["#1f5fbf", "#123a75"], fg: "#fff" }],
-  [/^(cinema|theatre|arts_centre|museum|gallery)$/, { emoji: "🎬", bg: ["#6c3483", "#40204e"], fg: "#ffd98a" }],
-];
-const tradeOf = (cls = ""): Trade => TRADES.find(([re]) => re.test(cls))?.[1] ?? { emoji: "🏪", bg: ["#3d4b59", "#222b33"], fg: "#fff" };
 const SIGN_FONT = `Vazirmatn, "Vazir", Tahoma, system-ui, -apple-system, "Segoe UI", sans-serif`;
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 
@@ -770,27 +759,34 @@ export function makeShopSign(text: string, cls: string | undefined, width: numbe
   g.strokeStyle = "rgba(255,255,255,.35)";
   g.lineWidth = 4;
   g.strokeRect(4, 4, cw - 8, ch - 8);
-  const rtl = /[\u0590-\u08ff]/.test(text);
+  const rtl = /[\u0590-\u08ff]/.test(nameLines(text)[0]);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
   // Icon on the reading side's start, name filling the rest (shrunk to fit).
   const iconX = rtl ? cw - ch * 0.55 : ch * 0.55;
   drawIcon(g, tr.emoji, iconX, ch / 2, ch * 0.62, () => (t.needsUpdate = true));
-  let size = ch * 0.5;
-  g.font = `800 ${size}px ${SIGN_FONT}`;
-  const room = cw - ch * 1.25;
-  while (g.measureText(text).width > room && size > ch * 0.24) {
-    size -= 2;
+  // The name fills the rest (shrunk to fit); a second name runs underneath, smaller.
+  const [main, second] = nameLines(text);
+  const room = cw - ch * 1.25, mid = rtl ? (cw - ch * 1.05) / 2 : ch * 1.05 + (cw - ch * 1.05) / 2;
+  const fit = (tx: string, start: number, min: number) => {
+    let size = start;
     g.font = `800 ${size}px ${SIGN_FONT}`;
-  }
+    while (g.measureText(tx).width > room && size > min) g.font = `800 ${(size -= 2)}px ${SIGN_FONT}`;
+  };
   g.fillStyle = tr.fg;
   g.textBaseline = "middle";
-  g.direction = rtl ? "rtl" : "ltr";
   g.textAlign = "center";
   g.shadowColor = "rgba(0,0,0,.35)";
   g.shadowBlur = 4;
-  g.fillText(text, rtl ? (cw - ch * 1.05) / 2 : ch * 1.05 + (cw - ch * 1.05) / 2, ch / 2 + 2, room);
+  g.direction = /[\u0590-\u08ff]/.test(main) ? "rtl" : "ltr";
+  fit(main, second ? ch * 0.4 : ch * 0.5, ch * 0.22);
+  g.fillText(main, mid, second ? ch * 0.36 : ch / 2 + 2, room);
+  if (second) {
+    g.direction = /[\u0590-\u08ff]/.test(second) ? "rtl" : "ltr";
+    fit(second, ch * 0.26, ch * 0.16);
+    g.fillText(second, mid, ch * 0.74, room);
+  }
   const geo = new THREE.PlaneGeometry(W, H);
   const mat = style === "real" ? new THREE.MeshStandardMaterial({ map: t, emissive: new THREE.Color("#ffffff"), emissiveMap: t, emissiveIntensity: 0.15, roughness: 0.5 }) : new THREE.MeshBasicMaterial({ map: t });
   const face = new THREE.Mesh(geo, mat);
@@ -813,6 +809,78 @@ export function makeShopSign(text: string, cls: string | undefined, width: numbe
     extra.push(poleGeo);
   }
   return { group, mat, dispose: () => (t.dispose(), mat.dispose(), geo.dispose(), boxGeo.dispose(), boxMat.dispose(), extra.forEach((e) => e.dispose())) };
+}
+
+let poleGeo: THREE.CylinderGeometry | null = null, poleMat: THREE.MeshStandardMaterial | null = null, plateGeo: THREE.PlaneGeometry | null = null;
+
+/**
+ * A street-name sign on its pole at a corner: one plate per street (both faces read the
+ * same), blue enamel in the real city, green in the storybook one, each plate turned
+ * along its street. `angle`s are world yaws; the group itself stays unrotated.
+ */
+export function makeCornerSign(plates: { text: string; angle: number }[], style: Style): Board & { plates: THREE.Mesh[] } {
+  poleGeo ??= (() => {
+    const g = new THREE.CylinderGeometry(0.06, 0.07, 4.2, 8);
+    g.translate(0, -2.1, 0);
+    return g;
+  })();
+  poleMat ??= new THREE.MeshStandardMaterial({ color: "#5b6168", roughness: 0.5, metalness: 0.6 });
+  plateGeo ??= new THREE.PlaneGeometry(1, 1);
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(poleGeo, poleMat));
+  const bg = style === "real" ? "#1d4f91" : "#2f9e5b";
+  const owned: { dispose: () => void }[] = [];
+  const meshes: THREE.Mesh[] = [];
+  let top = 0;
+  for (const p of plates) {
+    const [main, second] = nameLines(p.text);
+    const ch = second ? 112 : 72;
+    const probe = canvas(4).g;
+    probe.font = `800 44px ${SIGN_FONT}`;
+    let tw = probe.measureText(main).width;
+    if (second) (probe.font = `600 28px ${SIGN_FONT}`), (tw = Math.max(tw, probe.measureText(second).width));
+    const cw = Math.min(768, Math.max(200, Math.ceil(tw + 40)));
+    const { c, g } = canvas(cw, ch);
+    g.fillStyle = bg;
+    g.beginPath();
+    if (g.roundRect) g.roundRect(2, 2, cw - 4, ch - 4, 10);
+    else g.rect(2, 2, cw - 4, ch - 4);
+    g.fill();
+    g.strokeStyle = "#ffffff";
+    g.lineWidth = 4;
+    g.stroke();
+    g.fillStyle = "#ffffff";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = `800 44px ${SIGN_FONT}`;
+    g.direction = /[\u0590-\u08ff]/.test(main) ? "rtl" : "ltr";
+    g.fillText(main, cw / 2, second ? 40 : ch / 2 + 2, cw - 24);
+    if (second) {
+      g.font = `600 28px ${SIGN_FONT}`;
+      g.direction = /[\u0590-\u08ff]/.test(second) ? "rtl" : "ltr";
+      g.fillText(second, cw / 2, 84, cw - 24);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    const mat = new THREE.MeshBasicMaterial({ map: t });
+    // Pixels → metres: 72 px of plate is 0.55 m (real ones are ~0.25 m; game-sized to read at speed).
+    const H = (ch / 72) * 0.55, W = (cw / ch) * H;
+    const mesh = new THREE.Mesh(plateGeo, mat);
+    mesh.scale.set(W, H, 1);
+    mesh.position.y = top - H / 2;
+    mesh.rotation.y = p.angle;
+    // A second face turned around, so the name reads right from behind too (not mirrored).
+    const back = new THREE.Mesh(plateGeo, mat);
+    back.scale.set(W, H, 1);
+    back.position.copy(mesh.position);
+    back.rotation.y = p.angle + Math.PI;
+    group.add(mesh, back);
+    meshes.push(mesh, back);
+    top -= H + 0.06;
+    owned.push(t, mat);
+  }
+  return { group, mat: meshes[0]?.material as THREE.MeshBasicMaterial, plates: meshes, dispose: () => owned.forEach((o) => o.dispose()) };
 }
 
 /** A house-number plaque: Tehran's blue enamel plate with white digits. */
