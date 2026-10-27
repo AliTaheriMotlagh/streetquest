@@ -18,7 +18,7 @@ import { SUPERWEAPONS } from "@/lib/superweapons";
 import { esc, icon } from "./mapIcons";
 import { isLite } from "../perf";
 
-const squadColor = (s: { mine: boolean; friend: boolean }) => (s.mine ? "#22e3ff" : s.friend ? "#3dff8f" : "#ff4d4d");
+const squadColor = (s: { mine: boolean; friend: boolean }) => (s.mine ? "#63b3f2" : s.friend ? "#5bd38c" : "#ef6461");
 
 export function LiveLayer({ world, me, runners, onSelect }: { world: World | null; me: Me | null; runners?: LobbyView["players"]; onSelect: (s: Selected) => void }) {
   const [now, setNow] = useState(Date.now());
@@ -70,7 +70,7 @@ export function LiveLayer({ world, me, runners, onSelect }: { world: World | nul
         const sec = Math.floor((now - w.startAt) / 1000) * 1000 + w.startAt;
         return (
           <span key={`wv${w.id}`}>
-            <Polyline positions={[[def.from.lat, def.from.lng], [w.baseLat, w.baseLng]]} pathOptions={{ color: "#ff4d4d", weight: 3, opacity: running ? 0.35 : 0.6, dashArray: "2 10" }} />
+            <Polyline positions={[[def.from.lat, def.from.lng], [w.baseLat, w.baseLng]]} pathOptions={{ color: "#ef6461", weight: 3, opacity: running ? 0.35 : 0.6, dashArray: "2 10" }} />
             <Marker position={[def.from.lat, def.from.lng]} zIndexOffset={650} icon={icon(`🏴‍☠️${upcoming ? `<span class="nm">${Math.ceil((w.startAt - now) / 1000)}s</span>` : ""}`, "raidcamp", 36)} />
             {running &&
               def.creeps.map((c, i) => {
@@ -90,7 +90,7 @@ export function LiveLayer({ world, me, runners, onSelect }: { world: World | nul
                   const d = defenders[s.d];
                   const at = d && creepPos(def, def.creeps[s.c], now);
                   if (!d || !at || at.f >= 1) return null;
-                  return <Polyline key={`sh${w.id}${s.d}`} positions={[[d.lat, d.lng], [at.pos.lat, at.pos.lng]]} pathOptions={{ color: "#ffd23f", weight: 2, opacity: 0.85 }} interactive={false} />;
+                  return <Polyline key={`sh${w.id}${s.d}`} positions={[[d.lat, d.lng], [at.pos.lat, at.pos.lng]]} pathOptions={{ color: "#f0c05a", weight: 2, opacity: 0.85 }} interactive={false} />;
                 })}
             {((w.strikes as Strike[]) ?? [])
               .filter((s) => now >= s.t && now - s.t < 2500)

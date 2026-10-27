@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Lilita_One, Russo_One } from "next/font/google";
+import { Cinzel, Fredoka, Inter } from "next/font/google";
 import { preload } from "react-dom";
 import { Analytics } from "@/components/Analytics";
 import { DialogHost } from "@/components/Dialogs";
@@ -11,11 +11,14 @@ import { getT, pageLocale } from "@/server/i18n";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import "./world.css";
+import "./theme.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "800"], display: "swap", variable: "--font-inter" });
-const lilita = Lilita_One({ subsets: ["latin"], weight: "400", display: "swap", variable: "--font-lilita" });
-const russo = Russo_One({ subsets: ["latin"], weight: "400", display: "swap", variable: "--font-russo" });
+// Display: rounded and friendly for numbers, buttons and labels. Titles: an engraved serif for the fantasy feel.
+// One weight each, so every weight a rule asks for renders the same face.
+const fredoka = Fredoka({ subsets: ["latin"], weight: "600", display: "swap", variable: "--font-fredoka" });
+const cinzel = Cinzel({ subsets: ["latin"], weight: "700", display: "swap", variable: "--font-cinzel" });
 
 /** Persian UI font (public/fonts, @font-face in globals.css). Only Persian pages fetch it. */
 const VAZIRMATN = ["/fonts/Vazirmatn-UI-FD-Regular.woff2", "/fonts/Vazirmatn-UI-FD-Black.woff2"];
@@ -42,7 +45,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#07070d",
+  themeColor: "#0b0e14",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -52,7 +55,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = await pageLocale();
   if (locale === "fa") for (const href of VAZIRMATN) preload(href, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
   return (
-    <html lang={locale} dir={dirOf(locale)} className={`${inter.variable} ${lilita.variable} ${russo.variable}`}>
+    <html lang={locale} dir={dirOf(locale)} className={`${inter.variable} ${fredoka.variable} ${cinzel.variable}`}>
       <body>
         <I18nProvider locale={locale}>
           {children}

@@ -290,7 +290,7 @@ export async function startRound(u: User, partyId: string, game: PartyGame, star
     if (x.remotePlay || canSimulate(x.role)) await prisma.user.update({ where: { id: x.id }, data: { lastLat: spot.lat, lastLng: spot.lng, locAt: new Date() } });
   }
   for (const id of ids)
-    if (id !== u.id) await notify(id, () => ({ kind: "event", title: t("{emoji} {game} is starting!", { emoji: def.emoji, game: t(def.name) }) }));
+    if (id !== u.id) await notify(id, () => ({ kind: "event", link: "play", title: t("{emoji} {game} is starting!", { emoji: def.emoji, game: t(def.name) }) }));
   return (await loadParty(p.id))!;
 }
 

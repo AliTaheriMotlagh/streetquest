@@ -21,9 +21,9 @@ export type FactionDef = {
 };
 
 export const FACTIONS: FactionDef[] = [
-  { key: "coalition", name: msg("Coalition"), emoji: "🦅", color: "#38bdf8", blurb: msg("High-tech army. Hits hardest, costs the most. Air power."), atk: 1.2, hp: 1, cost: 1.1, needsPower: true, loot: 1 },
-  { key: "dragon", name: msg("Dragon Army"), emoji: "🐉", color: "#ff4d4d", blurb: msg("Hordes and heavy armor. Cheap, tough units. Power plants run hot."), atk: 1, hp: 1.2, cost: 0.9, needsPower: true, loot: 1 },
-  { key: "insurgency", name: msg("Insurgency"), emoji: "🦂", color: "#3dff8f", blurb: msg("Guerrillas. No power grid needed, cheap units, +30% raid loot."), atk: 0.9, hp: 0.95, cost: 0.8, needsPower: false, loot: 1.3 },
+  { key: "coalition", name: msg("Coalition"), emoji: "🦅", color: "#38bdf8", blurb: msg("High-tech army. Hits hardest, costs the most. Air power."), atk: 1.25, hp: 1.05, cost: 1.1, needsPower: true, loot: 1 },
+  { key: "dragon", name: msg("Dragon Army"), emoji: "🐉", color: "#ef6461", blurb: msg("Hordes and heavy armor. Cheap, tough units. Power plants run hot."), atk: 1, hp: 1.2, cost: 0.9, needsPower: true, loot: 1 },
+  { key: "insurgency", name: msg("Insurgency"), emoji: "🦂", color: "#5bd38c", blurb: msg("Guerrillas. No power grid needed, cheap units, +30% raid loot."), atk: 0.9, hp: 0.95, cost: 0.85, needsPower: false, loot: 1.3 },
 ];
 export const FACTION_BY_KEY = Object.fromEntries(FACTIONS.map((f) => [f.key, f])) as Record<FactionKey, FactionDef>;
 export const factionOf = (key: string | null | undefined) => (key && key in FACTION_BY_KEY ? FACTION_BY_KEY[key as FactionKey] : null);
@@ -102,6 +102,8 @@ export function pendingSupply(buildings: BuildingState[], lastCollectAt: Date | 
 
 // ---------------------------------------------------------------- units
 // Rock-paper-scissors: every unit has an armor class and a damage multiplier vs each class.
+// Balance: Rangers are the best value per coin, bigger units the best per housing slot —
+// so an early army is a crowd of Rangers and a full Army Camp wants tanks, artillery and jets.
 export type UnitKey = "ranger" | "rocket" | "tank" | "artillery" | "jet";
 export type Target = ArmorClass | "structure";
 export type UnitDef = {
@@ -122,10 +124,10 @@ export type UnitDef = {
 
 export const UNITS: UnitDef[] = [
   { key: "ranger", name: msg("Ranger"), emoji: "🪖", cls: "infantry", building: "barracks", buildingLevel: 1, cost: 50, atk: 4, hp: 12, seconds: 20, housing: 1, vs: { infantry: 1.4, vehicle: 0.4, air: 0.6, structure: 0.7 }, role: msg("Cheap. Shreds infantry.") },
-  { key: "rocket", name: msg("Rocket Squad"), emoji: "🚀", cls: "infantry", building: "barracks", buildingLevel: 2, cost: 110, atk: 9, hp: 10, seconds: 35, housing: 2, vs: { infantry: 0.6, vehicle: 1.7, air: 1.5, structure: 1.1 }, role: msg("Tank & jet hunter.") },
-  { key: "tank", name: msg("Battle Tank"), emoji: "🛡️", cls: "vehicle", building: "factory", buildingLevel: 1, cost: 280, atk: 16, hp: 45, seconds: 60, housing: 5, vs: { infantry: 1.3, vehicle: 1.1, air: 0.2, structure: 1 }, role: msg("Tough all-rounder. Can't hit air.") },
-  { key: "artillery", name: msg("Artillery"), emoji: "💥", cls: "vehicle", building: "factory", buildingLevel: 2, cost: 420, atk: 28, hp: 20, seconds: 90, housing: 6, vs: { infantry: 1.3, vehicle: 0.9, air: 0.1, structure: 1.8 }, role: msg("Wrecks bases. Fragile.") },
-  { key: "jet", name: msg("Strike Jet"), emoji: "✈️", cls: "air", building: "airfield", buildingLevel: 1, cost: 650, atk: 40, hp: 30, seconds: 120, housing: 8, vs: { infantry: 0.9, vehicle: 1.6, air: 1, structure: 1.2 }, role: msg("Kills armor. Fears rockets.") },
+  { key: "rocket", name: msg("Rocket Squad"), emoji: "🚀", cls: "infantry", building: "barracks", buildingLevel: 2, cost: 110, atk: 9, hp: 13, seconds: 35, housing: 2, vs: { infantry: 0.6, vehicle: 1.7, air: 1.5, structure: 1.1 }, role: msg("Tank & jet hunter.") },
+  { key: "tank", name: msg("Battle Tank"), emoji: "🛡️", cls: "vehicle", building: "factory", buildingLevel: 1, cost: 280, atk: 16, hp: 45, seconds: 60, housing: 4, vs: { infantry: 1.3, vehicle: 1.1, air: 0.2, structure: 1 }, role: msg("Tough all-rounder. Can't hit air.") },
+  { key: "artillery", name: msg("Artillery"), emoji: "💥", cls: "vehicle", building: "factory", buildingLevel: 2, cost: 420, atk: 28, hp: 26, seconds: 90, housing: 5, vs: { infantry: 1.3, vehicle: 0.9, air: 0.1, structure: 1.8 }, role: msg("Wrecks bases. Fragile.") },
+  { key: "jet", name: msg("Strike Jet"), emoji: "✈️", cls: "air", building: "airfield", buildingLevel: 1, cost: 650, atk: 40, hp: 34, seconds: 120, housing: 6, vs: { infantry: 0.9, vehicle: 1.6, air: 1, structure: 1.2 }, role: msg("Kills armor. Fears rockets.") },
 ];
 export const UNIT_BY_KEY = Object.fromEntries(UNITS.map((u) => [u.key, u])) as Record<UnitKey, UnitDef>;
 export const unitCost = (u: UnitDef, f: FactionDef | null) => Math.round(u.cost * (f?.cost ?? 1) * S.unitCostMult);

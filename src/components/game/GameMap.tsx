@@ -44,7 +44,7 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
   return null;
 }
 
-const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#22e3ff" : t.friend ? "#3dff8f" : "#ff4d4d");
+const towerColor = (t: { mine: boolean; friend: boolean }) => (t.mine ? "#63b3f2" : t.friend ? "#5bd38c" : "#ef6461");
 
 type Props = {
   /** fantasy: illustrated storybook map · dark: night-ops · classic: plain street map. */
@@ -65,17 +65,17 @@ type Props = {
 
 export default memo(GameMap);
 
-const GOLD = "#ffd23f";
+const GOLD = "#f0c05a";
 
 /** Dashed lines from the player to wherever they're headed (drawn by PlayerLayer). */
 function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | undefined, travelTo: LatLng | null | undefined): Guide[] {
   const out: Guide[] = [];
-  if (run) out.push({ to: { lat: run.targetLat, lng: run.targetLng }, color: "#ff2e88", dash: "8 10", weight: 3 });
+  if (run) out.push({ to: { lat: run.targetLat, lng: run.targetLng }, color: "#ee7fae", dash: "8 10", weight: 3 });
   const next = game?.points && game.next != null ? game.points[game.next] : null;
   if (next) out.push({ to: next, color: GOLD, dash: "8 10", weight: 3 });
   if (game?.target) out.push({ to: game.target, color: GOLD, dash: "10 10", weight: 4, opacity: 0.9 });
   if (game?.area) out.push({ to: game.area.center, color: GOLD, dash: "10 10", weight: 3, opacity: 0.7 });
-  if (travelTo) out.push({ to: travelTo, color: "#3dff8f", dash: "6 8", weight: 3 });
+  if (travelTo) out.push({ to: travelTo, color: "#5bd38c", dash: "6 8", weight: 3 });
   return out;
 }
 
@@ -228,7 +228,7 @@ function Layers({
   }, [world, view, lod, cell]);
 
   const spawnMarker = (s: WorldSpawn) => {
-    const color = s.kind === "derrick" ? "#ffd23f" : s.item ? RARITY_COLOR[s.item.rarity] : "#22e3ff";
+    const color = s.kind === "derrick" ? "#f0c05a" : s.item ? RARITY_COLOR[s.item.rarity] : "#63b3f2";
     const cls = `${s.kind} ${s.item?.rarity ?? ""} ${s.claimed ? "claimed" : ""}`;
     return (
       <Marker
@@ -245,7 +245,7 @@ function Layers({
     ) : c.kind === "note" ? (
       <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon(c.data.unlocked ? "💬" : "📍", "note", 32)} eventHandlers={{ click: () => onSelect({ type: "note", data: c.data }) }} />
     ) : c.kind === "ride" ? (
-      <Marker key={c.id} position={[c.lat, c.lng]} icon={icon(`<span class="ring" style="color:#ffd23f"></span>🚕<span class="nm">${fmtNum(c.data.fare)} 🪙</span>`, "ride")} eventHandlers={{ click: () => onSelect({ type: "ride", data: c.data }) }} />
+      <Marker key={c.id} position={[c.lat, c.lng]} icon={icon(`<span class="ring" style="color:#f0c05a"></span>🚕<span class="nm">${fmtNum(c.data.fare)} 🪙</span>`, "ride")} eventHandlers={{ click: () => onSelect({ type: "ride", data: c.data }) }} />
     ) : (
       <Marker key={c.data.id} position={[c.lat, c.lng]} icon={icon("📦", "")} eventHandlers={{ click: () => onSelect({ type: "delivery", data: c.data }) }} />
     );
@@ -259,7 +259,7 @@ function Layers({
   );
   const baseMarker = (b: World["bases"][number]) => {
     const f = b.faction ? FACTION_BY_KEY[b.faction] : null;
-    const color = b.mine ? "#22e3ff" : b.friend ? "#3dff8f" : (f?.color ?? "#ff4d4d");
+    const color = b.mine ? "#63b3f2" : b.friend ? "#5bd38c" : (f?.color ?? "#ef6461");
     return (
       <Marker
         key={b.id}
@@ -278,7 +278,7 @@ function Layers({
   return (
     <>
       {world?.events.map((e) => (
-        <Circle key={`ec${e.id}`} center={[e.lat, e.lng]} radius={e.radiusM} pathOptions={{ color: e.official ? "#ffd23f" : "#b26bff", weight: 1, fillOpacity: 0.08 }} />
+        <Circle key={`ec${e.id}`} center={[e.lat, e.lng]} radius={e.radiusM} pathOptions={{ color: e.official ? "#f0c05a" : "#a48bfa", weight: 1, fillOpacity: 0.08 }} />
       ))}
 
       {clutter.map((g) => {
@@ -291,13 +291,13 @@ function Layers({
         <Marker
           key={m.id}
           position={[m.lat, m.lng]}
-          icon={icon(`<span class="ring" style="color:#ffd23f"></span>${m.item?.emoji ?? "⭐"}`, `legendary ${m.claimed ? "claimed" : ""}`, 46)}
+          icon={icon(`<span class="ring" style="color:#f0c05a"></span>${m.item?.emoji ?? "⭐"}`, `legendary ${m.claimed ? "claimed" : ""}`, 46)}
           eventHandlers={{ click: () => onSelect({ type: "mission", data: m }) }}
         />
       ))}
 
       {world?.lotteries.map((l) => (
-        <Circle key={`lc${l.id}`} center={[l.lat, l.lng]} radius={l.radiusM} pathOptions={{ color: "#ff2e88", weight: 1, dashArray: "4 4", fillOpacity: l.status === "OPEN" ? 0.08 : 0.02 }} />
+        <Circle key={`lc${l.id}`} center={[l.lat, l.lng]} radius={l.radiusM} pathOptions={{ color: "#ee7fae", weight: 1, dashArray: "4 4", fillOpacity: l.status === "OPEN" ? 0.08 : 0.02 }} />
       ))}
       {world?.lotteries.filter(inView).map((l) => (
         <Marker
@@ -305,7 +305,7 @@ function Layers({
           position={[l.lat, l.lng]}
           zIndexOffset={300}
           icon={icon(
-            `<span class="ring" style="color:#ff2e88"></span>🎰<span class="nm">${l.status === "OPEN" ? `${fmtNum(l.pot)} 🪙` : l.status === "DRAWN" ? `🏆 ${esc(l.winner ?? "")}` : esc(t("refunded"))}</span>${l.myTickets ? `<span class="shield">🎟️</span>` : ""}`,
+            `<span class="ring" style="color:#ee7fae"></span>🎰<span class="nm">${l.status === "OPEN" ? `${fmtNum(l.pot)} 🪙` : l.status === "DRAWN" ? `🏆 ${esc(l.winner ?? "")}` : esc(t("refunded"))}</span>${l.myTickets ? `<span class="shield">🎟️</span>` : ""}`,
             `lottery ${l.status === "OPEN" ? "" : "drawn"}`,
             42,
           )}
@@ -342,7 +342,7 @@ function Layers({
             position={[b.lat, b.lng]}
             zIndexOffset={b.featured ? 700 : 360}
             icon={icon(
-              `<span class="ring" style="color:${b.featured ? "#ffd23f" : b.mine ? "#22e3ff" : "#ff7ad9"}"></span>${esc(b.emoji)}<span class="nm">${esc(b.name)}</span>${open && !b.mine ? `<span class="deal">+${fmtNum(best)} 🪙</span>` : ""}${b.verified ? '<span class="shield">✔</span>' : ""}`,
+              `<span class="ring" style="color:${b.featured ? "#f0c05a" : b.mine ? "#63b3f2" : "#ff7ad9"}"></span>${esc(b.emoji)}<span class="nm">${esc(b.name)}</span>${open && !b.mine ? `<span class="deal">+${fmtNum(best)} 🪙</span>` : ""}${b.verified ? '<span class="shield">✔</span>' : ""}`,
               `biz ${b.featured ? "featured" : ""} ${open ? "" : "claimed"}`,
               b.featured ? 50 : 42,
             )}
@@ -358,7 +358,7 @@ function Layers({
           position={[s.lat, s.lng]}
           zIndexOffset={350}
           icon={icon(
-            `<span class="ring" style="color:${s.mine ? "#22e3ff" : "#3dff8f"}"></span>${esc(s.emoji)}<span class="nm">${esc(s.name)}</span>${s.deal && s.live ? `<span class="deal">${esc(t("−{n}%", { n: s.deal }))}</span>` : ""}`,
+            `<span class="ring" style="color:${s.mine ? "#63b3f2" : "#5bd38c"}"></span>${esc(s.emoji)}<span class="nm">${esc(s.name)}</span>${s.deal && s.live ? `<span class="deal">${esc(t("−{n}%", { n: s.deal }))}</span>` : ""}`,
             `shop ${s.live ? "" : "closed"}`,
             40,
           )}
@@ -378,7 +378,7 @@ function Layers({
       {lod !== "far" &&
         world?.outposts.filter((o) => inView(o) && (lod === "near" || o.owner)).map((o) => {
           const f = o.owner?.faction ? FACTION_BY_KEY[o.owner.faction as keyof typeof FACTION_BY_KEY] : null;
-          const color = o.mine ? "#22e3ff" : f?.color ?? "#9ca3af";
+          const color = o.mine ? "#63b3f2" : f?.color ?? "#9ca3af";
           return (
             <Marker
               key={o.id}
@@ -458,7 +458,7 @@ function Layers({
 
       <LiveLayer world={world} me={me} runners={runners} onSelect={onSelect} />
 
-      {me?.base && <Circle center={[me.base.lat, me.base.lng]} radius={SIEGE_RANGE_M} pathOptions={{ color: "#22e3ff", weight: 1, opacity: 0.25, fill: false, dashArray: "2 10" }} />}
+      {me?.base && <Circle center={[me.base.lat, me.base.lng]} radius={SIEGE_RANGE_M} pathOptions={{ color: "#63b3f2", weight: 1, opacity: 0.25, fill: false, dashArray: "2 10" }} />}
 
       {world?.bosses.map((b) => (
         <Marker
@@ -477,7 +477,7 @@ function Layers({
       {/* King-of-the-hill flags */}
       {lod !== "far" &&
         world?.flags.filter(inView).map((f) => {
-          const color = f.mine ? "#22e3ff" : f.friend ? "#3dff8f" : "#ff4d4d";
+          const color = f.mine ? "#63b3f2" : f.friend ? "#5bd38c" : "#ef6461";
           return (
             <Marker
               key={`fl${f.id}`}
@@ -513,36 +513,36 @@ function Layers({
       {run && (
         <>
           <Marker position={[run.targetLat, run.targetLng]} icon={icon("🎯", "target", 46)} />
-          <Circle center={[run.targetLat, run.targetLng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#ff2e88", weight: 2, fillOpacity: 0.15 }} />
+          <Circle center={[run.targetLat, run.targetLng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#ee7fae", weight: 2, fillOpacity: 0.15 }} />
         </>
       )}
 
       {/* GPS games & story: visible waypoints, rally checkpoints, hold zones */}
       {game?.points?.map((p, i) => (
-        <Marker key={`rp${i}`} position={[p.lat, p.lng]} zIndexOffset={1200} icon={icon(`<span class="ring" style="color:${i === game.next ? "#ffd23f" : i < (game.next ?? 0) ? "#3dff8f" : "#9ca3af"}"></span>${i < (game.next ?? 0) ? "✅" : "🏁"}<span class="nm">${i + 1}</span>`, `quest-pt ${i === game.next ? "next" : ""}`, 40)} />
+        <Marker key={`rp${i}`} position={[p.lat, p.lng]} zIndexOffset={1200} icon={icon(`<span class="ring" style="color:${i === game.next ? "#f0c05a" : i < (game.next ?? 0) ? "#5bd38c" : "#9ca3af"}"></span>${i < (game.next ?? 0) ? "✅" : "🏁"}<span class="nm">${i + 1}</span>`, `quest-pt ${i === game.next ? "next" : ""}`, 40)} />
       ))}
       {/* Story / GPS waypoints: a gold beacon you can't miss, with what to do there */}
       {game?.target && (
         <>
-          <Circle center={[game.target.lat, game.target.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#ffd23f", weight: 3, fillOpacity: 0.14 }} />
+          <Circle center={[game.target.lat, game.target.lng]} radius={INTERACT_RADIUS_M} pathOptions={{ color: "#f0c05a", weight: 3, fillOpacity: 0.14 }} />
           <Marker position={[game.target.lat, game.target.lng]} zIndexOffset={1300} icon={icon(`<span class="beacon"></span><span class="bc-pin">${game.kind === "story" ? "📖" : "📍"}</span><span class="bc-label">${esc(game.kind === "story" ? t("GO HERE · {n}/{total}", { n: (game.step ?? 0) + 1, total: game.steps ?? 0 }) : t("GO HERE"))}</span>`, "story-beacon", 56)} />
         </>
       )}
       {game?.area && (
         <>
-          <Circle center={[game.area.center.lat, game.area.center.lng]} radius={game.area.radius} pathOptions={{ color: "#ffd23f", weight: 3, fillOpacity: 0.12, dashArray: "8 8" }} />
+          <Circle center={[game.area.center.lat, game.area.center.lng]} radius={game.area.radius} pathOptions={{ color: "#f0c05a", weight: 3, fillOpacity: 0.12, dashArray: "8 8" }} />
           <Marker position={[game.area.center.lat, game.area.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon"></span><span class="bc-pin">🔍</span><span class="bc-label">${esc(t("SEARCH HERE · {n}/{total}", { n: (game.step ?? 0) + 1, total: game.steps ?? 0 }))}</span>`, "story-beacon", 56)} />
         </>
       )}
       {game?.hold && game.center && (
         <>
-          <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#3dff8f" : "#ff4d4d", weight: 3, fillOpacity: 0.12, dashArray: "6 6" }} />
+          <Circle center={[game.center.lat, game.center.lng]} radius={game.hold.radius} pathOptions={{ color: game.hold.inside ? "#5bd38c" : "#ef6461", weight: 3, fillOpacity: 0.12, dashArray: "6 6" }} />
           <Marker position={[game.center.lat, game.center.lng]} zIndexOffset={1300} interactive={false} icon={icon(`<span class="beacon ${game.hold.inside ? "ok" : ""}"></span><span class="bc-pin">🛡️</span><span class="bc-label">${esc(t("HOLD HERE · {n}/{total}", { n: (game.step ?? 0) + 1, total: game.steps ?? 0 }))}</span>`, "story-beacon", 56)} />
         </>
       )}
 
       {/* Play from home: where the commander is travelling to */}
-      {travelTo && <Marker position={[travelTo.lat, travelTo.lng]} zIndexOffset={1100} interactive={false} icon={icon(`<span class="ring" style="color:#3dff8f"></span>📍`, "quest-pt next", 36)} />}
+      {travelTo && <Marker position={[travelTo.lat, travelTo.lng]} zIndexOffset={1100} interactive={false} icon={icon(`<span class="ring" style="color:#5bd38c"></span>📍`, "quest-pt next", 36)} />}
     </>
   );
 }

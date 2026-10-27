@@ -28,7 +28,7 @@ import {
   type EmpireState,
 } from "../lib/idle";
 import { HttpError } from "./http";
-import { bumpNeeds } from "./needs";
+import { bumpNeeds, moodOfUser } from "./needs";
 import { questEvent } from "./quests";
 import { grant } from "./rewards";
 import { stepsToday } from "./steps";
@@ -67,20 +67,22 @@ async function save(userId: string, s: EmpireState, extra: Partial<Pick<Empire, 
 export async function settled(u: User) {
   const row = await loadRow(u);
   const steps = await stepsToday(u);
-  const { s, earned, away } = settle(toState(row), { now: Date.now(), stepsToday: steps });
+  const mood = moodOfUser(u).empireMult;
+  const { s, earned, away } = settle(toState(row), { now: Date.now(), stepsToday: steps, mood });
   await save(u.id, s);
-  return { row, s, steps, offline: away >= AWAY_REPORT_S && earned > 0 ? { earned, seconds: Math.round(away) } : null };
+  return { row, s, steps, mood, offline: away >= AWAY_REPORT_S && earned > 0 ? { earned, seconds: Math.round(away) } : null };
 }
 
 /** What the client needs to draw the empire and run its own counter. */
-export function view(row: Empire, s: EmpireState, steps: number, stepsTotal: number) {
-  const mods = { stepsToday: steps };
+export function view(row: Empire, s: EmpireState, steps: number, stepsTotal: number, mood = 1) {
+  const mods = { stepsToday: steps, mood };
   const rank = rankOf(s.total);
   const next = row.dividendAt ? row.dividendAt.getTime() + DIVIDEND_H * 3600_000 : 0;
   return {
     state: s,
     now: Date.now(),
     stepsToday: steps,
+    moodMult: mood,
     stepBank: Math.max(0, stepsTotal - row.stepsSpent),
     perSec: managedRate(s, mods),
     fullPerSec: fullRate(s, mods),
@@ -104,8 +106,8 @@ export type EmpireAction =
 
 /** Apply one action. Returns a message for the player (or none). */
 export async function act(u: User, a: EmpireAction): Promise<{ message?: string }> {
-  const { row, s, steps } = await settled(u);
-  const mods = { stepsToday: steps };
+  const { row, s, steps, mood } = await settled(u);
+  const mods = { stepsToday: steps, mood };
   const spend = (cost: number) => {
     if (cost > s.cash * (1 + 1e-9)) throw new HttpError(400, t("Not enough cash"));
     s.cash = Math.max(0, s.cash - cost);

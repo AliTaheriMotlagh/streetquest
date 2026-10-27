@@ -4,7 +4,7 @@ import { t } from "@/lib/i18n";
 import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
 import type { LatLng, Me, World } from "./client";
 
-export type Toast = { id?: number; title: string; body?: string; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error"; tag?: string | null };
+export type Toast = { id?: number; title: string; body?: string | null; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error"; tag?: string | null; link?: string | null };
 export type PanelId = "nearby" | "base" | "jobs" | "market" | "crew" | "events" | "me" | "play" | "store" | "inbox" | "social" | "biz";
 
 export type GameCtx = {
@@ -20,6 +20,8 @@ export type GameCtx = {
   /** Ring a crew member: a video call, or a voice call with `video` false. */
   startCall: (peer: { id: string; username: string; avatar: string }, video?: boolean) => void;
   setPanel: (p: PanelId | null) => void;
+  /** Open what a notification links to: a panel id, or "me:<tab>" for a Hero tab. */
+  openLink: (link: string) => void;
   /** Open the Market on one shop (tapped on the map). */
   openShop: (shopId: string) => void;
   /** Test mode: jump straight to a spot. Play from home: travel there at the capped speed. */

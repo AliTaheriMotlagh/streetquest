@@ -9,9 +9,9 @@ export const BOSS_WINDOW_MS = 2 * 3600_000;
 export type BossDef = { key: string; name: string; emoji: string; hp: number; dmg: number; speed: number; color: string; blurb: string };
 export const BOSS_DEFS: BossDef[] = [
   { key: "colossus", name: msg("Iron Colossus"), emoji: "🤖", hp: 6000, dmg: 16, speed: 2.2, color: "#9ca3af", blurb: msg("A walking siege engine. Slow, armored, relentless.") },
-  { key: "scorpion", name: msg("Scorpion King"), emoji: "🦂", hp: 4500, dmg: 12, speed: 4, color: "#3dff8f", blurb: msg("Desert warlord. Fast and venomous.") },
-  { key: "dragon", name: msg("Red Dragon Mech"), emoji: "🐉", hp: 8000, dmg: 20, speed: 2.8, color: "#ff4d4d", blurb: msg("Flamethrower mech. Bring a crew.") },
-  { key: "vex", name: msg("General Vex"), emoji: "💀", hp: 5000, dmg: 14, speed: 3.2, color: "#b26bff", blurb: msg("Rogue general with an elite guard.") },
+  { key: "scorpion", name: msg("Scorpion King"), emoji: "🦂", hp: 4500, dmg: 12, speed: 4, color: "#5bd38c", blurb: msg("Desert warlord. Fast and venomous.") },
+  { key: "dragon", name: msg("Red Dragon Mech"), emoji: "🐉", hp: 8000, dmg: 20, speed: 2.8, color: "#ef6461", blurb: msg("Flamethrower mech. Bring a crew.") },
+  { key: "vex", name: msg("General Vex"), emoji: "💀", hp: 5000, dmg: 14, speed: 3.2, color: "#a48bfa", blurb: msg("Rogue general with an elite guard.") },
 ];
 
 export type Boss = { id: string; def: BossDef; lat: number; lng: number; expiresAt: number; maxHp: number };

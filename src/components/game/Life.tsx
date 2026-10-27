@@ -51,7 +51,11 @@ export function LifeTab() {
         <div style={{ fontSize: 40 }}>{mood.emoji}</div>
         <div className="grow">
           <b style={{ fontFamily: "var(--display)" }}>{t(mood.label)}</b> <span className="small muted">{t("mood {n}", { n: mood.score })}</span>
-          <div className="small muted">{t("XP ×{xp} · combat HP ×{hp}", { xp: mood.xpMult, hp: mood.hpMult })}</div>
+          <div className="small muted">
+            {t("XP ×{xp} · combat HP ×{hp}", { xp: mood.xpMult, hp: mood.hpMult })}
+            {mood.empireMult > 1 && <> · {t("Empire income ×{n}", { n: Math.round(mood.empireMult * 100) / 100 })}</>}
+          </div>
+          {mood.empireMult <= 1 && <div className="small muted">{t("Keep every need above 60 to feel Happy: more XP, a tougher commander and a richer empire.")}</div>}
         </div>
       </div>
       {NEEDS.map((n) => (
@@ -104,7 +108,7 @@ export function LifeTab() {
           ))}
         </div>
       ) : (
-        <p className="small muted">{t("Nobody close by right now. Chatting with your crew also helps a little.")}</p>
+        <p className="small muted">{t("Nobody close by right now — check in at a café, bar or park on the map, or chat with your crew.")}</p>
       )}
       {socialLeft > 0 && <p className="small muted">{t("Next hangout in {n} min.", { n: Math.ceil(socialLeft / 60000) })}</p>}
     </>

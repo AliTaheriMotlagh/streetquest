@@ -47,12 +47,13 @@ export async function giveGear(userId: string, opts: { luck?: number; floor?: Ra
   const item = rollGear(Math.random, levelForXp(u.xp), opts);
   if ((await prisma.gear.count({ where: { userId } })) >= MAX_GEAR) {
     await prisma.user.update({ where: { id: userId }, data: { scrap: { increment: 5 } } });
-    await notify(userId, () => ({ kind: "reward", title: t("Stash full"), body: t("{item} was salvaged for 5 scrap", { item: gearName(item) }) }));
+    await notify(userId, () => ({ kind: "reward", link: "me:hero", title: t("Stash full"), body: t("{item} was salvaged for 5 scrap", { item: gearName(item) }) }));
     return null;
   }
   const g = await prisma.gear.create({ data: { userId, slot: item.slot, base: item.base, name: item.name, rarity: item.rarity, level: item.level, affixes: item.affixes } });
   await notify(userId, () => ({
     kind: "reward",
+    link: "me:hero",
     title: t("{emoji} Loot: {item}", { emoji: GEAR_BASE_BY_KEY[item.base].emoji, item: gearName(item) }),
     body: `${t("{rarity} {slot}", { rarity: t(RARITY_LABEL[item.rarity]), slot: t(SLOT_LABEL[item.slot]) })}${opts.source ? ` · ${t("from {source}", { source: t(opts.source) })}` : ""}`,
   }));

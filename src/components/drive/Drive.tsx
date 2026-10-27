@@ -267,7 +267,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
     let headYaw = st.yaw, sway = 0;
 
     // Navigation arrow over the vehicle.
-    const arrowMat = new THREE.MeshBasicMaterial({ color: "#ffd23f" });
+    const arrowMat = new THREE.MeshBasicMaterial({ color: "#f0c05a" });
     const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 4), arrowMat);
     arrow.geometry.rotateX(-Math.PI / 2);
     arrow.visible = false;
@@ -445,14 +445,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
       const run = m?.activeRun;
       if (run)
         out.push({
-          id: `run:${run.id}`, kind: "deliver", lat: run.targetLat, lng: run.targetLng, emoji: "🎯", color: "#ff2e88", label: t(run.title), verb: t("Deliver"), where: t(run.title), icon: "flag", reach: INTERACT_RADIUS_M, sel: null,
+          id: `run:${run.id}`, kind: "deliver", lat: run.targetLat, lng: run.targetLng, emoji: "🎯", color: "#ee7fae", label: t(run.title), verb: t("Deliver"), where: t(run.title), icon: "flag", reach: INTERACT_RADIUS_M, sel: null,
           run: () => live.current.act(() => api("/api/runs", { body: { runId: run.id, action: "complete" } })).then((ok) => (ok && celebrate({ title: t("DELIVERED!"), art: "box", body: t(run.title) }), ok)),
         });
       for (const p of w?.places ?? []) {
         if (p.done || (run && p.kind === "deliver")) continue;
         const cat = PLACE_CATS[p.place.cat] ?? PLACE_CATS.shop;
         out.push({
-          id: p.id, kind: p.kind === "deliver" ? "pickup" : "visit", lat: p.place.lat, lng: p.place.lng, emoji: p.emoji, color: p.kind === "deliver" ? "#ffd23f" : "#3dff8f",
+          id: p.id, kind: p.kind === "deliver" ? "pickup" : "visit", lat: p.place.lat, lng: p.place.lng, emoji: p.emoji, color: p.kind === "deliver" ? "#f0c05a" : "#5bd38c",
           label: `${t(p.title)} · ${p.place.name}`, verb: p.kind === "deliver" ? t("Pick up") : t("Check in"), where: p.place.name, icon: p.kind === "deliver" ? "box" : "check", reach: INTERACT_RADIUS_M,
           sel: { type: "place", data: p },
           run: () => live.current.act(() => api("/api/places", { body: { id: p.id } })).then((ok) => {
@@ -465,7 +465,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         for (const c of b.campaigns) {
           if (c.visited || b.mine) continue;
           out.push({
-            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: b.featured ? "#ff7ad9" : "#22e3ff", label: `${c.title} · ${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
+            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: b.featured ? "#ff7ad9" : "#63b3f2", label: `${c.title} · ${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
             sel: { type: "biz", data: b },
             run: () => live.current.act(() => api<{ message: string; code: string | null }>("/api/business", { body: { action: "checkin", campaignId: c.id } }).then((r) => {
               celebrate({ title: t("CHECKED IN!"), body: r.code ? t("Coupon code: {code}", { code: r.code }) : b.name, emoji: b.emoji });
@@ -508,7 +508,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
         if (loot.has(s.id)) continue;
         const p = frame.toXZ(s.lat, s.lng);
         const emoji = s.kind === "chest" ? "🧰" : s.kind === "arcade" ? "🔋" : s.item?.emoji ?? "🪙";
-        const l = Object.assign(makeLoot(emoji, s.kind === "chest" ? "#ffd23f" : "#22e3ff"), { id: s.id, taken: false });
+        const l = Object.assign(makeLoot(emoji, s.kind === "chest" ? "#f0c05a" : "#63b3f2"), { id: s.id, taken: false });
         l.icon.userData = { pick: { kind: "loot", id: s.id } };
         l.group.position.set(p.x, 0, p.z);
         scene.add(l.group);
@@ -1246,7 +1246,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
           };
           for (const m of markers.dots()) dot(m.x, m.z, m.color, 3.2);
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
-          for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#ffd23f", 4);
+          for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#f0c05a", 4);
           for (const cn of coins) if (cn.mesh.visible) dot(cn.mesh.position.x, cn.mesh.position.z, "#ffcf3a", 3);
           for (const o of others.positions()) {
             g.strokeStyle = "#111";
@@ -1259,7 +1259,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCl
             const len = Math.hypot(p.x - st.x, p.z - st.z) * scale;
             const ang = Math.atan2(p.z - st.z, p.x - st.x);
             const r = Math.min(len, R - 8);
-            g.fillStyle = "#ff2e88";
+            g.fillStyle = "#ee7fae";
             g.beginPath();
             g.arc(Math.cos(ang) * r, Math.sin(ang) * r, 6, 0, Math.PI * 2);
             g.fill();

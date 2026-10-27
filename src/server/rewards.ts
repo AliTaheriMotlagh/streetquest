@@ -42,6 +42,7 @@ export async function grant(userId: string, g: Grant, opts: { raw?: boolean } = 
     await notify(userId, () => ({
       kind: "reward",
       tag: "levelup",
+      link: "me:hero",
       title: t("LEVEL UP! {n}", { n: newLevel }),
       body: `${titleForLevel(newLevel)} · ${t("+{points} attribute points, +{n, plural, one {# Command Point} other {# Command Points}}", { points: 3 * gained, n: gained })}${gems ? `, +${gems} 💎` : ""}`,
     }));
@@ -55,7 +56,7 @@ export async function unlock(userId: string, key: string) {
   const exists = await prisma.userAchievement.findUnique({ where: { userId_key: { userId, key } } });
   if (exists) return;
   await prisma.userAchievement.create({ data: { userId, key } });
-  await notify(userId, () => ({ kind: "reward", title: t("{emoji} Achievement: {name}", { emoji: def.emoji, name: t(def.name) }), body: `${t("+{n} XP", { n: def.xp })}${S.achievementGems ? ` · +${S.achievementGems} 💎` : ""}` }));
+  await notify(userId, () => ({ kind: "reward", link: "me", title: t("{emoji} Achievement: {name}", { emoji: def.emoji, name: t(def.name) }), body: `${t("+{n} XP", { n: def.xp })}${S.achievementGems ? ` · +${S.achievementGems} 💎` : ""}` }));
   await grant(userId, { xp: def.xp, gems: S.achievementGems });
 }
 

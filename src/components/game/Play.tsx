@@ -18,56 +18,10 @@ import { Button } from "@/components/Button";
 import { LotteryTab } from "./Lottery";
 import { EmpireTab } from "./Empire";
 import { Art } from "@/components/art/Art";
+import { burst, celebrate, parseRewards } from "./Rewards";
 
-// ---------------------------------------------------------------- celebrations
-type Celebration = { title: string; body?: string; emoji?: string; art?: string };
-export const celebrate = (c: Celebration) => window.dispatchEvent(new CustomEvent("sq:celebrate", { detail: c }));
-/** Coins/gems flying up to the HUD after a reward. */
-export const burst = (emoji: string, n = 10) => window.dispatchEvent(new CustomEvent("sq:burst", { detail: { emoji, n } }));
-
-export function CelebrationLayer() {
-  const [show, setShow] = useState<(Celebration & { id: number }) | null>(null);
-  const [parts, setParts] = useState<{ id: number; emoji: string; x: number; d: number }[]>([]);
-  useEffect(() => {
-    const onCel = (e: Event) => {
-      const c = (e as CustomEvent<Celebration>).detail;
-      const id = Date.now();
-      setShow({ ...c, id });
-      sfx("levelup");
-      navigator.vibrate?.([60, 40, 60, 40, 120]);
-      setTimeout(() => setShow((s) => (s?.id === id ? null : s)), 3200);
-    };
-    const onBurst = (e: Event) => {
-      const { emoji, n } = (e as CustomEvent<{ emoji: string; n: number }>).detail;
-      const batch = Array.from({ length: n }, (_, i) => ({ id: Math.random(), emoji, x: (Math.random() - 0.5) * 160, d: i * 45 }));
-      setParts((p) => [...p, ...batch]);
-      setTimeout(() => setParts((p) => p.filter((x) => !batch.includes(x))), 1600);
-    };
-    window.addEventListener("sq:celebrate", onCel);
-    window.addEventListener("sq:burst", onBurst);
-    return () => {
-      window.removeEventListener("sq:celebrate", onCel);
-      window.removeEventListener("sq:burst", onBurst);
-    };
-  }, []);
-  return (
-    <>
-      {parts.map((p) => (
-        <span key={p.id} className="fly" style={{ ["--x" as string]: `${p.x}px`, animationDelay: `${p.d}ms` }}>{p.emoji}</span>
-      ))}
-      {show && (
-        <div className="celebrate" onClick={() => setShow(null)}>
-          <div className="rays" />
-          <div className="cel-card">
-            <div className="cel-emoji">{show.art ? <Art k={show.art} /> : show.emoji ?? "🏆"}</div>
-            <div className="cel-title">{show.title}</div>
-            {show.body && <div className="cel-body">{show.body}</div>}
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
+// ---------------------------------------------------------------- celebrations (Rewards.tsx)
+export { burst, celebrate, CelebrationLayer } from "./Rewards";
 
 // ---------------------------------------------------------------- directions (car / walking hand-off)
 const isApple = () => typeof navigator !== "undefined" && /iPhone|iPad|Macintosh/.test(navigator.userAgent);
@@ -121,12 +75,9 @@ export function useGpsGame(activeId: string | null, onChange: () => void, toast:
       if (stop || document.hidden) return;
       try {
         const r = await api<{ won: boolean; message?: string; outro?: string }>("/api/gpsgame", { body: { action: "check" } });
-        if (r.message) toast({ kind: r.won ? "reward" : "info", title: r.message });
+        if (r.message && !r.won) toast({ kind: "info", title: r.message });
         if (r.won) {
-          sfx("levelup");
-          celebrate({ title: t("VICTORY!"), body: r.outro ?? r.message, emoji: "🏆" });
-          burst("🪙", 12);
-          burst("💎", 5);
+          celebrate({ title: t("VICTORY!"), body: r.outro ?? r.message, emoji: "🏆", rewards: parseRewards(r.message) });
           setView(null);
           onChange();
           return;
@@ -262,11 +213,7 @@ export function PlayPanel({ onClose, peek, onStarted, initialTab }: { onClose: (
     });
   const claim = (key: string) =>
     act(() => api("/api/goals", { body: { key } })).then((ok) => {
-      if (ok) {
-        burst("💎", 6);
-        burst("🪙", 10);
-        load();
-      }
+      if (ok) load();
     });
 
   return (

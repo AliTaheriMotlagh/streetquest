@@ -154,10 +154,18 @@ model Notification {
   tag       String?
   title     String
   body      String?
+  // Where tapping it goes: a panel id ("base", "play", "me:quests"…).
+  link      String?
+  // One-off alerts (a timer that finished, the daily drop) carry a key so they're sent once
+  // (checked in server/alerts.ts; an index, not a unique constraint, so deploys never stop on it).
+  key       String?
   readAt    DateTime? // seen in the inbox
+  // Dismissed keyed alerts are hidden rather than deleted, so their key still stops a resend.
+  hiddenAt  DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, key])
   @@index([userId, createdAt])
   @@index([userId, readAt])
   @@index([createdAt])

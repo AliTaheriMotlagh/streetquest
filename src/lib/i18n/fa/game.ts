@@ -14,7 +14,6 @@ const game: Record<string, string> = {
   "TEST MODE": "حالت آزمایشی",
   TEST: "آزمایشی",
   "Claim reward!": "جایزه‌ات رو بگیر!",
-  "{desc} · {progress}/{target}": "{desc} · {progress}/{target}",
   "Your health on the street — hostile towers and guards shoot you": "جانت تو خیابون — برج‌ها و نگهبان‌های دشمن بهت شلیک می‌کنن",
   "Couldn't start the game": "بازی باز نشد",
   Retry: "دوباره امتحان کن",

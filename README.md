@@ -6,7 +6,10 @@ Three games stacked on one real-world map:
   supply / barracks / factory / airfield / turrets on real timers, train an army, capture oil derricks
   and siege rival bases. Battles are auto-resolved.
 - **Life sim (The Sims style)** — your commander has Hunger, Energy, Social and Fun that drain in real time.
-  Eat food you find, sleep at your base, hang out with nearby players. Mood scales XP and combat HP.
+  Eat food you find, sleep at your base, hang out with nearby players or check in at real cafés, bars and parks.
+  Time alone never drags a need below a floor, and a long break counts as a night's sleep, so coming back
+  never means a miserable commander. Mood scales XP, combat HP and Street Empire income (all tunable in
+  Admin → Game settings → Life sim).
 - **FPS (Counter-Strike / CoD style)** — walk within 200 m of an enemy base while other players are online and
   you can *breach* it: a live first-person match (capture the zone or wipe the defenders + garrison bots,
   no respawns). World **bosses** roam the map with shared HP — raid them in first person or bombard them.

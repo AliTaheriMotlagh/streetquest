@@ -76,6 +76,18 @@ const DEFAULTS = {
   shieldHours: 2,
   siegeCooldownMin: 30,
 
+  // ---- life sim
+  hungerPerHour: 4,
+  energyPerHour: 3,
+  socialPerHour: 3,
+  funPerHour: 4,
+  needsFloor: 20,
+  sleepHours: 6,
+  sleepEnergy: 80,
+  messHallCost: 15,
+  restCooldownMin: 30,
+  moodEmpireBonus: 0.2,
+
   // ---- territory
   outpostIncomeHour: 40,
   flagIncomeHour: 30,
@@ -244,6 +256,17 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "relocateCost", group: msg("Base & army"), label: msg("Move-base cost (coins)"), help: "", min: 0, max: 1000000 },
   { key: "shieldHours", group: msg("Base & army"), label: msg("Shield per star lost (hours)"), help: "", min: 0, max: 72, step: 0.25 },
   { key: "siegeCooldownMin", group: msg("Base & army"), label: msg("Siege cooldown (min)"), help: "", min: 0, max: 1440 },
+
+  { key: "hungerPerHour", group: msg("Life sim"), label: msg("Hunger drain (per hour)"), help: msg("How fast each need drops in real time. Lower is gentler on players who play once or twice a day."), min: 0, max: 50, step: 0.5 },
+  { key: "energyPerHour", group: msg("Life sim"), label: msg("Energy drain (per hour)"), help: "", min: 0, max: 50, step: 0.5 },
+  { key: "socialPerHour", group: msg("Life sim"), label: msg("Social drain (per hour)"), help: "", min: 0, max: 50, step: 0.5 },
+  { key: "funPerHour", group: msg("Life sim"), label: msg("Fun drain (per hour)"), help: "", min: 0, max: 50, step: 0.5 },
+  { key: "needsFloor", group: msg("Life sim"), label: msg("Needs floor"), help: msg("Time alone never drags a need below this, so a player coming back is tired, not miserable. Actions (gym, runs, fights) can still go lower."), min: 0, max: 60 },
+  { key: "sleepHours", group: msg("Life sim"), label: msg("Sleep after (hours away)"), help: msg("A break this long counts as a night's sleep: energy comes back up. 0 turns it off."), min: 0, max: 24, step: 0.5 },
+  { key: "sleepEnergy", group: msg("Life sim"), label: msg("Energy after sleeping"), help: "", min: 0, max: 100 },
+  { key: "messHallCost", group: msg("Life sim"), label: msg("Mess hall meal (coins)"), help: "", min: 0, max: 10000 },
+  { key: "restCooldownMin", group: msg("Life sim"), label: msg("Nap cooldown (min)"), help: "", min: 0, max: 1440 },
+  { key: "moodEmpireBonus", group: msg("Life sim"), label: msg("Inspired mood: Empire income bonus"), help: msg("A happy commander runs a better business: Inspired adds this share to Street Empire income (Happy adds half). 0.2 = +20%."), min: 0, max: 2, step: 0.05 },
 
   { key: "outpostIncomeHour", group: msg("Territory"), label: msg("Outpost income (coins/hour)"), help: "", min: 0, max: 100000 },
   { key: "flagIncomeHour", group: msg("Territory"), label: msg("Flag income (coins/hour)"), help: "", min: 0, max: 100000 },

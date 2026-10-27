@@ -21,7 +21,7 @@ export async function questEvent(userId: string, kind: QuestKind, n = 1) {
   try {
     for (const q of (await activeQuests(userId)).filter((x) => x.kind === kind)) {
       const row = await prisma.questProgress.upsert({ where: { userId_key: { userId, key: q.key } }, create: { userId, key: q.key, progress: n }, update: { progress: { increment: n } } });
-      if (row.progress >= q.target && row.progress - n < q.target) await notify(userId, () => ({ kind: "reward", title: t("📜 Quest complete: {title}", { title: t(q.title) }), body: t("Claim your reward in Hero → Quests") }));
+      if (row.progress >= q.target && row.progress - n < q.target) await notify(userId, () => ({ kind: "reward", link: "me:quests", title: t("📜 Quest complete: {title}", { title: t(q.title) }), body: t("Claim your reward in Hero → Quests") }));
     }
   } catch (e) {
     console.error("quest event failed", e);

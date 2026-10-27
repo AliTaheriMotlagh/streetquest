@@ -16,11 +16,11 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
   const t = (message: string) => translate(locale, message);
   return (
     <html lang={locale} dir={LOCALE_META[locale].dir}>
-      <body style={{ background: "#07070d", color: "#f4f4fb", fontFamily: "system-ui, sans-serif", display: "grid", placeItems: "center", minHeight: "100vh", margin: 0 }}>
+      <body style={{ background: "#0b0e14", color: "#f4f4fb", fontFamily: "system-ui, sans-serif", display: "grid", placeItems: "center", minHeight: "100vh", margin: 0 }}>
         <div style={{ textAlign: "center", padding: 16 }}>
           <div style={{ fontSize: 44 }}>🛠️</div>
           <h2>{t("Something went wrong")}</h2>
-          <button onClick={reset} style={{ padding: "10px 18px", borderRadius: 12, border: 0, background: "#ff2e88", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
+          <button onClick={reset} style={{ padding: "10px 18px", borderRadius: 12, border: 0, background: "#ee7fae", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
             {t("Try again")}
           </button>
         </div>

@@ -366,16 +366,17 @@ const data: Record<string, string> = {
 
   // ---- life sim
   Hunger: "سیری",
-  "Eat food you find on the streets, or the mess hall at your Quarters.": "غذایی که تو خیابون پیدا می‌کنی رو بخور، یا تو غذاخوری اقامتگاهت.",
   Energy: "انرژی",
-  "Rest at your own base. Better Quarters, better sleep.": "تو پایگاه خودت استراحت کن. اقامتگاه بهتر، خواب بهتر.",
   Social: "معاشرت",
-  "Hang out with players nearby, chat, fight alongside your crew.": "با بازیکن‌های نزدیک وقت بگذرون، گپ بزن، کنار اکیپت بجنگ.",
   Fun: "تفریح",
   Inspired: "پرشور",
   Fine: "خوب",
   Tense: "پرتنش",
   Miserable: "داغون",
+  "Eat food you find on the streets, check in at a restaurant, or the mess hall at your Quarters.": "غذایی که تو خیابون پیدا می‌کنی رو بخور، یه سر به رستوران بزن، یا تو غذاخوری اقامتگاهت غذا بخور.",
+  "Rest at your base, grab a coffee at a café — or just sleep: a long break refills it.": "تو پایگاهت استراحت کن، تو کافه یه قهوه بزن — یا فقط بخواب: یه استراحت طولانی پرش می‌کنه.",
+  "Hang out with players nearby, check in at cafés, bars and parks, or chat with your crew.": "با بازیکن‌های نزدیک وقت بگذرون، به کافه و پارک سر بزن، یا با اکیپت گپ بزن.",
+  Happy: "شاد",
 
   // ---- bosses
   "Iron Colossus": "غول آهنین",

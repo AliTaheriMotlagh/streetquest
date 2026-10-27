@@ -23,7 +23,7 @@ type Driver = { id: string; data: OtherDriver; model: VehicleModel; tag: ReturnT
 type Walker = { id: string; data: WorldPlayer; icon: ReturnType<typeof makeIcon>; tag: ReturnType<typeof makeSign>; group: THREE.Group; to: { x: number; z: number } };
 
 const angle = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
-const tagColor = (o: { friend: boolean; party?: boolean }) => (o.party ? "#22e3ff" : o.friend ? "#3dff8f" : "#ffffff");
+const tagColor = (o: { friend: boolean; party?: boolean }) => (o.party ? "#63b3f2" : o.friend ? "#5bd38c" : "#ffffff");
 
 export class Others {
   private drivers = new Map<string, Driver>();
@@ -123,7 +123,7 @@ export class Others {
 
   /** Where a driver is drawn right now (for the minimap and party HUD). */
   positions() {
-    return [...this.drivers.values()].map((d) => ({ id: d.id, x: d.model.group.position.x, z: d.model.group.position.z, color: d.data.party ? "#22e3ff" : d.data.friend ? "#3dff8f" : "#ffffff" }));
+    return [...this.drivers.values()].map((d) => ({ id: d.id, x: d.model.group.position.x, z: d.model.group.position.z, color: d.data.party ? "#63b3f2" : d.data.friend ? "#5bd38c" : "#ffffff" }));
   }
 
   /** Objects you can tap: players' name tags and figures. */

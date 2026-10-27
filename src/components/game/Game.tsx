@@ -36,7 +36,10 @@ import { SHOP_WARN_MS } from "@/lib/shops";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { useLocation, useWakeLock, type FireReport } from "./useLocation";
 import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
-import { AdModal, type AdOffer, burst, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
+import { AdModal, type AdOffer, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
+import { flyRewards, parseRewards } from "./Rewards";
+import { Toasts, toastLife } from "./Toasts";
+import { ReadyTray, Wallet } from "./Hud";
 import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
@@ -208,7 +211,7 @@ export default function Game() {
     (n: Toast) => {
       const id = Math.random();
       setToasts((ts) => (ts.some((x) => !x.out && x.title === n.title && x.body === n.body) ? ts : [...ts.slice(-3), { ...n, id }]));
-      setTimeout(() => dismissToast(id), n.kind === "error" ? 4000 : 3200);
+      setTimeout(() => dismissToast(id), toastLife(n));
     },
     [dismissToast],
   );
@@ -228,9 +231,8 @@ export default function Game() {
         await Promise.race([flush(), new Promise((r) => setTimeout(r, FLUSH_WAIT_MS))]);
         const r = await fn();
         if (r?.message) toast({ kind: "reward", title: r.message });
-        // Clash-style reward fly-up for anything that paid out (Latin or Persian digits).
-        if (r?.message && /\+[\d۰-۹,٬]+ ?(🪙|coins|سکه)/.test(r.message)) burst("🪙", 8);
-        if (r?.message && /\+[\d۰-۹,٬]+ ?(💎|gems|جم)/.test(r.message)) burst("💎", 5);
+        // Anything that paid out flies from the button into the HUD (Latin or Persian digits).
+        if (r?.message) flyRewards(parseRewards(r.message));
         sfx("reward");
         navigator.vibrate?.([40, 30, 40]);
         refresh();
@@ -364,7 +366,6 @@ export default function Game() {
     api<{ message: string }>("/api/store", { body: { action: "confirm", sessionId: id } })
       .then((r) => {
         celebrate({ title: t("THANK YOU!"), body: r.message, emoji: "💎" });
-        burst("💎", 14);
         loadMe();
       })
       .catch((e) => toast({ kind: "error", title: (e as Error).message }));
@@ -445,7 +446,7 @@ export default function Game() {
         if (tagged("incoming")) sfx("siren");
         else if (tagged("levelup")) {
           const n = tagged("levelup")!;
-          celebrate({ title: n.title, body: n.body, emoji: "⭐" });
+          celebrate({ title: n.title, body: n.body ?? undefined, emoji: "⭐" });
         }
         else if (tagged("hurt")) sfx("hurt");
         else if (r.notifications.some((n) => n.kind === "reward")) sfx("coin");
@@ -647,7 +648,6 @@ export default function Game() {
       if (!ok) return;
       if (kind === "chest") {
         celebrate({ title: t("CHEST OPENED!"), art: "chestOpen" });
-        burst("🪙", 10);
       } else if (kind === "arcade") {
         celebrate({ title: t("POWER UP!"), art: "powerCell", body: t("Your Empire earns ×2 for {n} min", { n: BOOST_MINUTES }) });
         sfx("win");
@@ -678,6 +678,13 @@ export default function Game() {
           setCall({ peer, video, role: "caller" });
         },
         setPanel,
+        openLink: (link) => {
+          setSelected(null);
+          if (link.startsWith("me:")) {
+            setMeTab(link.slice(3) as HeroTabId);
+            setPanel("me");
+          } else setPanel(link as PanelId);
+        },
         openShop: (id) => {
           setSelected(null);
           setMarketFocus(id);
@@ -802,19 +809,14 @@ export default function Game() {
             <div className="pc-text">
               <div className="pc-name">{me.username}</div>
               <div className="pc-title small">{me.title}</div>
-              <div className="xpbar">
+              <div className="xpbar" data-fx-target="xp">
                 <i style={{ width: `${me.levelPct * 100}%` }} />
               </div>
             </div>
           </div>
           <div className="hud-right" data-tour="wallet">
-            <div className="hud-wallet">
-              <div className="chip">🪙 {fmtNum(me.coins)}</div>
-              <Button className="chip small gem-chip" onClick={() => setPanel("store")} title={t("Gem store")}>💎 {fmtNum(me.gems)} <span className="plus">+</span></Button>
-              <Button className="chip small bell-chip" data-tour="inbox" title={t("Inbox")} aria-label={inbox ? t("Inbox, {n} new", { n: inbox }) : t("Inbox")} onClick={() => setPanel("inbox")}>
-                🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? `${fmtNum(99)}+` : fmtNum(inbox)}</span>}
-              </Button>
-            </div>
+            <Wallet me={me} inbox={inbox} onStore={() => setPanel("store")} onInbox={() => setPanel("inbox")} />
+            {/* One quiet pill of status: mood, steps, and only the warnings that apply right now. */}
             <div className="hud-status">
               <NeedsHud
                 onClick={() => {
@@ -826,10 +828,9 @@ export default function Game() {
               <StepChip onOpen={() => openPanel("play")} />
               {driving && !geo.simulated && <div className="chip small" title={t("Driving: the map zooms out and walking goals pause")}>🚗 {t("{n} km/h", { n: Math.round(geo.speed * 3.6) })}</div>}
               <GpsChip geo={geo} />
-              {world && (
-                <div className="chip small phase" title={t(PHASE_LABEL[world.phase])}>
-                  {PHASE_ICON[world.phase]}
-                  {(world.phase === "dawn" || world.phase === "dusk") && <span style={{ color: "var(--yellow)" }}>{t("2× XP")}</span>}
+              {world && (world.phase === "dawn" || world.phase === "dusk") && (
+                <div className="chip small phase golden" title={t(PHASE_LABEL[world.phase])}>
+                  {PHASE_ICON[world.phase]} {t("2× XP")}
                 </div>
               )}
               {homeMode && (
@@ -846,30 +847,18 @@ export default function Game() {
           </div>
         </div>
 
-        {me.quest && !run && !picker && !panel && !(homeMode && travel) && (
-          <Button
-            className={`quest-hud ${me.quest.done ? "done" : ""}`}
-            onClick={() => {
-              setMeTab("quests");
-              setPanel("me");
-            }}
-          >
-            📜 <b>{t(me.quest.title)}</b>
-            <span>{me.quest.done ? t("Claim reward!") : t("{desc} · {progress}/{target}", { desc: t(me.quest.desc), progress: me.quest.progress, target: me.quest.target })}</span>
-          </Button>
-        )}
-
-        {announce && !run && !picker && !me.quest && (
-          <div className="announce" style={{ position: "absolute", top: 76, left: 10, right: 10, zIndex: 450, background: "var(--panel)", maxWidth: 560, margin: "0 auto" }}>
-            <b className="grow small">📣 {announce.title}</b>
-            {announce.ctaUrl && (
-              <a className="btn yellow small" href={announce.ctaUrl}>
-                {announce.ctaLabel ?? t("Go")}
-              </a>
-            )}
-            <Button className="close" onClick={() => setAnnounce(null)}>✕</Button>
-          </div>
-        )}
+        {/* Everything waiting on you (or the current quest), folded into one line under the profile. */}
+        <ReadyTray
+          me={me}
+          now={now}
+          hidden={!!run || !!picker || !!panel || (homeMode && !!travel)}
+          news={announce}
+          onNewsSeen={() => setAnnounce(null)}
+          onQuest={() => {
+            setMeTab("quests");
+            setPanel("me");
+          }}
+        />
 
         {run && (
           <div className="run-banner">
@@ -968,11 +957,6 @@ export default function Game() {
 
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
-          {me.dailyAvailable && (
-            <Button className="fab" title={t("Daily reward")} onClick={() => act(() => api("/api/daily", { body: {} }))}>
-              🎁<span className="badge">!</span>
-            </Button>
-          )}
           {me.superweapon && (
             <SuperweaponFab
               sw={me.superweapon}
@@ -1043,15 +1027,7 @@ export default function Game() {
           </Button>
         )}
 
-        {/* Toasts */}
-        <div className="toasts">
-          {toasts.map((x) => (
-            <div key={x.id} className={`toast ${x.kind ?? ""} ${x.out ? "out" : ""}`} onClick={() => dismissToast(x.id)} title={t("Tap to dismiss")} role={x.kind === "error" ? "alert" : "status"}>
-              <b>{x.title}</b>
-              {x.body && <span className="small muted">{x.body}</span>}
-            </div>
-          ))}
-        </div>
+        <Toasts toasts={toasts} onDismiss={dismissToast} onOpen={(l) => ctx.openLink(l)} />
 
         {/* Selected object card */}
         {selected && !panel && (

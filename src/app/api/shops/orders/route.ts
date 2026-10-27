@@ -64,6 +64,7 @@ export const POST = actionRoute(async (req) => {
     });
     const what = { qty: d.qty, title: p.title, name: u.username, n: total };
     await notify(p.shop.ownerId, () => ({
+      link: "market",
       kind: "reward",
       title: t("🛒 New order: {qty}× {title}", what),
       body: t("{name} paid {n} coins. Hand it over at your shop and enter their pickup code.", what),
@@ -97,6 +98,6 @@ export const POST = actionRoute(async (req) => {
   });
   if (!done) throw new HttpError(409, t("That order is already closed — refresh"));
   await unlock(u.id, "first_sale");
-  await notify(o.buyerId, () => ({ kind: "reward", title: t("✅ Picked up: {qty}× {title}", { qty: o.qty, title: o.title }), body: t("Thanks for shopping at {shop}!", { shop: o.shop.name }) }));
+  await notify(o.buyerId, () => ({ kind: "reward", link: "market", title: t("✅ Picked up: {qty}× {title}", { qty: o.qty, title: o.title }), body: t("Thanks for shopping at {shop}!", { shop: o.shop.name }) }));
   return { message: o.fee ? t("💰 Handed over — +{n} coins (market fee {fee})", { n: payout, fee: o.fee }) : t("💰 Handed over — +{n} coins", { n: payout }) };
 });

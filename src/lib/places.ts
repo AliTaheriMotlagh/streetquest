@@ -34,7 +34,7 @@ export const PLACE_CATS: Record<PlaceCat, { emoji: string; label: string; color:
   books: { emoji: "📚", label: msg("Books & library"), color: "#a3a3ff" },
   cinema: { emoji: "🎬", label: msg("Cinema"), color: "#e879f9" },
   bank: { emoji: "🏦", label: msg("Bank"), color: "#facc15" },
-  shop: { emoji: "🏪", label: msg("Shop"), color: "#22e3ff" },
+  shop: { emoji: "🏪", label: msg("Shop"), color: "#63b3f2" },
 };
 export const PLACE_CAT_KEYS = Object.keys(PLACE_CATS) as [PlaceCat, ...PlaceCat[]];
 export const isPlaceCat = (v: unknown): v is PlaceCat => typeof v === "string" && v in PLACE_CATS;

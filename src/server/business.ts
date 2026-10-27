@@ -114,7 +114,7 @@ export async function checkIn(user: { id: string; username: string }, campaignId
   await track("biz_visit", { userId: user.id, campaign: c.businessId });
   await autoPost(user.id, "business", { t: msg("{emoji} Visited {place}"), v: { emoji: c.business.emoji, place: c.business.name } }, { name: c.business.name, cat: c.business.category, lat: c.business.lat, lng: c.business.lng });
   if (after.visits === 1 || after.visits % 10 === 0)
-    await notify(c.business.ownerId, () => ({ kind: "reward", title: t("🏪 {n} players visited {place}", { n: after.visits, place: c.business.name }), body: t(c.kind === "coupon" ? msg("“{title}” is bringing people in. Enter their codes at the till.") : msg("“{title}” is bringing people in."), { title: c.title }) }));
+    await notify(c.business.ownerId, () => ({ kind: "reward", link: "biz", title: t("🏪 {n} players visited {place}", { n: after.visits, place: c.business.name }), body: t(c.kind === "coupon" ? msg("“{title}” is bringing people in. Enter their codes at the till.") : msg("“{title}” is bringing people in."), { title: c.title }) }));
   const coupon = c.kind === "coupon" && plan.coupons;
   return {
     code: coupon ? code : null,
@@ -188,7 +188,7 @@ export async function extendPlan(businessId: string, plan: PlanKey, days = PLAN_
   const from = b.plan === plan && b.planUntil && b.planUntil.getTime() > Date.now() ? b.planUntil.getTime() : Date.now();
   const until = new Date(from + days * 86_400_000);
   await prisma.business.update({ where: { id: businessId }, data: { plan, planUntil: until } });
-  await notify(b.ownerId, () => ({ kind: "reward", title: t("{emoji} {place} is on the {plan} plan", { emoji: PLAN_BY_KEY[plan].emoji, place: b.name, plan: t(PLAN_BY_KEY[plan].name) }), body: t("Until {date}", { date: until.toISOString().slice(0, 10) }) }));
+  await notify(b.ownerId, () => ({ kind: "reward", link: "biz", title: t("{emoji} {place} is on the {plan} plan", { emoji: PLAN_BY_KEY[plan].emoji, place: b.name, plan: t(PLAN_BY_KEY[plan].name) }), body: t("Until {date}", { date: until.toISOString().slice(0, 10) }) }));
   return until;
 }
 

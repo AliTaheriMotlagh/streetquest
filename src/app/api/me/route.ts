@@ -20,6 +20,7 @@ import { settingOverrides } from "@/server/settings";
 import { goalsReady } from "@/server/goals";
 import { S } from "@/lib/settings";
 import { ipLocation } from "@/server/geoip";
+import { DIVIDEND_H, rankOf } from "@/lib/idle";
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -37,12 +38,13 @@ export const GET = route(async (req) => {
   const lastResearch = await prisma.research.findFirst({ where: { userId: u.id, readyAt: { lte: new Date() } }, orderBy: { readyAt: "desc" }, select: { readyAt: true } });
   const doneAt = Math.max(0, lastResearch?.readyAt.getTime() ?? 0, ...(base?.buildings ?? []).map((b) => b.readyAt.getTime()).filter((t) => t <= now));
   const supply = base ? pendingSupply(base.buildings, base.lastCollectAt, now) : 0;
-  const [maxHp, settings, goals, gpsGame, shop] = await Promise.all([
+  const [maxHp, settings, goals, gpsGame, shop, empire] = await Promise.all([
     maxHpOf(u.id),
     settingOverrides(),
     goalsReady(u),
     prisma.gpsGame.findFirst({ where: { userId: u.id, status: "ACTIVE", endsAt: { gt: new Date() } }, select: { id: true, kind: true } }),
     prisma.shop.findUnique({ where: { ownerId: u.id }, select: { id: true, name: true, expiresAt: true, _count: { select: { orders: { where: { status: "PENDING" } } } } } }),
+    prisma.empire.findUnique({ where: { userId: u.id }, select: { dividendAt: true, total: true, rankClaimed: true } }),
   ]);
   const sw = base ? await superStatus(u) : null;
   // Notifications and pushes are written in the language the player last used.
@@ -106,6 +108,8 @@ export const GET = route(async (req) => {
     gpsGame,
     // The Market badge: orders waiting to be handed over, a shop about to close.
     shop: shop && { id: shop.id, name: shop.name, expiresAt: shop.expiresAt.getTime(), pending: shop._count.orders },
+    // The Ready tray: a dividend to claim (0 = right away), an empire rank reward waiting.
+    empire: empire && { rank: rankOf(empire.total), dividendAt: empire.dividendAt ? empire.dividendAt.getTime() + DIVIDEND_H * 3600_000 : 0, rankUp: rankOf(empire.total) > empire.rankClaimed },
     superweapon: sw?.def && sw.level > 0 ? { key: sw.def.key, name: sw.def.name, emoji: sw.def.emoji, level: sw.level, readyAt: sw.readyAt, radius: sw.def.radius } : null,
   };
 });

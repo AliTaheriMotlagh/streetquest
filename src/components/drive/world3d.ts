@@ -679,16 +679,16 @@ export function makeLoot(emoji: string, color: string) {
 export function makeGate(n: number) {
   const group = new THREE.Group();
   const geo = new THREE.TorusGeometry(7, 0.55, 10, 40);
-  const mat = new THREE.MeshBasicMaterial({ color: "#ffd23f", transparent: true, opacity: 0.9 });
+  const mat = new THREE.MeshBasicMaterial({ color: "#f0c05a", transparent: true, opacity: 0.9 });
   const torus = new THREE.Mesh(geo, mat);
   torus.position.y = 6.2;
-  const num = makeSign("🏁", `${n}`, "#ffd23f");
+  const num = makeSign("🏁", `${n}`, "#f0c05a");
   num.sprite.position.y = 14.6;
   group.add(torus, num.sprite);
   return {
     group,
     set(state: "next" | "later" | "done") {
-      mat.color.set(state === "next" ? "#ffd23f" : state === "done" ? "#3dff8f" : "#9aa3b5");
+      mat.color.set(state === "next" ? "#f0c05a" : state === "done" ? "#5bd38c" : "#9aa3b5");
       mat.opacity = state === "later" ? 0.35 : state === "done" ? 0.25 : 0.95;
       num.sprite.visible = state !== "done";
     },

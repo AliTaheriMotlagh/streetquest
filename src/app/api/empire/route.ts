@@ -6,8 +6,8 @@ import { act, settled, view } from "@/server/empire";
 
 export const GET = route(async () => {
   const u = await requireUser();
-  const { row, s, steps, offline } = await settled(u);
-  return { ...view(row, s, steps, u.stepsTotal), offline };
+  const { row, s, steps, mood, offline } = await settled(u);
+  return { ...view(row, s, steps, u.stepsTotal, mood), offline };
 });
 
 const Schema = z.discriminatedUnion("action", [
@@ -26,6 +26,6 @@ export const POST = actionRoute(async (req) => {
   const a = await body(req, Schema);
   const r = await act(u, a);
   // The fresh state comes back with every action, so the client never drifts.
-  const { row, s, steps } = await settled(u);
-  return { ...r, ...view(row, s, steps, u.stepsTotal) };
+  const { row, s, steps, mood } = await settled(u);
+  return { ...r, ...view(row, s, steps, u.stepsTotal, mood) };
 });

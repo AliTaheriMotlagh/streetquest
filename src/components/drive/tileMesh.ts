@@ -99,7 +99,7 @@ export const PALETTES: Record<Style, Palette> = {
       tower: ["#4757c9", "#2f8bd6"],
     },
     flatRoofs: ["#7b6fd6", "#5b9cf0", "#58b7b0", "#d8644a"],
-    roads: { major: "#6e7290", minor: "#82849c", path: "#a3a5b8", foot: "#d7c39a", rail: "#9b8f84", walk: "#f4efe6", line: "#ffffff", center: "#ffe27a", rail2: "#5a5a6a" },
+    roads: { major: "#6e7290", minor: "#82849c", path: "#a3a5b8", foot: "#d7c39a", rail: "#9b8f84", walk: "#f4efe6", line: "#ffffff", center: "#f6d58c", rail2: "#5a5a6a" },
     areas: { park: "#86d36e", grass: "#97da7c", forest: "#4fa35e", pitch: "#6fc46a", water: "#52b8ef", parking: "#a9abc0", plaza: "#f0dcb4", sand: "#ffe3a1", farm: "#c9df7a", residential: "#a9d98f", commercial: "#c7d7a8", industrial: "#c9c6b6", cemetery: "#8fcf7a" },
     trees: ["#5fcf6b", "#7ad66a", "#4cb86d", "#98db5e", "#ff9fc4", "#ffd166"],
     glass: [],

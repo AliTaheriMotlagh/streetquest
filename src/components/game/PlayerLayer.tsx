@@ -81,8 +81,8 @@ export function PlayerLayer({ follow, guides, onUnfollow, onFollow }: { follow: 
     const glide = (to: L.LatLng) => {
       if (!marker) {
         marker = L.marker(to, { icon: meIcon, zIndexOffset: 1000, interactive: false, keyboard: false }).addTo(map);
-        reach = L.circle(to, { renderer, radius: INTERACT_RADIUS_M, color: "#22e3ff", weight: 1, fillOpacity: 0.06, dashArray: "4 6", interactive: false }).addTo(map);
-        halo = L.circle(to, { renderer, radius: 1, stroke: false, fillColor: "#22e3ff", fillOpacity: 0, interactive: false }).addTo(map);
+        reach = L.circle(to, { renderer, radius: INTERACT_RADIUS_M, color: "#63b3f2", weight: 1, fillOpacity: 0.06, dashArray: "4 6", interactive: false }).addTo(map);
+        halo = L.circle(to, { renderer, radius: 1, stroke: false, fillColor: "#63b3f2", fillOpacity: 0, interactive: false }).addTo(map);
         syncGuides();
         lastAt = performance.now();
         if (followRef.current) map.setView(to, Math.max(map.getZoom(), ZOOM_WALK), { animate: false });

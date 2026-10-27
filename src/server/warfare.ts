@@ -107,7 +107,8 @@ export async function siegeBase(u: User, myBaseId: string | null, attack: Force,
   const integrity = Math.max(0.4, target.hp / 1000);
   const r = resolveBattle(
     { army: attack.army, vets: attack.vets, faction: f, bonus: hero.bonus, moodMult: moodOfUser(u).xpMult },
-    { army: def.army, vets: def.vets, faction: tf, bonus: defHero.bonus, structures: { atk: fort.atk * integrity, hp: fort.hp * integrity }, moodMult: moodOfUser(owner).xpMult },
+    // A garrison holds its ground whatever its commander's mood (they may be asleep); a good mood still helps.
+    { army: def.army, vets: def.vets, faction: tf, bonus: defHero.bonus, structures: { atk: fort.atk * integrity, hp: fort.hp * integrity }, moodMult: Math.max(1, moodOfUser(owner).xpMult) },
     `${target.id}|${u.id}|${Date.now()}`,
   );
   await attack.onLosses(r.attackerLosses, r.won);

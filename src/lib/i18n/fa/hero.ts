@@ -106,8 +106,10 @@ const hero: Record<string, string> = {
   "Plant a base first.": "اول یه پایگاه بساز.",
   "Home is {d} away.": "خونه {d} دوره.",
   "Hang out (players within 150 m)": "دورهمی (بازیکن‌های تا ۱۵۰ متری)",
-  "Nobody close by right now. Chatting with your crew also helps a little.": "الان کسی نزدیکت نیست. گپ زدن با اکیپت هم کمی کمک می‌کنه.",
   "Next hangout in {n} min.": "دورهمی بعدی تا {n} دقیقهٔ دیگه.",
+  "Nobody close by right now — check in at a café, bar or park on the map, or chat with your crew.": "الان کسی نزدیکت نیست — به یه کافه یا پارک روی نقشه سر بزن، یا با اکیپت گپ بزن.",
+  "Empire income ×{n}": "درآمد امپراتوری ×{n}",
+  "Keep every need above 60 to feel Happy: more XP, a tougher commander and a richer empire.": "همهٔ نیازها رو بالای ۶۰ نگه دار تا شاد باشی: XP بیشتر، فرماندهٔ قوی‌تر و امپراتوری پولدارتر.",
 };
 
 export default hero;

@@ -171,12 +171,14 @@ export async function cancelOrder(orderId: string, by: "buyer" | "seller" | "exp
   const what = { qty: o.qty, title: o.title, shop: o.shop.name, n: o.total };
   if (by !== "buyer")
     await notify(o.buyerId, () => ({
+      link: "market",
       kind: "reward",
       title: by === "seller" ? t("🛍️ {shop} cancelled your order", what) : t("🛍️ Your order from {shop} expired", what),
       body: t("{qty}× {title} · {n} coins refunded", what),
     }));
   if (by !== "seller")
     await notify(o.shop.ownerId, () => ({
+      link: "market",
       kind: "info",
       title: by === "buyer" ? t("🛍️ An order was cancelled") : t("🛍️ An order expired — it wasn't handed over in time"),
       body: t("{qty}× {title} is back in stock", what),
@@ -195,7 +197,7 @@ export async function shopHousekeeping() {
   for (const s of closing) {
     if (!(await prisma.shop.updateMany({ where: { id: s.id, warnedAt: null }, data: { warnedAt: now } })).count) continue;
     const days = Math.max(1, Math.ceil((s.expiresAt.getTime() - now.getTime()) / 86_400_000));
-    await notify(s.ownerId, () => ({ kind: "info", title: t("🏪 {name} closes in {days, plural, one {# day} other {# days}}", { name: s.name, days }), body: t("Renew it in Market → My shop to keep selling") }));
+    await notify(s.ownerId, () => ({ kind: "info", link: "market", title: t("🏪 {name} closes in {days, plural, one {# day} other {# days}}", { name: s.name, days }), body: t("Renew it in Market → My shop to keep selling") }));
   }
   return { refunded, warned: closing.length };
 }

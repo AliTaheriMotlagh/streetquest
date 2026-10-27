@@ -111,6 +111,8 @@ export type Me = {
   downedUntil: number | null;
   rookie: boolean;
   superweapon: { key: SuperKey; name: string; emoji: string; level: number; readyAt: number | null; radius: number } | null;
+  /** Street Empire: when the next dividend can be claimed (0 = now, once rank ≥ 1) and an unclaimed rank reward. */
+  empire: { rank: number; dividendAt: number; rankUp: boolean } | null;
   /** Admin overrides of lib/settings — applied on the client with applyConfig. */
   settings: Record<string, unknown>;
   goalsReady: number;

@@ -51,15 +51,15 @@ async function drawOne(id: string) {
   const { lottery, tickets, winner, total } = res;
   if (!winner) {
     for (const tk of tickets)
-      await notify(tk.userId, () => ({ kind: "reward", title: t("🎰 {name}: not enough players", { name: lottery.name }), body: t("Draw called off — {n} coins refunded", { n: tk.qty * lottery.ticketPrice }) }));
+      await notify(tk.userId, () => ({ kind: "reward", link: "play", title: t("🎰 {name}: not enough players", { name: lottery.name }), body: t("Draw called off — {n} coins refunded", { n: tk.qty * lottery.ticketPrice }) }));
     return;
   }
   const w = await prisma.user.findUnique({ where: { id: winner.userId }, select: { username: true } });
   await unlock(winner.userId, "jackpot_1");
   for (const tk of tickets) {
     if (tk.userId === winner.userId)
-      await notify(tk.userId, () => ({ kind: "reward", title: t("🎰 JACKPOT! You won {n} coins", { n: lottery.pot }), body: t("{name} — your {mine} of {total} tickets came up", { name: lottery.name, mine: tk.qty, total }) }));
-    else await notify(tk.userId, () => ({ kind: "info", title: t("🎰 {name} drawn", { name: lottery.name }), body: t("{winner} won the {n}-coin pot. Better luck next time!", { winner: w?.username ?? t("Someone"), n: lottery.pot }) }));
+      await notify(tk.userId, () => ({ kind: "reward", link: "play", title: t("🎰 JACKPOT! You won {n} coins", { n: lottery.pot }), body: t("{name} — your {mine} of {total} tickets came up", { name: lottery.name, mine: tk.qty, total }) }));
+    else await notify(tk.userId, () => ({ kind: "info", link: "play", title: t("🎰 {name} drawn", { name: lottery.name }), body: t("{winner} won the {n}-coin pot. Better luck next time!", { winner: w?.username ?? t("Someone"), n: lottery.pot }) }));
   }
 }
 
@@ -78,7 +78,7 @@ export async function cancelLottery(id: string, byHost?: string) {
     return { lottery, tickets };
   });
   for (const tk of res.tickets)
-    if (tk.userId !== byHost) await notify(tk.userId, () => ({ kind: "info", title: t("🎰 {name} cancelled", { name: res.lottery.name }), body: t("{n} coins refunded", { n: tk.qty * res.lottery.ticketPrice }) }));
+    if (tk.userId !== byHost) await notify(tk.userId, () => ({ kind: "info", link: "play", title: t("🎰 {name} cancelled", { name: res.lottery.name }), body: t("{n} coins refunded", { n: tk.qty * res.lottery.ticketPrice }) }));
 }
 
 /** The client's view of a lottery (who holds which tickets stays private). */

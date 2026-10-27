@@ -660,6 +660,19 @@ const server: Record<string, string> = {
   "Watch the whole spot to get the reward": "برای گرفتن جایزه کل تبلیغ رو ببین",
   "This spot expired — start a new one": "این تبلیغ منقضی شده — یه تبلیغ جدید شروع کن",
   "Daily limit reached": "به سقف روزانه رسیدی",
+  "{emoji} {name} is built": "{emoji} {name} ساخته شد",
+  "{emoji} {name} reached level {n}": "{emoji} {name} به سطح {n} رسید",
+  "Your builders are free for the next job": "بنّاهات برای کار بعدی آزادن",
+  "{emoji} Research done: {name}": "{emoji} تحقیق تموم شد: {name}",
+  "{emoji} {n}× {unit} ready for duty": "{emoji} {n}× {unit} آمادهٔ خدمت",
+  "Deploy them from Base → Army": "از پایگاه ← ارتش اعزامشون کن",
+  "📦 Supply depot is full": "📦 انبار تدارکات پر شده",
+  "{n} 🪙 waiting — collect so the trucks keep rolling": "{n} 🪙 منتظره — جمعش کن تا کامیون‌ها از کار نیفتن",
+  "🏦 Empire dividend ready": "🏦 سود امپراتوری آماده‌ست",
+  "+{n} 🪙 for your commander — claim it in Play → Empire": "+{n} 🪙 برای فرماندهت — از بازی ← امپراتوری بگیرش",
+  "🎁 Daily reward is ready": "🎁 جایزهٔ روزانه آماده‌ست",
+  "Day {n}: +{coins} 🪙 · +{xp} XP": "روز {n}: +{coins} 🪙 · +{xp} XP",
+  "{emoji} {need} is running low": "{emoji} {need} داره تموم می‌شه",
 };
 
 export default server;

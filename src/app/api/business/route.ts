@@ -133,7 +133,7 @@ export const POST = actionRoute(async (req) => {
     if (plan.push) {
       const box = bbox(b, 1000);
       const near = await prisma.user.findMany({ where: { id: { not: u.id }, banned: false, lastSeenAt: { gt: new Date(Date.now() - 86_400_000) }, lastLat: { gte: box.minLat, lte: box.maxLat }, lastLng: { gte: box.minLng, lte: box.maxLng } }, select: { id: true, lastSeenAt: true }, take: 50 });
-      for (const p of near) if (!p.lastSeenAt || p.lastSeenAt < onlineSince()) await notify(p.id, () => ({ kind: "event", title: t("{emoji} New at {place}: {title}", { emoji: b.emoji, place: b.name, title: c.title }), body: t("+{n} 🪙 for checking in", { n: c.rewardCoins }) }));
+      for (const p of near) if (!p.lastSeenAt || p.lastSeenAt < onlineSince()) await notify(p.id, () => ({ kind: "event", link: "jobs", title: t("{emoji} New at {place}: {title}", { emoji: b.emoji, place: b.name, title: c.title }), body: t("+{n} 🪙 for checking in", { n: c.rewardCoins }) }));
     }
     return { message: t("🎯 “{title}” is live on the map", { title: c.title }) };
   }

@@ -7,6 +7,7 @@ import { syncSettings as syncFlags } from "./flags";
 import { syncSettings as syncOutposts } from "./outposts";
 import { BUILDINGS, RESEARCH, UNITS, syncSettings as syncRts } from "./rts";
 import { applySettings, S, type CatalogOverrides } from "./settings";
+import { syncSettings as syncSims } from "./sims";
 import { syncSettings as syncSpawns } from "./spawns";
 import { TOWERS, syncSettings as syncTd } from "./td";
 
@@ -44,6 +45,7 @@ export function applyConfig(over: unknown) {
   syncRts();
   syncSpawns();
   syncTd();
+  syncSims();
   for (const [cat, list] of Object.entries(CATALOGS) as [keyof CatalogOverrides, Entry[]][]) {
     const ov = S.catalog?.[cat] ?? {};
     for (const e of list) {

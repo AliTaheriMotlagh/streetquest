@@ -70,7 +70,8 @@ export type EmpireState = {
   boostUntil: number;
   tickAt: number;
 };
-export type Mods = { stepsToday: number; now: number };
+/** stepsToday boosts income up to ×2; mood is the commander's Life-sim mood bonus (moodOf().empireMult). */
+export type Mods = { stepsToday: number; now: number; mood?: number };
 
 export const emptyEmpire = (now: number): EmpireState => ({ cash: 5, run: 0, total: 0, fame: 0, biz: { cart: { n: 1, at: null } }, upg: [], boostUntil: 0, tickAt: now });
 
@@ -100,25 +101,25 @@ export function bizMult(s: EmpireState, key: string) {
 }
 
 /** Empire-wide multiplier, without timed boosts. */
-export function globalMult(s: EmpireState, mods: Pick<Mods, "stepsToday">) {
-  let m = fameMult(s.fame) * stepMult(mods.stepsToday) * 2 ** ALL_AT.filter((x) => minCount(s) >= x).length;
+export function globalMult(s: EmpireState, mods: Pick<Mods, "stepsToday" | "mood">) {
+  let m = fameMult(s.fame) * stepMult(mods.stepsToday) * (mods.mood ?? 1) * 2 ** ALL_AT.filter((x) => minCount(s) >= x).length;
   for (const id of s.upg) if (UPGRADE_BY_ID[id]?.kind === "all") m *= UPGRADE_BY_ID[id].x;
   return m;
 }
 
 /** Cash one cycle of a business pays (with everything except boosts). */
-export function cycleRevenue(s: EmpireState, key: string, mods: Pick<Mods, "stepsToday">) {
+export function cycleRevenue(s: EmpireState, key: string, mods: Pick<Mods, "stepsToday" | "mood">) {
   const n = s.biz[key]?.n ?? 0;
   return BIZ_BY_KEY[key].rev * n * bizMult(s, key) * globalMult(s, mods);
 }
 /** Income per second from businesses that run themselves. */
-export function managedRate(s: EmpireState, mods: Pick<Mods, "stepsToday">) {
+export function managedRate(s: EmpireState, mods: Pick<Mods, "stepsToday" | "mood">) {
   let r = 0;
   for (const b of BUSINESSES) if (s.biz[b.key]?.mgr && (s.biz[b.key]?.n ?? 0) > 0) r += cycleRevenue(s, b.key, mods) / cycleSecs(s, b.key);
   return r;
 }
 /** Everything the empire could make per second if every business ran non-stop. */
-export function fullRate(s: EmpireState, mods: Pick<Mods, "stepsToday">) {
+export function fullRate(s: EmpireState, mods: Pick<Mods, "stepsToday" | "mood">) {
   let r = 0;
   for (const b of BUSINESSES) if ((s.biz[b.key]?.n ?? 0) > 0) r += cycleRevenue(s, b.key, mods) / cycleSecs(s, b.key);
   return r;

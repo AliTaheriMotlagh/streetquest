@@ -160,6 +160,7 @@ const empire: Record<string, string> = {
   "Nothing to claim yet": "فعلاً چیزی برای گرفتن نیست",
   "🏆 Empire rank {n}!": "🏆 رتبهٔ امپراتوری {n}!",
   "+{n} 💎": "+{n} 💎",
+  "Your commander's good mood (Hero → Life) boosts income": "حال خوب فرماندهت (قهرمان ← زندگی) درآمد رو بیشتر می‌کنه",
 };
 
 export default empire;

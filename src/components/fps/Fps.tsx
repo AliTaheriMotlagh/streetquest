@@ -248,7 +248,7 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
       const makeActor = (p: Player, friendly: boolean, bossColor?: string): Actor => {
         const group = new THREE.Group();
         const isBoss = p.key === "boss";
-        const color = isBoss ? new THREE.Color(bossColor ?? "#ff4d4d").getHex() : friendly ? FRIEND : ENEMY;
+        const color = isBoss ? new THREE.Color(bossColor ?? "#ef6461").getHex() : friendly ? FRIEND : ENEMY;
         const bodyMat = ownMat(color, color);
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.position.y = 0.68;
@@ -336,7 +336,7 @@ export default function Fps({ matchId, onExit }: { matchId: string; onExit: () =
           a.group.visible = visible;
           if (a.label.hp !== p.hp) {
             a.label.hp = p.hp;
-            drawLabel(a, p.name, p.hp / p.maxHp, p.team === me.team ? "#22e3ff" : "#ff4d4d");
+            drawLabel(a, p.name, p.hp / p.maxHp, p.team === me.team ? "#63b3f2" : "#ef6461");
           }
         }
       };

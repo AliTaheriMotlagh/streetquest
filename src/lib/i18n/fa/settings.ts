@@ -173,6 +173,21 @@ const settings: Record<string, string> = {
   "Edited in the Game data tab.": "از تب داده‌های بازی ویرایش می‌شه.",
   "priceCents is in the currency below (e.g. 499 = 4.99).": "priceCents به واحد پولِ زیر است (مثلاً ۴۹۹ = ۴٫۹۹).",
   "Stat overrides": "بازنویسی آمار",
+  "Life sim": "شبیه‌ساز زندگی",
+  "Hunger drain (per hour)": "کاهش گرسنگی (در ساعت)",
+  "How fast each need drops in real time. Lower is gentler on players who play once or twice a day.": "سرعت کم شدن هر نیاز در زمان واقعی. مقدار کمتر برای بازیکنانی که روزی یکی دو بار بازی می‌کنند ملایم‌تر است.",
+  "Energy drain (per hour)": "کاهش انرژی (در ساعت)",
+  "Social drain (per hour)": "کاهش اجتماعی (در ساعت)",
+  "Fun drain (per hour)": "کاهش سرگرمی (در ساعت)",
+  "Needs floor": "کف نیازها",
+  "Time alone never drags a need below this, so a player coming back is tired, not miserable. Actions (gym, runs, fights) can still go lower.": "گذشت زمان هیچ نیازی را پایین‌تر از این نمی‌برد، تا بازیکنی که برمی‌گردد خسته باشد نه داغون. کارها (باشگاه، دویدن، نبرد) هنوز می‌توانند پایین‌ترش ببرند.",
+  "Sleep after (hours away)": "خواب پس از (ساعت غیبت)",
+  "A break this long counts as a night's sleep: energy comes back up. 0 turns it off.": "غیبتی به این اندازه یک شب خواب حساب می‌شود و انرژی برمی‌گردد. ۰ یعنی خاموش.",
+  "Energy after sleeping": "انرژی پس از خواب",
+  "Mess hall meal (coins)": "غذای غذاخوری (سکه)",
+  "Nap cooldown (min)": "فاصلهٔ چرت‌ها (دقیقه)",
+  "Inspired mood: Empire income bonus": "حال پرشور: پاداش درآمد امپراتوری",
+  "A happy commander runs a better business: Inspired adds this share to Street Empire income (Happy adds half). 0.2 = +20%.": "فرماندهٔ شاد کسب‌وکار بهتری می‌چرخاند: حال پرشور این سهم را به درآمد امپراتوری خیابان اضافه می‌کند (حال شاد نصفش را). ۰٫۲ = ٪۲۰+.",
 };
 
 export default settings;

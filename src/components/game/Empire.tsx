@@ -41,6 +41,8 @@ type View = {
   state: EmpireState;
   now: number;
   stepsToday: number;
+  /** The commander's mood bonus to income (Life sim). */
+  moodMult: number;
   stepBank: number;
   perSec: number;
   fullPerSec: number;
@@ -102,7 +104,7 @@ export function EmpireTab() {
   }, [load]);
 
   const now = Date.now() + skew.current;
-  const mods = { now, stepsToday: v?.stepsToday ?? 0 };
+  const mods = { now, stepsToday: v?.stepsToday ?? 0, mood: v?.moodMult ?? 1 };
   // What the empire looks like this very moment.
   const live = useMemo(() => (v ? settle(v.state, mods).s : null), [v, Math.floor(now / 100)]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -215,7 +217,7 @@ export function EmpireTab() {
       {/* ---- the money */}
       <div className="emp-hero">
         <div className="emp-sky" aria-hidden="true" />
-        <div className="emp-cash">
+        <div className="emp-cash" data-fx-target="cash">
           <Art k="cash" size={40} anim="float" />
           <b>{money(s.cash)}</b>
         </div>
@@ -226,6 +228,11 @@ export function EmpireTab() {
           <span className="pill" title={t("Steps walked today boost income, up to ×2 at {n}", { n: STEP_GOAL })}>
             <Art k="sneaker" /> ×{fmtNum(Math.round(sMult * 100) / 100)}
           </span>
+          {v.moodMult > 1 && (
+            <span className="pill" title={t("Your commander's good mood (Hero → Life) boosts income")}>
+              🤩 ×{fmtNum(Math.round(v.moodMult * 100) / 100)}
+            </span>
+          )}
           {s.fame > 0 && (
             <span className="pill">
               <Art k="fame" /> ×{fmtNum(Math.round(fameMult(s.fame) * 100) / 100)}
@@ -346,7 +353,7 @@ export function EmpireTab() {
           <b>{t("Empire rank {n}", { n: v.rank })}</b>
           <span className="small muted">{t("Your empire ranks up as it grows — each rank pays coins and gems in the main game.")}</span>
           {v.rank > v.rankClaimed ? (
-            <Button className="btn yellow small" onClick={() => send({ action: "rank" }).then((ok) => ok && (burst("🪙", 12), celebrate({ title: t("EMPIRE RANK {n}", { n: v.rank }), emoji: "🏆", body: t("+{n} 🪙", { n: rankReward(v.rank).coins }) })))}>{t("Claim rewards")}</Button>
+            <Button className="btn yellow small" onClick={() => send({ action: "rank" }).then((ok) => ok && (celebrate({ title: t("EMPIRE RANK {n}", { n: v.rank }), emoji: "🏆", rewards: rankReward(v.rank) }), refreshMe()))}>{t("Claim rewards")}</Button>
           ) : (
             <span className="small">{t("Next at {n}", { n: money(rankAt(v.rank + 1)) })}</span>
           )}

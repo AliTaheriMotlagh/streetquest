@@ -10,8 +10,14 @@ export type Notice = {
   body?: string;
   kind?: "info" | "reward" | "social" | "delivery" | "event";
   /** What the game does with it beyond showing it (sound, celebration) — never parse the text. */
-  tag?: "incoming" | "levelup" | "hurt";
+  tag?: "incoming" | "levelup" | "hurt" | "ready";
+  /** The panel tapping it opens (see NoticeLink). Defaults by kind. */
+  link?: NoticeLink;
 };
+
+/** Panels a notification can open; "me:<tab>" opens a Hero tab. */
+export type NoticeLink = "base" | "play" | "jobs" | "market" | "social" | "events" | "biz" | "store" | "me" | "me:quests" | "me:life" | "me:hero";
+const LINK_BY_KIND: Partial<Record<NonNullable<Notice["kind"]>, NoticeLink>> = { delivery: "jobs", social: "social", event: "base" };
 
 /** A player counts as online if their client pinged within this window. */
 export const ONLINE_MS = 90_000;
@@ -42,7 +48,8 @@ export async function notify(userId: string, n: Notice | (() => Notice)) {
     typeof n === "function"
       ? withLocale(locale, n)
       : { ...n, title: translate(locale, n.title), body: n.body && translate(locale, n.body) };
-  await prisma.notification.create({ data: { userId, kind: notice.kind ?? "info", tag: notice.tag, title: notice.title, body: notice.body } }).catch(() => {});
+  const link = notice.link ?? (notice.kind ? LINK_BY_KIND[notice.kind] : undefined);
+  await prisma.notification.create({ data: { userId, kind: notice.kind ?? "info", tag: notice.tag, title: notice.title, body: notice.body, link } }).catch(() => {});
   // Also reach the phone when the game isn't open (fire-and-forget).
   pushSoon(userId, { title: notice.title, body: notice.body, kind: notice.kind });
 }
