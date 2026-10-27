@@ -148,7 +148,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     return () => clearTimeout(k);
   }, []);
   const [busy, setBusy] = useState(false);
-  const [touch] = useState(isTouch);
+  const [touch, setTouch] = useState(isTouch);
+  // Some Android browsers claim a mouse; the first finger on the screen settles it.
+  useEffect(() => {
+    if (touch) return;
+    const on = (e: PointerEvent) => e.pointerType === "touch" && setTouch(true);
+    window.addEventListener("pointerdown", on);
+    return () => window.removeEventListener("pointerdown", on);
+  }, [touch]);
   const [style, setStyle] = useState<Style>(() => (store.get(STYLE_KEY) === "toon" ? "toon" : "real"));
   const [vehicle, setVehicle] = useState<VehicleKey>(() => allowedVehicle(store.get(VEHICLE_KEY), me?.level ?? 1));
   const [paint, setPaint] = useState(() => {

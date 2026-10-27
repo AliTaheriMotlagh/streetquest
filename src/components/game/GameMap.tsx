@@ -12,7 +12,7 @@ import { OthersLayer } from "./OthersLayer";
 import { cellFor, cluster, groupBounds, lodFor, type Group, type Lod } from "./mapLod";
 import { nearby } from "./location/nearby";
 import { getLocation } from "./useLocation";
-import { isLite, isTouch } from "../perf";
+import { isLite, isTouch, probeFrameRate } from "../perf";
 
 // Default: public OSM tiles, darkened with CSS. For production traffic set
 // NEXT_PUBLIC_TILE_URL to a provider you have a key for (MapTiler, Stadia, Mapbox…).
@@ -78,6 +78,8 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
   // Read once per mount: tile fading gives every tile its own GPU layer (will-change),
   // which is what made panning and rotating stutter on Android and ate RAM.
   const [tuning] = useState(() => ({ touch: isTouch(), lite: isLite() }));
+  // Phones that hide their RAM get measured instead: a janky map drops to lite.
+  useEffect(() => (tuning.touch ? probeFrameRate() : undefined), [tuning.touch]);
 
   return (
     <div className={`map ${look === "dark" && DARKEN ? "darken" : ""} ${look === "fantasy" ? "fantasy" : ""} ${tint} ${picking ? "picking" : ""}`}>

@@ -32,6 +32,14 @@
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .35));
 }
 html.lite .fantasy-fx .cloud { display: none; }
+/* Lite: a filter on every tile and a blended grain the size of four screens are redrawn
+   on each pan, which is what made budget Android stutter. A flat tint looks close. */
+html.lite .map.fantasy .leaflet-tile { filter: none; }
+html.lite .map.fantasy .leaflet-tile-pane::after { display: none; }
+html.lite .fantasy-fx .compass-rose { filter: none; }
+html.lite .map.fantasy .fantasy-fx::before { background: rgba(214, 170, 96, .2); }
+html.lite .map.fantasy.night-tint .fantasy-fx::before { background: rgba(14, 12, 60, .45); }
+html.lite .map.fantasy.dusk-tint .fantasy-fx::before, html.lite .map.fantasy.dawn-tint .fantasy-fx::before { background: rgba(200, 90, 60, .2); }
 @media (prefers-reduced-motion: reduce) { .fantasy-fx .cloud { animation: none; } }
 /* Markers read better on the light parchment with a soft dark halo. */
 .map.fantasy .mk { text-shadow: 0 2px 4px rgba(60, 30, 0, .55); }

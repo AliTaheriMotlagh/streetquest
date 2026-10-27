@@ -529,9 +529,17 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
    Backdrop blur over a moving map is recomputed every frame; on touch devices use
    solid panels instead. Respect reduced-motion too. */
 @media (hover: none), (pointer: coarse) {
-  .chip, .player-card, .fab, .nav, .needs-hud, .ready-tray, .modal-bg { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .chip, .player-card, .fab, .nav, .needs-hud, .ready-tray, .modal-bg,
+  .sell-bar, .emp-buybar, .call-btn { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   :root { --panel: rgba(16, 16, 28, 0.96); }
+  /* A 3D tilt on :active promotes the row to its own layer the moment a finger lands
+     to scroll, then drops it again: on Android that flashed stale pixels in panels. */
+  .card.list-item:active { transform: scale(.99); }
+  .card.list-item:hover .icon-tile { transform: none; }
 }
+/* Under an open panel the map's looping markers kept the GPU recompositing behind
+   every scroll frame; nobody can see them anyway. */
+.game:has(.sheet) .mk, .game:has(.sheet) .mk *, .game:has(.sheet) .me-marker::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
@@ -540,7 +548,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
    Game feel: 3D depth, juicy feedback. Transform/opacity only, so it stays
    on the GPU compositor and smooth on phones.
    ===================================================================== */
-.btn { transition: transform .08s ease-out, box-shadow .08s ease-out, filter .15s; will-change: transform; -webkit-tap-highlight-color: transparent; }
+/* No will-change here: a panel holds dozens of buttons, and a GPU layer for each ran
+   low-RAM Android out of tile memory, so scrolled panels showed broken pixels. */
+.btn { transition: transform .08s ease-out, box-shadow .08s ease-out, filter .15s; -webkit-tap-highlight-color: transparent; }
 .btn:not(:disabled):active { transform: perspective(500px) translateY(3px) rotateX(8deg) scale(.97); }
 .fab { transition: transform .12s cubic-bezier(.3,1.6,.5,1); -webkit-tap-highlight-color: transparent; }
 .fab:active { transform: perspective(400px) translateZ(-20px) scale(.92); }
@@ -1205,7 +1215,7 @@ html.lite .mk { text-shadow: 0 1px 2px rgba(0,0,0,.8); }
 html.lite .mk.player.live { filter: none; }
 html.lite .me-heading { filter: none; transition: transform .3s linear, opacity .3s; }
 html.lite .me-marker { box-shadow: none; }
-html.lite .btn, html.lite .nav button, html.lite .fab { will-change: auto; }
+html.lite .nav button, html.lite .fab { will-change: auto; }
 
 /* ---------- First-person fight open: the map underneath stops working ---------- */
 .game.in-fight > .map { visibility: hidden; }
