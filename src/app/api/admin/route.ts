@@ -166,7 +166,7 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("cancelLottery"), id: z.string() }),
   z.object({ action: z.literal("drawLottery"), id: z.string() }),
   z.object({ action: z.literal("broadcast"), title: z.string().min(1).max(100), body: z.string().max(300).optional(), push: z.boolean().optional() }),
-  z.object({ action: z.literal("saveSettings"), data: z.record(z.unknown()) }),
+  z.object({ action: z.literal("saveSettings"), data: z.record(z.string(), z.unknown()) }),
   z.object({ action: z.literal("grantGems"), userId: z.string(), gems: z.number().int().min(-1e6).max(1e6) }),
   z.object({
     action: z.literal("dropMoney"),

@@ -47,7 +47,9 @@ test("ring, answer, exchange signals, hang up", async ({ baseURL }) => {
   // Ringing stops once answered.
   expect((await b.get<{ call: unknown }>(`/api/sync?since=${Date.now()}`)).data.call).toBeNull();
 
-  await a.post("/api/calls", { action: "end", callId: id });
+  // Hanging up sends the phone's connection diagnostics along (what Call.tsx reports).
+  const diag = { local: { "host/udp": 2, "relay/udp": 1 }, remote: {}, restarts: 0, iceState: "connected", gather: "complete" };
+  expect((await a.post("/api/calls", { action: "end", callId: id, diag })).status).toBe(200);
   const after = await b.get<{ status: string; endReason: string }>(`/api/calls?id=${id}`);
   expect(after.data).toMatchObject({ status: "ENDED", endReason: "hangup" });
   expect((await b.post("/api/calls", { action: "signal", callId: id, signals: [{ kind: "ice", data: "{}" }] })).status).toBe(410);

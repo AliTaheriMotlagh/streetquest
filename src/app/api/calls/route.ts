@@ -29,7 +29,7 @@ export const GET = route(async (req) => {
 
 const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), userId: z.string(), video: z.boolean().default(true) }),
-  z.object({ action: z.enum(["accept", "decline", "end"]), callId: z.string(), reason: z.enum(["failed", "norelay", "lost"]).optional(), diag: z.record(z.unknown()).optional() }),
+  z.object({ action: z.enum(["accept", "decline", "end"]), callId: z.string(), reason: z.enum(["failed", "norelay", "lost"]).optional(), diag: z.record(z.string(), z.unknown()).optional() }),
   z.object({
     action: z.literal("signal"),
     callId: z.string(),

@@ -48,7 +48,7 @@ export function route<T>(fn: (req: Request, ctx: Ctx) => Promise<T>, opts: Opts 
         if (e instanceof ZodError) {
           // A custom message on the schema is meant for players; zod's own are technical.
           const issue = e.issues[0];
-          const custom = issue?.message && !/^(Expected|Required|Invalid|String must|Number must|Array must)/.test(issue.message);
+          const custom = issue?.message && !/^(Expected|Required|Invalid|String must|Number must|Array must|Too big|Too small|Unrecognized)/.test(issue.message);
           return fail(400, custom ? t(issue.message) : t("Something you entered isn't valid ({field})", { field: issue?.path.join(".") || "?" }));
         }
         const code = (e as { code?: string }).code;
