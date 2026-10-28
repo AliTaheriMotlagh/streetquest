@@ -21,7 +21,8 @@ const MAX_VOICES = 10;
 
 function out(pan: number) {
   const o = audioOut();
-  if (!o || isMuted() || live >= MAX_VOICES) return null;
+  // Still waking up: skip this one rather than have it fire late with the next ones.
+  if (!o || isMuted() || live >= MAX_VOICES || o.ctx.state !== "running") return null;
   const { ctx } = o;
   const p = ctx.createStereoPanner();
   p.pan.value = Math.max(-1, Math.min(1, pan));

@@ -117,6 +117,11 @@ export function Pwa() {
       .then((r) => {
         reg.current = r;
         offer();
+        // Keep the phone's copies of maps, models and fonts: without this Android may clear
+        // them when space runs low, and every launch downloads them again.
+        void navigator.storage?.persist?.().catch(() => false);
+        // Fill in anything the worker's own background download didn't finish.
+        void sw.ready.then((ready) => ready.active?.postMessage({ type: "WARM" }));
         watch(r.installing);
         r.addEventListener("updatefound", () => watch(r.installing));
       })

@@ -18,8 +18,9 @@
 // Android, where most players are:
 //  - audio may only start inside a real user activation — for touch that's the finger
 //    lifting (pointerup/touchend/click), not pointerdown — so that's where it unlocks;
-//  - a sound asked for while audio is still locked or asleep is dropped, never queued: a
-//    queue of taps all fired at once when audio wakes up is a burst of noise;
+//  - a sound asked for while audio is still locked or asleep plays when it wakes only if
+//    it's the latest and still fresh, never queued: a queue of taps all fired at once
+//    when audio wakes up is a burst of noise;
 //  - weak phones get a bigger output buffer and a cheaper mix (a short echo instead of
 //    convolution reverb, no oversampling): the audio thread underrunning while the page
 //    re-renders after a tap is heard as crackle;
@@ -217,10 +218,17 @@ function build(a: BaseAudioContext, cheap: boolean) {
 }
 
 export const isMuted = () => muted;
-/** Shared audio graph for the background music (same context, own bus, ducked under big sounds). */
+/**
+ * Shared audio graph for sounds made outside this file — music, guns, the drive engine and
+ * horn (same context, own bus, ducked under big sounds). Asking for it counts as making a
+ * sound: it keeps the audio thread from falling asleep mid-fight and wakes it if it has.
+ */
 export function audioOut() {
   const a = audio();
-  return a && musicBus ? { ctx: a, out: musicBus as AudioNode } : null;
+  if (!a || !musicBus) return null;
+  lastSound = performance.now();
+  if (a.state === "suspended" && !document.hidden && (!muted || awake.size)) void a.resume().catch(() => {});
+  return { ctx: a, out: musicBus as AudioNode };
 }
 export function setMuted(m: boolean) {
   muted = m;
@@ -573,6 +581,16 @@ const SOUNDS: Record<Sfx, () => void> = {
 };
 
 const last: Partial<Record<Sfx, number>> = {};
+/**
+ * A sound asked for while audio is asleep plays when it wakes, if it's still this fresh.
+ * Waking takes a few hundred ms on many Android phones: with less, the first sound after
+ * a quiet spell (the next coin, the next shot) was always lost.
+ */
+const WAKE_MS = 700;
+/** Only the latest sound asked for while waking: never a backlog that all fires at once. */
+let waiting: { name: Sfx; at: number } | null = null;
+let waking = false;
+
 /** Play a sound. Never throws; silently does nothing when muted or audio is blocked. */
 export function sfx(name: Sfx) {
   if (muted) return;
@@ -585,14 +603,21 @@ export function sfx(name: Sfx) {
     last[name] = t;
     lastSound = t;
     if (a.state !== "running") {
-      // Locked (no tap yet) or asleep: wake it, and play this one only if it wakes right
-      // away — never a backlog that all fires at once.
-      stats.dropped++;
+      // Locked (no tap yet) or asleep: wake it, and play the latest sound once it's up.
+      if (waiting) stats.dropped++;
+      waiting = { name, at: t };
+      if (waking) return;
+      waking = true;
       a.resume()
-        .then(() => {
-          if (performance.now() - t < 250 && a.state === "running") (SOUNDS[name](), stats.played++);
-        })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          waking = false;
+          const w = waiting;
+          waiting = null;
+          if (!w) return;
+          if (a.state === "running" && !muted && performance.now() - w.at < WAKE_MS) (SOUNDS[w.name](), stats.played++);
+          else stats.dropped++;
+        });
       return;
     }
     SOUNDS[name]();
@@ -631,7 +656,7 @@ async function renderTest(name: Sfx, cheap: boolean) {
   return { peak, tail, bad };
 }
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production")
-  (window as unknown as { __sfx?: unknown }).__sfx = { stats, state: () => ctx?.state ?? "none", latency: () => ctx?.baseLatency ?? null, render: renderTest, names: () => Object.keys(SOUNDS), awake: () => [...awake], cheap: weakAudio,
+  (window as unknown as { __sfx?: unknown }).__sfx = { stats, state: () => ctx?.state ?? "none", latency: () => ctx?.baseLatency ?? null, render: renderTest, names: () => Object.keys(SOUNDS), awake: () => [...awake], cheap: weakAudio, play: sfx,
     /** Hold audio locked (as before the first tap on a phone) until the returned release is called. */
     lock: async () => {
       const a = ctx!, real = a.resume.bind(a);

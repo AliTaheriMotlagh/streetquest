@@ -1,6 +1,7 @@
 // Sound on an Android phone: what players heard as noise and crackle.
-//  - a sound asked for while audio is locked or asleep is dropped, never queued (a queue
-//    of taps all firing at once when audio wakes up was the burst after picking a menu);
+//  - a sound asked for while audio is locked or asleep is never queued (a queue of taps all
+//    firing at once when audio wakes up was the burst after picking a menu) — but the
+//    latest one still plays when a slow phone takes a few hundred ms to wake up;
 //  - Android gets the cheap mix (no convolution reverb, no oversampling, bigger buffer);
 //  - one tap on a menu button plays one tap sound;
 //  - every sound, through both mixes, stays under clipping and dies away to silence.
@@ -16,6 +17,7 @@ type SfxHook = {
   names: () => string[];
   render: (n: string, cheap: boolean) => Promise<{ peak: number; tail: number; bad: number }>;
   lock: () => Promise<() => void>;
+  play: (n: string) => void;
 };
 /** Run `fn` in the page with the sound engine's test hook (window.__sfx, dev builds). */
 const hook = <T,>(page: Page, fn: (s: SfxHook) => T | Promise<T>) => page.evaluate(`(${fn.toString()})(window.__sfx)`) as Promise<T>;
@@ -85,4 +87,24 @@ test("every sound stays under clipping and fades to silence, on both mixes", asy
     expect.soft(r.peak, `${r.name} (${r.cheap ? "cheap" : "full"}) clips`).toBeLessThan(0.98);
     if (!LONG.includes(r.name)) expect.soft(r.tail, `${r.name} (${r.cheap ? "cheap" : "full"}) doesn't fade out`).toBeLessThan(0.005);
   }
+});
+
+test("the first sound after a quiet spell plays once audio wakes, even slowly", async ({ page, baseURL }) => {
+  await openGame(page, baseURL!);
+  await page.locator("nav.nav button:visible").first().tap();
+  await expect.poll(() => hook(page, (s) => s.state())).toBe("running");
+  const played = await page.evaluate(async () => {
+    const s = (window as unknown as { __sfx: SfxHook }).__sfx;
+    // Asleep, and waking takes 400 ms (a budget Android phone).
+    const release = await s.lock();
+    const start = s.stats.played;
+    s.play("coin");
+    s.play("gem");
+    await new Promise((r) => setTimeout(r, 400));
+    release();
+    await new Promise((r) => setTimeout(r, 300));
+    return s.stats.played - start;
+  });
+  // The latest one, and only it.
+  expect(played).toBe(1);
 });

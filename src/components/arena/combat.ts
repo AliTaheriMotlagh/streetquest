@@ -28,6 +28,7 @@ import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { beepSound, boomSound, emptySound, hitSound, hurtSound, killSound, reloadSound, shotSound } from "./gunsound";
+import { sfx } from "../game/sfx";
 import { HTTP_DELAY_MS, Remotes, RT_DELAY_MS } from "./remotes";
 import type { OtherDriver } from "../drive/net";
 import type { ArenaEvent } from "@/server/arena";
@@ -528,6 +529,7 @@ export class Combat {
         }
         if (e.kill) {
           this.dead = true;
+          sfx("down");
           this.pushFeed(e.name, H.me()?.username ?? "", e.w, e.zone === "head", false, true);
         }
       }
@@ -655,6 +657,7 @@ export class Combat {
           this.hp = m.hp;
           if (m.kill) this.dead = true;
           hurtSound();
+          if (m.kill) sfx("down");
           navigator.vibrate?.(m.kill ? 120 : 25);
           if (this.me && m.from && m.from !== this.rt.sid) {
             const a = Math.atan2(-(m.fx - this.me.x), -(m.fz - this.me.z));
@@ -707,7 +710,19 @@ export class Combat {
           H.toast(t("Joined {mode}", { mode: t(MODES[m.m.mode].name) }));
           this.rt.send({ t: "loadout", primary: this.primary });
         }
-        const b = m.m?.bomb;
+        const mm = m.m;
+        if (mm && prev?.id === mm.id && mm.phase !== prev.phase) {
+          // A round starts, a round is won or lost, the match is over.
+          const won = !!mm.winner && (mm.winner.team ? mm.winner.team === this.team : mm.winner.sid === this.rt.sid);
+          if (mm.phase === "live") sfx("go");
+          else if (mm.phase === "roundEnd" && mm.winner) sfx(won ? "capture" : "lose");
+          else if (mm.phase === "ended") sfx(won ? "win" : "lose");
+        }
+        const b = mm?.bomb;
+        if (b && b.state !== this.lastBomb && this.lastBomb) {
+          if (b.state === "planted") sfx("alarm");
+          else if (b.state === "defused") sfx("cut");
+        }
         if (b?.state === "exploded" && this.lastBomb !== "exploded") {
           const p = H.frame.toXZ(b.lat, b.lng);
           this.vfx.explosion(p.x, 0, p.z);

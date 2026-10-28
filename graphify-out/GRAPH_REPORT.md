@@ -1,17 +1,17 @@
 # Graph Report - gps-game  (2026-10-29)
 
 ## Corpus Check
-- 318 files · ~326,840 words
+- 318 files · ~328,057 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 14 file(s) not represented in the graph (top: (none) 5, .css 5, .glb 2)
 
 ## Summary
-- 2947 nodes · 9910 edges · 111 communities (87 shown, 24 thin omitted)
+- 2947 nodes · 9915 edges · 113 communities (86 shown, 27 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 226 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f3dd390c`
+- Built from commit: `bc925269`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,7 +19,7 @@
 - kit.ts
 - helpers.ts
 - city-pack.ts
-- calls/route.ts
+- server/hub.ts
 - requireUser
 - idle.ts
 - AdminLandmarks.tsx
@@ -33,28 +33,28 @@
 - Call.tsx
 - Play.tsx
 - lib/city.ts
-- server/shops.ts
+- prisma
 - DriveGarage.tsx
-- t
-- server/money.ts
+- react
+- geo.ts
 - GameMap.tsx
-- others.ts
+- drive/traffic.ts
 - Drive
-- Market.tsx
+- auth.ts
 - gpsgames.ts
-- world/route.ts
+- Business.tsx
 - tileMesh.ts
 - skyline.ts
 - lib/settings.ts
 - PlayerLayer.tsx
 - Remotes
-- social/route.ts
+- world/route.ts
 - layout.tsx
 - fa/index.ts
 - goals.ts
 - I18nProvider.tsx
 - Combat
-- drive/traffic.ts
+- server/traffic.ts
 - db.ts
 - sfx.ts
 - getT
@@ -87,12 +87,12 @@
 - Empire.tsx
 - NearbyStore
 - sim.ts
-- geo.ts
+- LanguageSwitch.tsx
 - server/landmarks.ts
 - arena/combat.ts
 - AdminPanel.tsx
 - allowScripts
-- three
+- pins.ts
 - sw.js/route.ts
 - ref_node_child_process
 - render.mjs
@@ -105,13 +105,15 @@
 - i18n.ts
 - weapons.ts
 - Avatar
-- Button
+- t
 - CLAUDE.md
-- Pwa.tsx
+- pwaClient.ts
 - @prisma/client
-- offset
+- BuildPool
 - next.config.ts
 - overrides
+- health/route.ts
+- render
 - Player
 - fa/arena.ts
 - locationTracker
@@ -155,7 +157,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (111 total, 24 thin omitted)
+## Communities (113 total, 27 thin omitted)
 
 ### Community 0 - "kit.ts"
 Cohesion: 0.08
@@ -166,116 +168,116 @@ Cohesion: 0.05
 Nodes (61): Dash, store(), World, crew(), ArenaMe, befriend(), drive(), DriveRes (+53 more)
 
 ### Community 2 - "city-pack.ts"
-Cohesion: 0.09
-Nodes (30): pbf, args, build(), cityAt(), dry, extractFile(), hotspots(), main() (+22 more)
+Cohesion: 0.10
+Nodes (29): pbf, args, build(), cityAt(), dry, extractFile(), hotspots(), main() (+21 more)
 
-### Community 3 - "calls/route.ts"
-Cohesion: 0.13
-Nodes (28): GET, POST, Schema, GET, POST, Send, dynamic, GET() (+20 more)
+### Community 3 - "server/hub.ts"
+Cohesion: 0.14
+Nodes (27): GET, POST, Schema, GET, POST, Send, GET, POST (+19 more)
 
 ### Community 4 - "requireUser"
-Cohesion: 0.05
-Nodes (79): jose, next, zod, AdminPage(), keyMatches(), POST, POST, Schema (+71 more)
+Cohesion: 0.06
+Nodes (47): zod, GET, Schema, POST, Schema, GET, Colour, GET (+39 more)
 
 ### Community 5 - "idle.ts"
 Cohesion: 0.06
-Nodes (67): GET, POST, GET, ALL_AT, BASE_OFFLINE_H, BIZ_BY_KEY, BizDef, bizMult() (+59 more)
+Nodes (65): POST, GET, ALL_AT, BASE_OFFLINE_H, BIZ_BY_KEY, BizDef, bizMult(), BizState (+57 more)
 
 ### Community 6 - "AdminLandmarks.tsx"
-Cohesion: 0.08
-Nodes (37): AdminLandmarks(), Biz, download(), Draft, LandmarkPreview(), Measured, mLng(), photoLinks() (+29 more)
+Cohesion: 0.09
+Nodes (34): AdminLandmarks(), Biz, download(), Draft, LandmarkPreview(), Measured, mLng(), photoLinks() (+26 more)
 
 ### Community 7 - "music.ts"
-Cohesion: 0.18
-Nodes (22): duckMusic(), graph(), listeners, midi(), Mood, musicOn(), musicVolume(), onMusicChange() (+14 more)
+Cohesion: 0.17
+Nodes (23): duckMusic(), graph(), listeners, midi(), Mood, musicOn(), musicVolume(), onMusicChange() (+15 more)
 
 ### Community 8 - "world3d.ts"
 Cohesion: 0.08
-Nodes (44): artFor(), Label, nameLines(), oneLine(), OTHER, tradeOf(), TRADES, artImage() (+36 more)
+Nodes (42): artFor(), Label, nameLines(), makeCockpit(), artImage(), artImages, at(), Board (+34 more)
 
 ### Community 9 - "msg"
-Cohesion: 0.24
-Nodes (6): manifest(), GET(), dynamic, dirOf(), msg(), SITE
+Cohesion: 0.22
+Nodes (7): manifest(), GET(), dynamic, dirOf(), msg(), UPGRADES, SITE
 
 ### Community 10 - "Game.tsx"
-Cohesion: 0.08
-Nodes (52): Drive, Game(), GameMap, MapLook, NAV, PHASE_ICON, PHASE_LABEL, StepChip() (+44 more)
+Cohesion: 0.10
+Nodes (33): Drive, Game(), GameMap, MapLook, NAV, PHASE_ICON, PHASE_LABEL, Tour (+25 more)
 
 ### Community 11 - "server/arena.ts"
 Cohesion: 0.19
 Nodes (15): POST, Schema, FREE_RESPAWN_S, PASSIVE_COOLDOWN_S, ROOKIE_LEVEL, F_AIM, F_FIRE, F_SPRINT (+7 more)
 
 ### Community 12 - "tiles.ts"
-Cohesion: 0.09
-Nodes (21): Cached, db(), idbGet(), idbPut(), idbRead(), Job, memory, remember() (+13 more)
+Cohesion: 0.08
+Nodes (21): Cut, Cached, db(), idbGet(), idbPut(), idbRead(), Job, memory (+13 more)
 
 ### Community 13 - "server/drive.ts"
 Cohesion: 0.06
 Nodes (63): DELETE, LatLng, POST, Schema, GET, Point, POST, Schema (+55 more)
 
 ### Community 14 - "Call.tsx"
-Cohesion: 0.12
-Nodes (19): CallInvite, CallPeer, CallScreen(), CAMERA, candProto(), candType(), classify(), END_TEXT (+11 more)
+Cohesion: 0.08
+Nodes (35): CallInvite, CallPeer, CallScreen(), CAMERA, candProto(), candType(), classify(), END_TEXT (+27 more)
 
 ### Community 15 - "Play.tsx"
 Cohesion: 0.10
-Nodes (23): AutoVideo(), Props, AdBreak, AdNetwork, load(), Placement, requestRewarded(), RewardedAd (+15 more)
+Nodes (28): AutoVideo(), Props, AdBreak, AdNetwork, load(), Placement, requestRewarded(), RewardedAd (+20 more)
 
 ### Community 16 - "lib/city.ts"
-Cohesion: 0.07
-Nodes (48): centre(), FootBuilding, footprintAt(), FootRoad, round(), AREA, clipLine(), clipRing() (+40 more)
+Cohesion: 0.06
+Nodes (48): centre(), FootBuilding, footprintAt(), FootRoad, round(), Job, AREA, clipLine() (+40 more)
 
-### Community 17 - "server/shops.ts"
-Cohesion: 0.09
-Nodes (41): Schema, GET, GET, GET, POST, Schema, Fields, POST (+33 more)
+### Community 17 - "prisma"
+Cohesion: 0.10
+Nodes (37): GET, GET, GET, POST, Schema, Fields, Schema, Details (+29 more)
 
 ### Community 18 - "DriveGarage.tsx"
 Cohesion: 0.14
 Nodes (25): CTL, DriveGarage(), NAMES, Props, askTilt(), BarsArt(), buzz(), clamp1() (+17 more)
 
-### Community 19 - "t"
-Cohesion: 0.16
-Nodes (27): HELP, HelpCard(), helpSeen(), markHelpSeen(), seenKey(), TOUR_KEY, TourStep, browserInfo (+19 more)
+### Community 19 - "react"
+Cohesion: 0.10
+Nodes (25): react, isThenable(), Props, Opts, queue, Req, HeroView, Me (+17 more)
 
-### Community 20 - "server/money.ts"
-Cohesion: 0.14
-Nodes (29): GET, cellOf(), DROP_PREFIX, isDropId(), MONEY_BUCKET_MS, moneyAround(), moneyBucket(), moneyForCell() (+21 more)
+### Community 20 - "geo.ts"
+Cohesion: 0.09
+Nodes (41): GET, fillFrontage(), villageTile(), CELL_DEG, cellOf(), hashStr(), LatLng, rng() (+33 more)
 
 ### Community 21 - "GameMap.tsx"
 Cohesion: 0.17
 Nodes (22): GpsView, Clicks(), FrameTarget(), GameMap(), guidesFor(), Layers(), Props, TIER_COLORS (+14 more)
 
-### Community 22 - "others.ts"
+### Community 22 - "drive/traffic.ts"
 Cohesion: 0.10
-Nodes (18): angle(), Driver, Others, Snap, tagColor(), Walker, Cockpit, makeCockpit() (+10 more)
+Nodes (22): three, Driver, Snap, Walker, Footprint, Style, Car, degOf() (+14 more)
 
 ### Community 23 - "Drive"
 Cohesion: 0.10
-Nodes (9): Drive(), paintGauge(), Markers, DriveNet, TileArrays, BuildPool, DetailSource, VtCell (+1 more)
+Nodes (9): Drive(), Markers, DriveNet, angle(), Others, tagColor(), DetailSource, WorldPlayer (+1 more)
 
-### Community 24 - "Market.tsx"
-Cohesion: 0.11
-Nodes (32): Browse(), DEAL_STEPS, endLabel(), ENDS, img(), localInput(), MarketPanel(), Mine (+24 more)
+### Community 24 - "auth.ts"
+Cohesion: 0.09
+Nodes (36): jose, next, AdminPage(), keyMatches(), POST, POST, POST, Schema (+28 more)
 
 ### Community 25 - "gpsgames.ts"
-Cohesion: 0.13
-Nodes (31): GET, here(), POST, Schema, FIND_RADIUS_M, GPS_GAMES, GpsGameKind, heatOf() (+23 more)
+Cohesion: 0.11
+Nodes (35): GET, here(), POST, Schema, bearingTo(), offset(), toDeg(), toRad() (+27 more)
 
-### Community 26 - "world/route.ts"
-Cohesion: 0.14
-Nodes (25): days(), dynamic, GET, GET, Schema, GET, dayPhase, solarHour() (+17 more)
+### Community 26 - "Business.tsx"
+Cohesion: 0.18
+Nodes (17): BusinessPanel(), CampaignForm(), Dashboard(), Data, Details, DetailsForm(), money(), Pitch() (+9 more)
 
 ### Community 27 - "tileMesh.ts"
-Cohesion: 0.11
-Nodes (34): AREA_Y, box(), Builder, buildTileArrays(), color(), cornerSigns(), cuboid(), dashes() (+26 more)
+Cohesion: 0.10
+Nodes (37): AREA_Y, box(), Builder, buildTileArrays(), color(), cornerSigns(), cuboid(), dashes() (+29 more)
 
 ### Community 28 - "skyline.ts"
-Cohesion: 0.15
-Nodes (10): BROWN, Dem, heightAt(), loadTile(), ROCK, Skyline, SNOW, tileXY() (+2 more)
+Cohesion: 0.17
+Nodes (9): BROWN, Dem, heightAt(), loadTile(), ROCK, Skyline, SNOW, tileXY() (+1 more)
 
 ### Community 29 - "lib/settings.ts"
-Cohesion: 0.07
-Nodes (44): Action, GET, layDrops(), POST, POST, price(), Schema, ITEM_BY_KEY (+36 more)
+Cohesion: 0.06
+Nodes (55): Action, GET, layDrops(), POST, POST, Schema, GET, Schema (+47 more)
 
 ### Community 30 - "PlayerLayer.tsx"
 Cohesion: 0.14
@@ -285,9 +287,9 @@ Nodes (15): leaflet, react-leaflet, AdminDropMap(), Clicks(), P, Recenter(), Adm
 Cohesion: 0.19
 Nodes (3): loadSoldier(), lerpAngle(), Remotes
 
-### Community 32 - "social/route.ts"
-Cohesion: 0.10
-Nodes (35): GET, GET, num(), Schema, bbox(), ACHIEVEMENT_BY_KEY, AchievementDef, levelForXp() (+27 more)
+### Community 32 - "world/route.ts"
+Cohesion: 0.11
+Nodes (35): GET, GET, GET, num(), Schema, GET, bbox(), dayPhase (+27 more)
 
 ### Community 33 - "layout.tsx"
 Cohesion: 0.14
@@ -299,19 +301,19 @@ Nodes (12): admin, app, common, drive, landing, location, lottery, money (+4 mor
 
 ### Community 35 - "goals.ts"
 Cohesion: 0.09
-Nodes (40): POST, Schema, GET, POST, Schema, GET, POST, Schema (+32 more)
+Nodes (41): POST, Schema, GET, POST, Schema, GET, POST, Schema (+33 more)
 
 ### Community 36 - "I18nProvider.tsx"
-Cohesion: 0.14
-Nodes (23): GlobalError(), PlayError(), I18nProvider(), LocaleCtx, useLocale(), useT(), LanguagePicker(), LanguageToggle() (+15 more)
+Cohesion: 0.16
+Nodes (17): GlobalError(), I18nProvider(), LocaleCtx, DEFAULT_LOCALE, Locale, LOCALE_META, Messages, parse() (+9 more)
 
-### Community 38 - "drive/traffic.ts"
-Cohesion: 0.09
-Nodes (34): GET, Car, degOf(), lineColors(), PAINTS, Road, TrafficCars, TrafficFeed (+26 more)
+### Community 38 - "server/traffic.ts"
+Cohesion: 0.14
+Nodes (24): GET, along(), bearing(), CONGESTION_COLORS, decodePolyline(), dirOf(), FREE_KMH, TRAFFIC_DEG (+16 more)
 
 ### Community 39 - "db.ts"
-Cohesion: 0.07
-Nodes (31): GET, GET, pub, Schema, Schema, ACTIVE, GET, live() (+23 more)
+Cohesion: 0.08
+Nodes (27): days(), dynamic, GET, GET, pub, Schema, Schema, ACTIVE (+19 more)
 
 ### Community 40 - "sfx.ts"
 Cohesion: 0.12
@@ -334,8 +336,8 @@ Cohesion: 0.10
 Nodes (16): typescript, calleeName(), candidates, catalog, files, insideT(), isCodeLiteral(), keys (+8 more)
 
 ### Community 45 - "Drive.tsx"
-Cohesion: 0.07
-Nodes (42): CAM_LABEL, CamMode, CAMS, Hud, Job, MenuTab, Picked, PlaceRow (+34 more)
+Cohesion: 0.06
+Nodes (44): CAM_LABEL, CamMode, CAMS, Hud, Job, MenuTab, paintGauge(), Picked (+36 more)
 
 ### Community 46 - "useLocation.ts"
 Cohesion: 0.16
@@ -358,12 +360,12 @@ Cohesion: 0.22
 Nodes (8): 1. What's already built and can charge today, 2. What to add next (in order of money per week of work), 3. Later: bigger, slower bets, 4. Getting the first 100 paying stores, 5. A rough model (illustrative only, not a forecast), 6. Costs and risks to plan for, Plan design (in `src/lib/business.ts`), StreetQuest — how it makes money
 
 ### Community 51 - "Panels.tsx"
-Cohesion: 0.05
-Nodes (55): react, isThenable(), Props, Opts, queue, Req, ApiError, CashoutView (+47 more)
+Cohesion: 0.08
+Nodes (43): ApiError, CashoutView, fmtTime(), LatLng, ShopDeal, WorldDelivery, WorldEvent, WorldLottery (+35 more)
 
 ### Community 52 - "HttpError"
-Cohesion: 0.10
-Nodes (51): Details, GET, mine(), POST, Schema, POST, Schema, POST (+43 more)
+Cohesion: 0.08
+Nodes (62): POST, Details, GET, mine(), POST, Schema, POST, POST (+54 more)
 
 ### Community 53 - ".shoot"
 Cohesion: 0.21
@@ -372,10 +374,6 @@ Nodes (4): FootBody, aimDir(), eyeHeight(), spreadDir()
 ### Community 54 - "protocol.ts"
 Cohesion: 0.08
 Nodes (43): Identity, Sample, APP_URL, hub, ORIGINS, PORT, report(), RESULT_KEY (+35 more)
-
-### Community 55 - "CollisionWorld"
-Cohesion: 0.42
-Nodes (3): cellOf(), CollisionWorld, Footprint
 
 ### Community 56 - "match.ts"
 Cohesion: 0.08
@@ -414,20 +412,20 @@ Cohesion: 0.23
 Nodes (13): artHtml(), artSvg(), EMOJI_RE, hasEmoji(), MAP, SHOWN_AS_EMOJI, companion, dropCompanion() (+5 more)
 
 ### Community 68 - "Empire.tsx"
-Cohesion: 0.06
-Nodes (51): Art(), ArtAnim, added, ensureArt(), root(), BUY_STEPS, clock(), EmpireTab() (+43 more)
+Cohesion: 0.07
+Nodes (47): Art(), ArtAnim, added, ensureArt(), root(), BUY_STEPS, clock(), EmpireTab() (+39 more)
 
 ### Community 70 - "sim.ts"
 Cohesion: 0.17
 Nodes (10): MatchResult, buildings, F, host, log, m, mode, now (+2 more)
 
-### Community 71 - "geo.ts"
-Cohesion: 0.13
-Nodes (13): Job, transferables(), hashStr(), LatLng, realizeSpawns(), CAMPAIGN, campaignKey(), DAILY_POOL (+5 more)
+### Community 71 - "LanguageSwitch.tsx"
+Cohesion: 0.50
+Nodes (6): PlayError(), useLocale(), useT(), LanguagePicker(), LanguageToggle(), setLanguage()
 
 ### Community 72 - "server/landmarks.ts"
-Cohesion: 0.10
-Nodes (31): Action, Fields, GET, Meta, POST, PUT, GET, Colour (+23 more)
+Cohesion: 0.15
+Nodes (25): Action, Fields, GET, Meta, POST, PUT, GET, activePlan() (+17 more)
 
 ### Community 73 - "arena/combat.ts"
 Cohesion: 0.08
@@ -441,9 +439,9 @@ Nodes (34): ADMIN_NAV, AdminLandmarks, AdminPanel(), Cashout, Data, Drop, fmt(),
 Cohesion: 0.40
 Nodes (5): allowScripts, esbuild@0.28.2, prisma@6.19.3, @prisma/client@6.19.3, @prisma/engines@6.19.3
 
-### Community 76 - "three"
-Cohesion: 0.19
-Nodes (6): three, Cloud, Pin, pinTexture(), StorePins, Trade
+### Community 76 - "pins.ts"
+Cohesion: 0.15
+Nodes (11): Cloud, Pin, pinTexture(), StorePins, oneLine(), OTHER, Trade, tradeOf() (+3 more)
 
 ### Community 77 - "sw.js/route.ts"
 Cohesion: 0.40
@@ -455,11 +453,11 @@ Nodes (3): dynamic, GET(), adsTxt()
 
 ### Community 81 - "server/places.ts"
 Cohesion: 0.09
-Nodes (48): TILE_V, tileKey, tileOf(), villageTile(), cellKey(), CUSTOMER_DOOR, FOOD_AT, FoodSpawn (+40 more)
+Nodes (49): TILE_V, tileOf(), cellKey(), tomanFor(), CUSTOMER_DOOR, FOOD_AT, FoodSpawn, ITEM_AT (+41 more)
 
 ### Community 84 - "i18n/index.ts"
-Cohesion: 0.13
-Nodes (21): POST, GET, POST, Schema, GET, PATCH, catalogs, compiled (+13 more)
+Cohesion: 0.09
+Nodes (31): POST, GET, POST, Schema, POST, price(), Schema, GET (+23 more)
 
 ### Community 86 - "i18n.ts"
 Cohesion: 0.24
@@ -469,25 +467,25 @@ Nodes (11): isLocale(), LOCALE_COOKIE, LOCALE_HEADER, pickLocale(), resolveLocal
 Cohesion: 0.11
 Nodes (16): axisL, Clip, NATURAL, Pose, qa, qp, right, Template (+8 more)
 
-### Community 89 - "Button"
-Cohesion: 0.11
-Nodes (74): ArenaMenu(), Button(), askConfirm(), DriveParty(), AdminTools(), BusinessPanel(), CampaignForm(), Dashboard() (+66 more)
+### Community 89 - "t"
+Cohesion: 0.09
+Nodes (85): ArenaMenu(), Button(), askConfirm(), DriveParty(), AdminTools(), api(), ensureGuest(), InfoCard() (+77 more)
 
-### Community 91 - "Pwa.tsx"
-Cohesion: 0.60
-Nodes (4): installHScroll(), pendingUpdate(), Pwa(), setPendingUpdate()
+### Community 91 - "pwaClient.ts"
+Cohesion: 0.17
+Nodes (23): AppSettings(), installHScroll(), pendingUpdate(), Pwa(), setPendingUpdate(), b64ToBytes(), canInstall(), currentPushSub() (+15 more)
 
 ### Community 92 - "@prisma/client"
 Cohesion: 0.25
 Nodes (6): lat, lng, prisma, start, bcryptjs, @prisma/client
 
-### Community 93 - "offset"
-Cohesion: 0.67
-Nodes (4): bearingTo(), offset(), toDeg(), toRad()
-
 ### Community 95 - "overrides"
 Cohesion: 0.67
 Nodes (3): overrides, deepmerge-ts, postcss
+
+### Community 96 - "health/route.ts"
+Cohesion: 0.60
+Nodes (4): dynamic, GET(), short(), turnConfigured()
 
 ### Community 98 - "Player"
 Cohesion: 0.08
@@ -508,12 +506,12 @@ Nodes (12): C, client(), count(), F, KEY, main(), ORIGIN, sleep() (+4 more)
 ## Knowledge Gaps
 - **12 isolated node(s):** `@types/bcryptjs`, `@types/leaflet`, `@types/node`, `@types/react`, `@types/react-dom` (+7 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 770 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **24 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `t()` connect `t` to `kit.ts`, `calls/route.ts`, `requireUser`, `idle.ts`, `AdminLandmarks.tsx`, `music.ts`, `msg`, `Game.tsx`, `server/arena.ts`, `server/drive.ts`, `Call.tsx`, `Play.tsx`, `server/shops.ts`, `DriveGarage.tsx`, `server/money.ts`, `GameMap.tsx`, `Drive`, `Market.tsx`, `gpsgames.ts`, `world/route.ts`, `lib/settings.ts`, `social/route.ts`, `layout.tsx`, `goals.ts`, `I18nProvider.tsx`, `Combat`, `drive/traffic.ts`, `db.ts`, `Drive.tsx`, `Panels.tsx`, `HttpError`, `match.ts`, `perf.ts`, `gunsound.ts`, `Empire.tsx`, `geo.ts`, `server/landmarks.ts`, `arena/combat.ts`, `AdminPanel.tsx`, `server/places.ts`, `.onMsg`, `i18n/index.ts`, `Avatar`, `Button`, `Pwa.tsx`?**
+- **Why does `t()` connect `t` to `kit.ts`, `server/hub.ts`, `requireUser`, `idle.ts`, `AdminLandmarks.tsx`, `music.ts`, `msg`, `Game.tsx`, `server/arena.ts`, `server/drive.ts`, `Call.tsx`, `Play.tsx`, `prisma`, `DriveGarage.tsx`, `react`, `geo.ts`, `GameMap.tsx`, `Drive`, `auth.ts`, `gpsgames.ts`, `Business.tsx`, `lib/settings.ts`, `world/route.ts`, `layout.tsx`, `goals.ts`, `I18nProvider.tsx`, `Combat`, `server/traffic.ts`, `db.ts`, `Drive.tsx`, `Panels.tsx`, `HttpError`, `match.ts`, `perf.ts`, `gunsound.ts`, `Empire.tsx`, `LanguageSwitch.tsx`, `server/landmarks.ts`, `arena/combat.ts`, `AdminPanel.tsx`, `server/places.ts`, `.onMsg`, `i18n/index.ts`, `Avatar`, `pwaClient.ts`?**
   _High betweenness centrality (0.178) - this node is a cross-community bridge._
 - **Are the 63 inferred relationships involving `Drive()` (e.g. with `.dispose()` and `.dots()`) actually correct?**
   _`Drive()` has 63 INFERRED edges - model-reasoned connections that need verification._
@@ -521,8 +519,8 @@ _Questions this graph is uniquely positioned to answer:_
   _12 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `kit.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.08461306835290575 - nodes in this community are weakly interconnected._
-- **Why does `Drive()` connect `Drive` to `AdminLandmarks.tsx`, `music.ts`, `world3d.ts`, `Game.tsx`, `tiles.ts`, `server/drive.ts`, `lib/city.ts`, `DriveGarage.tsx`, `t`, `others.ts`, `Market.tsx`, `skyline.ts`, `Remotes`, `Combat`, `drive/traffic.ts`, `Drive.tsx`, `HttpError`, `.shoot`, `CollisionWorld`, `Viewmodel`, `gunsound.ts`, `Empire.tsx`, `arena/combat.ts`, `three`, `server/places.ts`, `Avatar`, `Button`, `offset`?**
-  _High betweenness centrality (0.052) - this node is a cross-community bridge._
+- **Why does `Drive()` connect `Drive` to `AdminLandmarks.tsx`, `music.ts`, `world3d.ts`, `tiles.ts`, `server/drive.ts`, `Play.tsx`, `lib/city.ts`, `DriveGarage.tsx`, `geo.ts`, `drive/traffic.ts`, `gpsgames.ts`, `Business.tsx`, `skyline.ts`, `Remotes`, `Combat`, `server/traffic.ts`, `Drive.tsx`, `HttpError`, `.shoot`, `CollisionWorld`, `Viewmodel`, `gunsound.ts`, `Empire.tsx`, `arena/combat.ts`, `pins.ts`, `server/places.ts`, `Avatar`, `t`, `BuildPool`?**
+  _High betweenness centrality (0.050) - this node is a cross-community bridge._
 - **Should `helpers.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.050560512468542665 - nodes in this community are weakly interconnected._
 - **Why does `Combat` connect `Combat` to `gunsound.ts`, `Player`, `arena/combat.ts`, `Drive.tsx`, `.onMsg`, `.shoot`, `RtClient`, `Drive`, `match.ts`, `Avatar`, `Match`, `Viewmodel`, `Remotes`?**

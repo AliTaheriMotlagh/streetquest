@@ -229,7 +229,11 @@ Don't run the demo seed in production.
 ## Production checklist
 
 - **Installable app & offline:** `/sw.js` (service worker) caches the app, map tiles you've seen and your last game
-  state, so the game opens offline. Every deploy gets a new version id, and players see "New version ready → Update".
+  state, so the game opens offline. It also keeps the heavy files on the phone so a launch never downloads them again:
+  fonts, the arena's 3D models and the 3D decoder (fetched in the background on install and every launch), and the
+  3D city's street maps you've driven through (vector tiles a week, city-pack detail a day). The app asks the browser
+  for persistent storage so Android doesn't clear it when space runs low. Every deploy gets a new version id, and
+  players see "New version ready → Update".
 - **Push notifications:** set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`
   (`npx web-push generate-vapid-keys`). Every in-game notification is also pushed to the phone when the player isn't
   in the app; Admin → Campaigns → live push can send to everyone. iPhone needs the app added to the Home Screen

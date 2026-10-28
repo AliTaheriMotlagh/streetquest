@@ -20,19 +20,44 @@ const STATIC = "sq-static-v2";   // hashed Next.js assets + images (v2: no video
 const TILES = "sq-tiles-v1";     // map tiles you've seen, so the map works offline
 const DATA = "sq-data-v1";       // last known game state, shown while offline
 const MODELS = "sq-models-v1";   // stores' 3D buildings (immutable, hash in the address)
+const ASSETS = "sq-assets-v1";   // fonts, the arena's 3D models, the 3D decoder: kept on the phone
+const CITY = "sq-city-v1";       // 3D-city street maps (vector tiles + street detail) you've driven through
 const MAX_MODELS = 40;
+const MAX_CITY = 800;
 const PRECACHE = ["/offline", "/play", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/badge-96.png", "/media/streetquest-ad.jpg"];
+// Downloaded once, in the background, when the app is installed or opened — so the first
+// drive, the first match and Persian text never wait on them over a slow phone connection.
+const WARM = ["/fonts/Vazirmatn-UI-FD-Regular.woff2", "/fonts/Vazirmatn-UI-FD-Bold.woff2", "/fonts/Vazirmatn-UI-FD-Black.woff2", "/draco/draco_decoder.wasm", "/draco/draco_wasm_wrapper.js", "/models/arena/soldier.glb", "/models/arena/weapons.glb"];
+// The map host the 3D city falls back to when our tile proxy can't be reached.
+const VT_HOSTS = ["tiles.openfreemap.org"];
 // Read-only game state that's useful to show offline.
 const OFFLINE_DATA = /^\/api\/(me|world|hero|base|goals|gpsgame|outposts|leaderboard|notifications|store)(\?|$)/;
 const MAX_TILES = 1500;
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => Promise.all(PRECACHE.map((u) => c.add(new Request(u, { cache: "reload" })).catch(() => {})))));
+  // Not part of install (a slow connection must not hold the update back); the page also
+  // asks for it on every launch (Pwa.tsx), in case this got cut short.
+  warm();
 });
+/** Fetch whatever of WARM the phone doesn't have yet (each one refreshes itself when used). */
+async function warm() {
+  const c = await caches.open(ASSETS);
+  for (const u of WARM) {
+    try {
+      if (await c.match(u)) continue;
+      const res = await fetch(u);
+      if (res.ok) await c.put(u, res);
+    } catch {}
+  }
+}
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     for (const k of await caches.keys()) if ((k.startsWith("sq-shell-") && k !== SHELL) || k === "sq-static-v1") await caches.delete(k);
+    // The 3D decoder used to share the store models' cache, where trimming could drop it.
+    const models = await caches.open(MODELS);
+    for (const r of await models.keys()) if (new URL(r.url).pathname.startsWith("/draco/")) await models.delete(r);
     if (self.registration.navigationPreload) await self.registration.navigationPreload.enable().catch(() => {});
     await self.clients.claim();
   })());
@@ -41,6 +66,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("message", (e) => {
   if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
   if (e.data && e.data.type === "VERSION") e.source && e.source.postMessage({ type: "VERSION", version: VERSION });
+  if (e.data && e.data.type === "WARM") e.waitUntil(warm());
 });
 
 const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms));
@@ -58,13 +84,38 @@ async function cacheFirst(req, name) {
 }
 async function staleWhileRevalidate(req, name, event) {
   const c = await caches.open(name);
-  const hit = await c.match(req);
+  const hit = await c.match(req, { ignoreVary: true });
   const net = fetch(req).then((res) => {
     if (res.ok || res.type === "opaque") c.put(req, res.clone()).then(() => name === TILES && trim(TILES, MAX_TILES));
     return res;
   }).catch(() => hit);
   if (hit) { event.waitUntil(net); return hit; }
   return net;
+}
+/**
+ * Street maps change rarely: the phone's copy is used as it is for freshMs, and only
+ * then asked for again (falling back to the old copy when the network is down).
+ */
+const DAY_MS = 86400000;
+async function cityFirst(req, event, freshMs) {
+  const c = await caches.open(CITY);
+  const hit = await c.match(req, { ignoreVary: true });
+  const at = hit ? Number(hit.headers.get("x-sq-at")) : 0;
+  if (hit && Date.now() - at < freshMs) return hit;
+  try {
+    const res = await fetch(req);
+    // 204 = no map there (sea, desert): worth remembering too.
+    if (res.ok) {
+      const body = await res.clone().arrayBuffer();
+      const h = new Headers(res.headers);
+      h.set("x-sq-at", String(Date.now()));
+      event.waitUntil(c.put(req, new Response(res.status === 204 ? null : body, { status: res.status, headers: h })).then(() => trim(CITY, MAX_CITY)));
+    }
+    return res;
+  } catch (err) {
+    if (hit) return hit;
+    throw err;
+  }
 }
 function offlineJson() {
   return new Response(JSON.stringify({ error: "You're offline — this will work again when you're back online" }), { status: 503, headers: { "content-type": "application/json", "x-offline": "1" } });
@@ -85,7 +136,13 @@ self.addEventListener("fetch", (event) => {
     // (206) responses, which a cached copy can't provide.
     if (/\.(mp4|webm|mov|m4v)$/i.test(url.pathname) || req.destination === "video" || req.headers.get("range")) return;
     if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) return event.respondWith(cacheFirst(req, STATIC));
-    if (url.pathname.startsWith("/landmark/") || url.pathname.startsWith("/draco/")) return event.respondWith(cacheFirst(req, MODELS).then((res) => (event.waitUntil(trim(MODELS, MAX_MODELS)), res)));
+    if (url.pathname.startsWith("/landmark/")) return event.respondWith(cacheFirst(req, MODELS).then((res) => (event.waitUntil(trim(MODELS, MAX_MODELS)), res)));
+    // Fonts, the arena's models, the 3D decoder: straight from the phone, refreshed behind.
+    if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/models/") || url.pathname.startsWith("/draco/")) return event.respondWith(staleWhileRevalidate(req, ASSETS, event));
+    // The 3D city's street maps (fetched by its worker, which this worker also serves).
+    // Street detail (city packs) a day, since a city's pack can be rebuilt.
+    if (url.pathname.startsWith("/api/vt/")) return event.respondWith(cityFirst(req, event, 7 * DAY_MS));
+    if (url.pathname === "/api/city/detail") return event.respondWith(cityFirst(req, event, DAY_MS));
     if (url.pathname === "/sw.js") return;
     if (url.pathname.startsWith("/api/")) {
       if (OFFLINE_DATA.test(url.pathname + url.search)) {
@@ -122,6 +179,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (TILE_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith("." + h))) return event.respondWith(staleWhileRevalidate(req, TILES, event));
+  if (VT_HOSTS.includes(url.hostname) && /\/\d+\/\d+\/\d+\.pbf$/.test(url.pathname)) return event.respondWith(cityFirst(req, event, 7 * DAY_MS));
   if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") return event.respondWith(staleWhileRevalidate(req, STATIC, event));
 });
 

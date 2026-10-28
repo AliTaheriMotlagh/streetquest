@@ -783,10 +783,23 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const coins: ReturnType<typeof makeCoin>[] = [];
     let roundKey = "";
     let partyNow: PartyView | null = null;
+    /** What I had at the last sync this round, so each gain gets its sound once. */
+    let heard = { key: "", done: 0, it: false };
     const syncRound = (p: PartyView | null) => {
       partyNow = p;
       const s = p?.state;
       const key = p && s && p.status === "LIVE" ? `${p.id}|${s.round}` : "";
+      if (key && s) {
+        const me = live.current.me?.id ?? "";
+        const mine = { key, done: s.progress[me] ?? 0, it: s.game === "tag" && s.it === me };
+        if (heard.key === key) {
+          // Race: a checkpoint. Coins: a coin. Tag: I'm it, or I passed it on.
+          if (mine.done > heard.done) sfx(s.game === "race" ? "capture" : "coin");
+          if (mine.it && !heard.it) sfx("alarm");
+          else if (!mine.it && heard.it) sfx("hit");
+        }
+        heard = mine;
+      }
       if (key !== roundKey) {
         roundKey = key;
         for (const g of gates) (scene.remove(g.group), g.dispose());
@@ -1379,6 +1392,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const low = !D.flies || st.alt <= LAND_ALT_M;
       if (now - lastSlow > 250) {
         lastSlow = now;
+        // The engine starts the moment audio is allowed (the first tap anywhere, the gas
+        // pedal included), not only on a tap on the 3D view.
+        if (!engine) startEngine();
         ensureTiles();
         landmarks.update(st.x, st.z);
         if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncPins());
@@ -1701,6 +1717,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const v = VEHICLES[vehicle];
   const live2 = party?.status === "LIVE";
   const countdown = live2 && party?.startsAt && hud ? Math.ceil((party.startsAt - hud.serverNow) / 1000) : 0;
+  // The start grid: a beep on 3, 2, 1 and "go!" when it lets go.
+  const lastCount = useRef(0);
+  useEffect(() => {
+    const was = lastCount.current;
+    lastCount.current = countdown;
+    if (countdown > 0 && countdown <= 3 && countdown !== was) sfx("beep");
+    else if (countdown <= 0 && was > 0 && was <= 3) sfx("go");
+  }, [countdown]);
 
   const tabs: { key: MenuTab; icon: IconName; label: string; badge?: number }[] = [
     { key: "jobs", icon: "list", label: t("Jobs nearby"), badge: hud?.jobs.length },

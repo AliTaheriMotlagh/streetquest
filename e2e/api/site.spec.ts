@@ -67,6 +67,9 @@ test.describe("site & SEO", () => {
     const sw = await request.get("/sw.js");
     expect(sw.status()).toBe(200);
     expect(sw.headers()["cache-control"]).toContain("no-store");
+    // Heavy files and the 3D city's street maps are kept on the phone, not downloaded every launch.
+    const code = await sw.text();
+    for (const kept of ["/api/vt/", "/api/city/detail", "/models/", "/fonts/", "/draco/", "tiles.openfreemap.org"]) expect(code).toContain(kept);
     expect((await request.get("/offline")).status()).toBe(200);
   });
 
