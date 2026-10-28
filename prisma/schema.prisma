@@ -1025,6 +1025,10 @@ model Shop {
   emoji     String      @default("🏪")
   category  String      @default("other")
   address   String      @default("") // how to find it, in the owner's words
+  // The real store's pages elsewhere (Snappfood menu, Torob shop, Divar ad), shown on the shop.
+  snappfood String      @default("")
+  torob     String      @default("")
+  divar     String      @default("")
   lat       Float
   lng       Float
   coverId   String? // ShopImage shown as the banner
@@ -1218,6 +1222,10 @@ model Business {
   address   String        @default("")
   phone     String        @default("")
   website   String        @default("")
+  // Owner links that override the automatic match (lib/localData.ts parses them).
+  snappfood String        @default("")
+  torob     String        @default("")
+  divar     String        @default("")
   lat       Float
   lng       Float
   osmId     String? // the OpenStreetMap place it claims ("n123" / "w456")
@@ -1474,4 +1482,12 @@ model ArenaResult {
 
   @@unique([matchId, userId])
   @@index([userId, rewardedAt])
+}
+
+// Menus, catalogs and price searches fetched from other sites (Snappfood, Torob), cached so
+// a busy map costs them one request per area/vendor every few hours (server/localData.ts).
+model ExtCache {
+  key       String   @id
+  data      Json
+  fetchedAt DateTime @default(now())
 }

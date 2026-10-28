@@ -16,6 +16,7 @@ import { Directions } from "./Play";
 import { resizePhoto } from "./photo";
 import { sfx } from "./sfx";
 import { MoveIcon, revealInSheet, Sheet, useGame } from "./ui";
+import { OwnerLinkFields, StoreExtras } from "./StoreInfo";
 
 const img = (id: string) => `/shop-img/${id}`;
 
@@ -338,6 +339,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
         <div className="row wrap" style={{ marginTop: 10 }}>
           {s.mine ? <Button className="btn yellow small" onClick={onManage}>🛠️ {t("Manage my shop")}</Button> : <GoToShop to={s} />}
         </div>
+        <StoreExtras query={{ store: "shop", id: s.id }} />
       </div>
 
       {!!window.length && (
@@ -657,13 +659,13 @@ function ShopForm({ onDone }: { onDone: () => void }) {
   const { act, me, pos, toast, refresh } = useGame();
   const { data } = useApi<Mine>(me.shop ? "/api/shops/mine" : null);
   const existing = data?.shop ?? null;
-  const [f, setF] = useState({ name: "", tagline: "", about: "", emoji: "🏪", category: "other", address: "" });
+  const [f, setF] = useState({ name: "", tagline: "", about: "", emoji: "🏪", category: "other", address: "", snappfood: "", torob: "", divar: "" });
   const [cover, setCover] = useState<string | null>(null);
   const filled = useRef(false);
   useEffect(() => {
     if (!existing || filled.current) return;
     filled.current = true;
-    setF({ name: existing.name, tagline: existing.tagline, about: existing.about, emoji: existing.emoji, category: existing.category, address: existing.address });
+    setF({ name: existing.name, tagline: existing.tagline, about: existing.about, emoji: existing.emoji, category: existing.category, address: existing.address, snappfood: existing.snappfood, torob: existing.torob, divar: existing.divar });
   }, [existing]);
   if (me.shop && !existing) return <div className="empty">{t("Loading…")}</div>;
 
@@ -728,6 +730,7 @@ function ShopForm({ onDone }: { onDone: () => void }) {
       <input value={f.address} onChange={set("address")} maxLength={SHOP_LIMITS.address} placeholder={t("e.g. Next to the pharmacy, ground floor")} />
       <label>{t("About the shop")}</label>
       <textarea rows={3} value={f.about} onChange={set("about")} maxLength={SHOP_LIMITS.about} placeholder={t("What you sell, opening hours, how pickup works…")} />
+      <OwnerLinkFields v={f} set={(k, v) => setF({ ...f, [k]: v })} />
 
       {!existing && (
         <div className="card small" style={{ marginTop: 12 }}>

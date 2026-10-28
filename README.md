@@ -101,13 +101,22 @@ mood scales XP; loot funds research; territory funds the army.
   headshots, kill feed, scoreboard. Phones get a shooter layout (floating stick, drag to aim, fire buttons on both sides,
   aim assist and optional auto-fire); desktop uses mouse look and WASD. Matches pay XP and coins (12 paid matches a day).
 - **Fantasy map** — the 2D map is an illustrated parchment map (paper grain, drifting cloud shadows, compass rose, colours
-  of the hour). 🗺️ switches between fantasy, night-ops and plain street maps.
+  of the hour). ⋯ → Map style picks any of 17 looks: fantasy, street, night ops, satellite (with or without place names),
+  terrain, topographic, light, midnight, voyager, city streets, humanitarian, cycling, retro, noir, blueprint and neon
+  (`src/components/game/mapStyles.ts`; every provider there works without a key, and the service worker keeps their
+  tiles for offline).
 - **Social network** — 🌐 Social: a feed (following / nearby / trending), posts with photos, check-ins at real places,
   follows, likes, comments, reports, profiles; deliveries and store visits post themselves. Mutual followers can DM
   and call. Crew chat lives inside Social.
 - **Business center** — real store owners claim their place from inside the store, post missions (check-in for coins)
   and coupons (a code the cashier redeems at the till), and see visits, redemptions and repeat customers. Plans:
   Free / Starter / Pro / Chain (Stripe), with a free trial. See `marketing/BUSINESS_PLAN.md` for the monetisation plan.
+- **Real menus & prices** — every store card (real places, businesses, Market shops) shows the store's real menu or
+  catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~120 m) and, for
+  non-food stores, its own Torob listings plus a Torob price search. ⋯ → 🍽️ *Menus on the map* puts Snappfood
+  vendors on the map, filtered by kind; tap one for its menu. Owners can paste their Snappfood / Torob / Divar links
+  in the Business center or their Market shop, which beat the automatic match. (Divar ads near a location aren't
+  shown: Divar's API refuses automated access and its Kenar platform has no public search.)
 
 Plus the original layer: Pokémon-GO-style spawns, GTA-style timed runs, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
@@ -181,6 +190,7 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 | Tower defense: towers fire when a commander reports their position (`/api/loc` → `takeFire`), HP regenerates from a stored snapshot; raider waves are generated from a seed and fought by a deterministic simulation the server resolves once and clients animate | `src/lib/td.ts`, `src/server/td.ts`, `src/app/api/{towers,waves}` |
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
+| Store menus & prices: Snappfood (vendor list per ~1 km cell, 3 pages, 12 h; menus 6 h) and Torob (search, 12 h) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. Neither has an official API — `SNAPPFOOD_URL` / `TOROB_URL` (`off` disables), admin switch *Menus & prices from Snappfood and Torob* | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `src/components/game/StoreInfo.tsx` |
 | 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`) | `src/components/drive` |
 | Street Arena: a separate Node WebSocket server (`realtime/`) holds everyone in memory — no database. The app signs a 10-min ticket (`/api/rt/ticket`: who you are, friends, virtual or real GPS); results come back HMAC-signed (`/api/rt/result`, paid once per match, daily cap). Binary state 20×/s each way, positions in each client's own local metres, interest management (600 m, same privacy rules as the HTTP presence). Hits: the client draws them at once, the server referees with lag compensation (targets rewound ≤ 350 ms), fire-rate/ammo/range checks and, in matches, line of sight through the real buildings (the host's client sends the arena's streets and footprints). Bots walk a street graph built from the same map | `realtime/`, `src/lib/arena`, `src/components/arena`, `/api/rt` |
 | Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
@@ -272,8 +282,14 @@ Don't run the demo seed in production.
 
 - Real places / 3D city: public Overpass servers are slow and rate-limited. Tiles are cached a month per cell, but at
   scale run your own Overpass and point `OVERPASS_URL` at it.
+- Store menus: Snappfood and Torob are read through their unofficial web APIs, which can change or block servers
+  outside Iran without notice — store cards then simply show no menu. Check `/api/local?near=1&lat=35.7&lng=51.4`
+  from the production server after deploying.
 - Map tiles: the default public OSM tile server is for light use only. Set
-  `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia.
+  `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia. It replaces the
+  default street tiles (fantasy, street, night ops and the filtered looks); the satellite, terrain and CARTO styles
+  use the free public servers of Esri, OpenTopoMap, CARTO and OSM France — fine for light use, check their terms
+  before heavy traffic.
 - Chat/notifications poll every few seconds. For instant delivery at scale, plug in a hosted
   realtime service (Ably, Pusher, Supabase Realtime) behind `notify()` and the chat route.
 - Street Arena runs in one realtime process (in memory). One instance handles a few thousand players; past that,

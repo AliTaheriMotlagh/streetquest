@@ -1715,3 +1715,25 @@ html.lite .biz-bar i::after { animation: none; }
 .lm-budget .stat.warn b { color: var(--yellow); }
 .lm-budget .stat.over { border-color: var(--red); }
 .lm-budget .stat.over b { color: var(--red); }
+
+/* ---- Store menus & prices from other sites (StoreInfo.tsx) */
+.ext-store { margin-top: 12px; }
+.ext-links { gap: 6px; margin-bottom: 4px; }
+.ext-link { text-decoration: none; }
+.ext-link.snappfood { border-color: #ff2f6e; }
+.ext-link.torob { border-color: #e2363c; }
+.ext-link.divar { border-color: #a62626; }
+.ext-menu .input, .ext-torob .input { margin: 4px 0 8px; }
+.ext-items { display: flex; flex-direction: column; gap: 8px; }
+.ext-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: inherit; text-decoration: none; }
+.ext-item img, .ext-item .ext-ph { width: 64px; height: 64px; flex: none; border-radius: 12px; object-fit: cover; background: rgba(255,255,255,.06); display: grid; place-items: center; font-size: 28px; }
+.ext-item b { display: block; line-height: 1.35; }
+.ext-item p { margin: 2px 0 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ext-item s { color: var(--muted); font-size: 12px; }
+.ext-source { margin: 8px 0 0; text-align: center; }
+.ext-loading { margin-top: 10px; }
+.ext-vendor img.place-ic { object-fit: cover; padding: 0; }
+.owner-links { border: 1px dashed var(--line); border-radius: 14px; padding: 8px 12px 10px; margin: 12px 0; }
+.owner-links legend { padding: 0 6px; }
+.more-menu .more-note { margin: 6px 10px 2px; max-width: 220px; }
+.mk.vendor.closed { opacity: .6; filter: saturate(.5); }

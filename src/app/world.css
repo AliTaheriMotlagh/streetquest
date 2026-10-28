@@ -50,6 +50,29 @@ html.lite .map.fantasy.dusk-tint .fantasy-fx::before, html.lite .map.fantasy.daw
 .map.fantasy .mk { text-shadow: 0 2px 4px rgba(60, 30, 0, .55); }
 .map.fantasy .mk .nm { box-shadow: 0 2px 6px rgba(60, 30, 0, .35); }
 
+/* ---------- The other map styles (mapStyles.ts) ---------- */
+/* Satellite photos only dim with the hour; place names on top stay crisp. */
+.map.photo.night-tint .leaflet-tile { filter: brightness(.6) saturate(.8); }
+.map.photo.dusk-tint .leaflet-tile, .map.photo.dawn-tint .leaflet-tile { filter: brightness(.85) sepia(.2); }
+.map.photo .labels .leaflet-tile { filter: none; }
+.map.retro { background: #e8d9b0; }
+.map.retro .leaflet-tile { filter: sepia(.75) saturate(.8) contrast(.95) brightness(1.02); }
+.map.noir { background: #1a1a1a; }
+.map.noir .leaflet-tile { filter: grayscale(1) contrast(1.35) brightness(.9); }
+.map.blueprint { background: #0b2a5b; }
+.map.blueprint .leaflet-tile { filter: grayscale(1) invert(1) sepia(1) hue-rotate(180deg) saturate(3) brightness(.8) contrast(1.2); }
+.map.neon { background: #0a0004; }
+.map.neon .leaflet-tile { filter: invert(1) grayscale(.5) hue-rotate(160deg) saturate(2.5) brightness(.75) contrast(1.6); }
+/* Lite phones: one cheap filter instead of a stack (see the fantasy note above). */
+html.lite .map.retro .leaflet-tile { filter: sepia(.7); }
+html.lite .map.noir .leaflet-tile { filter: grayscale(1); }
+html.lite .map.blueprint .leaflet-tile, html.lite .map.neon .leaflet-tile { filter: invert(1); }
+
+/* The style picker in the ⋯ menu: a two-column grid that scrolls on short screens. */
+.more-menu.styles { display: grid; grid-template-columns: 1fr 1fr; width: min(340px, calc(100vw - 92px)); max-height: min(62vh, 480px); overflow-y: auto; overscroll-behavior: contain; }
+.more-menu.styles .back { grid-column: 1 / -1; background: none; }
+.more-menu.styles button { font-size: 13px; padding: 9px 10px; }
+
 /* ---------- Real places & businesses on the map ---------- */
 .mk.place { font-size: 26px; animation: none; }
 .mk.place .ring { border-width: 3px; box-shadow: 0 0 12px currentColor; background: radial-gradient(circle, rgba(255, 255, 255, .55), rgba(255, 255, 255, .05) 70%); }

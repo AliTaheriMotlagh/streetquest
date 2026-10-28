@@ -13,6 +13,7 @@ import { api, type WorldBusiness, type WorldPlace } from "./client";
 import { Directions } from "./Play";
 import { celebrate } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
+import { StoreExtras } from "./StoreInfo";
 
 const catOf = (c: string) => PLACE_CATS[c as PlaceCat] ?? PLACE_CATS.shop;
 
@@ -82,6 +83,7 @@ export function PlaceCard({ m, onClose }: { m: WorldPlace; onClose: () => void }
       ) : (
         <Button className="btn green block big-btn" onClick={start}>{t("✅ Check in")}</Button>
       )}
+      <StoreExtras query={{ store: "place", id: m.place.id, name: m.place.name, lat: m.place.lat.toFixed(6), lng: m.place.lng.toFixed(6), cat: m.place.cat }} />
     </Sheet>
   );
 }
@@ -148,6 +150,7 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
           </div>
         );
       })}
+      <StoreExtras query={{ store: "biz", id: b.id }} />
     </Sheet>
   );
 }

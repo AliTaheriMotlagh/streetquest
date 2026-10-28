@@ -5,6 +5,7 @@ import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "r
 import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
+import { VENDOR_KINDS, type Vendor } from "@/lib/localData";
 import type { GpsView, LatLng, Me, Selected, World, WorldPlayer } from "./client";
 import { esc, icon } from "./mapIcons";
 import { PlayerLayer, type Guide } from "./PlayerLayer";
@@ -13,13 +14,7 @@ import { cellFor, cluster, groupBounds, lodFor, type Group, type Lod } from "./m
 import { nearby } from "./location/nearby";
 import { getLocation } from "./useLocation";
 import { isLite, isTouch, probeFrameRate } from "../perf";
-
-// Default: public OSM tiles, darkened with CSS. For production traffic set
-// NEXT_PUBLIC_TILE_URL to a provider you have a key for (MapTiler, Stadia, Mapbox…).
-const TILE_URL = process.env.NEXT_PUBLIC_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_ATTRIBUTION = process.env.NEXT_PUBLIC_TILE_ATTRIBUTION || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-const DARKEN = !process.env.NEXT_PUBLIC_TILE_URL || process.env.NEXT_PUBLIC_TILE_DARKEN === "1";
-
+import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
 function FrameTarget({ target }: { target: LatLng | null }) {
@@ -39,8 +34,8 @@ function Clicks({ onClick }: { onClick: (p: LatLng) => void }) {
 }
 
 type Props = {
-  /** fantasy: illustrated storybook map · dark: night-ops · classic: plain street map. */
-  look?: "fantasy" | "dark" | "classic";
+  /** Tiles + filter the map is drawn with (mapStyles.ts). */
+  look?: MapStyle;
   travelTo?: LatLng | null;
   game?: GpsView | null;
   world: World | null;
@@ -51,6 +46,10 @@ type Props = {
   onFollow: () => void;
   onMapClick: (p: LatLng) => void;
   onSelect: (s: Selected) => void;
+  /** The style's tiles all fail (e.g. the provider blocks this country): say so, once. */
+  onTilesFail?: (look: MapStyle) => void;
+  /** Snappfood vendors the player chose to see (⋯ → Menus on the map). */
+  vendors?: Vendor[];
 };
 
 export default memo(GameMap);
@@ -69,7 +68,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, look = "fantasy" }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, look = DEFAULT_STYLE, onTilesFail }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -78,11 +77,25 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
   // Read once per mount: tile fading gives every tile its own GPU layer (will-change),
   // which is what made panning and rotating stutter on Android and ate RAM.
   const [tuning] = useState(() => ({ touch: isTouch(), lite: isLite() }));
+  const tiles = look.tiles ?? DEFAULT_TILES;
+  // Counted per style: a phone screen asks for ~8 tiles, so 4 errors before any loads means the provider is unreachable.
+  const health = useRef({ id: "", ok: 0, bad: 0, told: false });
+  if (health.current.id !== look.id) health.current = { id: look.id, ok: 0, bad: 0, told: false };
+  const tileEvents = useMemo(
+    () => ({
+      tileload: () => void health.current.ok++,
+      tileerror: () => {
+        const h = health.current;
+        if (++h.bad >= 4 && !h.ok && !h.told) (h.told = true), onTilesFail?.(look);
+      },
+    }),
+    [look, onTilesFail],
+  );
   // Phones that hide their RAM get measured instead: a janky map drops to lite.
   useEffect(() => (tuning.touch ? probeFrameRate() : undefined), [tuning.touch]);
 
   return (
-    <div className={`map ${look === "dark" && DARKEN ? "darken" : ""} ${look === "fantasy" ? "fantasy" : ""} ${tint} ${picking ? "picking" : ""}`}>
+    <div className={`map ${look.css ?? ""} ${tint} ${picking ? "picking" : ""}`}>
       <MapContainer
         preferCanvas
         center={[center.lat, center.lng]}
@@ -93,13 +106,15 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         fadeAnimation={!tuning.touch}
         style={{ width: "100%", height: "100%" }}
       >
-        <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />
+        {/* Keyed: a TileLayer only follows a new url, not new subdomains or zoom limits. */}
+        <TileLayer key={look.id} eventHandlers={tileEvents} url={tiles.url} attribution={tiles.attribution} subdomains={tiles.subdomains ?? "abc"} maxNativeZoom={tiles.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />
+        {look.labels && <TileLayer key={`${look.id}-labels`} className="labels" url={look.labels.url} attribution={look.labels.attribution} maxNativeZoom={look.labels.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />}
         <PlayerLayer follow={follow} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} onSelect={onSelect} onUnfollow={onUnfollow} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} onSelect={onSelect} onUnfollow={onUnfollow} />
       </MapContainer>
-      {look === "fantasy" && (
+      {look.fx && (
         <div className="fantasy-fx" aria-hidden>
           <i className="cloud c1" />
           <i className="cloud c2" />
@@ -148,7 +163,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * What the map shows: money to pick up and stores with a mission (the server sends only
  * the nearest few), other players, and where you're headed. Nothing else.
  */
-function Layers({ world, me, game, travelTo, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "onSelect" | "onUnfollow">) {
+function Layers({ world, me, game, travelTo, vendors, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "onSelect" | "onUnfollow">) {
   const map = useMap();
   const view = useMapView();
   const lod: Lod = lodFor(view.zoom);
@@ -182,6 +197,9 @@ function Layers({ world, me, game, travelTo, onSelect, onUnfollow }: Pick<Props,
     });
     return cluster(list.filter((p) => view.bounds.contains([p.lat, p.lng])), view.zoom, cell, "pl");
   }, [world, view, lod, cell]);
+
+  // Snappfood vendors: up to a hundred around you, so grouped unless they're far apart.
+  const vendorGroups = useMemo(() => cluster((vendors ?? []).filter((v) => view.bounds.contains([v.lat, v.lng])).map((v) => ({ ...v, id: v.code })), view.zoom, cell, "sf"), [vendors, view, cell]);
 
   const playerMarker = (p: WorldPlayer) => (
     <Marker
@@ -238,6 +256,22 @@ function Layers({ world, me, game, travelTo, onSelect, onUnfollow }: Pick<Props,
               b.featured ? 50 : 42,
             )}
             eventHandlers={{ click: () => onSelect({ type: "biz", data: b }) }}
+          />
+        );
+      })}
+
+      {/* Menus on the map: Snappfood restaurants, cafés, bakeries and shops (tap for the menu). */}
+      {vendorGroups.map((g) => {
+        if (g.items.length > 1) return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={300} icon={clusterIcon("🍽️", g.items.length, "vendors")} eventHandlers={{ click: () => zoomInto(g) }} />;
+        const v = g.items[0];
+        const k = VENDOR_KINDS[v.kind];
+        return (
+          <Marker
+            key={`sf${v.code}`}
+            position={[v.lat, v.lng]}
+            zIndexOffset={300}
+            icon={icon(`<span class="ring" style="color:#ff2f6e"></span>${k.emoji}<span class="nm">${esc(v.title)}</span>`, `place vendor ${v.open ? "" : "closed"}`, 38)}
+            eventHandlers={{ click: () => onSelect({ type: "vendor", data: v }) }}
           />
         );
       })}

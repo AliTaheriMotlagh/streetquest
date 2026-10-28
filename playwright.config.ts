@@ -5,6 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = Number(process.env.E2E_PORT ?? 3200);
 export const E2E_DB = process.env.E2E_DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/streetquest_e2e";
 export const ADMIN_KEY = "e2e-admin-key";
+/** Local stand-in for Snappfood and Torob, served by e2e/api/local.spec.ts. */
+export const STUB_PORT = Number(process.env.E2E_STUB_PORT ?? 3299);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -53,6 +55,9 @@ export default defineConfig({
           OVERPASS_URL: "off",
           // Traffic tests stay offline (players' GPS only).
           NESHAN_API_KEY: "",
+          // Snappfood / Torob answer from a stub the test starts (e2e/api/local.spec.ts).
+          SNAPPFOOD_URL: `http://localhost:${STUB_PORT}/sf`,
+          TOROB_URL: `http://localhost:${STUB_PORT}/tr`,
           // No real push notifications or payments from tests.
           VAPID_PUBLIC_KEY: "",
           VAPID_PRIVATE_KEY: "",

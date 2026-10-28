@@ -53,6 +53,7 @@ const DEFAULTS = {
   bizEnabled: true,
   bizCampaignMaxCoins: 200,
   bizTrialDays: 14,
+  localDataEnabled: true,
 
   // ---- social
   socialEnabled: true,
@@ -187,6 +188,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "bizEnabled", group: msg("Real places & businesses"), label: msg("Business accounts on"), help: msg("Real stores can register, claim their place on the map and post campaigns.") },
   { key: "bizCampaignMaxCoins", group: msg("Real places & businesses"), label: msg("Max coins per campaign visit"), help: msg("The most coins a business campaign can pay a player per check-in or redemption."), min: 0, max: 5000 },
   { key: "bizTrialDays", group: msg("Real places & businesses"), label: msg("Free trial (days)"), help: msg("How long a new business can try the Starter plan for free (once)."), min: 0, max: 90 },
+  { key: "localDataEnabled", group: msg("Real places & businesses"), label: msg("Menus & prices from Snappfood and Torob"), help: msg("Store cards show the real menu or catalog (Snappfood) and online prices (Torob), and the map can show Snappfood vendors. Owners can paste their own links.") },
 
   { key: "socialEnabled", group: msg("Social"), label: msg("Social feed on"), help: msg("Players can post, follow each other, like and comment.") },
   { key: "socialPostsPerHour", group: msg("Social"), label: msg("Posts per hour (max)"), help: msg("How many posts one player can publish per hour — keeps the feed free of spam."), min: 1, max: 100 },

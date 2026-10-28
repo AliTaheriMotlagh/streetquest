@@ -6,6 +6,7 @@ import type { MoneyPickup } from "@/lib/money";
 import type { OrderView, ProductView, ShopCard, ShopView } from "@/server/shops";
 import type { PlaceMission } from "@/lib/places";
 import type { WorldBusiness } from "@/server/business";
+import type { Vendor } from "@/lib/localData";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
@@ -194,6 +195,7 @@ export type Selected =
   | { type: "shop"; data: WorldShop }
   | { type: "place"; data: WorldPlace }
   | { type: "biz"; data: WorldBusiness }
+  | { type: "vendor"; data: Vendor }
   | { type: "player"; data: WorldPlayer };
 
 /** A timestamp in the player's language and calendar (Solar Hijri in Persian). */

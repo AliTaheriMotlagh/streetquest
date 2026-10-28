@@ -187,6 +187,41 @@ test.describe("map on a phone", () => {
     await expect(page.locator(".sheet[role=dialog]")).toContainText(/toman/);
   });
 
+  test("map style: every look is in the picker, and the choice switches tiles and sticks", async ({ page }) => {
+    await returningPlayer(page);
+    await withGps(page);
+    await page.goto("/play");
+    await expect(page.locator(".map.fantasy")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: /Map style/ }).click();
+    const looks = page.locator(".more-menu.styles [role=menuitemradio]");
+    await expect(looks).toHaveCount(17);
+    await expect(looks.filter({ hasText: "Fantasy" })).toHaveAttribute("aria-checked", "true");
+    // Satellite + names: Esri photos with a second layer of place names on top.
+    await looks.filter({ hasText: "Satellite + names" }).click();
+    await expect(page.locator(".map.photo .leaflet-tile[src*='World_Imagery']").first()).toBeAttached();
+    await expect(page.locator(".map .labels .leaflet-tile[src*='World_Boundaries_and_Places']").first()).toBeAttached();
+    await expect(page.locator(".fantasy-fx")).toHaveCount(0);
+    // Terrain swaps the provider; Blueprint is the street tiles under a filter.
+    await looks.filter({ hasText: "Terrain" }).click();
+    await expect(page.locator(".map .leaflet-tile[src*='opentopomap.org']").first()).toBeAttached();
+    await expect(page.locator(".map .labels")).toHaveCount(0);
+    await looks.filter({ hasText: "Blueprint" }).click();
+    await expect(page.locator(".map.blueprint")).toBeVisible();
+    // Remembered after a reload.
+    await page.reload();
+    await expect(page.locator(".map.blueprint")).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("map style: a provider that won't load (blocked in the country) says so instead of a black map", async ({ page }) => {
+    await returningPlayer(page);
+    await withGps(page);
+    await page.route(/server\.arcgisonline\.com/, (r) => r.fulfill({ status: 403, body: "blocked from your country" }));
+    await page.addInitScript(() => localStorage.setItem("sq_map_look", "satellite"));
+    await page.goto("/play");
+    await expect(page.getByText(/Satellite map can't load on this connection/)).toBeVisible({ timeout: 30_000 });
+  });
+
   test("offline page renders", async ({ page }) => {
     await page.goto("/offline");
     await expect(page.locator("body")).toContainText(/offline/i);

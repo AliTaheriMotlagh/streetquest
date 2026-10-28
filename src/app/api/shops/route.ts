@@ -10,6 +10,7 @@ import { requireUser } from "@/server/auth";
 import { actionRoute, body, HttpError, route } from "@/server/http";
 import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { lastKnownLocation, spendCoins, track, unlock } from "@/server/rewards";
+import { OwnerLinks } from "@/server/localData";
 import { PRODUCT_SELECT, SHOP_SELECT, shopCard } from "@/server/shops";
 
 /** Shops further than this don't show in the nearby list (search finds them anywhere). */
@@ -66,6 +67,7 @@ const Details = z.object({
   emoji: z.string().min(1).max(8).default("🏪"),
   category: z.enum(SHOP_CATEGORY_KEYS).default("other"),
   address: text(SHOP_LIMITS.address).default(""),
+  ...OwnerLinks,
 });
 
 const Schema = z.discriminatedUnion("action", [

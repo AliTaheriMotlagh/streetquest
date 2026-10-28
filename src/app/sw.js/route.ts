@@ -1,8 +1,11 @@
 // The service worker, served from a route so it carries this build's id: when a
 // new version is deployed the bytes change, the browser installs it in the
 // background and the game offers "Update" (see components/Pwa.tsx).
+import { tileHosts } from "@/components/game/mapStyles";
+
 const VERSION = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
-const TILE_HOSTS = ["tile.openstreetmap.org", ...(process.env.NEXT_PUBLIC_TILE_URL ? [new URL(process.env.NEXT_PUBLIC_TILE_URL.replace(/\{[a-z]\}/g, "a").replace(/\{[^}]+\}/g, "0")).hostname] : [])];
+// Every map style's tile provider (and NEXT_PUBLIC_TILE_URL's), so seen tiles work offline.
+const TILE_HOSTS = tileHosts();
 
 export const dynamic = "force-static";
 

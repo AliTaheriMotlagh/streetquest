@@ -35,9 +35,12 @@ import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard } from "./PlaceCards";
+import { StoreExtras, VendorCard } from "./StoreInfo";
+import { VENDOR_KIND_KEYS, VENDOR_KINDS, type Vendor, type VendorKind } from "@/lib/localData";
 import { SocialPanel } from "./Social";
 import { BusinessPanel } from "./Business";
 import { WalletPanel } from "./WalletPanel";
+import { MAP_STYLES, mapStyle as styleById, type MapStyle } from "./mapStyles";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 const Drive = dynamic(() => import("../drive/Drive"), { ssr: false, loading: () => <div className="drive drive-boot"><div className="splash-bar"><i /></div></div> });
@@ -54,7 +57,9 @@ const NAV: [PanelId, string, string][] = [
 
 const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
-type MapLook = "fantasy" | "dark" | "classic";
+const MAP_EXT_KEY = "sq_map_ext";
+/** Fetch Snappfood vendors again once the player is this far from the last fetch. */
+const VENDOR_REFETCH_M = 500;
 /** Longest an action waits for the latest position to reach the server. */
 const FLUSH_WAIT_MS = 2500;
 const TOAST_OUT_MS = 220;
@@ -109,22 +114,52 @@ export default function Game() {
   // The 3D city (drive mode), optionally heading somewhere; and a profile to open in Social.
   const [driveOn, setDriveOn] = useState<{ goal: LatLng | null } | null>(null);
   const [profileFocus, setProfileFocus] = useState<string | null>(null);
-  // How the map looks: an illustrated fantasy map (default), dark ops, or plain street map.
-  const [mapStyle, setMapStyle] = useState<MapLook>("fantasy");
+  // How the map looks: the illustrated fantasy map (default), satellite, terrain… (mapStyles.ts).
+  const [mapStyle, setMapStyle] = useState<MapStyle>(styleById(null));
+  const [stylesOpen, setStylesOpen] = useState(false);
   useEffect(() => {
     try {
-      const v = localStorage.getItem(MAP_LOOK_KEY);
-      if (v === "fantasy" || v === "dark" || v === "classic") setMapStyle(v);
+      setMapStyle(styleById(localStorage.getItem(MAP_LOOK_KEY)));
     } catch {}
   }, []);
-  const cycleLook = () => {
-    const next: MapLook = mapStyle === "fantasy" ? "dark" : mapStyle === "dark" ? "classic" : "fantasy";
+  const pickLook = (next: MapStyle) => {
     setMapStyle(next);
     try {
-      localStorage.setItem(MAP_LOOK_KEY, next);
+      localStorage.setItem(MAP_LOOK_KEY, next.id);
     } catch {}
-    toast({ title: next === "fantasy" ? t("🗺️ Fantasy map") : next === "dark" ? t("🌃 Night-ops map") : t("🧭 Street map") });
   };
+  // Menus on the map: which kinds of Snappfood vendors to show (none by default).
+  const [extOpen, setExtOpen] = useState(false);
+  const [extKinds, setExtKinds] = useState<VendorKind[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const vendorsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(MAP_EXT_KEY) ?? "[]");
+      if (Array.isArray(v)) setExtKinds(VENDOR_KIND_KEYS.filter((k) => v.includes(k)));
+    } catch {}
+  }, []);
+  const toggleExt = (k: VendorKind | "all" | "none") => {
+    const next = k === "all" ? [...VENDOR_KIND_KEYS] : k === "none" ? [] : extKinds.includes(k) ? extKinds.filter((x) => x !== k) : [...extKinds, k];
+    setExtKinds(next);
+    try {
+      localStorage.setItem(MAP_EXT_KEY, JSON.stringify(next));
+    } catch {}
+  };
+  // Load them around the player; again after a walk (or a minute after a failed try).
+  useEffect(() => {
+    if (!extKinds.length || !pos) return;
+    const last = vendorsAt.current;
+    if (last && distanceM(last.pos, pos) < VENDOR_REFETCH_M && (last.ok || Date.now() - last.at < 60_000)) return;
+    const tried = (vendorsAt.current = { pos, at: Date.now(), ok: false as boolean });
+    api<{ vendors: Vendor[] }>(`/api/local?near=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
+      .then((r) => {
+        tried.ok = true;
+        setVendors(r.vendors);
+      })
+      .catch(() => {});
+  }, [extKinds.length, pos]);
+  const shownVendors = useMemo(() => vendors.filter((v) => extKinds.includes(v.kind)), [vendors, extKinds]);
   const [meTab, setMeTab] = useState<HeroTabId>("quests");
   const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
@@ -191,6 +226,7 @@ export default function Game() {
     },
     [dismissToast],
   );
+  const lookFailed = useCallback((s: MapStyle) => toast({ kind: "error", title: t("{style} map can't load on this connection — pick another style", { style: t(s.name) }) }), [toast]);
 
   const refresh = useCallback(() => {
     loadMe();
@@ -667,11 +703,12 @@ export default function Game() {
   return (
     <Ctx.Provider value={ctx}>
       <EmojiArtLayer />
-      <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle}`}>
+      <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle.id}`}>
         <GameMap
           world={world}
           me={me}
           look={mapStyle}
+          onTilesFail={lookFailed}
           follow={follow}
           picking={!!picker}
           travelTo={homeMode ? travel : null}
@@ -680,6 +717,7 @@ export default function Game() {
           onFollow={handleFollow}
           onMapClick={handleMapClick}
           onSelect={handleSelect}
+          vendors={shownVendors}
         />
 
         {/* HUD: who I am on one side, my wallet and status on the other — one tidy row. */}
@@ -804,18 +842,49 @@ export default function Game() {
 
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
-          <Button className="fab" title={t("More")} aria-label={t("More")} aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)} style={{ outline: moreOpen ? "2px solid var(--yellow)" : undefined }}>
+          <Button className="fab" title={t("More")} aria-label={t("More")} aria-expanded={moreOpen} onClick={() => (setMoreOpen(!moreOpen), setStylesOpen(false), setExtOpen(false))} style={{ outline: moreOpen ? "2px solid var(--yellow)" : undefined }}>
             ⋯
           </Button>
-          {moreOpen && (
+          {moreOpen && stylesOpen && (
+            <div className="more-menu styles" role="menu" aria-label={t("Map style")}>
+              <Button role="menuitem" className="back" onClick={() => setStylesOpen(false)}>
+                ‹ {t("Map style")}
+              </Button>
+              {MAP_STYLES.map((s) => (
+                <Button key={s.id} role="menuitemradio" aria-checked={s.id === mapStyle.id} className={s.id === mapStyle.id ? "on" : ""} onClick={() => pickLook(s)}>
+                  <span aria-hidden>{s.emoji}</span> {t(s.name)}
+                </Button>
+              ))}
+            </div>
+          )}
+          {moreOpen && extOpen && (
+            <div className="more-menu styles" role="menu" aria-label={t("Menus on the map")}>
+              <Button role="menuitem" className="back" onClick={() => setExtOpen(false)}>
+                ‹ {t("Menus on the map")}
+              </Button>
+              {VENDOR_KIND_KEYS.map((k) => (
+                <Button key={k} role="menuitemcheckbox" aria-checked={extKinds.includes(k)} className={extKinds.includes(k) ? "on" : ""} onClick={() => toggleExt(k)}>
+                  <span aria-hidden>{VENDOR_KINDS[k].emoji}</span> {t(VENDOR_KINDS[k].label)}
+                </Button>
+              ))}
+              <Button role="menuitem" onClick={() => toggleExt(extKinds.length ? "none" : "all")}>
+                {extKinds.length ? `🚫 ${t("Hide all")}` : `✅ ${t("Show all")}`}
+              </Button>
+              <p className="small muted more-note">{t("Real menus and catalogs from Snappfood — tap a sign to see it.")}</p>
+            </div>
+          )}
+          {moreOpen && !stylesOpen && !extOpen && (
             <div className="more-menu" role="menu">
               {me.canSimulate && (
                 <Button role="menuitem" onClick={() => (toggleSim(), setMoreOpen(false))} className={simMode ? "on" : ""}>
                   🕹️ {simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")}
                 </Button>
               )}
-              <Button role="menuitem" onClick={cycleLook}>
-                {mapStyle === "fantasy" ? "🗺️" : mapStyle === "dark" ? "🌃" : "🧭"} {t("Map style")}
+              <Button role="menuitem" aria-haspopup="menu" onClick={() => setStylesOpen(true)}>
+                {mapStyle.emoji} {t("Map style")} <span className="small">· {t(mapStyle.name)}</span>
+              </Button>
+              <Button role="menuitem" aria-haspopup="menu" onClick={() => setExtOpen(true)}>
+                🍽️ {t("Menus on the map")} {!!extKinds.length && <span className="small">· {fmtNum(extKinds.length)}/{fmtNum(VENDOR_KIND_KEYS.length)}</span>}
               </Button>
               <Button role="menuitem" onClick={() => setMuted(!muted)}>
                 {muted ? "🔇" : "🔊"} {muted ? t("Turn sound on") : t("Turn sound off")}
@@ -1030,6 +1099,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
 
   // Stores: a job at a real restaurant/café/shop, or a business and its missions.
   if (sel.type === "place") return <PlaceCard m={world?.places.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
+  if (sel.type === "vendor") return <VendorCard v={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
 
   if (sel.type === "money") {
@@ -1130,6 +1200,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
           {teleport && dist > 40 && <Button className="btn ghost" onClick={() => teleport(sh)}><MoveIcon /> {t("Go there")}</Button>}
           {!teleport && dist > 150 && <Directions to={sh} />}
         </div>
+        <StoreExtras query={{ store: "shop", id: sh.id }} />
       </Sheet>
     );
   }

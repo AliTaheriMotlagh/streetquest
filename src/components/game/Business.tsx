@@ -13,6 +13,7 @@ import type { BizDashboard } from "@/server/business";
 import { api, fmtTime } from "./client";
 import { celebrate } from "./Play";
 import { Sheet, useGame } from "./ui";
+import { OwnerLinkFields } from "./StoreInfo";
 
 type Data = {
   enabled: boolean;
@@ -113,7 +114,7 @@ function Setup({ data, onDone }: { data: Data; onDone: () => void }) {
   return <DetailsForm initial={picked ? { name: picked.name, category: picked.cat as PlaceCat } : undefined} osmId={picked?.id} onDone={onDone} onBack={() => (setPicked(null), setManual(false))} />;
 }
 
-type Details = { name: string; category: PlaceCat; emoji: string; about: string; address: string; phone: string; website: string };
+type Details = { name: string; category: PlaceCat; emoji: string; about: string; address: string; phone: string; website: string; snappfood: string; torob: string; divar: string };
 
 function DetailsForm({ b, initial, osmId, onDone, onBack }: { b?: BizDashboard; initial?: Partial<Details>; osmId?: string; onDone: () => void; onBack?: () => void }) {
   const { act } = useGame();
@@ -125,6 +126,9 @@ function DetailsForm({ b, initial, osmId, onDone, onBack }: { b?: BizDashboard; 
     address: b?.address ?? "",
     phone: b?.phone ?? "",
     website: b?.website ?? "",
+    snappfood: b?.snappfood ?? "",
+    torob: b?.torob ?? "",
+    divar: b?.divar ?? "",
   });
   const set = <K extends keyof Details>(k: K, v: Details[K]) => setF((x) => ({ ...x, [k]: v }));
   const save = () =>
@@ -149,6 +153,7 @@ function DetailsForm({ b, initial, osmId, onDone, onBack }: { b?: BizDashboard; 
         <label className="grow">{t("Phone")}<input className="input" maxLength={BIZ_LIMITS.phone} inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} /></label>
         <label className="grow">{t("Website")}<input className="input" maxLength={BIZ_LIMITS.website} placeholder="https://" value={f.website} onChange={(e) => set("website", e.target.value)} /></label>
       </div>
+      <OwnerLinkFields v={f} set={set} />
       <div className="row">
         {onBack && <Button className="btn ghost" onClick={onBack}>{t("Back")}</Button>}
         <Button className="btn yellow grow" disabled={f.name.trim().length < 2} onClick={save}>{b ? t("Save") : t("🏪 Put it on the map")}</Button>

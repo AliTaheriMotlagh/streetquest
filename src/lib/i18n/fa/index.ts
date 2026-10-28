@@ -34,6 +34,7 @@ import drive from "./drive";
 import money from "./money";
 import landmarks from "./landmarks";
 import arena from "./arena";
+import local from "./local";
 
 const fa: Messages = {
   ...arena,
@@ -58,6 +59,7 @@ const fa: Messages = {
   ...drive,
   ...money,
   ...landmarks,
+  ...local,
 };
 
 export default fa;

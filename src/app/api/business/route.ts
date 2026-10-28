@@ -13,6 +13,7 @@ import { actionRoute, body, HttpError, route } from "@/server/http";
 import { lastKnownLocation } from "@/server/rewards";
 import { checkIn, dashboard, extendPlan, planCheckout, redeem, startTrial } from "@/server/business";
 import { placesAround } from "@/server/city";
+import { OwnerLinks } from "@/server/localData";
 import { confirmCheckout, stripeReady } from "@/server/store";
 import { notify, onlineSince } from "@/server/hub";
 
@@ -38,6 +39,7 @@ const Details = z.object({
   address: text(BIZ_LIMITS.address).default(""),
   phone: text(BIZ_LIMITS.phone).default(""),
   website: text(BIZ_LIMITS.website).refine((v) => !v || /^https?:\/\/[^\s]+$/i.test(v), "Website must start with http:// or https://").default(""),
+  ...OwnerLinks,
 });
 
 const Schema = z.discriminatedUnion("action", [
@@ -102,13 +104,13 @@ export const POST = actionRoute(async (req) => {
     // Set up from inside (or right outside) the store, so nobody claims a place they've never been to.
     if (distanceM(here, at) > BIZ_SETUP_M && u.role !== "ADMIN") throw new HttpError(400, t("Set up your business from your store"));
     const b = await prisma.business.create({
-      data: { ownerId: u.id, name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, lat: at.lat, lng: at.lng, osmId: d.osmId ?? null },
+      data: { ownerId: u.id, name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, snappfood: d.snappfood, torob: d.torob, divar: d.divar, lat: at.lat, lng: at.lng, osmId: d.osmId ?? null },
     });
     return { message: t("🏪 {place} is on the map! Create your first mission.", { place: b.name }), id: b.id };
   }
   if (d.action === "update") {
     await mine(u.id, d.businessId);
-    await prisma.business.update({ where: { id: d.businessId }, data: { name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website } });
+    await prisma.business.update({ where: { id: d.businessId }, data: { name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, snappfood: d.snappfood, torob: d.torob, divar: d.divar } });
     return { message: t("Saved") };
   }
   if (d.action === "delete") {
