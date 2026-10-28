@@ -29309,7 +29309,7 @@
       "node_kind": "heading",
       "norm_label": "before going big",
       "source_file": "README.md",
-      "source_location": "L274"
+      "source_location": "L281"
     },
     {
       "id": "readme_deploy",
@@ -29321,7 +29321,7 @@
       "node_kind": "heading",
       "norm_label": "deploy",
       "source_file": "README.md",
-      "source_location": "L204"
+      "source_location": "L211"
     },
     {
       "id": "readme_how_it_works",
@@ -29333,7 +29333,7 @@
       "node_kind": "heading",
       "norm_label": "how it works",
       "source_file": "README.md",
-      "source_location": "L170"
+      "source_location": "L176"
     },
     {
       "id": "readme_production_checklist",
@@ -29345,7 +29345,7 @@
       "node_kind": "heading",
       "norm_label": "production checklist",
       "source_file": "README.md",
-      "source_location": "L232"
+      "source_location": "L239"
     },
     {
       "id": "readme_render",
@@ -29357,7 +29357,7 @@
       "node_kind": "heading",
       "norm_label": "render",
       "source_file": "README.md",
-      "source_location": "L216"
+      "source_location": "L223"
     },
     {
       "id": "readme_run_locally",
@@ -29369,7 +29369,7 @@
       "node_kind": "heading",
       "norm_label": "run locally",
       "source_file": "README.md",
-      "source_location": "L118"
+      "source_location": "L124"
     },
     {
       "id": "readme_streetquest_real_world_gps_war_game",
@@ -29393,7 +29393,7 @@
       "node_kind": "heading",
       "norm_label": "vercel",
       "source_file": "README.md",
-      "source_location": "L206"
+      "source_location": "L213"
     },
     {
       "id": "realtime_nav",
@@ -30108,7 +30108,7 @@
       "file_type": "code",
       "norm_label": "exclude",
       "source_file": "tsconfig.json",
-      "source_location": "L38"
+      "source_location": "L39"
     },
     {
       "id": "tsconfig_include",
@@ -125676,7 +125676,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L206",
+      "source_location": "L213",
       "weight": 1.0
     },
     {
@@ -125687,7 +125687,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L216",
+      "source_location": "L223",
       "weight": 1.0
     },
     {
@@ -125698,7 +125698,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L118",
+      "source_location": "L124",
       "weight": 1.0
     },
     {
@@ -125709,7 +125709,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L170",
+      "source_location": "L176",
       "weight": 1.0
     },
     {
@@ -125720,7 +125720,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L204",
+      "source_location": "L211",
       "weight": 1.0
     },
     {
@@ -125731,7 +125731,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L232",
+      "source_location": "L239",
       "weight": 1.0
     },
     {
@@ -125742,7 +125742,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "README.md",
-      "source_location": "L274",
+      "source_location": "L281",
       "weight": 1.0
     },
     {
@@ -148325,7 +148325,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tsconfig.json",
-      "source_location": "L38",
+      "source_location": "L39",
       "weight": 1.0
     },
     {
@@ -155353,7 +155353,7 @@
       "confidence_score": 0.95,
       "context": "CityDetail",
       "source_file": "README.md",
-      "source_location": "L254",
+      "source_location": "L261",
       "weight": 1.0
     },
     {
@@ -155365,7 +155365,7 @@
       "confidence_score": 0.95,
       "context": "CityTile",
       "source_file": "README.md",
-      "source_location": "L186",
+      "source_location": "L192",
       "weight": 1.0
     },
     {
@@ -155377,7 +155377,7 @@
       "confidence_score": 0.95,
       "context": "applyConfig()",
       "source_file": "README.md",
-      "source_location": "L196",
+      "source_location": "L203",
       "weight": 1.0
     },
     {
@@ -155389,7 +155389,7 @@
       "confidence_score": 0.95,
       "context": "notify()",
       "source_file": "README.md",
-      "source_location": "L284",
+      "source_location": "L294",
       "weight": 1.0
     },
     {
@@ -155401,7 +155401,7 @@
       "confidence_score": 0.95,
       "context": "questEvent",
       "source_file": "README.md",
-      "source_location": "L197",
+      "source_location": "L204",
       "weight": 1.0
     },
     {

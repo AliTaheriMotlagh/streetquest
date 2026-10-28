@@ -414,9 +414,9 @@
     "semantic_hash": ""
   },
   "src/components/game/GameMap.tsx": {
-    "mtime": 1793227559.5909352,
-    "seen": 1793227633.48519,
-    "ast_hash": "eec7b709de93027fd6b25a7cffa1c46e",
+    "mtime": 1793227844.9942067,
+    "seen": 1793227978.0825942,
+    "ast_hash": "32e68445ce77098c08d0183a3a96c4f9",
     "semantic_hash": ""
   },
   "src/components/game/Help.tsx": {
@@ -720,9 +720,9 @@
     "semantic_hash": "c105253e6d9777cb1d9064032d405421"
   },
   "tsconfig.json": {
-    "mtime": 1793222578.0549672,
-    "seen": 1793224176.764522,
-    "ast_hash": "16123980ec256bb84f45e3367251d6c6",
+    "mtime": 1793227736.9172997,
+    "seen": 1793227978.082711,
+    "ast_hash": "3579b7605c88cc6066e2cc2221725dd9",
     "semantic_hash": ""
   },
   "vercel.json": {
@@ -732,9 +732,9 @@
     "semantic_hash": "e54230e23d168ec9168457736b2b44c7"
   },
   "README.md": {
-    "mtime": 1793226966.5564742,
-    "seen": 1793227633.4853172,
-    "ast_hash": "e8a1d181a706ad42a8e9c7153c4d0bf5",
+    "mtime": 1793227968.260728,
+    "seen": 1793227978.082714,
+    "ast_hash": "c90db3eb41c53c5bab01af227cd4c47d",
     "semantic_hash": ""
   },
   "docker-compose.yml": {

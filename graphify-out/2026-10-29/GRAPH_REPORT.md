@@ -1,7 +1,7 @@
 # Graph Report - gps-game  (2026-10-29)
 
 ## Corpus Check
-- 325 files · ~335,204 words
+- 325 files · ~335,412 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 14 file(s) not represented in the graph (top: (none) 5, .css 5, .glb 2)
 
@@ -560,5 +560,5 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.051) - this node is a cross-community bridge._
 - **Should `city-pack.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.14666666666666667 - nodes in this community are weakly interconnected._
-- **Why does `distanceM()` connect `distanceM` to `server/localData.ts`, `server/drive.ts`, `Play.tsx`, `db.ts`, `server/money.ts`, `Drive.tsx`, `Drive`, `gpsgames.ts`, `fmtNum`, `lib/settings.ts`, `loc/route.ts`, `social/route.ts`, `drive/traffic.ts`, `rides/route.ts`, `useLocation.ts`, `Panels.tsx`, `HttpError`, `protocol.ts`, `match.ts`, `Player`, `LocationReporter`, `Game.tsx`, `lotteries/route.ts`, `server/places.ts`, `t`, `business/route.ts`?**
+- **Why does `Drive()` connect `Drive` to `music.ts`, `world3d.ts`, `Rewards.tsx`, `tiles.ts`, `server/drive.ts`, `Play.tsx`, `vectorTile.ts`, `DriveGarage.tsx`, `GameMap.tsx`, `Drive.tsx`, `fmtNum`, `skyline.ts`, `Combat`, `drive/traffic.ts`, `CollisionWorld`, `Business.tsx`, `lib/city.ts`, `match.ts`, `perf.ts`, `Game.tsx`, `arena/combat.ts`, `server/places.ts`, `Landmarks`, `distanceM`, `t`?**
   _High betweenness centrality (0.045) - this node is a cross-community bridge._
