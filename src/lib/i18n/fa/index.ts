@@ -33,8 +33,10 @@ import world from "./world";
 import drive from "./drive";
 import money from "./money";
 import landmarks from "./landmarks";
+import arena from "./arena";
 
 const fa: Messages = {
+  ...arena,
   ...common,
   ...game,
   ...market,

@@ -49,6 +49,8 @@ export class StorePins {
   private clouds = new Map<string, Cloud>();
   private shown: (Pin & { color: string })[] = [];
   private v = new THREE.Vector3();
+  /** Out of the way (a match is on). */
+  hidden = false;
 
   constructor(private scene: THREE.Scene) {}
 
@@ -73,7 +75,7 @@ export class StorePins {
     for (const [key, cl] of this.clouds) {
       const n = fill.get(key) ?? 0;
       cl.points.geometry.setDrawRange(0, n);
-      cl.points.visible = n > 0;
+      cl.points.visible = n > 0 && !this.hidden;
       cl.attr.needsUpdate = true;
       cl.mat.uniforms.scale.value = pxPerUnit;
       cl.mat.uniforms.minPx.value = 22 * dpr;

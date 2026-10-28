@@ -7,10 +7,15 @@
     "dev": "next dev",
     "build": "prisma generate && node scripts/db-sync.mjs && next build",
     "start": "next start",
+    "rt": "tsx --env-file-if-exists=.env realtime/server.ts",
+    "rt:dev": "tsx watch --env-file-if-exists=.env realtime/server.ts",
+    "rt:smoke": "tsx --env-file-if-exists=.env realtime/smoke.ts",
+    "rt:sim": "tsx realtime/sim.ts",
     "postinstall": "prisma generate",
     "vercel-build": "npm run build",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "assets:arena": "/Applications/Blender.app/Contents/MacOS/Blender -b -P assets/blender/arena.py",
     "typecheck": "tsc --noEmit",
     "i18n:check": "tsx scripts/i18n-check.ts",
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
@@ -31,6 +36,7 @@
     "react-leaflet": "^5.0.0",
     "three": "^0.180.0",
     "web-push": "^3.6.7",
+    "ws": "^8.22.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -42,6 +48,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.180.0",
     "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.2",
     "prisma": "^6.19.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"

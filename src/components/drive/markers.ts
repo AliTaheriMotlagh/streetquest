@@ -23,6 +23,8 @@ type Built = { info: MarkerInfo; beacon: ReturnType<typeof makeBeacon> };
 export class Markers {
   private built = new Map<string, Built>();
   private all: MarkerInfo[] = [];
+  /** Out of the way (a match is on). */
+  hidden = false;
 
   constructor(private scene: THREE.Scene, private frame: Frame, private max: number) {}
 
@@ -57,6 +59,7 @@ export class Markers {
       }
       b.info = m;
       b.beacon.group.position.set(p.x, 0, p.z);
+      b.beacon.group.visible = !this.hidden;
       // Not right on top of us either: up close a sign would fill the screen.
       b.beacon.sign.visible = d > 30 && d < (m.tall ? 400 : 180);
     }

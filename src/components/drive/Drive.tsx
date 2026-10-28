@@ -45,6 +45,12 @@ import { BuildPool, TileSource, VectorSource } from "./tiles";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
 import { NAME_MODES, type NameMode } from "./vectorTile";
+import { Combat } from "../arena/combat";
+import { CombatHud, useCombat } from "../arena/CombatHud";
+import { CombatPad } from "../arena/CombatPad";
+import { ArenaMenu } from "../arena/ArenaMenu";
+import { RT_DELAY_MS } from "../arena/remotes";
+import type { ArenaGeo } from "@/lib/arena/protocol";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
 import {
   makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, setNight, tileMeshes,
@@ -88,7 +94,7 @@ type Job = {
 };
 
 type CamMode = "cockpit" | "chase" | "far" | "top";
-type MenuTab = "jobs" | "places" | "garage" | "party";
+type MenuTab = "jobs" | "places" | "garage" | "party" | "arena";
 /** A line in the Places list: a real shop from the map, a player's shop or a business. */
 type PlaceRow = { id: string; emoji: string; name: string; sub: string; dist: number; lat: number; lng: number; sel: Selected | null };
 const CAM_LABEL: Record<CamMode, string> = { cockpit: "1P", chase: "3P", far: "FAR", top: "TOP" };
@@ -150,6 +156,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     return () => clearTimeout(k);
   }, []);
   const [busy, setBusy] = useState(false);
+  const [combat, setCombat] = useState<Combat | null>(null);
+  const fight = useCombat(combat);
+  const onFoot = !!fight?.onFoot;
+  const [footKeys, setFootKeys] = useState(false);
+  useEffect(() => {
+    setFootKeys(onFoot);
+    if (!onFoot) return;
+    const k = setTimeout(() => setFootKeys(false), 12_000);
+    return () => clearTimeout(k);
+  }, [onFoot]);
   const [touch, setTouch] = useState(isTouch);
   // Some Android browsers claim a mouse; the first finger on the screen settles it.
   useEffect(() => {
@@ -193,8 +209,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
    * action button; pickups and check-ins you merely drive past don't pop one up. */
   const wanted = useRef<string | null>(null);
   // Latest props/context for the render loop (it lives as long as the component).
-  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim });
-  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim };
+  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim, toast, touch });
+  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim, toast, touch };
   const api3d = useRef<{
     setGoal: (p: LatLng | null) => void;
     cycleCam: () => void;
@@ -823,6 +839,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const net = new DriveNet(
       () => {
         const L = live.current;
+        // In a match the arena is my world; the city sees me again when I'm back.
+        if (combat.inMatch) return null;
         const here = frame.toLatLng(st.x, st.z);
         if (!L.canDrive) return { here: L.follow ?? here, alt: 0, yaw: st.yaw, speed: 0, vehicle: L.vehicle, color: L.paint };
         return { lat: here.lat, lng: here.lng, alt: st.alt, yaw: st.yaw, speed: st.speed, vehicle: L.vehicle, color: L.paint, sim: L.sim };
@@ -830,7 +848,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       (s: NetState) => {
         if (disposed) return;
         serverOffset = s.offset;
-        others.setDrivers(s.others);
+        // The realtime link (when up) draws everyone at 20 Hz; this is the fallback.
+        if (!combat.live) others.setDrivers(s.others);
         const forced = s.vehicle !== live.current.vehicle ? s.vehicle : null;
         if (forced !== serverVehicle) {
           serverVehicle = forced;
@@ -841,6 +860,54 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       },
     );
     net.start();
+
+    // ---- on foot and live (Street Arena): the soldier, guns, the realtime link
+    /** Where the car waits while I'm on foot. */
+    let parked: { x: number; z: number; yaw: number; alt: number } | null = null;
+    const combat = new Combat({
+      scene, camera, renderer, el, frame, collision, obstacles, others, shadows, sim: !!live.current.sim,
+      get touch() {
+        return live.current.touch;
+      },
+      canDrive: () => live.current.canDrive,
+      vehicle: () => ({ x: st.x, z: st.z, alt: st.alt, yaw: st.yaw, vx: st.vx, vz: st.vz, key: currentKey(), paint: live.current.paint, flies: def().flies }),
+      parked: () => parked,
+      street: (x, z) => nearestStreet(x, z, 120),
+      arenaGeo: (r) => arenaGeo(r),
+      setFoot: (on, at) => {
+        if (on && !parked) {
+          parked = { x: st.x, z: st.z, yaw: st.yaw, alt: st.alt };
+          Object.assign(st, { vx: 0, vz: 0, vy: 0, speed: 0, cruise: 0 });
+          if (at) Object.assign(st, { x: at.x, z: at.z, yaw: at.yaw });
+        } else if (!on && parked) {
+          Object.assign(st, { x: parked.x, z: parked.z, yaw: parked.yaw, alt: parked.alt, vx: 0, vz: 0, vy: 0, speed: 0 });
+          parked = null;
+          camPos.set(st.x + Math.sin(st.yaw) * 10, 5, st.z + Math.cos(st.yaw) * 10);
+        }
+      },
+      toast: (text) => live.current.toast({ title: text }),
+    });
+    setCombat(combat);
+    /** Streets and buildings within r m of me, rounded to 10 cm: the map a new arena is played on. */
+    const arenaGeo = (r: number): ArenaGeo => {
+      const roads: number[][] = [], buildings: ArenaGeo["buildings"] = [];
+      const R = r + 40, q = (v: number) => Math.round(v * 10) / 10;
+      for (const s of tiles.values()) {
+        const m = s.mesh;
+        if (!m || s.dist > R) continue;
+        m.roads.forEach((line, i) => {
+          if (m.roadKinds[i] === "rail") return;
+          let near = false;
+          for (let k = 0; k < line.length && !near; k += 2) near = Math.hypot(line[k] - st.x, line[k + 1] - st.z) < R;
+          if (near) roads.push(Array.from(line, q));
+        });
+        for (const f of m.footprints) {
+          if (Math.hypot((f.minX + f.maxX) / 2 - st.x, (f.minZ + f.maxZ) / 2 - st.z) > R + 30) continue;
+          buildings.push({ p: Array.from(f.pts, q), h: Math.round(f.h * 10) / 10, mh: Math.round(f.mh * 10) / 10 });
+        }
+      }
+      return { roads, buildings };
+    };
 
     // ---- sound: an engine that revs with speed (rotors chop)
     let engine: { osc: OscillatorNode; osc2: OscillatorNode; gain: GainNode; filter: BiquadFilterNode; lfo: OscillatorNode; lfoGain: GainNode } | null = null;
@@ -894,6 +961,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const keyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement | null)?.closest?.("input, textarea")) return;
       const k = e.key.toLowerCase();
+      if (combat.onFoot) return;
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
       input.current.keys.add(k);
       if (k === "h") horn();
@@ -914,6 +982,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       down = { x: e.clientX, y: e.clientY, at: performance.now() };
     };
     const pUp = (e: PointerEvent) => {
+      if (combat.onFoot) return (down = null);
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10 || performance.now() - down.at > 450) return (down = null);
       down = null;
       pickAt(e.clientX, e.clientY);
@@ -964,6 +1033,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     el.addEventListener("pointerup", pUp);
 
     const cycleCam = () => {
+      if (combat.onFoot) return combat.toggleCam();
       camMode = CAMS[(CAMS.indexOf(camMode) + 1) % CAMS.length];
       P.cam = camMode;
       store.set(CAM_KEY, camMode);
@@ -1035,10 +1105,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (`${currentKey()}|${L.paint}` !== modelKey) rebuildModel();
       const D = def();
 
+      // -- on foot: the soldier moves (and owns the camera); "me" follows the soldier
+      others.delayMs = combat.live ? RT_DELAY_MS : 450;
+      const onFoot = combat.tick(dt, now);
+      const soldier = combat.me;
+      if (onFoot && soldier) Object.assign(st, { x: soldier.x, z: soldier.z, vx: soldier.vx, vz: soldier.vz, yaw: soldier.yaw, speed: Math.hypot(soldier.vx, soldier.vz), steer: 0 });
+
       // -- driving / flying
       const keys = input.current.keys;
       // Frozen on the start grid until the countdown ends.
-      const frozen = !!partyNow?.startsAt && partyNow.status === "LIVE" && serverNow < partyNow.startsAt;
+      const frozen = onFoot || (!!partyNow?.startsAt && partyNow.status === "LIVE" && serverNow < partyNow.startsAt);
       const c = {
         gas: frozen ? 0 : Math.max(keys.has("w") || keys.has("arrowup") ? 1 : 0, input.current.gas),
         brake: Math.max(keys.has("s") || keys.has("arrowdown") ? 1 : 0, input.current.brake),
@@ -1047,7 +1123,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         lift: (keys.has("r") || keys.has("e") || keys.has("pageup") ? 1 : 0) - (keys.has("f") || keys.has("q") || keys.has("pagedown") ? 1 : 0) || input.current.lift,
       };
       let vF = 0;
-      if (L.canDrive) {
+      if (onFoot) {
+        // The car waits where it was parked.
+      } else if (L.canDrive) {
         if (D.flies) vF = stepAir(st, D, c, dt, maxV(), collision.floor(st.x, st.z, st.alt));
         else vF = stepGround(st, D, c, dt, maxV());
       } else if (L.follow) {
@@ -1072,7 +1150,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
       const { fx: nfx, fz: nfz } = forward(st.yaw);
       let nx = st.x + st.vx * dt, nz = st.z + st.vz * dt;
-      if (L.canDrive) {
+      if (onFoot) (nx = st.x), (nz = st.z);
+      else if (L.canDrive) {
         // Two circles (nose and tail) on wheels; one around a flyer.
         let hit = null as { nx: number; nz: number } | null;
         const offs = D.flies || D.key === "moto" ? [0] : [1.15, -1.15];
@@ -1114,8 +1193,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       st.speed = Math.hypot(st.vx, st.vz);
 
       // -- pose: body roll / lean, squat under throttle, wheels and rotors
-      model.group.position.set(st.x, st.alt, st.z);
-      model.group.rotation.y = st.yaw;
+      model.group.position.set(parked?.x ?? st.x, parked?.alt ?? st.alt, parked?.z ?? st.z);
+      model.group.rotation.y = parked?.yaw ?? st.yaw;
       const speedK = Math.min(1, st.speed / maxV());
       const lean = D.key === "moto" ? 0.45 : D.flies ? 0.28 : 0.12;
       st.roll += ((D.key === "moto" || D.flies ? 1 : -1) * st.steer * Math.min(1, st.speed / 10) * lean - st.roll) * Math.min(1, dt * 6);
@@ -1141,15 +1220,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (model.light) model.light.visible = phase === "night";
       model.cargo.visible = !!L.me?.activeRun;
 
-      // -- camera
+      // -- camera (the soldier placed it already when on foot)
       const flying = D.flies && st.alt > 1;
-      const fp = camMode === "cockpit";
+      const fp = !onFoot && camMode === "cockpit";
       model.body.visible = !fp;
       for (const w of model.wheels) w.visible = !fp;
       cockpit.group.visible = fp;
       cockpit.group.rotation.z = st.roll * 0.4;
       if (cockpit.wheel) cockpit.wheel.rotation[D.key === "moto" ? "y" : "z"] = D.key === "moto" ? st.steer : st.steer * 2.6;
-      if (fp) {
+      if (onFoot) {
+        // see combat.tick
+      } else if (fp) {
         // The driver's eyes: the head lags a touch behind the car and leans with the g-force.
         headYaw += Math.atan2(Math.sin(st.yaw - headYaw), Math.cos(st.yaw - headYaw)) * Math.min(1, dt * 9);
         sway += (-st.steer * Math.min(1, st.speed / 12) * 0.07 - sway) * Math.min(1, dt * 4);
@@ -1190,7 +1271,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.lookAt(camLook);
       }
       const fov = (fp ? 70 : 62) + speedK * (fp ? 12 : 10), near = fp ? 0.06 : 0.5;
-      if (Math.abs(camera.fov - fov) > 0.1 || camera.near !== near) (camera.fov = fov), (camera.near = near), camera.updateProjectionMatrix();
+      if (!onFoot && (Math.abs(camera.fov - fov) > 0.1 || camera.near !== near)) (camera.fov = fov), (camera.near = near), camera.updateProjectionMatrix();
 
       // -- lights & sky follow the vehicle
       sky.follow(camera.position);
@@ -1207,7 +1288,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         }
       dust.position.set(st.x, 0, st.z);
       dust.rotation.y = time * 0.03;
-      for (const b of beacons.values()) b.tick(time);
+      // A match is on: the city's jobs, money and shop pins step aside.
+      const matchOn = combat.inMatch;
+      markers.hidden = pins.hidden = matchOn;
+      for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time);
+      for (const l of loot.values()) if (matchOn) l.group.visible = false;
       for (const l of loot.values()) l.tick(time);
       for (const g of gates) g.tick(time);
       for (const cn of coins) cn.tick(time);
@@ -1241,7 +1326,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           engine.osc.frequency.setTargetAtTime((air ? 30 : 38) + rpm * (air ? 30 : 70), tt, 0.08);
           engine.osc2.frequency.setTargetAtTime((air ? 15 : 19) + rpm * (air ? 15 : 35), tt, 0.08);
           engine.filter.frequency.setTargetAtTime(300 + rpm * 900, tt, 0.1);
-          const vol = isMuted() || !L.canDrive ? 0 : 0.035 + rpm * 0.03;
+          const vol = isMuted() || !L.canDrive || onFoot ? 0 : 0.035 + rpm * 0.03;
           engine.gain.gain.setTargetAtTime(vol, tt, 0.15);
           // Rotor chop.
           engine.lfo.frequency.setTargetAtTime(air && spinning ? (D.key === "heli" ? 11 : 38) : 0, tt, 0.2);
@@ -1268,7 +1353,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             void Promise.resolve(L.onCollect(l.id));
           }
         }
-        if (L.canDrive && L.onMove && now - st0.lastReport > 1000 && Math.hypot(st.x - st0.reported.x, st.z - st0.reported.z) > 2) {
+        if (L.canDrive && L.onMove && !combat.inMatch && now - st0.lastReport > 1000 && Math.hypot(st.x - st0.reported.x, st.z - st0.reported.z) > 2) {
           st0.lastReport = now;
           st0.reported = { x: st.x, z: st.z };
           L.onMove(frame.toLatLng(st.x, st.z));
@@ -1399,7 +1484,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
           for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#f0c05a", 4);
           for (const cn of coins) if (cn.mesh.visible) dot(cn.mesh.position.x, cn.mesh.position.z, "#ffcf3a", 3);
-          for (const o of others.positions()) {
+          for (const o of [...others.positions(), ...combat.dots()]) {
             g.strokeStyle = "#111";
             g.lineWidth = 1.5;
             dot(o.x, o.z, o.color, 4.5);
@@ -1432,15 +1517,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
 
       renderer.render(scene, camera);
+      combat.renderOverlay();
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
       camera.aspect = el.clientWidth / el.clientHeight;
       camera.updateProjectionMatrix();
+      combat.resize(el.clientWidth, el.clientHeight);
     };
     window.addEventListener("resize", onResize);
     const ro = new ResizeObserver(onResize);
@@ -1450,6 +1537,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       disposed = true;
       cancelAnimationFrame(raf);
       net.stop();
+      combat.dispose();
+      setCombat(null);
       source.dispose();
       vsource.dispose();
       pool.dispose();
@@ -1562,11 +1651,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     { key: "places", icon: "store", label: t("Places") },
     { key: "garage", icon: "garage", label: t("Garage") },
     { key: "party", icon: "people", label: t("Party games"), badge: party?.members.length },
+    { key: "arena", icon: "target", label: t("Street Arena"), badge: fight?.lobbies.length || undefined },
   ];
   const cam = hud?.cam ?? "cockpit";
 
   return (
-    <div className={`drive ${canDrive && touch ? "has-pad" : ""}`} role="application" aria-label={t("3D city")}>
+    <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""}`} role="application" aria-label={t("3D city")}>
       <div className="drive-canvas" ref={mount} />
 
       {/* Top: me · the street I'm on · map, instruments and the two buttons */}
@@ -1619,8 +1709,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           <div className="drive-side">
             <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} title={t("Camera")}>
               <Icon name="camera" size={20} />
-              <small>{CAM_LABEL[cam]}</small>
+              <small>{onFoot ? (fight?.cam === "fps" ? "1P" : "3P") : CAM_LABEL[cam]}</small>
             </Button>
+            {canDrive && combat && !fight?.inMatch && (onFoot ? (
+              fight?.nearCar && (
+                <Button className="drive-round on" onClick={() => combat.getIn()} aria-label={t("Get in the car")} title={t("Get in the car (F)")}>
+                  <Icon name="car" size={20} />
+                </Button>
+              )
+            ) : (
+              <Button className="drive-round" onClick={() => combat.getOut()} aria-label={t("Get out and walk")} title={t("Get out and walk (F)")}>
+                <Icon name="walk" size={20} />
+              </Button>
+            ))}
             <Button className={`drive-round ${menu ? "on" : ""}`} onClick={() => setMenu(menu ? null : "jobs")} aria-label={t("Menu")} title={t("Menu")} aria-expanded={!!menu}>
               <Icon name="menu" />
               {(hud?.jobs.length ?? 0) > 0 && <span className="badge">{fmtNum(hud?.jobs.length ?? 0)}</span>}
@@ -1709,6 +1810,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               onClose={() => setMenu(null)}
             />
           )}
+          {menu === "arena" && combat && <ArenaMenu combat={combat} canDrive={canDrive} onGo={goTo} onClose={() => setMenu(null)} />}
           {menu === "party" && (
             <DriveParty
               embedded
@@ -1751,8 +1853,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </div>
       )}
 
-      {canDrive && touch && <DrivePad input={input} kind={v.flies ? "air" : v.key === "moto" ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
-      {canDrive && !touch && showKeys && (
+      {combat && <CombatHud combat={combat} touch={touch} />}
+      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} />}
+      {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.key === "moto" ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
+      {canDrive && !touch && onFoot && footKeys && (
+        <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Tab scores · F car")}</div>
+      )}
+      {canDrive && !touch && showKeys && !onFoot && (
         <div className="drive-keys small">
           {v.flies ? t("W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera") : t("W/↑ gas · S/↓ brake · A D/← → steer · Space drift · H horn · C camera")}
         </div>

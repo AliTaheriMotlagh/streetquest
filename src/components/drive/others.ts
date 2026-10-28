@@ -26,6 +26,8 @@ const angle = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a
 const tagColor = (o: { friend: boolean; party?: boolean }) => (o.party ? "#63b3f2" : o.friend ? "#5bd38c" : "#ffffff");
 
 export class Others {
+  /** How far in the past drivers are drawn (shorter on the realtime link's 20 Hz stream). */
+  delayMs = DELAY_MS;
   private drivers = new Map<string, Driver>();
   private walkers = new Map<string, Walker>();
   private itMat = new THREE.MeshBasicMaterial({ color: "#ff2e55", transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -142,7 +144,7 @@ export class Others {
   }
 
   tick(dt: number, serverNow: number, camX: number, camZ: number) {
-    const t = serverNow - DELAY_MS;
+    const t = serverNow - this.delayMs;
     for (const d of this.drivers.values()) {
       const s = d.snaps;
       if (!s.length) continue;

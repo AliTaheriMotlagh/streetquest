@@ -1394,3 +1394,26 @@ model Landmark {
 
   @@index([lat, lng])
 }
+
+// One player's line in a finished Street Arena match (realtime server → /api/rt/result).
+// Unique per match and player, so a resent result can't pay twice; rewardedAt drives the
+// daily cap on paid matches.
+model ArenaResult {
+  id         String    @id @default(cuid())
+  matchId    String
+  userId     String
+  mode       String
+  kills      Int       @default(0)
+  botKills   Int       @default(0)
+  deaths     Int       @default(0)
+  score      Int       @default(0)
+  place      Int       @default(0)
+  won        Boolean   @default(false)
+  xp         Int       @default(0)
+  coins      Int       @default(0)
+  rewardedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([matchId, userId])
+  @@index([userId, rewardedAt])
+}

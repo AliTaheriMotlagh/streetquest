@@ -20,6 +20,26 @@ services:
         generateValue: true
       - key: NEXT_PUBLIC_SITE_URL
         sync: false # set to https://<your-service>.onrender.com (or your domain)
+      - key: NEXT_PUBLIC_RT_URL
+        sync: false # wss://<streetquest-realtime>.onrender.com (Street Arena); leave empty to run without it
+
+  # Street Arena realtime server (WebSockets, in memory, no database). Free instances sleep when idle.
+  - type: web
+    name: streetquest-realtime
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm run rt
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: AUTH_SECRET
+        fromService: { type: web, name: streetquest, envVarKey: AUTH_SECRET }
+      - key: APP_URL
+        sync: false # https://<streetquest>.onrender.com — match results are posted there
+      - key: RT_ORIGINS
+        sync: false # the web app's origin, e.g. https://<streetquest>.onrender.com
 
 databases:
   - name: streetquest-db

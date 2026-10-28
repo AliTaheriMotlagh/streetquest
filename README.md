@@ -91,6 +91,15 @@ mood scales XP; loot funds research; territory funds the army.
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). From home or in
   test mode the car *is* your commander: where you drive is where you are, jobs are beacons of light, loot is collected by
   driving through it. Walking with GPS, the car follows you. Cells without map data yet are drawn as a fantasy village.
+- **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
+  nearby shows up live (20 updates a second over WebSockets). Press **F** / 🚶 to get out of the car and walk as a 3D
+  soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
+  everyone starts in 🕊️ passive mode, fighting unlocks at level 3, and you can't drop back to passive mid-fight. Or start a
+  **match** on the streets around you (Menu → Street Arena): 💀 Deathmatch, ⚔️ Team Deathmatch or 💣 Bomb Defusal (plant at
+  site A or B, defuse, rounds, side swap), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
+  fun with one friend or none. Five guns (pistol, SMG, rifle, sniper with a scope, shotgun), aim down sights, recoil,
+  headshots, kill feed, scoreboard. Phones get a shooter layout (floating stick, drag to aim, fire buttons on both sides,
+  aim assist and optional auto-fire); desktop uses mouse look and WASD. Matches pay XP and coins (12 paid matches a day).
 - **Fantasy map** — the 2D map is an illustrated parchment map (paper grain, drifting cloud shadows, compass rose, colours
   of the hour). 🗺️ switches between fantasy, night-ops and plain street maps.
 - **Social network** — 🌐 Social: a feed (following / nearby / trending), posts with photos, check-ins at real places,
@@ -124,6 +133,19 @@ browser until you switch it off. Set `TEST_MODE=off` in production to limit it t
 
 **Faster timers for testing:** `GAME_SPEED=600 npm run dev` makes construction and training 600× faster
 (ignored in production). Jump straight into a live fight with `/play?match=<id>`.
+
+**Street Arena (live multiplayer):** run the realtime server next to the app and point the app at it:
+
+```bash
+npm run rt                                          # ws://localhost:8787 (uses AUTH_SECRET from .env)
+NEXT_PUBLIC_RT_URL=ws://localhost:8787 npm run dev  # or put NEXT_PUBLIC_RT_URL in .env
+npm run rt:smoke                                    # two scripted players: open-city fight, then a match with bots
+npm run rt:sim -- bomb                              # a whole match of bots in simulated time (tdm | ffa | bomb)
+```
+
+Without `NEXT_PUBLIC_RT_URL` the 3D city still works (driving, walking, other drivers over HTTP) but there's no
+fighting. The soldier and gun models are generated in Blender from `assets/blender/arena.py`: `npm run assets:arena`
+rebuilds `public/models/arena/*.glb` (add `-- preview.png` to render a preview).
 
 **End-to-end tests (Playwright):** `npm run test:e2e` starts its own dev server on port 3200 against a separate
 `streetquest_e2e` database (create it once: `docker compose exec db createdb -U postgres streetquest_e2e`; override with
@@ -159,6 +181,7 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
 | 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`) | `src/components/drive` |
+| Street Arena: a separate Node WebSocket server (`realtime/`) holds everyone in memory — no database. The app signs a 10-min ticket (`/api/rt/ticket`: who you are, friends, virtual or real GPS); results come back HMAC-signed (`/api/rt/result`, paid once per match, daily cap). Binary state 20×/s each way, positions in each client's own local metres, interest management (600 m, same privacy rules as the HTTP presence). Hits: the client draws them at once, the server referees with lag compensation (targets rewound ≤ 350 ms), fire-rate/ammo/range checks and, in matches, line of sight through the real buildings (the host's client sends the arena's streets and footprints). Bots walk a street graph built from the same map | `realtime/`, `src/lib/arena`, `src/components/arena`, `/api/rt` |
 | Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
 | Businesses: claim on the spot (≤150 m), campaigns limited by plan, check-in ≤80 m, 6-char coupon codes redeemed once by the owner; plans paid through the same Stripe Checkout + webhook as gems (`biz:<plan>:<id>` purchases) | `src/lib/business.ts`, `src/server/business.ts`, `/api/business`, `src/components/game/Business.tsx` |
 | Spawns: deterministic per ~450 m cell and 20-min window, so everyone sees the same world with zero storage; the server rebuilds a spawn from its id to verify claims | `src/lib/spawns.ts` |
@@ -190,7 +213,14 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 1. Push to GitHub, then on render.com: **New → Blueprint** and pick the repo. `render.yaml` creates
    the web service + Postgres and generates `AUTH_SECRET`.
 2. Set `NEXT_PUBLIC_SITE_URL` to your `https://….onrender.com` URL when prompted.
-3. Note: free web services sleep after 15 min idle (slow first load), and free Postgres expires after 30 days.
+3. The blueprint also creates `streetquest-realtime` (Street Arena). Set its `APP_URL` to the web app's URL and
+   `RT_ORIGINS` to the same origin, and set the web app's `NEXT_PUBLIC_RT_URL` to `wss://<realtime-service>.onrender.com`,
+   then redeploy the web app (NEXT_PUBLIC_ values are baked in at build time). It shares the web app's `AUTH_SECRET`.
+4. Note: free web services sleep after 15 min idle (slow first load) — use a paid instance for the realtime server, or
+   players wait for it to wake — and free Postgres expires after 30 days.
+
+**On Vercel**, the app can't hold WebSockets: run `npm run rt` anywhere that can (Render, Fly.io, Railway, a VPS) with
+`AUTH_SECRET` (same as the app), `APP_URL` and `RT_ORIGINS`, and set `NEXT_PUBLIC_RT_URL` on Vercel.
 
 After the first deploy, play once, then open `/admin?key=<ADMIN_KEY>` to make yourself admin.
 Don't run the demo seed in production.
@@ -228,7 +258,9 @@ Don't run the demo seed in production.
   `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia.
 - Chat/notifications poll every few seconds. For instant delivery at scale, plug in a hosted
   realtime service (Ably, Pusher, Supabase Realtime) behind `notify()` and the chat route.
-- The FPS netcode is HTTP polling (~7 requests/s per player in a match). Fine for small fights; for real
-  scale move `/api/match/:id` to WebSockets or a realtime service. Hit detection is client-reported with
-  server-side caps (damage, fire rate, movement speed), so it's casual-grade anti-cheat, not competitive.
+- Street Arena runs in one realtime process (in memory). One instance handles a few thousand players; past that,
+  shard by region (each instance owns an area; route players with the ticket). Anti-cheat is server-refereed but
+  movement is client-reported (speed-capped, no walking through buildings in matches), so it's casual-grade, not
+  competitive: aim itself can't be verified. In the open city the server doesn't know the buildings, so shots
+  there aren't checked for walls.
 - Switch `prisma db push` in the build to `prisma migrate deploy` once you have real data.

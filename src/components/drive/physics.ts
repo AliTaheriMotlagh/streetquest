@@ -5,6 +5,7 @@
 // range it overlaps — wheels hit walls, a helicopter clears the roofs (and can land on
 // them), a car drives under a petrol-station canopy.
 import type { VehicleDef } from "@/lib/vehicles";
+import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import type { Footprint } from "./tileMesh";
 
 const HASH = 30;
@@ -76,6 +77,27 @@ export class CollisionWorld {
       hit = { nx, nz };
     }
     return { x, z, hit };
+  }
+
+  /**
+   * Distance along a ray (unit direction) to the first wall, roof or the ground, up to
+   * maxT (Infinity if nothing): what a bullet or the shoulder camera runs into.
+   */
+  raycast(r: Ray, maxT: number) {
+    let best = r.dy < -1e-6 ? Math.min(maxT, -r.oy / r.dy) : Infinity;
+    const seen = new Set<Footprint>();
+    const steps = Math.ceil(Math.min(maxT, best) / (HASH * 0.5)) + 1;
+    for (let i = 0; i <= steps; i++) {
+      const t = (i * Math.min(maxT, best === Infinity ? maxT : best)) / steps;
+      const x = r.ox + r.dx * t, z = r.oz + r.dz * t;
+      for (const f of this.near(x, z, this.scratch)) {
+        if (seen.has(f)) continue;
+        seen.add(f);
+        const ft = rayFootprint(r, f, maxT);
+        if (ft < best) best = ft;
+      }
+    }
+    return best <= maxT ? best : Infinity;
   }
 
   /** The highest roof under (x, z) that's at or below `alt` — where a flyer can land. */

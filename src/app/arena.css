@@ -1,0 +1,189 @@
+/* ---------- Street Arena: on foot, guns, matches (src/components/arena) ---------- */
+
+/* On foot the car's instruments step aside. */
+.drive.on-foot .dgauge, .drive.on-foot .drive-nav { display: none; }
+.drive.in-match .drive-street { display: none; }
+
+/* ---- the HUD layer: never eats touches, except its own buttons */
+.chud { position: absolute; inset: 0; pointer-events: none; z-index: 3; color: #fff; font-family: var(--body); }
+.chud :is(button, .chud-board) { pointer-events: auto; }
+
+/* crosshair: four ticks pushed apart by --spread (combat.ts writes it every frame) */
+.chud-cross { --spread: 8px; position: absolute; left: 50%; top: 50%; width: 0; height: 0; transition: opacity .12s; }
+.chud-cross i { position: absolute; background: #fff; box-shadow: 0 0 2px rgba(0, 0, 0, .9); border-radius: 1px; }
+.chud-cross i:nth-child(1), .chud-cross i:nth-child(2) { width: 2px; height: 9px; left: -1px; }
+.chud-cross i:nth-child(3), .chud-cross i:nth-child(4) { height: 2px; width: 9px; top: -1px; }
+.chud-cross i:nth-child(1) { bottom: var(--spread); }
+.chud-cross i:nth-child(2) { top: var(--spread); }
+.chud-cross i:nth-child(3) { right: var(--spread); }
+.chud-cross i:nth-child(4) { left: var(--spread); }
+.chud-cross b { position: absolute; width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 2px #000; }
+.chud-cross.on-target i, .chud-cross.on-target b { background: #ff4d5e; }
+.chud-cross.hidden { opacity: 0; }
+
+/* hit marker: an X that flashes on a confirmed hit (red on a kill, gold on a headshot) */
+.chud-hit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+.chud-hit i { position: absolute; width: 2.5px; height: 10px; background: #fff; box-shadow: 0 0 3px rgba(0, 0, 0, .8); left: -1.25px; top: -5px; }
+.chud-hit i:nth-child(1) { transform: rotate(45deg) translateY(-11px); }
+.chud-hit i:nth-child(2) { transform: rotate(135deg) translateY(-11px); }
+.chud-hit i:nth-child(3) { transform: rotate(225deg) translateY(-11px); }
+.chud-hit i:nth-child(4) { transform: rotate(315deg) translateY(-11px); }
+.chud-hit.on { animation: hitMark .28s ease-out; }
+.chud-hit.head i { background: #ffd34d; }
+.chud-hit.kill i { background: #ff3b4e; height: 13px; }
+.chud-hit.kill { animation-duration: .5s; }
+@keyframes hitMark { 0% { opacity: 1; transform: scale(1.35); } 60% { opacity: 1; transform: scale(1); } 100% { opacity: 0; } }
+
+/* damage from a direction: a red arc around the crosshair, pointing at the shooter */
+.chud-hurt { position: absolute; left: 50%; top: 50%; width: 0; height: 0; animation: hurtFade 1.2s ease-out forwards; }
+.chud-hurt::before { content: ""; position: absolute; left: -46px; top: -150px; width: 92px; height: 40px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; border-top: 6px solid rgba(255, 40, 50, .85); filter: drop-shadow(0 0 6px rgba(255, 0, 0, .6)); }
+@keyframes hurtFade { from { opacity: 1; } to { opacity: 0; } }
+.chud-low { position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(200, 0, 20, .55); animation: lowPulse 1.1s ease-in-out infinite; }
+@keyframes lowPulse { 50% { box-shadow: inset 0 0 70px rgba(200, 0, 20, .35); } }
+
+/* sniper scope */
+.chud-scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0 min(36vh, 36vw), rgba(0, 0, 0, .96) calc(min(36vh, 36vw) + 1px)); }
+.chud-scope::before, .chud-scope::after { content: ""; position: absolute; background: rgba(0, 0, 0, .85); }
+.chud-scope::before { left: 50%; top: 14%; bottom: 14%; width: 1.5px; transform: translateX(-50%); }
+.chud-scope::after { top: 50%; left: 14%; right: 14%; height: 1.5px; transform: translateY(-50%); }
+
+/* health and ammo */
+.chud-stats { position: absolute; left: calc(16px + var(--safe-l)); right: calc(16px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.chud.touch .chud-stats { left: 50%; right: auto; transform: translateX(-50%); bottom: calc(10px + var(--safe-b)); justify-content: center; }
+.drive.on-foot .drive-keys { bottom: calc(64px + var(--safe-b)); }
+.chud-hp { --hp: 1; width: 170px; display: flex; flex-direction: column; gap: 4px; }
+.chud-hp span { font: 800 14px/1 var(--body); text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+.chud-hp i { display: block; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #5bd38c calc(var(--hp) * 100%), rgba(0, 0, 0, .55) 0); box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
+.chud.touch .chud-hp { width: 120px; }
+.chud-ammo { display: flex; align-items: baseline; gap: 4px; text-shadow: 0 1px 4px rgba(0, 0, 0, .85); }
+.chud-ammo b { font: 900 30px/1 var(--body); font-variant-numeric: tabular-nums; }
+.chud-ammo b.low { color: #ffb020; }
+.chud-ammo b.out { color: #ff4d5e; }
+.chud-ammo span { font: 700 15px/1 var(--body); opacity: .75; }
+.chud-ammo small { margin-inline-start: 6px; font: 700 11px/1 var(--body); opacity: .75; text-transform: uppercase; letter-spacing: .05em; }
+.chud.touch .chud-ammo b { font-size: 22px; }
+
+/* kill feed */
+.chud-feed { position: absolute; top: calc(70px + var(--safe-t)); left: calc(12px + var(--safe-l)); list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-width: min(360px, 60vw); }
+.chud-feed li { display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 8px; background: rgba(10, 12, 18, .72); font-size: 12.5px; animation: feedIn .2s ease-out; white-space: nowrap; overflow: hidden; }
+.chud-feed li b { overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+.chud.touch .chud-feed { left: 50%; transform: translateX(-50%); top: calc(70px + var(--safe-t)); align-items: center; }
+.chud-feed li.mine { box-shadow: inset 0 0 0 1.5px #ffb020; }
+.chud-feed li.me { box-shadow: inset 0 0 0 1.5px #ff4d5e; }
+@keyframes feedIn { from { opacity: 0; transform: translateX(-12px); } }
+
+/* match bar: team scores and the clock */
+.chud-match { position: absolute; top: calc(10px + var(--safe-t)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.chud-mbar { display: flex; align-items: stretch; border-radius: 12px; overflow: hidden; background: rgba(10, 12, 18, .8); border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 6px 18px rgba(0, 0, 0, .4); }
+.chud-mbar .score { min-width: 44px; display: grid; place-items: center; font: 900 20px/1 var(--body); padding: 0 8px; background: rgba(255, 255, 255, .1); }
+.chud-mbar .score.lead { background: rgba(240, 192, 90, .3); }
+.chud-mbar .mid { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5px 14px; }
+.chud-mbar .mid small { font-size: 10.5px; opacity: .8; white-space: nowrap; }
+.chud-mbar .mid b { font: 900 18px/1.1 var(--body); font-variant-numeric: tabular-nums; }
+.chud-bomb { padding: 5px 12px; border-radius: 10px; background: rgba(200, 20, 30, .85); font-weight: 800; font-size: 13px; animation: bombPulse 1s ease-in-out infinite; }
+.chud-bomb.soft { background: rgba(10, 12, 18, .8); animation: none; }
+@keyframes bombPulse { 50% { background: rgba(255, 50, 50, .95); } }
+.chud-banner { padding: 8px 16px; border-radius: 12px; background: rgba(10, 12, 18, .82); font: 800 16px/1.2 var(--body); animation: bannerIn .3s ease-out; text-align: center; }
+@keyframes bannerIn { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+
+.chud-warn { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 12px; background: rgba(200, 20, 30, .88); font: 900 17px/1.2 var(--body); animation: bombPulse .8s ease-in-out infinite; text-align: center; }
+.chud-tip { position: absolute; bottom: calc(70px + var(--safe-b)); left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: rgba(10, 12, 18, .82); font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; }
+.chud-tip.act { --p: 0; }
+.chud-tip.act i { position: absolute; left: 0; bottom: 0; height: 3px; width: calc(var(--p) * 100%); background: #ffb020; }
+
+/* death screen */
+.chud-dead { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 16px; background: rgba(10, 12, 18, .82); text-align: center; animation: bannerIn .3s ease-out; }
+.chud-dead b { font: 900 20px/1.2 var(--body); color: #ff6b78; }
+
+/* scoreboard / results */
+.chud-board { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 24px)); max-height: calc(100% - 120px); overflow-y: auto; padding: 14px 16px; border-radius: 18px; background: rgba(14, 16, 24, .94); border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 18px 44px rgba(0, 0, 0, .55); }
+.chud-board h3 { margin: 0 0 8px; text-align: center; font: 900 20px/1.2 var(--body); }
+.chud-board.ended h3 { color: #ffd34d; font-size: 24px; }
+.chud-board table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+.chud-board th { text-align: start; font-size: 11px; opacity: .85; padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, .15); }
+.chud-board td { padding: 5px 6px; font-variant-numeric: tabular-nums; }
+.chud-board :is(th, td):not(:first-child) { text-align: center; width: 54px; }
+.chud-board tr.me td { background: rgba(255, 176, 32, .16); }
+.chud-board tr.down td { opacity: .5; }
+.chud-mrow { display: flex; align-items: center; gap: 6px; }
+.chud-board-btn { width: 38px; height: 38px; flex: none; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .2); background: rgba(10, 12, 18, .75); color: #fff; font-size: 18px; }
+
+/* ---- touch controls on foot */
+.cpad { position: absolute; inset: calc(120px + var(--safe-t)) 0 0 0; z-index: 2; touch-action: none; user-select: none; -webkit-user-select: none; }
+.cpad-move { position: absolute; left: 0; top: 0; bottom: 0; width: 44%; }
+.cpad-look { position: absolute; right: 0; top: 0; bottom: 0; width: 56%; }
+.cpad-stick { --sx: 110px; --sy: calc(100% - 120px); position: absolute; left: var(--sx); top: var(--sy); width: 0; height: 0; opacity: .55; transition: opacity .15s; }
+.cpad-move:not(:has(.cpad-stick.on)) .cpad-stick { left: calc(110px + var(--safe-l)); top: calc(100% - 110px - var(--safe-b)); }
+.cpad-stick::before { content: ""; position: absolute; width: 128px; height: 128px; left: -64px; top: -64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .45); background: rgba(10, 12, 18, .25); }
+.cpad-stick.on { opacity: 1; }
+.cpad-stick.sprint::before { border-color: #ffb020; box-shadow: 0 0 0 4px rgba(255, 176, 32, .25); }
+.cpad-knob { position: absolute; width: 56px; height: 56px; left: -28px; top: -28px; border-radius: 50%; background: rgba(255, 255, 255, .85); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
+.cpad-right { position: absolute; right: calc(14px + var(--safe-r)); bottom: calc(14px + var(--safe-b)); width: 210px; height: 210px; pointer-events: none; }
+.cpad-right > * { pointer-events: auto; }
+.cpad :is(.cpad-fire, .cpad-btn) { position: absolute; display: grid; place-items: center; border-radius: 50%; color: #fff; border: 2px solid rgba(255, 255, 255, .35); background: rgba(10, 12, 18, .5); box-shadow: 0 4px 14px rgba(0, 0, 0, .35); touch-action: none; -webkit-tap-highlight-color: transparent; }
+.cpad-fire { right: 0; bottom: 0; width: 86px; height: 86px; background: rgba(229, 72, 77, .55); border-color: rgba(255, 200, 200, .7); }
+.cpad-fire.on, .cpad-btn.on { background: #ffb020; color: #1a1200; border-color: transparent; transform: scale(.95); }
+.cpad-fire.small { position: absolute; right: auto; left: calc(40px + var(--safe-l)); bottom: auto; top: 6%; width: 62px; height: 62px; }
+.cpad-btn { width: 52px; height: 52px; }
+.cpad-btn.aim { right: 98px; bottom: 6px; width: 60px; height: 60px; }
+.cpad-btn.jump { right: 8px; bottom: 100px; }
+.cpad-btn.crouch { right: 82px; bottom: 82px; }
+.cpad-btn.reload { right: 150px; bottom: 76px; width: 46px; height: 46px; }
+.cpad-btn.swap { right: 64px; bottom: 150px; width: 46px; height: 46px; }
+/* hold to plant / defuse (rendered by the HUD, above the controls) */
+.cpad-act { --p: 0; position: absolute; left: 50%; bottom: calc(110px + var(--safe-b)); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 14px 22px; border: none; border-radius: 16px; background: rgba(255, 176, 32, .94); color: #1a1200; font: 900 15px/1 var(--body); overflow: hidden; touch-action: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); }
+.cpad-act i { position: absolute; left: 0; bottom: 0; height: 5px; width: calc(var(--p) * 100%); background: #1a1200; }
+
+/* ---- the Arena tab in the city menu */
+.drive-tab.arena h4 { margin: 6px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+.arena-pvp { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--hud-line); }
+.arena-pvp .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.arena-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.arena-mode { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 8px; border-radius: 14px; border: 1.5px solid var(--hud-line); background: rgba(255, 255, 255, .04); color: inherit; text-align: center; cursor: pointer; }
+.arena-mode .ic { font-size: 24px; }
+.arena-mode b { font-size: 13px; }
+.arena-mode small { font-size: 10.5px; opacity: .7; line-height: 1.3; }
+.arena-mode.on { border-color: #ffb020; background: rgba(255, 176, 32, .12); }
+.arena-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.arena-row .lbl { min-width: 72px; font-size: 13px; font-weight: 700; opacity: .85; }
+.arena-row input[type="range"] { flex: 1; accent-color: #ffb020; }
+.arena-row .val { min-width: 24px; text-align: center; }
+.arena-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.arena-chips .chip { cursor: pointer; font-size: 12px; padding: 5px 10px; }
+.arena-head { display: flex; align-items: center; gap: 10px; }
+.arena-head .ic { font-size: 30px; }
+.arena-head .grow { display: flex; flex-direction: column; gap: 2px; }
+.arena-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.arena-team { display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 12px; border: 1.5px solid var(--team, var(--hud-line)); background: color-mix(in srgb, var(--team, #888) 12%, transparent); font-size: 13px; }
+.arena-team > b { color: var(--team); }
+.arena-team span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-team span.me { font-weight: 800; color: #ffd34d; }
+.arena-team.solo { flex-direction: row; flex-wrap: wrap; gap: 6px 12px; }
+.arena-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.btn.wide { width: 100%; }
+
+/* phones, portrait: the right column (map, camera, menu) owns the top right, so the match bar
+   sits under the player card (the street name is hidden in a match) and health / ammo stack
+   above the stick, out of the right thumb's buttons. */
+@media (max-width: 560px) {
+  .arena-modes { grid-template-columns: 1fr; }
+  .arena-mode { flex-direction: row; text-align: start; }
+  .arena-mode small { display: none; }
+  .chud-match { top: calc(64px + var(--safe-t)); left: calc(12px + var(--safe-l)); transform: none; align-items: flex-start; }
+  .chud-mbar .score { min-width: 36px; font-size: 17px; }
+  .chud-mbar .mid { padding: 4px 10px; }
+  .chud-feed, .chud.touch .chud-feed { top: calc(170px + var(--safe-t)); left: calc(12px + var(--safe-l)); transform: none; align-items: flex-start; font-size: 11px; }
+  .chud.touch .chud-stats { left: calc(14px + var(--safe-l)); transform: none; bottom: calc(196px + var(--safe-b)); flex-direction: column; align-items: flex-start; gap: 2px; }
+  .chud.touch .chud-hp { width: 110px; }
+  .cpad { inset: calc(150px + var(--safe-t)) 0 0 0; }
+  .cpad-fire.small { top: auto; bottom: calc(272px + var(--safe-b)); left: calc(24px + var(--safe-l)); }
+  .cpad-right { transform: scale(.88); transform-origin: bottom right; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .chud.touch .chud-feed { top: calc(64px + var(--safe-t)); }
+  .cpad { inset: calc(96px + var(--safe-t)) 0 0 0; }
+  .cpad-right { transform: scale(.86); transform-origin: bottom right; }
+  .chud-match { top: calc(6px + var(--safe-t)); }
+}
+html[dir="rtl"] .chud :is(.chud-feed, .chud-board, .chud-dead, .chud-banner, .chud-tip) { direction: rtl; }
+@media (prefers-reduced-motion: reduce) { .chud-low, .chud-bomb, .chud-warn { animation: none; } }
