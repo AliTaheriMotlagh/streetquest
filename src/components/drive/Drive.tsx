@@ -27,7 +27,7 @@ import { Button } from "@/components/Button";
 import { Art } from "@/components/art/Art";
 import { api, type Selected, type World, type WorldPlayer } from "../game/client";
 import { useGame } from "../game/ui";
-import { audioOut, isMuted, sfx } from "../game/sfx";
+import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { celebrate } from "../game/Play";
 import { isLite, isTouch } from "../perf";
 import { layCourse } from "./course";
@@ -37,6 +37,7 @@ import { Icon, type IconName } from "./icons";
 import { DriveParty, PartyHud } from "./DriveParty";
 import { Markers, markersOf } from "./markers";
 import { DriveNet, type NetState } from "./net";
+import { Landmarks } from "./landmarks";
 import { Others } from "./others";
 import { StorePins, type Pin } from "./pins";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
@@ -118,6 +119,7 @@ const CAMS: CamMode[] = ["cockpit", "chase", "far", "top"];
 const CAM_KEY = "sq_drive_cam";
 const CTL_KEY = "sq_drive_ctl";
 const NAMES_KEY = "sq_drive_names";
+const FLY_HINT_KEY = "sq_fly_hint_off";
 const PIN_M = 650; // shop pins this far
 const CORNER_M = 170; // street-name signs at corners this close
 
@@ -172,6 +174,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [party, setParty] = useState<PartyView | null>(null);
   const [picked, setPicked] = useState<Picked | null>(null);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
+  // "Fly low to pick things up": once waved away, gone for good on this device.
+  const [flyHintOff, setFlyHintOff] = useState(() => store.get(FLY_HINT_KEY) === "1");
   const input = useRef({ gas: 0, brake: 0, steer: 0, lift: 0, hand: false, keys: new Set<string>() });
   const [ctl, setCtl] = useState<SteerMode>(() => {
     const c = store.get(CTL_KEY) as SteerMode | null;
@@ -334,6 +338,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const a = frame.toXZ(cy * 0.004, cx * 0.004), b = frame.toXZ((cy + 1) * 0.004, (cx + 1) * 0.004);
       return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minZ: Math.min(a.z, b.z), maxZ: Math.max(a.z, b.z) };
     };
+    // Stores' own 3D buildings: when their outlines arrive or change, the tiles under them
+    // are built again without the map's building there.
+    const landmarks = new Landmarks(scene, frame, renderer, camera, collision, shadows, (boxes) => {
+      for (const s of tiles.values()) {
+        const b = tileBox(s.cx, s.cy);
+        if (s.data?.real && boxes.some((o) => o.maxX > b.minX - 5 && o.minX < b.maxX + 5 && o.maxZ > b.minZ - 5 && o.minZ < b.maxZ + 5)) s.want ??= s.data;
+      }
+    });
     const boxDist = (b: ReturnType<typeof tileBox>, x: number, z: number) => Math.hypot(Math.max(b.minX - x, 0, x - b.maxX), Math.max(b.minZ - z, 0, z - b.maxZ));
 
     const ensureTiles = () => {
@@ -392,7 +404,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         slot.want = null;
         slot.building = true;
         pool
-          .build(data, frame.origin, style, lite)
+          .build(data, frame.origin, style, lite, landmarks.cutsFor(tileBox(slot.cx, slot.cy)))
           .then((arrays) => {
             if (disposed || tiles.get(slot.key) !== slot) return;
             ready.push({ key: slot.key, mesh: tileMeshes(arrays, mats, tpl, { shadows }), data });
@@ -857,6 +869,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       osc2.start();
       lfo.start();
       engine = { osc, osc2, gain, filter, lfo, lfoGain };
+      keepAwake("drive", true);
     };
     const horn = () => {
       const out = audioOut();
@@ -910,7 +923,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
       const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
-      const hit = ray.intersectObjects(targets, false)[0];
+      const small = ray.intersectObjects(targets, false)[0];
+      // A store's own building (nested meshes); whatever is nearer the camera wins.
+      const big = ray.intersectObjects(landmarks.pickables(), true)[0];
+      const lm = big && (!small || big.distance < small.distance) ? landmarks.of(big.object) : null;
+      if (lm) {
+        const here = frame.toLatLng(st.x, st.z);
+        const biz = live.current.world?.businesses.find((b) => b.id === lm.businessId);
+        return setPicked({ emoji: lm.emoji, title: lm.name, sub: formatDistance(distanceM(here, lm)), lat: lm.lat, lng: lm.lng, sel: biz ? { type: "biz", data: biz } : null });
+      }
+      const hit = small;
       // Nothing solid under the finger: a shop's pin, maybe.
       const pinId = hit ? null : pins.pick(camera, r, cx, cy);
       const pick = (hit?.object.userData.pick as { kind: string; id: string } | undefined) ?? (pinId ? { kind: "store", id: pinId } : undefined);
@@ -987,6 +1009,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       groundMat.color.set(L.ground);
       const night = p === "night" ? 1 : p === "dusk" || p === "dawn" ? 0.45 : 0;
       setNight(mats, style, night);
+      landmarks.setNight(night);
       boardNight = 0.15 + night * 0.85;
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
       dustMat.opacity = p === "night" ? 0.95 : 0.35;
@@ -1231,6 +1254,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (now - lastSlow > 250) {
         lastSlow = now;
         ensureTiles();
+        landmarks.update(st.x, st.z);
         if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncPins());
         if (menuTab.current === "places") syncPlaces();
         markers.sync(st.x, st.z);
@@ -1411,7 +1435,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1436,6 +1460,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       el.removeEventListener("pointerdown", pDown);
       el.removeEventListener("pointerup", pUp);
       ro.disconnect();
+      keepAwake("drive", false);
       if (engine) {
         try {
           engine.osc.stop();
@@ -1456,6 +1481,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const g of gates) g.dispose();
       for (const cn of coins) cn.dispose();
       others.dispose();
+      landmarks.dispose();
       markers.dispose();
       model.dispose();
       cockpit.dispose();
@@ -1611,7 +1637,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           {t("Drawing this neighbourhood from the real map…")}
         </div>
       )}
-      {hud?.flying && !hud.low && hud.near === null && <div className="drive-hint small">{t("Fly low (under {m} m) to pick things up and check in", { m: LAND_ALT_M })}</div>}
+      {hud?.flying && !hud.low && hud.near === null && !flyHintOff && (
+        <div className="drive-hint small closable">
+          <span>{t("Fly low (under {m} m) to pick things up and check in", { m: LAND_ALT_M })}</span>
+          <button className="dh-x" onClick={() => (setFlyHintOff(true), store.set(FLY_HINT_KEY, "1"))} aria-label={t("Dismiss")} title={t("Dismiss")}>✕</button>
+        </div>
+      )}
 
       {party && <PartyHud party={party} meId={me?.id ?? ""} serverNow={hud?.serverNow ?? Date.now()} />}
       {countdown > 0 && countdown <= 5 && <div className="drive-countdown" key={countdown}>{fmtNum(countdown)}</div>}

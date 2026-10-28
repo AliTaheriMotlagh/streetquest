@@ -184,6 +184,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .card { background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-bottom: 10px; }
 .card.hl { border-color: rgba(240,192,90,.5); box-shadow: inset 0 0 0 1px rgba(240,192,90,.2); }
 .list-item { display: flex; gap: 12px; align-items: center; }
+/* A friend: name and status on the first line; the four actions follow on it when they
+   fit, else on a line of their own — never squeezing the name into a column. */
+.friend-row { flex-wrap: wrap; row-gap: 8px; }
+.friend-who { flex: 1 1 120px; }
+.friend-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-actions { display: flex; gap: 6px; margin-inline-start: auto; flex: none; }
 .icon-tile { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 26px; background: rgba(255,255,255,.06); flex: none; }
 .tag { display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.08); }
 .empty { text-align: center; color: var(--muted); padding: 28px 10px; }
@@ -1676,7 +1682,8 @@ html.lite .biz-bar i::after { animation: none; }
 .pc-name { font-weight: 800; font-size: 14px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-title { color: var(--yellow); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud-right { gap: 6px; min-width: 0; max-width: 58%; }
-.hud-wallet { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+/* Wraps on narrow phones (320–360 px): one row of four chips spilled over the player card. */
+.hud-wallet { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .hud-status { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
 .hud-status:empty { display: none; }
 .hud-status .chip { font-size: 12px; padding: 4px 9px; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
@@ -1699,3 +1706,12 @@ html.lite .biz-bar i::after { animation: none; }
   .player-card .xpbar { width: 86px; }
   .hud-wallet .chip { font-size: 12px; padding: 5px 8px; }
 }
+
+/* Admin → 3D stores */
+.lm-editor h4 { margin: 16px 0 6px; font-size: 14px; }
+.lm-preview { height: 380px; margin-top: 8px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #c3d2df; touch-action: none; }
+.lm-budget { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
+.lm-budget .stat.warn { border-color: var(--yellow); }
+.lm-budget .stat.warn b { color: var(--yellow); }
+.lm-budget .stat.over { border-color: var(--red); }
+.lm-budget .stat.over b { color: var(--red); }

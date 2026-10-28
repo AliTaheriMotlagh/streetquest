@@ -1,0 +1,15 @@
+# graphify: leave out what costs extraction tokens but tells nothing about the game.
+# Code is parsed structurally (free); docs and images go through an LLM.
+public/fonts/
+public/icons/
+public/screens/
+public/media/
+public/og/
+public/draco/
+marketing/*.png
+marketing/*.html
+test-results/
+playwright-report/
+.next*/
+prisma/*.db*
+*.tsbuildinfo

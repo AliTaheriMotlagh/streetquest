@@ -10,7 +10,7 @@
 import { TILE_V, type CityTile } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { api } from "../game/client";
-import { buildTileArrays, type Style, type TileArrays } from "./tileMesh";
+import { buildTileArrays, type Cut, type Style, type TileArrays } from "./tileMesh";
 import { vtKey, vtTilesForCell, type NameMode, type VtCell } from "./vectorTile";
 
 // ---------------------------------------------------------------- IndexedDB cache
@@ -256,7 +256,7 @@ export class BuildPool {
     return this.workers.some((s) => !s.busy);
   }
 
-  build(tile: CityTile, origin: LatLng, style: Style, lite: boolean): Promise<TileArrays> {
+  build(tile: CityTile, origin: LatLng, style: Style, lite: boolean, cuts: Cut[] = []): Promise<TileArrays> {
     const slot = !this.broken ? this.workers.find((s) => !s.busy) : undefined;
     if (!slot) {
       // Inline fallback: one at a time, on the next macrotask so a frame can render first.
@@ -264,7 +264,7 @@ export class BuildPool {
       return new Promise<TileArrays>((resolve, reject) =>
         setTimeout(() => {
           try {
-            resolve(buildTileArrays(tile, origin, style, lite));
+            resolve(buildTileArrays(tile, origin, style, lite, cuts));
           } catch (e) {
             reject(e);
           } finally {
@@ -273,7 +273,7 @@ export class BuildPool {
         }, 0),
       );
     }
-    return this.send<TileArrays>(slot, { kind: "build", tile, origin, style, lite });
+    return this.send<TileArrays>(slot, { kind: "build", tile, origin, style, lite, cuts });
   }
 
   /** Download and slice one zoom-14 street-map tile (needs a working worker). */

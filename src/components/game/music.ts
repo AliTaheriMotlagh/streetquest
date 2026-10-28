@@ -3,7 +3,7 @@
 // sparse music-box notes with an echo. It never repeats exactly, costs no
 // download, and sits far below the sound effects. Day/night change the mood.
 // Off when muted, when the tab is hidden, or when the player turns music off.
-import { audioOut, isMuted, onMuteChange } from "./sfx";
+import { audioOut, isMuted, keepAwake, onMuteChange } from "./sfx";
 
 export type Mood = "day" | "night" | "off";
 
@@ -105,6 +105,7 @@ function refresh() {
   if (!g) return;
   const t = g.ctx.currentTime;
   const v = target();
+  keepAwake("music", v > 0);
   g.bus.gain.cancelScheduledValues(t);
   g.bus.gain.setValueAtTime(g.bus.gain.value, t);
   g.bus.gain.linearRampToValueAtTime(v, t + (v ? 4 : 1.2));
@@ -187,12 +188,15 @@ export function startMusic() {
   if (typeof window === "undefined") return () => {};
   const kick = () => setTimeout(refresh, 50);
   const onVis = () => refresh();
-  window.addEventListener("pointerdown", kick, { passive: true });
+  // Audio exists after the first tap (finger up — see sfx.ts); start then.
+  window.addEventListener("pointerup", kick, { passive: true });
+  window.addEventListener("sq-audio-ready", kick);
   document.addEventListener("visibilitychange", onVis);
   const offMute = onMuteChange(() => refresh());
   refresh();
   return () => {
-    window.removeEventListener("pointerdown", kick);
+    window.removeEventListener("pointerup", kick);
+    window.removeEventListener("sq-audio-ready", kick);
     document.removeEventListener("visibilitychange", onVis);
     offMute();
     mood = "off";

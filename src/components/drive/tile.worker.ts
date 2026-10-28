@@ -1,15 +1,15 @@
 // The 3D city's worker: everything heavy happens here, off the main thread.
 //  - { kind: "vt", x, y, locale, names }: download one zoom-14 street-map tile (through our
 //    /api/vt proxy, straight from OpenFreeMap if that fails) and slice it into cells.
-//  - { kind: "build", tile, origin, style, lite }: turn one cell into mesh arrays
+//  - { kind: "build", tile, origin, style, lite, cuts }: turn one cell into mesh arrays
 //    (tileMesh.ts), buffers transferred back without copying.
-import { buildTileArrays, transferables, type Style } from "./tileMesh";
+import { buildTileArrays, transferables, type Cut, type Style } from "./tileMesh";
 import { sliceVectorTile, VT_ZOOM, type NameMode } from "./vectorTile";
 import type { CityTile } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 
 type Job =
-  | { id: number; kind: "build"; tile: CityTile; origin: LatLng; style: Style; lite: boolean }
+  | { id: number; kind: "build"; tile: CityTile; origin: LatLng; style: Style; lite: boolean; cuts?: Cut[] }
   | { id: number; kind: "vt"; x: number; y: number; locale: string; infill: boolean; names: NameMode };
 
 const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(msg, transfer);
@@ -40,7 +40,7 @@ self.onmessage = async (e: MessageEvent<Job>) => {
       post({ id: job.id, cells, empty: !buf });
       return;
     }
-    const arrays = buildTileArrays(job.tile, job.origin, job.style, job.lite);
+    const arrays = buildTileArrays(job.tile, job.origin, job.style, job.lite, job.cuts);
     post({ id: job.id, arrays }, transferables(arrays));
   } catch (err) {
     post({ id: job.id, error: String(err) });

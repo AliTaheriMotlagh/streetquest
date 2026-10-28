@@ -841,14 +841,17 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
           {[...data.friends]
             .sort((a, b) => Number(b.online) - Number(a.online))
             .map((f) => (
-              <div key={f.friendshipId} className="card list-item">
+              <div key={f.friendshipId} className="card list-item friend-row">
                 <div className="icon-tile">{f.avatar}</div>
-                <div className="grow">
-                  <b>{f.username}</b> <span className="small muted">{t("Lv {n}", { n: f.level })}</span>
+                <div className="grow friend-who">
+                  <div className="friend-name">
+                    <b>{f.username}</b> <span className="small muted">{t("Lv {n}", { n: f.level })}</span>
+                  </div>
                   <div className="small muted">
                     <span className={`dot ${f.online ? "on" : ""}`} /> {f.online ? t("Online") : f.lastSeenAt ? t("Seen {when}", { when: fmtTime(f.lastSeenAt) }) : t("Offline")}
                   </div>
                 </div>
+                <div className="friend-actions">
                 <Button className="btn cyan small" onClick={() => dm(f)} aria-label={t("Message {name}", { name: f.username })}>
                   💬
                 </Button>
@@ -861,6 +864,7 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
                 <Button className="btn ghost small" aria-label={t("Remove {name}", { name: f.username })} onClick={() => askConfirm(t("Remove {name}?", { name: f.username }), { ok: t("Remove"), danger: true }).then((ok) => ok && fr({ action: "remove", friendshipId: f.friendshipId }))}>
                   ✕
                 </Button>
+                </div>
               </div>
             ))}
           {data.outgoing.length > 0 && <p className="small muted">{t("Pending: {names}", { names: data.outgoing.map((f) => f.username).join(t(", ")) })}</p>}

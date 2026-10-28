@@ -41,6 +41,12 @@ export type Label = {
   top?: number;
   plates?: { text: string; angle: number }[];
 };
+/**
+ * A store's own 3D building (landmarks.ts) standing on this tile: its street-level
+ * outline in local x/z and its pin. The map's building under it isn't drawn, and no
+ * tree, lamp, sign or house number is put inside it — the model brings its own.
+ */
+export type Cut = { pts: number[]; ax: number; az: number };
 export type TileArrays = {
   key: string;
   real: boolean;
@@ -322,6 +328,17 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
   };
 }
 
+/** Distance from a point to the nearest edge of a closed outline. */
+function edgeDist(p: number[], x: number, z: number) {
+  let best = Infinity;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const ax = p[j], az = p[j + 1], dx = p[i] - ax, dz = p[i + 1] - az, l2 = dx * dx + dz * dz || 1;
+    const k = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    best = Math.min(best, Math.hypot(ax + dx * k - x, az + dz * k - z));
+  }
+  return best;
+}
+
 /** A small solid for the collision world: an octagon (trunk, post) or a turned box. */
 function post(x: number, z: number, r: number, h: number): Footprint {
   const pts = new Float32Array(16);
@@ -342,7 +359,7 @@ const FLOOR_M = 3.3;
 const WINDOW_M = 4.2;
 const DRIVABLE: RoadKind[] = ["major", "minor", "path"];
 
-export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, lite: boolean): TileArrays {
+export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, lite: boolean, cuts: Cut[] = []): TileArrays {
   const frame = makeFrame(origin);
   const pal = PALETTES[style];
   const realStyle = style === "real";
@@ -350,6 +367,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   const footprints: Footprint[] = [];
   const labels: Label[] = [];
   const rand = rng(hashStr(`props|${tile.key}`));
+  /** Inside a store's own building (or within `pad` metres of its outline). */
+  const inCut = (x: number, z: number, pad = 0) => cuts.some((c) => insidePacked(c.pts, x, z) || (pad > 0 && edgeDist(c.pts, x, z) < pad));
 
   // ---- buildings
   for (let bi = 0; bi < tile.b.length; bi++) {
@@ -364,6 +383,16 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     }
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < pts.length; i += 2) (minX = Math.min(minX, pts[i])), (maxX = Math.max(maxX, pts[i])), (minZ = Math.min(minZ, pts[i + 1])), (maxZ = Math.max(maxZ, pts[i + 1]));
+    if (cuts.length) {
+      // Replaced by a store's model: its middle is inside the model, or the store's pin is
+      // inside it. A filled-in block of flats (`g`) goes if it touches the model at all.
+      let mx = 0, mz = 0;
+      for (let i = 0; i < pts.length; i += 2) (mx += pts[i]), (mz += pts[i + 1]);
+      mx /= pts.length / 2;
+      mz /= pts.length / 2;
+      const gone = cuts.some((c) => insidePacked(c.pts, mx, mz) || insidePacked(pts, c.ax, c.az) || (b.g && Array.from({ length: pts.length / 2 }, (_, i) => i).some((i) => insidePacked(c.pts, pts[i * 2], pts[i * 2 + 1]))));
+      if (gone) continue;
+    }
     const seed = hashStr(`${tile.key}|${bi}`);
     const h = Math.max(3, b.h), mh = Math.min(h - 1, b.mh ?? 0);
     footprints.push({ pts, minX, maxX, minZ, maxZ, h, mh });
@@ -596,7 +625,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   }
 
   // ---- street furniture
-  const blocked = (x: number, z: number, pad: number) => footprints.some((f) => x >= f.minX - pad && x <= f.maxX + pad && z >= f.minZ - pad && z <= f.maxZ + pad && insidePacked(f.pts, x, z));
+  const blocked = (x: number, z: number, pad: number) => inCut(x, z, pad + 0.5) || footprints.some((f) => x >= f.minX - pad && x <= f.maxX + pad && z >= f.minZ - pad && z <= f.maxZ + pad && insidePacked(f.pts, x, z));
   const road = roadIndex(roadLines, roadWidths, roadKinds, roadDrawn);
   const lamps: { x: number; z: number; yaw: number }[] = [], signals: { x: number; z: number; yaw: number }[] = [], buses: { x: number; z: number; yaw: number }[] = [];
   /** Facing the nearest street: the yaw that points from (x, z) to it. */
@@ -623,8 +652,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     else if (kind === PROP.signal && !near(signals, k.x, k.z, 5)) signals.push(k);
     else if (kind === PROP.bus && !near(buses, k.x, k.z, 8)) buses.push({ ...k, yaw: k.yaw + Math.PI });
   }
-  // Park trees and the like never stand on a street running through.
-  for (let i = treeSpots.length - 1; i >= 0; i--) if (road.on(treeSpots[i].x, treeSpots[i].z, 1)) treeSpots.splice(i, 1);
+  // Park trees and the like never stand on a street running through (or in a store's model).
+  for (let i = treeSpots.length - 1; i >= 0; i--) if (road.on(treeSpots[i].x, treeSpots[i].z, 1) || inCut(treeSpots[i].x, treeSpots[i].z, 1)) treeSpots.splice(i, 1);
   // Street trees and lamps along the bigger roads where the map has none.
   const roadside = (lite ? 40 : 110) * (osmTrees > 20 ? 0.3 : 1);
   let planted = 0, lit = 0;
@@ -686,6 +715,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
   placeSigns(tile as VtCell, frame, footprints, labels, obstacles, faceRoad);
+  // The store's model carries its own sign and number.
+  if (cuts.length) for (let i = labels.length - 1; i >= 0; i--) if ((labels[i].kind === "shop" || labels[i].kind === "num" || labels[i].kind === "building") && inCut(labels[i].x, labels[i].z, 4)) labels.splice(i, 1);
   return { key: tile.key, real: tile.real, layers, props, footprints, obstacles, roads: roadLines, roadWidths, roadKinds, roadNames, roadDrawn, labels };
 }
 

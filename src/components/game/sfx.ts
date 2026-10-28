@@ -14,13 +14,28 @@
 //  - repeated sounds (shots, hits, taps) vary pitch and level a little on every play,
 //    so a burst doesn't sound like a machine gun of identical samples
 //  - big moments (explosions, level up, win/lose, incoming call) duck the music under them
+//
+// Android, where most players are:
+//  - audio may only start inside a real user activation — for touch that's the finger
+//    lifting (pointerup/touchend/click), not pointerdown — so that's where it unlocks;
+//  - a sound asked for while audio is still locked or asleep is dropped, never queued: a
+//    queue of taps all fired at once when audio wakes up is a burst of noise;
+//  - weak phones get a bigger output buffer and a cheaper mix (a short echo instead of
+//    convolution reverb, no oversampling): the audio thread underrunning while the page
+//    re-renders after a tap is heard as crackle;
+//  - the audio thread sleeps when nothing has played for a while and nothing holds it
+//    awake (music, the drive engine — see keepAwake), and whenever the page is hidden.
 
 export type Sfx =
   | "tap" | "shot" | "miss" | "hit" | "hurt" | "down" | "explode" | "nuke" | "siren" | "reward" | "coin" | "gem"
   | "levelup" | "error" | "beep" | "go" | "cut" | "reload" | "capture" | "alarm" | "whoosh" | "win" | "lose" | "photo" | "ring";
 
 const KEY = "sq_muted";
+/** Asleep after this long without a sound (when nothing holds audio awake). */
+const IDLE_MS = 20_000;
 let ctx: AudioContext | null = null;
+let lastSound = 0;
+const awake = new Set<string>();
 let sfxBus: GainNode | null = null; // dry sfx
 let verb: GainNode | null = null; // send into the room reverb
 let musicBus: GainNode | null = null; // background music (ducked under big sounds)
@@ -34,14 +49,41 @@ if (typeof window !== "undefined") {
   try {
     muted = localStorage.getItem(KEY) === "1";
   } catch {}
+  // The events that count as a user activation (pointerdown only does for a mouse).
   const unlock = () => {
-    audio()?.resume().catch(() => {});
+    if (muted && !awake.size) return;
+    const a = audio();
+    if (a && a.state !== "running" && !document.hidden) a.resume().catch(() => {});
   };
-  window.addEventListener("pointerdown", unlock, { passive: true });
-  window.addEventListener("keydown", unlock);
+  for (const ev of ["pointerup", "touchend", "click", "keydown"]) window.addEventListener(ev, unlock, { passive: true, capture: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!ctx) return;
+    if (document.hidden) void ctx.suspend().catch(() => {});
+    else if (awake.size) void ctx.resume().catch(() => {});
+  });
+  setInterval(() => {
+    if (ctx?.state === "running" && !awake.size && performance.now() - lastSound > IDLE_MS) void ctx.suspend().catch(() => {});
+  }, 5000);
 }
 
-function noiseBuffer(a: AudioContext, seconds: number, color: "white" | "pink" | "brown") {
+/** Android, or a phone the game already runs lite (see components/perf). */
+const weakAudio = () => {
+  if (typeof navigator === "undefined") return false;
+  const n = navigator as Navigator & { deviceMemory?: number };
+  return /Android/i.test(navigator.userAgent) || (n.deviceMemory != null && n.deviceMemory <= 4) || (n.hardwareConcurrency != null && n.hardwareConcurrency <= 4);
+};
+
+/**
+ * Something that makes sound on its own schedule (music, the drive engine) keeps the
+ * audio thread from sleeping while `on`.
+ */
+export function keepAwake(key: string, on: boolean) {
+  if (on) awake.add(key);
+  else awake.delete(key);
+  if (on && ctx && ctx.state === "suspended" && !document.hidden) void ctx.resume().catch(() => {});
+}
+
+function noiseBuffer(a: BaseAudioContext, seconds: number, color: "white" | "pink" | "brown") {
   const buf = a.createBuffer(1, Math.floor(a.sampleRate * seconds), a.sampleRate);
   const d = buf.getChannelData(0);
   let b0 = 0, b1 = 0, b2 = 0, last = 0;
@@ -63,7 +105,7 @@ function noiseBuffer(a: AudioContext, seconds: number, color: "white" | "pink" |
 }
 
 /** A short, dark stereo room: decaying noise, a little denser at the start. */
-function impulse(a: AudioContext, seconds: number, decay: number) {
+function impulse(a: BaseAudioContext, seconds: number, decay: number) {
   const len = Math.floor(a.sampleRate * seconds);
   const ir = a.createBuffer(2, len, a.sampleRate);
   for (let ch = 0; ch < 2; ch++) {
@@ -78,7 +120,7 @@ function impulse(a: AudioContext, seconds: number, decay: number) {
 }
 
 /** Soft clip: transparent at normal levels, rounds off peaks instead of cracking. */
-function softClip(a: AudioContext) {
+function softClip(a: BaseAudioContext, cheap: boolean) {
   const ws = a.createWaveShaper();
   const n = 2048;
   const curve = new Float32Array(n);
@@ -87,7 +129,7 @@ function softClip(a: AudioContext) {
     curve[i] = Math.tanh(1.4 * x) / Math.tanh(1.4);
   }
   ws.curve = curve;
-  ws.oversample = "2x";
+  ws.oversample = cheap ? "none" : "2x";
   return ws;
 }
 
@@ -96,7 +138,29 @@ function audio() {
   if (!ctx) {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return null;
-    const a = (ctx = new AC());
+    // Not before the player's first tap: the page is busiest while it loads, and an audio
+    // thread started then underruns (crackles) on budget phones for its first minutes.
+    const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+    if (ua && !ua.hasBeenActive) return null;
+    const cheap = weakAudio();
+    let a: AudioContext;
+    try {
+      // A bigger buffer on weak phones: a little later, never crackling.
+      a = new AC({ latencyHint: cheap ? "playback" : "interactive" });
+    } catch {
+      a = new AC();
+    }
+    ctx = a;
+    build(a, cheap);
+    // Music (music.ts) waits for this to start.
+    queueMicrotask(() => window.dispatchEvent(new Event("sq-audio-ready")));
+  }
+  return ctx;
+}
+
+/** The mix chain, on `a`. `cheap`: echo instead of convolution, no oversampling. */
+function build(a: BaseAudioContext, cheap: boolean) {
+  {
     // Master: everything meets here, then sub-cut → glue compressor → limiter.
     const mix = a.createGain();
     mix.gain.value = 0.8;
@@ -112,30 +176,44 @@ function audio() {
     glue.release.value = 0.18;
     const ceiling = a.createGain();
     ceiling.gain.value = 0.9;
-    mix.connect(hp).connect(glue).connect(softClip(a)).connect(ceiling).connect(a.destination);
+    mix.connect(hp).connect(glue).connect(softClip(a, cheap)).connect(ceiling).connect(a.destination);
 
     sfxBus = a.createGain();
     sfxBus.gain.value = 0.7;
     sfxBus.connect(mix);
     // Room reverb on a send: gives sounds a space to live in instead of a dry, boxy beep.
-    const conv = a.createConvolver();
-    conv.buffer = impulse(a, 1.6, 3.2);
+    // Weak phones: two short darkened echoes — most of the space, a fraction of the work.
     const ret = a.createGain();
-    ret.gain.value = 0.55;
     const warm = a.createBiquadFilter();
     warm.type = "lowpass";
-    warm.frequency.value = 5200;
+    warm.frequency.value = cheap ? 2800 : 5200;
     verb = a.createGain();
-    verb.connect(conv).connect(warm).connect(ret).connect(mix);
+    if (cheap) {
+      ret.gain.value = 0.35;
+      const d1 = a.createDelay(0.2), d2 = a.createDelay(0.2), fb = a.createGain();
+      d1.delayTime.value = 0.047;
+      d2.delayTime.value = 0.089;
+      fb.gain.value = 0.32;
+      verb.connect(warm);
+      warm.connect(d1).connect(ret);
+      warm.connect(d2).connect(fb).connect(d2);
+      d2.connect(ret);
+      ret.connect(mix);
+    } else {
+      ret.gain.value = 0.55;
+      const conv = a.createConvolver();
+      conv.buffer = impulse(a, 1.6, 3.2);
+      verb.connect(conv).connect(warm).connect(ret).connect(mix);
+    }
 
     musicBus = a.createGain();
     musicBus.connect(mix);
 
-    white = noiseBuffer(a, 2, "white");
-    pink = noiseBuffer(a, 2, "pink");
-    brown = noiseBuffer(a, 4, "brown");
+    // Short loops (long sounds loop them): less to compute on the first tap.
+    white = noiseBuffer(a, 1, "white");
+    pink = noiseBuffer(a, 1, "pink");
+    brown = noiseBuffer(a, 2, "brown");
   }
-  return ctx;
 }
 
 export const isMuted = () => muted;
@@ -505,7 +583,61 @@ export function sfx(name: Sfx) {
     const t = performance.now();
     if (t - (last[name] ?? 0) < 40) return;
     last[name] = t;
-    if (a.state === "suspended") a.resume().catch(() => {});
+    lastSound = t;
+    if (a.state !== "running") {
+      // Locked (no tap yet) or asleep: wake it, and play this one only if it wakes right
+      // away — never a backlog that all fires at once.
+      stats.dropped++;
+      a.resume()
+        .then(() => {
+          if (performance.now() - t < 250 && a.state === "running") (SOUNDS[name](), stats.played++);
+        })
+        .catch(() => {});
+      return;
+    }
     SOUNDS[name]();
+    stats.played++;
   } catch {}
 }
+
+const stats = { played: 0, dropped: 0 };
+
+/**
+ * Tests only (dev builds): render one sound through the real mix chain offline and
+ * report its peak and the level left at the end — clipping or a tail that never dies
+ * is what players hear as noise.
+ */
+async function renderTest(name: Sfx, cheap: boolean) {
+  const off = new OfflineAudioContext(2, 48000 * 3, 48000);
+  const saved = { ctx, sfxBus, verb, musicBus, white, pink, brown };
+  ctx = off as unknown as AudioContext;
+  build(off, cheap);
+  try {
+    SOUNDS[name]();
+  } finally {
+    ({ ctx, sfxBus, verb, musicBus, white, pink, brown } = saved);
+  }
+  const buf = await off.startRendering();
+  let peak = 0, tail = 0, bad = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) {
+      const v = Math.abs(d[i]);
+      if (!Number.isFinite(v)) bad++;
+      else if (v > peak) peak = v;
+      if (i > d.length - 4800) tail = Math.max(tail, v);
+    }
+  }
+  return { peak, tail, bad };
+}
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production")
+  (window as unknown as { __sfx?: unknown }).__sfx = { stats, state: () => ctx?.state ?? "none", latency: () => ctx?.baseLatency ?? null, render: renderTest, names: () => Object.keys(SOUNDS), awake: () => [...awake], cheap: weakAudio,
+    /** Hold audio locked (as before the first tap on a phone) until the returned release is called. */
+    lock: async () => {
+      const a = ctx!, real = a.resume.bind(a);
+      let release = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      await a.suspend();
+      a.resume = () => gate.then(() => real());
+      return () => ((a.resume = real), release());
+    } };

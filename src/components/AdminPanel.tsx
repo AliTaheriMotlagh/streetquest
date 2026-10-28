@@ -7,6 +7,7 @@ import { GameDataTab, RevenueTab, SettingsTab, type AdminConfig, type AdminReven
 import { Button } from "./Button";
 import { fmtNum, t, msg } from "@/lib/i18n";
 
+const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminDropMap = dynamic(() => import("./AdminDropMap"), { ssr: false, loading: () => <div className="admin-map" /> });
 
 type Drop = { batch: string; label: string; sponsor: string | null; points: { lat: number; lng: number }[]; amount: number; maxClaims: number | null; claims: number; paid: number; activeFrom: string; activeTo: string };
@@ -30,7 +31,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type Tab = "stores3d" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -58,7 +59,13 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
       { id: "deliveries", icon: "📦", label: msg("Jobs"), desc: msg("Package deliveries and car rides between players, plus lotteries. Cancel a job to refund whoever paid; cancel a lottery to refund every ticket.") },
     ],
   },
-  { group: msg("Marketing"), items: [{ id: "marketing", icon: "📣", label: msg("Campaigns"), desc: msg("Where players come from, campaign links, in-game banners and live push messages.") }] },
+  {
+    group: msg("Marketing"),
+    items: [
+      { id: "marketing", icon: "📣", label: msg("Campaigns"), desc: msg("Where players come from, campaign links, in-game banners and live push messages.") },
+      { id: "stores3d", icon: "🏬", label: msg("3D stores"), desc: msg("Give a paying store its real building in drive mode: download its footprint, model it in Blender, upload the .glb. It replaces the map's building at that spot.") },
+    ],
+  },
 ];
 const PAGE = Object.fromEntries(ADMIN_NAV.flatMap((g) => g.items.map((i) => [i.id, i]))) as Record<Tab, NavItem>;
 const fmt = (d: string) => new Date(d).toLocaleString();
@@ -194,6 +201,7 @@ export function AdminPanel() {
           </>
         )}
 
+        {tab === "stores3d" && <AdminLandmarks onError={setNotice} />}
         {tab === "settings" && <SettingsTab key={JSON.stringify(data.config.overrides)} config={data.config} post={post} />}
         {tab === "data" && <GameDataTab key={JSON.stringify(data.config.overrides.catalog ?? {})} config={data.config} post={post} />}
         {tab === "revenue" && <RevenueTab rev={data.revenue} config={data.config} />}

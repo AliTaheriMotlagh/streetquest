@@ -32,6 +32,7 @@ import settings from "./settings";
 import world from "./world";
 import drive from "./drive";
 import money from "./money";
+import landmarks from "./landmarks";
 
 const fa: Messages = {
   ...common,
@@ -54,6 +55,7 @@ const fa: Messages = {
   ...world,
   ...drive,
   ...money,
+  ...landmarks,
 };
 
 export default fa;

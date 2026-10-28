@@ -1182,6 +1182,7 @@ model Business {
   updatedAt DateTime      @updatedAt
   owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   campaigns BizCampaign[]
+  landmarks Landmark[]
 
   @@index([lat, lng])
   @@index([ownerId])
@@ -1360,4 +1361,36 @@ model DrivePartyMember {
 
   @@unique([partyId, userId])
   @@index([userId, rewardedAt])
+}
+
+/// A store's own 3D building in the drive city (made in Blender, uploaded by an admin):
+/// it stands at lat/lng in place of the map's building there. The model's origin is the
+/// pin, +X east, −Z north, 1 unit = 1 m — the same frame as the footprint the admin
+/// panel exports for Blender, so a model built on that footprint needs no adjusting.
+model Landmark {
+  id         String    @id @default(cuid())
+  name       String
+  businessId String?
+  lat        Float
+  lng        Float
+  yaw        Float     @default(0) // degrees, clockwise seen from above
+  scale      Float     @default(1)
+  lift       Float     @default(0) // metres up (or down) from the street
+  active     Boolean   @default(true)
+  /// Only shown while the linked store's plan is paid.
+  paidOnly   Boolean   @default(true)
+  /// The model's outline at street level, in model metres [x0, z0, x1, z1, …] (convex
+  /// hull, from the admin's browser): what cars hit and which map building it replaces.
+  hull       Json      @default("[]")
+  height     Float     @default(8)
+  model      Bytes?
+  modelHash  String    @default("")
+  modelSize  Int       @default(0)
+  /// Triangles, materials, textures… measured when it was uploaded.
+  stats      Json      @default("{}")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([lat, lng])
 }

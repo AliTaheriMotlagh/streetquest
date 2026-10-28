@@ -19,6 +19,8 @@ const SHELL = "sq-shell-" + VERSION;
 const STATIC = "sq-static-v2";   // hashed Next.js assets + images (v2: no videos)
 const TILES = "sq-tiles-v1";     // map tiles you've seen, so the map works offline
 const DATA = "sq-data-v1";       // last known game state, shown while offline
+const MODELS = "sq-models-v1";   // stores' 3D buildings (immutable, hash in the address)
+const MAX_MODELS = 40;
 const PRECACHE = ["/offline", "/play", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/badge-96.png", "/media/streetquest-ad.jpg"];
 // Read-only game state that's useful to show offline.
 const OFFLINE_DATA = /^\/api\/(me|world|hero|base|goals|gpsgame|outposts|leaderboard|notifications|store)(\?|$)/;
@@ -83,6 +85,7 @@ self.addEventListener("fetch", (event) => {
     // (206) responses, which a cached copy can't provide.
     if (/\.(mp4|webm|mov|m4v)$/i.test(url.pathname) || req.destination === "video" || req.headers.get("range")) return;
     if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) return event.respondWith(cacheFirst(req, STATIC));
+    if (url.pathname.startsWith("/landmark/") || url.pathname.startsWith("/draco/")) return event.respondWith(cacheFirst(req, MODELS).then((res) => (event.waitUntil(trim(MODELS, MAX_MODELS)), res)));
     if (url.pathname === "/sw.js") return;
     if (url.pathname.startsWith("/api/")) {
       if (OFFLINE_DATA.test(url.pathname + url.search)) {
