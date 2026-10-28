@@ -40,13 +40,11 @@ const server: Record<string, string> = {
   "🎁 Day {n} streak! +{coins} coins, +{xp} XP": "🎁 روز {n} پشت‌سرهم! +{coins} سکه، +{xp} تجربه",
 
   // ---- street combat
-  "That squad is gone": "اون جوخه دیگه نیست",
 
   // ---- bounties
   "Player not found": "بازیکن پیدا نشد",
 
   // ---- base
-  "Already max level": "از قبل در بالاترین سطحه",
 
   // ---- calls
   "Call not found": "تماس پیدا نشد",

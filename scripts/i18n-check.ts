@@ -1,8 +1,10 @@
 // Translation checker: `npm run i18n:check` (add --lint to also list English text that
 // isn't wrapped in t() yet).
 //
-// 1. Every t("…") / msg("…") / translate(l, "…") key in src must have a Persian
-//    translation, and both sides must use the same {placeholders}.
+// 1. Every t("…") / msg("…") / translate(l, "…") key in src and realtime must have a
+//    Persian translation, and both sides must use the same {placeholders}. A Persian
+//    entry whose English text appears nowhere in the code is reported as unused
+//    (--unused lists them).
 // 2. Keys must be literal strings — t(`Hi ${name}`) can never be translated; write
 //    t("Hi {name}", { name }) instead.
 // 3. --lint: JSX text, user-facing attributes and messages (toasts, dialogs, errors)
@@ -17,16 +19,19 @@ const SRC = join(ROOT, "src");
 const lint = process.argv.includes("--lint");
 
 const files: string[] = [];
-(function walk(dir: string) {
+// The realtime server sends English keys that the client translates, so it's read too.
+for (const root of [SRC, join(ROOT, "realtime")]) (function walk(dir: string) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) {
       if (p !== join(SRC, "lib/i18n/fa")) walk(p);
     } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) files.push(p);
   }
-})(SRC);
+})(root);
 
 const keys = new Map<string, string>(); // key → first place it's used
+/** Every string literal in the code: a key looked up through a variable (t(status), t(LABEL[k]), a server message the client translates) still appears as one. */
+const literals = new Set<string>();
 const problems: string[] = [];
 const candidates: string[] = [];
 
@@ -100,6 +105,7 @@ for (const file of files) {
   const isAdminOrDev = /api\/health|api\/cron|scripts\//.test(file);
 
   const visit = (node: ts.Node) => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) literals.add(node.text);
     if (ts.isCallExpression(node)) {
       const name = calleeName(node.expression);
       const argIdx = name === "translate" ? 1 : 0;
@@ -172,7 +178,7 @@ for (const [key, at] of keys) {
     problems.push(`${at}  missing fa: ${JSON.stringify(key)}`);
   } else if (placeholders(key) !== placeholders(tr)) problems.push(`${at}  placeholders differ: ${JSON.stringify(key)} → ${JSON.stringify(tr)}`);
 }
-const unused = Object.keys(catalog).filter((k) => !keys.has(k));
+const unused = Object.keys(catalog).filter((k) => !keys.has(k) && !literals.has(k));
 
 if (lint) {
   console.log(candidates.join("\n"));

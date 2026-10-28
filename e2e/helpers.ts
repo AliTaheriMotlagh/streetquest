@@ -87,7 +87,7 @@ export async function fund(admin: Player, userId: string, coins: number, gems = 
   if (gems) expectOk(await admin.post("/api/admin", { action: "grantGems", userId, gems }));
 }
 
-export function expectOk(r: Res) {
+export function expectOk<T = Record<string, unknown>>(r: Res<T>) {
   if (r.status !== 200) throw new Error(`expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
   return r;
 }

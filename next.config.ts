@@ -8,6 +8,8 @@ const config: NextConfig = {
   reactStrictMode: true,
   // A second dev/test server can build into its own folder without touching .next.
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // This folder is the project root (a package-lock.json higher up made Next guess wrong).
+  outputFileTracingRoot: import.meta.dirname,
   poweredByHeader: false,
   // Allow opening the dev server from a phone via LAN IP or an https tunnel.
   allowedDevOrigins: ["*.trycloudflare.com", "192.168.*.*", "10.*.*.*"],
