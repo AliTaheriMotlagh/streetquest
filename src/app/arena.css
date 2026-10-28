@@ -135,7 +135,7 @@
 .cpad-act i { position: absolute; left: 0; bottom: 0; height: 5px; width: calc(var(--p) * 100%); background: #1a1200; }
 
 /* ---- the Arena tab in the city menu */
-.drive-tab.arena h4 { margin: 6px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+.arena-tab h4 { margin: 6px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
 .arena-pvp { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--hud-line); }
 .arena-pvp .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .arena-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

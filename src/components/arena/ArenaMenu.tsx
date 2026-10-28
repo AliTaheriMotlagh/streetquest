@@ -55,7 +55,7 @@ export function ArenaMenu({ combat, canDrive, onGo, onClose }: { combat: Combat;
     const def = MODES[m.mode];
     const host = m.hostSid === combat.sid;
     return (
-      <div className="drive-tab arena">
+      <div className="drive-tab arena-tab">
         <div className="arena-head">
           <span className="ic">{def.emoji}</span>
           <div className="grow">
@@ -90,7 +90,7 @@ export function ArenaMenu({ combat, canDrive, onGo, onClose }: { combat: Combat;
 
   // ---- free roam: start / join
   return (
-    <div className="drive-tab arena">
+    <div className="drive-tab arena-tab">
       {!canDrive && <p className="small muted">{t("Switch to Play from home to fight in Street Arena")}</p>}
       <div className="arena-pvp">
         <div className="grow">

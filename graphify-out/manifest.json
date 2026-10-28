@@ -1734,9 +1734,9 @@
     "semantic_hash": ""
   },
   "src/components/arena/ArenaMenu.tsx": {
-    "mtime": 1793152107.116132,
-    "seen": 1793180936.7134411,
-    "ast_hash": "173298f44358ce2f8848f46a27e26676",
+    "mtime": 1793216643.2440088,
+    "seen": 1793216720.784634,
+    "ast_hash": "e4d0debb533691d5ebda51177ade888e",
     "semantic_hash": ""
   },
   "src/components/arena/CombatHud.tsx": {
