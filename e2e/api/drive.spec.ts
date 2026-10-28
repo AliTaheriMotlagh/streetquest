@@ -1,9 +1,10 @@
 // The 3D city together: who sees whose vehicle (privacy), the anti-teleport check,
 // the garage's level locks, and party rounds refereed by the server.
 import { expect, test } from "@playwright/test";
-import { expectOk, offset, Player, randomSpot, type LatLng } from "../helpers";
+import { adminPlayer, expectOk, offset, Player, randomSpot, type LatLng } from "../helpers";
 
-type Other = { id: string; vehicle: string; lat: number; lng: number; friend: boolean; party: boolean };
+type Other = { id: string; vehicle: string; lat: number; lng: number; friend: boolean; party: boolean; flags: number; hp: number; passive: boolean };
+type ArenaMe = { hp: number; dead: boolean; respawnAt: number; passive: boolean; events: { from: string; dmg: number; kill: boolean }[] };
 type PartyState = { game: string; round: number; ids: string[]; progress: Record<string, number>; finished: Record<string, number>; it?: string | null; taken?: Record<string, string> };
 type Party = {
   id: string;
@@ -15,7 +16,7 @@ type Party = {
   state: PartyState | null;
   warp: (LatLng & { yaw: number; round: number }) | null;
 };
-type DriveRes = { serverTime: number; vehicle: string; rejected: boolean; others: Other[]; party: Party | null };
+type DriveRes = { serverTime: number; vehicle: string; rejected: boolean; others: Other[]; party: Party | null; me: ArenaMe | null };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -94,6 +95,48 @@ test.describe("3D city presence", () => {
     // Leaving the city hides you at once.
     expectOk(await p.ctx.fetch("/api/drive", { method: "DELETE" }).then(async (r) => ({ status: r.status(), data: await r.json() })));
     await Promise.all([p.dispose(), gps.dispose()]);
+  });
+});
+
+test.describe("Street Arena without the realtime server", () => {
+  test("players on foot see each other's soldier and fight over HTTP: passive, hits, a kill, respawn", async ({ baseURL }) => {
+    test.slow();
+    const here = randomSpot();
+    const [a, b, admin] = await Promise.all([homePlayer(baseURL!, here), homePlayer(baseURL!, offset(here, 10)), adminPlayer(baseURL!)]);
+    await befriend(a, b);
+    const meA = await a.me(), meB = await b.me();
+    // Fighting in the open city needs level 3.
+    for (const id of [meA.id, meB.id]) expectOk(await admin.post("/api/admin", { action: "grant", userId: id, coins: 0, xp: 500 }));
+    const foot = { flags: 1, weapon: 3, pitch: 0, speed: 0 }; // F_FOOT, the sniper
+    expectOk(await drive(a, here, foot));
+    const seen = (await drive(b, offset(here, 10), foot)).data.others.find((o) => o.id === meA.id);
+    expect(seen && seen.flags & 1).toBeTruthy();
+    expect(seen!.passive).toBe(true);
+
+    // Both passive (the default): no damage.
+    expect((await a.post<{ ok: boolean }>("/api/drive/arena", { action: "hit", target: meB.id, weapon: "pistol", zone: "body", pellets: 1 })).data.ok).toBe(false);
+    expectOk(await a.post("/api/drive/arena", { action: "passive", on: false }));
+    expectOk(await b.post("/api/drive/arena", { action: "passive", on: false }));
+    await Promise.all([drive(a, here, foot), drive(b, offset(here, 10), foot)]);
+
+    const body = expectOk(await a.post<{ ok: boolean; hp: number; kill: boolean }>("/api/drive/arena", { action: "hit", target: meB.id, weapon: "pistol", zone: "body", pellets: 1 })).data;
+    expect(body.ok).toBe(true);
+    expect(body.hp).toBeLessThan(100);
+    await sleep(1000);
+    const head = expectOk(await a.post<{ ok: boolean; kill: boolean }>("/api/drive/arena", { action: "hit", target: meB.id, weapon: "sniper", zone: "head", pellets: 1 })).data;
+    expect(head.kill).toBe(true);
+
+    // B hears about it on their next report, can't come back at once, then can.
+    const bMe = (await drive(b, offset(here, 10), foot)).data.me!;
+    expect(bMe.dead).toBe(true);
+    expect(bMe.events.filter((e) => e.from === meA.id).length).toBe(2);
+    expect((await drive(a, here, foot)).data.others.find((o) => o.id === meB.id)!.hp).toBe(0);
+    expect((await b.post("/api/drive/arena", { action: "respawn" })).status).toBe(409);
+    await sleep(5000);
+    expect(expectOk(await b.post<{ hp: number }>("/api/drive/arena", { action: "respawn" })).data.hp).toBe(100);
+    // Just fought: going passive waits a little.
+    expect((await a.post("/api/drive/arena", { action: "passive", on: true })).status).toBe(409);
+    await Promise.all([a.dispose(), b.dispose(), admin.dispose()]);
   });
 });
 

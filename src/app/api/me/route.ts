@@ -44,6 +44,8 @@ export const GET = route(async (req) => {
     xp: u.xp,
     coins: u.coins,
     toman: u.toman,
+    /** Money levels bought (S.moneyTiers): bigger pickups on the map. */
+    moneyTier: u.moneyTier,
     /** Toman waiting in a cash-out request (already out of the wallet). */
     cashoutPending: cashout?.amount ?? 0,
     timezone: u.timezone,

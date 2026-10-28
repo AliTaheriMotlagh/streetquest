@@ -141,6 +141,9 @@ function useMapView() {
   return view;
 }
 
+/** Money level ring colours (0 = free; the rest are bought in the wallet). */
+const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
+
 /**
  * What the map shows: money to pick up and stores with a mission (the server sends only
  * the nearest few), other players, and where you're headed. Nothing else.
@@ -191,13 +194,13 @@ function Layers({ world, me, game, travelTo, onSelect, onUnfollow }: Pick<Props,
 
   return (
     <>
-      {/* Money: green bills, gold for admin drops; the amount shows at street level. */}
+      {/* Money: green bills, then blue, purple, red for bigger money levels, gold for admin drops; the amount shows at street level. */}
       {world?.money.map((m) => (
         <Marker
           key={m.id}
           position={[m.lat, m.lng]}
-          zIndexOffset={m.drop ? 800 : 600}
-          icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : "#5bd38c"}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : ""}`, m.drop ? 48 : 42)}
+          zIndexOffset={m.drop ? 800 : 600 + Math.min(3, m.tier ?? 0) * 50}
+          icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : TIER_COLORS[Math.min(TIER_COLORS.length - 1, m.tier ?? 0)]}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : m.tier ? `tier tier${Math.min(3, m.tier)}` : ""}`, m.drop ? 48 : m.tier ? 46 : 42)}
           eventHandlers={{ click: () => onSelect({ type: "money", data: m }) }}
         />
       ))}

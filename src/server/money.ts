@@ -5,7 +5,7 @@ import type { User } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/db";
 import { bbox, cellKey, cellOf, distanceM, type LatLng } from "../lib/geo";
-import { DROP_PREFIX, isDropId, moneyAround, resolveMoney, tomanFor, type MoneyPickup } from "../lib/money";
+import { DROP_PREFIX, isDropId, moneyAround, resolveMoney, tierAmount, tiersOwned, tomanFor, type MoneyPickup } from "../lib/money";
 import { S } from "../lib/settings";
 import { msg, t } from "../lib/i18n";
 import { HttpError } from "./http";
@@ -48,26 +48,27 @@ export async function payToman(userId: string, spawnId: string, kind: string, ce
   }
 }
 
-/** The money a player sees: admin drops first, then the game's own, unclaimed and nearest first. */
-export async function moneyFor(u: Pick<User, "id" | "remotePlay">, here: LatLng, radiusM = 1500): Promise<{ priority: MoneyPickup[]; rest: MoneyPickup[] }> {
+/** The money a player sees: admin drops first, then the game's own (the levels they own), unclaimed and nearest first. */
+export async function moneyFor(u: Pick<User, "id" | "remotePlay" | "moneyTier">, here: LatLng, radiusM = 1500): Promise<{ priority: MoneyPickup[]; rest: MoneyPickup[] }> {
   const now = new Date();
   const box = bbox(here, radiusM);
   const drops = await prisma.moneyDrop.findMany({
     where: { lat: { gte: box.minLat, lte: box.maxLat }, lng: { gte: box.minLng, lte: box.maxLng }, activeFrom: { lte: now }, activeTo: { gte: now } },
     take: 200,
   });
-  const game = moneyAround(here);
+  const owned = tiersOwned(u.moneyTier);
+  const game = moneyAround(here).filter((g) => g.tier <= owned);
   const ids = [...drops.map((d) => DROP_PREFIX + d.id), ...game.map((g) => g.id)];
   const taken = new Set((await prisma.claim.findMany({ where: { userId: u.id, spawnId: { in: ids } }, select: { spawnId: true } })).map((c) => c.spawnId));
   const home = u.remotePlay;
   const byDist = (a: MoneyPickup, b: MoneyPickup) => distanceM(here, a) - distanceM(here, b);
   const priority = drops
     .filter((d) => !taken.has(DROP_PREFIX + d.id) && (d.maxClaims == null || d.claims < d.maxClaims))
-    .map((d) => ({ id: DROP_PREFIX + d.id, lat: d.lat, lng: d.lng, amount: tomanFor(d.amount, home), expiresAt: d.activeTo.getTime(), drop: { label: d.label, sponsor: d.sponsor }, claimed: false }))
+    .map((d) => ({ id: DROP_PREFIX + d.id, lat: d.lat, lng: d.lng, amount: tomanFor(d.amount, home), tier: 0, expiresAt: d.activeTo.getTime(), drop: { label: d.label, sponsor: d.sponsor }, claimed: false }))
     .sort(byDist);
   const rest = game
     .filter((g) => !taken.has(g.id) && distanceM(here, g) <= radiusM)
-    .map((g) => ({ id: g.id, lat: g.lat, lng: g.lng, amount: tomanFor(S.moneyGps, home), expiresAt: g.expiresAt, drop: null, claimed: false }))
+    .map((g) => ({ id: g.id, lat: g.lat, lng: g.lng, amount: tomanFor(tierAmount(g.tier), home), tier: g.tier, expiresAt: g.expiresAt, drop: null, claimed: false }))
     .sort(byDist);
   return { priority, rest };
 }
@@ -101,8 +102,9 @@ export async function collectMoney(u: User, id: string) {
 
   const m = resolveMoney(id);
   if (!m) throw new HttpError(410, t("This money is gone"));
+  if (m.tier > tiersOwned(u.moneyTier)) throw new HttpError(403, t("Unlock {n} toman money in your wallet first", { n: tomanFor(tierAmount(m.tier), home) }));
   if (distanceM(here, m) > reach) throw new HttpError(400, t("Get within {m} m to pick it up", { m: INTERACT_RADIUS_M }));
-  const amount = earns ? tomanFor(S.moneyGps, home) : 0;
+  const amount = earns ? tomanFor(tierAmount(m.tier), home) : 0;
   await payToman(u.id, id, "money", m.cell, amount);
   await afterMoney(u.id);
   return { message: amount ? t("💵 +{n} toman", { n: amount }) : t(TEST_MODE_NOTE), toman: amount };
@@ -111,6 +113,19 @@ export async function collectMoney(u: User, id: string) {
 async function afterMoney(userId: string, campaign?: string) {
   await questEvent(userId, "money");
   await track("money", { userId, campaign });
+}
+
+// ---------------------------------------------------------------- money levels
+/** Buy the next money level from the wallet: its bigger pickups show on the map from now on. */
+export async function buyMoneyTier(u: User) {
+  const owned = tiersOwned(u.moneyTier);
+  const next = S.moneyTiers[owned];
+  if (!next) throw new HttpError(400, t("You've unlocked every money level"));
+  // Only from the level they're on and only with the toman there (two taps can't buy twice).
+  const done = await prisma.user.updateMany({ where: { id: u.id, moneyTier: u.moneyTier, toman: { gte: next.price } }, data: { toman: { decrement: next.price }, moneyTier: owned + 1 } });
+  if (!done.count) throw new HttpError(400, t("You need {n} toman in your wallet to unlock this", { n: next.price }));
+  await track("money_tier", { userId: u.id, campaign: String(owned + 1) });
+  return { message: t("🔓 {n} toman money now shows on your map", { n: tomanFor(next.amount, u.remotePlay) }), moneyTier: owned + 1 };
 }
 
 // ---------------------------------------------------------------- cash-out

@@ -61,6 +61,11 @@ const COLUMNS: Record<string, Col[]> = {
     { path: "bonus", label: msg("Badge"), type: "text", width: 110 },
     { path: "key", label: msg("Id"), type: "text", width: 90 },
   ],
+  moneyTiers: [
+    { path: "amount", label: msg("Toman per pickup"), type: "number" },
+    { path: "price", label: msg("Unlock price (toman)"), type: "number" },
+    { path: "perCell", label: msg("Pickups per area"), type: "number", width: 110 },
+  ],
   gemOffers: [
     { path: "label", label: msg("Name"), type: "text" },
     { path: "gems", label: msg("Costs gems"), type: "number", width: 100 },
@@ -83,6 +88,7 @@ const NEW_ROW: Record<string, () => object> = {
   worldGoals: () => ({ key: `g${Date.now().toString(36)}`, title: t("New goal"), emoji: "🎯", metric: "collect", target: 1000, reward: { xp: 300, coins: 200, gems: 5 } }),
   personalGoals: () => ({ key: `p${Date.now().toString(36)}`, title: t("New milestone"), emoji: "🎯", metric: "collect", tiers: [10, 50, 200], reward: { xp: 100, coins: 50, gems: 1 } }),
   gemPacks: () => ({ key: `pack${Date.now().toString(36)}`, gems: 100, priceCents: 199, label: t("New pack") }),
+  moneyTiers: () => ({ amount: 200_000, price: 3_000_000, perCell: 0.25 }),
   gemOffers: () => ({ key: `o${Date.now().toString(36)}`, gems: 20, coins: 1000, label: t("New offer") }),
   adCreatives: () => ({ id: `ad${Date.now().toString(36)}`, sponsor: "Sponsor", title: t("Headline"), body: "", imageUrl: "", clickUrl: "", active: true }),
 };
@@ -124,7 +130,7 @@ function ListEditor({ k, rows, metrics, onChange }: { k: string; rows: Record<st
                     ) : c.type === "tiers" ? (
                       <input defaultValue={(v as number[] | undefined)?.join(", ") ?? ""} onBlur={(e) => edit(i, c.path, e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0).sort((a, b) => a - b))} />
                     ) : c.type === "number" ? (
-                      <input type="number" value={Number(v ?? 0)} onChange={(e) => edit(i, c.path, Number(e.target.value))} />
+                      <input type="number" step="any" value={Number(v ?? 0)} onChange={(e) => edit(i, c.path, Number(e.target.value))} />
                     ) : (
                       <input value={String(v ?? "")} onChange={(e) => edit(i, c.path, e.target.value)} />
                     )}

@@ -84,9 +84,11 @@ model User {
   bio String @default("")
 
   // Money on the map: the toman wallet (cash-out at S.cashoutMin) and whether the
-  // last accepted position came from test mode (which never earns toman).
-  toman  Int     @default(0)
-  locSim Boolean @default(false)
+  // last accepted position came from test mode (which never earns toman). moneyTier:
+  // how many of S.moneyTiers (bigger money on the map) they've bought, in order.
+  toman     Int     @default(0)
+  locSim    Boolean @default(false)
+  moneyTier Int     @default(0)
 
   inventory       InventoryItem[]
   claims          Claim[]
@@ -1320,7 +1322,17 @@ model DriveState {
   startLat  Float // Where this drive started: strangers only see you once you've driven away from it.
   startLng  Float
   partyId   String?
-  updatedAt DateTime @updatedAt
+  // Street Arena without the realtime server (server/arena.ts): on foot and fighting over HTTP.
+  flags     Int       @default(0) // lib/arena/protocol F_* flags; F_FOOT set = walking, not driving
+  pitch     Float     @default(0)
+  weapon    Int       @default(0)
+  hp        Int       @default(100)
+  deadUntil DateTime?
+  passive   Boolean   @default(true)
+  fightAt   DateTime? // last shot fired or taken: going passive waits a little
+  shotAt    DateTime? // last hit reported (fire-rate check)
+  events    Json? // recent hits and kills on this player (last few seconds), read by their next report
+  updatedAt DateTime  @updatedAt
 
   @@index([updatedAt, lat, lng])
   @@index([partyId])

@@ -24,6 +24,8 @@ import {
   partyPrize, standings, TAG_COOLDOWN_MS, TAG_M, type PartyGame, type PartyState, type PartyView,
 } from "../lib/party";
 import { levelForXp } from "../lib/progression";
+import { ROOKIE_LEVEL } from "../lib/arena/modes";
+import { F_DEAD } from "../lib/arena/protocol";
 import { S } from "../lib/settings";
 import { allowedVehicle, isPaint, VEHICLES, type VehicleKey } from "../lib/vehicles";
 import { notify } from "./hub";
@@ -31,6 +33,7 @@ import { HttpError } from "./http";
 import { grant } from "./rewards";
 import { areFriends, friendIds } from "./rooms";
 import { canSimulate } from "./session";
+import { arenaMe, footFlags, isDead } from "./arena";
 
 /** A driver who hasn't reported for this long has parked (closed the 3D city). */
 const FRESH_MS = 8_000;
@@ -53,6 +56,10 @@ export type DriveReport = {
   sim?: boolean;
   /** Viewers following real GPS: where to look (nothing is stored). */
   here?: LatLng;
+  /** On foot (Street Arena): lib/arena/protocol F_* flags, aim pitch, gun index. */
+  flags?: number;
+  pitch?: number;
+  weapon?: number;
 };
 
 export type OtherDriver = {
@@ -71,6 +78,12 @@ export type OtherDriver = {
   at: number;
   friend: boolean;
   party: boolean;
+  /** On foot: F_* flags (F_FOOT set; F_DEAD when down), aim pitch, gun, health, passive. */
+  flags: number;
+  pitch: number;
+  weapon: number;
+  hp: number;
+  passive: boolean;
 };
 
 const isVirtual = (u: User, sim?: boolean) => u.remotePlay || (!!sim && canSimulate(u.role));
@@ -128,6 +141,7 @@ export async function report(u: User, d: DriveReport) {
       alt: Math.max(0, Math.min(VEHICLES[vehicle].ceiling ?? 0, d.alt)), yaw: d.yaw, speed: d.speed, vehicle, color: isPaint(d.color) ? d.color : "#d7263d", virtual: true,
       ...(fresh ? {} : { startLat: here.lat, startLng: here.lng }),
       partyId: party?.id ?? null,
+      flags: footFlags(d.flags), pitch: Math.max(-1.5, Math.min(1.5, d.pitch ?? 0)), weapon: Math.max(0, Math.min(4, Math.round(d.weapon ?? 0))),
     };
     await prisma.driveState.upsert({ where: { userId: u.id }, create: { userId: u.id, startLat: here.lat, startLng: here.lng, ...data }, update: data });
     if (party?.status === "LIVE" && !rejected && fresh) party = await playStep(party, u.id, prev, here, vehicle);
@@ -138,7 +152,7 @@ export async function report(u: User, d: DriveReport) {
   if (party) party = await tickParty(party);
 
   const others = await othersAround(u.id, here, party);
-  return { serverTime: Date.now(), vehicle, rejected, others, party: party ? partyView(party, u.id, others) : null };
+  return { serverTime: Date.now(), vehicle, rejected, others, party: party ? partyView(party, u.id, others) : null, me: prev ? arenaMe(prev) : null };
 }
 
 async function othersAround(userId: string, here: LatLng, party: PartyWithMembers | null): Promise<OtherDriver[]> {
@@ -160,6 +174,7 @@ async function othersAround(userId: string, here: LatLng, party: PartyWithMember
     .map((r) => ({
       id: r.userId, name: r.name, avatar: r.avatar, level: r.level, vehicle: allowedVehicle(r.vehicle, 99), color: r.color,
       lat: r.lat, lng: r.lng, alt: r.alt, yaw: r.yaw, speed: r.speed, at: r.updatedAt.getTime(), friend: friends.has(r.userId), party: members.has(r.userId),
+      flags: r.flags | (isDead(r) ? F_DEAD : 0), pitch: r.pitch, weapon: r.weapon, hp: isDead(r) ? 0 : r.hp, passive: r.passive || r.level < ROOKIE_LEVEL,
     }));
 }
 

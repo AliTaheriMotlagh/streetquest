@@ -1,11 +1,13 @@
 // One player on the realtime server: a connected client or a bot. Keeps where they are
 // (lat/lng — every client sees them in its own local metres), the last second of
 // positions for lag compensation, health, guns and ammo, and their match stats.
-import type { WebSocket } from "ws";
 import { localFrame, type LL, type LocalFrame, type ServerMsg, F_CROUCH, F_DEAD, F_FOOT, G_BOMB, G_BOT, G_PASSIVE, G_SHIELD, G_ACTING } from "../src/lib/arena/protocol";
 import { MAX_HP, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "../src/lib/arena/weapons";
 import type { Team } from "../src/lib/arena/modes";
 import type { Space } from "./space";
+
+/** What a player is connected through: a WebSocket on the server, a loopback in the browser. */
+export type Sock = { readyState: number; bufferedAmount: number; send(data: string | ArrayBuffer): void; close(code?: number, reason?: string): void };
 
 export type Sample = { t: number; lat: number; lng: number; y: number; crouch: boolean };
 const HISTORY = 40;
@@ -18,7 +20,7 @@ export class Player {
   level: number;
   color = "#d7263d";
   friends: Set<string>;
-  ws: WebSocket | null;
+  ws: Sock | null;
   frame: LocalFrame;
   bot: boolean;
 
@@ -82,7 +84,7 @@ export class Player {
   msgWindow = 0;
   lastCorrection = 0;
 
-  constructor(o: { sid: number; userId: string; name: string; avatar: string; level: number; friends?: string[]; ws: WebSocket | null; anchor: LL; bot?: boolean }) {
+  constructor(o: { sid: number; userId: string; name: string; avatar: string; level: number; friends?: string[]; ws: Sock | null; anchor: LL; bot?: boolean }) {
     this.sid = o.sid;
     this.userId = o.userId;
     this.name = o.name;

@@ -134,9 +134,13 @@ export function ArenaMenu({ combat, canDrive, onGo, onClose }: { combat: Combat;
       {guns}
       <Button className="btn yellow wide" disabled={!canDrive} onClick={() => combat.create(mode, radius, bots, diff)}>{t("Create match on these streets")}</Button>
 
-      <h4>{t("Matches nearby")}</h4>
-      {s.lobbies.length === 0 && <p className="small muted">{t("No matches around here yet — start one and invite your friends.")}</p>}
-      {s.lobbies.map((l) => {
+      {s.local ? (
+        <p className="small muted">{t("Matches here are practice against bots. Fights in the open city work with everyone nearby — matches with friends need the live server.")}</p>
+      ) : (
+        <h4>{t("Matches nearby")}</h4>
+      )}
+      {!s.local && s.lobbies.length === 0 && <p className="small muted">{t("No matches around here yet — start one and invite your friends.")}</p>}
+      {!s.local && s.lobbies.map((l) => {
         const close = l.dist <= l.radius + 250;
         return (
           <div key={l.id} className="drive-job drive-place">

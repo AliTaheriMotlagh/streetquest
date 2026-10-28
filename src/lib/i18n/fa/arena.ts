@@ -123,6 +123,11 @@ const arena: Record<string, string> = {
   "The lobby closed — nobody started it": "لابی بسته شد — کسی شروعش نکرد",
   "+{xp} XP · +{coins} coins": "+{xp} تجربه · +{coins} سکه",
   "Daily match rewards used up — play again tomorrow for more": "جایزه‌های امروزِ مسابقه تموم شد — فردا دوباره بازی کن",
+
+  // ---- without the realtime server (server/arena.ts, the in-browser hub)
+  "Practice match done — matches with friends pay XP and coins once the live server is on": "مسابقه‌ی تمرینی تموم شد — وقتی سرور زنده روشن باشه، مسابقه با دوستات تجربه و سکه می‌ده",
+  "Open the 3D city first": "اول شهر سه‌بعدی رو باز کن",
+  "Matches here are practice against bots. Fights in the open city work with everyone nearby — matches with friends need the live server.": "مسابقه‌ها این‌جا تمرینی و با ربات‌ان. درگیری توی شهر با همه‌ی بازیکن‌های اطراف کار می‌کنه — مسابقه با دوستات به سرور زنده نیاز داره.",
 };
 
 export default arena;

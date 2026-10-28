@@ -30,6 +30,8 @@ export class Others {
   delayMs = DELAY_MS;
   private drivers = new Map<string, Driver>();
   private walkers = new Map<string, Walker>();
+  /** Players drawn as soldiers (arena/remotes.ts): no map figure for them as well. */
+  private soldiers = new Set<string>();
   private itMat = new THREE.MeshBasicMaterial({ color: "#ff2e55", transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
   private itGeo = new THREE.CylinderGeometry(2.4, 2.4, 40, 16, 1, true);
   private itId: string | null = null;
@@ -82,7 +84,7 @@ export class Others {
   setWalkers(players: WorldPlayer[]) {
     const seen = new Set<string>();
     for (const p of players) {
-      if (this.drivers.has(p.id)) continue;
+      if (this.drivers.has(p.id) || this.soldiers.has(p.id)) continue;
       seen.add(p.id);
       const at = this.frame.toXZ(p.lat, p.lng);
       let w = this.walkers.get(p.id);
@@ -106,6 +108,14 @@ export class Others {
       w.to = at;
     }
     for (const w of [...this.walkers.values()]) if (!seen.has(w.id)) this.removeWalker(w);
+  }
+
+  /** A player is (or stops being) drawn as a soldier: their map figure steps aside. */
+  setSoldier(id: string, on: boolean) {
+    if (!on) return void this.soldiers.delete(id);
+    this.soldiers.add(id);
+    const w = this.walkers.get(id);
+    if (w) this.removeWalker(w);
   }
 
   /** Tag: a red column over whoever is IT. */

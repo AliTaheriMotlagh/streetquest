@@ -17,6 +17,9 @@ const Schema = z.object({
   color: z.string().max(9).optional(),
   sim: z.boolean().optional(),
   here: LatLng.optional(),
+  flags: z.number().int().min(0).max(255).optional(),
+  pitch: z.number().min(-2).max(2).optional(),
+  weapon: z.number().int().min(0).max(10).optional(),
 });
 
 export const POST = route(async (req) => {

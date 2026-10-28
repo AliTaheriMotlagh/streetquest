@@ -66,6 +66,12 @@ html.lite .map.fantasy.dusk-tint .fantasy-fx::before, html.lite .map.fantasy.daw
 .mk.money { font-size: 28px; animation: bob 2.4s ease-in-out infinite; }
 .mk.money .ring { border-width: 3px; box-shadow: 0 0 12px currentColor; background: radial-gradient(circle, rgba(91, 211, 140, .45), rgba(91, 211, 140, .05) 70%); }
 .mk.money.drop { font-size: 32px; }
+.mk.money.tier { font-size: 31px; }
+.mk.money.tier .ring { background: radial-gradient(circle, color-mix(in srgb, currentColor 45%, transparent), transparent 70%); }
+.mk.money.tier .nm { top: 39px; color: #fff; }
+.mk.money.tier1 .nm { background: rgba(10, 50, 90, .9); }
+.mk.money.tier2 .nm { background: rgba(60, 25, 100, .9); }
+.mk.money.tier3 .nm { background: rgba(110, 20, 20, .9); }
 .mk.money.drop .ring { animation: glow 1.2s infinite; background: radial-gradient(circle, rgba(240, 192, 90, .55), rgba(240, 192, 90, .05) 70%); }
 .mk.money .nm { position: absolute; top: 36px; white-space: nowrap; font-size: 10px; font-weight: 900; color: #c9ffd9; background: rgba(8, 40, 20, .88); padding: 1px 6px; border-radius: 6px; }
 .mk.money.drop .nm { top: 40px; color: #2a1d00; background: var(--yellow); }

@@ -12,12 +12,21 @@ export type MilestoneDef = { key: string; title: string; emoji: string; metric: 
 export type GemPack = { key: string; gems: number; priceCents: number; label: string; bonus?: string };
 export type AdCreative = { id: string; sponsor: string; title: string; body?: string; imageUrl?: string; videoUrl?: string; clickUrl?: string; active?: boolean };
 export type GemOffer = { key: string; gems: number; coins: number; label: string };
+/** Bigger money on the map: `amount` toman a pickup (on GPS), bought once for `price` toman, `perCell` extra pickups per area. */
+export type MoneyTier = { amount: number; price: number; perCell: number };
 
 const DEFAULTS = {
   // ---- money on the map (toman)
   moneyGps: 10_000,
   moneyHome: 1_000,
   moneyPerCell: 4,
+  // Each level is bought from the wallet, in order, and adds its own pickups on top of
+  // the free ones (fractional perCell = a chance). Each pays back in a few walks.
+  moneyTiers: [
+    { amount: 20_000, price: 100_000, perCell: 2 },
+    { amount: 50_000, price: 400_000, perCell: 1 },
+    { amount: 100_000, price: 1_000_000, perCell: 0.5 },
+  ] as MoneyTier[],
   mapMaxItems: 10,
   placeVisitToman: 10_000,
   placeDeliverToman: 20_000,
@@ -155,6 +164,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "moneyGps", group: msg("Money & cash-out"), label: msg("Money per pickup on GPS (toman)"), help: msg("What one pickup on the map pays a player who walks there with real GPS."), min: 0, max: 10_000_000 },
   { key: "moneyHome", group: msg("Money & cash-out"), label: msg("Money per pickup from home (toman)"), help: msg("What one pickup pays a player in Play from home. Admin drops and store missions are scaled by the same ratio."), min: 0, max: 10_000_000 },
   { key: "moneyPerCell", group: msg("Money & cash-out"), label: msg("Money pickups per area"), help: msg("How many pickups the game places in each ~450 m map cell every 20 minutes. 0 = only admin drops."), min: 0, max: 20 },
+  { key: "moneyTiers", group: msg("Money & cash-out"), label: msg("Money levels"), help: msg("Bigger money on the map. Players buy each level from their wallet, in order; until then they don't see its pickups. Amounts are for GPS (from home they're scaled like the rest); the price is the same for everyone.") },
   { key: "mapMaxItems", group: msg("Money & cash-out"), label: msg("Items visible on the map"), help: msg("Most money pickups and store missions shown to a player at once — the nearest ones, admin drops first."), min: 1, max: 50 },
   { key: "placeVisitToman", group: msg("Money & cash-out"), label: msg("Store check-in mission (toman)"), help: msg("Paid for checking in at a store on GPS."), min: 0, max: 10_000_000 },
   { key: "placeDeliverToman", group: msg("Money & cash-out"), label: msg("Store delivery mission (toman)"), help: msg("Paid for delivering an order from a store on GPS."), min: 0, max: 10_000_000 },

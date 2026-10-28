@@ -303,6 +303,29 @@ const money: Record<string, string> = {
   MAX: "حداکثر",
   tower: "برج",
   Unlock: "باز کردن",
+
+  // ---- money levels (bigger money on the map, bought from the wallet)
+  "Money levels": "سطح‌های پول",
+  "Bigger money only shows on your map once you unlock its level. Buy them in order with your toman — each one is yours for good.":
+    "پول‌های درشت‌تر فقط وقتی روی نقشه‌ت دیده می‌شن که سطحشون رو باز کرده باشی. به ترتیب با تومان‌هات بخرشون — هر کدوم برای همیشه مال خودته.",
+  "Free for everyone": "رایگان برای همه",
+  "Unlocked — on your map": "باز شده — روی نقشه‌ته",
+  "Costs {n} toman": "قیمت: {n} تومان",
+  "Unlock the level before first": "اول سطح قبلی رو باز کن",
+  "{n} toman to go": "{n} تومان دیگه مونده",
+  "Unlock {n} toman money for {price} toman?": "پول‌های {n} تومانی رو با {price} تومان باز کنی؟",
+  "The price leaves your wallet now. From then on, {n} toman pickups show on your map too — for good.":
+    "مبلغش همین الان از کیف پولت کم می‌شه. از این به بعد پول‌های {n} تومانی هم روی نقشه‌ت دیده می‌شن — برای همیشه.",
+  "Unlock {n} toman money in your wallet first": "اول پول‌های {n} تومانی رو از کیف پولت باز کن",
+  "You've unlocked every money level": "همهٔ سطح‌های پول رو باز کردی",
+  "You need {n} toman in your wallet to unlock this": "برای باز کردنش {n} تومان تو کیف پولت لازمه",
+  "🔓 {n} toman money now shows on your map": "🔓 حالا پول‌های {n} تومانی روی نقشه‌ت دیده می‌شن",
+  "Bigger money on the map. Players buy each level from their wallet, in order; until then they don't see its pickups. Amounts are for GPS (from home they're scaled like the rest); the price is the same for everyone.":
+    "پول‌های درشت‌تر روی نقشه. بازیکن‌ها هر سطح رو به ترتیب از کیف پولشون می‌خرن و تا اون موقع پول‌هاش رو نمی‌بینن. مبلغ‌ها برای GPS هستن (از خونه مثل بقیه کمتر حساب می‌شن)؛ قیمت برای همه یکیه.",
+  "Toman per pickup": "تومان هر پول",
+  "Unlock price (toman)": "قیمت باز کردن (تومان)",
+  "Pickups per area": "تعداد در هر محدوده",
 };
+
 
 export default money;

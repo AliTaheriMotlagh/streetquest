@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { S } from "@/lib/settings";
+import { tiersOwned, tomanFor } from "@/lib/money";
 import { Button } from "@/components/Button";
 import { askConfirm } from "@/components/Dialogs";
 import { api, fmtTime, type CashoutView } from "./client";
@@ -30,6 +31,17 @@ export function WalletPanel({ onClose, peek }: { onClose: () => void; peek: bool
   const pending = d?.requests.find((r) => r.status === "PENDING");
   const can = toman >= min && !pending && (d?.enabled ?? true);
   const amount = Math.floor(Number(toAsciiDigits(form.amount || String(toman)).replace(/[,٬\s]/g, "")));
+
+  const owned = tiersOwned(me.moneyTier ?? 0);
+  const buyLevel = async (i: number) => {
+    const L = S.moneyTiers[i];
+    const ok = await askConfirm(t("Unlock {n} toman money for {price} toman?", { n: tomanFor(L.amount, me.remotePlay), price: L.price }), {
+      body: t("The price leaves your wallet now. From then on, {n} toman pickups show on your map too — for good.", { n: tomanFor(L.amount, me.remotePlay) }),
+      ok: t("Unlock"),
+      cancel: t("Go back"),
+    });
+    if (ok) await act(() => api("/api/money/tier", { body: {} }));
+  };
 
   const submit = async () => {
     const ok = await askConfirm(t("Cash out {n} toman?", { n: amount }), {
@@ -70,6 +82,39 @@ export function WalletPanel({ onClose, peek }: { onClose: () => void; peek: bool
           <li>✨ {t("Gold money is a special drop — it can be worth more")}</li>
         </ul>
       </div>
+
+      {S.moneyTiers.length > 0 && (
+        <div className="card">
+          <b>🔓 {t("Money levels")}</b>
+          <p className="small muted" style={{ margin: "4px 0 8px" }}>{t("Bigger money only shows on your map once you unlock its level. Buy them in order with your toman — each one is yours for good.")}</p>
+          <div className="list-item">
+            <div className="icon-tile">✅</div>
+            <div className="grow">
+              <b>{t("{n} toman", { n: tomanFor(S.moneyGps, me.remotePlay) })}</b>
+              <div className="small muted">{t("Free for everyone")}</div>
+            </div>
+          </div>
+          {S.moneyTiers.map((L, i) => {
+            const have = i < owned, next = i === owned;
+            return (
+              <div key={i} className="list-item" style={{ opacity: have || next ? 1 : 0.55 }}>
+                <div className="icon-tile">{have ? "✅" : next ? "🔓" : "🔒"}</div>
+                <div className="grow">
+                  <b>{t("{n} toman", { n: tomanFor(L.amount, me.remotePlay) })}</b>
+                  <div className="small muted">
+                    {have ? t("Unlocked — on your map") : next ? t("Costs {n} toman", { n: L.price }) : t("Unlock the level before first")}
+                  </div>
+                </div>
+                {next && (
+                  <Button className="btn small green" disabled={toman < L.price} onClick={() => buyLevel(i)}>
+                    {toman < L.price ? t("{n} toman to go", { n: L.price - toman }) : t("Unlock")}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {pending ? (
         <div className="card" style={{ borderColor: "var(--yellow)" }}>

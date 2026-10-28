@@ -1,8 +1,9 @@
 "use client";
-// Everyone else on the realtime link, drawn from 20 Hz snapshots ~110 ms in the past and
-// interpolated between the two around that moment (coasting briefly past the newest).
-// Players on foot are soldiers (avatar.ts); players driving are handed to the city's
-// vehicle renderer (drive/others.ts), which interpolates the same way.
+// Everyone else on foot, drawn a little in the past and interpolated between the two
+// samples around that moment (coasting briefly past the newest): ~110 ms behind on the
+// realtime link's 20 Hz snapshots, ~450 ms behind on the HTTP presence (a few reports a
+// second). Players on foot are soldiers (avatar.ts); players driving on the realtime link
+// are handed to the city's vehicle renderer (drive/others.ts), which interpolates the same way.
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { TEAM_COLORS } from "@/lib/arena/modes";
@@ -15,6 +16,7 @@ import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 
 export const RT_DELAY_MS = 110;
+export const HTTP_DELAY_MS = 450;
 const COAST_MS = 300;
 const MAX_SNAPS = 20;
 
@@ -26,6 +28,8 @@ type Ent = {
   sid: number;
   info: RosterEntry | null;
   snaps: Snap[];
+  /** How far behind (ms) it's drawn. */
+  delay: number;
   avatar: Avatar | null;
   tag: Sign | null;
   tagKey: string;
@@ -40,6 +44,8 @@ export class Remotes {
   /** Team I'm on in a match (0 = free roam / deathmatch): decides tag colours. */
   myTeam = 0;
   inMatch = false;
+  /** Realtime snapshots draw the drivers too (off when the HTTP presence draws them). */
+  ownsDrivers = true;
 
   constructor(private scene: THREE.Scene, private frame: Frame, private others: Others, private shadows: boolean) {
     loadSoldier().then((t) => (this.template = t)).catch(() => {});
@@ -50,13 +56,14 @@ export class Remotes {
       const e = this.ents.get(r.sid) ?? this.make(r.sid);
       e.info = r;
       e.tagKey = "";
+      this.others.setSoldier(r.id, true);
     }
     for (const sid of del) this.drop(sid);
   }
 
   private make(sid: number): Ent {
     const e: Ent = {
-      sid, info: null, snaps: [], avatar: null, tag: null, tagKey: "",
+      sid, info: null, snaps: [], delay: RT_DELAY_MS, avatar: null, tag: null, tagKey: "",
       pose: { sid, x: 0, y: 0, z: 0, crouch: false, foot: true, team: 0, passive: true, shield: false, dead: false, bot: false, hp: 100, yaw: 0, pitch: 0, vx: 0, vz: 0, air: false, weapon: 0 },
     };
     this.ents.set(sid, e);
@@ -66,33 +73,42 @@ export class Remotes {
   private drop(sid: number) {
     const e = this.ents.get(sid);
     if (!e) return;
+    if (e.info) this.others.setSoldier(e.info.id, false);
     e.avatar?.dispose();
     if (e.tag) (e.tag.sprite.removeFromParent(), e.tag.dispose());
     this.ents.delete(sid);
   }
 
+  /** One sample of one player, at time t (on the clock tick() is given). */
+  push(s: SnapEntity, t: number, delay: number) {
+    const e = this.ents.get(s.sid) ?? this.make(s.sid);
+    e.delay = delay;
+    const last = e.snaps[e.snaps.length - 1];
+    if (!last || t > last.t) e.snaps.push({ ...s, t });
+    if (e.snaps.length > MAX_SNAPS) e.snaps.shift();
+    return e;
+  }
+
   snap(t: number, list: SnapEntity[]) {
     const drivers: OtherDriver[] = [];
     for (const s of list) {
-      const e = this.ents.get(s.sid) ?? this.make(s.sid);
-      const last = e.snaps[e.snaps.length - 1];
-      if (!last || t > last.t) e.snaps.push({ ...s, t });
-      if (e.snaps.length > MAX_SNAPS) e.snaps.shift();
+      const e = this.push(s, t, RT_DELAY_MS);
       if (!(s.flags & F_FOOT) && e.info) {
         const ll = this.frame.toLatLng(s.x, s.z);
         drivers.push({
           id: e.info.id, name: e.info.name, avatar: e.info.avatar, level: e.info.level, vehicle: (VEHICLE_KEYS[s.vehicle] ?? "car") as VehicleKey, color: e.info.color,
           lat: ll.lat, lng: ll.lng, alt: s.y, yaw: s.yaw, speed: Math.hypot(s.vx, s.vz), at: t, friend: e.info.friend, party: false,
+          flags: s.flags, pitch: s.pitch, weapon: s.weapon, hp: s.hp, passive: (s.flags2 & G_PASSIVE) !== 0,
         });
       }
     }
-    this.others.setDrivers(drivers);
+    if (this.ownsDrivers) this.others.setDrivers(drivers);
   }
 
   /** Where each player is drawn now; soldiers posed and animated. */
   tick(dt: number, serverNow: number, cam: THREE.Vector3) {
-    const t = serverNow - RT_DELAY_MS;
     for (const e of this.ents.values()) {
+      const t = serverNow - e.delay;
       const s = e.snaps;
       if (!s.length) continue;
       let a = s[0], b = s[0], k = 0;
@@ -191,7 +207,7 @@ export class Remotes {
 
   clear() {
     for (const sid of [...this.ents.keys()]) this.drop(sid);
-    this.others.setDrivers([]);
+    if (this.ownsDrivers) this.others.setDrivers([]);
   }
 
   dispose() {

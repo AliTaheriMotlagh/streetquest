@@ -19,7 +19,7 @@ import type { Frame } from "@/lib/city";
 import { t } from "@/lib/i18n";
 import { aimDir, eyeHeight, rayPlayer, spreadDir, type Ray } from "@/lib/arena/geom";
 import { BOMB_REACH_M, bombSide, MODES, SITE_R, TEAM_COLORS, type LobbyView, type MatchView, type Team } from "@/lib/arena/modes";
-import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT, type ArenaGeo, type ServerMsg } from "@/lib/arena/protocol";
+import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT, G_PASSIVE, type ArenaGeo, type RosterEntry, type ServerMsg } from "@/lib/arena/protocol";
 import { MAX_HP, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
 import { VEHICLE_KEYS, type VehicleKey } from "@/lib/vehicles";
 import type { CollisionWorld } from "../drive/physics";
@@ -28,7 +28,9 @@ import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { beepSound, boomSound, emptySound, hitSound, hurtSound, killSound, reloadSound, shotSound } from "./gunsound";
-import { Remotes, RT_DELAY_MS } from "./remotes";
+import { HTTP_DELAY_MS, Remotes, RT_DELAY_MS } from "./remotes";
+import type { OtherDriver } from "../drive/net";
+import type { ArenaEvent } from "@/server/arena";
 import { RtClient } from "./rt";
 import { Vfx } from "./vfx";
 import { Viewmodel } from "./viewmodel";
@@ -69,6 +71,8 @@ export type CombatHud = {
   hurt: { id: number; angle: number; at: number }[];
   autoFire: boolean;
   carrying: boolean;
+  /** No realtime server: matches are practice with bots; the open city's fights go over HTTP. */
+  local: boolean;
 };
 
 export type CombatHost = {
@@ -94,7 +98,16 @@ export type CombatHost = {
   /** Hop out (park the car where it is and stand at x, z) or back in. */
   setFoot: (on: boolean, at?: { x: number; z: number; yaw: number }) => void;
   toast: (text: string) => void;
+  /** Who I am (the in-browser hub needs it when there's no realtime server). */
+  me: () => { id: string; username: string; avatar: string; level: number } | null;
 };
+
+/** My fight state from the HTTP presence (/api/drive) when there's no realtime server. */
+export type HttpMe = { hp: number; dead: boolean; respawnAt: number; passive: boolean; events: ArenaEvent[] };
+/** Players from the HTTP presence get sids from here up (the in-browser hub's are small). */
+const HTTP_SID = 50_000;
+/** On the HTTP presence (a few reports a second) "just fired" lasts longer, so others see it. */
+const HTTP_FIRE_MS = 350;
 
 const AUTO_FIRE_KEY = "sq_arena_autofire";
 const PRIMARY_KEY = "sq_arena_primary";
@@ -184,6 +197,7 @@ export class Combat {
       snap: (st, list) => this.remotes.snap(st, list.filter((e) => e.sid !== this.rt.sid)),
       msg: (m) => this.onMsg(m),
       status: (on) => {
+        this.remotes.ownsDrivers = !this.rt.local;
         if (!on) {
           this.remotes.clear();
           this.match = null;
@@ -191,6 +205,9 @@ export class Combat {
         }
         this.publish(true);
       },
+    }, () => {
+      const m = h.me();
+      return m && { id: m.id, name: m.username, avatar: m.avatar, level: m.level, friends: [], virtual: h.canDrive() };
     });
     this.fill();
     this.snapshot = this.build();
@@ -220,7 +237,11 @@ export class Combat {
   }
   /** Is the realtime link carrying other players (so the HTTP presence can stand down)? */
   get live() {
-    return this.rt.connected;
+    return this.rt.connected && !this.rt.local;
+  }
+  /** No realtime server: the open city's other players and fights come over HTTP. */
+  get httpMode() {
+    return this.rt.local;
   }
   serverNow() {
     return this.rt.serverNow();
@@ -255,7 +276,8 @@ export class Combat {
       hp: Math.round(this.hp),
       dead: this.dead,
       respawnIn: this.dead && this.respawnAt ? Math.max(0, Math.ceil((this.respawnAt - sNow) / 1000)) : 0,
-      canRespawn: this.dead && !this.inMatch && sNow >= this.respawnAt,
+      // (A moment's margin over HTTP: our clocks differ a little.)
+      canRespawn: this.dead && !this.inMatch && sNow >= this.respawnAt + (this.httpMode ? 600 : 0),
       passive: this.passive,
       inMatch: this.inMatch,
       team: this.team,
@@ -275,6 +297,7 @@ export class Combat {
       hurt: this.hurt.map((x) => ({ ...x, angle: x.angle - (this.me?.yaw ?? 0) })),
       autoFire: this.autoFire,
       carrying: !!m?.bomb && m.bomb.state === "carried" && m.bomb.carrier === this.rt.sid,
+      local: this.rt.local,
     };
   }
 
@@ -353,7 +376,28 @@ export class Combat {
   }
 
   setPassive(on: boolean) {
-    this.rt.send({ t: "passive", on });
+    if (!this.httpMode) return this.rt.send({ t: "passive", on });
+    void this.arenaPost<{ passive: boolean }>({ action: "passive", on }).then((r) => {
+      if (!r) return;
+      this.passive = r.passive;
+      this.passiveSetAt = Date.now();
+      this.publish(true);
+    });
+  }
+
+  /** server/arena.ts, for the open city without a realtime server. Errors are toasted. */
+  private async arenaPost<T>(body: object): Promise<T | null> {
+    try {
+      const res = await fetch("/api/drive/arena", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (data?.error) this.h.toast(data.error);
+        return null;
+      }
+      return data as T;
+    } catch {
+      return null;
+    }
   }
 
   toggleCam() {
@@ -393,7 +437,142 @@ export class Combat {
   respawn() {
     if (!this.dead || this.inMatch || !this.me) return;
     const s = this.h.street(this.me.x, this.me.z) ?? { x: this.me.x, z: this.me.z, yaw: this.me.yaw };
-    this.rt.send({ t: "respawn", x: s.x, y: 0, z: s.z });
+    if (!this.httpMode) return this.rt.send({ t: "respawn", x: s.x, y: 0, z: s.z });
+    void this.arenaPost<{ hp: number }>({ action: "respawn" }).then((r) => {
+      if (!r || !this.me) return;
+      this.dead = false;
+      this.hp = r.hp;
+      this.fill();
+      Object.assign(this.me, { x: s.x, z: s.z, yaw: s.yaw, vx: 0, vz: 0 });
+      this.publish(true);
+    });
+  }
+
+  // ------------------------------------------------------------ the HTTP presence (no realtime server)
+  private httpSids = new Map<string, number>();
+  private httpNext = 0;
+  private httpLast = new Map<number, { x: number; z: number; t: number; fx: number }>();
+  /** Newest hit event already shown (server clock), so a hit is never shown twice; null = not read yet. */
+  private lastEventAt: number | null = null;
+  /** When I last switched passive mode: a report already on its way still carries the old value. */
+  private passiveSetAt = 0;
+
+  /** What my soldier adds to my /api/drive report. */
+  footReport() {
+    const me = this.me;
+    if (!me) return { flags: 0 };
+    const now = performance.now();
+    return {
+      flags: F_FOOT | (me.crouch ? F_CROUCH : 0) | (this.input.aim ? F_AIM : 0) | (me.sprint ? F_SPRINT : 0) | (me.air ? F_AIR : 0) | (now < this.reloadUntil ? F_RELOAD : 0) | (now - this.firedAt < HTTP_FIRE_MS ? F_FIRE : 0),
+      pitch: me.pitch,
+      weapon: WEAPONS[this.weapon].idx,
+    };
+  }
+
+  /**
+   * Another /api/drive answer: players on foot become soldiers (sampled at their report
+   * times, converted to my clock), their shots flash and bang, and my own health and the
+   * hits I took arrive. Only used when there's no realtime server.
+   */
+  fromHttp(list: OtherDriver[], me: HttpMe | null, offset: number) {
+    if (!this.httpMode) return;
+    const H = this.h;
+    const add: RosterEntry[] = [];
+    const seen = new Set<number>();
+    for (const o of list) {
+      if (!(o.flags & F_FOOT)) continue;
+      let sid = this.httpSids.get(o.id);
+      if (!sid) {
+        sid = HTTP_SID + (this.httpNext++ % 15_000);
+        this.httpSids.set(o.id, sid);
+        add.push({ sid, id: o.id, name: o.name, avatar: o.avatar, level: o.level, color: o.color, friend: o.friend, bot: false });
+      }
+      seen.add(sid);
+      const p = H.frame.toXZ(o.lat, o.lng);
+      const t = o.at - offset;
+      // Reports carry no velocity for walkers: take it from the last two positions.
+      const prev = this.httpLast.get(sid);
+      const dt = prev ? (t - prev.t) / 1000 : 0;
+      const vx = prev && dt > 0.05 ? (p.x - prev.x) / dt : 0, vz = prev && dt > 0.05 ? (p.z - prev.z) / dt : 0;
+      let fx = prev?.fx ?? 0;
+      if (o.flags & F_FIRE && t > fx + 150) {
+        fx = t;
+        this.httpShot(sid, p.x, o.alt, p.z, o.yaw, o.pitch, o.weapon);
+      }
+      this.httpLast.set(sid, { x: p.x, z: p.z, t, fx });
+      this.remotes.push({ sid, x: p.x, y: o.alt, z: p.z, yaw: o.yaw, pitch: o.pitch, vx, vz, flags: o.flags, vehicle: 0, weapon: o.weapon, hp: o.hp, flags2: o.passive ? G_PASSIVE : 0, team: 0 }, t, HTTP_DELAY_MS);
+    }
+    const del: number[] = [];
+    for (const [id, sid] of this.httpSids)
+      if (!seen.has(sid)) (del.push(sid), this.httpSids.delete(id), this.httpLast.delete(sid));
+    if (add.length || del.length) this.remotes.roster(add, del);
+
+    if (me && !this.inMatch) {
+      const wasDead = this.dead;
+      if (Date.now() - this.passiveSetAt > 3000) this.passive = me.passive;
+      this.respawnAt = me.respawnAt ? me.respawnAt - offset : 0;
+      // Hits from before I opened the city are old news.
+      this.lastEventAt ??= Math.max(0, ...me.events.map((e) => e.at));
+      this.dead = me.dead;
+      if (!me.dead || !wasDead) this.hp = me.hp;
+      if (wasDead && !me.dead) this.fill();
+      for (const e of me.events) {
+        if (e.at <= this.lastEventAt) continue;
+        this.lastEventAt = e.at;
+        this.hp = e.hp;
+        hurtSound();
+        navigator.vibrate?.(e.kill ? 120 : 25);
+        if (this.me) {
+          const q = H.frame.toXZ(e.lat, e.lng);
+          this.hurt = [...this.hurt.filter((x) => performance.now() - x.at < 1200).slice(-3), { id: ++this.feedId, angle: Math.atan2(-(q.x - this.me.x), -(q.z - this.me.z)), at: performance.now() }];
+        }
+        if (e.kill) {
+          this.dead = true;
+          this.pushFeed(e.name, H.me()?.username ?? "", e.w, e.zone === "head", false, true);
+        }
+      }
+    }
+    this.publish();
+  }
+
+  /** Someone on the HTTP presence fired: flash, tracer along their aim, and the bang. */
+  private httpShot(sid: number, x: number, y: number, z: number, yaw: number, pitch: number, weapon: number) {
+    const W = WEAPONS[WEAPON_BY_IDX[weapon] ?? "rifle"];
+    const from = this.remotes.muzzle(sid, v3) ?? v3.set(x, y + 1.4, z);
+    const d = aimDir(yaw, pitch);
+    const len = Math.min(W.range, 60);
+    this.vfx.flash(from.x, from.y, from.z);
+    this.vfx.tracer(from.x, from.y, from.z, from.x + d.dx * len, from.y + d.dy * len, from.z + d.dz * len);
+    const cam = this.h.camera;
+    cam.getWorldDirection(camFwd);
+    const dx = from.x - cam.position.x, dz = from.z - cam.position.z, dist = Math.hypot(dx, dz) || 1;
+    shotSound(W.sound, dist, (dx * -camFwd.z + dz * camFwd.x) / dist);
+  }
+
+  private pushFeed(killer: string, victim: string, w: string, head: boolean, mine: boolean, me: boolean) {
+    this.feed = [...this.feed.filter((f) => Date.now() - f.at < FEED_MS).slice(-4), { id: ++this.feedId, killer, victim, w, head, mine, me, kc: "#ffffff", vc: "#ffffff", at: Date.now() }];
+  }
+
+  /** My bullet hit someone on the HTTP presence: tell the game server, show what it says. */
+  private httpHit(sid: number, zone: "head" | "body" | "legs", pellets: number) {
+    const target = this.remotes.info(sid)?.id;
+    if (!target) return;
+    void this.arenaPost<{ ok: boolean; kill?: boolean; victim?: string }>({ action: "hit", target, weapon: this.weapon, zone, pellets }).then((r) => {
+      if (!r?.ok) return;
+      hitSound(zone === "head");
+      if (r.kill) {
+        killSound();
+        this.pushFeed(this.h.me()?.username ?? "", r.victim ?? "", this.weapon, zone === "head", true, false);
+        this.h.toast(t("You took down {name}", { name: r.victim ?? "" }));
+      }
+      const el = this.hitEl;
+      if (el) {
+        el.classList.remove("on", "kill", "head");
+        void el.offsetWidth;
+        el.classList.add("on", ...(r.kill ? ["kill"] : []), ...(zone === "head" ? ["head"] : []));
+      }
+      this.publish(true);
+    });
   }
 
   // matches
@@ -442,10 +621,14 @@ export class Combat {
       case "you": {
         const wasDead = this.dead;
         const loadoutChanged = m.loadout.join() !== this.loadout.join();
-        this.hp = m.hp;
-        this.dead = m.dead;
-        this.respawnAt = m.respawnAt;
-        this.passive = m.passive;
+        // In the open city without a realtime server, health and passive mode live on the
+        // game server (fromHttp); the in-browser hub only runs matches.
+        if (!(this.httpMode && m.space === "world")) {
+          this.hp = m.hp;
+          this.dead = m.dead;
+          this.respawnAt = m.respawnAt;
+          this.passive = m.passive;
+        } else if (wasDead && this.space !== "world") (this.dead = false), (this.hp = MAX_HP);
         this.team = m.team;
         this.space = m.space;
         if (loadoutChanged) {
@@ -857,6 +1040,7 @@ export class Combat {
     (dx /= l), (dy /= l), (dz /= l);
     const spread = this.spread(me, speed);
     const dirs: [number, number, number][] = [];
+    const httpHits = new Map<number, { zone: "head" | "body" | "legs"; n: number }>();
     // Where the bullet visibly leaves: the third-person gun, or just below-right of the eye.
     const muzzle = this.avatar && this.cam === "tps" ? this.avatar.muzzle(v3) : v3.set(ox + rx * 0.12 + dx * 0.6, oy - 0.12 + dy * 0.6, oz + rz * 0.12 + dz * 0.6);
     for (let i = 0; i < W.pellets; i++) {
@@ -865,10 +1049,17 @@ export class Combat {
       const ray: Ray = { ox, oy, oz, dx: d.dx, dy: d.dy, dz: d.dz };
       let tt = H.collision.raycast(ray, W.range);
       let body = false;
+      let who: { sid: number; zone: "head" | "body" | "legs" } | null = null;
       for (const tg of this.remotes.targets()) {
         if (!tg.foot || !this.hostile(tg)) continue;
         const hit = rayPlayer(ray, tg.x, tg.y, tg.z, tg.crouch);
-        if (hit && hit.t < tt) (tt = hit.t), (body = true);
+        if (hit && hit.t < tt) (tt = hit.t), (body = true), (who = { sid: tg.sid, zone: hit.zone });
+      }
+      // Players on the HTTP presence: my client is the one that saw the hit, so it reports it.
+      if (who && who.sid >= HTTP_SID) {
+        const cur = httpHits.get(who.sid);
+        const rank = { legs: 0, body: 1, head: 2 };
+        httpHits.set(who.sid, { zone: !cur || rank[who.zone] > rank[cur.zone] ? who.zone : cur.zone, n: (cur?.n ?? 0) + 1 });
       }
       const end = Number.isFinite(tt) ? tt : W.range;
       const ex = ox + d.dx * end, ey = oy + d.dy * end, ez = oz + d.dz * end;
@@ -876,6 +1067,7 @@ export class Combat {
       if (Number.isFinite(tt)) this.vfx.impact(ex, ey, ez, body ? "body" : ey < 0.1 ? "ground" : "wall");
     }
     this.vfx.flash(muzzle.x, muzzle.y, muzzle.z, W.key === "shotgun" || W.key === "sniper");
+    if (!this.inMatch) for (const [sid, h] of httpHits) this.httpHit(sid, h.zone, h.n);
     this.rt.send({ t: "fire", w: W.key, at: sNow - RT_DELAY_MS, o: [ox, oy, oz], d: dirs });
     this.ammo.set(W.key, (this.ammo.get(W.key) ?? 1) - 1);
     this.nextShot = now + shotGap(W) * 1000;

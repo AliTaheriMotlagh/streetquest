@@ -68,6 +68,8 @@ export type Me = {
   /** The cash-out wallet, and toman already asked for in a pending cash-out. */
   toman: number;
   cashoutPending: number;
+  /** Money levels bought (S.moneyTiers). */
+  moneyTier: number;
   timezone: string;
   level: number;
   levelPct: number;

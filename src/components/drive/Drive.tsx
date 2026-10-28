@@ -50,7 +50,7 @@ import { CombatHud, useCombat } from "../arena/CombatHud";
 import { CombatPad } from "../arena/CombatPad";
 import { ArenaMenu } from "../arena/ArenaMenu";
 import { RT_DELAY_MS } from "../arena/remotes";
-import type { ArenaGeo } from "@/lib/arena/protocol";
+import { F_FOOT, type ArenaGeo } from "@/lib/arena/protocol";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
 import {
   makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, setNight, tileMeshes,
@@ -843,13 +843,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (combat.inMatch) return null;
         const here = frame.toLatLng(st.x, st.z);
         if (!L.canDrive) return { here: L.follow ?? here, alt: 0, yaw: st.yaw, speed: 0, vehicle: L.vehicle, color: L.paint };
-        return { lat: here.lat, lng: here.lng, alt: st.alt, yaw: st.yaw, speed: st.speed, vehicle: L.vehicle, color: L.paint, sim: L.sim };
+        // On foot, others see my soldier (and, without a realtime server, fight me) through this.
+        return { lat: here.lat, lng: here.lng, alt: st.alt, yaw: st.yaw, speed: st.speed, vehicle: L.vehicle, color: L.paint, sim: L.sim, ...combat.footReport() };
       },
       (s: NetState) => {
         if (disposed) return;
         serverOffset = s.offset;
-        // The realtime link (when up) draws everyone at 20 Hz; this is the fallback.
-        if (!combat.live) others.setDrivers(s.others);
+        // The realtime link (when up) draws everyone at 20 Hz; this is the fallback: cars
+        // here, players on foot as soldiers (combat), with my health and the hits I took.
+        if (!combat.live) others.setDrivers(s.others.filter((o) => !(o.flags & F_FOOT)));
+        combat.fromHttp(s.others, s.me, s.offset);
         const forced = s.vehicle !== live.current.vehicle ? s.vehicle : null;
         if (forced !== serverVehicle) {
           serverVehicle = forced;
@@ -858,6 +861,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         syncRound(s.party);
         setParty(s.party);
       },
+      undefined,
+      () => combat.onFoot,
     );
     net.start();
 
@@ -886,6 +891,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         }
       },
       toast: (text) => live.current.toast({ title: text }),
+      me: () => live.current.me,
     });
     setCombat(combat);
     /** Streets and buildings within r m of me, rounded to 10 cm: the map a new arena is played on. */

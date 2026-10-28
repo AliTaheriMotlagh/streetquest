@@ -18,6 +18,7 @@ import { t } from "@/lib/i18n";
 import { missionsAround } from "@/server/places";
 import { bizAround } from "@/server/business";
 import { moneyFor } from "@/server/money";
+import { tierAmount } from "@/lib/money";
 import { placeToman } from "@/lib/places";
 
 export const GET = route(async (req) => {
@@ -81,14 +82,15 @@ export const GET = route(async (req) => {
   const claimedOsm = new Set(businesses.map((b) => b.osmId).filter(Boolean));
   const openBiz = businesses.filter((b) => b.mine || b.campaigns.some((c) => !c.visited));
   const places = real.missions.filter((m) => !claimedOsm.has(m.place.id) && !placeDone.has(m.id)).map((m) => ({ ...m, done: false, toman: placeToman(m.kind, u.remotePlay) }));
-  type Item = { kind: "money" | "place" | "biz"; id: string; at: LatLng };
-  const dist = (p: LatLng) => distanceM(here, p);
+  type Item = { kind: "money" | "place" | "biz"; id: string; at: LatLng; worth?: number };
+  // Bigger money is worth walking further for: 4× the toman counts as half the distance.
+  const dist = (x: Item) => distanceM(here, x.at) / Math.sqrt(Math.max(1, x.worth ?? 1));
   const first: Item[] = [...money.priority.map((m) => ({ kind: "money" as const, id: m.id, at: m })), ...openBiz.filter((b) => b.featured || b.mine).map((b) => ({ kind: "biz" as const, id: b.id, at: b }))];
   const rest: Item[] = [
-    ...money.rest.map((m) => ({ kind: "money" as const, id: m.id, at: m })),
+    ...money.rest.map((m) => ({ kind: "money" as const, id: m.id, at: m, worth: tierAmount(m.tier) / Math.max(1, S.moneyGps) })),
     ...places.map((m) => ({ kind: "place" as const, id: m.id, at: m.place })),
     ...openBiz.filter((b) => !b.featured && !b.mine).map((b) => ({ kind: "biz" as const, id: b.id, at: b })),
-  ].sort((a, b) => dist(a.at) - dist(b.at));
+  ].sort((a, b) => dist(a) - dist(b));
   const shown = [...first, ...rest].slice(0, Math.max(1, Math.round(S.mapMaxItems)));
   const pick = (kind: Item["kind"]) => new Set(shown.filter((x) => x.kind === kind).map((x) => x.id));
   const [moneyIds, placeIds, bizIds] = [pick("money"), pick("place"), pick("biz")];

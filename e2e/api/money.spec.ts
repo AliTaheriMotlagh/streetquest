@@ -1,9 +1,11 @@
 // Money on the map (toman): picking it up, what each way of playing pays, the map's
 // item cap, admin drops on a spot or along a street, and cash-outs.
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
 import { adminPlayer, expectOk, offset, Player, randomSpot, type LatLng } from "../helpers";
+import { E2E_DB } from "../../playwright.config";
 
-type Money = LatLng & { id: string; amount: number; drop: { label: string; sponsor: string | null } | null };
+type Money = LatLng & { id: string; amount: number; tier: number; drop: { label: string; sponsor: string | null } | null };
 type World = { money: Money[]; places: unknown[]; businesses: unknown[] };
 const world = (p: Player, at: LatLng) => p.get<World>(`/api/world?lat=${at.lat}&lng=${at.lng}`).then((r) => r.data);
 /** A real GPS report (not test mode), so pickups pay real toman. */
@@ -70,6 +72,37 @@ test.describe("money on the map", () => {
     expect((await p.post("/api/money", { id: "garbage" })).status).toBe(410);
     expect((await p.post("/api/money", { id: "$d:does-not-exist" })).status).toBe(410);
     await p.dispose();
+  });
+});
+
+test.describe("money levels", () => {
+  test("bigger money shows only once its level is bought from the wallet, in order", async ({ baseURL }) => {
+    const db = new PrismaClient({ datasourceUrl: E2E_DB });
+    const [p, other] = await Promise.all([Player.create(baseURL!), Player.create(baseURL!)]);
+    const here = randomSpot();
+    // A fresh player sees only the free 10,000 toman money and can't buy without toman.
+    expect((await world(p, here)).money.every((m) => m.tier === 0 && m.amount === 10_000)).toBe(true);
+    expect((await p.post("/api/money/tier")).status).toBe(400);
+
+    const me = await p.me();
+    await db.user.update({ where: { id: me.id }, data: { toman: 100_000 } });
+    const both = await Promise.all([p.post("/api/money/tier"), p.post("/api/money/tier")]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 400]);
+    const after = await p.me();
+    expect(after.toman).toBe(0);
+    expect((after as unknown as { moneyTier: number }).moneyTier).toBe(1);
+    // The next level costs more than what's left.
+    expect((await p.post("/api/money/tier")).status).toBe(400);
+
+    const big = (await world(p, here)).money.filter((m) => m.tier === 1);
+    expect(big.length).toBeGreaterThan(0);
+    expect(big.every((m) => m.amount === 20_000)).toBe(true);
+    // Someone without the level can't pick it up, even standing on it.
+    expectOk(await gps(other, big[0]));
+    expect((await other.post("/api/money", { id: big[0].id })).status).toBe(403);
+    expectOk(await gps(p, big[0]));
+    expect(expectOk(await p.post<{ toman: number }>("/api/money", { id: big[0].id })).data.toman).toBe(20_000);
+    await Promise.all([p.dispose(), other.dispose(), db.$disconnect()]);
   });
 });
 
