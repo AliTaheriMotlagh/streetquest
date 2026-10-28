@@ -64,6 +64,16 @@ export function decodePolyline(s: string, precision = 5): LatLng[] {
   return out;
 }
 
+/**
+ * Traffic lights: every junction runs the same 40 s cycle on the clock, north–south
+ * streets first, then east–west, so every player sees the same lights.
+ * 0 green · 1 amber · 2 red.
+ */
+export function signalPhase(sec: number, ns: boolean) {
+  const u = (((sec - (ns ? 0 : 20)) % 40) + 40) % 40;
+  return u < 17 ? 0 : u < 20 ? 1 : 2;
+}
+
 /** Usual city speed on a free road (km/h), by road kind. */
 export const FREE_KMH = { major: 55, minor: 32, path: 18 } as const;
 

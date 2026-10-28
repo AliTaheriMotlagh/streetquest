@@ -4,11 +4,12 @@
 //  - the minimap's street colours (green flowing … dark red standstill);
 //  - TrafficCars: cars driving the real streets, on the right, at the live speed of the
 //    street they're on (the usual city speed where there's no reading), more of them
-//    where it's jammed. They follow each other, brake for you and are solid.
+//    where it's jammed. They follow each other, stop at red lights, brake for you and
+//    are solid.
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
-import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, trafficCell, type TrafficCellOut } from "@/lib/traffic";
+import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, signalPhase, trafficCell, type TrafficCellOut } from "@/lib/traffic";
 import { api } from "../game/client";
 import { box, type Footprint } from "./tileMesh";
 import { makeVehicle, type VehicleModel } from "./vehicles3d";
@@ -122,6 +123,8 @@ export class TrafficCars {
   private roads: Road[] = [];
   /** Line ends, for turning onto the next street: grid cell → [road, which end]. */
   private ends = new Map<string, { road: Road; end: 0 | 1 }[]>();
+  /** Traffic lights by 16 m grid cell. */
+  private lights = new Map<string, { x: number; z: number; ns: boolean }[]>();
   private known = new WeakSet<TileMeshes>();
   private meshCount = -1;
   private rand = Math.random;
@@ -136,6 +139,14 @@ export class TrafficCars {
     this.known = new WeakSet(meshes);
     this.roads = [];
     this.ends.clear();
+    this.lights.clear();
+    for (const m of meshes)
+      for (const l of m.signals) {
+        const key = `${Math.floor(l.x / 16)}_${Math.floor(l.z / 16)}`;
+        const list = this.lights.get(key);
+        if (list) list.push(l);
+        else this.lights.set(key, [l]);
+      }
     for (const m of meshes)
       m.roads.forEach((line, i) => {
         const k = m.roadKinds[i];
@@ -233,7 +244,17 @@ export class TrafficCars {
         const dx = px - c.x, dz = pz - c.z, ahead = dx * fx + dz * fz, side = Math.abs(dx * -fz + dz * fx);
         if (ahead > 0 && ahead < 25 && side < 2.6) gap = Math.min(gap, ahead);
       }
-      if (gap < 25) want = Math.min(want, Math.max(0, (gap - 7) * 0.8));
+      // A red (or amber, unless already at the line) light on this street, just ahead.
+      const ns = Math.abs(fz) > Math.abs(fx), sec = Date.now() / 1000;
+      for (let i = -1; i <= 1; i++)
+        for (let j = -1; j <= 1; j++)
+          for (const l of this.lights.get(`${Math.floor((c.x + fx * 12) / 16) + i}_${Math.floor((c.z + fz * 12) / 16) + j}`) ?? []) {
+            if (l.ns !== ns) continue;
+            const dx = l.x - c.x, dz = l.z - c.z, ahead = dx * fx + dz * fz, side = Math.abs(dx * -fz + dz * fx);
+            const ph = signalPhase(sec, ns);
+            if (ahead > 2 && ahead < 26 && side < c.road.w / 2 + 6 && (ph === 2 || (ph === 1 && ahead > 6))) gap = Math.min(gap, ahead + 4);
+          }
+      if (gap < 30) want = Math.min(want, Math.max(0, (gap - 7) * 0.8));
       c.v += Math.max(-9 * dt, Math.min(3 * dt, want - c.v));
       c.along += c.v * dt;
       // On to the next segment, or the next street at the end of this one.

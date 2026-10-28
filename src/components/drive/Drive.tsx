@@ -43,6 +43,8 @@ import { StorePins, type Pin } from "./pins";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
+import { signalPhase } from "@/lib/traffic";
+import { Skyline } from "./skyline";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
 import { NAME_MODES, type NameMode } from "./vectorTile";
@@ -54,7 +56,7 @@ import { RT_DELAY_MS } from "../arena/remotes";
 import { F_FOOT, type ArenaGeo } from "@/lib/arena/protocol";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
 import {
-  makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, setNight, tileMeshes,
+  makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, paintSignals, setNight, tileMeshes,
   type Board, type Phase, type TileMeshes,
 } from "./world3d";
 
@@ -260,6 +262,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(62, el.clientWidth / el.clientHeight, 0.5, 2400);
     const sky = makeSkySystem(renderer, scene, style);
+    // The real mountains on the horizon, from elevation data.
+    const skyline = new Skyline(frame, () => (scene.fog as THREE.Fog | null)?.color ?? new THREE.Color("#c3d2df"), lite);
+    scene.add(skyline.group);
     const hemi = new THREE.HemisphereLight("#ffffff", "#88aa77", 1);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight("#ffffff", 2);
@@ -521,7 +526,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const feed = new TrafficFeed();
     const traffic = new TrafficCars(scene, frame, feed, style, lite);
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
-    let trafficSync = 0;
+    let trafficSync = 0, lightsAt = 0;
     const markers = new Markers(scene, frame, lite ? 30 : 60);
 
     const jobsFrom = (w: World | null): Job[] => {
@@ -1329,6 +1334,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         traffic.sync([...tiles.values()].flatMap((s) => (s.mesh?.real ? [s.mesh] : [])));
       }
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z));
+      if (now - lightsAt > 500) {
+        lightsAt = now;
+        const sec = Date.now() / 1000;
+        for (const s of tiles.values()) if (s.mesh && s.dist < 400) paintSignals(s.mesh, (ns) => signalPhase(sec, ns));
+      }
 
       // -- nav arrow: the party round, then a chosen destination, then the delivery
       const rg = roundGoal();
@@ -1558,12 +1568,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         }
       }
 
+      skyline.update(camera, st.x, st.z);
       renderer.render(scene, camera);
       combat.renderOverlay();
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, skyline, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1585,6 +1596,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       vsource.dispose();
       details.dispose();
       traffic.dispose();
+      skyline.dispose();
       pool.dispose();
       vtPool.dispose();
       window.removeEventListener("keydown", keyDown);

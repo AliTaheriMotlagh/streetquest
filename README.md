@@ -250,6 +250,11 @@ Don't run the demo seed in production.
 - **Live traffic:** comes from players' real GPS (shown only where 2+ players drove in the last 15 min) and, with
   `NESHAN_API_KEY`, from Neshan's live routing where players are looking. The key needs the **Direction** service
   enabled in the Neshan panel — `/api/traffic` reports `"neshan": "no-access"` until it is.
+  AI cars drive the real streets at those speeds and stop at the traffic lights, which run one 40 s cycle on the
+  clock (north–south first) so every player sees the same lights.
+- **Mountain skyline:** `/api/dem` proxies Terrarium elevation tiles (AWS open terrain data, cached for a month;
+  `DEM_TILE_URL` to use another source) for the real mountains on the horizon — Alborz, Tochal and Damavand from
+  Tehran. The streets themselves are still flat.
 - `/api/health` must say `"ok": true`.
 - Set `CRON_SECRET` on Vercel — `vercel.json` schedules `/api/cron/cleanup` daily (prunes old notifications,
   lobbies, pings, waves, matches and superweapon launches; refunds expired bounties).

@@ -1,4 +1,4 @@
-// Live traffic from players' GPS, and the 3D city's street detail (city packs).
+// Live traffic from players' GPS, and the 3D city's map data (city packs, elevation).
 import { expect, test } from "@playwright/test";
 import { offset, Player, randomSpot } from "../helpers";
 
@@ -50,5 +50,9 @@ test.describe("city packs", () => {
     expect(r.status()).toBe(200);
     expect(Object.keys((await r.json()).cells).sort()).toEqual(["1_1", "2_2"]);
     expect((await request.get("/api/city/detail?keys=nope")).status()).toBe(400);
+  });
+
+  test("elevation tiles for the skyline: only coarse zooms inside the world", async ({ request }) => {
+    for (const path of ["/api/dem/14/1/1", "/api/dem/6/1/1", "/api/dem/9/512/1", "/api/dem/9/-1/1", "/api/dem/9/1/x"]) expect((await request.get(path)).status(), path).toBe(400);
   });
 });

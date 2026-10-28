@@ -247,12 +247,15 @@ function gradientSky() {
  */
 export function makeSkySystem(renderer: THREE.WebGLRenderer, scene: THREE.Scene, style: Style) {
   const grad = gradientSky();
+  // The sky first, then the mountain skyline (renderOrder −1, skyline.ts), then the city.
+  grad.mesh.renderOrder = -2;
   scene.add(grad.mesh);
   let atmo: Sky | null = null;
   if (style === "real") {
     atmo = new Sky();
     atmo.scale.setScalar(1800);
     atmo.frustumCulled = false;
+    atmo.renderOrder = -2;
     const u = atmo.material.uniforms;
     u.turbidity.value = 6;
     u.rayleigh.value = 1.4;
@@ -373,14 +376,13 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(0.42, 0.14, 0.62), 0, 6.5, 1.6), metal),
   ])!;
   const lampHead = paint(at(new THREE.BoxGeometry(0.34, 0.05, 0.52), 0, 6.41, 1.6), "#ffffff");
-  // Traffic light: a pole and a three-lamp head facing the road (+z).
+  // Traffic light: a pole and a head facing the road (+z); its three lamps are separate
+  // (white, tinted per light by paintSignals) so they can show the phase.
   const signal = mergeGeometries([
     paint(at(new THREE.CylinderGeometry(0.08, 0.1, 3.6, 6), 0, 1.8, 0), "#3a3d42"),
     paint(at(new THREE.BoxGeometry(0.36, 1.05, 0.3), 0, 3.95, 0), "#25272b"),
-    paint(at(new THREE.BoxGeometry(0.2, 0.2, 0.05), 0, 4.28, 0.17), "#ff3b30"),
-    paint(at(new THREE.BoxGeometry(0.2, 0.2, 0.05), 0, 3.95, 0.17), "#ffb020"),
-    paint(at(new THREE.BoxGeometry(0.2, 0.2, 0.05), 0, 3.62, 0.17), "#34d058"),
   ])!;
+  const signalLamps = [4.28, 3.95, 3.62].map((y) => paint(at(new THREE.BoxGeometry(0.2, 0.2, 0.05), 0, y, 0.17), "#ffffff"));
   // Bus shelter: open toward the road (−z), back panel and roof.
   const bus = mergeGeometries([
     paint(at(new THREE.BoxGeometry(3.2, 0.1, 1.5), 0, 2.45, 0), real ? "#5d636b" : "#ff7a59"),
@@ -412,7 +414,7 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(0.55, 1.0, 0.45), 0, 0.5, 0), real ? "#b9bec4" : "#7fc8ff"),
     paint(at(new THREE.CylinderGeometry(0.2, 0.14, 0.12, 10), 0, 1.06, 0.05), "#d9dde1"),
   ])!;
-  const all = { tree, lamp, lampHead, signal, bus, bench, bin, hydrant, fountain };
+  const all = { tree, lamp, lampHead, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain };
   return { ...all, dispose: () => Object.values(all).forEach((g) => g.dispose()) };
 }
 
@@ -429,9 +431,29 @@ export type TileMeshes = {
   roadNames: (string | null)[];
   roadDrawn: boolean[];
   labels: Label[];
+  /** Where the traffic lights stand, and whether their street runs north–south (cars in traffic.ts stop at them). */
+  signals: { x: number; z: number; ns: boolean }[];
+  /** The lights' red, amber and green lamps (paintSignals colours them). */
+  lamps: THREE.InstancedMesh[];
   real: boolean;
   dispose: () => void;
 };
+
+const SIGNAL_MAT = new THREE.MeshBasicMaterial({ color: "#ffffff" });
+const LIT = [new THREE.Color("#ff3b30"), new THREE.Color("#ffb020"), new THREE.Color("#34d058")];
+const DIM = LIT.map((c) => c.clone().multiplyScalar(0.18));
+
+/** Show each traffic light's phase (lib/traffic.ts signalPhase) on its lamps. */
+export function paintSignals(m: TileMeshes, phase: (ns: boolean) => number) {
+  if (!m.lamps.length) return;
+  const ph = m.signals.map((s) => phase(s.ns));
+  m.lamps.forEach((mesh, li) => {
+    const lamp = li % 3; // red, amber, green
+    const cols = mesh.instanceColor!;
+    for (let i = 0; i < ph.length; i++) (lamp === 2 - ph[i] ? LIT[lamp] : DIM[lamp]).toArray(cols.array, i * 3);
+    cols.needsUpdate = true;
+  });
+}
 
 export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts: { shadows: boolean }): TileMeshes {
   const group = new THREE.Group();
@@ -471,9 +493,17 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree");
     if (p.kind === "lamp") inst(tpl.lampHead, mats.glow, { mats: p.mats, cols: null }, false);
   }
+  const lamps: THREE.InstancedMesh[] = [];
+  for (const p of a.props)
+    if (p.kind === "signal") for (const g of [tpl.signalRed, tpl.signalAmber, tpl.signalGreen]) (inst(g, SIGNAL_MAT, { mats: p.mats, cols: new Float32Array((p.mats.length / 16) * 3) }, false), lamps.push(insts[insts.length - 1]));
+  // A light faces across its street (+z of the head): facing east or west means the street runs north–south.
+  const signals: { x: number; z: number; ns: boolean }[] = [];
+  for (const p of a.props) if (p.kind === "signal") for (let i = 0; i < p.mats.length; i += 16) signals.push({ x: p.mats[i + 12], z: p.mats[i + 14], ns: Math.abs(p.mats[i + 8]) > Math.abs(p.mats[i + 10]) });
   return {
     group,
     detail,
+    signals,
+    lamps,
     footprints: a.footprints,
     obstacles: a.obstacles,
     roads: a.roads,

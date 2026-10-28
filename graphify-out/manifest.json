@@ -732,9 +732,9 @@
     "semantic_hash": "e54230e23d168ec9168457736b2b44c7"
   },
   "README.md": {
-    "mtime": 1793219643.9145124,
-    "seen": 1793219808.286647,
-    "ast_hash": "128fbfeeb5e9abc51529e2fba50d5c3a",
+    "mtime": 1793221020.5326848,
+    "seen": 1793221024.753412,
+    "ast_hash": "948757ef937359736e141c8899874278",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -1116,9 +1116,9 @@
     "semantic_hash": "78bf452e1ac37b1eeb14e71ed9da6a57"
   },
   "src/components/drive/Drive.tsx": {
-    "mtime": 1793219364.1996422,
-    "seen": 1793219808.286509,
-    "ast_hash": "4d3bad2b16acff79cd3bc9892e7b0db3",
+    "mtime": 1793220375.5910282,
+    "seen": 1793221024.753272,
+    "ast_hash": "e830718721cee5f89242342dee75ebb6",
     "semantic_hash": ""
   },
   "src/components/drive/DriveGarage.tsx": {
@@ -1236,9 +1236,9 @@
     "semantic_hash": "ee086ea6b56d06e854bba5b4812fe9ca"
   },
   "src/components/drive/world3d.ts": {
-    "mtime": 1793217889.8375387,
-    "seen": 1793219808.286527,
-    "ast_hash": "dc98d667e753e8abbf0e62cbd242345f",
+    "mtime": 1793220261.7440407,
+    "seen": 1793221024.753292,
+    "ast_hash": "9440d218b9aa2a162f86a8540d00de68",
     "semantic_hash": ""
   },
   "src/components/game/Business.tsx": {
@@ -1854,9 +1854,9 @@
     "semantic_hash": ""
   },
   "e2e/api/traffic.spec.ts": {
-    "mtime": 1793219664.2296531,
-    "seen": 1793219808.286376,
-    "ast_hash": "efca1495aec45312edd314f97067d1eb",
+    "mtime": 1793220838.9212112,
+    "seen": 1793221024.753133,
+    "ast_hash": "7832d29b6f13416a7ea83acdf720c577",
     "semantic_hash": ""
   },
   "scripts/city-pack.ts": {
@@ -1884,9 +1884,9 @@
     "semantic_hash": ""
   },
   "src/components/drive/traffic.ts": {
-    "mtime": 1793218225.44436,
-    "seen": 1793219808.286525,
-    "ast_hash": "bf03a2184387597a267ceda11414fb86",
+    "mtime": 1793220123.5591977,
+    "seen": 1793221024.753289,
+    "ast_hash": "0146482a84ce77a2a5bec069845bcd71",
     "semantic_hash": ""
   },
   "src/lib/cityPack.ts": {
@@ -1896,15 +1896,27 @@
     "semantic_hash": ""
   },
   "src/lib/traffic.ts": {
-    "mtime": 1793218050.2907822,
-    "seen": 1793219808.28661,
-    "ast_hash": "7311c9b02b64d59cd818d165cc017188",
+    "mtime": 1793220107.972213,
+    "seen": 1793221024.7533739,
+    "ast_hash": "05a79e65bcb0b0bbcab4d491157e2bcd",
     "semantic_hash": ""
   },
   "src/server/traffic.ts": {
     "mtime": 1793218101.0708904,
     "seen": 1793219808.286643,
     "ast_hash": "c31bfd467654bbf6e4533e38fef31c65",
+    "semantic_hash": ""
+  },
+  "src/app/api/dem/[z]/[x]/[y]/route.ts": {
+    "mtime": 1793220208.6021972,
+    "seen": 1793221024.7531798,
+    "ast_hash": "c98a87d0069d9baf44cfd10ac44ecfdc",
+    "semantic_hash": ""
+  },
+  "src/components/drive/skyline.ts": {
+    "mtime": 1793220588.7400186,
+    "seen": 1793221024.7532852,
+    "ast_hash": "a6e4c302ad7e1b5ff7a9a279874a3254",
     "semantic_hash": ""
   }
 }
