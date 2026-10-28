@@ -7,7 +7,7 @@
 //    whose vector tile can't be reached.
 //  - BuildPool: turns cells into geometry on Web Workers, so the main thread only
 //    uploads finished arrays. Falls back to building inline when workers aren't there.
-import { TILE_V, type CityTile } from "@/lib/city";
+import { TILE_V, type CityDetail, type CityTile } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { api } from "../game/client";
 import { buildTileArrays, type Cut, type Style, type TileArrays } from "./tileMesh";
@@ -93,6 +93,67 @@ const remember = (t: CityTile) => {
 // ---------------------------------------------------------------- TileSource
 type Want = { key: string; tries: number; retryAt: number; inflight: boolean; done: boolean; stale: boolean };
 type Reply = { tiles: Record<string, { tile: CityTile | null; pending: boolean }> };
+
+/**
+ * City-pack street detail (lib/cityPack.ts) for the cells around us, asked for in
+ * batches. `onDetail` hears about each cell that has some; `get` is null for cells
+ * without (or not yet in).
+ */
+export class DetailSource {
+  private state = new Map<string, CityDetail | null | "loading">();
+  private batch = new Set<string>();
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
+
+  constructor(private onDetail: (key: string, d: CityDetail) => void) {}
+
+  get(key: string) {
+    const s = this.state.get(key);
+    return s && s !== "loading" ? s : null;
+  }
+
+  want(keys: string[]) {
+    for (const k of keys) {
+      if (this.state.has(k)) continue;
+      this.state.set(k, "loading");
+      this.batch.add(k);
+    }
+    if (this.batch.size) this.timer ??= setTimeout(() => this.flush(), 30);
+  }
+
+  forget(key: string) {
+    this.state.delete(key);
+    this.batch.delete(key);
+  }
+
+  dispose() {
+    this.disposed = true;
+    if (this.timer) clearTimeout(this.timer);
+  }
+
+  private flush() {
+    this.timer = null;
+    const keys = [...this.batch].slice(0, 25);
+    keys.forEach((k) => this.batch.delete(k));
+    if (this.batch.size) this.timer = setTimeout(() => this.flush(), 30);
+    // Public and cached at the edge: a plain fetch, so the browser's cache helps too.
+    fetch(`/api/city/detail?keys=${keys.join(",")}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((r: { cells?: Record<string, CityDetail | null> }) => {
+        if (this.disposed) return;
+        for (const k of keys) {
+          if (this.state.get(k) !== "loading") continue; // forgotten meanwhile
+          const d = r.cells?.[k] ?? null;
+          this.state.set(k, d);
+          if (d) this.onDetail(k, d);
+        }
+      })
+      .catch(() => {
+        // Asked again next time the cell is wanted.
+        for (const k of keys) if (this.state.get(k) === "loading") this.state.delete(k);
+      });
+  }
+}
 
 export class TileSource {
   private wants = new Map<string, Want>();

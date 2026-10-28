@@ -1157,6 +1157,52 @@ model CityTile {
   createdAt DateTime  @default(now())
 }
 
+// A whole city's street detail, built in one go by scripts/city-pack.ts (lib/cityPack.ts):
+// every mapped tree, lamp, traffic light, crossing, bench and sports pitch, cut into the
+// same cells as CityTile. The 3D city lays it over the street-map tiles.
+model CityPack {
+  slug    String    @id // "tehran"
+  name    String
+  south   Float
+  west    Float
+  north   Float
+  east    Float
+  cells   Int       @default(0)
+  objects Int       @default(0)
+  pitches Int       @default(0)
+  builtAt DateTime?
+  status  String    @default("new") // new | building | ready | failed
+  note    String?
+}
+
+model CityDetail {
+  key       String   @id // "<cx>_<cy>"
+  city      String
+  data      Json // CityDetail (lib/city.ts): { o, f }
+  updatedAt DateTime @updatedAt
+
+  @@index([city])
+}
+
+// Live traffic (server/traffic.ts): the average speed on ~50 m of road in one direction,
+// from players' real GPS while they move and from Neshan's live routing. Cells heard from
+// by fewer than two players are never shown (nobody's trip can be traced).
+model TrafficCell {
+  key       String   @id // lib/traffic.ts trafficKey
+  lat       Float
+  lng       Float
+  dir       Int // heading, 0–7 (45° steps from north, clockwise)
+  kmh       Float
+  samples   Int      @default(0)
+  users     Int      @default(0)
+  lastUser  String?
+  src       String // "gps" | "neshan"
+  updatedAt DateTime @updatedAt
+
+  @@index([lat, lng])
+  @@index([updatedAt])
+}
+
 // ---------------------------------------------------------------- Businesses
 // A real store, restaurant or café on the map, run by its owner. Businesses pay for a
 // plan (lib/business.ts) and post campaigns: missions players complete at the store

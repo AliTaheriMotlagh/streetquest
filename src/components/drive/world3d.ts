@@ -390,7 +390,29 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(2.2, 0.08, 0.45), 0, 0.5, 0.4), "#7a5a3a"),
     paint(at(new THREE.BoxGeometry(0.5, 0.5, 0.06), 1.1, 2.75, -0.7), "#2e7dd1"),
   ])!;
-  const all = { tree, lamp, lampHead, signal, bus };
+  // Park bench, seat facing the road (+z).
+  const wood = real ? "#8a6a48" : "#c98a52";
+  const bench = mergeGeometries([
+    paint(at(new THREE.BoxGeometry(1.7, 0.06, 0.42), 0, 0.45, 0), wood),
+    paint(at(new THREE.BoxGeometry(1.7, 0.36, 0.05), 0, 0.72, -0.2), wood),
+    paint(at(new THREE.BoxGeometry(0.06, 0.45, 0.4), -0.75, 0.22, 0), metal),
+    paint(at(new THREE.BoxGeometry(0.06, 0.45, 0.4), 0.75, 0.22, 0), metal),
+  ])!;
+  const bin = mergeGeometries([
+    paint(at(new THREE.CylinderGeometry(0.24, 0.2, 0.75, 8), 0, 0.42, 0), real ? "#3f6b4a" : "#42b883"),
+    paint(at(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 6), 0, 0.04, 0), metal),
+  ])!;
+  const hydrant = mergeGeometries([
+    paint(at(new THREE.CylinderGeometry(0.13, 0.15, 0.62, 8), 0, 0.31, 0), "#d33a2c"),
+    paint(at(new THREE.SphereGeometry(0.13, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), 0, 0.62, 0), "#d33a2c"),
+    paint(at(new THREE.CylinderGeometry(0.05, 0.05, 0.36, 6).rotateZ(Math.PI / 2), 0, 0.42, 0), "#b8b8b0"),
+  ])!;
+  // Drinking fountain: a steel water-cooler cabinet with a bowl on top, as on Tehran pavements.
+  const fountain = mergeGeometries([
+    paint(at(new THREE.BoxGeometry(0.55, 1.0, 0.45), 0, 0.5, 0), real ? "#b9bec4" : "#7fc8ff"),
+    paint(at(new THREE.CylinderGeometry(0.2, 0.14, 0.12, 10), 0, 1.06, 0.05), "#d9dde1"),
+  ])!;
+  const all = { tree, lamp, lampHead, signal, bus, bench, bin, hydrant, fountain };
   return { ...all, dispose: () => Object.values(all).forEach((g) => g.dispose()) };
 }
 
@@ -444,7 +466,7 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     detail.add(m);
     insts.push(m);
   };
-  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus };
+  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain };
   for (const p of a.props) {
     inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree");
     if (p.kind === "lamp") inst(tpl.lampHead, mats.glow, { mats: p.mats, cols: null }, false);

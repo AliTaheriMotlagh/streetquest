@@ -23,7 +23,16 @@ export type RoadKind = "major" | "minor" | "path" | "foot" | "rail";
 export type AreaKind = "park" | "water" | "forest" | "grass" | "pitch" | "parking" | "plaza" | "sand" | "farm" | "residential" | "commercial" | "industrial" | "cemetery";
 export type RoofShape = "flat" | "gabled" | "hipped" | "pyramidal" | "dome" | "skillion";
 /** Street furniture, stored as [x, y, kind] triples in CityTile.o. */
-export const PROP = { tree: 0, lamp: 1, signal: 2, bus: 3 } as const;
+export const PROP = { tree: 0, lamp: 1, signal: 2, bus: 3, crossing: 4, bench: 5, bin: 6, hydrant: 7, fountain: 8 } as const;
+export type Sport = "soccer" | "basketball" | "tennis" | "volleyball" | "other";
+/**
+ * A sports pitch, for its lines and goals: centre (packed like every other point), size
+ * in metres (`l` the long side) and the long side's heading (radians, from east towards
+ * north).
+ */
+export type CityPitch = { x: number; y: number; l: number; w: number; a: number; s: Sport };
+/** A city pack's extra detail for one cell (see lib/cityPack.ts): it replaces the tile's own `o` and `f`. */
+export type CityDetail = { o: number[]; f: CityPitch[] };
 
 export type CityBuilding = {
   r: number[];
@@ -65,7 +74,12 @@ export type CityTile = {
   p: Place[];
   /** Street furniture: [x, y, PROP kind] triples. */
   o?: number[];
+  /** Sports pitches (lines and goals over the "pitch" area). */
+  f?: CityPitch[];
 };
+
+/** A tile with a city pack's detail laid over it (the pack is the fuller, checked source). */
+export const withDetail = (tile: CityTile, d: CityDetail): CityTile => ({ ...tile, o: d.o, f: d.f });
 
 export const tileOf = (p: LatLng) => ({ cx: Math.floor(p.lng / TILE_DEG), cy: Math.floor(p.lat / TILE_DEG) });
 export const tileKey = cellKey;
@@ -202,6 +216,57 @@ function centroid(geom: { lat: number; lon: number }[]) {
   return { lat: lat / geom.length, lng: lon / geom.length };
 }
 
+/** The street-furniture kind of a mapped point, or -1. */
+export function propOfTags(tags: Record<string, string>): number {
+  if (tags.natural === "tree") return PROP.tree;
+  const hw = tags.highway;
+  if (hw === "street_lamp") return PROP.lamp;
+  if (hw === "traffic_signals") return PROP.signal;
+  if (hw === "bus_stop" || (tags.public_transport === "platform" && tags.bus === "yes")) return PROP.bus;
+  // Painted crossings (in Iran "uncontrolled" ones are zebras too); unmarked ones aren't drawn.
+  if (hw === "crossing" || tags.railway === "crossing") return tags.crossing === "unmarked" || tags.crossing === "no" ? -1 : PROP.crossing;
+  const am = tags.amenity;
+  if (am === "bench" || tags.leisure === "picnic_table") return PROP.bench;
+  if (am === "waste_basket" || am === "recycling") return PROP.bin;
+  if (tags.emergency === "fire_hydrant") return PROP.hydrant;
+  if (am === "drinking_water" || am === "fountain") return PROP.fountain;
+  return -1;
+}
+
+const SPORTS: Record<string, Sport> = { soccer: "soccer", football: "soccer", futsal: "soccer", basketball: "basketball", tennis: "tennis", volleyball: "volleyball", beachvolleyball: "volleyball" };
+
+/**
+ * A pitch outline → its centre, size and heading: the smallest rectangle around it
+ * (one side always lies along an edge of the outline's hull, so trying each edge works).
+ */
+export function pitchOf(geom: { lat: number; lon: number }[], tags: Record<string, string>, sw: LatLng): CityPitch | null {
+  const c = centroid(geom);
+  const kx = 111_320 * Math.cos((c.lat * Math.PI) / 180), ky = 110_540;
+  const pts = geom.map((g) => [(g.lon - c.lng) * kx, (g.lat - c.lat) * ky] as const);
+  let best: { area: number; l: number; w: number; a: number; mx: number; my: number } | null = null;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], len = Math.hypot(dx, dy);
+    if (len < 0.5) continue;
+    const ux = dx / len, uy = dy / len;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of pts) {
+      const u = x * ux + y * uy, v = -x * uy + y * ux;
+      (a0 = Math.min(a0, u)), (a1 = Math.max(a1, u)), (b0 = Math.min(b0, v)), (b1 = Math.max(b1, v));
+    }
+    const area = (a1 - a0) * (b1 - b0);
+    if (best && area >= best.area) continue;
+    const mu = (a0 + a1) / 2, mv = (b0 + b1) / 2;
+    const mx = mu * ux - mv * uy, my = mu * uy + mv * ux;
+    const ang = Math.atan2(uy, ux);
+    best = a1 - a0 >= b1 - b0 ? { area, l: a1 - a0, w: b1 - b0, a: ang, mx, my } : { area, l: b1 - b0, w: a1 - a0, a: ang + Math.PI / 2, mx, my };
+  }
+  if (!best || best.l < 8 || best.w < 5 || best.l > 160) return null;
+  const lat = c.lat + best.my / ky, lng = c.lng + best.mx / kx;
+  const sport = (tags.sport ?? "").split(";").map((s) => SPORTS[s.trim()]).find(Boolean) ?? "other";
+  const a = Math.round((((best.a % Math.PI) + Math.PI) % Math.PI) * 1000) / 1000;
+  return { x: Math.round((lng - sw.lng) * Q), y: Math.round((lat - sw.lat) * Q), l: Math.round(best.l * 10) / 10, w: Math.round(best.w * 10) / 10, a, s: sport };
+}
+
 /**
  * Overpass `out geom` elements → this cell's tile. Every feature belongs to exactly one
  * tile (buildings and areas by their centre, road segments by their midpoint), so
@@ -210,7 +275,7 @@ function centroid(geom: { lat: number; lon: number }[]) {
 export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTile {
   const sw = tileSW(cx, cy);
   const inside = (p: LatLng) => p.lat >= sw.lat && p.lat < sw.lat + TILE_DEG && p.lng >= sw.lng && p.lng < sw.lng + TILE_DEG;
-  const tile: CityTile = { v: TILE_V, key: tileKey(cx, cy), cx, cy, real: true, b: [], r: [], a: [], p: [], o: [] };
+  const tile: CityTile = { v: TILE_V, key: tileKey(cx, cy), cx, cy, real: true, b: [], r: [], a: [], p: [], o: [], f: [] };
   const props = tile.o!;
   const seenPlace = new Set<string>();
   const addBuilding = (geom: OsmPt[], tags: Record<string, string>, id: number) => {
@@ -234,9 +299,9 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
   for (const el of elements) {
     const tags = el.tags ?? {};
     const geom = el.geometry;
-    // Street furniture: real trees, lamps, traffic lights and bus stops.
+    // Street furniture: real trees, lamps, traffic lights, bus stops, crossings, benches…
     if (el.type === "node" && el.lat != null && el.lon != null && props.length < 6000) {
-      const kind = tags.natural === "tree" ? PROP.tree : tags.highway === "street_lamp" ? PROP.lamp : tags.highway === "traffic_signals" ? PROP.signal : tags.highway === "bus_stop" ? PROP.bus : -1;
+      const kind = propOfTags(tags);
       if (kind >= 0 && inside({ lat: el.lat, lng: el.lon })) props.push(Math.round((el.lon - sw.lng) * Q), Math.round((el.lat - sw.lat) * Q), kind);
     }
     // Named places (nodes, or the centre of a building/area that is the place).
@@ -308,6 +373,8 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
     if (area && geom.length >= 4 && inside(centroid(geom)) && tile.a.length < 400) {
       const r = pack(geom, sw, true);
       if (r.length >= 6) tile.a.push({ r, k: area });
+      const pitch = area === "pitch" ? pitchOf(geom, tags, sw) : null;
+      if (pitch) tile.f!.push(pitch);
     }
   }
   return tile;
@@ -328,7 +395,9 @@ way["natural"~"^(water|wood|scrub|grassland|sand|beach)$"];
 way["amenity"~"^(parking|marketplace|grave_yard)$"];
 way["place"="square"];
 node["natural"="tree"];
-node["highway"~"^(street_lamp|traffic_signals|bus_stop)$"];
+node["highway"~"^(street_lamp|traffic_signals|bus_stop|crossing)$"];
+node["amenity"~"^(bench|waste_basket|drinking_water|fountain)$"];
+node["emergency"="fire_hydrant"];
 node["amenity"~"^(fast_food|restaurant|cafe|bar|pub|ice_cream|pharmacy|fuel|bank|cinema|theatre|library)$"]["name"];
 node["shop"]["name"];
 node["leisure"~"^(fitness_centre|sports_centre)$"]["name"];

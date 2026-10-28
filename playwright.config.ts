@@ -51,6 +51,8 @@ export default defineConfig({
           GAME_SPEED: "1",
           // No OpenStreetMap downloads for the random test spots: tests upload their own tiles.
           OVERPASS_URL: "off",
+          // Traffic tests stay offline (players' GPS only).
+          NESHAN_API_KEY: "",
           // No real push notifications or payments from tests.
           VAPID_PUBLIC_KEY: "",
           VAPID_PRIVATE_KEY: "",

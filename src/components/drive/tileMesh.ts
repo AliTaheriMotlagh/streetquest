@@ -9,13 +9,13 @@
 // corner street-name signs, every shop and house number.
 import * as THREE from "three";
 import { hashStr, rng, type LatLng } from "@/lib/geo";
-import { insidePacked, makeFrame, PROP, type BuildingKind, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
+import { insidePacked, makeFrame, PROP, type BuildingKind, type CityPitch, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
 import type { VtCell } from "./vectorTile";
 
 export type Style = "real" | "toon";
 export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs";
 export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array };
-export type PropKind = "tree" | "lamp" | "signal" | "bus";
+export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain";
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
 export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number };
 /**
@@ -264,7 +264,7 @@ function disc(b: Builder, x: number, z: number, rad: number, y: number, c: THREE
 }
 
 // ---------------------------------------------------------------- streets nearby
-type Seg = { ax: number; az: number; bx: number; bz: number; w: number };
+type Seg = { ax: number; az: number; bx: number; bz: number; w: number; y: number };
 const RG = 24;
 
 /** The tile's drivable asphalt in a 24 m grid: which street is nearest, is a spot on one. */
@@ -274,7 +274,7 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
   lines.forEach((p, li) => {
     if (!drawn[li] || !DRIVABLE.includes(kinds[li])) return;
     for (let i = 0; i + 3 < p.length; i += 2) {
-      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: widths[li] };
+      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: widths[li], y: ROAD_Y[kinds[li]] };
       segs.push(sg);
       const pad = sg.w / 2 + 2;
       for (let gx = Math.floor((Math.min(sg.ax, sg.bx) - pad) / RG); gx <= Math.floor((Math.max(sg.ax, sg.bx) + pad) / RG); gx++)
@@ -290,7 +290,7 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
     const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, l2 = dx * dx + dz * dz || 1;
     const k = Math.max(0, Math.min(1, ((x - sg.ax) * dx + (z - sg.az) * dz) / l2));
     const px = sg.ax + dx * k, pz = sg.az + dz * k, len = Math.sqrt(l2);
-    return { px, pz, dx: dx / len, dz: dz / len, w: sg.w, d: Math.hypot(px - x, pz - z) };
+    return { px, pz, dx: dx / len, dz: dz / len, w: sg.w, y: sg.y, d: Math.hypot(px - x, pz - z) };
   };
   const nearest = (x: number, z: number, reach: number) => {
     let best: ReturnType<typeof project> | null = null;
@@ -345,7 +345,7 @@ function post(x: number, z: number, r: number, h: number): Footprint {
   for (let k = 0; k < 8; k++) (pts[k * 2] = x + Math.cos((k / 8) * Math.PI * 2) * r), (pts[k * 2 + 1] = z + Math.sin((k / 8) * Math.PI * 2) * r);
   return { pts, minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, h, mh: 0 };
 }
-function box(x: number, z: number, hw: number, hd: number, yaw: number, h: number): Footprint {
+export function box(x: number, z: number, hw: number, hd: number, yaw: number, h: number): Footprint {
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const pts = new Float32Array(8);
   [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].forEach(([lx, lz], i) => ((pts[i * 2] = x + lx * c + lz * s), (pts[i * 2 + 1] = z - lx * s + lz * c)));
@@ -358,6 +358,108 @@ function box(x: number, z: number, hw: number, hd: number, yaw: number, h: numbe
 const FLOOR_M = 3.3;
 const WINDOW_M = 4.2;
 const DRIVABLE: RoadKind[] = ["major", "minor", "path"];
+
+/** Zebra stripes across a street `w` wide at (x, z); (fx, fz) runs along the street. */
+function zebra(b: Builder, x: number, z: number, fx: number, fz: number, w: number, y: number, c: THREE.Color) {
+  const sx = -fz, sz = fx;
+  for (let s = -w / 2 + 0.5; s < w / 2 - 0.3; s += 1.1) {
+    const ax = x + sx * s, az = z + sz * s;
+    ribbon(b, new Float32Array([ax - fx * 1.5, az - fz * 1.5, ax + fx * 1.5, az + fz * 1.5]), 0.55, y, c);
+  }
+}
+
+/** A box from y0 to y1 around (x, z), `hx` × `hz` half-sizes, turned so +x runs along (ux, uz). */
+function cuboid(b: Builder, x: number, z: number, hx: number, hz: number, y0: number, y1: number, ux: number, uz: number, c: THREE.Color) {
+  const vx = -uz, vz = ux;
+  const P = (i: number, j: number, y: number): V3 => [x + ux * hx * i + vx * hz * j, y, z + uz * hx * i + vz * hz * j];
+  const out: V3 = [x, (y0 + y1) / 2, z];
+  const q = (a: V3, b2: V3, c2: V3, d: V3) => (b.tri(a, b2, c2, c, out), b.tri(a, c2, d, c, out));
+  q(P(-1, -1, y1), P(1, -1, y1), P(1, 1, y1), P(-1, 1, y1));
+  for (const [i0, j0, i1, j1] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) q(P(i0, j0, y0), P(i1, j1, y0), P(i1, j1, y1), P(i0, j0, y1));
+}
+
+const SURFACE: Record<CityPitch["s"], [string, string]> = {
+  // [real, toon]: grass for football, hard courts for the rest.
+  soccer: ["#4f9a48", "#6fcf6a"], basketball: ["#b0653f", "#ff9f6b"], tennis: ["#3f7a9e", "#6bb8ff"], volleyball: ["#c49a5c", "#ffd08a"], other: ["#5f8f55", "#8fd67a"],
+};
+
+/**
+ * A pitch's markings from its centre, size and heading: the surface, white lines for its
+ * sport, and the bits that stand up — goals, hoops or a net (as solid walls geometry; the
+ * posts go in `posts` so a car stops at them).
+ */
+function drawPitch(f: CityPitch, at: Float32Array, ground: Builder, marks: Builder, walls: Builder, white: THREE.Color, real: boolean, posts: { x: number; z: number; h: number }[]) {
+  const cx = at[0], cz = at[1];
+  // Long side along (ux, uz) in local x/z (x east, z south); (vx, vz) across.
+  const ux = Math.cos(f.a), uz = -Math.sin(f.a), vx = -uz, vz = ux;
+  const L = f.l / 2 - 0.6, W = f.w / 2 - 0.6;
+  if (L < 3 || W < 2) return;
+  const P = (u: number, v: number) => [cx + ux * u + vx * v, cz + uz * u + vz * v];
+  const Y = 0.042;
+  // Surface (over whatever land use is under it).
+  const s = color(SURFACE[f.s][real ? 0 : 1]);
+  const base = ground.pos.length / 3;
+  for (const [u, v] of [[-L - 0.6, -W - 0.6], [L + 0.6, -W - 0.6], [L + 0.6, W + 0.6], [-L - 0.6, W + 0.6]]) {
+    const [x, z] = P(u, v);
+    ground.vert(x, 0.032, z, 0, 1, 0, s);
+  }
+  up(ground, base, base + 1, base + 2);
+  up(ground, base, base + 2, base + 3);
+  const line = (pts: number[][], closed = false) => {
+    const flat: number[] = [];
+    for (const [u, v] of closed ? [...pts, pts[0]] : pts) flat.push(...P(u, v));
+    ribbon(marks, new Float32Array(flat), 0.12, Y, white);
+  };
+  const rect = (u0: number, v0: number, u1: number, v1: number) => line([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], true);
+  const arc = (u: number, v: number, r: number, a0 = 0, a1 = Math.PI * 2) => {
+    const pts: number[][] = [];
+    for (let i = 0; i <= 24; i++) {
+      const a = a0 + ((a1 - a0) * i) / 24;
+      pts.push([u + Math.cos(a) * r, v + Math.sin(a) * r]);
+    }
+    line(pts);
+  };
+  const metal = color("#e9ecef");
+  const stand = (u: number, v: number, h: number) => {
+    const [x, z] = P(u, v);
+    cuboid(walls, x, z, 0.06, 0.06, 0, h, ux, uz, metal);
+    posts.push({ x, z, h });
+  };
+  rect(-L, -W, L, W);
+  if (f.s === "soccer") {
+    line([[0, -W], [0, W]]);
+    arc(0, 0, Math.min(9.15, W * 0.3));
+    const goalW = f.l > 70 ? 3.66 : f.l > 30 ? 1.6 : 1.1, goalH = f.l > 70 ? 2.44 : 2;
+    for (const end of [-1, 1]) {
+      const box = Math.min(16.5, L * 0.3), half = Math.min(20.15, W * 0.6), small = Math.min(5.5, L * 0.1), halfS = Math.min(9.15, W * 0.3);
+      rect(end * L, -half, end * (L - box), half);
+      rect(end * L, -halfS, end * (L - small), halfS);
+      // The goal: two posts and a crossbar on the line.
+      for (const side of [-1, 1]) stand(end * L, side * goalW, goalH);
+      const [gx, gz] = P(end * L, 0);
+      cuboid(walls, gx, gz, 0.06, goalW + 0.06, goalH - 0.12, goalH, ux, uz, metal);
+    }
+  } else if (f.s === "basketball") {
+    line([[0, -W], [0, W]]);
+    arc(0, 0, Math.min(1.8, W * 0.25));
+    for (const end of [-1, 1]) {
+      const key = Math.min(5.8, L * 0.4), kw = Math.min(2.45, W * 0.35);
+      rect(end * L, -kw, end * (L - key), kw);
+      arc(end * (L - key), 0, kw, Math.PI / 2, (Math.PI * 3) / 2);
+      // Hoop on a pole just behind the line, board facing the court.
+      stand(end * (L + 0.5), 0, 3.05);
+      const [bx, bz] = P(end * (L - 0.6), 0);
+      cuboid(walls, bx, bz, 0.04, 0.9, 2.9, 3.95, ux, uz, color("#f4f6f8"));
+    }
+  } else if (f.s === "tennis" || f.s === "volleyball") {
+    line([[0, -W], [0, W]]);
+    if (f.s === "tennis") line([[-L * 0.55, 0], [L * 0.55, 0]]);
+    const h = f.s === "tennis" ? 0.95 : 2.43;
+    for (const side of [-1, 1]) stand(0, side * (W + 0.4), h + 0.1);
+    const [nx, nz] = P(0, 0);
+    cuboid(walls, nx, nz, 0.02, W + 0.4, h - (f.s === "tennis" ? 0.9 : 1), h, ux, uz, color(real ? "#2b2f33" : "#ffffff"));
+  }
+}
 
 export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, lite: boolean, cuts: Cut[] = []): TileArrays {
   const frame = makeFrame(origin);
@@ -526,6 +628,9 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     }
   });
   let zebras = 0;
+  // Where the map has its crossings, those are drawn (below) instead of guessing at junctions.
+  let mapped = 0;
+  for (let i = 2; i < (tile.o?.length ?? 0); i += 3) if (tile.o![i] === PROP.crossing) mapped++;
   tile.r.forEach((r, ri) => {
     const pts = unpacked[ri];
     if (pts.length < 4) return;
@@ -563,7 +668,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     }
     if (r.k === "major" && realStyle) for (const off of [-(r.w / 2 - 0.35), r.w / 2 - 0.35]) ribbon(marks, offsetLine(pts, off), 0.12, my, white);
     // Zebra crossings a few metres back from each intersection.
-    if (!realStyle || lite || zebras > 140 || r.w < 6) return;
+    if (!realStyle || lite || mapped || zebras > 140 || r.w < 6) return;
     const n = pts.length / 2;
     for (const end of [0, n - 1]) {
       const k = vk(pts[end * 2], pts[end * 2 + 1]);
@@ -571,12 +676,9 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       const nb = end === 0 ? 1 : n - 2;
       const x0 = pts[end * 2], z0 = pts[end * 2 + 1], dx = pts[nb * 2] - x0, dz = pts[nb * 2 + 1] - z0, len = Math.hypot(dx, dz);
       if (len < 10) continue;
-      const fx = dx / len, fz = dz / len, sx = -fz, sz = fx;
+      const fx = dx / len, fz = dz / len;
       const at = 5.5, cxp = x0 + fx * at, czp = z0 + fz * at;
-      for (let s = -r.w / 2 + 0.5; s < r.w / 2 - 0.3; s += 1.1) {
-        const ax = cxp + sx * s, az = czp + sz * s;
-        ribbon(marks, new Float32Array([ax - fx * 1.5, az - fz * 1.5, ax + fx * 1.5, az + fz * 1.5]), 0.55, my, white);
-      }
+      zebra(marks, cxp, czp, fx, fz, r.w, my, white);
       zebras++;
     }
   });
@@ -624,10 +726,17 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     }
   }
 
+  // ---- sports pitches: lines, goals, hoops and nets
+  const goalPosts: { x: number; z: number; h: number }[] = [];
+  if (!lite) for (const f of tile.f ?? []) drawPitch(f, frame.unpack(tile.cx, tile.cy, [f.x, f.y]), ground, marks, walls, white, realStyle, goalPosts);
+
   // ---- street furniture
   const blocked = (x: number, z: number, pad: number) => inCut(x, z, pad + 0.5) || footprints.some((f) => x >= f.minX - pad && x <= f.maxX + pad && z >= f.minZ - pad && z <= f.maxZ + pad && insidePacked(f.pts, x, z));
   const road = roadIndex(roadLines, roadWidths, roadKinds, roadDrawn);
   const lamps: { x: number; z: number; yaw: number }[] = [], signals: { x: number; z: number; yaw: number }[] = [], buses: { x: number; z: number; yaw: number }[] = [];
+  const small: Record<"bench" | "bin" | "hydrant" | "fountain", { x: number; z: number; yaw: number }[]> = { bench: [], bin: [], hydrant: [], fountain: [] };
+  const SMALL: Record<number, keyof typeof small> = { [PROP.bench]: "bench", [PROP.bin]: "bin", [PROP.hydrant]: "hydrant", [PROP.fountain]: "fountain" };
+  const crossed: { x: number; z: number }[] = [];
   /** Facing the nearest street: the yaw that points from (x, z) to it. */
   const faceRoad = (x: number, z: number) => {
     const q = road.nearest(x, z, 60);
@@ -644,7 +753,21 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       if (!road.on(x, z, 0.8)) (treeSpots.push({ x, z, s: 0.7 + rand() * 0.6 }), osmTrees++);
       continue;
     }
-    if ((kind === PROP.lamp || kind === PROP.bus) && lite) continue;
+    if (kind === PROP.crossing) {
+      // Stripes across the street the crossing is mapped on, along its direction.
+      const q = !lite && realStyle ? road.nearest(x, z, 6) : null;
+      if (!q || q.w < 5 || near(crossed, q.px, q.pz, 6)) continue;
+      crossed.push({ x: q.px, z: q.pz });
+      zebra(marks, q.px, q.pz, q.dx, q.dz, q.w, q.y + 0.012, white);
+      continue;
+    }
+    if ((kind === PROP.lamp || kind === PROP.bus || SMALL[kind]) && lite) continue;
+    if (SMALL[kind]) {
+      // Benches, bins, hydrants and fountains stand on the pavement, never in the street.
+      const k = road.on(x, z, 0.3) ? road.kerb(x, z, 0.8) : { x, z, yaw: faceRoad(x, z) };
+      if (k && !blocked(k.x, k.z, 0.1)) small[SMALL[kind]].push(k);
+      continue;
+    }
     // Posts mapped on the road itself go to the kerb, facing the street.
     const k = road.kerb(x, z, kind === PROP.bus ? 2.1 : kind === PROP.signal ? 0.9 : 1.1) ?? { x, z, yaw: faceRoad(x, z) };
     if (blocked(k.x, k.z, 0.2)) continue;
@@ -704,6 +827,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   pack("lamp", lamps);
   pack("signal", signals);
   pack("bus", buses);
+  for (const [kind, list] of Object.entries(small)) pack(kind as PropKind, list);
 
   // What a car can hit: the trunk (and canopy, for low flyers), posts and shelters.
   const obstacles: Footprint[] = [];
@@ -711,6 +835,10 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const l of lamps) obstacles.push(post(l.x, l.z, 0.15, 6.6));
   for (const g of signals) obstacles.push(post(g.x, g.z, 0.15, 4.5));
   for (const b of buses) obstacles.push(box(b.x, b.z, 1.6, 0.75, b.yaw, 2.6));
+  for (const b of small.bench) obstacles.push(box(b.x, b.z, 0.85, 0.22, b.yaw, 0.9));
+  for (const p of [...small.bin, ...small.hydrant]) obstacles.push(post(p.x, p.z, 0.22, 0.8));
+  for (const f of small.fountain) obstacles.push(box(f.x, f.z, 0.3, 0.25, f.yaw, 1.1));
+  for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
 
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);

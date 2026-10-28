@@ -12,6 +12,8 @@ import { S } from "@/lib/settings";
 import { nearbyLive } from "@/server/presence";
 import { t } from "@/lib/i18n";
 import { MAX_VEHICLE_MULT } from "@/lib/vehicles";
+import { after } from "next/server";
+import { recordTrip } from "@/server/traffic";
 
 const Schema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), sim: z.boolean().optional(), acc: z.number().min(0).max(100_000).optional() });
 
@@ -44,6 +46,11 @@ export const POST = route(async (req) => {
   // A teleport, flagged or not, is test mode: it never earns toman (see server/money).
   const onFoot = !d.sim && !remote && moved >= 3 && moved <= 400 && moved / since <= S.footSpeedKmh / 3.6 && (d.acc ?? 0) <= 50;
   const walked = onFoot ? moved : 0;
+  // Two sharp real fixes in a row at driving speed: that street's live traffic.
+  if (!d.sim && !remote && !jumped && !u.locSim && u.lastLat != null && u.lastLng != null && (d.acc ?? 999) <= 35) {
+    const from = { lat: u.lastLat, lng: u.lastLng };
+    after(() => recordTrip(u.id, from, d, since)?.catch(() => {}));
+  }
   await prisma.user.update({ where: { id: u.id }, data: { lastLat: d.lat, lastLng: d.lng, lastSeenAt: new Date(), locAt: new Date(), locSim: !remote && (!!d.sim || jumped), ...(walked ? { walkedM: { increment: walked } } : {}) } });
   if (walked) {
     await trackStat(u.id, "walk_m", walked, u.faction);

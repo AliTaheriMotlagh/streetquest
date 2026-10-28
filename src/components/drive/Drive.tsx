@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { bearingTo, distanceM, formatDistance, type LatLng } from "@/lib/geo";
-import { makeFrame, tileKey, tileOf, villageTile, type CityTile } from "@/lib/city";
+import { makeFrame, tileKey, tileOf, villageTile, withDetail, type CityTile } from "@/lib/city";
 import { CUSTOMER_DOOR, PLACE_CATS } from "@/lib/places";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
@@ -41,7 +41,8 @@ import { Landmarks } from "./landmarks";
 import { Others } from "./others";
 import { StorePins, type Pin } from "./pins";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
-import { BuildPool, TileSource, VectorSource } from "./tiles";
+import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
+import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
 import { NAME_MODES, type NameMode } from "./vectorTile";
@@ -334,10 +335,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const tiles = new Map<string, Slot>();
     const ready: { key: string; mesh: TileMeshes; data: CityTile }[] = [];
     const pool = new BuildPool(Math.max(1, Math.min(2, (navigator.hardwareConcurrency ?? 2) - 1)));
+    // A city pack's street detail (trees, crossings, pitches…) is laid over each map tile;
+    // a tile whose detail turns up after it was built is built again.
+    const base = new Map<string, CityTile>();
+    const details = new DetailSource((key) => {
+      const b = base.get(key);
+      if (b) take(b);
+    });
     const take = (tile: CityTile) => {
       const slot = tiles.get(tile.key);
       if (!slot) return;
-      slot.want = tile;
+      base.set(tile.key, tile);
+      const d = details.get(tile.key);
+      slot.want = d ? withDetail(tile, d) : tile;
       slot.real = true;
     };
     // Street-map vector tiles first (exact and fast); the server's Overpass tiles for any
@@ -386,6 +396,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           order.push(slot);
         }
       order.sort((a, b) => a.dist - b.dist);
+      details.want(order.map((s) => s.key));
       vsource.want(order.map((s) => s.key));
       source.want(order.filter((s) => fallback.has(s.key)).map((s) => s.key));
       for (const [k, s] of tiles) {
@@ -396,6 +407,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           obstacles.remove(k);
           source.forget(k);
           vsource.forget(k);
+          details.forget(k);
+          base.delete(k);
           tiles.delete(k);
           labelsDirty = true;
           continue;
@@ -504,6 +517,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let jobs: Job[] = [];
     let navGoal: LatLng | null = live.current.goal;
     const others = new Others(scene, frame, style, lite);
+    // Live traffic: street speeds for the minimap and the cars on the streets.
+    const feed = new TrafficFeed();
+    const traffic = new TrafficCars(scene, frame, feed, style, lite);
+    const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
+    let trafficSync = 0;
     const markers = new Markers(scene, frame, lite ? 30 : 60);
 
     const jobsFrom = (w: World | null): Job[] => {
@@ -1304,6 +1322,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const cn of coins) cn.tick(time);
       markers.tick(time);
       others.tick(dt, serverNow, st.x, st.z);
+      feed.update(frame.toLatLng(st.x, st.z));
+      traffic.enabled = !matchOn;
+      if (now - trafficSync > 1000) {
+        trafficSync = now;
+        traffic.sync([...tiles.values()].flatMap((s) => (s.mesh?.real ? [s.mesh] : [])));
+      }
+      obstacles.add("traffic", traffic.tick(dt, st.x, st.z));
 
       // -- nav arrow: the party round, then a chosen destination, then the delivery
       const rg = roundGoal();
@@ -1477,6 +1502,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                 else g.lineTo(x, y);
               }
               g.stroke();
+              // Live traffic over it, segment by segment where there's a reading.
+              const cols = k === "major" || k === "minor" ? lineColors(feed, frame, line, k, trafficColors) : [];
+              cols.forEach((col, si) => {
+                if (!col) return;
+                g.strokeStyle = col;
+                g.lineWidth = k === "major" ? 4.6 : 3.2;
+                g.beginPath();
+                g.moveTo((line[si * 2] - st.x) * scale, (line[si * 2 + 1] - st.z) * scale);
+                g.lineTo((line[si * 2 + 2] - st.x) * scale, (line[si * 2 + 3] - st.z) * scale);
+                g.stroke();
+              });
             });
           }
           const dot = (x: number, z: number, col: string, r = 4) => {
@@ -1527,7 +1563,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1547,6 +1583,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       setCombat(null);
       source.dispose();
       vsource.dispose();
+      details.dispose();
+      traffic.dispose();
       pool.dispose();
       vtPool.dispose();
       window.removeEventListener("keydown", keyDown);

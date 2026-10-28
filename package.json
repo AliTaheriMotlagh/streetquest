@@ -15,6 +15,7 @@
     "vercel-build": "npm run build",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "city:pack": "tsx scripts/city-pack.ts",
     "assets:arena": "/Applications/Blender.app/Contents/MacOS/Blender -b -P assets/blender/arena.py",
     "typecheck": "tsc --noEmit",
     "i18n:check": "tsx scripts/i18n-check.ts",
