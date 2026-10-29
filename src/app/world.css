@@ -61,12 +61,19 @@ html.lite .map.fantasy.dusk-tint .fantasy-fx::before, html.lite .map.fantasy.daw
 .map.noir .leaflet-tile { filter: grayscale(1) contrast(1.35) brightness(.9); }
 .map.blueprint { background: #0b2a5b; }
 .map.blueprint .leaflet-tile { filter: grayscale(1) invert(1) sepia(1) hue-rotate(180deg) saturate(3) brightness(.8) contrast(1.2); }
+/* Light and Midnight: once CARTO's tiles, now the default tiles under a filter (mapStyles.ts). */
+.map.light { background: #f2f2ef; }
+.map.light .leaflet-tile { filter: grayscale(1) brightness(1.12) contrast(.82); }
+.map.light.night-tint .leaflet-tile { filter: grayscale(1) brightness(.86) contrast(.9); }
+.map.midnight { background: #0e1013; }
+.map.midnight .leaflet-tile { filter: invert(1) grayscale(1) brightness(.8) contrast(1.15); }
 .map.neon { background: #0a0004; }
 .map.neon .leaflet-tile { filter: invert(1) grayscale(.5) hue-rotate(160deg) saturate(2.5) brightness(.75) contrast(1.6); }
 /* Lite phones: one cheap filter instead of a stack (see the fantasy note above). */
 html.lite .map.retro .leaflet-tile { filter: sepia(.7); }
 html.lite .map.noir .leaflet-tile { filter: grayscale(1); }
-html.lite .map.blueprint .leaflet-tile, html.lite .map.neon .leaflet-tile { filter: invert(1); }
+html.lite .map.blueprint .leaflet-tile, html.lite .map.neon .leaflet-tile, html.lite .map.midnight .leaflet-tile { filter: invert(1); }
+html.lite .map.light .leaflet-tile { filter: grayscale(1); }
 
 /* The style picker in the ⋯ menu: a two-column grid that scrolls on short screens. */
 .more-menu.styles { display: grid; grid-template-columns: 1fr 1fr; width: min(340px, calc(100vw - 92px)); max-height: min(62vh, 480px); overflow-y: auto; overscroll-behavior: contain; }

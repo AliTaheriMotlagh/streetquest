@@ -173,7 +173,7 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
   const tileM = (360 / n) * 111_320 * Math.cos((midLat * Math.PI) / 180);
 
   // Everything in metres too, for the frontage fill.
-  type Poly = { pts: P[]; minX: number; maxX: number; minY: number; maxY: number };
+  type Poly = { pts: P[]; minX: number; maxX: number; minY: number; maxY: number; b?: CityBuilding };
   const realBuildings: Poly[] = [], openAreas: Poly[] = [], urbanAreas: Poly[] = [];
   const roadSegs: { a: P; b: P; half: number; fill: boolean }[] = [];
   const toM = (p: P, E: number): P => ({ x: (p.x / E) * tileM, y: (p.y / E) * tileM });
@@ -181,6 +181,12 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const p of pts) (minX = Math.min(minX, p.x)), (maxX = Math.max(maxX, p.x)), (minY = Math.min(minY, p.y)), (maxY = Math.max(maxY, p.y));
     return { pts, minX, maxX, minY, maxY };
+  };
+  const inside = (pts: P[], x: number, y: number) => {
+    let hit = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++)
+      if (pts[i].y > y !== pts[j].y > y && x < ((pts[j].x - pts[i].x) * (y - pts[i].y)) / (pts[j].y - pts[i].y) + pts[i].x) hit = !hit;
+    return hit;
   };
   const areaOf = (pts: P[]) => {
     let a = 0;
@@ -215,7 +221,7 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
       const colour = typeof props.colour === "string" && /^#[0-9a-f]{6}$/i.test(props.colour) ? props.colour : undefined;
       const b: CityBuilding = { r, h: Math.round(h * 10) / 10, k, ...(mh > 0 && mh < h - 1 ? { mh } : {}), ...(colour ? { c: colour } : {}), ...(flat ? { rf: "flat" as const } : {}) };
       c.b.push(b);
-      realBuildings.push(poly(m));
+      realBuildings.push({ ...poly(m), b });
     }
   }
 
@@ -308,6 +314,16 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
     const [x, y] = pack(c, [g], pl.extent);
     if (x == null) continue;
     const cls = String(p.class ?? ""), sub = String(p.subclass ?? "");
+    // A place of worship marks its building (a mosque in the Middle East: dome and minarets).
+    if (cls === "place_of_worship") {
+      const at = toM(g, pl.extent);
+      const home = realBuildings.find((r) => r.b && at.x >= r.minX && at.x <= r.maxX && at.y >= r.minY && at.y <= r.maxY && inside(r.pts, at.x, at.y));
+      if (home?.b) {
+        home.b.k = "church";
+        const name = nameOf(p);
+        if (name) home.b.n = name.split("\n")[0].slice(0, 40);
+      }
+    }
     if (sub === "bus_stop") {
       c.o!.push(x, y, PROP.bus);
       continue;

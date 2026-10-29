@@ -467,6 +467,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       collision.add(job.key, job.mesh.footprints);
       obstacles.add(job.key, job.mesh.obstacles);
       labelsDirty = true;
+      cityDrawn++;
       // Snap onto a street once our own cell is drawn — and again when its real map
       // arrives, unless the player has already driven off. GPS fixes are often indoors.
       const mine = tileOf(frame.toLatLng(st.x, st.z));
@@ -499,6 +500,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
       return best < maxD ? { x: bx, z: bz, yaw } : null;
     };
+    /**
+     * Game items stand where the map puts them, but a café's pin is inside its building and
+     * money can land in a courtyard: there the walls hide them and loot is out of the car's
+     * reach. Such an item moves to the nearest street — and is checked again whenever more
+     * of the city is drawn around it (a building can arrive after the item).
+     */
+    let cityDrawn = 0;
+    const settle = (item: { group: THREE.Object3D } & Placed) => {
+      item.settledAt = cityDrawn;
+      const { raw } = item;
+      const s = collision.collide(raw.x, raw.z, 1.6).hit ? nearestStreet(raw.x, raw.z, 90) : null;
+      item.group.position.set(s?.x ?? raw.x, 0, s?.z ?? raw.z);
+    };
     const placeCar = (kind: "village" | "real") => {
       const s = nearestStreet(st.x, st.z);
       if (s) Object.assign(st, { x: s.x, z: s.z, yaw: s.yaw, vx: 0, vz: 0 });
@@ -508,9 +522,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
 
     // ---- jobs, loot, markers, signs, labels, other players
-    type Beacon = ReturnType<typeof makeBeacon> & { job: Job };
+    /** Where the map puts an item, and the city drawn when it was last settled (see settle). */
+    type Placed = { raw: { x: number; z: number }; settledAt: number };
+    type Beacon = ReturnType<typeof makeBeacon> & { job: Job } & Placed;
     const beacons = new Map<string, Beacon>();
-    type Loot = ReturnType<typeof makeLoot> & { id: string; taken: boolean };
+    type Loot = ReturnType<typeof makeLoot> & { id: string; taken: boolean } & Placed;
     const loot = new Map<string, Loot>();
     const labels = new Map<string, ReturnType<typeof makeStreetLabel> & { x: number; z: number; angle: number }>();
     const boards = new Map<string, Board>();
@@ -584,9 +600,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           have.job = j;
           continue;
         }
-        const b = Object.assign(makeBeacon(j.emoji, j.color, j.label), { job: j });
+        const b = Object.assign(makeBeacon(j.emoji, j.color, j.label), { job: j, raw: p, settledAt: -1 });
         b.icon.userData = { pick: { kind: "job", id: j.id } };
-        b.group.position.set(p.x, 0, p.z);
+        settle(b);
         scene.add(b.group);
         beacons.set(j.id, b);
       }
@@ -597,9 +613,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const s of wantLoot) {
         if (loot.has(s.id)) continue;
         const p = frame.toXZ(s.lat, s.lng);
-        const l = Object.assign(makeLoot("💵", s.drop ? "#f0c05a" : "#5bd38c"), { id: s.id, taken: false });
+        const l = Object.assign(makeLoot("💵", s.drop ? "#f0c05a" : "#5bd38c"), { id: s.id, taken: false, raw: p, settledAt: -1 });
         l.icon.userData = { pick: { kind: "loot", id: s.id } };
-        l.group.position.set(p.x, 0, p.z);
+        settle(l);
         scene.add(l.group);
         loot.set(s.id, l);
       }
@@ -1400,6 +1416,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncPins());
         if (menuTab.current === "places") syncPlaces();
         markers.sync(st.x, st.z);
+        // More of the city was drawn: items near us may now stand inside a building.
+        for (const it of [...beacons.values(), ...loot.values()]) if (it.settledAt !== cityDrawn && Math.hypot(it.raw.x - st.x, it.raw.z - st.z) < 600) settle(it);
         // Signs right next to the camera would fill the screen: hide them up close.
         for (const b of beacons.values()) b.sign.visible = Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z) > 30;
         for (const l of loot.values()) {

@@ -1760,8 +1760,74 @@ html.lite .biz-bar i::after { animation: none; }
 .ext-hours { text-align: start; unicode-bidi: plaintext; }
 .ext-link.instagram { border-color: #d6249f; }
 .ext-rating { align-self: flex-start; }
+
+/* ---- Store cards, phone first (StoreInfo.tsx): head, actions, sticky tabs, compact rows */
+.store-head { display: flex; gap: 12px; align-items: center; margin: 2px 0 8px; }
+.store-head b { display: block; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.store-logo { width: 56px; height: 56px; flex: none; border-radius: 14px; object-fit: cover; background: #fff; border: 2px solid rgba(255,255,255,.12); }
+.store-logo.ph { display: grid; place-items: center; font-size: 30px; background: rgba(255,255,255,.06); }
+.store-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.store-meta .tag { margin: 0; }
+.store-about { margin: 0 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.open-badge.is-open { background: rgba(91,211,140,.16); color: var(--green); }
+.open-badge.is-closed { background: rgba(255,93,115,.14); color: #ff8a9a; }
+.store-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.store-actions > * { flex: 1 1 auto; justify-content: center; text-align: center; min-height: 40px; }
+/* The section tabs stay in reach while a long menu scrolls under them. */
+.store-tabs { position: sticky; top: 0; z-index: 3; margin: 0 -16px 10px; padding: 8px 16px; background: var(--panel-solid, #12121f); }
+.ext-sections { margin-bottom: 8px; }
+.ext-items.compact { gap: 6px; }
+.ext-items.compact .ext-item { align-items: center; padding: 6px 8px; border-radius: 12px; }
+.ext-items.compact .ext-item img, .ext-items.compact .ext-item .ext-ph { width: 48px; height: 48px; border-radius: 10px; font-size: 22px; }
+.ext-items.compact .ext-item b { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ext-items.compact .ext-item p { -webkit-line-clamp: 1; margin: 1px 0 0; }
+.ext-items.compact .ext-item .price-tag { flex: none; flex-direction: column; align-items: flex-end; max-width: 42%; text-align: end; }
+.ext-items.compact .ext-item .price-tag b { font-size: 14px; white-space: nowrap; }
+.store-info { display: grid; gap: 8px; }
+.store-info h4 { margin: 0 0 6px; font-size: 14px; }
+.info-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: inherit; text-decoration: none; line-height: 1.5; overflow-wrap: anywhere; }
+.info-row.link { border-color: rgba(91,211,140,.45); }
+.hours-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.hours-table th, .hours-table td { padding: 7px 10px; text-align: start; border-bottom: 1px solid var(--line); }
+.hours-table th { font-weight: 600; color: var(--muted); white-space: nowrap; }
+.hours-table td { text-align: end; font-variant-numeric: tabular-nums; }
+.hours-table tr.today { background: rgba(240,192,90,.12); }
+.hours-table tr.today th, .hours-table tr.today td { color: var(--yellow); font-weight: 800; }
+.star-bars { display: flex; gap: 14px; align-items: center; padding: 10px 12px; margin-bottom: 10px; border-radius: 14px; background: rgba(255,255,255,.05); }
+.star-avg { display: grid; justify-items: center; gap: 2px; min-width: 72px; }
+.star-avg b { font-size: 30px; font-family: var(--display); font-weight: 400; color: var(--yellow); line-height: 1; }
+.star-avg span[aria-hidden] { color: var(--yellow); letter-spacing: 1px; }
+.star-row { display: flex; gap: 8px; align-items: center; }
+.star-row span { width: 26px; flex: none; }
+.star-row i { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); position: relative; overflow: hidden; }
+.star-row i::after { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; width: var(--w); background: var(--yellow); border-radius: 3px; }
+.review { padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--line); margin-bottom: 8px; }
+.review p { margin: 6px 0 0; line-height: 1.55; overflow-wrap: anywhere; }
+.review-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.review-stars { color: var(--yellow); letter-spacing: 1px; font-size: 13px; }
+.review-stars .dim { opacity: .25; }
+.review-reply { padding: 6px 10px; border-inline-start: 3px solid var(--cyan); background: rgba(99,179,242,.08); border-radius: 8px; }
+.mk.torob img.lg { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #e2363c; box-shadow: 0 3px 8px rgba(0,0,0,.45); }
+.mk.torob.has-logo .nm { z-index: 1; }
+@media (max-width: 520px) {
+  .ext-cover-img { max-height: 112px; }
+  .store-head b { font-size: 16px; }
+  .store-actions .btn { padding-inline: 10px; font-size: 13px; }
+}
 .ext-divar-tabs { margin-top: 6px; }
 .ext-link.divar.block { display: block; text-align: center; margin-top: 10px; }
 /* Plain places name themselves only at street level; vendors from neighbourhood zoom in. */
 .mk.place.spot .nm { display: none; }
 .lod-street .mk.place.spot .nm { display: block; }
+
+/* ---- Who's online (Online.tsx): the HUD chip and the list it opens */
+.online-chip { gap: 6px; }
+.online-chip .dot, .online-av .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); display: inline-block; }
+.online-total { font: 400 22px/1.2 var(--display); color: var(--green); margin: 2px 0 10px; }
+.online-h { margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+.online-row { display: flex; gap: 10px; align-items: center; width: 100%; padding: 8px 10px; margin-bottom: 6px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: inherit; text-align: start; cursor: pointer; }
+.online-row b { display: block; }
+.online-row .small { display: block; }
+.online-av { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; font-size: 26px; border-radius: 12px; background: rgba(255,255,255,.06); }
+.online-av .dot { position: absolute; bottom: 2px; inset-inline-end: 2px; }
+.online-dist { flex: none; white-space: nowrap; }

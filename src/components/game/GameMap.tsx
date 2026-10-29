@@ -7,7 +7,7 @@ import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { distanceM } from "@/lib/geo";
 import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
-import { VENDOR_KINDS, type DivarArea, type Vendor } from "@/lib/localData";
+import { VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor } from "@/lib/localData";
 import type { LiveRoute } from "@/server/traffic";
 import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
 import { esc, icon } from "./mapIcons";
@@ -49,14 +49,19 @@ type Props = {
   onFollow: () => void;
   onMapClick: (p: LatLng) => void;
   onSelect: (s: Selected) => void;
-  /** The style's tiles all fail (e.g. the provider blocks this country): say so, once. */
-  onTilesFail?: (look: MapStyle) => void;
+  /**
+   * The style's tiles all fail (e.g. the provider blocks this country): say so, once.
+   * `fellBack`: the style has a keyless stand-in, which the map now shows instead.
+   */
+  onTilesFail?: (look: MapStyle, fellBack: boolean) => void;
   /** Snappfood vendors the player chose to see (⋯ → On the map). */
   vendors?: Vendor[];
   /** Real places with no job right now: plain signs (⋯ → On the map → Places). */
   spots?: WorldSpot[];
   /** Divar neighbourhoods around, each pinned with its latest ads. */
   divar?: DivarArea[];
+  /** Torob's walk-in stores around (tap for the store's own catalog). */
+  torob?: TorobPlace[];
   /** Live traffic on the roads, coloured by speed. */
   traffic?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
@@ -79,7 +84,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, traffic, route, look = DEFAULT_STYLE, onTilesFail }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, torob, traffic, route, look = DEFAULT_STYLE, onTilesFail }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -88,19 +93,27 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
   // Read once per mount: tile fading gives every tile its own GPU layer (will-change),
   // which is what made panning and rotating stutter on Android and ate RAM.
   const [tuning] = useState(() => ({ touch: isTouch(), lite: isLite() }));
-  const tiles = look.tiles ?? DEFAULT_TILES;
+  // A style whose provider can't be reached switches to its stand-in (until another style is picked).
+  const [fellBack, setFellBack] = useState<string | null>(null);
+  const onFallback = fellBack === look.id && !!look.fallback;
+  const tiles = onFallback ? look.fallback! : look.tiles ?? DEFAULT_TILES;
+  const layerKey = `${look.id}${onFallback ? "-fallback" : ""}`;
   // Counted per style: a phone screen asks for ~8 tiles, so 4 errors before any loads means the provider is unreachable.
   const health = useRef({ id: "", ok: 0, bad: 0, told: false });
-  if (health.current.id !== look.id) health.current = { id: look.id, ok: 0, bad: 0, told: false };
+  if (health.current.id !== layerKey) health.current = { id: layerKey, ok: 0, bad: 0, told: false };
   const tileEvents = useMemo(
     () => ({
       tileload: () => void health.current.ok++,
       tileerror: () => {
         const h = health.current;
-        if (++h.bad >= 4 && !h.ok && !h.told) (h.told = true), onTilesFail?.(look);
+        if (++h.bad < 4 || h.ok || h.told) return;
+        h.told = true;
+        const swap = !!look.fallback && !onFallback;
+        if (swap) setFellBack(look.id);
+        onTilesFail?.(look, swap);
       },
     }),
-    [look, onTilesFail],
+    [look, onTilesFail, onFallback],
   );
   // Phones that hide their RAM get measured instead: a janky map drops to lite.
   useEffect(() => (tuning.touch ? probeFrameRate() : undefined), [tuning.touch]);
@@ -118,14 +131,14 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         style={{ width: "100%", height: "100%" }}
       >
         {/* Keyed: a TileLayer only follows a new url, not new subdomains or zoom limits. */}
-        <TileLayer key={look.id} eventHandlers={tileEvents} url={tiles.url} attribution={tiles.attribution} subdomains={tiles.subdomains ?? "abc"} maxNativeZoom={tiles.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />
-        {look.labels && <TileLayer key={`${look.id}-labels`} className="labels" url={look.labels.url} attribution={look.labels.attribution} maxNativeZoom={look.labels.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />}
+        <TileLayer key={layerKey} eventHandlers={tileEvents} url={tiles.url} attribution={tiles.attribution} subdomains={tiles.subdomains ?? "abc"} maxNativeZoom={tiles.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />
+        {look.labels && !onFallback && <TileLayer key={`${look.id}-labels`} className="labels" url={look.labels.url} attribution={look.labels.attribution} maxNativeZoom={look.labels.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />}
         {traffic && <TrafficLayer />}
         {route && <RouteLine route={route} />}
         <PlayerLayer follow={follow} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} onSelect={onSelect} onUnfollow={onUnfollow} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} onSelect={onSelect} onUnfollow={onUnfollow} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -177,8 +190,8 @@ const TOP_RATING = 9.3;
 type GameItem = { id: string; lat: number; lng: number; m?: World["money"][number]; j?: World["places"][number] };
 /** Game markers are bigger than most: they group a little more loosely. */
 const GAME_SPACING = 1.5;
-/** A real place or a Snappfood vendor, as the points-of-interest layer clusters them. */
-type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot };
+/** A real place, a Snappfood vendor or a walk-in Torob store, as the points-of-interest layer clusters them. */
+type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot; tp?: TorobPlace };
 /** Places and vendors cluster this much more loosely than other markers (their signs are wider). */
 const POI_SPACING = 1.35;
 /** Half a traffic dash's length, and how far each direction sits to its right of the road's middle (m). */
@@ -253,7 +266,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
  * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, vendors, spots, divar, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "onSelect" | "onUnfollow">) {
+function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "onSelect" | "onUnfollow">) {
   const map = useMap();
   const view = useMapView();
   const lod: Lod = lodFor(view.zoom);
@@ -290,7 +303,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, onSelect, on
     return cluster(list.filter((p) => view.bounds.contains([p.lat, p.lng])), view.zoom, cell, "pl");
   }, [world, view, lod, cell]);
 
-  // Places and Snappfood vendors (hundreds around you) are one layer, grouped together so
+  // Places, Snappfood vendors and Torob's walk-in stores (hundreds around you) are one layer, grouped together so
   // their bubbles never stack, a little more loosely than the rest (their signs are wider),
   // and left out at city zoom, where the map is about the game.
   const poiGroups = useMemo(() => {
@@ -298,8 +311,9 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, onSelect, on
     const list: Poi[] = [];
     for (const v of vendors ?? []) if (view.bounds.contains([v.lat, v.lng])) list.push({ id: `sf${v.code}`, lat: v.lat, lng: v.lng, v });
     for (const p of spots ?? []) if (view.bounds.contains([p.lat, p.lng])) list.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, p });
+    for (const tp of torob ?? []) if (view.bounds.contains([tp.lat, tp.lng])) list.push({ id: `tr${tp.id}`, lat: tp.lat, lng: tp.lng, tp });
     return cluster(list, view.zoom, cell && Math.round(cell * POI_SPACING), "poi");
-  }, [vendors, spots, view, cell, lod]);
+  }, [vendors, spots, torob, view, cell, lod]);
 
   // Money and store jobs: grouped only where they'd overlap (a bubble shows what's in it),
   // each on its own from street level. Nothing is dropped — tap a bubble to zoom in.
@@ -387,6 +401,19 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, onSelect, on
           return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={200} icon={clusterIcon(food ? "🍽️" : "📍", g.items.length, food ? "vendors" : "spots")} eventHandlers={{ click: () => zoomInto(g) }} />;
         }
         const it = g.items[0];
+        if (it.tp) {
+          const tp = it.tp;
+          const pic = lod === "near" && tp.photo ? `<img class="lg" src="${esc(tp.photo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+          return (
+            <Marker
+              key={it.id}
+              position={[tp.lat, tp.lng]}
+              zIndexOffset={280}
+              icon={icon(`<span class="ring" style="color:#e2363c"></span>${tp.sells[0] ?? "🏷️"}${pic}<span class="nm">${esc(tp.name)}</span>`, `place torob ${pic ? "has-logo" : ""}`, 36)}
+              eventHandlers={{ click: () => onSelect({ type: "torob", data: tp }) }}
+            />
+          );
+        }
         if (it.v) {
           const v = it.v;
           const k = VENDOR_KINDS[v.kind];

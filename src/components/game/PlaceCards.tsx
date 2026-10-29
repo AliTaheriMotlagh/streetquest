@@ -53,7 +53,7 @@ export function SpotCard({ p, onClose }: { p: WorldSpot; onClose: () => void }) 
         </div>
       </div>
       {dist > INTERACT_RADIUS_M ? <GoThere to={p} dist={dist} name={p.name} /> : <p className="small muted">{t("You're here — new jobs show up at real places every 30 minutes.")}</p>}
-      <StoreExtras query={{ store: "place", id: p.id, name: p.name, lat: p.lat.toFixed(6), lng: p.lng.toFixed(6), cat: p.cat }} />
+      <StoreExtras query={{ store: "place", id: p.id, name: p.name, lat: p.lat.toFixed(6), lng: p.lng.toFixed(6), cat: p.cat }} at={p} />
     </Sheet>
   );
 }
@@ -108,7 +108,7 @@ export function PlaceCard({ m, onClose }: { m: WorldPlace; onClose: () => void }
       ) : (
         <Button className="btn green block big-btn" onClick={start}>{t("✅ Check in")}</Button>
       )}
-      <StoreExtras query={{ store: "place", id: m.place.id, name: m.place.name, lat: m.place.lat.toFixed(6), lng: m.place.lng.toFixed(6), cat: m.place.cat }} />
+      <StoreExtras query={{ store: "place", id: m.place.id, name: m.place.name, lat: m.place.lat.toFixed(6), lng: m.place.lng.toFixed(6), cat: m.place.cat }} at={m.place} />
     </Sheet>
   );
 }
@@ -175,7 +175,7 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
           </div>
         );
       })}
-      <StoreExtras query={{ store: "biz", id: b.id }} />
+      <StoreExtras query={{ store: "biz", id: b.id }} at={b} />
     </Sheet>
   );
 }

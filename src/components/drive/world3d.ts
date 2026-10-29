@@ -12,7 +12,7 @@ import { rng } from "@/lib/geo";
 import { artFor } from "../art/emoji";
 import { ICONS } from "../art/icons";
 import { materialDefs, render } from "../art/kit";
-import type { Footprint, Label, PropKind, Style, TileArrays } from "./tileMesh";
+import { FACADES, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
 import { nameLines, oneLine, tradeOf } from "./trades";
 
 export type Phase = "night" | "dawn" | "day" | "dusk";
@@ -115,6 +115,157 @@ function facade(style: Style, lit: boolean) {
   return t;
 }
 
+/**
+ * The real style's façades, one layer each in FACADES order (tileMesh.ts): plaster, brick,
+ * Tehran's travertine stone, concrete panels, metal cladding, and a ground floor of shop
+ * windows. Like `facade`, a 4×4 block of bays per layer. RGB is the picture; alpha says
+ * where the vertex colour (the wall's paint) applies — the wall, never the glass, frames or
+ * mortar. `lit`: the night mask, windows in the same places as the picture.
+ */
+function facadeLayers(lit: boolean) {
+  const S = 256, B = S / 4;
+  const data = new Uint8Array(S * S * 4 * FACADES.length);
+  FACADES.forEach((kind, layer) => {
+    const { g } = canvas(S);
+    const mask = canvas(S);
+    const m = mask.g;
+    const r = rng(lit ? 101 + layer : 31 + layer);
+    g.fillStyle = lit ? "#000" : "#fff";
+    g.fillRect(0, 0, S, S);
+    m.fillStyle = "#000";
+    m.fillRect(0, 0, S, S);
+    /** Painted in its own colour, not the wall's (glass, frames, mortar). */
+    const own = (x: number, y: number, w: number, h: number, col: string) => {
+      g.fillStyle = col;
+      g.fillRect(x, y, w, h);
+      m.fillStyle = "#fff";
+      m.fillRect(x, y, w, h);
+    };
+    if (!lit) {
+      // The wall between the windows, around white so the paint colour shows through.
+      if (kind === "plaster")
+        for (let i = 0; i < 900; i++) {
+          g.fillStyle = `rgba(0,0,0,${0.02 + r() * 0.03})`;
+          g.fillRect(r() * S, r() * S, 2, 2);
+        }
+      if (kind === "brick")
+        for (let y = 0; y < S; y += 5) {
+          for (let x = (y / 5) % 2 ? -6 : 0; x < S; x += 13) {
+            const v = 222 + Math.floor(r() * 33);
+            g.fillStyle = `rgb(${v},${v},${v})`;
+            g.fillRect(x, y, 12, 4);
+          }
+          own(0, y + 4, S, 1, "#c9c3b8");
+        }
+      if (kind === "stone")
+        for (let y = 0; y < S; y += 16) {
+          for (let x = (y / 16) % 2 ? -20 : 0; x < S; x += 40) {
+            const v = 232 + Math.floor(r() * 23);
+            g.fillStyle = `rgb(${v},${v},${v - 4})`;
+            g.fillRect(x + 1, y + 1, 39, 15);
+            // Travertine's little holes and veins.
+            for (let k = 0; k < 6; k++) (g.fillStyle = "rgba(120,100,70,.18)"), g.fillRect(x + 2 + r() * 34, y + 2 + r() * 11, 2 + r() * 4, 1);
+          }
+          g.fillStyle = "rgba(90,80,60,.28)";
+          g.fillRect(0, y, S, 1);
+        }
+      if (kind === "concrete") {
+        for (let y = 0; y < S; y += 32) (g.fillStyle = "rgba(0,0,0,.16)"), g.fillRect(0, y, S, 2);
+        for (let x = 0; x < S; x += 64) (g.fillStyle = "rgba(0,0,0,.12)"), g.fillRect(x, 0, 2, S);
+        for (let i = 0; i < 40; i++) (g.fillStyle = `rgba(60,60,60,${0.03 + r() * 0.05})`), g.fillRect(r() * S, r() * S, 3, 10 + r() * 30);
+      }
+      if (kind === "metal") for (let y = 0; y < S; y += 6) (g.fillStyle = "rgba(0,0,0,.13)"), g.fillRect(0, y, S, 2);
+    }
+    for (let y = 0; y < 4; y++)
+      for (let x = 0; x < 4; x++) {
+        const bx = x * B, by = y * B;
+        if (kind === "shopfront") {
+          // A shop window under a sign band, a door in every other bay; all lit at night.
+          const wx = bx + 4, wy = by + 15, ww = B - 8, wh = B - 17;
+          if (lit) {
+            g.fillStyle = r() < 0.85 ? "#ffe2a8" : "#cfe2ff";
+            g.fillRect(wx + 2, wy + 2, ww - 4, wh - 4);
+            continue;
+          }
+          own(wx - 2, wy - 2, ww + 4, wh + 2, "#2b2f35");
+          const grd = g.createLinearGradient(wx, wy, wx + ww, wy + wh);
+          grd.addColorStop(0, "#7d93a8");
+          grd.addColorStop(0.6, "#3a4756");
+          grd.addColorStop(1, "#58697c");
+          g.fillStyle = grd;
+          g.fillRect(wx, wy, ww, wh);
+          if (x % 2) own(wx + ww - 18, wy + 4, 14, wh - 4, "#22262b");
+          continue;
+        }
+        if (kind === "metal") {
+          // A strip of high windows, every other floor.
+          if (y % 2) continue;
+          const wx = bx + 6, wy = by + 10, ww = B - 12, wh = 12;
+          if (lit) (g.fillStyle = r() < 0.5 ? "#dfe8ff" : "#000"), g.fillRect(wx, wy, ww, wh);
+          else own(wx, wy, ww, wh, "#4a5868");
+          continue;
+        }
+        const wx = bx + 15, wy = by + 13, ww = 34, wh = 38;
+        if (lit) {
+          const on = r() < 0.42;
+          g.fillStyle = on ? (r() < 0.6 ? "#ffcf8a" : r() < 0.5 ? "#fff1d0" : "#cfe2ff") : "#000";
+          g.fillRect(wx + 2, wy + 2, ww - 4, wh - 4);
+          continue;
+        }
+        // Frame (white on brick and plaster, dark aluminium on stone and concrete), glass, a sill.
+        own(wx - 3, wy - 3, ww + 6, wh + 6, kind === "stone" || kind === "concrete" ? "#5c636b" : "#e4e0d8");
+        const grd = g.createLinearGradient(wx, wy, wx + ww, wy + wh);
+        grd.addColorStop(0, "#5e7186");
+        grd.addColorStop(0.55, "#2f3b48");
+        grd.addColorStop(1, "#46566a");
+        g.fillStyle = grd;
+        g.fillRect(wx, wy, ww, wh);
+        if (r() < 0.3) own(wx, wy, ww, wh * (0.25 + r() * 0.5), "rgba(225,214,190,.95)");
+        own(wx + ww / 2 - 1, wy, 2, wh, kind === "stone" || kind === "concrete" ? "#4a5058" : "#cfcac0");
+        own(wx - 5, wy + wh + 2, ww + 10, 4, kind === "brick" ? "#d8d2c6" : "#bdb8ae");
+      }
+    const rgb = g.getImageData(0, 0, S, S).data, a = m.getImageData(0, 0, S, S).data;
+    const off = layer * S * S * 4;
+    for (let i = 0; i < S * S; i++) {
+      data[off + i * 4] = rgb[i * 4];
+      data[off + i * 4 + 1] = rgb[i * 4 + 1];
+      data[off + i * 4 + 2] = rgb[i * 4 + 2];
+      data[off + i * 4 + 3] = lit ? 255 : 255 - a[i * 4];
+    }
+  });
+  const t = new THREE.DataArrayTexture(data, S, S, FACADES.length);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 4;
+  t.needsUpdate = true;
+  return t;
+}
+
+/**
+ * The real walls read their façade from `facadeLayers` by each vertex's `fac` (geometry
+ * without it is plaster, layer 0). `map` and `emissiveMap` stay set so three.js keeps the
+ * bay UVs and their repeat; the arrays replace what is sampled.
+ */
+function wearFacades(mat: THREE.MeshStandardMaterial) {
+  const base = facadeLayers(false), lit = facadeLayers(true);
+  mat.userData.textures = [base, lit];
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.facadeMap = { value: base };
+    sh.uniforms.facadeLit = { value: lit };
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute float fac;\nvarying float vFac;").replace("#include <uv_vertex>", "#include <uv_vertex>\nvFac = fac;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform highp sampler2DArray facadeMap;\nuniform highp sampler2DArray facadeLit;\nvarying float vFac;\nvec4 facadeTexel;")
+      .replace("#include <map_fragment>", "facadeTexel = texture(facadeMap, vec3(vMapUv, floor(vFac + 0.5)));\ndiffuseColor.rgb *= facadeTexel.rgb;")
+      .replace("#include <color_fragment>", "diffuseColor.rgb *= mix(vec3(1.0), vColor, facadeTexel.a);")
+      .replace("#include <emissivemap_fragment>", "totalEmissiveRadiance *= texture(facadeLit, vec3(vEmissiveMapUv, floor(vFac + 0.5))).rgb;");
+  };
+  mat.customProgramCacheKey = () => "facade-layers-1";
+  return mat;
+}
+
 /** Glass curtain wall: panels and mullions; lit panels at night. */
 function curtain(lit: boolean) {
   const S = 256, B = S / 4;
@@ -179,7 +330,7 @@ export function makeMaterials(style: Style) {
     return withDispose(m);
   }
   const m = {
-    walls: new THREE.MeshStandardMaterial({ map: facade("real", false), vertexColors: true, roughness: 0.86, metalness: 0, emissiveMap: facade("real", true), emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 0 }),
+    walls: wearFacades(new THREE.MeshStandardMaterial({ map: facade("real", false), vertexColors: true, roughness: 0.86, metalness: 0, emissiveMap: facade("real", true), emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 0 })),
     glass: new THREE.MeshStandardMaterial({ map: curtain(false), vertexColors: true, roughness: 0.12, metalness: 0.75, emissiveMap: curtain(true), emissive: new THREE.Color("#ffe6b8"), emissiveIntensity: 0, envMapIntensity: 1.2 }),
     roofs: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }),
     roads: new THREE.MeshStandardMaterial({ vertexColors: true, map: grain(0.8, 0.06, 21), roughness: 0.93, side: THREE.DoubleSide, ...off(-2) }),
@@ -201,6 +352,7 @@ function withDispose<T extends Record<string, THREE.Material>>(m: T) {
         const s = mat as THREE.MeshStandardMaterial;
         s.map?.dispose();
         s.emissiveMap?.dispose();
+        for (const tex of (s.userData.textures as THREE.Texture[] | undefined) ?? []) tex.dispose();
         mat.dispose();
       }
     },
@@ -466,15 +618,18 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     g.setAttribute("normal", new THREE.BufferAttribute(l.nor, 3));
     g.setAttribute("color", new THREE.BufferAttribute(l.col, 3));
     g.setAttribute("uv", new THREE.BufferAttribute(l.uv, 2));
+    if (l.fac) g.setAttribute("fac", new THREE.BufferAttribute(l.fac, 1));
     g.setIndex(new THREE.BufferAttribute(l.idx, 1));
     g.computeBoundingSphere();
     geoms.push(g);
-    const mesh = new THREE.Mesh(g, mats[l.name]);
+    // Balconies and rooftop kit are drawn like roofs, and only up close (with the other detail).
+    const trim = l.name === "trim";
+    const mesh = new THREE.Mesh(g, l.name === "trim" ? mats.roofs : mats[l.name]);
     const solid = l.name === "walls" || l.name === "glass" || l.name === "roofs";
     mesh.castShadow = opts.shadows && solid;
     mesh.receiveShadow = opts.shadows && l.name !== "water";
     mesh.matrixAutoUpdate = false;
-    group.add(mesh);
+    (trim ? detail : group).add(mesh);
   }
   const insts: THREE.InstancedMesh[] = [];
   const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, p: { mats: Float32Array; cols: Float32Array | null }, shadow: boolean) => {

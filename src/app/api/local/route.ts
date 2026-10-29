@@ -1,8 +1,11 @@
-// What other sites know about real stores (server/localData.ts). One GET, six questions:
+// What other sites know about real stores (server/localData.ts). One GET, nine questions:
 //   ?near=1&lat&lng            Snappfood vendors around a point (the map layer)
+//   ?torobNear=1&lat&lng       Torob's walk-in stores around a point (the map layer)
 //   ?divar=1&lat&lng           the nearest Divar neighbourhoods and their latest ads (the map layer)
 //   ?divar=<id>&city=<id>&cat  one neighbourhood's ads in a category (the Divar card's tabs)
-//   ?menu=<code>&lat&lng       one vendor's menu / catalog
+//   ?menu=<code>&lat&lng       one vendor's menu / catalog, hours, phone and review counts
+//   ?reviews=<code>&page       one vendor's reviews, ten to a page
+//   ?torobPlace=<id>           a walk-in Torob store's page and the first page of its catalog
 //   ?store=place|biz|shop      a store card's menu, Torob listings and links
 //                              (place: name, lat, lng, cat · biz / shop: id)
 //   ?torob=<query>[&shop=<id>] Torob prices for a product — everywhere, or in one Torob shop
@@ -16,11 +19,14 @@ import { requireUser } from "@/server/auth";
 import { findPlace } from "@/server/city";
 import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
-import { divarAround, divarPosts, storeData, torobSearch, vendorMenu, vendorsAround } from "@/server/localData";
+import { divarAround, divarPosts, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
 
 const num = z.coerce.number().finite();
 const Query = z.union([
   z.object({ near: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
+  z.object({ torobNear: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
+  z.object({ reviews: z.string().regex(/^[0-9a-z]{6}$/), page: z.coerce.number().int().min(0).max(100).default(0) }),
+  z.object({ torobPlace: z.coerce.number().int().positive().max(1e9) }),
   z.object({ divar: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ divar: z.string().regex(/^\d{1,9}$/), city: z.string().regex(/^\d{1,9}$/), cat: z.enum(DIVAR_CAT_KEYS).default("all") }),
   z.object({ menu: z.string().regex(/^[0-9a-z]{6}$/), lat: num.optional(), lng: num.optional() }),
@@ -31,14 +37,29 @@ const Query = z.union([
     .refine((q) => q.shop || q.torob.length >= 2, { path: ["torob"], message: "Too short" }),
 ]);
 
-const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [], about: { photo: "", logo: "", address: "", hours: "" } };
+const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [], about: { photo: "", logo: "", address: "", hours: "", week: null, phone: "" } };
 
 export const GET = route(async (req) => {
   await requireUser();
   const q = Query.parse(Object.fromEntries(new URL(req.url).searchParams));
-  if (!S.localDataEnabled) return "near" in q ? { vendors: [] } : "divar" in q ? (q.divar === "1" ? { areas: [] } : { posts: [] }) : "menu" in q ? { menu: null } : "torob" in q ? { items: [] } : empty;
+  if (!S.localDataEnabled) {
+    if ("near" in q) return { vendors: [] };
+    if ("torobNear" in q) return { shops: [], pending: false };
+    if ("reviews" in q) return { reviews: { count: 0, reviews: [] } };
+    if ("torobPlace" in q) return { info: null, items: [] };
+    return "divar" in q ? (q.divar === "1" ? { areas: [] } : { posts: [] }) : "menu" in q ? { menu: null } : "torob" in q ? { items: [] } : empty;
+  }
 
   if ("near" in q) return { vendors: (await vendorsAround(q)).slice(0, 400) };
+  if ("torobNear" in q) {
+    const { shops, pending } = await torobPlacesAround(q);
+    return { shops: shops.slice(0, 300), pending };
+  }
+  if ("reviews" in q) return { reviews: (await vendorReviews(q.reviews, q.page)) ?? { count: 0, reviews: [] } };
+  if ("torobPlace" in q) {
+    const [info, items] = await Promise.all([torobPlaceInfo(q.torobPlace), torobSearch("", q.torobPlace)]);
+    return { info, items };
+  }
   if ("divar" in q) return "lat" in q ? { areas: await divarAround(q) } : { posts: await divarPosts(Number(q.city), Number(q.divar), q.cat) };
   if ("menu" in q) {
     const menu = await vendorMenu(q.menu, q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : undefined);

@@ -1,10 +1,12 @@
 // What other sites know about a real store: Snappfood menus and catalogs (restaurants,
-// cafés, bakeries, supermarkets — with their real position, so they go on the map),
-// Torob listings and prices, and the latest Divar ads in each neighbourhood. None has
-// an official public API, so this stays polite:
+// cafés, bakeries, supermarkets — with their real position, so they go on the map), their
+// hours and reviews, Torob listings and prices, Torob's walk-in stores (on the map, each
+// with its own catalog), and the latest Divar ads in each neighbourhood. None has an
+// official public API, so this stays polite:
 //  - everything is cached in ExtCache (vendors per ~1 km cell and name searches for 12 h,
-//    a menu for 6 h, a Torob search or shop for 12 h, Divar's neighbourhoods for a week
-//    and their ads for 15 min), so a busy map costs them one request per area;
+//    a menu for 6 h, reviews for an hour, a Torob search or shop for 12 h, the walk-in
+//    store map for a day, Divar's neighbourhoods for a week and their ads for 15 min), so
+//    a busy map costs them one request per area;
 //  - each key is fetched once at a time (deduped per instance, at most three requests at
 //    once, honest User-Agent), and a failed refresh serves the stale copy;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL point at the sites ("off" disables them — the
@@ -14,8 +16,8 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, torobLink, torobShopId, vendorKind,
-  type DivarArea, type DivarCat, type DivarPost, type Menu, type StoreData, type StoreLink, type TorobItem, type TorobShop, type Vendor,
+  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
 
@@ -27,7 +29,12 @@ const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
 const HOUR = 3600_000;
 const VENDORS_TTL = 12 * HOUR;
 const MENU_TTL = 6 * HOUR;
+const REVIEWS_TTL = HOUR;
 const TOROB_TTL = 12 * HOUR;
+/** Torob's walk-in store map is rebuilt once a day (an hour after a failed try). */
+const TOROB_MAP_TTL = 24 * HOUR;
+/** …and kept per cell of this many degrees (~2 km), so an area reads a handful of rows. */
+const TOROB_CELL = 0.02;
 const DIVAR_PLACES_TTL = 7 * 24 * HOUR;
 const DIVAR_POSTS_TTL = 15 * 60_000;
 /** Vendor lists are cached per cell of this many degrees (~1 km). */
@@ -95,7 +102,8 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | nul
 }
 
 // ---------------------------------------------------------------- Snappfood
-const snappQuery = (at: LatLng) => `lat=${at.lat.toFixed(6)}&long=${at.lng.toFixed(6)}&optionalClient=WEBSITE&client=WEBSITE&deviceType=WEBSITE&appVersion=8.1.1`;
+const SNAPP_CLIENT = "optionalClient=WEBSITE&client=WEBSITE&deviceType=WEBSITE&appVersion=8.1.1";
+const snappQuery = (at: LatLng) => `lat=${at.lat.toFixed(6)}&long=${at.lng.toFixed(6)}&${SNAPP_CLIENT}`;
 
 type RawVendor = { vendorCode?: string; title?: string; childType?: string; vendorType?: string; lat?: number; lon?: number; rating?: number; logo?: string; menuUrl?: string; shareLink?: string; isOpen?: boolean; description?: string };
 function toVendor(v: RawVendor): Vendor | null {
@@ -198,21 +206,48 @@ export async function matchVendor(store: { name: string; lat: number; lng: numbe
 }
 
 type RawProduct = { id?: number; title?: string; description?: string; price?: number; discount?: number; images?: { imageThumbnailSrc?: string; imageSrc?: string }[] };
-type RawMenu = { data?: { vendor?: RawVendor & { coverPath?: string; address?: string }; menus?: { category?: string; products?: RawProduct[] }[] } };
+type RawStars = { one?: number; two?: number; three?: number; four?: number; five?: number };
+type RawMenu = {
+  data?: {
+    vendor?: RawVendor & {
+      coverPath?: string;
+      address?: string;
+      schedules?: { weekday?: number; allDay?: boolean; startHour?: string; stopHour?: string }[];
+      customerPhone?: string;
+      area?: string;
+      commentCount?: number;
+      reviewStars?: RawStars;
+      minOrder?: number;
+      deliveryFee?: number;
+    };
+    menus?: { category?: string; products?: RawProduct[] }[];
+  };
+};
+const phoneOf = (s: string | undefined) => (s && /^[\d+\-\s()]{5,20}$/.test(s.trim()) ? s.trim() : "");
 
 /** A vendor's menu (restaurants) or catalog (supermarkets, bakeries…), prices in toman. */
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
-  return cached<Menu>(`sf:menu:${code}`, MENU_TTL, async () => {
+  // "menu2": menus cached before hours, phone and review counts were read are fetched afresh.
+  return cached<Menu>(`sf:menu2:${code}`, MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = near ?? { lat: 35.6997, lng: 51.338 };
     const r = await getJson<RawMenu>(`${root}/mobile/v2/restaurant/details/dynamic?${snappQuery(at)}&UDID=streetquest&vendorCode=${encodeURIComponent(code)}&show_party=1&fetch-static-data=1`);
     const v = r?.data?.vendor ? toVendor({ ...r.data.vendor, vendorCode: r.data.vendor.vendorCode ?? code }) : null;
     if (!v || !r?.data) return null;
+    const raw = r.data.vendor!;
+    const st = raw.reviewStars;
     return {
       vendor: v,
-      cover: r.data.vendor?.coverPath ?? "",
-      address: r.data.vendor?.address ?? "",
+      cover: raw.coverPath ?? "",
+      address: raw.address ?? "",
+      week: weekFromSnappfood(raw.schedules),
+      phone: phoneOf(raw.customerPhone),
+      area: (raw.area ?? "").trim(),
+      reviews: raw.commentCount ?? 0,
+      ...(st ? { stars: [st.one ?? 0, st.two ?? 0, st.three ?? 0, st.four ?? 0, st.five ?? 0] } : {}),
+      ...(raw.minOrder ? { minOrder: rialToToman(raw.minOrder) } : {}),
+      ...(raw.deliveryFee != null ? { deliveryFee: rialToToman(raw.deliveryFee) } : {}),
       fetchedAt: new Date().toISOString(),
       sections: (r.data.menus ?? [])
         .map((m) => ({
@@ -232,10 +267,34 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   });
 }
 
+type RawComment = { commentId?: number; sender?: string; date?: string; rate?: number; commentText?: string; foods?: { title?: string }[]; replies?: { commentText?: string; text?: string }[] };
+/** Snappfood rates 1–10; the card shows 1–5 stars. */
+const starsOf = (rate: number | undefined) => Math.max(1, Math.min(5, Math.round((rate ?? 10) / 2)));
+
+/** A vendor's reviews, newest first, ten to a page (with how many there are in all). */
+export function vendorReviews(code: string, page = 0): Promise<ReviewPage | null> {
+  return cached<ReviewPage>(`sf:rev:${code}:${page}`, REVIEWS_TTL, async () => {
+    const root = snappBase();
+    if (!root) return null;
+    const r = await getJson<{ data?: { count?: number; comments?: RawComment[] } }>(`${root}/mobile/v1/restaurant/vendor-comment?vendorCode=${encodeURIComponent(code)}&page=${page}&${SNAPP_CLIENT}`);
+    if (!r?.data) return null;
+    const reviews: Review[] = (r.data.comments ?? []).map((c, i) => ({
+      id: String(c.commentId ?? `${page}-${i}`),
+      who: (c.sender ?? "").trim().slice(0, 40),
+      date: c.date ?? "",
+      rate: starsOf(c.rate),
+      text: (c.commentText ?? "").trim().slice(0, 600),
+      foods: (c.foods ?? []).map((f) => f.title?.trim() ?? "").filter(Boolean).slice(0, 6),
+      reply: (c.replies?.[0]?.commentText ?? c.replies?.[0]?.text ?? "").trim().slice(0, 600),
+    }));
+    return { count: r.data.count ?? reviews.length, reviews };
+  });
+}
+
 // ---------------------------------------------------------------- Torob
 type RawShop = { shop_id?: number; name?: string; logo_512?: string; num_bases?: number };
 type RawTorob = {
-  results?: { name1?: string; price?: number; price_prefix?: string; shop_text?: string; image_url?: string; web_client_absolute_url?: string }[];
+  results?: { name1?: string; price?: number; price_prefix?: string; shop_text?: string; image_url?: string; web_client_absolute_url?: string; random_key?: string }[];
   /** When the query is a shop's name: that shop. */
   business_profile_result?: { internet_shops?: RawShop[] } | null;
 };
@@ -286,7 +345,7 @@ export async function torobShop(name: string): Promise<TorobShop | null> {
   return out?.shop ?? null;
 }
 
-type RawShopDetails = { id?: number; name?: string; logo_512?: string };
+type RawShopDetails = { id?: number; name?: string; logo_512?: string; shop_logo?: string; address?: string; phone?: string; second_phone?: string; city?: string; shop_images?: string[] };
 /** A shop by its id, from an owner's torob.com/shop/<id>/ link. */
 async function torobShopById(id: number): Promise<TorobShop | null> {
   const out = await cached<{ shop: TorobShop | null }>(`tr:shop:#${id}`, TOROB_TTL, async () => {
@@ -297,6 +356,144 @@ async function torobShopById(id: number): Promise<TorobShop | null> {
     return { shop: r.id && r.name ? toShop({ shop_id: r.id, name: r.name, logo_512: r.logo_512 }) : null };
   });
   return out?.shop ?? null;
+}
+
+/** A walk-in Torob shop's own page: full address, phone, logo and photos of the store. */
+export async function torobPlaceInfo(id: number): Promise<TorobPlaceInfo | null> {
+  const out = await cached<{ info: TorobPlaceInfo | null }>(`tr:info:${id}`, TOROB_TTL, async () => {
+    const root = torobBase();
+    if (!root) return null;
+    const r = await getJson<RawShopDetails>(`${root}/v4/internet-shop/details/?id=${id}`);
+    if (!r) return null;
+    if (!r.id || !r.name) return { info: null };
+    return {
+      info: {
+        id: r.id,
+        name: r.name,
+        logo: r.logo_512 || r.shop_logo || "",
+        photos: (r.shop_images ?? []).filter((u) => /^https:\/\//.test(u)).slice(0, 6),
+        address: (r.address ?? "").trim(),
+        phone: phoneOf(r.phone) || phoneOf(r.second_phone),
+        city: (r.city ?? "").trim(),
+        url: `https://torob.com/shop/${r.id}/`,
+      },
+    };
+  });
+  return out?.info ?? null;
+}
+
+/**
+ * Torob's map of walk-in sellers is per product, so the map of stores is built from a
+ * couple of listings of everyday products that, between them, reach most kinds of
+ * store: phones and accessories, computers, appliances, perfume and beauty, shoes,
+ * watches, books, toys, tools, tyres and bikes. Each tag is what the store was seen selling.
+ */
+const TOROB_SEEDS: { q: string; tag: string }[] = [
+  { q: "گوشی موبایل", tag: "📱" }, { q: "قاب گوشی", tag: "📱" }, { q: "لپ تاپ", tag: "💻" }, { q: "هندزفری بلوتوث", tag: "🎧" },
+  { q: "تلویزیون", tag: "📺" }, { q: "یخچال", tag: "🧊" }, { q: "جاروبرقی", tag: "🔌" }, { q: "عطر", tag: "🌸" },
+  { q: "کرم ضد آفتاب", tag: "💄" }, { q: "کفش ورزشی", tag: "👟" }, { q: "ساعت مچی", tag: "⌚" }, { q: "کتاب", tag: "📚" },
+  { q: "اسباب بازی", tag: "🧸" }, { q: "دریل", tag: "🔧" }, { q: "لاستیک خودرو", tag: "🚗" }, { q: "دوچرخه", tag: "🚲" },
+];
+const LISTINGS_PER_SEED = 2;
+const MAX_TOROB_PLACES = 60_000;
+type RawMapSeller = { shop_id?: number; shop_name?: string; shop_name2?: string; name1?: string; location?: { lat?: number; lon?: number }; media?: { url?: string }[]; working_hours?: { schedule?: { text?: string }[] } };
+const torobCell = (lat: number, lng: number) => `${Math.floor(lat / TOROB_CELL)}:${Math.floor(lng / TOROB_CELL)}`;
+
+/** The map's walk-in sellers of every seed product, merged per shop: Map<shop id, place>. */
+export async function collectTorobPlaces(): Promise<Map<number, TorobPlace> | null> {
+  const root = torobBase();
+  if (!root) return null;
+  const places = new Map<number, TorobPlace>();
+  let answered = 0;
+  for (const seed of TOROB_SEEDS) {
+    const r = await getJson<RawTorob>(`${root}/v4/base-product/search/?q=${encodeURIComponent(seed.q)}&shop_type=offline&page=0&size=${LISTINGS_PER_SEED * 2}`);
+    const keys = (r?.results ?? []).map((x) => x.random_key).filter((k): k is string => !!k).slice(0, LISTINGS_PER_SEED);
+    const maps = await Promise.all(keys.map((k) => getJson<{ result?: RawMapSeller[] }>(`${root}/v4/base-product/map/sellers/?prk=${encodeURIComponent(k)}`)));
+    for (const m of maps) {
+      if (m) answered++;
+      for (const s of m?.result ?? []) {
+        const lat = Number(s.location?.lat), lng = Number(s.location?.lon);
+        if (!s.shop_id || !s.shop_name || !Number.isFinite(lat) || !Number.isFinite(lng) || places.size >= MAX_TOROB_PLACES) continue;
+        const had = places.get(s.shop_id);
+        if (had) {
+          if (!had.sells.includes(seed.tag)) had.sells.push(seed.tag);
+          continue;
+        }
+        places.set(s.shop_id, {
+          id: s.shop_id,
+          name: s.shop_name.trim().slice(0, 60),
+          lat: Math.round(lat * 1e6) / 1e6,
+          lng: Math.round(lng * 1e6) / 1e6,
+          city: (s.shop_name2 ?? "").trim(),
+          // Torob cuts the address short on its map ("…"); the shop's page has all of it.
+          address: (s.name1 ?? "").replace(/\.{2,}$|…$/, "").trim(),
+          photo: s.media?.find((x) => x.url && /^https:\/\//.test(x.url))?.url ?? "",
+          week: weekFromTorob(s.working_hours?.schedule),
+          sells: [seed.tag],
+        });
+      }
+    }
+  }
+  return answered ? places : null;
+}
+
+const TOROB_META = "tr:map:meta";
+let torobBuild: Promise<void> | null = null;
+/** Rebuild the walk-in store map: every place, kept per ~2 km cell (one ExtCache row each). */
+async function buildTorobMap() {
+  const places = await collectTorobPlaces().catch(() => null);
+  if (!places) {
+    // Failed: remember it, so the next try is in an hour instead of on every request.
+    const data = { ok: false, places: 0 } as Prisma.InputJsonValue;
+    await prisma.extCache.upsert({ where: { key: TOROB_META }, create: { key: TOROB_META, data }, update: { data, fetchedAt: new Date() } });
+    return;
+  }
+  const cells = new Map<string, TorobPlace[]>();
+  for (const p of places.values()) {
+    const k = torobCell(p.lat, p.lng);
+    const list = cells.get(k);
+    if (list) list.push(p);
+    else cells.set(k, [p]);
+  }
+  const meta = { ok: true, places: places.size, cells: cells.size } as Prisma.InputJsonValue;
+  await prisma.$transaction([
+    prisma.extCache.deleteMany({ where: { key: { startsWith: "tr:map:c:" } } }),
+    prisma.extCache.createMany({ data: [...cells].map(([k, list]) => ({ key: `tr:map:c:${k}`, data: list as unknown as Prisma.InputJsonValue })) }),
+    prisma.extCache.upsert({ where: { key: TOROB_META }, create: { key: TOROB_META, data: meta }, update: { data: meta, fetchedAt: new Date() } }),
+  ]);
+}
+
+/**
+ * The map is current: rebuilt in the background once a day. Only the very first build
+ * (no map yet) is waited for, and only so long — the card shows what there is meanwhile.
+ */
+async function freshTorobMap() {
+  const meta = await prisma.extCache.findUnique({ where: { key: TOROB_META } });
+  const ok = (meta?.data as { ok?: boolean } | undefined)?.ok;
+  if (meta && Date.now() - meta.fetchedAt.getTime() < (ok ? TOROB_MAP_TTL : HOUR)) return;
+  torobBuild ??= buildTorobMap()
+    .catch(() => {})
+    .finally(() => (torobBuild = null));
+  if (!meta) await Promise.race([torobBuild, new Promise((r) => setTimeout(r, 25_000))]);
+}
+
+/** Walk-in Torob stores around a point, nearest first; `pending` while the very first map is still being built. */
+export async function torobPlacesAround(here: LatLng, radiusM = 4000): Promise<{ shops: TorobPlace[]; pending: boolean }> {
+  if (!torobBase()) return { shops: [], pending: false };
+  await freshTorobMap();
+  const pending = !!torobBuild && !(await prisma.extCache.findUnique({ where: { key: TOROB_META } }));
+  const reach = Math.ceil(radiusM / (TOROB_CELL * 111_000)) + 1;
+  const cy = Math.floor(here.lat / TOROB_CELL), cx = Math.floor(here.lng / TOROB_CELL);
+  const keys: string[] = [];
+  for (let y = cy - reach; y <= cy + reach; y++) for (let x = cx - reach; x <= cx + reach; x++) keys.push(`tr:map:c:${y}:${x}`);
+  const rows = await prisma.extCache.findMany({ where: { key: { in: keys } } });
+  const shops = rows
+    .flatMap((r) => r.data as unknown as TorobPlace[])
+    .map((p) => ({ p, d: distanceM(here, p) }))
+    .filter((x) => x.d <= radiusM)
+    .sort((a, b) => a.d - b.d)
+    .map((x) => x.p);
+  return { shops, pending };
 }
 
 // ---------------------------------------------------------------- Divar
@@ -440,13 +637,43 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
   if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
-  if (s.phone) links.push({ kind: "phone", url: `tel:${s.phone.replace(/[^\d+]/g, "")}`, label: s.phone });
+  const phone = s.phone || menu?.phone || "";
+  if (phone) links.push({ kind: "phone", url: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone });
   const about = {
     photo: menu?.cover || s.photo || shop?.logo || "",
     // Last resort: the store's own website icon.
     logo: menu?.vendor.logo || shop?.logo || siteIcon(s.website) || "",
     address: s.address || menu?.address || "",
     hours: s.hours ?? "",
+    // The map's hours when they read as a week, else Snappfood's schedule.
+    week: weekFromOsm(s.hours) ?? menu?.week ?? null,
+    phone,
   };
   return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links, about };
+}
+
+// ---------------------------------------------------------------- reachability
+/**
+ * Can this server reach each site (for /api/health?ext=1)? Iranian sites often refuse
+ * foreign servers, and foreign ones may block Iran — a deployment's region decides which
+ * of the store layers can work at all.
+ */
+export async function extHealth() {
+  const probe = async (url: string | null) => {
+    if (!url) return { ok: false, status: "off" };
+    const t0 = Date.now();
+    try {
+      const res = await fetch(url, { headers: { "user-agent": "StreetQuest/1.0 health", accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      return { ok: res.ok, status: String(res.status), ms: Date.now() - t0 };
+    } catch (e) {
+      return { ok: false, status: (e as Error).name, ms: Date.now() - t0 };
+    }
+  };
+  const sf = snappBase(), tr = torobBase(), dv = divarBase();
+  const [snappfood, torob, divar] = await Promise.all([
+    probe(sf && `${sf}/mobile/v3/restaurant/vendors-list?${snappQuery({ lat: 35.6997, lng: 51.338 })}&page=0&page_size=1`),
+    probe(tr && `${tr}/v4/base-product/search/?q=test&page=0&size=1`),
+    probe(dv && `${dv}/v8/places/cities`),
+  ]);
+  return { snappfood, torob, divar };
 }

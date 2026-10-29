@@ -42,9 +42,11 @@ export type CityBuilding = {
   /** Height where the walls start (an overhang, a canopy on pillars). */
   mh?: number;
   rf?: RoofShape;
-  /** Wall / roof colour from the map ("#rrggbb"). */
+  /** Wall / roof colour from the map ("#rrggbb"); a roof with no colour of its own gets its material's. */
   c?: string;
   rc?: string;
+  /** What the walls are made of, from the map (`building:material`: brick, stone, concrete…). */
+  m?: string;
   /** Not on the map: filled in along a street with no buildings mapped (see drive/vectorTile.ts). */
   g?: 1;
 };
@@ -136,6 +138,12 @@ const NAMED_COLOURS: Record<string, string> = {
   white: "#f2f2ee", black: "#2b2b2b", grey: "#8f9296", gray: "#8f9296", lightgrey: "#c8c9cb", lightgray: "#c8c9cb", darkgrey: "#5a5c60", darkgray: "#5a5c60", silver: "#c0c2c6",
   red: "#a8443a", darkred: "#7a2b25", maroon: "#6b2a24", brown: "#7b5a43", tan: "#cdb28c", beige: "#e3d6b8", cream: "#efe6cc", ivory: "#f3eedd", wheat: "#e6d3a8",
   yellow: "#e2c66a", orange: "#d98a4a", pink: "#e2b0b0", green: "#6f8f5e", darkgreen: "#3f5a3a", blue: "#5a7fa8", lightblue: "#a9c3dc", navy: "#2f3f63", sandybrown: "#d8a76a", terracotta: "#b8603e",
+};
+/** The colour of a roof made of this (`roof:material`), when the map gives no `roof:colour`. */
+const ROOF_MATERIAL_COLOURS: Record<string, string> = {
+  roof_tiles: "#b5583f", tile: "#b5583f", tiles: "#b5583f", clay: "#b5583f", metal: "#7f8a93", tin: "#7f8a93", steel: "#7f8a93", metal_sheet: "#7f8a93",
+  concrete: "#9a9a96", slate: "#4f5358", glass: "#9fc3d6", asphalt: "#3e3f42", tar_paper: "#3e3f42", gravel: "#a39e93", grass: "#6c9a4e",
+  copper: "#5f9c8a", thatch: "#a98b5a", wood: "#8a6a48", stone: "#8f8a80",
 };
 /** An OSM colour tag ("#abc", "#aabbcc", "red", "light grey") as "#rrggbb", or undefined. */
 export function osmColour(v: string | undefined) {
@@ -326,7 +334,8 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
     const h = heightOf(tags, k, id);
     const mh = parseFloat(tags.min_height ?? "") || (parseFloat(tags["building:min_level"] ?? "") || 0) * 3.2;
     const rf = ROOFS[tags["roof:shape"] ?? ""];
-    const c = osmColour(tags["building:colour"]), rc = osmColour(tags["roof:colour"]);
+    const c = osmColour(tags["building:colour"]), rc = osmColour(tags["roof:colour"]) ?? ROOF_MATERIAL_COLOURS[(tags["roof:material"] ?? "").toLowerCase()];
+    const m = /^[a-z_]{2,24}$/.test(tags["building:material"] ?? "") ? tags["building:material"] : undefined;
     tile.b.push({
       r, h: Math.round(h * 10) / 10, k: h > 60 ? "tower" : k,
       ...(tags.name && (k === "church" || k === "civic" || h > 40) ? { n: tags.name.slice(0, 40) } : {}),
@@ -334,6 +343,7 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
       ...(rf && rf !== "flat" ? { rf } : {}),
       ...(c ? { c } : {}),
       ...(rc ? { rc } : {}),
+      ...(m ? { m } : {}),
     });
   };
   for (const el of elements) {

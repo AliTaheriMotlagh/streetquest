@@ -58,6 +58,13 @@ async function warm() {
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     for (const k of await caches.keys()) if ((k.startsWith("sq-shell-") && k !== SHELL) || k === "sq-static-v1") await caches.delete(k);
+    // Tiles from a provider no map style uses any more (CARTO began answering every tile
+    // with an "API key required" picture): never shown again, so they go.
+    const tiles = await caches.open(TILES);
+    for (const r of await tiles.keys()) {
+      const h = new URL(r.url).hostname;
+      if (!TILE_HOSTS.some((t) => h === t || h.endsWith("." + t))) await tiles.delete(r);
+    }
     // The 3D decoder used to share the store models' cache, where trimming could drop it.
     const models = await caches.open(MODELS);
     for (const r of await models.keys()) if (new URL(r.url).pathname.startsWith("/draco/")) await models.delete(r);

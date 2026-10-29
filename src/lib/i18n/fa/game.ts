@@ -88,6 +88,18 @@ const game: Record<string, string> = {
   "In your crew": "تو اکیپته",
   "~ approximate location": "~ موقعیت تقریبی",
   "Add to crew": "اضافه به اکیپ",
+
+  // ---- who's online (Online.tsx)
+  "Players online now — tap to see who": "بازیکن‌های آنلاین — بزن تا ببینی کی‌ان",
+  "{n} players online": "{n} بازیکن آنلاین",
+  "playing from home": "از خونه بازی می‌کنه",
+  "far away": "دور",
+  "about {d}": "حدود {d}",
+  "Friends online": "دوست‌های آنلاین",
+  "None of your friends is online right now.": "الان هیچ‌کدوم از دوست‌هات آنلاین نیست.",
+  "Around you": "اطرافت",
+  "No one else is playing within 5 km right now.": "الان کس دیگه‌ای تا ۵ کیلومتری‌ات بازی نمی‌کنه.",
+  "Players see only roughly where you are; friends see you exactly.": "بقیه فقط حدودی می‌بینن کجایی؛ دوست‌هات دقیق.",
 };
 
 export default game;

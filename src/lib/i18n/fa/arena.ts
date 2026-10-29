@@ -128,6 +128,16 @@ const arena: Record<string, string> = {
   "Practice match done — matches with friends pay XP and coins once the live server is on": "مسابقه‌ی تمرینی تموم شد — وقتی سرور زنده روشن باشه، مسابقه با دوستات تجربه و سکه می‌ده",
   "Open the 3D city first": "اول شهر سه‌بعدی رو باز کن",
   "Matches here are practice against bots. Fights in the open city work with everyone nearby — matches with friends need the live server.": "مسابقه‌ها این‌جا تمرینی و با ربات‌ان. درگیری توی شهر با همه‌ی بازیکن‌های اطراف کار می‌کنه — مسابقه با دوستات به سرور زنده نیاز داره.",
+
+  // ---- medals (lib/arena/medals.ts) and the kill run in the HUD
+  "RAMPAGE!": "قتل‌عام!",
+  "TRIPLE KILL!": "سه کشتهٔ پشت سر هم!",
+  "UNSTOPPABLE · {n} in a row": "توقف‌ناپذیر · {n} تا پشت سر هم",
+  "KILLING SPREE · 5 in a row": "شکار پیاپی · ۵ تا پشت سر هم",
+  "DOUBLE KILL!": "دو کشتهٔ پشت سر هم!",
+  "FIRST BLOOD": "اولین خون",
+  HEADSHOT: "تیر به سر",
+  "Kills without dying": "کشته بدون مردن",
 };
 
 export default arena;

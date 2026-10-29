@@ -28,6 +28,7 @@ import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { beepSound, boomSound, emptySound, hitSound, hurtSound, killSound, reloadSound, shotSound } from "./gunsound";
+import { medalFor, nextRun, NO_RUN, type KillRun } from "@/lib/arena/medals";
 import { sfx } from "../game/sfx";
 import { HTTP_DELAY_MS, Remotes, RT_DELAY_MS } from "./remotes";
 import type { OtherDriver } from "../drive/net";
@@ -74,6 +75,9 @@ export type CombatHud = {
   carrying: boolean;
   /** No realtime server: matches are practice with bots; the open city's fights go over HTTP. */
   local: boolean;
+  /** The banner for what I just pulled off (lib/arena/medals.ts), while it shows; kills since I last died. */
+  medal: { id: number; text: string; big: boolean } | null;
+  streak: number;
 };
 
 export type CombatHost = {
@@ -117,6 +121,8 @@ const SENS_MOUSE = 0.0022;
 export const SENS_TOUCH = 0.0058;
 const CAR_REACH_M = 4.5;
 const FEED_MS = 6000;
+/** How long a medal's banner stays up. */
+const MEDAL_MS = 2400;
 const store = {
   get: (k: string) => {
     try {
@@ -170,6 +176,11 @@ export class Combat {
   private feed: FeedLine[] = [];
   private hurt: CombatHud["hurt"] = [];
   private feedId = 0;
+  /** My kills without dying, the multi-kill chain, and the banner they earned. */
+  private run: KillRun = NO_RUN;
+  private medal: { id: number; text: string; big: boolean; at: number } | null = null;
+  /** The match whose first kill has happened (first blood is for that one kill only). */
+  private bloodFor: string | null = null;
   private lastSend = 0;
   private hudAt = 0;
   private hudSig = "";
@@ -299,6 +310,8 @@ export class Combat {
       autoFire: this.autoFire,
       carrying: !!m?.bomb && m.bomb.state === "carried" && m.bomb.carrier === this.rt.sid,
       local: this.rt.local,
+      medal: this.medal && Date.now() - this.medal.at < MEDAL_MS ? { id: this.medal.id, text: this.medal.text, big: this.medal.big } : null,
+      streak: this.run.streak,
     };
   }
 
@@ -321,7 +334,7 @@ export class Combat {
     if (!force && now - this.hudAt < 100) return;
     this.hudAt = now;
     const s = this.build();
-    const sig = JSON.stringify([s.rt, s.onFoot, s.nearCar, s.hp, s.dead, s.respawnIn, s.canRespawn, s.passive, s.inMatch, s.team, s.weapon, s.loadout, s.ammo, s.reloading, s.scoped, s.cam, s.feed.map((f) => f.id), s.match, s.lobbies, s.act && [s.act.kind, s.act.can, Math.round(s.act.progress * 20)], s.outside, s.hurt.map((x) => x.id), s.autoFire, s.carrying, s.match && Math.floor(this.rt.serverNow() / 1000)]);
+    const sig = JSON.stringify([s.rt, s.onFoot, s.nearCar, s.hp, s.dead, s.respawnIn, s.canRespawn, s.passive, s.inMatch, s.team, s.weapon, s.loadout, s.ammo, s.reloading, s.scoped, s.cam, s.feed.map((f) => f.id), s.match, s.lobbies, s.act && [s.act.kind, s.act.can, Math.round(s.act.progress * 20)], s.outside, s.hurt.map((x) => x.id), s.autoFire, s.carrying, s.match && Math.floor(this.rt.serverNow() / 1000), s.medal?.id, s.streak]);
     if (sig === this.hudSig) return;
     this.hudSig = sig;
     this.snapshot = s;
@@ -684,6 +697,19 @@ export class Combat {
           { id: ++this.feedId, killer: m.killerName, victim: m.victimName, w: m.w, head: m.head, mine: m.killer === me, me: m.victim === me, kc: tc(m.killerTeam, m.killerName), vc: tc(m.victimTeam, m.victimName), at: Date.now() },
         ];
         if (m.killer === me && m.victim !== me) H.toast(t("You took down {name}", { name: m.victimName }));
+        // Medals: multi-kills and runs without dying, first blood of a match, headshots.
+        const firstBlood = !!this.match && this.bloodFor !== this.match.id;
+        if (this.match) this.bloodFor = this.match.id;
+        if (m.victim === me) this.run = NO_RUN;
+        else if (m.killer === me) {
+          this.run = nextRun(this.run, Date.now());
+          const medal = medalFor({ multi: this.run.multi, streak: this.run.streak, head: m.head, firstBlood });
+          if (medal) {
+            this.medal = { id: ++this.feedId, text: t(medal.text, { n: this.run.streak }), big: medal.big, at: Date.now() };
+            sfx(medal.big ? "levelup" : "capture");
+            setTimeout(() => this.publish(true), MEDAL_MS + 50);
+          }
+        }
         break;
       }
       case "shot": {

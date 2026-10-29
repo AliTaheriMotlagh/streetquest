@@ -187,3 +187,11 @@
 }
 html[dir="rtl"] .chud :is(.chud-feed, .chud-board, .chud-dead, .chud-banner, .chud-tip) { direction: rtl; }
 @media (prefers-reduced-motion: reduce) { .chud-low, .chud-bomb, .chud-warn { animation: none; } }
+
+/* Medals (lib/arena/medals.ts): a banner that pops in under the match bar, and the run of kills without dying. */
+.chud-medal { position: absolute; top: calc(92px + var(--safe-t, 0px)); left: 50%; transform: translateX(-50%); z-index: 6; padding: 6px 18px; border-radius: 12px; background: rgba(10, 12, 20, .72); border: 2px solid #f0c05a; color: #f6d58c; font: 900 20px/1.2 var(--display, sans-serif); letter-spacing: .06em; text-shadow: 0 2px 8px rgba(0, 0, 0, .8); white-space: nowrap; pointer-events: none; animation: medal-in .28s cubic-bezier(.2, 1.4, .4, 1) both, medal-out .4s ease-in 2s both; }
+.chud-medal.big { font-size: 26px; border-color: #ff5d73; color: #ffd0d6; box-shadow: 0 0 28px rgba(255, 93, 115, .45); }
+.chud-streak { position: absolute; top: calc(92px + var(--safe-t, 0px)); inset-inline-end: 14px; z-index: 5; padding: 3px 10px; border-radius: 999px; background: rgba(10, 12, 20, .6); color: #ffb020; font: 800 15px/1.4 var(--display, sans-serif); pointer-events: none; }
+@keyframes medal-in { from { opacity: 0; transform: translateX(-50%) scale(1.8); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes medal-out { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+@media (prefers-reduced-motion: reduce) { .chud-medal { animation: none; } }

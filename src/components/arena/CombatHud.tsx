@@ -79,6 +79,13 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
         </MatchBar>
       )}
 
+      {s.medal && (
+        <div key={s.medal.id} className={`chud-medal ${s.medal.big ? "big" : ""}`} role="status">
+          {s.medal.text}
+        </div>
+      )}
+      {s.onFoot && s.streak >= 2 && !s.dead && <div className="chud-streak" title={t("Kills without dying")}>🔥 {fmtNum(s.streak)}</div>}
+
       {s.feed.length > 0 && (
         <ul className="chud-feed" aria-live="polite">
           {s.feed.map((f) => (

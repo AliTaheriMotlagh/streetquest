@@ -9,12 +9,14 @@
 // corner street-name signs, every shop and house number.
 import * as THREE from "three";
 import { hashStr, rng, type LatLng } from "@/lib/geo";
-import { insidePacked, makeFrame, PROP, type BuildingKind, type CityPitch, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
+import { insidePacked, makeFrame, PROP, tileSW, type BuildingKind, type CityPitch, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
 import type { VtCell } from "./vectorTile";
 
 export type Style = "real" | "toon";
-export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs";
-export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array };
+/** `trim`: balconies and rooftop kit (coolers, water tanks) — drawn like roofs, only up close. */
+export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim";
+/** `fac`: the façade each wall vertex wears (an index into FACADES), when any isn't plaster. */
+export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
 export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain";
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
 export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number };
@@ -136,6 +138,72 @@ export const PALETTES: Record<Style, Palette> = {
 const AREA_Y: Record<string, number> = { residential: 0.004, commercial: 0.004, industrial: 0.004, farm: 0.012, cemetery: 0.012, sand: 0.012, grass: 0.016, park: 0.018, forest: 0.018, pitch: 0.02, parking: 0.024, plaza: 0.024, water: 0.03 };
 const ROAD_Y: Record<RoadKind, number> = { major: 0.09, minor: 0.075, path: 0.06, foot: 0.045, rail: 0.05 };
 
+// ---------------------------------------------------------------- façades
+/**
+ * What a wall is made of, in the order of the walls' texture array (world3d.ts): the
+ * pattern between the windows and the windows themselves. The vertex colour tints the
+ * wall, never the glass. "shopfront" is a ground floor of shop windows.
+ */
+export const FACADES = ["plaster", "brick", "stone", "concrete", "metal", "shopfront"] as const;
+export type Facade = (typeof FACADES)[number];
+const FAC = Object.fromEntries(FACADES.map((f, i) => [f, i])) as Record<Facade, number>;
+/** Wall colours per material (the real style), where the map gives none. Stone is Tehran's travertine. */
+const MATERIAL_WALLS: Record<Exclude<Facade, "plaster" | "shopfront">, string[]> = {
+  brick: ["#a4553b", "#b3644a", "#94503a", "#b97a5c", "#9c5d45", "#c08868"],
+  stone: ["#e9dfcc", "#efe6d4", "#ddd0b6", "#f3ecdd", "#d9ccb2", "#e4d6bd"],
+  concrete: ["#b8b5ad", "#a8a59d", "#c4c1b9", "#9fa3a6"],
+  metal: ["#9aa3ab", "#b0b6bb", "#8b959d", "#c2c6c8", "#a7a097"],
+};
+/** OpenStreetMap `building:material` → the façade drawn. Glass is the curtain-wall layer; wood is a painted wall. */
+const MATERIALS: Record<string, Facade | "glass" | "wood"> = {
+  brick: "brick", masonry: "brick", traditional: "brick", clay: "brick", mud: "brick", adobe: "brick",
+  stone: "stone", sandstone: "stone", limestone: "stone", marble: "stone", granite: "stone", travertine: "stone",
+  plaster: "plaster", stucco: "plaster", render: "plaster", timber_framing: "plaster",
+  cement: "concrete", concrete: "concrete", cement_block: "concrete", reinforced_concrete: "concrete",
+  metal: "metal", steel: "metal", tin: "metal", aluminium: "metal", metal_plates: "metal", glass: "glass", wood: "wood",
+};
+/**
+ * OpenMapTiles colours a building that has no colour of its own by its material: those
+ * exact colours tell us the material (and aren't a real paint colour).
+ */
+const TILE_MATERIAL_COLOURS: Record<string, Facade | "glass" | "wood"> = {
+  "#bd8161": "brick", "#9d8b75": "brick", "#dadbdb": "plaster", "#b3b0a9": "plaster", "#d48741": "wood",
+  "#d3c2b0": "concrete", "#6a7880": "concrete", "#b7b1a6": "metal", "#b4a995": "stone", "#5a625c": "glass",
+};
+/** Weighted guesses where the map says nothing, by region: the Middle East builds in stone and brick, flat-roofed. */
+const GUESS: Record<"me" | "world", Record<BuildingKind, [Facade, number][]>> = {
+  me: {
+    house: [["brick", 4], ["plaster", 4], ["stone", 2]], apartments: [["stone", 4], ["brick", 3], ["plaster", 2], ["concrete", 1]],
+    shop: [["plaster", 4], ["stone", 3], ["concrete", 2]], office: [["stone", 3], ["concrete", 3]], industrial: [["metal", 6], ["concrete", 4]],
+    civic: [["stone", 5], ["brick", 4]], church: [["brick", 5], ["stone", 3]], tower: [["concrete", 1]],
+  },
+  world: {
+    house: [["plaster", 5], ["brick", 4], ["stone", 1]], apartments: [["concrete", 4], ["brick", 3], ["plaster", 3]],
+    shop: [["plaster", 5], ["brick", 3], ["concrete", 2]], office: [["concrete", 5], ["stone", 3]], industrial: [["metal", 6], ["concrete", 4]],
+    civic: [["stone", 6], ["brick", 4]], church: [["stone", 7], ["brick", 3]], tower: [["concrete", 1]],
+  },
+};
+/** Roofs are flat across the Middle East (Iran, the Gulf, the Levant…): mosques, rooftop coolers and tanks go with it. */
+export const middleEast = (lat: number, lng: number) => lat > 12 && lat < 42 && lng > 25 && lng < 75;
+
+/**
+ * A building's façade and wall colour: the map's material (or the material OpenMapTiles
+ * coloured it by), else a seeded guess for its kind and region; the map's own paint colour
+ * wins. `glass`: drawn as a curtain wall.
+ */
+export function buildingLook(b: { k: BuildingKind; c?: string; m?: string }, seed: number, region: "me" | "world"): { facade: Facade; colour: string | null; glass: boolean } {
+  const fromTiles = b.c ? TILE_MATERIAL_COLOURS[b.c.toLowerCase()] : undefined;
+  const said = (b.m ? MATERIALS[b.m.toLowerCase()] : undefined) ?? fromTiles;
+  const colour = b.c && !fromTiles ? b.c : said === "wood" ? "#a77b52" : null;
+  if (said === "glass") return { facade: "plaster", colour, glass: true };
+  if (said && said !== "wood") return { facade: said, colour, glass: false };
+  if (said === "wood") return { facade: "plaster", colour, glass: false };
+  const options = GUESS[region][b.k] ?? GUESS[region].house;
+  let r = seed % options.reduce((n, [, w]) => n + w, 0);
+  for (const [f, w] of options) if ((r -= w) < 0) return { facade: f, colour, glass: false };
+  return { facade: options[0][0], colour, glass: false };
+}
+
 // ---------------------------------------------------------------- builders
 class Builder {
   pos: number[] = [];
@@ -143,16 +211,21 @@ class Builder {
   col: number[] = [];
   uv: number[] = [];
   idx: number[] = [];
+  fac: number[] = [];
+  /** The façade the next vertices wear (walls only). */
+  facade = 0;
   vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, c: THREE.Color, u = 0, v = 0) {
     this.pos.push(x, y, z);
     this.nor.push(nx, ny, nz);
     this.col.push(c.r, c.g, c.b);
     this.uv.push(u, v);
+    this.fac.push(this.facade);
     return this.pos.length / 3 - 1;
   }
   layer(name: LayerName): Layer | null {
     if (!this.idx.length) return null;
-    return { name, pos: new Float32Array(this.pos), nor: new Float32Array(this.nor), col: new Float32Array(this.col), uv: new Float32Array(this.uv), idx: new Uint32Array(this.idx) };
+    const fac = this.fac.some((f) => f !== 0) ? new Float32Array(this.fac) : undefined;
+    return { name, pos: new Float32Array(this.pos), nor: new Float32Array(this.nor), col: new Float32Array(this.col), uv: new Float32Array(this.uv), idx: new Uint32Array(this.idx), ...(fac ? { fac } : {}) };
   }
   /** A flat-shaded triangle facing away from `out` (a point inside the solid). */
   tri(a: V3, b: V3, c: V3, col: THREE.Color, out: V3) {
@@ -175,6 +248,11 @@ type V3 = [number, number, number];
 
 const color = (hex: string) => new THREE.Color(hex);
 const pick = (list: string[], seed: number) => color(list[seed % list.length]);
+/** Mosque domes: turquoise and blue tile, now and then gold. */
+const DOMES = ["#2f8f9d", "#2c6fb0", "#3a9bb0", "#1f7a8c", "#c9a227"];
+/** Balcony railings: dark steel, white, grey, blue-grey glass. */
+const RAILS = ["#3b3f45", "#e9e7e2", "#5b6168", "#8fa3b0"];
+const COOLER = color("#c9cbcd"), TANK_WHITE = color("#e8eaec"), TANK_BLUE = color("#3f78b5"), GOLD = color("#d4af37");
 
 function signedArea(p: Float32Array) {
   let a = 0;
@@ -329,7 +407,7 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
 }
 
 /** Distance from a point to the nearest edge of a closed outline. */
-function edgeDist(p: number[], x: number, z: number) {
+function edgeDist(p: ArrayLike<number>, x: number, z: number) {
   let best = Infinity;
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
     const ax = p[j], az = p[j + 1], dx = p[i] - ax, dz = p[i + 1] - az, l2 = dx * dx + dz * dz || 1;
@@ -357,6 +435,14 @@ export function box(x: number, z: number, hw: number, hd: number, yaw: number, h
 // ---------------------------------------------------------------- the tile
 const FLOOR_M = 3.3;
 const WINDOW_M = 4.2;
+/** A ground floor of shops is this tall. */
+const SHOP_FLOOR_M = 3.9;
+/** How far a balcony sticks out, and the parapet round a flat roof. */
+const BALCONY_M = 1.15;
+const PARAPET_M = 0.85;
+/** Per tile, so a dense block stays cheap: balconies, and rooftop coolers and tanks. */
+const MAX_BALCONIES = 360;
+const MAX_KIT = 220;
 const DRIVABLE: RoadKind[] = ["major", "minor", "path"];
 
 /** Zebra stripes across a street `w` wide at (x, z); (fx, fz) runs along the street. */
@@ -365,6 +451,75 @@ function zebra(b: Builder, x: number, z: number, fx: number, fz: number, w: numb
   for (let s = -w / 2 + 0.5; s < w / 2 - 0.3; s += 1.1) {
     const ax = x + sx * s, az = z + sz * s;
     ribbon(b, new Float32Array([ax - fx * 1.5, az - fz * 1.5, ax + fx * 1.5, az + fz * 1.5]), 0.55, y, c);
+  }
+}
+
+/** An upright prism of `sides` faces (a water tank, a minaret's shaft), closed on top. */
+function prism(b: Builder, x: number, z: number, r: number, y0: number, y1: number, c: THREE.Color, sides = 8) {
+  const out: V3 = [x, (y0 + y1) / 2, z];
+  const P = (k: number, y: number): V3 => [x + Math.cos((k / sides) * Math.PI * 2) * r, y, z + Math.sin((k / sides) * Math.PI * 2) * r];
+  for (let k = 0; k < sides; k++) {
+    b.tri(P(k, y0), P(k + 1, y0), P(k + 1, y1), c, out);
+    b.tri(P(k, y0), P(k + 1, y1), P(k, y1), c, out);
+    b.tri([x, y1, z], P(k, y1), P(k + 1, y1), c, out);
+  }
+}
+const tank = prism;
+
+/** A cone from a ring at y0 to a point at y1 (a minaret's cap, a finial). */
+function spike(b: Builder, x: number, z: number, r: number, y0: number, y1: number, c: THREE.Color, sides = 8) {
+  const out: V3 = [x, y0 + (y1 - y0) / 4, z];
+  for (let k = 0; k < sides; k++) {
+    const a0 = (k / sides) * Math.PI * 2, a1 = ((k + 1) / sides) * Math.PI * 2;
+    b.tri([x + Math.cos(a0) * r, y0, z + Math.sin(a0) * r], [x + Math.cos(a1) * r, y0, z + Math.sin(a1) * r], [x, y1, z], c, out);
+  }
+}
+
+/** A minaret on the roof: a shaft, the muezzin's balcony, a slimmer top, a tiled cap and a gold finial. */
+function minaret(b: Builder, x: number, z: number, y0: number, y1: number, body: THREE.Color, cap: THREE.Color) {
+  prism(b, x, z, 0.9, y0, y1 - 3, body);
+  prism(b, x, z, 1.35, y1 - 3, y1 - 2.6, body.clone().multiplyScalar(0.85));
+  prism(b, x, z, 0.7, y1 - 2.6, y1, body);
+  spike(b, x, z, 0.85, y1, y1 + 2.8, cap);
+  spike(b, x, z, 0.08, y1 + 2.8, y1 + 4, GOLD);
+}
+
+/**
+ * A mosque's roof: a drum (with the walls' windows) and an onion-shaped tiled dome over
+ * the middle with a gold finial, and two minarets at the two corners furthest apart.
+ */
+function drawMosque(roofs: Builder, walls: Builder, contour: THREE.Vector2[], pts: Float32Array, cx: number, cz: number, area: number, h: number, wall: THREE.Color, dome: THREE.Color) {
+  const r = Math.max(2.5, Math.min(11, Math.sqrt(area / Math.PI) * 0.55));
+  const drumTop = h + r * 0.4, segs = 16;
+  const ring = (rad: number, y: number, k: number): V3 => [cx + Math.cos((k / segs) * Math.PI * 2) * rad, y, cz + Math.sin((k / segs) * Math.PI * 2) * rad];
+  const drumIn: V3 = [cx, h + r * 0.2, cz];
+  for (let k = 0; k < segs; k++) {
+    walls.tri(ring(r, h, k), ring(r, h, k + 1), ring(r, drumTop, k + 1), wall, drumIn);
+    walls.tri(ring(r, h, k), ring(r, drumTop, k + 1), ring(r, drumTop, k), wall, drumIn);
+  }
+  // The onion: (radius, height) in dome radii, bulging past the drum, then to a point.
+  const PROFILE: [number, number][] = [[1, 0], [1.08, 0.28], [1.02, 0.55], [0.84, 0.8], [0.56, 1.02], [0.24, 1.22], [0, 1.4]];
+  const at = (i: number, k: number) => ring(PROFILE[i][0] * r, drumTop + PROFILE[i][1] * r, k);
+  const inside: V3 = [cx, drumTop + r * 0.5, cz];
+  for (let i = 0; i + 1 < PROFILE.length; i++)
+    for (let k = 0; k < segs; k++) {
+      roofs.tri(at(i, k), at(i, k + 1), at(i + 1, k + 1), dome, inside);
+      if (PROFILE[i + 1][0] > 0) roofs.tri(at(i, k), at(i + 1, k + 1), at(i + 1, k), dome, inside);
+    }
+  const tip = drumTop + 1.4 * r;
+  spike(roofs, cx, cz, 0.18, tip, tip + Math.max(1.5, r * 0.3), GOLD);
+  let pair = [0, 0], far = -1;
+  for (let i = 0; i < contour.length; i++)
+    for (let j = i + 1; j < contour.length; j++) {
+      const d = (contour[i].x - contour[j].x) ** 2 + (contour[i].y - contour[j].y) ** 2;
+      if (d > far) (far = d), (pair = [i, j]);
+    }
+  const tall = h + Math.max(12, h * 1.3);
+  for (const i of pair) {
+    // 2.2 m in from the corner, towards the middle.
+    const c = contour[i], dx = cx - c.x, dz = cz - c.y, dl = Math.hypot(dx, dz) || 1;
+    const mx = c.x + (dx / dl) * 2.2, mz = c.y + (dz / dl) * 2.2;
+    if (insidePacked(pts, mx, mz)) minaret(roofs, mx, mz, h, tall, wall, dome);
   }
 }
 
@@ -465,14 +620,33 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   const frame = makeFrame(origin);
   const pal = PALETTES[style];
   const realStyle = style === "real";
-  const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder();
+  const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder(), trim = new Builder();
   const footprints: Footprint[] = [];
   const labels: Label[] = [];
   const rand = rng(hashStr(`props|${tile.key}`));
   /** Inside a store's own building (or within `pad` metres of its outline). */
   const inCut = (x: number, z: number, pad = 0) => cuts.some((c) => insidePacked(c.pts, x, z) || (pad > 0 && edgeDist(c.pts, x, z) < pad));
 
+  // ---- streets first: a wall needs to know whether it faces one (shopfronts, balconies)
+  const unpacked = tile.r.map((r) => frame.unpack(tile.cx, tile.cy, r.l));
+  const roadLines: Float32Array[] = [], roadWidths: number[] = [], roadKinds: RoadKind[] = [], roadNames: (string | null)[] = [], roadDrawn: boolean[] = [];
+  tile.r.forEach((r, ri) => {
+    if (unpacked[ri].length < 4) return;
+    roadLines.push(unpacked[ri]);
+    roadWidths.push(r.w);
+    roadKinds.push(r.k);
+    roadNames.push(r.n ?? null);
+    roadDrawn.push(!r.x);
+  });
+  const road = roadIndex(roadLines, roadWidths, roadKinds, roadDrawn);
+
   // ---- buildings
+  const sw = tileSW(tile.cx, tile.cy);
+  const region = middleEast(sw.lat, sw.lng) ? "me" : "world";
+  /** Balconies, parapets and rooftop kit: the real style, on phones that can afford them. */
+  const detailed = realStyle && !lite;
+  const kitRand = rng(hashStr(`kit|${tile.key}`));
+  let balconies = 0, kit = 0;
   for (let bi = 0; bi < tile.b.length; bi++) {
     const b = tile.b[bi];
     let pts = frame.unpack(tile.cx, tile.cy, b.r);
@@ -498,8 +672,12 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     const seed = hashStr(`${tile.key}|${bi}`);
     const h = Math.max(3, b.h), mh = Math.min(h - 1, b.mh ?? 0);
     footprints.push({ pts, minX, maxX, minZ, maxZ, h, mh });
-    const isGlass = pal.glass.includes(b.k) && !b.c;
-    const wall = b.c ? color(b.c) : pick(pal.walls[b.k] ?? pal.walls.house, seed);
+    // What it's made of and its colour: the map's, else a guess for its kind and region.
+    const look = realStyle ? buildingLook(b, seed, region) : null;
+    const isGlass = look ? look.glass || (pal.glass.includes(b.k) && !b.c && !b.m) : pal.glass.includes(b.k) && !b.c;
+    const facade: Facade = look && !isGlass ? look.facade : "plaster";
+    const paint = look ? look.colour : (b.c ?? null);
+    const wall = paint ? color(paint) : facade === "plaster" || facade === "shopfront" ? pick(pal.walls[b.k] ?? pal.walls.house, seed) : pick(MATERIAL_WALLS[facade], seed);
     const foot = wall.clone().multiplyScalar(realStyle ? 0.8 : 0.72); // darker at street level: fake ambient occlusion
     const area = Math.abs(signedArea(pts));
     const { contour, tris } = triangulate(pts);
@@ -507,13 +685,24 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     for (const v of contour) (cx += v.x), (cz += v.y);
     cx /= contour.length;
     cz /= contour.length;
+    // A mosque (a place of worship in the Middle East): a tiled dome and minarets, never a spire.
+    const mosque = b.k === "church" && region === "me";
     // Roof shape: from the map, else a guess — pitched roofs on small houses.
     const n = contour.length;
-    let shape: RoofShape = b.rf ?? (b.k === "house" && area < 450 ? (n === 4 ? "gabled" : n <= 10 ? "hipped" : "flat") : b.k === "church" && n === 4 ? "gabled" : "flat");
-    if ((shape === "gabled" && n !== 4) || ((shape === "hipped" || shape === "pyramidal") && n > 12)) shape = n <= 12 ? "hipped" : "flat";
-    const roof = b.rc ? color(b.rc) : shape === "flat" ? pick(pal.flatRoofs, seed >>> 3) : pick(pal.roofs[b.k] ?? pal.roofs.house, seed >>> 3);
+    let shape: RoofShape = mosque ? "dome" : b.rf ?? (b.k === "house" && area < 450 ? (n === 4 ? "gabled" : n <= 10 ? "hipped" : "flat") : b.k === "church" && n === 4 ? "gabled" : "flat");
+    if (((shape === "gabled" || shape === "skillion") && n !== 4) || ((shape === "hipped" || shape === "pyramidal") && n > 12)) shape = n <= 12 && shape !== "skillion" ? "hipped" : "flat";
+    const flatRoof = pick(pal.flatRoofs, seed >>> 3);
+    const roof = b.rc ? color(b.rc) : mosque ? pick(DOMES, seed >>> 5) : shape === "flat" ? flatRoof : pick(pal.roofs[b.k] ?? pal.roofs.house, seed >>> 3);
 
+    // Walls, one quad per edge — split at the first floor where shops line the street, with
+    // balconies on the street side of blocks of flats.
     const target = isGlass ? glass : walls;
+    const floors = Math.max(1, Math.round(h / FLOOR_M));
+    const shopsBelow = realStyle && !isGlass && h > 4.5 && mh < 0.5 && (b.k === "shop" || ((b.k === "apartments" || b.k === "office") && seed % 5 < 3));
+    const withBalconies = detailed && !isGlass && !mosque && (b.k === "apartments" || (b.k === "house" && h >= 9)) && floors >= 3 && seed % 4 !== 0;
+    const balconyEvery = 1 + ((seed >>> 4) % 2);
+    const rail = color(RAILS[(seed >>> 6) % RAILS.length]);
+    const slab = wall.clone().multiplyScalar(0.86);
     let u = 0;
     for (let i = 0; i < pts.length; i += 2) {
       const j = (i + 2) % pts.length;
@@ -521,14 +710,48 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       const len = Math.hypot(x1 - x0, z1 - z0);
       if (len < 0.05) continue;
       const nx = (z1 - z0) / len, nz = -(x1 - x0) / len;
-      const u0 = u / WINDOW_M, u1 = (u + len) / WINDOW_M, v0 = mh / FLOOR_M, v1 = h / FLOOR_M;
-      const a = target.vert(x0, mh, z0, nx, 0, nz, foot, u0, v0);
-      const bb = target.vert(x1, mh, z1, nx, 0, nz, foot, u1, v0);
-      const c = target.vert(x1, h, z1, nx, 0, nz, wall, u1, v1);
-      const d = target.vert(x0, h, z0, nx, 0, nz, wall, u0, v1);
-      target.idx.push(a, c, bb, a, d, c);
+      // Faces a street: drivable asphalt a few metres in front of the wall's middle.
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+      const street = (shopsBelow || withBalconies) && len >= 4 ? road.nearest(mx + nx * 6, mz + nz * 6, 12) : null;
+      const facesStreet = !!street && (street.px - mx) * nx + (street.pz - mz) * nz > 1;
+      const quad = (y0: number, y1: number, f: Facade) => {
+        target.facade = FAC[f];
+        const u0 = u / WINDOW_M, u1 = (u + len) / WINDOW_M, v0 = y0 / FLOOR_M, v1 = y1 / FLOOR_M;
+        const low = y0 <= mh + 0.01 ? foot : wall;
+        const a = target.vert(x0, y0, z0, nx, 0, nz, low, u0, v0);
+        const bb = target.vert(x1, y0, z1, nx, 0, nz, low, u1, v0);
+        const c = target.vert(x1, y1, z1, nx, 0, nz, wall, u1, v1);
+        const d = target.vert(x0, y1, z0, nx, 0, nz, wall, u0, v1);
+        target.idx.push(a, c, bb, a, d, c);
+      };
+      const split = shopsBelow && facesStreet ? Math.min(h - 0.5, SHOP_FLOOR_M) : 0;
+      if (split > mh + 1) (quad(mh, split, "shopfront"), quad(split, h, facade));
+      else quad(mh, h, facade);
+      // Balconies on the window bays (one every WINDOW_M along the walls, as the façade draws
+      // them), from the first floor up: a slab and a railing along its front.
+      if (withBalconies && facesStreet && len >= 5) {
+        const ux = (x1 - x0) / len, uz = (z1 - z0) / len;
+        for (let k = Math.ceil((u + 0.6) / WINDOW_M - 0.5); (k + 0.5) * WINDOW_M < u + len - 0.6 && balconies < MAX_BALCONIES; k++) {
+          if (k % balconyEvery) continue;
+          const along = (k + 0.5) * WINDOW_M - u;
+          const half = Math.min(1.45, along - 0.3, len - along - 0.3);
+          if (half < 0.8) continue;
+          const bx = x0 + ux * along, bz = z0 + uz * along;
+          for (let f = 1; f < floors && (f + 1) * FLOOR_M <= h + 0.2 && balconies < MAX_BALCONIES; f++) {
+            const y = f * FLOOR_M;
+            cuboid(trim, bx + (nx * BALCONY_M) / 2, bz + (nz * BALCONY_M) / 2, half, BALCONY_M / 2, y - 0.16, y, ux, uz, slab);
+            // The railing: one panel, seen from both sides (trim is drawn double-sided).
+            const fx = bx + nx * (BALCONY_M - 0.03), fz = bz + nz * (BALCONY_M - 0.03);
+            const r0 = trim.vert(fx - ux * half, y, fz - uz * half, nx, 0, nz, rail), r1 = trim.vert(fx + ux * half, y, fz + uz * half, nx, 0, nz, rail);
+            const r2 = trim.vert(fx + ux * half, y + 1, fz + uz * half, nx, 0, nz, rail), r3 = trim.vert(fx - ux * half, y + 1, fz - uz * half, nx, 0, nz, rail);
+            trim.idx.push(r0, r1, r2, r0, r2, r3);
+            balconies++;
+          }
+        }
+      }
       u += len;
     }
+    target.facade = 0;
     // A canopy on pillars: close it underneath.
     if (mh > 0.5) {
       const base = roofs.pos.length / 3;
@@ -537,23 +760,40 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     }
 
     const inside: V3 = [cx, h - 1, cz];
-    if (shape === "gabled") {
+    if (shape === "gabled" || shape === "skillion" || (shape === "hipped" && n === 4)) {
       const P = contour.map((v) => [v.x, v.y] as [number, number]);
       const e0 = Math.hypot(P[1][0] - P[0][0], P[1][1] - P[0][1]), e1 = Math.hypot(P[2][0] - P[1][0], P[2][1] - P[1][1]);
-      // Ridge along the long side: rotate the corners so p0→p1 is a long edge.
+      // Along the long side: rotate the corners so p0→p1 is a long edge.
       const Q = e0 >= e1 ? P : [P[1], P[2], P[3], P[0]];
-      const short = Math.min(e0, e1);
-      const peak = h + Math.min(realStyle ? 5 : 4, short * (realStyle ? 0.42 : 0.35));
-      const rA: V3 = [(Q[3][0] + Q[0][0]) / 2, peak, (Q[3][1] + Q[0][1]) / 2];
-      const rB: V3 = [(Q[1][0] + Q[2][0]) / 2, peak, (Q[1][1] + Q[2][1]) / 2];
-      const c3 = (q: [number, number]): V3 => [q[0], h, q[1]];
-      roofs.tri(c3(Q[0]), c3(Q[1]), rB, roof, inside);
-      roofs.tri(c3(Q[0]), rB, rA, roof, inside);
-      roofs.tri(c3(Q[2]), c3(Q[3]), rA, roof, inside);
-      roofs.tri(c3(Q[2]), rA, rB, roof, inside);
-      // The gable ends are wall.
-      walls.tri(c3(Q[1]), c3(Q[2]), rB, wall, inside);
-      walls.tri(c3(Q[3]), c3(Q[0]), rA, wall, inside);
+      const short = Math.min(e0, e1), long = Math.max(e0, e1);
+      const c3 = (q: [number, number], y = h): V3 => [q[0], y, q[1]];
+      if (shape === "skillion") {
+        // One slope across the short side: high over p0→p1, the eaves over p2→p3.
+        const top = h + Math.min(3, short * 0.3);
+        roofs.tri(c3(Q[0], top), c3(Q[1], top), c3(Q[2]), roof, inside);
+        roofs.tri(c3(Q[0], top), c3(Q[2]), c3(Q[3]), roof, inside);
+        // The high wall and the two triangles at the ends are wall.
+        walls.tri(c3(Q[0]), c3(Q[1]), c3(Q[1], top), wall, inside);
+        walls.tri(c3(Q[0]), c3(Q[1], top), c3(Q[0], top), wall, inside);
+        walls.tri(c3(Q[1]), c3(Q[2]), c3(Q[1], top), wall, inside);
+        walls.tri(c3(Q[3]), c3(Q[0]), c3(Q[0], top), wall, inside);
+      } else {
+        const peak = h + Math.min(realStyle ? 5 : 4, short * (realStyle ? 0.42 : 0.35));
+        const mA: [number, number] = [(Q[3][0] + Q[0][0]) / 2, (Q[3][1] + Q[0][1]) / 2];
+        const mB: [number, number] = [(Q[1][0] + Q[2][0]) / 2, (Q[1][1] + Q[2][1]) / 2];
+        // A gable's ridge runs end to end; a hip's stops half the short side in from each end.
+        const t = shape === "hipped" ? Math.min(0.45, short / 2 / long) : 0;
+        const rA: V3 = [mA[0] + (mB[0] - mA[0]) * t, peak, mA[1] + (mB[1] - mA[1]) * t];
+        const rB: V3 = [mB[0] + (mA[0] - mB[0]) * t, peak, mB[1] + (mA[1] - mB[1]) * t];
+        roofs.tri(c3(Q[0]), c3(Q[1]), rB, roof, inside);
+        roofs.tri(c3(Q[0]), rB, rA, roof, inside);
+        roofs.tri(c3(Q[2]), c3(Q[3]), rA, roof, inside);
+        roofs.tri(c3(Q[2]), rA, rB, roof, inside);
+        // The ends: wall under a gable, roof under a hip.
+        const end = shape === "hipped" ? roofs : walls, endCol = shape === "hipped" ? roof : wall;
+        end.tri(c3(Q[1]), c3(Q[2]), rB, endCol, inside);
+        end.tri(c3(Q[3]), c3(Q[0]), rA, endCol, inside);
+      }
     } else if (shape === "hipped" || shape === "pyramidal") {
       const peak = h + Math.min(4.5, Math.sqrt(area) * 0.35);
       for (let i = 0; i < n; i++) {
@@ -561,25 +801,39 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
         roofs.tri([p0.x, h, p0.y], [p1.x, h, p1.y], [cx, peak, cz], roof, inside);
       }
     } else if (shape === "dome") {
-      const r = Math.min(Math.sqrt(area / Math.PI), 18);
       const base = roofs.pos.length / 3;
-      for (const v of contour) roofs.vert(v.x, h, v.y, 0, 1, 0, roof);
+      for (const v of contour) roofs.vert(v.x, h, v.y, 0, 1, 0, mosque ? flatRoof : roof);
       for (const tri of tris) up(roofs, base + tri[0], base + tri[1], base + tri[2]);
-      const rings = 5, segs = 14;
-      const at = (i: number, k: number): V3 => {
-        const phi = (i / rings) * (Math.PI / 2), th = (k / segs) * Math.PI * 2;
-        return [cx + Math.cos(th) * Math.cos(phi) * r, h + Math.sin(phi) * r * 0.9, cz + Math.sin(th) * Math.cos(phi) * r];
-      };
-      const out: V3 = [cx, h, cz];
-      for (let i = 0; i < rings; i++)
-        for (let k = 0; k < segs; k++) {
-          roofs.tri(at(i, k), at(i, k + 1), at(i + 1, k + 1), roof, out);
-          if (i < rings - 1) roofs.tri(at(i, k), at(i + 1, k + 1), at(i + 1, k), roof, out);
-        }
+      if (mosque) drawMosque(roofs, walls, contour, pts, cx, cz, area, h, wall, roof);
+      else {
+        const r = Math.min(Math.sqrt(area / Math.PI), 18);
+        const rings = 5, segs = 14;
+        const at = (i: number, k: number): V3 => {
+          const phi = (i / rings) * (Math.PI / 2), th = (k / segs) * Math.PI * 2;
+          return [cx + Math.cos(th) * Math.cos(phi) * r, h + Math.sin(phi) * r * 0.9, cz + Math.sin(th) * Math.cos(phi) * r];
+        };
+        const out: V3 = [cx, h, cz];
+        for (let i = 0; i < rings; i++)
+          for (let k = 0; k < segs; k++) {
+            roofs.tri(at(i, k), at(i, k + 1), at(i + 1, k + 1), roof, out);
+            if (i < rings - 1) roofs.tri(at(i, k), at(i + 1, k + 1), at(i + 1, k), roof, out);
+          }
+      }
     } else {
       const base = roofs.pos.length / 3;
       for (const v of contour) roofs.vert(v.x, h, v.y, 0, 1, 0, roof);
       for (const tri of tris) up(roofs, base + tri[0], base + tri[1], base + tri[2]);
+      // A low parapet round the roof's edge: one face, seen from both sides (roofs are double-sided).
+      if (detailed && h >= 5) {
+        const lip = wall.clone().multiplyScalar(0.9);
+        for (let i = 0; i < pts.length; i += 2) {
+          const j = (i + 2) % pts.length;
+          const ex = pts[j] - pts[i], ez = pts[j + 1] - pts[i + 1], el = Math.hypot(ex, ez) || 1;
+          const a = roofs.vert(pts[i], h, pts[i + 1], ez / el, 0, -ex / el, lip), c = roofs.vert(pts[j], h, pts[j + 1], ez / el, 0, -ex / el, lip);
+          const d = roofs.vert(pts[j], h + PARAPET_M, pts[j + 1], ez / el, 0, -ex / el, lip), e = roofs.vert(pts[i], h + PARAPET_M, pts[i + 1], ez / el, 0, -ex / el, lip);
+          roofs.idx.push(a, c, d, a, d, e);
+        }
+      }
       // Rooftop clutter on big flat roofs: an AC box / lift housing.
       if (realStyle && area > 300 && h > 9 && !lite) {
         const s = Math.min(6, Math.sqrt(area) * 0.18), hh = 1.6 + (seed % 3) * 0.5;
@@ -594,9 +848,23 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
         roofs.tri(top[0], top[1], top[2], grey, mid);
         roofs.tri(top[0], top[2], top[3], grey, mid);
       }
+      // Middle Eastern roofs: evaporative coolers and water tanks, as on every Tehran block.
+      if (detailed && region === "me" && area >= 40 && !isGlass && kit < MAX_KIT) {
+        const want = Math.min(4, 1 + Math.floor(area / 160));
+        for (let k = 0, tries = 0; k < want && tries < want * 6 && kit < MAX_KIT; tries++) {
+          const x = minX + kitRand() * (maxX - minX), z = minZ + kitRand() * (maxZ - minZ);
+          if (!insidePacked(pts, x, z) || edgeDist(pts, x, z) < 1.3) continue;
+          if (kitRand() < 0.55) {
+            // An evaporative cooler: a grey box on the roof.
+            cuboid(trim, x, z, 0.55, 0.5, h, h + 0.95, 1, 0, COOLER);
+          } else tank(trim, x, z, 0.55, h, h + 1.2, kitRand() < 0.5 ? TANK_WHITE : TANK_BLUE, 6);
+          k++;
+          kit++;
+        }
+      }
     }
-    // Landmarks: spires on churches, antennas on towers.
-    if (b.k === "church" || (b.k === "tower" && h > 60)) {
+    // Landmarks: spires on churches (not mosques: they have their minarets), antennas on towers.
+    if ((b.k === "church" && !mosque) || (b.k === "tower" && h > 60)) {
       const church = b.k === "church";
       const rad = church ? Math.min(3.5, Math.sqrt(area) * 0.16) : 0.35;
       const tall = church ? Math.min(20, h * 0.85) : h * 0.22;
@@ -612,13 +880,11 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   }
 
   // ---- roads, sidewalks and markings
-  const roadLines: Float32Array[] = [], roadWidths: number[] = [], roadKinds: RoadKind[] = [], roadNames: (string | null)[] = [], roadDrawn: boolean[] = [];
   const walk = color(pal.roads.walk), white = color(pal.roads.line), yellow = color(pal.roads.center), rail2 = color(pal.roads.rail2);
   const UV = realStyle ? 1 / 7 : 0;
   // Intersections: vertices where three or more road ends meet get zebra crossings.
   const degree = new Map<string, number>();
   const vk = (x: number, z: number) => `${Math.round(x * 2)}_${Math.round(z * 2)}`;
-  const unpacked = tile.r.map((r) => frame.unpack(tile.cx, tile.cy, r.l));
   tile.r.forEach((r, ri) => {
     if ((r.k !== "major" && r.k !== "minor") || r.x) return;
     const p = unpacked[ri], n = p.length / 2;
@@ -633,13 +899,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (let i = 2; i < (tile.o?.length ?? 0); i += 3) if (tile.o![i] === PROP.crossing) mapped++;
   tile.r.forEach((r, ri) => {
     const pts = unpacked[ri];
-    if (pts.length < 4) return;
-    roadLines.push(pts);
-    roadWidths.push(r.w);
-    roadKinds.push(r.k);
-    roadNames.push(r.n ?? null);
-    roadDrawn.push(!r.x);
-    if (r.x) return;
+    if (pts.length < 4 || r.x) return;
     const c = color(pal.roads[r.k]);
     const y = ROAD_Y[r.k];
     const car = r.k === "major" || r.k === "minor";
@@ -732,7 +992,6 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
 
   // ---- street furniture
   const blocked = (x: number, z: number, pad: number) => inCut(x, z, pad + 0.5) || footprints.some((f) => x >= f.minX - pad && x <= f.maxX + pad && z >= f.minZ - pad && z <= f.maxZ + pad && insidePacked(f.pts, x, z));
-  const road = roadIndex(roadLines, roadWidths, roadKinds, roadDrawn);
   const lamps: { x: number; z: number; yaw: number }[] = [], signals: { x: number; z: number; yaw: number }[] = [], buses: { x: number; z: number; yaw: number }[] = [];
   const small: Record<"bench" | "bin" | "hydrant" | "fountain", { x: number; z: number; yaw: number }[]> = { bench: [], bin: [], hydrant: [], fountain: [] };
   const SMALL: Record<number, keyof typeof small> = { [PROP.bench]: "bench", [PROP.bin]: "bin", [PROP.hydrant]: "hydrant", [PROP.fountain]: "fountain" };
@@ -840,7 +1099,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const f of small.fountain) obstacles.push(box(f.x, f.z, 0.3, 0.25, f.yaw, 1.1));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
 
-  const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs")].filter((l): l is Layer => !!l);
+  const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
   placeSigns(tile as VtCell, frame, footprints, labels, obstacles, faceRoad);
   // The store's model carries its own sign and number.
@@ -977,7 +1236,10 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
 /** Every buffer in a built tile, for a zero-copy postMessage out of the worker. */
 export function transferables(t: TileArrays): ArrayBuffer[] {
   const out: ArrayBuffer[] = [];
-  for (const l of t.layers) out.push(l.pos.buffer as ArrayBuffer, l.nor.buffer as ArrayBuffer, l.col.buffer as ArrayBuffer, l.uv.buffer as ArrayBuffer, l.idx.buffer as ArrayBuffer);
+  for (const l of t.layers) {
+    out.push(l.pos.buffer as ArrayBuffer, l.nor.buffer as ArrayBuffer, l.col.buffer as ArrayBuffer, l.uv.buffer as ArrayBuffer, l.idx.buffer as ArrayBuffer);
+    if (l.fac) out.push(l.fac.buffer as ArrayBuffer);
+  }
   for (const p of t.props) (out.push(p.mats.buffer as ArrayBuffer), p.cols && out.push(p.cols.buffer as ArrayBuffer));
   // Footprints and road lines are read on both sides of the boundary — copied, not moved.
   return out;

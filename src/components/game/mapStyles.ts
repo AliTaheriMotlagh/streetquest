@@ -1,6 +1,11 @@
 // Every look the 2D map can wear. Some are a different tile provider (satellite, terrain,
-// CARTO…), the rest are the default street tiles under a CSS filter (see world.css).
-// All providers here work without a key; NEXT_PUBLIC_TILE_URL replaces only the default tiles.
+// OSM's German and French styles…), the rest are the default street tiles under a CSS
+// filter (see world.css). Every provider here works without a key — keep it that way:
+// CARTO's basemaps began answering every tile with an "API KEY REQUIRED" picture (HTTP 200,
+// cached for 30 days), so its looks are now filters over the default tiles. Esri is
+// geo-blocked in Iran on and off: its looks fall back to a keyless provider (`fallback`).
+// NEXT_PUBLIC_TILE_URL replaces only the default tiles. tests/mapStyles.test.ts keeps
+// keyed and watermarking hosts out.
 import { msg } from "@/lib/i18n";
 
 export type Tiles = { url: string; attribution: string; subdomains?: string; maxNativeZoom?: number };
@@ -14,6 +19,8 @@ export type MapStyle = {
   tiles?: Tiles;
   /** Drawn on top, e.g. place names over satellite photos. */
   labels?: Tiles;
+  /** Used instead when the provider can't be reached (blocked in this country): same kind of map, another host. */
+  fallback?: Tiles;
   /** Class on the .map wrapper that styles the tiles. */
   css?: string;
   /** Parchment clouds + compass rose. */
@@ -21,10 +28,10 @@ export type MapStyle = {
 };
 
 const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-const CARTO = `${OSM} &copy; <a href="https://carto.com/attributions">CARTO</a>`;
 const ESRI = "Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community";
-const carto = (name: string): Tiles => ({ url: `https://{s}.basemaps.cartocdn.com/${name}/{z}/{x}/{y}{r}.png`, attribution: CARTO, subdomains: "abcd" });
 const esri = (service: string, maxNativeZoom = 19): Tiles => ({ url: `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`, attribution: ESRI, maxNativeZoom });
+
+const OPEN_TOPO: Tiles = { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", attribution: `${OSM}, SRTM | Style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)`, subdomains: "abc", maxNativeZoom: 17 };
 
 export const DEFAULT_TILES: Tiles = {
   url: process.env.NEXT_PUBLIC_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -43,13 +50,14 @@ export const MAP_STYLES: MapStyle[] = [
     id: "terrain",
     emoji: "⛰️",
     name: msg("Terrain"),
-    tiles: { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", attribution: `${OSM}, SRTM | Style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)`, subdomains: "abc", maxNativeZoom: 17 },
+    tiles: OPEN_TOPO,
   },
-  { id: "topo", emoji: "🧗", name: msg("Topographic"), tiles: esri("World_Topo_Map") },
-  { id: "light", emoji: "☁️", name: msg("Light"), tiles: carto("light_all") },
-  { id: "midnight", emoji: "🌑", name: msg("Midnight"), tiles: carto("dark_all") },
-  { id: "voyager", emoji: "🧳", name: msg("Voyager"), tiles: carto("rastertiles/voyager") },
-  { id: "esri-streets", emoji: "🚦", name: msg("City streets"), tiles: esri("World_Street_Map") },
+  { id: "topo", emoji: "🧗", name: msg("Topographic"), tiles: esri("World_Topo_Map"), fallback: OPEN_TOPO },
+  { id: "light", emoji: "☁️", name: msg("Light"), css: "light" },
+  { id: "midnight", emoji: "🌑", name: msg("Midnight"), css: "midnight" },
+  // OpenStreetMap Germany's style: softer colours, and names in the local script with a Latin line under them.
+  { id: "voyager", emoji: "🧳", name: msg("Voyager"), tiles: { url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png", attribution: `${OSM}, style by <a href="https://www.openstreetmap.de/">OSM Germany</a>`, maxNativeZoom: 19 } },
+  { id: "esri-streets", emoji: "🚦", name: msg("City streets"), tiles: esri("World_Street_Map"), fallback: { url: "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", attribution: `${OSM}, style by <a href="https://www.openstreetmap.fr/">OSM France</a>`, subdomains: "abc", maxNativeZoom: 19 } },
   {
     id: "humanitarian",
     emoji: "🤝",
@@ -73,7 +81,7 @@ export const mapStyle = (id: string | null | undefined) => MAP_STYLES.find((s) =
 
 /** Hosts of every tile provider, so the service worker keeps what you've seen for offline. */
 export function tileHosts(): string[] {
-  const urls = [DEFAULT_TILES, ...MAP_STYLES.flatMap((s) => [s.tiles, s.labels])].filter((t): t is Tiles => !!t).map((t) => t.url);
+  const urls = [DEFAULT_TILES, ...MAP_STYLES.flatMap((s) => [s.tiles, s.labels, s.fallback])].filter((t): t is Tiles => !!t).map((t) => t.url);
   // "{s}.host" covers a., b., c.… (the worker matches subdomains); other placeholders just need a value.
   return [...new Set(urls.map((u) => new URL(u.replace(/^(https?:\/\/)\{s\}\./, "$1").replace(/\{[^}]+\}/g, "0")).hostname))];
 }

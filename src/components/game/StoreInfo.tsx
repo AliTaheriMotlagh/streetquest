@@ -1,13 +1,20 @@
 "use client";
 // A real store's menu, catalog and prices from other sites (Snappfood; Torob, with the
-// store's own Torob shop and its catalog when it has one), its picture, contacts and
-// links, inside the map cards (real places, businesses, Market shops) and for Snappfood
-// vendors on the map; and the Divar ads pinned on each neighbourhood.
-// Data: /api/local (server/localData.ts).
-import { useEffect, useState } from "react";
+// store's own Torob shop and its catalog when it has one), its hours, reviews, picture,
+// contacts and links, inside the map cards (real places, businesses, Market shops), for
+// Snappfood vendors and Torob's walk-in stores on the map; and the Divar ads pinned on
+// each neighbourhood. Data: /api/local (server/localData.ts).
+//
+// Every store card has one phone-first shape: a compact head (logo, name, rating, open
+// now), a short cover, the actions in one row, then tabs that stick to the top of the
+// sheet while scrolling (Menu / Reviews / Info, or Catalog / Info) with compact rows.
+import { useEffect, useMemo, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
-import { DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, VENDOR_KINDS, type DivarArea, type DivarCat, type DivarPost, type Menu, type StoreData, type TorobItem, type TorobShop, type Vendor } from "@/lib/localData";
+import {
+  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
+  type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor, type Week,
+} from "@/lib/localData";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
@@ -32,6 +39,10 @@ function useLocal<T>(params: Record<string, string | number | undefined> | null)
 
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
 const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸" } as const;
+/** "09:30" in the player's digits. */
+const clock = (min: number) => clockOf(min).replace(/\d/g, (d) => fmtNum(Number(d)));
+const spanText = ([a, b]: [number, number]) => `${clock(a)}–${clock(b > 1440 ? b - 1440 : b)}`;
+const telOf = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 
 /** A picture that quietly goes away when it can't load (a dead link, a blocked CDN). */
 function Pic({ src, className }: { src: string; className?: string }) {
@@ -47,6 +58,96 @@ export function RouteButton({ to, name, className = "btn small cyan" }: { to: La
   return <Button className={className} onClick={() => navigate({ lat: to.lat, lng: to.lng, name })}>🧭 {t("Route")}</Button>;
 }
 
+// ---------------------------------------------------------------- hours
+/** Open now or closed, and the next change today ("until 22:00", "opens 11:30"), in the store's own time zone. */
+export function OpenBadge({ week, at }: { week: Week | null | undefined; at: LatLng }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!week) return null;
+  const s = openState(week, now, zoneOf(at));
+  const next = s.next == null ? "" : ` · ${s.open ? t("until {time}", { time: clock(s.next) }) : t("opens {time}", { time: clock(s.next) })}`;
+  return <span className={`tag open-badge ${s.open ? "is-open" : "is-closed"}`}>{s.open ? `🟢 ${t("Open now")}` : `🔴 ${t("Closed now")}`}{next}</span>;
+}
+
+/** The whole week, Saturday first, today marked. */
+function HoursTable({ week, at }: { week: Week; at: LatLng }) {
+  const today = dayClock(new Date(), zoneOf(at)).day;
+  return (
+    <table className="hours-table">
+      <tbody>
+        {week.map((spans, d) => (
+          <tr key={d} className={d === today ? "today" : ""}>
+            <th scope="row">{t(WEEK_DAYS[d])}</th>
+            <td dir="ltr">{spans.length ? (spans.length === 1 && spans[0][0] === 0 && spans[0][1] === 1440 ? t("Open 24 hours") : spans.map(spanText).join("  ·  ")) : t("Closed")}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+type InfoProps = { at: LatLng; week?: Week | null; hours?: string; address?: string; area?: string; phone?: string; city?: string; minOrder?: number; deliveryFee?: number };
+/** Hours, address, phone, delivery terms: whatever is known, else a line saying so. */
+function InfoView({ at, week, hours, address, area, phone, city, minOrder, deliveryFee }: InfoProps) {
+  const empty = !week && !hours && !address && !phone;
+  return (
+    <div className="store-info">
+      {week ? (
+        <section>
+          <h4>🕒 {t("Hours")}</h4>
+          <HoursTable week={week} at={at} />
+        </section>
+      ) : (
+        hours && (
+          <div className="info-row">
+            🕒 <span dir="ltr" className="ext-hours">{hours}</span>
+          </div>
+        )
+      )}
+      {address && (
+        <div className="info-row">
+          🏠 <span dir="auto">{[address, area, city].filter(Boolean).join(" · ")}</span>
+        </div>
+      )}
+      {phone && (
+        <a className="info-row link" href={telOf(phone)}>
+          📞 <span dir="ltr">{phone}</span>
+        </a>
+      )}
+      {!!minOrder && <div className="info-row">🧾 {t("Minimum order: {price}", { price: toman(minOrder) })}</div>}
+      {deliveryFee != null && <div className="info-row">🛵 {deliveryFee ? t("Delivery: {price}", { price: toman(deliveryFee) }) : t("Free delivery")}</div>}
+      {empty && <p className="small muted">{t("No hours, address or phone known for this store yet.")}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- tabs
+type Tab = { key: string; label: string; body: () => React.ReactNode };
+/** The card's sections, one at a time; the bar sticks to the top of the sheet while scrolling. */
+function StoreTabs({ tabs }: { tabs: Tab[] }) {
+  const [on, setOn] = useState(tabs[0]?.key);
+  const cur = tabs.find((x) => x.key === on) ?? tabs[0];
+  if (!cur) return null;
+  return (
+    <div className="store-tabs-wrap">
+      {tabs.length > 1 && (
+        <div className="tabs store-tabs" role="tablist">
+          {tabs.map((x) => (
+            <button key={x.key} role="tab" aria-selected={x.key === cur.key} className={x.key === cur.key ? "on" : ""} onClick={() => setOn(x.key)}>
+              {x.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div role="tabpanel">{cur.body()}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- menu
 /** Prices as the menu shows them: the price now, the old one struck through. */
 function MenuPrice({ price, priceNow }: { price: number; priceNow: number }) {
   return (
@@ -68,16 +169,11 @@ export function MenuView({ menu }: { menu: Menu }) {
     : menu.sections[Math.min(tab, menu.sections.length - 1)]?.items ?? [];
   return (
     <div className="ext-menu">
-      <div className="sec-head">
-        <b>{menu.vendor.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`}</b>
-        <span className="grow" />
-        <span className="small muted">{kind.emoji} {menu.vendor.rating > 0 ? `⭐ ${fmtNum(menu.vendor.rating)}` : ""} {menu.vendor.open ? t("Open") : t("Closed")}</span>
-      </div>
       {menu.sections.reduce((n, s) => n + s.items.length, 0) > 12 && (
-        <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search the menu")} aria-label={t("Search the menu")} />
+        <input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search the menu")} aria-label={t("Search the menu")} />
       )}
       {!needle && menu.sections.length > 1 && (
-        <div className="tabs" role="tablist">
+        <div className="tabs ext-sections" role="tablist">
           {menu.sections.map((s, i) => (
             <button key={`${s.title}${i}`} role="tab" aria-selected={i === tab} className={i === tab ? "on" : ""} onClick={() => setTab(i)} dir="auto">
               {s.title || t("More")}
@@ -85,15 +181,15 @@ export function MenuView({ menu }: { menu: Menu }) {
           ))}
         </div>
       )}
-      <div className="ext-items">
+      <div className="ext-items compact">
         {items.map((i) => (
           <div key={i.id} className="ext-item">
             {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">{kind.emoji}</span>}
             <div className="grow">
               <b dir="auto">{i.title}</b>
               {i.about && <p className="small muted" dir="auto">{i.about}</p>}
-              <MenuPrice price={i.price} priceNow={i.priceNow} />
             </div>
+            <MenuPrice price={i.price} priceNow={i.priceNow} />
           </div>
         ))}
         {!items.length && <div className="empty">{t("Nothing matches")}</div>}
@@ -103,17 +199,95 @@ export function MenuView({ menu }: { menu: Menu }) {
   );
 }
 
+// ---------------------------------------------------------------- reviews
+/** How the stars split (Snappfood gives each share in %), five down to one. */
+function StarBars({ stars, total }: { stars: number[]; total?: number }) {
+  const sum = stars.reduce((a, b) => a + b, 0) || 1;
+  const avg = stars.reduce((a, n, i) => a + n * (i + 1), 0) / sum;
+  return (
+    <div className="star-bars">
+      <div className="star-avg">
+        <b>{fmtNum(Math.round(avg * 10) / 10)}</b>
+        <span aria-hidden>{"★".repeat(Math.round(avg))}</span>
+        {!!total && <span className="small muted">{t("{n} reviews", { n: fmtNum(total) })}</span>}
+      </div>
+      <div className="grow">
+        {[4, 3, 2, 1, 0].map((i) => (
+          <div key={i} className="star-row">
+            <span className="small">{fmtNum(i + 1)}★</span>
+            <i style={{ ["--w" as string]: `${Math.round((stars[i] / sum) * 100)}%` }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReviewRow({ r }: { r: Review }) {
+  return (
+    <div className="review">
+      <div className="review-top">
+        <b dir="auto">{r.who || t("A customer")}</b>
+        <span className="review-stars" role="img" aria-label={t("{n} of 5 stars", { n: fmtNum(r.rate) })}>
+          {"★".repeat(r.rate)}
+          <span className="dim">{"★".repeat(5 - r.rate)}</span>
+        </span>
+        <span className="grow" />
+        <span className="small muted" dir="auto">{r.date}</span>
+      </div>
+      {r.text && <p dir="auto">{r.text}</p>}
+      {!!r.foods.length && <p className="small muted" dir="auto">🍽️ {r.foods.join("، ")}</p>}
+      {r.reply && <p className="small review-reply" dir="auto">↩️ {r.reply}</p>}
+    </div>
+  );
+}
+
+function ReviewsPage({ code, page, last, onMore }: { code: string; page: number; last: boolean; onMore: () => void }) {
+  const { data, error } = useLocal<{ reviews: ReviewPage }>({ reviews: code, page });
+  if (error) return <p className="small warn-text">{error}</p>;
+  if (!data) return <p className="small muted">{t("Loading…")}</p>;
+  const { reviews, count } = data.reviews;
+  if (!reviews.length) return page === 0 ? <p className="small muted">{t("No reviews yet")}</p> : null;
+  return (
+    <>
+      {reviews.map((r) => (
+        <ReviewRow key={r.id} r={r} />
+      ))}
+      {last && (page + 1) * reviews.length < count && (
+        <Button className="btn small ghost block" onClick={onMore}>
+          {t("More reviews")}
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** A vendor's reviews: the star split, then the newest first, ten more at a time. */
+function ReviewsView({ code, total, stars }: { code: string; total?: number; stars?: number[] }) {
+  const [pages, setPages] = useState(1);
+  return (
+    <div className="reviews">
+      {stars && stars.some(Boolean) && <StarBars stars={stars} total={total} />}
+      {Array.from({ length: pages }, (_, i) => (
+        <ReviewsPage key={i} code={code} page={i} last={i === pages - 1} onMore={() => setPages((n) => Math.min(n + 1, 20))} />
+      ))}
+      <p className="small muted ext-source">{t("Reviews from Snappfood customers")}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Torob
 function TorobList({ items }: { items: TorobItem[] }) {
   return (
-    <div className="ext-items">
+    <div className="ext-items compact">
       {items.map((i) => (
         <a key={i.url} className="ext-item" href={i.url} target="_blank" rel="noopener noreferrer">
           {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
           <div className="grow">
             <b dir="auto">{i.title}</b>
             {i.shop && <p className="small muted" dir="auto">{i.shop}</p>}
-            {i.price > 0 ? <span className="price-tag"><b>{i.from ? t("from {n} toman", { n: fmtNum(i.price) }) : toman(i.price)}</b></span> : <span className="small muted">{t("Out of stock")}</span>}
           </div>
+          {i.price > 0 ? <span className="price-tag"><b>{i.from ? t("from {n} toman", { n: fmtNum(i.price) }) : toman(i.price)}</b></span> : <span className="small muted">{t("Out of stock")}</span>}
         </a>
       ))}
     </div>
@@ -144,7 +318,6 @@ function TorobSearch({ initial, shop }: { initial?: TorobItem[]; shop?: TorobSho
           <b>🏷️ {t("Prices on Torob")}</b>
         )}
       </div>
-      {!!initial?.length && !q && <TorobList items={initial} />}
       {shop && (
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={!everywhere} className={everywhere ? "" : "on"} onClick={() => setEverywhere(false)}>{t("In this store")}</button>
@@ -152,23 +325,35 @@ function TorobSearch({ initial, shop }: { initial?: TorobItem[]; shop?: TorobSho
         </div>
       )}
       <form className="row" onSubmit={(e) => (e.preventDefault(), setQ(draft.trim()))}>
-        <input className="input grow" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={scope ? t("Search this store's products") : t("Search a product's price")} aria-label={scope ? t("Search this store's products") : t("Search a product's price")} maxLength={60} />
+        <input className="input grow" type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={scope ? t("Search this store's products") : t("Search a product's price")} aria-label={scope ? t("Search this store's products") : t("Search a product's price")} maxLength={60} />
         <Button className="btn cyan" disabled={draft.trim().length < 2}>🔎</Button>
       </form>
-      {q && (res.error ? <p className="small warn-text">{res.error}</p> : !res.data ? <p className="small muted">{t("Loading…")}</p> : res.data.items.length ? <TorobList items={res.data.items} /> : <p className="small muted">{t("Nothing found on Torob")}</p>)}
+      {q ? (
+        res.error ? <p className="small warn-text">{res.error}</p> : !res.data ? <p className="small muted">{t("Loading…")}</p> : res.data.items.length ? <TorobList items={res.data.items} /> : <p className="small muted">{t("Nothing found on Torob")}</p>
+      ) : (
+        !!initial?.length && <TorobList items={initial} />
+      )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------- store cards
 /**
- * Everything other sites know about a store: its menu or catalog, its Torob listings,
- * price search, and links (Snappfood, Torob, Divar, website, phone).
+ * Everything other sites know about a store, inside a place / business / Market shop
+ * card: its links, then tabs — the menu or catalog, Torob, reviews, and its info.
  */
-export function StoreExtras({ query }: { query: Record<string, string | number | undefined> }) {
+export function StoreExtras({ query, at }: { query: Record<string, string | number | undefined>; at?: LatLng }) {
   const { data, error } = useLocal<StoreData>(query);
   if (error) return <p className="small muted">{error}</p>;
   if (!data) return <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>;
   const a = data.about;
+  const where = at ?? (data.menu ? data.menu.vendor : { lat: 0, lng: 0 });
+  const week = a.week ?? weekFromOsm(a.hours);
+  const tabs: Tab[] = [];
+  if (data.menu) tabs.push({ key: "menu", label: data.menu.vendor.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={data.menu!} /> });
+  if (data.torobQuery) tabs.push({ key: "torob", label: `🏷️ ${t("Torob")}`, body: () => <TorobSearch initial={data.torob} shop={data.torobShop} /> });
+  if (data.menu) tabs.push({ key: "reviews", label: `⭐ ${data.menu.reviews ? t("Reviews ({n})", { n: fmtNum(data.menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={data.menu!.vendor.code} total={data.menu!.reviews} stars={data.menu!.stars} /> });
+  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phone={a.phone} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
   return (
     <div className="ext-store">
       {(a.photo || a.logo) && (
@@ -177,14 +362,14 @@ export function StoreExtras({ query }: { query: Record<string, string | number |
           {a.logo && a.photo && <Pic src={a.logo} className="ext-cover-logo" />}
         </div>
       )}
-      {(a.address || a.hours) && (
-        <div className="ext-about small">
-          {a.address && <div dir="auto">🏠 {a.address}</div>}
-          {a.hours && <div dir="ltr" className="ext-hours">🕒 {a.hours}</div>}
+      {(week || data.menu) && (
+        <div className="store-meta">
+          <OpenBadge week={week} at={where} />
+          {data.menu && data.menu.vendor.rating > 0 && <span className="tag ext-rating">⭐ {fmtNum(data.menu.vendor.rating)}</span>}
         </div>
       )}
       {!!data.links.length && (
-        <div className="row wrap ext-links">
+        <div className="store-actions ext-links">
           {data.links.map((l) => (
             <a key={l.url} className={`btn small ghost ext-link ${l.kind}`} href={l.url} target={l.kind === "phone" ? undefined : "_blank"} rel="noopener noreferrer" dir="auto">
               {LINK_ICON[l.kind]} {l.label}
@@ -192,54 +377,138 @@ export function StoreExtras({ query }: { query: Record<string, string | number |
           ))}
         </div>
       )}
-      {data.menu ? <MenuView menu={data.menu} /> : !data.torobQuery && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
-      {!!data.torobQuery && <TorobSearch initial={data.torob} shop={data.torobShop} />}
+      {!data.menu && !data.torobQuery && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
+      <StoreTabs tabs={tabs} />
     </div>
   );
 }
 
-/** A Snappfood vendor tapped on the map. */
+/** The head every store card starts with: logo, name, what and how far, rating and open now. */
+function StoreHead({ logo, emoji, name, sub, rating, reviews, week, at }: { logo?: string; emoji: string; name: string; sub: string; rating?: number; reviews?: number; week?: Week | null; at: LatLng }) {
+  const [bad, setBad] = useState(false);
+  return (
+    <div className="store-head">
+      {logo && !bad ? <img className="store-logo" src={logo} alt="" referrerPolicy="no-referrer" onError={() => setBad(true)} /> : <div className="store-logo ph">{emoji}</div>}
+      <div className="grow">
+        <b dir="auto">{name}</b>
+        <div className="small muted" dir="auto">{sub}</div>
+        <div className="store-meta">
+          {!!rating && <span className="tag ext-rating">⭐ {fmtNum(rating)}{reviews ? <span className="muted"> ({fmtNum(reviews)})</span> : null}</span>}
+          <OpenBadge week={week} at={at} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Get there: walk/teleport in test mode, the in-app route and maps apps, or drive the 3D city. */
+function GoButtons({ to, name, dist }: { to: LatLng; name: string; dist: number }) {
+  const { teleport, drive } = useGame();
+  return (
+    <>
+      {teleport ? (
+        <Button className="btn small yellow" onClick={() => teleport(to)}>
+          <MoveIcon /> {t("Go there")}
+        </Button>
+      ) : (
+        dist > 150 && (
+          <>
+            <RouteButton to={to} name={name} />
+            <Directions to={to} />
+          </>
+        )
+      )}
+      {drive && (
+        <Button className="btn small cyan" onClick={() => drive(to)}>
+          🚗 {t("Drive there")}
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** A Snappfood vendor tapped on the map: menu, reviews and info in tabs. */
 export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
-  const { pos, teleport, drive } = useGame();
+  const { pos } = useGame();
   const kind = VENDOR_KINDS[v.kind];
   const dist = pos ? distanceM(pos, v) : Infinity;
   const { data, error } = useLocal<{ menu: Menu }>({ menu: v.code, lat: v.lat.toFixed(5), lng: v.lng.toFixed(5) });
+  const menu = data?.menu;
+  const sub = [t(kind.label), Number.isFinite(dist) ? formatDistance(dist) : "", menu?.area ?? ""].filter(Boolean).join(" · ");
   return (
     <Sheet title={`${kind.emoji} ${v.title}`} onClose={onClose} tall>
-      <div className="place-card ext-vendor">
-        <div className="place-head">
-          {v.logo ? <img className="icon-tile place-ic" src={v.logo} alt="" referrerPolicy="no-referrer" /> : <div className="icon-tile place-ic">{kind.emoji}</div>}
-          {v.rating > 0 && <span className="tag ext-rating">⭐ {fmtNum(v.rating)}</span>}
-          <div className="grow">
-            <b dir="auto">{v.title}</b>
-            <div className="small muted">{t(kind.label)}{Number.isFinite(dist) ? ` · ${formatDistance(dist)}` : ""}</div>
-            {v.about && <div className="small muted" dir="auto">{v.about}</div>}
-            {data?.menu.address && <div className="small" dir="auto">🏠 {data.menu.address}</div>}
-          </div>
-        </div>
-      </div>
-      {data?.menu.cover && <div className="ext-cover"><Pic src={data.menu.cover} className="ext-cover-img" /></div>}
-      <div className="row wrap">
+      <StoreHead logo={v.logo} emoji={kind.emoji} name={v.title} sub={sub} rating={v.rating} reviews={menu?.reviews} week={menu?.week} at={v} />
+      {v.about && <p className="small muted store-about" dir="auto">{v.about}</p>}
+      {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
+      <div className="store-actions">
         <a className="btn small ghost ext-link snappfood" href={v.url} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
-        {teleport ? <Button className="btn small yellow" onClick={() => teleport(v)}><MoveIcon /> {t("Go there")}</Button> : dist > 150 && <><RouteButton to={v} name={v.title} /><Directions to={v} /></>}
-        {drive && <Button className="btn small cyan" onClick={() => drive(v)}>🚗 {t("Drive there")}</Button>}
+        {menu?.phone && <a className="btn small ghost ext-link phone" href={telOf(menu.phone)}>📞 {t("Call")}</a>}
+        <GoButtons to={v} name={v.title} dist={dist} />
       </div>
-      {error ? <p className="small warn-text">{error}</p> : data ? <MenuView menu={data.menu} /> : <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>}
+      {error ? (
+        <p className="small warn-text">{error}</p>
+      ) : menu ? (
+        <StoreTabs
+          tabs={[
+            { key: "menu", label: v.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={menu} /> },
+            { key: "reviews", label: `⭐ ${menu.reviews ? t("Reviews ({n})", { n: fmtNum(menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={v.code} total={menu.reviews} stars={menu.stars} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} week={menu.week} address={menu.address} area={menu.area} phone={menu.phone} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} /> },
+          ]}
+        />
+      ) : (
+        <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>
+      )}
     </Sheet>
   );
 }
 
+/** A walk-in Torob store tapped on the map: its own catalog (searchable) and its info. */
+export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => void }) {
+  const { pos } = useGame();
+  const dist = pos ? distanceM(pos, p) : Infinity;
+  const { data, error } = useLocal<{ info: TorobPlaceInfo | null; items: TorobItem[] }>({ torobPlace: p.id });
+  const info = data?.info;
+  const shop = useMemo<TorobShop>(() => ({ id: p.id, name: p.name, logo: info?.logo ?? "", url: info?.url ?? `https://torob.com/shop/${p.id}/`, count: 0 }), [p, info]);
+  const sub = [p.sells.join(" "), p.city, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
+  const photo = info?.photos[0] || p.photo;
+  return (
+    <Sheet title={`🏷️ ${p.name}`} onClose={onClose} tall>
+      <StoreHead logo={info?.logo || p.photo} emoji="🏷️" name={p.name} sub={sub} week={p.week} at={p} />
+      {photo && <div className="ext-cover"><Pic src={photo} className="ext-cover-img" /></div>}
+      <div className="store-actions">
+        <a className="btn small ghost ext-link torob" href={shop.url} target="_blank" rel="noopener noreferrer">🏷️ {t("Shop on Torob")}</a>
+        {info?.phone && <a className="btn small ghost ext-link phone" href={telOf(info.phone)}>📞 {t("Call")}</a>}
+        <GoButtons to={p} name={p.name} dist={dist} />
+      </div>
+      {error ? (
+        <p className="small warn-text">{error}</p>
+      ) : !data ? (
+        <p className="small muted ext-loading">⏳ {t("Loading the store's catalog…")}</p>
+      ) : (
+        <StoreTabs
+          tabs={[
+            { key: "catalog", label: `🛍️ ${t("Catalog")}`, body: () => (data.items.length ? <TorobSearch initial={data.items} shop={shop} /> : <p className="small muted">{t("This store lists no products on Torob right now.")}</p>) },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={p} week={p.week} address={info?.address || p.address} city={p.city} phone={info?.phone} /> },
+          ]}
+        />
+      )}
+      <p className="small muted ext-source">{t("A walk-in store from Torob's map of sellers")}</p>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Divar
 function DivarList({ posts }: { posts: DivarPost[] }) {
   return (
-    <div className="ext-items">
+    <div className="ext-items compact">
       {posts.map((p) => (
         <a key={p.token} className="ext-item" href={p.url} target="_blank" rel="noopener noreferrer">
           {p.photo ? <img src={p.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">📢</span>}
           <div className="grow">
             <b dir="auto">{p.title}</b>
-            {p.price && <span className="price-tag" dir="auto"><b>{p.price}</b></span>}
             <p className="small muted" dir="auto">{[p.note, p.when].filter(Boolean).join(" · ")}</p>
           </div>
+          {p.price && <span className="price-tag" dir="auto"><b>{p.price}</b></span>}
         </a>
       ))}
     </div>
@@ -254,7 +523,7 @@ export function DivarCard({ area, onClose }: { area: DivarArea; onClose: () => v
   return (
     <Sheet title={`📢 ${t("Divar · {area}", { area: area.name })}`} onClose={onClose} tall>
       <p className="small muted">{t("The latest ads people posted in {area} ({d} away).", { area: area.name, d: formatDistance(area.distanceM) })}</p>
-      <div className="tabs ext-divar-tabs" role="tablist">
+      <div className="tabs ext-divar-tabs store-tabs" role="tablist">
         {DIVAR_CAT_KEYS.map((k) => (
           <button key={k} role="tab" aria-selected={k === cat} className={k === cat ? "on" : ""} onClick={() => setCat(k)}>
             {DIVAR_CATS[k].emoji} {t(DIVAR_CATS[k].label)}

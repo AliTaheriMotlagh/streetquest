@@ -35,8 +35,9 @@ import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
-import { DivarCard, StoreExtras, VendorCard } from "./StoreInfo";
-import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type DivarArea, type Vendor, type VendorKind } from "@/lib/localData";
+import { DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
+import { OnlineChip, OnlineSheet } from "./Online";
+import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import type { LiveRoute } from "@/server/traffic";
 import { SocialPanel } from "./Social";
 import { BusinessPanel } from "./Business";
@@ -60,16 +61,22 @@ const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map can show on top of the game (⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "places" | VendorKind | "divar" | "traffic";
+type MapLayer = "places" | VendorKind | "torob" | "divar" | "traffic";
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string }[] = [
   { key: "places", emoji: "📍", label: msg("Real places") },
   ...VENDOR_KIND_KEYS.map((k) => ({ key: k, emoji: VENDOR_KINDS[k].emoji, label: VENDOR_KINDS[k].label })),
+  { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)") },
   { key: "divar", emoji: "📢", label: msg("Divar ads") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic") },
 ];
 const ALL_LAYERS = MAP_LAYERS.map((l) => l.key);
+/** The layers there were when the player saved their choice (the ones since then start on). */
+const MAP_LAYERS_KNOWN_KEY = "sq_map_layers_known";
+/** Choices saved before the list of known layers was kept: everything but Torob's stores existed. */
+const LAYERS_BEFORE_TOROB: string[] = ALL_LAYERS.filter((k) => k !== "torob");
 /** Fetch Snappfood vendors / Divar ads again this far from the last fetch, or after this long. */
 const VENDOR_REFETCH_M = 500;
+const TOROB_REFETCH_M = 800;
 const DIVAR_REFETCH_M = 800;
 const EXT_REFRESH_MS = 10 * 60_000;
 /** The world (money, jobs, players…) reloads this often while the app is on screen. */
@@ -167,12 +174,17 @@ export default function Game() {
   const [layers, setLayers] = useState<MapLayer[]>(ALL_LAYERS);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const vendorsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
+  const [torobShops, setTorobShops] = useState<TorobPlace[]>([]);
+  const [onlineOpen, setOnlineOpen] = useState(false);
+  const torobAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [divar, setDivar] = useState<DivarArea[]>([]);
   const divarAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem(MAP_LAYERS_KEY) ?? "null");
-      if (Array.isArray(v)) setLayers(ALL_LAYERS.filter((k) => v.includes(k)));
+      // A layer added since the player last chose starts on, like everything did for them.
+      const known = JSON.parse(localStorage.getItem(MAP_LAYERS_KNOWN_KEY) ?? "null") ?? LAYERS_BEFORE_TOROB;
+      if (Array.isArray(v)) setLayers(ALL_LAYERS.filter((k) => v.includes(k) || !known.includes(k)));
     } catch {}
   }, []);
   const toggleLayer = (k: MapLayer | "all" | "none") => {
@@ -180,10 +192,12 @@ export default function Game() {
     setLayers(next);
     try {
       localStorage.setItem(MAP_LAYERS_KEY, JSON.stringify(next));
+      localStorage.setItem(MAP_LAYERS_KNOWN_KEY, JSON.stringify(ALL_LAYERS));
     } catch {}
   };
   const vendorsOn = VENDOR_KIND_KEYS.some((k) => layers.includes(k));
   const divarOn = layers.includes("divar");
+  const torobOn = layers.includes("torob");
   // Load them around the player; again after a walk, every 10 minutes (open/closed, new
   // ads), or a minute after a failed try. `now` ticks while standing still.
   useEffect(() => {
@@ -210,6 +224,19 @@ export default function Game() {
       })
       .catch(() => {});
   }, [divarOn, pos, now]);
+  useEffect(() => {
+    if (!torobOn || !pos) return;
+    const last = torobAt.current;
+    if (last && distanceM(last.pos, pos) < TOROB_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
+    const tried = (torobAt.current = { pos, at: Date.now(), ok: false as boolean });
+    api<{ shops: TorobPlace[]; pending?: boolean }>(`/api/local?torobNear=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
+      .then((r) => {
+        // Still building the store map (the first time ever): ask again in a minute.
+        tried.ok = !r.pending;
+        setTorobShops(r.shops);
+      })
+      .catch(() => {});
+  }, [torobOn, pos, now]);
   const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
@@ -290,7 +317,11 @@ export default function Game() {
     },
     [dismissToast],
   );
-  const lookFailed = useCallback((s: MapStyle) => toast({ kind: "error", title: t("{style} map can't load on this connection — pick another style", { style: t(s.name) }) }), [toast]);
+  const lookFailed = useCallback(
+    (s: MapStyle, fellBack: boolean) =>
+      toast(fellBack ? { kind: "info", title: t("{style} map is blocked on this connection — showing a similar map instead", { style: t(s.name) }) } : { kind: "error", title: t("{style} map can't load on this connection — pick another style", { style: t(s.name) }) }),
+    [toast],
+  );
 
   const refresh = useCallback(() => {
     loadMe();
@@ -824,6 +855,7 @@ export default function Game() {
           vendors={shownVendors}
           spots={shownSpots}
           divar={divarOn ? divar : undefined}
+          torob={torobOn ? torobShops : undefined}
           traffic={layers.includes("traffic")}
           route={route}
         />
@@ -847,6 +879,7 @@ export default function Game() {
             <Wallet me={me} inbox={inbox} onWallet={() => openPanel("wallet")} onStore={() => setPanel("store")} onInbox={() => setPanel("inbox")} />
             {/* One quiet pill of status: mood, steps, and only the warnings that apply right now. */}
             <div className="hud-status">
+              <OnlineChip total={world?.onlineTotal} onOpen={() => setOnlineOpen(true)} />
               <StepChip onOpen={() => openPanel("play")} />
               {driving && !geo.simulated && <div className="chip small" title={t("Driving: the map zooms out and walking goals pause")}>🚗 {t("{n} km/h", { n: Math.round(geo.speed * 3.6) })}</div>}
               <GpsChip geo={geo} />
@@ -878,6 +911,7 @@ export default function Game() {
         />
 
         {route && !run && <RouteChip route={route} pos={pos} onClear={() => setRoute(null)} />}
+        {onlineOpen && <OnlineSheet onClose={() => setOnlineOpen(false)} />}
 
         {run && (
           <div className="run-banner">
@@ -980,7 +1014,7 @@ export default function Game() {
               <Button role="menuitem" onClick={() => toggleLayer(layers.length ? "none" : "all")}>
                 {layers.length ? `🚫 ${t("Hide all")}` : `✅ ${t("Show all")}`}
               </Button>
-              <p className="small muted more-note">{t("Real places, menus from Snappfood, ads from Divar and live traffic — tap a sign to see more.")}</p>
+              <p className="small muted more-note">{t("Real places, menus from Snappfood, walk-in stores from Torob, ads from Divar and live traffic — tap a sign to see more.")}</p>
             </div>
           )}
           {moreOpen && !stylesOpen && !extOpen && (
@@ -1244,6 +1278,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
     return job ? <PlaceCard m={job} onClose={onClose} /> : <SpotCard p={sel.data} onClose={onClose} />;
   }
   if (sel.type === "divar") return <DivarCard area={sel.data} onClose={onClose} />;
+  if (sel.type === "torob") return <TorobPlaceCard p={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
 
   if (sel.type === "money") {
@@ -1344,7 +1379,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
           {teleport && dist > 40 && <Button className="btn ghost" onClick={() => teleport(sh)}><MoveIcon /> {t("Go there")}</Button>}
           {!teleport && dist > 150 && <Directions to={sh} />}
         </div>
-        <StoreExtras query={{ store: "shop", id: sh.id }} />
+        <StoreExtras query={{ store: "shop", id: sh.id }} at={sh} />
       </Sheet>
     );
   }

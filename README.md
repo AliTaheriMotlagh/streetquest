@@ -90,7 +90,15 @@ mood scales XP; loot funds research; territory funds the army.
 - **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). From home or in
   test mode the car *is* your commander: where you drive is where you are, jobs are beacons of light, loot is collected by
-  driving through it. Walking with GPS, the car follows you. Cells without map data yet are drawn as a fantasy village.
+  driving through it (money and beacons whose map spot is inside a building move to the nearest street, so they're never
+  hidden by walls or out of the car's reach). Walking with GPS, the car follows you. Cells without map data yet are drawn
+  as a fantasy village. In the realistic style every building wears a material — the map's `building:material` (or the
+  colour OpenMapTiles gives that material), else a guess for its kind and region: Tehran's travertine stone and brick
+  blocks, plaster, concrete panels, metal-clad sheds — with its paint colour from the map when it has one. Blocks of flats
+  get balconies on their street side and shop windows on the ground floor, flat roofs get a parapet and (in the Middle
+  East) evaporative coolers and water tanks, pitched roofs are gabled, hipped (with a real ridge) or skillion, and places
+  of worship in the region are mosques with a tiled onion dome and two minarets. Balconies and rooftop kit are drawn only
+  within 320 m and never on lite phones (`src/components/drive/tileMesh.ts`, `world3d.ts`).
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
   nearby shows up live (20 updates a second over WebSockets). Press **F** / 🚶 to get out of the car and walk as a 3D
   soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
@@ -99,12 +107,17 @@ mood scales XP; loot funds research; territory funds the army.
   site A or B, defuse, rounds, side swap), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
   fun with one friend or none. Five guns (pistol, SMG, rifle, sniper with a scope, shotgun), aim down sights, recoil,
   headshots, kill feed, scoreboard. Phones get a shooter layout (floating stick, drag to aim, fire buttons on both sides,
-  aim assist and optional auto-fire); desktop uses mouse look and WASD. Matches pay XP and coins (12 paid matches a day).
+  aim assist and optional auto-fire); desktop uses mouse look and WASD. Matches pay XP and coins (12 paid matches a day;
+  beating people pays more than farming bots). Medals pop up for double / triple kills, rampages, killing sprees (5 and
+  every 5 after 10 without dying), first blood and headshots, with a 🔥 run counter (`src/lib/arena/medals.ts`). Every
+  primary is the fastest killer in its own band of range — shotgun point-blank, SMG up close, rifle mid, sniper far — and
+  `tests/balance.test.ts` keeps it that way when the numbers are tuned.
 - **Fantasy map** — the 2D map is an illustrated parchment map (paper grain, drifting cloud shadows, compass rose, colours
   of the hour). ⋯ → Map style picks any of 17 looks: fantasy, street, night ops, satellite (with or without place names),
   terrain, topographic, light, midnight, voyager, city streets, humanitarian, cycling, retro, noir, blueprint and neon
-  (`src/components/game/mapStyles.ts`; every provider there works without a key, and the service worker keeps their
-  tiles for offline).
+  (`src/components/game/mapStyles.ts`; every provider there works without a key — `tests/mapStyles.test.ts` keeps keyed
+  providers out, since CARTO began drawing "API KEY REQUIRED" on every tile — and the service worker keeps their tiles
+  for offline). Styles whose provider is blocked in your country (Esri, on and off in Iran) switch to a keyless look-alike.
 - **Social network** — 🌐 Social: a feed (following / nearby / trending), posts with photos, check-ins at real places,
   follows, likes, comments, reports, profiles; deliveries and store visits post themselves. Mutual followers can DM
   and call. Crew chat lives inside Social.
@@ -119,15 +132,26 @@ mood scales XP; loot funds research; territory funds the army.
   (Snappfood, Torob, or the store website's icon), the address and opening hours, and links to call, its website and
   Instagram — contacts come from the map (OSM `phone`, `website`, `contact:instagram`, `opening_hours`, `addr:*`,
   `image` / `wikimedia_commons`, stored with each place by the city pack). Owners can paste their Snappfood / Torob /
-  Divar links in the Business center or their Market shop, which beat the automatic match.
+  Divar links in the Business center or their Market shop, which beat the automatic match. Names match however Persian
+  words are spaced ("چلوکباب" / "چلو کباب"). The card is built for phones: a compact head with the rating and 🟢 open
+  now / 🔴 closed (in the store's own time zone), the actions in one row, and tabs that stick while you scroll — Menu,
+  ⭐ Reviews (Snappfood customers' reviews, ten at a time, with the star split, what they ordered and the store's
+  replies) and ℹ️ Info (the week's hours with today marked, the address, the phone, minimum order and delivery fee).
+  Hours come from the map's `opening_hours` when it reads as a week, else from Snappfood's schedule.
+- **Torob walk-in stores** (⋯ → 🗺️ *On the map* → 🏷️): every store Torob's own map of sellers knows, at its real spot
+  — built once a day from the walk-in sellers of a few everyday products and kept per ~2 km cell. Tap one for its own
+  catalog on Torob (searchable, or compare across all of Torob), its photos, hours, full address and phone.
 - **On the map** (⋯ → 🗺️ *On the map*, everything on by default): 📍 every real place within 1.2 km (restaurants,
   cafés, shops, parks — with or without a job; tap for its menu and contacts), Snappfood vendors by kind with their
-  logo up close (one sign per store: an OSM place that is a vendor shows as the vendor), 📢 Divar — each nearby
+  logo up close (one sign per store: an OSM place that is a vendor shows as the vendor), 🏷️ Torob's walk-in stores, 📢 Divar — each nearby
   neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…), and 🚦 live
   traffic. Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
   its sign size); nothing groups from zoom 18, plain places name themselves only there, and places, vendors and ads
   are left out at city zoom. The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor that moves
   only after a 250 m walk, so they don't reshuffle on every refresh.
+- **Who's online** — the HUD's 🟢 chip counts everyone online right now; tap it for your online friends (anywhere,
+  with their distance) and players within 5 km (`/api/online`). Strangers' distances are measured to their fuzzed spot
+  and rounded to 250 m, so moving around can't pin anyone down; no position is ever sent in the list.
 - **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a live driving route (Neshan, with
   today's traffic) to it: a blue line, the minutes and distance left and the next turn in Persian; it re-routes when
   you're 70 m off the line, refreshes every 2 minutes, and ends on arrival. Each route also feeds the traffic layer.
@@ -172,18 +196,28 @@ Without `NEXT_PUBLIC_RT_URL` the 3D city still works (driving, walking, other dr
 fighting. The soldier and gun models are generated in Blender from `assets/blender/arena.py`: `npm run assets:arena`
 rebuilds `public/models/arena/*.glb` (add `-- preview.png` to render a preview).
 
+**Fast checks:** `npm test` runs the unit tests, the typecheck and the translation check in about a minute.
+`npm run test:unit` alone runs `tests/*.test.ts` with Node's own test runner (no browser, no database): opening hours
+and name matching (`localData`), map styles (no keyed providers), the 3D city's buildings (materials, balconies,
+mosques, a triangle budget) and game balance (guns by range, match prizes, medals, economy defaults).
+
 **End-to-end tests (Playwright):** `npm run test:e2e` starts its own dev server on port 3200 against a separate
 `streetquest_e2e` database (create it once: `docker compose exec db createdb -U postgres streetquest_e2e`; override with
 `E2E_DATABASE_URL`) and runs two suites:
 - `npm run test:e2e:api` — server behaviour: accounts, bans, referrals, admin access, the economy (daily, store, ads,
-  selling), base building, claims, lobbies, runs, play-from-home travel, SEO/health/security headers — including
-  double-tap races (two identical requests at once must never charge or pay twice).
+  selling), base building, claims, lobbies, runs, play-from-home travel, SEO/health/security headers, store data from
+  Snappfood / Torob / Divar (served by a stub: menus, hours, reviews, walk-in stores and their catalogs), who's online —
+  including double-tap races (two identical requests at once must never charge or pay twice).
 - `npm run test:e2e:ui` — the game in a phone-sized Chrome: first visit, GPS on/off, bottom nav, store, double-tap on
   buttons, the marker following GPS. Uses your installed Google Chrome (`PW_CHANNEL=chromium` for Playwright's own).
 
 Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`): `npm run test:smoke`,
 `npm run test:features` (settings, army delivery, bag multi-sell, goals, store, ads, GPS games, story) and
 `npm run test:mp` (lobbies, squad runs, towers shooting players, C4, squads, skirmishes, raider waves, pings).
+
+**Deployed and the store layers are empty?** Open `/api/health?ext=1`: it says whether the server can reach Snappfood,
+Torob and Divar. Iranian sites often refuse servers abroad — host in Iran, or point `SNAPPFOOD_URL` / `TOROB_URL` /
+`DIVAR_URL` at a relay that can.
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.

@@ -1,7 +1,10 @@
 // Deployment check: open /api/health on your deployed site to see what's misconfigured.
 // Reports which settings exist (never their values) and whether the database works.
+// /api/health?ext=1 also checks that this server can reach Snappfood, Torob and Divar
+// (they often refuse servers abroad: then the store layers stay empty).
 import { prisma } from "@/lib/db";
 import { turnConfigured } from "@/server/calls";
+import { extHealth } from "@/server/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +13,9 @@ const short = (e: unknown) => {
   return `${err.code ?? err.name ?? "Error"}: ${(err.message ?? "").trim().split("\n").filter(Boolean).pop()?.slice(0, 200)}`;
 };
 
-export async function GET() {
+export async function GET(req: Request) {
   const env = process.env;
+  const ext = new URL(req.url).searchParams.get("ext") === "1" ? await extHealth() : undefined;
   const settings = {
     database: !!(env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL),
     authSecret: !!env.AUTH_SECRET && env.AUTH_SECRET !== "change-me",
@@ -44,6 +48,9 @@ export async function GET() {
       problems.push("Can't connect to the database. Check the DATABASE_URL value.");
     }
   }
+  if (ext)
+    for (const [site, r] of Object.entries(ext))
+      if (!r.ok && r.status !== "off") problems.push(`This server can't reach ${site} (${r.status}): its store data stays empty. Host the app in Iran or set ${site.toUpperCase()}_URL to a relay.`);
   const ok = database === "ok" && schema === "ok";
-  return Response.json({ ok, settings, database, schema, problems }, { status: ok ? 200 : 503 });
+  return Response.json({ ok, settings, database, schema, problems, ...(ext ? { external: ext } : {}) }, { status: ok ? 200 : 503 });
 }

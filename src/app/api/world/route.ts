@@ -11,7 +11,7 @@ import { requireUser } from "@/server/auth";
 import { onlineSince } from "@/server/hub";
 import { HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
-import { fuzzed } from "@/server/presence";
+import { fuzzed, onlineCount } from "@/server/presence";
 import { drawDue, lotteryView } from "@/server/lottery";
 import { RIDE_REQUEST_TTL_MS } from "@/lib/rides";
 import { LOTTERY_SHOW_DRAWN_MS } from "@/lib/lottery";
@@ -158,5 +158,7 @@ export const GET = route(async (req) => {
     shops,
     players,
     onlineNearby: nearbyUsers.length,
+    // Everyone online right now (the HUD's 🟢 chip; the list is /api/online).
+    onlineTotal: await onlineCount(),
   };
 });

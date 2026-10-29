@@ -139,6 +139,7 @@ const world: Record<string, string> = {
   "3D": "سه‌بعدی",
   "Map style": "ظاهر نقشه",
   "{style} map can't load on this connection — pick another style": "نقشهٔ {style} با این اینترنت باز نمی‌شه — یه ظاهر دیگه انتخاب کن",
+  "{style} map is blocked on this connection — showing a similar map instead": "نقشهٔ {style} با این اینترنت مسدوده — یه نقشهٔ مشابه نشون می‌دیم",
   // map styles (components/game/mapStyles.ts)
   Fantasy: "افسانه‌ای",
   Street: "خیابان‌ها",

@@ -20,6 +20,8 @@
     "assets:arena": "/Applications/Blender.app/Contents/MacOS/Blender -b -P assets/blender/arena.py",
     "typecheck": "tsc --noEmit",
     "i18n:check": "tsx scripts/i18n-check.ts",
+    "test": "npm run -s test:unit && npm run -s typecheck && npm run -s i18n:check",
+    "test:unit": "tsx --test tests/*.test.ts",
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
     "test:e2e": "playwright test",
     "test:e2e:api": "playwright test --project=api",
