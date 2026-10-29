@@ -6,8 +6,11 @@ import { expect, test } from "@playwright/test";
 import { STUB_PORT } from "../../playwright.config";
 import { adminPlayer, expectOk, fund, offset, Player, randomSpot, uploadPlaces, type LatLng } from "../helpers";
 
-type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; items: { title: string; price: number; discount?: number }[] };
+/** `unlisted`: missing from the area's vendor list, so only Snappfood's search finds it. */
+type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; items: { title: string; price: number; discount?: number }[] };
 const vendors: StubVendor[] = [];
+type StubShop = { id: number; name: string; products: string[] };
+const shops: StubShop[] = [];
 let server: Server;
 let calls = 0;
 
@@ -23,7 +26,7 @@ test.beforeAll(async () => {
     const send = (body: unknown) => (res.setHeader("content-type", "application/json"), res.end(JSON.stringify(body)));
     if (u.pathname === "/sf/mobile/v3/restaurant/vendors-list") {
       const at = { lat: Number(u.searchParams.get("lat")), lng: Number(u.searchParams.get("long")) };
-      const page = u.searchParams.get("page") === "0" ? vendors.filter((v) => near(at, v)) : [];
+      const page = u.searchParams.get("page") === "0" ? vendors.filter((v) => near(at, v) && !v.unlisted) : [];
       return send({ status: true, data: { finalResult: page.map((v) => ({ type: "VENDOR", data: vendorJson(v) })) } });
     }
     if (u.pathname === "/sf/mobile/v2/restaurant/details/dynamic") {
@@ -31,8 +34,26 @@ test.beforeAll(async () => {
       if (!v) return (res.statusCode = 404), res.end();
       return send({ status: true, data: { vendor: { ...vendorJson(v), coverPath: "", address: "Stub street 1" }, menus: [{ category: "Popular", products: v.items.map((p, i) => ({ id: i + 1, ...p, description: "", images: [] })) }] } });
     }
+    if (u.pathname === "/sf/search/api/v1/desktop/search") {
+      // Like the real one: by name only, anywhere in the country, no positions.
+      const q = u.searchParams.get("query") ?? "";
+      const hits = vendors.filter((v) => q.split(" ").some((w) => w.length > 2 && v.title.includes(w)));
+      return send({ data: { vendor: { total: hits.length, items: hits.map((v) => ({ code: v.code, title: v.title, type: "VENDOR" })) } } });
+    }
+    if (u.pathname === "/tr/v4/internet-shop/details/") {
+      const s = shops.find((x) => x.id === Number(u.searchParams.get("id")));
+      if (!s) return (res.statusCode = 404), res.end();
+      return send({ id: s.id, name: s.name, logo_512: "" });
+    }
     if (u.pathname === "/tr/v4/base-product/search/") {
       const q = u.searchParams.get("q") ?? "";
+      const inShop = shops.find((x) => x.id === Number(u.searchParams.get("shop_id")));
+      if (inShop) {
+        const items = inShop.products.filter((n) => n.includes(q));
+        return send({ results: items.map((n, i) => ({ name1: n, price: 50_000 + i, price_prefix: "cheapest", shop_text: "در ۳ فروشگاه", image_url: "", web_client_absolute_url: `/p/${inShop.id}-${i}/` })) });
+      }
+      const named = shops.find((x) => x.name === q);
+      if (named) return send({ results: [], business_profile_result: { internet_shops: [{ shop_id: named.id, name: named.name, logo_512: "", num_bases: named.products.length }] } });
       return send({ results: [
         { name1: `${q} phone case`, price: 120_000, shop_text: `در ${q}`, image_url: "", web_client_absolute_url: "/p/1/case/" },
         { name1: `${q} charger`, price: 90_000, shop_text: "در Someone Else", image_url: "", web_client_absolute_url: "/p/2/charger/" },
@@ -132,6 +153,56 @@ test.describe("store menus & prices", () => {
     expect(d.links.map((l) => l.kind)).toEqual(["divar"]);
     const s = expectOk(await buyer.get<{ items: { price: number }[] }>(`/api/local?torob=${encodeURIComponent("usb cable")}`)).data;
     expect(s.items.map((i) => i.price)).toEqual([120_000, 90_000]);
+    await Promise.all([admin.dispose(), seller.dispose(), buyer.dispose()]);
+  });
+
+  test("a café missing from the area's list is found by Snappfood's search, checked by position", async ({ baseURL }) => {
+    const admin = await adminPlayer(baseURL!);
+    const { places } = await uploadPlaces(admin, randomSpot(), 2);
+    const cafe = places[0];
+    const tag = cafe.name.split(" ").pop()!;
+    // Same name in another city (the search lists it first), then the real one next door.
+    const far = { code: code(), title: `Test Café ${tag}`, lat: cafe.lat + 3, lon: cafe.lng, type: "CAFFE", unlisted: true, items: [{ title: "Wrong", price: 10_000 }] };
+    const here = { code: code(), title: `کافه Test Café ${tag}`, ...((p) => ({ lat: p.lat, lon: p.lng }))(offset(cafe, 20)), type: "CAFFE", unlisted: true, items: [{ title: "Espresso", price: 900_000 }] };
+    vendors.push(far, here);
+    const p = await Player.create(baseURL!);
+    const q = `store=place&id=${cafe.id}&name=${encodeURIComponent(cafe.name)}&lat=${cafe.lat}&lng=${cafe.lng}&cat=cafe`;
+    const { data } = expectOk(await p.get<{ menu: { vendor: { code: string }; sections: { items: { title: string }[] }[] } | null }>(`/api/local?${q}`));
+    expect(data.menu?.vendor.code).toBe(here.code);
+    expect(data.menu?.sections[0].items[0].title).toBe("Espresso");
+    await Promise.all([admin.dispose(), p.dispose()]);
+  });
+
+  test("a store with its own Torob shop shows that shop's catalog and searches inside it", async ({ baseURL }) => {
+    const admin = await adminPlayer(baseURL!);
+    const seller = await Player.create(baseURL!);
+    await fund(admin, (await seller.me()).id, 5000);
+    await seller.goTo(randomSpot());
+    const name = `Phonix ${Math.random().toString(36).slice(2, 7)}`;
+    const shop = { id: 1000 + Math.floor(Math.random() * 1e6), name, products: ["Galaxy charger", "iPhone case", "USB cable"] };
+    shops.push(shop);
+    expectOk(await seller.post("/api/shops", { action: "create", name, category: "tech" }));
+    const shopId = (await seller.get<{ shop: { id: string } }>("/api/shops/mine")).data.shop.id;
+
+    const buyer = await Player.create(baseURL!);
+    type D = { torobShop: { id: number; name: string; url: string; count: number } | null; torob: { title: string; from: boolean }[]; links: { kind: string; url: string }[] };
+    const d = expectOk(await buyer.get<D>(`/api/local?store=shop&id=${shopId}`)).data;
+    expect(d.torobShop).toMatchObject({ id: shop.id, name, url: `https://torob.com/shop/${shop.id}/`, count: 3 });
+    expect(d.torob.map((i) => i.title)).toEqual(shop.products);
+    expect(d.torob[0].from).toBe(true);
+    expect(d.links).toEqual([expect.objectContaining({ kind: "torob", url: `https://torob.com/shop/${shop.id}/` })]);
+    // Searching inside the shop, and the shop's whole catalog with an empty query.
+    expect(expectOk(await buyer.get<{ items: { title: string }[] }>(`/api/local?torob=case&shop=${shop.id}`)).data.items.map((i) => i.title)).toEqual(["iPhone case"]);
+    expect(expectOk(await buyer.get<{ items: unknown[] }>(`/api/local?torob=&shop=${shop.id}`)).data.items).toHaveLength(3);
+    expect((await buyer.get(`/api/local?torob=x`)).status).toBe(400);
+
+    // An owner's torob.com/shop/<id> link picks the shop, whatever the store is called.
+    const other = { id: shop.id + 1, name: "Some Torob Name", products: ["Laptop stand"] };
+    shops.push(other);
+    expectOk(await seller.post("/api/shops", { action: "update", torob: `https://torob.com/shop/${other.id}/some-torob-name/` }));
+    const d2 = expectOk(await buyer.get<D>(`/api/local?store=shop&id=${shopId}`)).data;
+    expect(d2.torobShop?.name).toBe("Some Torob Name");
+    expect(d2.torob.map((i) => i.title)).toEqual(["Laptop stand"]);
     await Promise.all([admin.dispose(), seller.dispose(), buyer.dispose()]);
   });
 });

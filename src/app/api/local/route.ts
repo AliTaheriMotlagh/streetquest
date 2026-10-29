@@ -3,7 +3,8 @@
 //   ?menu=<code>&lat&lng       one vendor's menu / catalog
 //   ?store=place|biz|shop      a store card's menu, Torob listings and links
 //                              (place: name, lat, lng, cat · biz / shop: id)
-//   ?torob=<query>             Torob prices for a product
+//   ?torob=<query>[&shop=<id>] Torob prices for a product — everywhere, or in one Torob shop
+//                              (an empty query there lists the shop's catalog)
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
@@ -19,10 +20,12 @@ const Query = z.union([
   z.object({ menu: z.string().regex(/^[0-9a-z]{6}$/), lat: num.optional(), lng: num.optional() }),
   z.object({ store: z.literal("place"), id: z.string().max(40).optional(), name: z.string().trim().min(1).max(120), lat: num, lng: num, cat: z.string().max(20) }),
   z.object({ store: z.enum(["biz", "shop"]), id: z.string().max(40) }),
-  z.object({ torob: z.string().trim().min(2).max(60) }),
+  z
+    .object({ torob: z.string().trim().max(60), shop: z.coerce.number().int().positive().optional() })
+    .refine((q) => q.shop || q.torob.length >= 2, { path: ["torob"], message: "Too short" }),
 ]);
 
-const empty: StoreData = { menu: null, torob: [], torobQuery: "", links: [] };
+const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [] };
 
 export const GET = route(async (req) => {
   await requireUser();
@@ -35,7 +38,7 @@ export const GET = route(async (req) => {
     if (!menu) throw new HttpError(503, t("Couldn't load the menu — try again in a moment"));
     return { menu };
   }
-  if ("torob" in q) return { items: await torobSearch(q.torob) };
+  if ("torob" in q) return { items: await torobSearch(q.torob, q.shop) };
   if (q.store === "place") {
     // A business that claimed this place has its own links: they win over the guess.
     const biz = q.id ? await prisma.business.findFirst({ where: { osmId: q.id } }) : null;

@@ -1724,6 +1724,9 @@ html.lite .biz-bar i::after { animation: none; }
 .ext-link.torob { border-color: #e2363c; }
 .ext-link.divar { border-color: #a62626; }
 .ext-menu .input, .ext-torob .input { margin: 4px 0 8px; }
+.ext-torob { margin-top: 12px; }
+.ext-torob .tabs { margin-top: 8px; }
+.ext-shop-logo { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; flex: none; }
 .ext-items { display: flex; flex-direction: column; gap: 8px; }
 .ext-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: inherit; text-decoration: none; }
 .ext-item img, .ext-item .ext-ph { width: 64px; height: 64px; flex: none; border-radius: 12px; object-fit: cover; background: rgba(255,255,255,.06); display: grid; place-items: center; font-size: 28px; }

@@ -1,8 +1,9 @@
 // What other sites know about a real store: Snappfood menus and catalogs (restaurants,
 // cafés, bakeries, supermarkets — with their real position, so they go on the map) and
 // Torob listings and prices. Neither has an official public API, so this stays polite:
-//  - everything is cached in ExtCache (vendors per ~1 km cell for 12 h, a menu for 6 h,
-//    a Torob search for 12 h), so a busy map costs them one request per area;
+//  - everything is cached in ExtCache (vendors per ~1 km cell and name searches for 12 h,
+//    a menu for 6 h, a Torob search or shop for 12 h), so a busy map costs them one
+//    request per area;
 //  - each key is fetched once at a time (deduped per instance, at most three requests at
 //    once, honest User-Agent), and a failed refresh serves the stale copy;
 //  - SNAPPFOOD_URL / TOROB_URL point at the sites ("off" disables them — the e2e tests
@@ -12,8 +13,8 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  divarLink, isFoodCat, LINK_CHECKS, nameScore, rialToToman, snappfoodCode, torobLink, vendorKind,
-  type Menu, type StoreData, type StoreLink, type TorobItem, type Vendor,
+  divarLink, isFoodCat, LINK_CHECKS, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, torobLink, torobShopId, vendorKind,
+  type Menu, type StoreData, type StoreLink, type TorobItem, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
 
@@ -31,6 +32,8 @@ const CELL = 0.01;
 const PAGES = 3;
 /** A store and a Snappfood vendor this close, with a similar name, are the same place. */
 const MATCH_M = 120;
+/** Search hits whose position is checked (one menu fetch each) when a store isn't in the cell's list. */
+const SEARCH_CHECKS = 3;
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_PARALLEL = 3;
 
@@ -127,18 +130,46 @@ export async function vendorsAround(here: LatLng, radiusM = 1500): Promise<Vendo
     .map((x) => x.v);
 }
 
+type RawSearch = { data?: { vendor?: { items?: { code?: string; title?: string }[] } } };
+
+/** Snappfood's own search for a store name. Its hits carry no position (and may be in another city). */
+function searchVendors(name: string, at: LatLng) {
+  const c = cellOf(at);
+  return cached<{ code: string; title: string }[]>(`sf:q:${c.y}:${c.x}:${normName(name)}`, VENDORS_TTL, async () => {
+    const root = snappBase();
+    if (!root) return null;
+    const r = await getJson<RawSearch>(`${root}/search/api/v1/desktop/search?${snappQuery(at)}&query=${encodeURIComponent(name)}`);
+    if (!r?.data) return null;
+    return (r.data.vendor?.items ?? []).filter((v) => v.code && v.title).map((v) => ({ code: v.code!, title: v.title! }));
+  });
+}
+
+/** Next door needs a clear name match; right on top of it, half the name is enough. */
+const matchScore = (name: string, v: Vendor, d: number) => nameScore(name, v.title) - (d > 40 ? 0.15 : 0);
+
 /** The Snappfood vendor that is this store: right next to it, with a similar name. */
-export async function matchVendor(store: { name: string; lat: number; lng: number }): Promise<Vendor | null> {
+export async function matchVendor(store: { name: string; lat: number; lng: number; cat: string }): Promise<Vendor | null> {
   const list = (await vendorsInCell(cellOf(store))) ?? [];
   let best: { v: Vendor; score: number } | null = null;
   for (const v of list) {
     const d = distanceM(store, v);
     if (d > MATCH_M) continue;
-    // Next door needs a clear name match; right on top of it, half the name is enough.
-    const score = nameScore(store.name, v.title) - (d > 40 ? 0.15 : 0);
+    const score = matchScore(store.name, v, d);
     if (score >= 0.5 && (!best || score > best.score)) best = { v, score };
   }
-  return best?.v ?? null;
+  if (best || !sellsOnSnappfood(store.cat)) return best?.v ?? null;
+  // The cell's list is only the first pages of thousands: search the name, and check where
+  // the best few really are (their menu, which the card needs anyway, has the position).
+  const hits = ((await searchVendors(store.name, store)) ?? [])
+    .map((h) => ({ ...h, score: nameScore(store.name, h.title) }))
+    .filter((h) => h.score >= 0.5)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, SEARCH_CHECKS);
+  for (const h of hits) {
+    const v = (await vendorMenu(h.code, store).catch(() => null))?.vendor;
+    if (v && distanceM(store, v) <= MATCH_M && matchScore(store.name, v, distanceM(store, v)) >= 0.5) return v;
+  }
+  return null;
 }
 
 type RawProduct = { id?: number; title?: string; description?: string; price?: number; discount?: number; images?: { imageThumbnailSrc?: string; imageSrc?: string }[] };
@@ -177,28 +208,70 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
 }
 
 // ---------------------------------------------------------------- Torob
-type RawTorob = { results?: { name1?: string; price?: number; shop_text?: string; image_url?: string; web_client_absolute_url?: string }[] };
+type RawShop = { shop_id?: number; name?: string; logo_512?: string; num_bases?: number };
+type RawTorob = {
+  results?: { name1?: string; price?: number; price_prefix?: string; shop_text?: string; image_url?: string; web_client_absolute_url?: string }[];
+  /** When the query is a shop's name: that shop. */
+  business_profile_result?: { internet_shops?: RawShop[] } | null;
+};
 
-/** Torob's listings for a search, cheapest-first is left to the client. Prices are toman. */
-export async function torobSearch(q: string): Promise<TorobItem[]> {
+const torobUrl = (root: string, q: string, shopId?: number) =>
+  `${root}/v4/base-product/search/?q=${encodeURIComponent(q)}${shopId ? `&shop_id=${shopId}` : ""}&page=0&size=24`;
+const toShop = (s: RawShop): TorobShop | null =>
+  s.shop_id && s.name ? { id: s.shop_id, name: s.name, logo: s.logo_512 ?? "", url: `https://torob.com/shop/${s.shop_id}/`, count: s.num_bases ?? 0 } : null;
+
+/**
+ * Torob's listings for a search — all of Torob, or one shop's catalog (`shopId`, where an
+ * empty query lists it all). Prices are toman; `from` when it's the cheapest of several shops.
+ */
+export async function torobSearch(q: string, shopId?: number): Promise<TorobItem[]> {
   const query = q.trim().slice(0, 60);
-  if (query.length < 2) return [];
-  const out = await cached<TorobItem[]>(`tr:${query.toLowerCase()}`, TOROB_TTL, async () => {
+  if (query.length < 2 && !shopId) return [];
+  const out = await cached<TorobItem[]>(`tr:${shopId ?? ""}:${query.toLowerCase()}`, TOROB_TTL, async () => {
     const root = torobBase();
     if (!root) return null;
-    const r = await getJson<RawTorob>(`${root}/v4/base-product/search/?q=${encodeURIComponent(query)}&page=0&size=24`);
+    const r = await getJson<RawTorob>(torobUrl(root, query, shopId));
     if (!r?.results) return null;
     return r.results
       .filter((x) => x.name1 && x.web_client_absolute_url)
       .map((x) => ({
         title: x.name1!,
         price: x.price ?? 0,
+        from: x.price_prefix === "cheapest",
         shop: (x.shop_text ?? "").replace(/^در\s+/, "").trim(),
         photo: x.image_url ?? "",
         url: `https://torob.com${x.web_client_absolute_url}`,
       }));
   });
   return out ?? [];
+}
+
+/** The Torob shop with this store's name (Torob answers a shop's name with its profile). */
+export async function torobShop(name: string): Promise<TorobShop | null> {
+  const query = name.trim().slice(0, 60);
+  if (query.length < 2) return null;
+  const out = await cached<{ shop: TorobShop | null }>(`tr:shop:${normName(query)}`, TOROB_TTL, async () => {
+    const root = torobBase();
+    if (!root) return null;
+    const r = await getJson<RawTorob>(`${root}/v4/base-product/search/?q=${encodeURIComponent(query)}&page=0&size=1`);
+    if (!r) return null;
+    const hit = (r.business_profile_result?.internet_shops ?? []).find((s) => s.name && sameName(s.name, query));
+    return { shop: hit ? toShop(hit) : null };
+  });
+  return out?.shop ?? null;
+}
+
+type RawShopDetails = { id?: number; name?: string; logo_512?: string };
+/** A shop by its id, from an owner's torob.com/shop/<id>/ link. */
+async function torobShopById(id: number): Promise<TorobShop | null> {
+  const out = await cached<{ shop: TorobShop | null }>(`tr:shop:#${id}`, TOROB_TTL, async () => {
+    const root = torobBase();
+    if (!root) return null;
+    const r = await getJson<RawShopDetails>(`${root}/v4/internet-shop/details/?id=${id}`);
+    if (!r) return null;
+    return { shop: r.id && r.name ? toShop({ shop_id: r.id, name: r.name, logo_512: r.logo_512 }) : null };
+  });
+  return out?.shop ?? null;
 }
 
 // ---------------------------------------------------------------- one store
@@ -216,17 +289,24 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   const owned = s.snappfood ? snappfoodCode(s.snappfood) : null;
   const code = owned ?? (await matchVendor(s).catch(() => null))?.code ?? null;
   const menu = code ? await vendorMenu(code, s).catch(() => null) : null;
-  // Torob lists online shops: show this store's own listings when it sells there (every word of the name matches).
+  // Torob lists online shops: this store's own shop there (the owner's link, else one with
+  // exactly its name) and its catalog; failing that, listings only this store sells.
   const food = isFoodCat(s.cat);
-  const torob = food ? [] : (await torobSearch(s.name).catch(() => [])).filter((x) => x.shop && nameScore(x.shop, s.name) >= 1);
+  const tl = s.torob ? torobLink(s.torob) : null;
+  const ownShop = tl ? torobShopId(tl) : null;
+  const shop = food ? null : await (ownShop ? torobShopById(ownShop) : torobShop(s.name)).catch(() => null);
+  const torob = food
+    ? []
+    : shop
+      ? await torobSearch("", shop.id).catch(() => [])
+      : (await torobSearch(s.name).catch(() => [])).filter((x) => x.shop && nameScore(x.shop, s.name) >= 1);
   const links: StoreLink[] = [];
   if (menu) links.push({ kind: "snappfood", url: menu.vendor.url, label: t("Order on Snappfood") });
   else if (owned) links.push({ kind: "snappfood", url: `https://snappfood.ir/restaurant/menu/${owned}`, label: t("Order on Snappfood") });
-  const tl = s.torob ? torobLink(s.torob) : null;
-  if (tl) links.push({ kind: "torob", url: tl, label: t("Shop on Torob") });
+  if (tl || shop) links.push({ kind: "torob", url: tl ?? shop!.url, label: t("Shop on Torob") });
   const dl = s.divar ? divarLink(s.divar) : null;
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
   if (s.phone) links.push({ kind: "phone", url: `tel:${s.phone.replace(/[^\d+]/g, "")}`, label: s.phone });
-  return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, links };
+  return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links };
 }

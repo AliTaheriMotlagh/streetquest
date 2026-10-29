@@ -1,11 +1,12 @@
 "use client";
-// A real store's menu, catalog and prices from other sites (Snappfood, Torob) and its
-// links, inside the map cards (real places, businesses, Market shops) and for Snappfood
-// vendors on the map. Data: /api/local (server/localData.ts).
+// A real store's menu, catalog and prices from other sites (Snappfood; Torob, with the
+// store's own Torob shop and its catalog when it has one) and its links, inside the map
+// cards (real places, businesses, Market shops) and for Snappfood vendors on the map.
+// Data: /api/local (server/localData.ts).
 import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
-import { LINK_CHECKS, VENDOR_KINDS, type Menu, type StoreData, type TorobItem, type Vendor } from "@/lib/localData";
+import { LINK_CHECKS, VENDOR_KINDS, type Menu, type StoreData, type TorobItem, type TorobShop, type Vendor } from "@/lib/localData";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
@@ -96,7 +97,7 @@ function TorobList({ items }: { items: TorobItem[] }) {
           <div className="grow">
             <b dir="auto">{i.title}</b>
             {i.shop && <p className="small muted" dir="auto">{i.shop}</p>}
-            {i.price > 0 ? <span className="price-tag"><b>{toman(i.price)}</b></span> : <span className="small muted">{t("Out of stock")}</span>}
+            {i.price > 0 ? <span className="price-tag"><b>{i.from ? t("from {n} toman", { n: fmtNum(i.price) }) : toman(i.price)}</b></span> : <span className="small muted">{t("Out of stock")}</span>}
           </div>
         </a>
       ))}
@@ -104,17 +105,39 @@ function TorobList({ items }: { items: TorobItem[] }) {
   );
 }
 
-/** Compare a product's price online (Torob), from inside any store. */
-function TorobSearch({ initial }: { initial?: TorobItem[] }) {
+/**
+ * Compare a product's price online (Torob), from inside any store. With the store's own
+ * Torob shop: its catalog first, and the search looks in that shop unless told otherwise.
+ */
+function TorobSearch({ initial, shop }: { initial?: TorobItem[]; shop?: TorobShop | null }) {
   const [draft, setDraft] = useState("");
   const [q, setQ] = useState("");
-  const res = useLocal<{ items: TorobItem[] }>(q ? { torob: q } : null);
+  const [everywhere, setEverywhere] = useState(!shop);
+  const scope = shop && !everywhere ? shop.id : undefined;
+  const res = useLocal<{ items: TorobItem[] }>(q ? { torob: q, shop: scope } : null);
   return (
     <div className="ext-torob">
-      <div className="sec-head"><b>🏷️ {t("Prices on Torob")}</b></div>
+      <div className="sec-head">
+        {shop ? (
+          <>
+            {shop.logo && <img className="ext-shop-logo" src={shop.logo} alt="" referrerPolicy="no-referrer" />}
+            <b dir="auto">🏷️ {t("{shop} on Torob", { shop: shop.name })}</b>
+            <span className="grow" />
+            {shop.count > 0 && <span className="small muted">{t("{n} products", { n: fmtNum(shop.count) })}</span>}
+          </>
+        ) : (
+          <b>🏷️ {t("Prices on Torob")}</b>
+        )}
+      </div>
       {!!initial?.length && !q && <TorobList items={initial} />}
+      {shop && (
+        <div className="tabs" role="tablist">
+          <button role="tab" aria-selected={!everywhere} className={everywhere ? "" : "on"} onClick={() => setEverywhere(false)}>{t("In this store")}</button>
+          <button role="tab" aria-selected={everywhere} className={everywhere ? "on" : ""} onClick={() => setEverywhere(true)}>{t("All of Torob")}</button>
+        </div>
+      )}
       <form className="row" onSubmit={(e) => (e.preventDefault(), setQ(draft.trim()))}>
-        <input className="input grow" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t("Search a product's price")} aria-label={t("Search a product's price")} maxLength={60} />
+        <input className="input grow" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={scope ? t("Search this store's products") : t("Search a product's price")} aria-label={scope ? t("Search this store's products") : t("Search a product's price")} maxLength={60} />
         <Button className="btn cyan" disabled={draft.trim().length < 2}>🔎</Button>
       </form>
       {q && (res.error ? <p className="small warn-text">{res.error}</p> : !res.data ? <p className="small muted">{t("Loading…")}</p> : res.data.items.length ? <TorobList items={res.data.items} /> : <p className="small muted">{t("Nothing found on Torob")}</p>)}
@@ -142,7 +165,7 @@ export function StoreExtras({ query }: { query: Record<string, string | number |
         </div>
       )}
       {data.menu ? <MenuView menu={data.menu} /> : !data.torobQuery && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
-      {!!data.torobQuery && <TorobSearch initial={data.torob} />}
+      {!!data.torobQuery && <TorobSearch initial={data.torob} shop={data.torobShop} />}
     </div>
   );
 }

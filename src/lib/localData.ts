@@ -20,9 +20,13 @@ export type Vendor = {
 export type MenuItem = { id: string; title: string; about: string; price: number; priceNow: number; photo: string };
 export type MenuSection = { title: string; items: MenuItem[] };
 export type Menu = { vendor: Vendor; cover: string; address: string; sections: MenuSection[]; fetchedAt: string };
-export type TorobItem = { title: string; price: number; shop: string; photo: string; url: string };
+/** `from`: the cheapest of several shops (in a shop's catalog, too — Torob shows the best price). */
+export type TorobItem = { title: string; price: number; from?: boolean; shop: string; photo: string; url: string };
+/** A shop on Torob; `count` is how many products it lists. */
+export type TorobShop = { id: number; name: string; logo: string; url: string; count: number };
 export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone"; url: string; label: string };
-export type StoreData = { menu: Menu | null; torob: TorobItem[]; torobQuery: string; links: StoreLink[] };
+/** `torob`: the store's own Torob shop catalog when `torobShop` is set, else listings only it sells. */
+export type StoreData = { menu: Menu | null; torob: TorobItem[]; torobQuery: string; torobShop: TorobShop | null; links: StoreLink[] };
 
 /** Snappfood's vendor types, grouped the way the map filter shows them. */
 export type VendorKind = "food" | "cafe" | "sweets" | "market";
@@ -44,6 +48,8 @@ export function vendorKind(type: string): VendorKind {
 /** Places (and Market shop categories) whose catalog is a menu rather than products on Torob. */
 const FOOD: string[] = ["burger", "pizza", "restaurant", "cafe", "bakery", "icecream", "bar", "food"] satisfies (PlaceCat | "food")[];
 export const isFoodCat = (cat: string) => FOOD.includes(cat);
+/** Places worth looking up by name on Snappfood: food, and the groceries it delivers from. */
+export const sellsOnSnappfood = (cat: string) => isFoodCat(cat) || cat === "grocery";
 
 /** Rial (what Snappfood quotes) → toman (what the game and Torob show). */
 export const rialToToman = (rial: number) => Math.round(rial / 10);
@@ -67,6 +73,8 @@ const onHost = (v: string, host: string) => {
   }
 };
 export const torobLink = (v: string) => onHost(v, "torob.com");
+/** The shop id in a torob.com/shop/<id>/… link (a product link has none). */
+export const torobShopId = (link: string) => Number(/torob\.com\/shop\/(\d+)(?:[/?#]|$)/.exec(link)?.[1]) || null;
 export const divarLink = (v: string) => onHost(v, "divar.ir");
 /** Empty, or a link the store card can use: the field validators for owner forms. */
 export const LINK_CHECKS = {
@@ -102,3 +110,5 @@ export function nameScore(a: string, b: string) {
   const common = x.filter((w) => ys.has(w) || y.some((v) => v.length > 3 && w.length > 3 && (v.startsWith(w) || w.startsWith(v)))).length;
   return common / Math.min(x.length, y.length);
 }
+/** Every word of both names matches: for a site with no position to check the match against. */
+export const sameName = (a: string, b: string) => words(a).length === words(b).length && nameScore(a, b) >= 1;
