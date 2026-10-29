@@ -1,22 +1,26 @@
 // What other sites know about a real store: Snappfood menus and catalogs (restaurants,
 // cafés, bakeries, supermarkets — with their real position, so they go on the map), their
 // hours and reviews, Torob listings and prices, Torob's walk-in stores (on the map, each
-// with its own catalog), and the latest Divar ads in each neighbourhood. None has an
-// official public API, so this stays polite:
+// with what it was seen selling at its own price, and its own catalog), and the latest
+// Divar ads in each neighbourhood. None has an official public API, so this stays polite:
 //  - everything is cached in ExtCache (vendors per ~1 km cell and name searches for 12 h,
 //    a menu for 6 h, reviews for an hour, a Torob search or shop for 12 h, the walk-in
-//    store map for a day, Divar's neighbourhoods for a week and their ads for 15 min), so
-//    a busy map costs them one request per area;
+//    store map and each ~5 km area's own in-person search for a day, Divar's
+//    neighbourhoods for a week and their ads for 15 min), so a busy map costs them one
+//    request per area;
 //  - each key is fetched once at a time (deduped per instance, at most three requests at
-//    once, honest User-Agent), and a failed refresh serves the stale copy;
+//    once, honest User-Agent), and a failed refresh serves the stale copy; Torob's calls
+//    are spaced out (TOROB_GAP_MS), and when it says "slow down" (490/429) we stop asking
+//    for half an hour;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
 import { Prisma } from "@prisma/client";
+import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -58,10 +62,32 @@ const DIVAR_MAX_AREAS = 5;
 const DIVAR_NEAREST_MAX_M = 6000;
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_PARALLEL = 3;
+/** Torob's calls start at least this far apart (0 in the e2e tests, which talk to a stub). */
+const TOROB_GAP_MS = Number(process.env.TOROB_GAP_MS ?? 450);
+/** Torob asked us to slow down ("are you a robot?" 490, or 429): no more calls for this long. */
+const TOROB_COOL_MS = 30 * 60_000;
+let torobNext = 0, torobCoolUntil = 0;
+const torobCooling = () => Date.now() < torobCoolUntil;
+
+/** Keep work going after the response on serverless hosts (outside a request it just runs). */
+function keepAlive(p: Promise<unknown>) {
+  try {
+    after(() => p.catch(() => {}));
+  } catch {
+    void p.catch(() => {});
+  }
+}
 
 let running = 0;
 const queue: (() => void)[] = [];
 async function getJson<T>(url: string, post?: unknown): Promise<T | null> {
+  const tr = torobBase(), torob = !!tr && url.startsWith(tr);
+  if (torob) {
+    if (torobCooling()) return null;
+    const wait = torobNext - Date.now();
+    torobNext = Math.max(Date.now(), torobNext) + TOROB_GAP_MS;
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  }
   if (running >= MAX_PARALLEL) await new Promise<void>((r) => queue.push(r));
   running++;
   const ctl = new AbortController();
@@ -71,6 +97,7 @@ async function getJson<T>(url: string, post?: unknown): Promise<T | null> {
     const headers: Record<string, string> = { "user-agent": ua, accept: "application/json" };
     const init: RequestInit = post === undefined ? { headers } : { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(post) };
     const res = await fetch(url, { ...init, signal: ctl.signal });
+    if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
     return res.ok ? ((await res.json().catch(() => null)) as T | null) : null;
   } catch {
     return null;
@@ -386,7 +413,8 @@ export async function torobPlaceInfo(id: number): Promise<TorobPlaceInfo | null>
  * Torob's map of walk-in sellers is per product, so the map of stores is built from a
  * couple of listings of everyday products that, between them, reach most kinds of
  * store: phones and accessories, computers, appliances, perfume and beauty, shoes,
- * watches, books, toys, tools, tyres and bikes. Each tag is what the store was seen selling.
+ * watches, books, toys, tools, tyres and bikes. Each tag is what the store was seen
+ * selling; each seller row is also that product at that store's own price (its stock).
  */
 const TOROB_SEEDS: { q: string; tag: string }[] = [
   { q: "گوشی موبایل", tag: "📱" }, { q: "قاب گوشی", tag: "📱" }, { q: "لپ تاپ", tag: "💻" }, { q: "هندزفری بلوتوث", tag: "🎧" },
@@ -396,30 +424,45 @@ const TOROB_SEEDS: { q: string; tag: string }[] = [
 ];
 const LISTINGS_PER_SEED = 2;
 const MAX_TOROB_PLACES = 60_000;
-type RawMapSeller = { shop_id?: number; shop_name?: string; shop_name2?: string; name1?: string; location?: { lat?: number; lon?: number }; media?: { url?: string }[]; working_hours?: { schedule?: { text?: string }[] } };
+/**
+ * Torob's in-person search (its "buy in person" pages) ranks products by what physical
+ * stores near a point stock: one listing per seed of these, searched around a player,
+ * finds the stores of their own area that the nationwide map missed.
+ */
+const AREA_SEEDS = TOROB_SEEDS.filter((s, i) => i !== 1 && i !== 5 && i !== 6 && i !== 15);
+/** An area's own search covers this square (degrees, ~5 km) and keeps its stores this far round it. */
+const AREA = 0.05;
+const AREA_KEEP_M = 15_000;
+const AREA_TTL = 24 * HOUR;
+/** The first look at an area waits this long for its search; then the card comes back for the rest. */
+const AREA_WAIT_MS = 9_000;
+type RawMapSeller = {
+  shop_id?: number; shop_name?: string; shop_name2?: string; name1?: string; name2?: string; price?: number; last_price_change_date?: string;
+  location?: { lat?: number; lon?: number }; media?: { url?: string }[]; working_hours?: { schedule?: { text?: string }[] };
+};
 const torobCell = (lat: number, lng: number) => `${Math.floor(lat / TOROB_CELL)}:${Math.floor(lng / TOROB_CELL)}`;
 
-/** The map's walk-in sellers of every seed product, merged per shop: Map<shop id, place>. */
-export async function collectTorobPlaces(): Promise<Map<number, TorobPlace> | null> {
+/**
+ * The map's walk-in sellers of each seed product (searched around `near` when given),
+ * merged per shop: Map<shop id, place>, each with the products it was seen selling.
+ */
+export async function collectTorobPlaces(seeds = TOROB_SEEDS, perSeed = LISTINGS_PER_SEED, near?: LatLng): Promise<Map<number, TorobPlace> | null> {
   const root = torobBase();
   if (!root) return null;
   const places = new Map<number, TorobPlace>();
+  const at = near ? `&lat=${near.lat.toFixed(4)}&lon=${near.lng.toFixed(4)}` : "";
   let answered = 0;
-  for (const seed of TOROB_SEEDS) {
-    const r = await getJson<RawTorob>(`${root}/v4/base-product/search/?q=${encodeURIComponent(seed.q)}&shop_type=offline&page=0&size=${LISTINGS_PER_SEED * 2}`);
-    const keys = (r?.results ?? []).map((x) => x.random_key).filter((k): k is string => !!k).slice(0, LISTINGS_PER_SEED);
-    const maps = await Promise.all(keys.map((k) => getJson<{ result?: RawMapSeller[] }>(`${root}/v4/base-product/map/sellers/?prk=${encodeURIComponent(k)}`)));
-    for (const m of maps) {
+  for (const seed of seeds) {
+    const r = await getJson<RawTorob>(`${root}/v4/base-product/search/?q=${encodeURIComponent(seed.q)}&shop_type=offline${at}&page=0&size=${perSeed * 2}`);
+    const listings = (r?.results ?? []).filter((x) => !!x.random_key).slice(0, perSeed);
+    const maps = await Promise.all(listings.map((x) => getJson<{ result?: RawMapSeller[] }>(`${root}/v4/base-product/map/sellers/?prk=${encodeURIComponent(x.random_key!)}`)));
+    maps.forEach((m, li) => {
       if (m) answered++;
       for (const s of m?.result ?? []) {
         const lat = Number(s.location?.lat), lng = Number(s.location?.lon);
         if (!s.shop_id || !s.shop_name || !Number.isFinite(lat) || !Number.isFinite(lng) || places.size >= MAX_TOROB_PLACES) continue;
-        const had = places.get(s.shop_id);
-        if (had) {
-          if (!had.sells.includes(seed.tag)) had.sells.push(seed.tag);
-          continue;
-        }
-        places.set(s.shop_id, {
+        const item = stockOf(listings[li], s);
+        const place: TorobPlace = {
           id: s.shop_id,
           name: s.shop_name.trim().slice(0, 60),
           lat: Math.round(lat * 1e6) / 1e6,
@@ -430,9 +473,12 @@ export async function collectTorobPlaces(): Promise<Map<number, TorobPlace> | nu
           photo: s.media?.find((x) => x.url && /^https:\/\//.test(x.url))?.url ?? "",
           week: weekFromTorob(s.working_hours?.schedule),
           sells: [seed.tag],
-        });
+          stock: item ? [item] : [],
+        };
+        const had = places.get(s.shop_id);
+        places.set(s.shop_id, had ? mergeTorobPlace(had, place) : place);
       }
-    }
+    });
   }
   return answered ? places : null;
 }
@@ -471,13 +517,50 @@ async function freshTorobMap() {
   const meta = await prisma.extCache.findUnique({ where: { key: TOROB_META } });
   const ok = (meta?.data as { ok?: boolean } | undefined)?.ok;
   if (meta && Date.now() - meta.fetchedAt.getTime() < (ok ? TOROB_MAP_TTL : HOUR)) return;
-  torobBuild ??= buildTorobMap()
-    .catch(() => {})
-    .finally(() => (torobBuild = null));
+  if (!torobBuild) {
+    torobBuild = buildTorobMap()
+      .catch(() => {})
+      .finally(() => (torobBuild = null));
+    keepAlive(torobBuild);
+  }
   if (!meta) await Promise.race([torobBuild, new Promise((r) => setTimeout(r, 25_000))]);
 }
 
-/** Walk-in Torob stores around a point, nearest first; `pending` while the very first map is still being built. */
+const exploring = new Map<string, Promise<void>>();
+/**
+ * The walk-in stores of the ~5 km square around a point, from Torob's own in-person
+ * search there (once a day per square). The first look waits a little for it; `pending`
+ * while it's still running.
+ */
+async function areaPlaces(here: LatLng): Promise<{ places: TorobPlace[]; pending: boolean }> {
+  const ay = Math.round(here.lat / AREA), ax = Math.round(here.lng / AREA), key = `tr:near:${ay}:${ax}`;
+  const read = () => prisma.extCache.findUnique({ where: { key } });
+  let row = await read();
+  const ok = (row?.data as { ok?: boolean } | undefined)?.ok;
+  if ((!row || Date.now() - row.fetchedAt.getTime() > (ok ? AREA_TTL : HOUR)) && !torobCooling()) {
+    let job = exploring.get(key);
+    if (!job) {
+      const centre = { lat: ay * AREA, lng: ax * AREA };
+      job = collectTorobPlaces(AREA_SEEDS, 1, centre)
+        .catch(() => null)
+        .then(async (found) => {
+          const places = found ? [...found.values()].filter((p) => distanceM(centre, p) <= AREA_KEEP_M) : [];
+          const data = { ok: !!found, places } as unknown as Prisma.InputJsonValue;
+          await prisma.extCache.upsert({ where: { key }, create: { key, data }, update: { data, fetchedAt: new Date() } });
+        })
+        .finally(() => exploring.delete(key));
+      exploring.set(key, job);
+      keepAlive(job);
+    }
+    if (!row) {
+      await Promise.race([job, new Promise((r) => setTimeout(r, AREA_WAIT_MS))]);
+      row = await read();
+    }
+  }
+  return { places: (row?.data as { places?: TorobPlace[] } | undefined)?.places ?? [], pending: !row && exploring.has(key) };
+}
+
+/** Walk-in Torob stores around a point, nearest first; `pending` while the very first map or this area's search is still being built. */
 export async function torobPlacesAround(here: LatLng, radiusM = 4000): Promise<{ shops: TorobPlace[]; pending: boolean }> {
   if (!torobBase()) return { shops: [], pending: false };
   await freshTorobMap();
@@ -486,14 +569,19 @@ export async function torobPlacesAround(here: LatLng, radiusM = 4000): Promise<{
   const cy = Math.floor(here.lat / TOROB_CELL), cx = Math.floor(here.lng / TOROB_CELL);
   const keys: string[] = [];
   for (let y = cy - reach; y <= cy + reach; y++) for (let x = cx - reach; x <= cx + reach; x++) keys.push(`tr:map:c:${y}:${x}`);
-  const rows = await prisma.extCache.findMany({ where: { key: { in: keys } } });
-  const shops = rows
-    .flatMap((r) => r.data as unknown as TorobPlace[])
+  const [rows, area] = await Promise.all([prisma.extCache.findMany({ where: { key: { in: keys } } }), areaPlaces(here)]);
+  // One sign per store: the nationwide map and the area's own search, merged.
+  const byId = new Map<number, TorobPlace>();
+  for (const p of [...rows.flatMap((r) => r.data as unknown as TorobPlace[]), ...area.places]) {
+    const had = byId.get(p.id);
+    byId.set(p.id, had ? mergeTorobPlace(had, p) : p);
+  }
+  const shops = [...byId.values()]
     .map((p) => ({ p, d: distanceM(here, p) }))
     .filter((x) => x.d <= radiusM)
     .sort((a, b) => a.d - b.d)
     .map((x) => x.p);
-  return { shops, pending };
+  return { shops, pending: pending || area.pending };
 }
 
 // ---------------------------------------------------------------- Divar

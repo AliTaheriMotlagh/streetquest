@@ -38,6 +38,8 @@ import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
 import { DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
 import { OnlineChip, OnlineSheet } from "./Online";
 import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
+import { PLACE_CATS, type PlaceCat } from "@/lib/places";
+import { MapFilter } from "./MapFilter";
 import type { LiveRoute } from "@/server/traffic";
 import { SocialPanel } from "./Social";
 import { BusinessPanel } from "./Business";
@@ -60,20 +62,27 @@ const NAV: [PanelId, string, string][] = [
 const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
-/** What the map can show on top of the game (⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "places" | VendorKind | "torob" | "divar" | "traffic";
-const MAP_LAYERS: { key: MapLayer; emoji: string; label: string }[] = [
-  { key: "places", emoji: "📍", label: msg("Real places") },
-  ...VENDOR_KIND_KEYS.map((k) => ({ key: k, emoji: VENDOR_KINDS[k].emoji, label: VENDOR_KINDS[k].label })),
-  { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)") },
-  { key: "divar", emoji: "📢", label: msg("Divar ads") },
-  { key: "traffic", emoji: "🚦", label: msg("Live traffic") },
+/** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "divar" | "traffic";
+const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
+  { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
+  { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
+  { key: "players", emoji: "👥", label: msg("Players"), group: msg("The game") },
+  { key: "biz", emoji: "🏪", label: msg("Businesses"), group: msg("The game") },
+  ...VENDOR_KIND_KEYS.map((k) => ({ key: k, emoji: VENDOR_KINDS[k].emoji, label: VENDOR_KINDS[k].label, group: msg("Menus from Snappfood") })),
+  { key: "places", emoji: "📍", label: msg("Real places"), group: msg("Around you") },
+  { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)"), group: msg("Around you") },
+  { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
+  { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
 ];
 const ALL_LAYERS = MAP_LAYERS.map((l) => l.key);
+const LAYER_GROUPS = [...new Set(MAP_LAYERS.map((l) => l.group))];
 /** The layers there were when the player saved their choice (the ones since then start on). */
 const MAP_LAYERS_KNOWN_KEY = "sq_map_layers_known";
-/** Choices saved before the list of known layers was kept: everything but Torob's stores existed. */
-const LAYERS_BEFORE_TOROB: string[] = ALL_LAYERS.filter((k) => k !== "torob");
+/** Choices saved before the list of known layers was kept: places, vendors, Divar and traffic existed. */
+const LAYERS_BEFORE_TOROB: string[] = ["places", ...VENDOR_KIND_KEYS, "divar", "traffic"];
+/** Kinds of real place the player hid on the map. */
+const MAP_KINDS_KEY = "sq_map_kinds";
 /** Fetch Snappfood vendors / Divar ads again this far from the last fetch, or after this long. */
 const VENDOR_REFETCH_M = 500;
 const TOROB_REFETCH_M = 800;
@@ -170,8 +179,9 @@ export default function Game() {
     } catch {}
   };
   // On the map: real places, Snappfood vendors by kind, Divar ads, live traffic (all on by default).
-  const [extOpen, setExtOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [layers, setLayers] = useState<MapLayer[]>(ALL_LAYERS);
+  const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const vendorsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [torobShops, setTorobShops] = useState<TorobPlace[]>([]);
@@ -185,8 +195,26 @@ export default function Game() {
       // A layer added since the player last chose starts on, like everything did for them.
       const known = JSON.parse(localStorage.getItem(MAP_LAYERS_KNOWN_KEY) ?? "null") ?? LAYERS_BEFORE_TOROB;
       if (Array.isArray(v)) setLayers(ALL_LAYERS.filter((k) => v.includes(k) || !known.includes(k)));
+      const kinds = JSON.parse(localStorage.getItem(MAP_KINDS_KEY) ?? "null");
+      if (Array.isArray(kinds)) setHiddenKinds(kinds.filter((k) => typeof k === "string"));
     } catch {}
   }, []);
+  /** Everything on (every kind of place too), or nothing. */
+  const showAll = (show: boolean) => {
+    toggleLayer(show ? "all" : "none");
+    if (!show || !hiddenKinds.length) return;
+    setHiddenKinds([]);
+    try {
+      localStorage.removeItem(MAP_KINDS_KEY);
+    } catch {}
+  };
+  const toggleKind = (k: string) => {
+    const next = hiddenKinds.includes(k) ? hiddenKinds.filter((x) => x !== k) : [...hiddenKinds, k];
+    setHiddenKinds(next);
+    try {
+      localStorage.setItem(MAP_KINDS_KEY, JSON.stringify(next));
+    } catch {}
+  };
   const toggleLayer = (k: MapLayer | "all" | "none") => {
     const next = k === "all" ? [...ALL_LAYERS] : k === "none" ? [] : layers.includes(k) ? layers.filter((x) => x !== k) : [...layers, k];
     setLayers(next);
@@ -240,13 +268,46 @@ export default function Game() {
   const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
-  const shownSpots = useMemo(() => {
+  const spotsAround = useMemo(() => {
     if (!world || !layers.includes("places")) return [];
     const jobs = new Set(world.places.map((m) => m.place.id));
     return (world.spots ?? []).filter(
       (p) => !jobs.has(p.id) && !shownVendors.some((v) => Math.abs(v.lat - p.lat) < 0.004 && Math.abs(v.lng - p.lng) < 0.005 && sameStore(p, v, distanceM(p, v))),
     );
   }, [world, layers, shownVendors]);
+  const shownSpots = useMemo(() => (hiddenKinds.length ? spotsAround.filter((p) => !hiddenKinds.includes(p.cat)) : spotsAround), [spotsAround, hiddenKinds]);
+  // The game's own markers, as the filter has them.
+  const mapWorld = useMemo(
+    () =>
+      world && {
+        ...world,
+        money: layers.includes("money") ? world.money : [],
+        places: layers.includes("jobs") ? world.places : [],
+        players: layers.includes("players") ? world.players : [],
+        businesses: layers.includes("biz") ? world.businesses : [],
+      },
+    [world, layers],
+  );
+  /** The filter's chips, each with how many there are around. */
+  const filterGroups = useMemo(() => {
+    const count: Partial<Record<MapLayer, number>> = {
+      money: world?.money.length ?? 0,
+      jobs: world?.places.length ?? 0,
+      players: world?.players.length ?? 0,
+      biz: world?.businesses.length ?? 0,
+      places: (world?.spots ?? []).length,
+      torob: torobShops.length,
+      divar: divar.length,
+    };
+    for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
+    return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) }));
+  }, [world, vendors, torobShops, divar]);
+  const kindChips = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1]).map(([k, count]) => ({ key: k, emoji: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).emoji, label: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).label, count }));
+  }, [spotsAround]);
+  const hiddenCount = ALL_LAYERS.length - layers.length + hiddenKinds.filter((k) => kindChips.some((c) => c.key === k)).length;
   const [meTab, setMeTab] = useState<HeroTabId>("quests");
   const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
@@ -840,7 +901,7 @@ export default function Game() {
       <EmojiArtLayer />
       <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle.id}`}>
         <GameMap
-          world={world}
+          world={mapWorld}
           me={me}
           look={mapStyle}
           onTilesFail={lookFailed}
@@ -986,7 +1047,21 @@ export default function Game() {
 
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
-          <Button className="fab" title={t("More")} aria-label={t("More")} aria-expanded={moreOpen} onClick={() => (setMoreOpen(!moreOpen), setStylesOpen(false), setExtOpen(false))} style={{ outline: moreOpen ? "2px solid var(--yellow)" : undefined }}>
+          <Button className={`fab map-filter-fab ${filterOpen ? "on" : ""}`} title={t("Filter the map")} aria-label={t("Filter the map")} aria-expanded={filterOpen} onClick={() => (setFilterOpen(!filterOpen), setMoreOpen(false))}>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 5h16l-6.2 7.4V18l-3.6 1.8v-7.4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+            {hiddenCount > 0 && <span className="badge">{fmtNum(hiddenCount)}</span>}
+          </Button>
+          {filterOpen && (
+            <MapFilter
+              groups={filterGroups}
+              on={(k) => layers.includes(k as MapLayer)}
+              onToggle={(k) => toggleLayer(k as MapLayer)}
+              onAll={showAll}
+              kinds={layers.includes("places") ? { items: kindChips, hidden: hiddenKinds, onToggle: toggleKind } : null}
+              onClose={() => setFilterOpen(false)}
+            />
+          )}
+          <Button className="fab" title={t("More")} aria-label={t("More")} aria-expanded={moreOpen} onClick={() => (setMoreOpen(!moreOpen), setStylesOpen(false), setFilterOpen(false))} style={{ outline: moreOpen ? "2px solid var(--yellow)" : undefined }}>
             ⋯
           </Button>
           {moreOpen && stylesOpen && (
@@ -1001,23 +1076,7 @@ export default function Game() {
               ))}
             </div>
           )}
-          {moreOpen && extOpen && (
-            <div className="more-menu styles" role="menu" aria-label={t("On the map")}>
-              <Button role="menuitem" className="back" onClick={() => setExtOpen(false)}>
-                ‹ {t("On the map")}
-              </Button>
-              {MAP_LAYERS.map((l) => (
-                <Button key={l.key} role="menuitemcheckbox" aria-checked={layers.includes(l.key)} className={layers.includes(l.key) ? "on" : ""} onClick={() => toggleLayer(l.key)}>
-                  <span aria-hidden>{l.emoji}</span> {t(l.label)}
-                </Button>
-              ))}
-              <Button role="menuitem" onClick={() => toggleLayer(layers.length ? "none" : "all")}>
-                {layers.length ? `🚫 ${t("Hide all")}` : `✅ ${t("Show all")}`}
-              </Button>
-              <p className="small muted more-note">{t("Real places, menus from Snappfood, walk-in stores from Torob, ads from Divar and live traffic — tap a sign to see more.")}</p>
-            </div>
-          )}
-          {moreOpen && !stylesOpen && !extOpen && (
+          {moreOpen && !stylesOpen && (
             <div className="more-menu" role="menu">
               {me.canSimulate && (
                 <Button role="menuitem" onClick={() => (toggleSim(), setMoreOpen(false))} className={simMode ? "on" : ""}>
@@ -1027,7 +1086,7 @@ export default function Game() {
               <Button role="menuitem" aria-haspopup="menu" onClick={() => setStylesOpen(true)}>
                 {mapStyle.emoji} {t("Map style")} <span className="small">· {t(mapStyle.name)}</span>
               </Button>
-              <Button role="menuitem" aria-haspopup="menu" onClick={() => setExtOpen(true)}>
+              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setFilterOpen(true), setMoreOpen(false))}>
                 🗺️ {t("On the map")} <span className="small">· {fmtNum(layers.length)}/{fmtNum(ALL_LAYERS.length)}</span>
               </Button>
               <Button role="menuitem" onClick={() => setMuted(!muted)}>

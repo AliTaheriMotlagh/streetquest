@@ -46,11 +46,41 @@ export type TorobItem = { title: string; price: number; from?: boolean; shop: st
 /** A shop on Torob; `count` is how many products it lists. */
 export type TorobShop = { id: number; name: string; logo: string; url: string; count: number };
 /**
- * A Torob shop with a store you can walk into, where Torob's own map of sellers puts it:
- * its city, the start of its address, a photo of the store, its week, and what it was
- * seen selling (the emoji of each kind of product).
+ * A product a walk-in store was seen selling on Torob's map of sellers, at that store's
+ * own price (toman; 0 = ask in the store), with the store's own description of it
+ * (`note`) and when it last changed the price (`when`, Torob's Persian words).
  */
-export type TorobPlace = { id: number; name: string; lat: number; lng: number; city: string; address: string; photo: string; week: Week | null; sells: string[] };
+export type TorobStock = { title: string; price: number; photo: string; url: string; note: string; when: string };
+/**
+ * A Torob shop with a store you can walk into, where Torob's own map of sellers puts it:
+ * its city, the start of its address, a photo of the store, its week, what it was seen
+ * selling (the emoji of each kind of product) and those products at its own prices
+ * (`stock`; missing on maps built before it was kept).
+ */
+export type TorobPlace = { id: number; name: string; lat: number; lng: number; city: string; address: string; photo: string; week: Week | null; sells: string[]; stock?: TorobStock[] };
+/** At most this many products are kept per walk-in store. */
+export const MAX_STOCK = 8;
+
+/** A row of Torob's map of sellers (that store) for a listing (the product) → what the store sells, at its price. */
+export function stockOf(listing: { name1?: string; image_url?: string; web_client_absolute_url?: string }, row: { price?: number; name2?: string; last_price_change_date?: string }): TorobStock | null {
+  const title = listing.name1?.trim(), path = listing.web_client_absolute_url;
+  if (!title || !path || !path.startsWith("/")) return null;
+  return {
+    title: title.slice(0, 120),
+    price: Math.max(0, Math.round(Number(row.price) || 0)),
+    photo: listing.image_url ?? "",
+    url: `https://torob.com${path}`,
+    note: (row.name2 ?? "").trim().slice(0, 100),
+    when: (row.last_price_change_date ?? "").trim().slice(0, 40),
+  };
+}
+
+/** One store seen twice (the nationwide map, a search round a player): kinds and products merged, the first sighting's details kept. */
+export function mergeTorobPlace(a: TorobPlace, b: TorobPlace): TorobPlace {
+  const urls = new Set<string>(), stock: TorobStock[] = [];
+  for (const s of [...(a.stock ?? []), ...(b.stock ?? [])]) if (!urls.has(s.url) && stock.length < MAX_STOCK) (urls.add(s.url), stock.push(s));
+  return { ...a, address: a.address || b.address, photo: a.photo || b.photo, week: a.week ?? b.week, sells: [...a.sells, ...b.sells.filter((x) => !a.sells.includes(x))], stock };
+}
 /** The rest of a walk-in Torob shop's page: full address, phone, logo and photos. */
 export type TorobPlaceInfo = { id: number; name: string; logo: string; photos: string[]; address: string; phone: string; city: string; url: string };
 export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone" | "instagram"; url: string; label: string };

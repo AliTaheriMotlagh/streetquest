@@ -1,11 +1,16 @@
 "use client";
-// The garage, modelled: hatchback, motorbike (with rider), pickup, sports car, drone and
-// helicopter, each from a few primitives. Forward is −z, like the drive physics.
-// "real" style gets painted metal, glass and rubber that reflect the sky; "toon" the
-// chunky cartoon look. Other players' vehicles use the same models (without lights).
+// The garage, modelled: hatchback, motorbike (with rider) and delivery bike (with its
+// box), pickup, sports car, drone and helicopter, each from a few primitives — and the
+// cars of Iran's streets (Pride, Peykan, 206, 207, Pars, Samand, taxi, Zamyad pickup,
+// city bus), wrapped round the same geometry traffic draws (fleet3d.ts). Forward is −z,
+// like the drive physics. "real" style gets painted metal, glass and rubber that reflect
+// the sky; "toon" the chunky cartoon look. Other players' vehicles use the same models
+// (without lights).
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import type { VehicleKey } from "@/lib/vehicles";
+import { TAXI_YELLOW } from "@/lib/fleet";
+import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
+import { fleetParts, kitMaterial, wheelMaterial } from "./fleet3d";
 import { toon, type Style } from "./world3d";
 
 export type Rotor = { obj: THREE.Object3D; axis: "x" | "y"; speed: number; blur?: THREE.Mesh };
@@ -55,7 +60,8 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   group.add(body);
   const disposables: { dispose: () => void }[] = [];
   const keep = <T extends { dispose: () => void }>(x: T) => (disposables.push(x), x);
-  const M = materials(style, color, keep);
+  // A taxi is yellow, whatever the garage's paint.
+  const M = materials(style, key === "taxi" ? TAXI_YELLOW : color, keep);
   const shadows = opts.shadows ?? true;
   const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
     const m = new THREE.Mesh(keep(geo), mat);
@@ -102,8 +108,37 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   let height = 1.6;
   let cargoAt = new THREE.Vector3(0, 1.9, 0.3);
   let beamAt = { y: 0.75, z: -2.1 };
+  /** Footprint of a street model (its blob shadow). */
+  let size: number[] | null = null;
+  const street = VEHICLES[key]?.model;
 
-  if (key === "car") {
+  if (street) {
+    // The street model's shared geometry (never disposed with this vehicle).
+    const P = fleetParts(street);
+    const kit = keep(kitMaterial(style)), rubber = keep(wheelMaterial(style));
+    for (const [g, mat] of [[P.paint, M.paint], [P.kit, kit], [P.glass, M.glass], [P.head, lights], [P.tail, brake]] as const) {
+      if (!g) continue;
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.castShadow = shadows;
+      body.add(mesh);
+    }
+    for (const w of P.wheels) {
+      const pivot = new THREE.Group();
+      pivot.position.set(w.x, w.y, w.z);
+      const spin = new THREE.Group();
+      const t = new THREE.Mesh(P.wheel, rubber);
+      t.castShadow = shadows;
+      spin.add(t);
+      pivot.add(spin);
+      group.add(pivot);
+      wheels.push(spin);
+      if (w.steers) steer.push(pivot);
+    }
+    height = P.hgt;
+    cargoAt = P.cargo.clone();
+    beamAt = { y: P.lamp.y, z: P.lamp.z - 0.1 };
+    size = [P.wid + 1.3, P.len + 1.3];
+  } else if (key === "car") {
     add(body, box(1.84, 0.62, 4.1, 0.2), M.paint, 0, 0.66, 0);
     add(body, box(1.62, 0.6, 2.25, 0.22), M.glass, 0, 1.22, 0.3);
     add(body, box(1.56, 0.08, 1.9, 0.04), M.paint, 0, 1.53, 0.35);
@@ -138,7 +173,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
     height = 2.3;
     cargoAt = new THREE.Vector3(0, 1.75, 1.3);
     beamAt = { y: 1.15, z: -2.7 };
-  } else if (key === "moto") {
+  } else if (key === "moto" || key === "courier") {
     add(body, box(0.26, 0.42, 1.3, 0.08), M.trim, 0, 0.62, 0.05);
     add(body, box(0.42, 0.3, 0.62, 0.12), M.paint, 0, 0.95, -0.25);
     add(body, box(0.32, 0.12, 0.62, 0.05), M.trim, 0, 0.95, 0.35);
@@ -156,6 +191,12 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
     add(body, new THREE.SphereGeometry(0.17, 14, 10), M.paint, 0, 1.78, -0.05);
     for (const x of [-0.18, 0.18]) add(body, box(0.11, 0.5, 0.12, 0.04), M.skin, x, 1.22, -0.25).rotation.x = -1.1;
     lampsAt(0.0001, 1.0, -0.86, 0.98);
+    // The delivery bike: a rack and its box behind the rider (in the garage's paint).
+    if (key === "courier") {
+      add(body, box(0.34, 0.04, 0.46, 0.01), M.trim, 0, 1.04, 0.86);
+      add(body, box(0.5, 0.44, 0.48, 0.06), M.paint, 0, 1.3, 0.88);
+      add(body, box(0.52, 0.05, 0.5, 0.02), M.rim, 0, 1.54, 0.88);
+    }
     for (const z of [-0.72, 0.72]) {
       const r = 0.33;
       const tire = keep(new THREE.TorusGeometry(r - 0.06, 0.07, 8, 20));
@@ -177,7 +218,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
       wheels.push(spin);
     }
     height = 1.9;
-    cargoAt = new THREE.Vector3(0, 1.2, 0.95);
+    cargoAt = new THREE.Vector3(0, key === "courier" ? 1.86 : 1.2, 0.95);
     beamAt = { y: 1.0, z: -0.9 };
   } else if (key === "drone") {
     add(body, box(0.62, 0.2, 0.62, 0.08), M.paint, 0, 0, 0);
@@ -273,7 +314,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   grd.addColorStop(1, "rgba(0,0,0,0)");
   g.fillStyle = grd;
   g.fillRect(0, 0, 64, 64);
-  const size = key === "heli" ? [5, 8] : key === "moto" ? [1.2, 2.6] : key === "drone" ? [1.3, 1.3] : key === "pickup" ? [3.2, 6.4] : [3, 5.4];
+  size ??= key === "heli" ? [5, 8] : key === "moto" || key === "courier" ? [1.2, 2.6] : key === "drone" ? [1.3, 1.3] : key === "pickup" ? [3.2, 6.4] : [3, 5.4];
   const shadow = new THREE.Mesh(keep(new THREE.PlaneGeometry(size[0], size[1])), keep(new THREE.MeshBasicMaterial({ map: keep(new THREE.CanvasTexture(blob)), transparent: true, depthWrite: false })));
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.12;
@@ -336,7 +377,7 @@ export function makeCockpit(key: VehicleKey, color: string, style: Style): Cockp
     return w;
   };
 
-  if (key === "moto") {
+  if (key === "moto" || key === "courier") {
     // Tank and bars below the eye line.
     eye = new THREE.Vector3(0, 1.72, 0.1);
     box(0.4, 0.22, 0.55, paint, 0, 1.0, -0.3);
@@ -357,10 +398,19 @@ export function makeCockpit(key: VehicleKey, color: string, style: Style): Cockp
     box(0.06, 0.6, 0.06, trim, 0, 1.75, -1.85).rotation.x = -0.35;
     const stick = box(0.04, 0.5, 0.04, trim, -0.5, 1.35, -0.6);
     stick.rotation.x = 0.2;
+  } else if (key === "bus") {
+    // High in the front left corner: a wide dash, a big flat wheel, the windscreen's frame.
+    eye = new THREE.Vector3(-0.75, 2.35, -4.95);
+    box(2.3, 0.3, 0.55, dash, 0, 1.78, -5.55);
+    box(0.5, 0.1, 0.25, trim, -0.75, 1.96, -5.4);
+    for (const x of [-1.2, 1.2]) box(0.08, 1.7, 0.08, trim, x, 2.25, -5.9);
+    box(2.4, 0.1, 0.1, trim, 0, 3.0, -5.85);
+    box(0.24, 0.07, 0.03, chrome, 0, 2.88, -5.6);
+    wheel = steeringWheel(-0.75, 1.9, -5.15, 0.25, -1.05);
   } else {
     // Cars: driver on the left, real cab proportions — the dash top sits ~25 cm below the
     // eyes and ~75 cm ahead, the wheel 40 cm ahead at chest height, pillars leaning back.
-    const low = key === "sports", tall = key === "pickup";
+    const low = key === "sports", tall = key === "pickup" || key === "vanet";
     const y = low ? -0.2 : tall ? 0.5 : 0, zf = tall ? -0.75 : 0;
     eye = new THREE.Vector3(-0.36, 1.22 + y, 0.12 + zf);
     box(1.74, 0.24, 0.42, dash, 0, 0.86 + y, -0.78 + zf);

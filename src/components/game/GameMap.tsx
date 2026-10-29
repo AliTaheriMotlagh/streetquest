@@ -1,7 +1,7 @@
 "use client";
 import L from "leaflet";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
@@ -14,6 +14,7 @@ import { esc, icon } from "./mapIcons";
 import { PlayerLayer, type Guide } from "./PlayerLayer";
 import { OthersLayer } from "./OthersLayer";
 import { cellFor, cluster, groupBounds, lodFor, NO_CLUSTER_ZOOM, type Group, type Lod } from "./mapLod";
+import { declutter, labelPx, type Mark } from "./declutter";
 import { nearby } from "./location/nearby";
 import { getLocation } from "./useLocation";
 import { isLite, isTouch, probeFrameRate } from "../perf";
@@ -138,7 +139,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         <PlayerLayer follow={follow} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} onSelect={onSelect} onUnfollow={onUnfollow} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -194,6 +195,10 @@ const GAME_SPACING = 1.5;
 type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot; tp?: TorobPlace };
 /** Places and vendors cluster this much more loosely than other markers (their signs are wider). */
 const POI_SPACING = 1.35;
+/** Full markers on screen at most (more and the furthest places become dots): a phone stays smooth with everything on. */
+const MARKER_BUDGET = { lite: 60, full: 120 };
+/** A crowded place's dot, in its layer's colour. */
+const DOT_R = 5;
 /** Half a traffic dash's length, and how far each direction sits to its right of the road's middle (m). */
 const DASH_M = 22, SIDE_M = 4;
 
@@ -266,7 +271,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
  * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "onSelect" | "onUnfollow">) {
+function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
   const map = useMap();
   const view = useMapView();
   const lod: Lod = lodFor(view.zoom);
@@ -290,7 +295,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
     },
     [map, onUnfollow],
   );
-  const clusterIcon = (emoji: string, n: number, cls: string) => icon(`<span class="ring"></span>${emoji}<span class="cl-n">${n > 99 ? "99+" : n}</span>`, `cluster ${cls}`, 42);
+  const clusterIcon = (emoji: string, n: number, cls: string, size = 42) => icon(`<span class="ring"></span>${emoji}<span class="cl-n">${n > 99 ? "99+" : n}</span>`, `cluster ${cls}`, size);
 
   // Other players further out: grouped. At street level OthersLayer animates them.
   const playerGroups = useMemo(() => {
@@ -324,11 +329,42 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
     return cluster(list, view.zoom, cell && Math.round(cell * GAME_SPACING), "g");
   }, [world, view.zoom, cell]);
 
-  const playerMarker = (p: WorldPlayer) => (
+  // Every layer at once, in screen space: in priority order (money and jobs, businesses,
+  // players, then places nearest the middle of the view — vendors and walk-in stores ahead
+  // of plain places — then Divar), crowded places shrink to dots, and a name shows only
+  // where it has room.
+  const deco = useMemo(() => {
+    const zoom = view.zoom, mid = map.project(view.bounds.getCenter(), zoom);
+    const at = (lat: number, lng: number) => map.project([lat, lng], zoom);
+    const marks: Mark[] = [];
+    const put = (id: string, lat: number, lng: number, r: number, name: string, dot = false) => {
+      const p = at(lat, lng);
+      marks.push({ id, x: p.x, y: p.y, r, label: name ? labelPx(name) : 0, dot });
+    };
+    for (const g of gameGroups) {
+      const it = g.items[0], one = g.items.length === 1;
+      put(g.key, g.lat, g.lng, 21, !one ? "" : it.m ? t("{n} toman", { n: it.m.amount }) : it.j!.place.name);
+    }
+    for (const b of world?.businesses ?? []) put(`bz${b.id}`, b.lat, b.lng, b.featured ? 25 : 21, b.name);
+    for (const g of playerGroups) put(g.key, g.lat, g.lng, 17, g.items.length === 1 ? `${g.items[0].username} · ${g.items[0].level}` : "");
+    const pois = poiGroups
+      .map((g) => {
+        const p = at(g.lat, g.lng), one = g.items.length === 1 ? g.items[0] : null;
+        return { g, one, d: Math.hypot(p.x - mid.x, p.y - mid.y) * (one?.p ? 1.4 : 1) };
+      })
+      .sort((a, b) => a.d - b.d);
+    for (const { g, one } of pois) put(g.key, g.lat, g.lng, one ? (one.p ? 15 : one.tp ? 18 : 19) : 17, one ? one.v?.title ?? one.tp?.name ?? one.p!.name : "", !!one);
+    if (lod !== "far") for (const a of divar ?? []) put(`dv${a.city}-${a.id}`, a.lat, a.lng, 20, t("Divar · {area}", { area: a.name }));
+    return declutter(marks, lite ? MARKER_BUDGET.lite : MARKER_BUDGET.full);
+  }, [map, view, lod, gameGroups, poiGroups, playerGroups, world, divar, lite]);
+  /** " nolabel" when a marker's name has no room. */
+  const nl = (id: string) => (deco.named.has(id) ? "" : " nolabel");
+
+  const playerMarker = (p: WorldPlayer, key: string) => (
     <Marker
       key={p.id}
       position={[p.lat, p.lng]}
-      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${fmtNum(p.level)}</span>`, `player ${p.friend ? "friend" : ""}`, 34)}
+      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${fmtNum(p.level)}</span>`, `player ${p.friend ? "friend" : ""}${nl(key)}`, 34)}
       eventHandlers={{ click: () => onSelect({ type: "player", data: p }) }}
     />
   );
@@ -352,7 +388,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
               key={m.id}
               position={[m.lat, m.lng]}
               zIndexOffset={m.drop ? 800 : 600 + Math.min(3, m.tier ?? 0) * 50}
-              icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : TIER_COLORS[Math.min(TIER_COLORS.length - 1, m.tier ?? 0)]}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : m.tier ? `tier tier${Math.min(3, m.tier)}` : ""}`, m.drop ? 48 : m.tier ? 46 : 42)}
+              icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : TIER_COLORS[Math.min(TIER_COLORS.length - 1, m.tier ?? 0)]}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : m.tier ? `tier tier${Math.min(3, m.tier)}` : ""}${nl(g.key)}`, m.drop ? 48 : m.tier ? 46 : 42)}
               eventHandlers={{ click: () => onSelect({ type: "money", data: m }) }}
             />
           );
@@ -366,7 +402,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
             zIndexOffset={320}
             icon={icon(
               `<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(m.place.name)}</span><span class="job">${m.kind === "deliver" ? "📦" : "✅"}</span>`,
-              "place",
+              `place${nl(g.key)}`,
               40,
             )}
             eventHandlers={{ click: () => onSelect({ type: "place", data: m }) }}
@@ -385,7 +421,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
             zIndexOffset={b.featured ? 700 : 360}
             icon={icon(
               `<span class="ring" style="color:${b.featured ? "#f0c05a" : b.mine ? "#63b3f2" : "#ff7ad9"}"></span>${esc(b.emoji)}<span class="nm">${esc(b.name)}</span>${open && !b.mine ? `<span class="deal">+${fmtNum(best)} 🪙</span>` : ""}${b.verified ? '<span class="shield">✔</span>' : ""}`,
-              `biz ${b.featured ? "featured" : ""} ${open ? "" : "claimed"}`,
+              `biz ${b.featured ? "featured" : ""} ${open ? "" : "claimed"}${nl(`bz${b.id}`)}`,
               b.featured ? 50 : 42,
             )}
             eventHandlers={{ click: () => onSelect({ type: "biz", data: b }) }}
@@ -398,9 +434,15 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
       {poiGroups.map((g) => {
         if (g.items.length > 1) {
           const food = g.items.filter((x) => x.v).length * 2 >= g.items.length;
-          return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={200} icon={clusterIcon(food ? "🍽️" : "📍", g.items.length, food ? "vendors" : "spots")} eventHandlers={{ click: () => zoomInto(g) }} />;
+          return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={200} icon={clusterIcon(food ? "🍽️" : "📍", g.items.length, `poi ${food ? "vendors" : "spots"}`, 34)} eventHandlers={{ click: () => zoomInto(g) }} />;
         }
         const it = g.items[0];
+        if (deco.dots.has(g.key)) {
+          // Crowded: a dot on the map's canvas (cheap, still tappable).
+          const color = it.tp ? "#e2363c" : it.v ? "#ff2f6e" : (PLACE_CATS[it.p!.cat] ?? PLACE_CATS.shop).color;
+          const sel: Selected = it.tp ? { type: "torob", data: it.tp } : it.v ? { type: "vendor", data: it.v } : { type: "spot", data: it.p! };
+          return <CircleMarker key={it.id} center={[it.lat, it.lng]} radius={DOT_R} pathOptions={{ color: "#ffffff", weight: 1.5, fillColor: color, fillOpacity: 0.95 }} eventHandlers={{ click: () => onSelect(sel) }} />;
+        }
         if (it.tp) {
           const tp = it.tp;
           const pic = lod === "near" && tp.photo ? `<img class="lg" src="${esc(tp.photo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
@@ -409,7 +451,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
               key={it.id}
               position={[tp.lat, tp.lng]}
               zIndexOffset={280}
-              icon={icon(`<span class="ring" style="color:#e2363c"></span>${tp.sells[0] ?? "🏷️"}${pic}<span class="nm">${esc(tp.name)}</span>`, `place torob ${pic ? "has-logo" : ""}`, 36)}
+              icon={icon(`<span class="ring" style="color:#e2363c"></span>${tp.sells[0] ?? "🏷️"}${pic}<span class="nm">${esc(tp.name)}</span>`, `place torob ${pic ? "has-logo" : ""}${nl(g.key)}`, 36)}
               eventHandlers={{ click: () => onSelect({ type: "torob", data: tp }) }}
             />
           );
@@ -423,7 +465,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
               key={it.id}
               position={[v.lat, v.lng]}
               zIndexOffset={300}
-              icon={icon(`<span class="ring" style="color:#ff2f6e"></span>${k.emoji}${logo}<span class="nm">${esc(v.title)}</span>${v.rating >= TOP_RATING ? `<span class="job">⭐</span>` : ""}`, `place vendor ${v.open ? "" : "closed"} ${logo ? "has-logo" : ""}`, 38)}
+              icon={icon(`<span class="ring" style="color:#ff2f6e"></span>${k.emoji}${logo}<span class="nm">${esc(v.title)}</span>${v.rating >= TOP_RATING ? `<span class="job">⭐</span>` : ""}`, `place vendor ${v.open ? "" : "closed"} ${logo ? "has-logo" : ""}${nl(g.key)}`, 38)}
               eventHandlers={{ click: () => onSelect({ type: "vendor", data: v }) }}
             />
           );
@@ -435,7 +477,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
             key={it.id}
             position={[p.lat, p.lng]}
             zIndexOffset={200}
-            icon={icon(`<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(p.name)}</span>`, "place spot", 30)}
+            icon={icon(`<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(p.name)}</span>`, `place spot${nl(g.key)}`, 30)}
             eventHandlers={{ click: () => onSelect({ type: "spot", data: p }) }}
           />
         );
@@ -448,7 +490,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
             key={`dv${a.city}-${a.id}`}
             position={[a.lat, a.lng]}
             zIndexOffset={250}
-            icon={icon(`<span class="ring"></span>📢<span class="cl-n">${fmtNum(a.posts.length)}</span><span class="nm">${esc(t("Divar · {area}", { area: a.name }))}</span>`, "place divar", 40)}
+            icon={icon(`<span class="ring"></span>📢<span class="cl-n">${fmtNum(a.posts.length)}</span><span class="nm">${esc(t("Divar · {area}", { area: a.name }))}</span>`, `place divar${nl(`dv${a.city}-${a.id}`)}`, 40)}
             eventHandlers={{ click: () => onSelect({ type: "divar", data: a }) }}
           />
         ))}
@@ -456,7 +498,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
       {/* Other players: animated + live at street level, grouped further out */}
       {lod === "near" && world && <OthersLayer players={world.players} onSelect={onSelect} />}
       {playerGroups.map((g) =>
-        g.items.length === 1 ? playerMarker(g.items[0]) : <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={850} icon={clusterIcon("👥", g.items.length, "players")} eventHandlers={{ click: () => zoomInto(g) }} />,
+        g.items.length === 1 ? playerMarker(g.items[0], g.key) : <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={850} icon={clusterIcon("👥", g.items.length, "players")} eventHandlers={{ click: () => zoomInto(g) }} />,
       )}
 
       {/* A store delivery under way: the drop-off. */}

@@ -68,3 +68,4 @@ export function cluster<T extends { id: string; lat: number; lng: number }>(item
 
 /** Bounds of a group, for zooming into a tapped cluster. */
 export const groupBounds = (g: Group<{ lat: number; lng: number }>) => L.latLngBounds(g.items.map((i) => [i.lat, i.lng] as [number, number]));
+

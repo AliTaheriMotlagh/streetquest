@@ -4,7 +4,8 @@
 //
 // Per tile: a handful of merged layers (ground, water, asphalt, road markings, walls,
 // glass façades, roofs), instance matrices for street furniture (trees, lamps, traffic
-// lights, bus stops), building footprints for collisions, small solid footprints for the
+// lights, bus stops, and what Iran's pavements have: charity boxes on their posts and
+// newspaper kiosks on the main roads), building footprints for collisions, small solid footprints for the
 // furniture (a car stops at a tree or a lamp post), and the text to show: street names,
 // corner street-name signs, every shop and house number.
 import * as THREE from "three";
@@ -17,7 +18,7 @@ export type Style = "real" | "toon";
 export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim";
 /** `fac`: the façade each wall vertex wears (an index into FACADES), when any isn't plaster. */
 export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
-export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain";
+export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk";
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
 export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number };
 /**
@@ -1036,10 +1037,13 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   }
   // Park trees and the like never stand on a street running through (or in a store's model).
   for (let i = treeSpots.length - 1; i >= 0; i--) if (road.on(treeSpots[i].x, treeSpots[i].z, 1) || inCut(treeSpots[i].x, treeSpots[i].z, 1)) treeSpots.splice(i, 1);
-  // Street trees and lamps along the bigger roads where the map has none.
+  // Street trees and lamps along the bigger roads where the map has none; charity boxes
+  // every block or two and the odd newspaper kiosk on the main roads (not mapped, but on
+  // every Iranian street).
   const roadside = (lite ? 40 : 110) * (osmTrees > 20 ? 0.3 : 1);
   let planted = 0, lit = 0;
   const lampCap = osmLamps > 5 ? 0 : lite ? 0 : 140;
+  const charities: { x: number; z: number; yaw: number }[] = [], kiosks: { x: number; z: number; yaw: number }[] = [];
   roadLines.forEach((pts, ri) => {
     const k = roadKinds[ri], w = roadWidths[ri];
     if ((k !== "major" && k !== "minor") || !roadDrawn[ri]) return;
@@ -1064,6 +1068,18 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
         lamps.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
         lit++;
       }
+      if (lite) continue;
+      for (let s = 12 + rand() * 50; s < len - 6 && charities.length < 10; s += 110 + rand() * 90) {
+        const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 0.8;
+        const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
+        if (rand() < 0.5 || blocked(x, z, 0.4) || road.on(x, z, 0.3) || near(charities, x, z, 90)) continue;
+        charities.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
+      }
+      if (k === "major" && len > 40 && kiosks.length < 3 && rand() < 0.22) {
+        const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 2.1, s = 10 + rand() * (len - 20);
+        const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
+        if (!blocked(x, z, 1.4) && !road.on(x, z, 1.2) && !near(kiosks, x, z, 120)) kiosks.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
+      }
     }
   });
 
@@ -1087,6 +1103,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   pack("signal", signals);
   pack("bus", buses);
   for (const [kind, list] of Object.entries(small)) pack(kind as PropKind, list);
+  pack("charity", charities);
+  pack("kiosk", kiosks);
 
   // What a car can hit: the trunk (and canopy, for low flyers), posts and shelters.
   const obstacles: Footprint[] = [];
@@ -1097,6 +1115,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const b of small.bench) obstacles.push(box(b.x, b.z, 0.85, 0.22, b.yaw, 0.9));
   for (const p of [...small.bin, ...small.hydrant]) obstacles.push(post(p.x, p.z, 0.22, 0.8));
   for (const f of small.fountain) obstacles.push(box(f.x, f.z, 0.3, 0.25, f.yaw, 1.1));
+  for (const c of charities) obstacles.push(post(c.x, c.z, 0.2, 1.4));
+  for (const k of kiosks) obstacles.push(box(k.x, k.z, 1.0, 0.75, k.yaw, 2.4));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
 
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim")].filter((l): l is Layer => !!l);

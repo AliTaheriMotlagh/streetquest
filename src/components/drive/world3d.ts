@@ -566,7 +566,23 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(0.55, 1.0, 0.45), 0, 0.5, 0), real ? "#b9bec4" : "#7fc8ff"),
     paint(at(new THREE.CylinderGeometry(0.2, 0.14, 0.12, 10), 0, 1.06, 0.05), "#d9dde1"),
   ])!;
-  const all = { tree, lamp, lampHead, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain };
+  // Charity box (صندوق صدقات) on its post: blue, a yellow top, the slot facing the road (+z).
+  const charity = mergeGeometries([
+    paint(at(new THREE.CylinderGeometry(0.05, 0.05, 0.78, 6), 0, 0.39, 0), metal),
+    paint(at(new THREE.BoxGeometry(0.36, 0.5, 0.3), 0, 1.02, 0), real ? "#1e5fb4" : "#3d8bff"),
+    paint(at(new THREE.BoxGeometry(0.39, 0.13, 0.33), 0, 1.33, 0), real ? "#f2c230" : "#ffd166"),
+    paint(at(new THREE.BoxGeometry(0.16, 0.025, 0.04), 0, 1.2, 0.15), "#141414"),
+  ])!;
+  // Newspaper kiosk (دکه): a green booth, its window and counter of magazines and snacks to the road (+z).
+  const kiosk = mergeGeometries([
+    paint(at(new THREE.BoxGeometry(1.8, 2.2, 1.3), 0, 1.1, 0), real ? "#2f6b4f" : "#4cc38a"),
+    paint(at(new THREE.BoxGeometry(2.1, 0.12, 1.7), 0, 2.27, 0.12), real ? "#e9e6dc" : "#ffffff"),
+    paint(at(new THREE.BoxGeometry(1.5, 0.9, 0.05), 0, 1.5, 0.66), real ? "#9fb6c4" : "#cfefff"),
+    paint(at(new THREE.BoxGeometry(1.6, 0.06, 0.36), 0, 0.98, 0.82), "#c9a46a"),
+    paint(at(new THREE.BoxGeometry(1.4, 0.12, 0.26), 0, 1.07, 0.82), "#ff6a13"),
+    ...[-0.5, 0, 0.5].map((x, i) => paint(at(new THREE.BoxGeometry(0.3, 0.4, 0.03), x, 1.45, 0.7), ["#e8384f", "#f2c230", "#1f6feb"][i])),
+  ])!;
+  const all = { tree, lamp, lampHead, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk };
   return { ...all, dispose: () => Object.values(all).forEach((g) => g.dispose()) };
 }
 
@@ -643,7 +659,7 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     detail.add(m);
     insts.push(m);
   };
-  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain };
+  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain, charity: tpl.charity, kiosk: tpl.kiosk };
   for (const p of a.props) {
     inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree");
     if (p.kind === "lamp") inst(tpl.lampHead, mats.glow, { mats: p.mats, cols: null }, false);

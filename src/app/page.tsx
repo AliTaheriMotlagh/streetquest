@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AutoVideo } from "@/components/AutoVideo";
+import { VisitCount } from "@/components/VisitCount";
 import { ArtSprite, ArtUse } from "@/components/art/ArtSprite";
 import { prisma } from "@/lib/db";
 import { SITE } from "@/lib/site";
 import { fmtNum, msg } from "@/lib/i18n";
 import { getT } from "@/server/i18n";
+import { visitTotals } from "@/server/visits";
 import "./landing.css";
 
 export const dynamic = "force-dynamic";
@@ -49,10 +51,11 @@ const ART = ["cash", "moneybag", ...PILLARS.map((p) => p[0]), ...FEATURES.map((f
 
 export default async function Home() {
   const { t, locale } = await getT();
-  const [announcements, players, events] = await Promise.all([
+  const [announcements, players, events, visits] = await Promise.all([
     prisma.announcement.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 2 }).catch(() => []),
     prisma.user.count().catch(() => 0),
     prisma.event.count({ where: { endsAt: { gt: new Date() }, isPublic: true } }).catch(() => 0),
+    visitTotals().catch(() => ({ total: 0, today: 0 })),
   ]);
 
   const jsonLd = [
@@ -122,6 +125,7 @@ export default async function Home() {
                 <dt>{t("Live & upcoming events")}</dt>
                 <dd>{fmtNum(events, locale)}</dd>
               </div>
+              <VisitCount total={visits.total} today={visits.today} />
               <div>
                 <dt>{t("Works in your browser")}</dt>
                 <dd>{t("Free")}</dd>

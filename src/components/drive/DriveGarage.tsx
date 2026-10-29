@@ -3,7 +3,7 @@
 // names its streets and shops show.
 import { useState } from "react";
 import { fmtNum, msg, t } from "@/lib/i18n";
-import { PAINTS, unlocked, VEHICLE_KEYS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
+import { GARAGE_KEYS, PAINTS, unlocked, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { PARTY_GAMES, type PartyGame } from "@/lib/party";
 import { Button } from "@/components/Button";
 import type { Style } from "./tileMesh";
@@ -63,7 +63,7 @@ export function DriveGarage({ level, vehicle, paint, style, names, fps, locked, 
       )}
       {groundOnly && <p className="small muted">{t("This round is on wheels only — flyers are parked until it ends.")}</p>}
       <div className="garage-grid">
-        {VEHICLE_KEYS.map((k) => {
+        {GARAGE_KEYS.map((k) => {
           const v = VEHICLES[k];
           const open = unlocked(k, level);
           const parked = groundOnly && v.flies;

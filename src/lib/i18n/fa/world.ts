@@ -403,6 +403,8 @@ const world: Record<string, string> = {
   // ---- admin settings
   "3D car top speed (km/h)": "حداکثر سرعت ماشین سه‌بعدی (کیلومتر بر ساعت)",
   "Players driving the 3D city from home can move this fast; the server accepts positions up to this speed.": "بازیکن‌هایی که از خونه توی شهر سه‌بعدی رانندگی می‌کنن تا این سرعت می‌تونن برن؛ سرور موقعیت‌ها رو تا همین سرعت قبول می‌کنه.",
+  "Every vehicle free from the start": "همه‌ی وسیله‌ها از اول آزاد",
+  "The drone, the helicopter and every car in the 3D city's garage can be driven from level 1. Turn off to unlock them by level instead.": "پهپاد، هلیکوپتر و همه‌ی ماشین‌های گاراژ شهر سه‌بعدی از سطح ۱ قابل استفاده‌ان. خاموشش کنی، هر کدوم با سطح خودش باز می‌شه.",
   "Real places & businesses": "مکان‌های واقعی و کسب‌وکارها",
   "Places with a mission": "مکان‌های دارای مأموریت",
   "Business accounts on": "حساب کسب‌وکار روشن",

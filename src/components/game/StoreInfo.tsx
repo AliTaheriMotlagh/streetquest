@@ -1,6 +1,7 @@
 "use client";
-// A real store's menu, catalog and prices from other sites (Snappfood; Torob, with the
-// store's own Torob shop and its catalog when it has one), its hours, reviews, picture,
+// A real store's menu, catalog and prices from other sites (Snappfood; Torob — only the
+// store's own: its Torob shop's catalog, or what a walk-in store was seen selling at its
+// own prices), its hours, reviews, picture,
 // contacts and links, inside the map cards (real places, businesses, Market shops), for
 // Snappfood vendors and Torob's walk-in stores on the map; and the Divar ads pinned on
 // each neighbourhood. Data: /api/local (server/localData.ts).
@@ -13,7 +14,7 @@ import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
   clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
-  type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor, type Week,
+  type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
@@ -277,6 +278,10 @@ function ReviewsView({ code, total, stars }: { code: string; total?: number; sta
 }
 
 // ---------------------------------------------------------------- Torob
+/**
+ * A store's products on Torob. A row whose price is Torob's lowest anywhere (`from`: a
+ * shop catalog lists the best price, not necessarily this store's) says so.
+ */
 function TorobList({ items }: { items: TorobItem[] }) {
   return (
     <div className="ext-items compact">
@@ -285,7 +290,7 @@ function TorobList({ items }: { items: TorobItem[] }) {
           {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
           <div className="grow">
             <b dir="auto">{i.title}</b>
-            {i.shop && <p className="small muted" dir="auto">{i.shop}</p>}
+            {i.from && <p className="small muted">{t("Lowest price on Torob")}</p>}
           </div>
           {i.price > 0 ? <span className="price-tag"><b>{i.from ? t("from {n} toman", { n: fmtNum(i.price) }) : toman(i.price)}</b></span> : <span className="small muted">{t("Out of stock")}</span>}
         </a>
@@ -294,42 +299,48 @@ function TorobList({ items }: { items: TorobItem[] }) {
   );
 }
 
+/** What a walk-in store was seen selling on Torob's map of sellers, at its own prices. */
+function StockList({ items }: { items: TorobStock[] }) {
+  return (
+    <div className="ext-items compact">
+      {items.map((i) => (
+        <a key={i.url} className="ext-item" href={i.url} target="_blank" rel="noopener noreferrer">
+          {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
+          <div className="grow">
+            <b dir="auto">{i.title}</b>
+            {(i.note || i.when) && <p className="small muted" dir="auto">{[i.note, i.when && t("price changed {when}", { when: i.when })].filter(Boolean).join(" · ")}</p>}
+          </div>
+          {i.price > 0 ? <span className="price-tag"><b>{toman(i.price)}</b></span> : <span className="small muted">{t("Ask in the store")}</span>}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /**
- * Compare a product's price online (Torob), from inside any store. With the store's own
- * Torob shop: its catalog first, and the search looks in that shop unless told otherwise.
+ * A store's own products on Torob: its shop's catalog (with a search that stays inside
+ * that shop), or the listings only it sells. Never other stores' products.
  */
-function TorobSearch({ initial, shop }: { initial?: TorobItem[]; shop?: TorobShop | null }) {
+function TorobSearch({ initial, shop, title }: { initial?: TorobItem[]; shop?: TorobShop | null; title?: string }) {
   const [draft, setDraft] = useState("");
   const [q, setQ] = useState("");
-  const [everywhere, setEverywhere] = useState(!shop);
-  const scope = shop && !everywhere ? shop.id : undefined;
-  const res = useLocal<{ items: TorobItem[] }>(q ? { torob: q, shop: scope } : null);
+  const res = useLocal<{ items: TorobItem[] }>(q && shop ? { torob: q, shop: shop.id } : null);
   return (
     <div className="ext-torob">
       <div className="sec-head">
-        {shop ? (
-          <>
-            {shop.logo && <img className="ext-shop-logo" src={shop.logo} alt="" referrerPolicy="no-referrer" />}
-            <b dir="auto">🏷️ {t("{shop} on Torob", { shop: shop.name })}</b>
-            <span className="grow" />
-            {shop.count > 0 && <span className="small muted">{t("{n} products", { n: fmtNum(shop.count) })}</span>}
-          </>
-        ) : (
-          <b>🏷️ {t("Prices on Torob")}</b>
-        )}
+        {shop?.logo && <img className="ext-shop-logo" src={shop.logo} alt="" referrerPolicy="no-referrer" />}
+        <b dir="auto">🏷️ {title ?? (shop ? t("{shop} on Torob", { shop: shop.name }) : t("This store on Torob"))}</b>
+        <span className="grow" />
+        {!!shop?.count && <span className="small muted">{t("{n} products", { n: fmtNum(shop.count) })}</span>}
       </div>
       {shop && (
-        <div className="tabs" role="tablist">
-          <button role="tab" aria-selected={!everywhere} className={everywhere ? "" : "on"} onClick={() => setEverywhere(false)}>{t("In this store")}</button>
-          <button role="tab" aria-selected={everywhere} className={everywhere ? "on" : ""} onClick={() => setEverywhere(true)}>{t("All of Torob")}</button>
-        </div>
+        <form className="row" onSubmit={(e) => (e.preventDefault(), setQ(draft.trim()))}>
+          <input className="input grow" type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t("Search this store's products")} aria-label={t("Search this store's products")} maxLength={60} />
+          <Button className="btn cyan" disabled={draft.trim().length < 2}>🔎</Button>
+        </form>
       )}
-      <form className="row" onSubmit={(e) => (e.preventDefault(), setQ(draft.trim()))}>
-        <input className="input grow" type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={scope ? t("Search this store's products") : t("Search a product's price")} aria-label={scope ? t("Search this store's products") : t("Search a product's price")} maxLength={60} />
-        <Button className="btn cyan" disabled={draft.trim().length < 2}>🔎</Button>
-      </form>
       {q ? (
-        res.error ? <p className="small warn-text">{res.error}</p> : !res.data ? <p className="small muted">{t("Loading…")}</p> : res.data.items.length ? <TorobList items={res.data.items} /> : <p className="small muted">{t("Nothing found on Torob")}</p>
+        res.error ? <p className="small warn-text">{res.error}</p> : !res.data ? <p className="small muted">{t("Loading…")}</p> : res.data.items.length ? <TorobList items={res.data.items} /> : <p className="small muted">{t("This store has nothing like that on Torob")}</p>
       ) : (
         !!initial?.length && <TorobList items={initial} />
       )}
@@ -351,7 +362,9 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
   const week = a.week ?? weekFromOsm(a.hours);
   const tabs: Tab[] = [];
   if (data.menu) tabs.push({ key: "menu", label: data.menu.vendor.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={data.menu!} /> });
-  if (data.torobQuery) tabs.push({ key: "torob", label: `🏷️ ${t("Torob")}`, body: () => <TorobSearch initial={data.torob} shop={data.torobShop} /> });
+  // Torob only for a store that's on it: its own shop, or listings only it sells.
+  const onTorob = !!data.torobShop || data.torob.length > 0;
+  if (onTorob) tabs.push({ key: "torob", label: `🏷️ ${t("Torob")}`, body: () => <TorobSearch initial={data.torob} shop={data.torobShop} /> });
   if (data.menu) tabs.push({ key: "reviews", label: `⭐ ${data.menu.reviews ? t("Reviews ({n})", { n: fmtNum(data.menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={data.menu!.vendor.code} total={data.menu!.reviews} stars={data.menu!.stars} /> });
   tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phone={a.phone} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
   return (
@@ -371,13 +384,13 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
       {!!data.links.length && (
         <div className="store-actions ext-links">
           {data.links.map((l) => (
-            <a key={l.url} className={`btn small ghost ext-link ${l.kind}`} href={l.url} target={l.kind === "phone" ? undefined : "_blank"} rel="noopener noreferrer" dir="auto">
+            <a key={l.url} className={`btn small ghost ext-link ext-${l.kind}`} href={l.url} target={l.kind === "phone" ? undefined : "_blank"} rel="noopener noreferrer" dir="auto">
               {LINK_ICON[l.kind]} {l.label}
             </a>
           ))}
         </div>
       )}
-      {!data.menu && !data.torobQuery && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
+      {!data.menu && !onTorob && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
       <StoreTabs tabs={tabs} />
     </div>
   );
@@ -441,8 +454,8 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       {v.about && <p className="small muted store-about" dir="auto">{v.about}</p>}
       {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
       <div className="store-actions">
-        <a className="btn small ghost ext-link snappfood" href={v.url} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
-        {menu?.phone && <a className="btn small ghost ext-link phone" href={telOf(menu.phone)}>📞 {t("Call")}</a>}
+        <a className="btn small ghost ext-link ext-snappfood" href={v.url} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
+        {menu?.phone && <a className="btn small ghost ext-link ext-phone" href={telOf(menu.phone)}>📞 {t("Call")}</a>}
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>
       {error ? (
@@ -466,18 +479,19 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
 export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => void }) {
   const { pos } = useGame();
   const dist = pos ? distanceM(pos, p) : Infinity;
-  const { data, error } = useLocal<{ info: TorobPlaceInfo | null; items: TorobItem[] }>({ torobPlace: p.id });
+  const { data, error } = useLocal<{ info: TorobPlaceInfo | null; items: TorobItem[]; stock: TorobStock[] }>({ torobPlace: p.id, lat: p.lat.toFixed(6), lng: p.lng.toFixed(6) });
   const info = data?.info;
   const shop = useMemo<TorobShop>(() => ({ id: p.id, name: p.name, logo: info?.logo ?? "", url: info?.url ?? `https://torob.com/shop/${p.id}/`, count: 0 }), [p, info]);
   const sub = [p.sells.join(" "), p.city, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
   const photo = info?.photos[0] || p.photo;
+  const stock = data?.stock ?? [];
   return (
     <Sheet title={`🏷️ ${p.name}`} onClose={onClose} tall>
       <StoreHead logo={info?.logo || p.photo} emoji="🏷️" name={p.name} sub={sub} week={p.week} at={p} />
       {photo && <div className="ext-cover"><Pic src={photo} className="ext-cover-img" /></div>}
       <div className="store-actions">
-        <a className="btn small ghost ext-link torob" href={shop.url} target="_blank" rel="noopener noreferrer">🏷️ {t("Shop on Torob")}</a>
-        {info?.phone && <a className="btn small ghost ext-link phone" href={telOf(info.phone)}>📞 {t("Call")}</a>}
+        <a className="btn small ghost ext-link ext-torob" href={shop.url} target="_blank" rel="noopener noreferrer">🏷️ {t("Shop on Torob")}</a>
+        {info?.phone && <a className="btn small ghost ext-link ext-phone" href={telOf(info.phone)}>📞 {t("Call")}</a>}
         <GoButtons to={p} name={p.name} dist={dist} />
       </div>
       {error ? (
@@ -487,7 +501,23 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
       ) : (
         <StoreTabs
           tabs={[
-            { key: "catalog", label: `🛍️ ${t("Catalog")}`, body: () => (data.items.length ? <TorobSearch initial={data.items} shop={shop} /> : <p className="small muted">{t("This store lists no products on Torob right now.")}</p>) },
+            {
+              key: "catalog",
+              label: `🛍️ ${t("Catalog")}`,
+              body: () => (
+                <>
+                  {!!stock.length && (
+                    <div className="ext-torob">
+                      <div className="sec-head">
+                        <b>🏷️ {t("In this store, at its own prices")}</b>
+                      </div>
+                      <StockList items={stock} />
+                    </div>
+                  )}
+                  {data.items.length ? <TorobSearch initial={data.items} shop={shop} title={stock.length ? t("More from this store on Torob") : undefined} /> : !stock.length && <p className="small muted">{t("This store lists no products on Torob right now.")}</p>}
+                </>
+              ),
+            },
             { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={p} week={p.week} address={info?.address || p.address} city={p.city} phone={info?.phone} /> },
           ]}
         />
@@ -531,7 +561,7 @@ export function DivarCard({ area, onClose }: { area: DivarArea; onClose: () => v
         ))}
       </div>
       {res.error ? <p className="small warn-text">{res.error}</p> : !posts ? <p className="small muted">{t("Loading…")}</p> : posts.length ? <DivarList posts={posts} /> : <p className="small muted">{t("No ads here right now")}</p>}
-      <a className="btn small ghost ext-link divar block" href={`https://divar.ir/s/${encodeURIComponent(area.citySlug || "iran")}${area.id ? `?districts=${area.id}` : ""}`} target="_blank" rel="noopener noreferrer">📢 {t("More on Divar")}</a>
+      <a className="btn small ghost ext-link ext-divar block" href={`https://divar.ir/s/${encodeURIComponent(area.citySlug || "iran")}${area.id ? `?districts=${area.id}` : ""}`} target="_blank" rel="noopener noreferrer">📢 {t("More on Divar")}</a>
       <p className="small muted ext-source">{t("From Divar · updated every 15 minutes")}</p>
     </Sheet>
   );

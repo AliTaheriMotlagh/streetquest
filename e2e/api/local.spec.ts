@@ -108,12 +108,13 @@ test.beforeAll(async () => {
     if (u.pathname === "/tr/v4/base-product/map/sellers/") {
       // Every walk-in seller of a product, wherever they are: listing "b" only has the first.
       const list = u.searchParams.get("prk") === "walkin-b" ? walkIns.slice(0, 1) : walkIns;
-      return send({ count: list.length, result: list.map((w) => ({ shop_id: w.id, shop_name: w.name, shop_name2: "Stubtown", name1: `${w.address.slice(0, 8)}...`, location: { lat: w.lat, lon: w.lng }, media: [{ type: "image", url: `https://example.com/${w.id}-front.jpg` }], working_hours: { type: "schedule", schedule: torobWeek } })) });
+      // Each row is that store's own price for the product, its own words for it, and when it changed.
+      return send({ count: list.length, result: list.map((w) => ({ shop_id: w.id, shop_name: w.name, shop_name2: "Stubtown", name1: `${w.address.slice(0, 8)}...`, price: 1_000_000 + (w.id % 100) * 1000, name2: "18-month warranty", last_price_change_date: "۲ روز پیش", location: { lat: w.lat, lon: w.lng }, media: [{ type: "image", url: `https://example.com/${w.id}-front.jpg` }], working_hours: { type: "schedule", schedule: torobWeek } })) });
     }
     if (u.pathname === "/tr/v4/base-product/search/") {
       const q = u.searchParams.get("q") ?? "";
       // "Has a walk-in seller": two listings for any product.
-      if (u.searchParams.get("shop_type") === "offline") return send({ results: [{ name1: q, random_key: "walkin-a" }, { name1: `${q} 2`, random_key: "walkin-b" }] });
+      if (u.searchParams.get("shop_type") === "offline") return send({ results: [{ name1: q, random_key: "walkin-a", image_url: "https://example.com/a.jpg", web_client_absolute_url: "/p/walkin-a/x/" }, { name1: `${q} 2`, random_key: "walkin-b", web_client_absolute_url: "/p/walkin-b/x/" }] });
       const inShop = shops.find((x) => x.id === Number(u.searchParams.get("shop_id")));
       if (inShop) {
         const items = inShop.products.filter((n) => n.includes(q));
@@ -188,9 +189,18 @@ test.describe("store hours, reviews and walk-in stores", () => {
     expect(near[0].week[0]).toEqual([[540, 1230]]);
     expect(near[0].week[6]).toEqual([]);
     expect(near[0].sells).toContain("📱");
+    // The map's list stays light: each store's products come with its card.
+    expect((near[0] as { stock?: unknown }).stock).toBeUndefined();
 
-    // Its card: the full address and phone from its page, and its own catalog.
-    const card = expectOk(await p.get<{ info: { address: string; phone: string; photos: string[]; url: string }; items: { title: string }[] }>(`/api/local?torobPlace=900001`)).data;
+    // Its card: the full address and phone from its page, what it was seen selling at its own
+    // price (not Torob's lowest anywhere) — only it — and its own catalog.
+    type Stock = { title: string; price: number; note: string; when: string; url: string };
+    const card = expectOk(await p.get<{ info: { address: string; phone: string; photos: string[]; url: string }; items: { title: string }[]; stock: Stock[] }>(`/api/local?torobPlace=900001&lat=${STUBTOWN.lat}&lng=${STUBTOWN.lng}`)).data;
+    // (Listing "a" is found both by the daily map and by the search round here; "b" only by the map,
+    // which an earlier run may have built before stock was kept.)
+    expect(card.stock.find((s) => s.url === "https://torob.com/p/walkin-a/x/")).toMatchObject({ price: 1_001_000, note: "18-month warranty", when: "۲ روز پیش" });
+    const shoes = expectOk(await p.get<{ stock: Stock[] }>(`/api/local?torobPlace=900002&lat=${walkIns[1].lat}&lng=${walkIns[1].lng}`)).data;
+    expect(shoes.stock.map((s) => s.url)).toEqual(["https://torob.com/p/walkin-a/x/"]);
     expect(card.info).toMatchObject({ address: "Stub street 9, by the park", phone: "02155550001", url: "https://torob.com/shop/900001/" });
     expect(card.info.photos).toEqual(["https://example.com/900001.jpg"]);
     expect(card.items.map((i) => i.title)).toEqual(["Phone X", "Phone Y case"]);

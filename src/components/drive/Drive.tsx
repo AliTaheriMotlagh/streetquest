@@ -43,6 +43,7 @@ import { StorePins, type Pin } from "./pins";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
+import { Crowd } from "./people";
 import { signalPhase } from "@/lib/traffic";
 import { Skyline } from "./skyline";
 import type { Label, Style } from "./tileMesh";
@@ -541,6 +542,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Live traffic: street speeds for the minimap and the cars on the streets.
     const feed = new TrafficFeed();
     const traffic = new TrafficCars(scene, frame, feed, style, lite);
+    // People on the pavements (solid, like the traffic).
+    const crowd = new Crowd(scene, style, lite);
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
     let trafficSync = 0, lightsAt = 0;
     const markers = new Markers(scene, frame, lite ? 30 : 60);
@@ -1210,9 +1213,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       let nx = st.x + st.vx * dt, nz = st.z + st.vz * dt;
       if (onFoot) (nx = st.x), (nz = st.z);
       else if (L.canDrive) {
-        // Two circles (nose and tail) on wheels; one around a flyer.
+        // Circles along the body on wheels (nose and tail; more down a bus); one around a flyer or a bike.
         let hit = null as { nx: number; nz: number } | null;
-        const offs = D.flies || D.key === "moto" ? [0] : [1.15, -1.15];
+        const offs = D.flies || D.bike ? [0] : D.probes ?? [1.15, -1.15];
         for (const off of offs)
           for (const world of [collision, obstacles]) {
             const r = world.collide(nx + nfx * off, nz + nfz * off, D.radius, st.alt, model.height);
@@ -1254,8 +1257,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       model.group.position.set(parked?.x ?? st.x, parked?.alt ?? st.alt, parked?.z ?? st.z);
       model.group.rotation.y = parked?.yaw ?? st.yaw;
       const speedK = Math.min(1, st.speed / maxV());
-      const lean = D.key === "moto" ? 0.45 : D.flies ? 0.28 : 0.12;
-      st.roll += ((D.key === "moto" || D.flies ? 1 : -1) * st.steer * Math.min(1, st.speed / 10) * lean - st.roll) * Math.min(1, dt * 6);
+      const lean = D.bike ? 0.45 : D.flies ? 0.28 : 0.12;
+      st.roll += ((D.bike || D.flies ? 1 : -1) * st.steer * Math.min(1, st.speed / 10) * lean - st.roll) * Math.min(1, dt * 6);
       st.pitch += ((D.flies ? -(c.gas - c.brake) * 0.12 : (c.gas - c.brake) * 0.035) * Math.min(1, st.speed / 4 + 0.3) - st.pitch) * Math.min(1, dt * 5);
       model.body.rotation.z = st.roll;
       model.body.rotation.x = st.pitch;
@@ -1285,7 +1288,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const w of model.wheels) w.visible = !fp;
       cockpit.group.visible = fp;
       cockpit.group.rotation.z = st.roll * 0.4;
-      if (cockpit.wheel) cockpit.wheel.rotation[D.key === "moto" ? "y" : "z"] = D.key === "moto" ? st.steer : st.steer * 2.6;
+      if (cockpit.wheel) cockpit.wheel.rotation[D.bike ? "y" : "z"] = D.bike ? st.steer : st.steer * 2.6;
       if (onFoot) {
         // see combat.tick
       } else if (fp) {
@@ -1306,7 +1309,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.lookAt(camLook);
         camera.rotateZ(-st.roll * 0.35);
       } else {
-        const dist = camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.key === "heli" ? 1.4 : D.key === "drone" || D.key === "moto" ? 0.75 : 1) : camMode === "far" ? 24 : 4;
+        const dist = camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
         const height = camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
         const want = camMode === "top" ? new THREE.Vector3(st.x + nfx * 6, st.alt + height, st.z + nfz * 6 + 0.01) : new THREE.Vector3(st.x - nfx * dist, st.alt + height, st.z - nfz * dist);
         camPos.lerp(want, 1 - Math.exp(-dt * (camMode === "top" ? 6 : 4.5)));
@@ -1357,12 +1360,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       markers.tick(time);
       others.tick(dt, serverNow, st.x, st.z);
       feed.update(frame.toLatLng(st.x, st.z));
-      traffic.enabled = !matchOn;
+      traffic.enabled = crowd.enabled = !matchOn;
       if (now - trafficSync > 1000) {
         trafficSync = now;
-        traffic.sync([...tiles.values()].flatMap((s) => (s.mesh?.real ? [s.mesh] : [])));
+        const real = [...tiles.values()].flatMap((s) => (s.mesh?.real ? [s.mesh] : []));
+        traffic.sync(real);
+        crowd.sync(real);
       }
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z));
+      obstacles.add("people", crowd.tick(dt, st.x, st.z));
       if (now - lightsAt > 500) {
         lightsAt = now;
         const sec = Date.now() / 1000;
@@ -1608,7 +1614,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, skyline, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, skyline, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
 
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1630,6 +1636,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       vsource.dispose();
       details.dispose();
       traffic.dispose();
+      crowd.dispose();
       skyline.dispose();
       pool.dispose();
       vtPool.dispose();
@@ -1953,7 +1960,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
       {combat && <CombatHud combat={combat} touch={touch} />}
       {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} />}
-      {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.key === "moto" ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
+      {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.bike ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
       {canDrive && !touch && onFoot && footKeys && (
         <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Tab scores · F car")}</div>
       )}

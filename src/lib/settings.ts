@@ -47,6 +47,7 @@ const DEFAULTS = {
   remoteRewardMult: 0.5,
   remoteSpeedKmh: 40,
   driveSpeedKmh: 80,
+  garageFree: true,
 
   // ---- real places & businesses
   placeMissionShare: 1,
@@ -185,6 +186,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "remoteRewardMult", group: msg("Play from home"), label: msg("Reward multiplier at home"), help: msg("XP and coins earned from home are multiplied by this (0.5 = half). Toman from home is set under Money & cash-out."), min: 0, max: 1, step: 0.05 },
   { key: "remoteSpeedKmh", group: msg("Play from home"), label: msg("Travel speed at home (km/h)"), help: msg("How fast a home player's commander moves across the map toward where they tapped."), min: 5, max: 1000 },
   { key: "driveSpeedKmh", group: msg("Play from home"), label: msg("3D car top speed (km/h)"), help: msg("Players driving the 3D city from home can move this fast; the server accepts positions up to this speed."), min: 10, max: 300 },
+  { key: "garageFree", group: msg("Play from home"), label: msg("Every vehicle free from the start"), help: msg("The drone, the helicopter and every car in the 3D city's garage can be driven from level 1. Turn off to unlock them by level instead.") },
 
   { key: "placeMissionShare", group: msg("Real places & businesses"), label: msg("Places with a mission"), help: msg("Share of real shops, restaurants and cafés that offer a mission in each 30-minute window (1 = every store)."), min: 0, max: 1, step: 0.05 },
   { key: "mapPlacesRadiusM", group: msg("Real places & businesses"), label: msg("Places on the map: range (m)"), help: msg("How far around a player every real restaurant, café, shop and park is drawn on the map (with or without a mission). 0 hides them."), min: 0, max: 3000, step: 50 },

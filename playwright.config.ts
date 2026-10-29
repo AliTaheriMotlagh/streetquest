@@ -59,6 +59,8 @@ export default defineConfig({
           SNAPPFOOD_URL: `http://localhost:${STUB_PORT}/sf`,
           TOROB_URL: `http://localhost:${STUB_PORT}/tr`,
           DIVAR_URL: `http://localhost:${STUB_PORT}/dv`,
+          // The stub needs no spacing between Torob calls.
+          TOROB_GAP_MS: "0",
           // No real push notifications or payments from tests.
           VAPID_PUBLIC_KEY: "",
           VAPID_PRIVATE_KEY: "",

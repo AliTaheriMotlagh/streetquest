@@ -5,7 +5,8 @@
 //   ?divar=<id>&city=<id>&cat  one neighbourhood's ads in a category (the Divar card's tabs)
 //   ?menu=<code>&lat&lng       one vendor's menu / catalog, hours, phone and review counts
 //   ?reviews=<code>&page       one vendor's reviews, ten to a page
-//   ?torobPlace=<id>           a walk-in Torob store's page and the first page of its catalog
+//   ?torobPlace=<id>&lat&lng   a walk-in Torob store's page, what it was seen selling at its own
+//                              prices (looked up where it stands) and the first page of its catalog
 //   ?store=place|biz|shop      a store card's menu, Torob listings and links
 //                              (place: name, lat, lng, cat · biz / shop: id)
 //   ?torob=<query>[&shop=<id>] Torob prices for a product — everywhere, or in one Torob shop
@@ -26,7 +27,7 @@ const Query = z.union([
   z.object({ near: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ torobNear: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ reviews: z.string().regex(/^[0-9a-z]{6}$/), page: z.coerce.number().int().min(0).max(100).default(0) }),
-  z.object({ torobPlace: z.coerce.number().int().positive().max(1e9) }),
+  z.object({ torobPlace: z.coerce.number().int().positive().max(1e9), lat: num.min(-90).max(90).optional(), lng: num.min(-180).max(180).optional() }),
   z.object({ divar: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ divar: z.string().regex(/^\d{1,9}$/), city: z.string().regex(/^\d{1,9}$/), cat: z.enum(DIVAR_CAT_KEYS).default("all") }),
   z.object({ menu: z.string().regex(/^[0-9a-z]{6}$/), lat: num.optional(), lng: num.optional() }),
@@ -46,19 +47,21 @@ export const GET = route(async (req) => {
     if ("near" in q) return { vendors: [] };
     if ("torobNear" in q) return { shops: [], pending: false };
     if ("reviews" in q) return { reviews: { count: 0, reviews: [] } };
-    if ("torobPlace" in q) return { info: null, items: [] };
+    if ("torobPlace" in q) return { info: null, items: [], stock: [] };
     return "divar" in q ? (q.divar === "1" ? { areas: [] } : { posts: [] }) : "menu" in q ? { menu: null } : "torob" in q ? { items: [] } : empty;
   }
 
   if ("near" in q) return { vendors: (await vendorsAround(q)).slice(0, 400) };
   if ("torobNear" in q) {
+    // The map needs where and what kind: each store's products come with its card.
     const { shops, pending } = await torobPlacesAround(q);
-    return { shops: shops.slice(0, 300), pending };
+    return { shops: shops.slice(0, 300).map(({ stock: _, ...s }) => s), pending };
   }
   if ("reviews" in q) return { reviews: (await vendorReviews(q.reviews, q.page)) ?? { count: 0, reviews: [] } };
   if ("torobPlace" in q) {
-    const [info, items] = await Promise.all([torobPlaceInfo(q.torobPlace), torobSearch("", q.torobPlace)]);
-    return { info, items };
+    const at = q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : null;
+    const [info, items, near] = await Promise.all([torobPlaceInfo(q.torobPlace), torobSearch("", q.torobPlace), at ? torobPlacesAround(at, 400) : null]);
+    return { info, items, stock: near?.shops.find((s) => s.id === q.torobPlace)?.stock ?? [] };
   }
   if ("divar" in q) return "lat" in q ? { areas: await divarAround(q) } : { posts: await divarPosts(Number(q.city), Number(q.divar), q.cat) };
   if ("menu" in q) {

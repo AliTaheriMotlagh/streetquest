@@ -99,6 +99,21 @@ mood scales XP; loot funds research; territory funds the army.
   East) evaporative coolers and water tanks, pitched roofs are gabled, hipped (with a real ridge) or skillion, and places
   of worship in the region are mosques with a tiled onion dome and two minarets. Balconies and rooftop kit are drawn only
   within 320 m and never on lite phones (`src/components/drive/tileMesh.ts`, `world3d.ts`).
+- **Iran's streets in 3D** — the traffic is what you see in Tehran: Prides everywhere, Peugeot 206 / 207 / Pars,
+  Samands, Tibas, old Peykans, crossovers, yellow taxis with their roof sign and yellow plate, the blue Zamyad pickup
+  (empty or stacked with fruit crates), red city buses on the main roads and motorbikes — commuters and delivery bikes
+  with their box — riding by the kerb and leaning into corners (`src/lib/fleet.ts`: the mix, paints and sizes). Each
+  model is built once from its side profile (wheel arches cut in) with its own lamps, grille, bumpers, mirrors and the
+  Iranian number plate, and traffic draws every copy of a model instanced — a handful of draw calls for the whole
+  street (`src/components/drive/fleet3d.ts`). Cars keep a bumper-to-bumper gap sized to what's ahead, stop at red
+  lights and brake for you. People walk the pavements — men in shirts and jackets, women in a manteau and headscarf or
+  a chador — turning back at walls or carrying on round the corner, and are solid (`people.ts`). The pavements also
+  have blue-and-yellow charity boxes every block or two and green newspaper kiosks on the main roads.
+- **The garage** — the same street cars are yours to drive (Pride, Peykan, 206, 207, Pars, Samand, the taxi, the
+  Zamyad pickup, the city bus, a delivery bike with its box) next to the hatchback, sports car, pickup, motorbike,
+  drone and helicopter. Every vehicle — the drone and the helicopter too — is free from level 1 (admin: *Every vehicle
+  free from the start*; turn it off to unlock them by level). A bus gets collision circles down its length and a
+  camera further back; bikes lean and steer by the bars (`src/lib/vehicles.ts`).
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
   nearby shows up live (20 updates a second over WebSockets). Press **F** / 🚶 to get out of the car and walk as a 3D
   soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
@@ -128,7 +143,8 @@ mood scales XP; loot funds research; territory funds the army.
   catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~150 m, or up to
   400 m when every word of the name matches, from the area's whole vendor list or else Snappfood's own search) and,
   for non-food stores, its own Torob shop (found by exact name or the owner's torob.com/shop link) with that shop's
-  catalog and a search inside it or across all of Torob. On top: a picture (Snappfood cover, an OSM photo), a logo
+  catalog and a search inside it — only the store's own products, never other stores' (a store that isn't on Torob
+  has no Torob tab; a catalog row shows Torob's lowest price and says so). On top: a picture (Snappfood cover, an OSM photo), a logo
   (Snappfood, Torob, or the store website's icon), the address and opening hours, and links to call, its website and
   Instagram — contacts come from the map (OSM `phone`, `website`, `contact:instagram`, `opening_hours`, `addr:*`,
   `image` / `wikimedia_commons`, stored with each place by the city pack). Owners can paste their Snappfood / Torob /
@@ -138,17 +154,28 @@ mood scales XP; loot funds research; territory funds the army.
   ⭐ Reviews (Snappfood customers' reviews, ten at a time, with the star split, what they ordered and the store's
   replies) and ℹ️ Info (the week's hours with today marked, the address, the phone, minimum order and delivery fee).
   Hours come from the map's `opening_hours` when it reads as a week, else from Snappfood's schedule.
-- **Torob walk-in stores** (⋯ → 🗺️ *On the map* → 🏷️): every store Torob's own map of sellers knows, at its real spot
-  — built once a day from the walk-in sellers of a few everyday products and kept per ~2 km cell. Tap one for its own
-  catalog on Torob (searchable, or compare across all of Torob), its photos, hours, full address and phone.
-- **On the map** (⋯ → 🗺️ *On the map*, everything on by default): 📍 every real place within 1.2 km (restaurants,
+- **Torob walk-in stores** (the map's filter → 🏷️): every store Torob's own map of sellers knows, at its real spot
+  — built once a day from the walk-in sellers of a few everyday products (kept per ~2 km cell), plus Torob's own
+  in-person search around you (the "buy in person" pages: products ranked by what stores near a point stock), run
+  once a day per ~5 km square the first time a player looks there. Tap one for what it was seen selling *at its own
+  price* (with its own note and when it last changed the price), then the rest of its Torob catalog (searchable inside
+  the store only), its photos, hours, full address and phone. Torob's calls are spaced out (`TOROB_GAP_MS`, 450 ms) and
+  stop for half an hour when Torob answers "are you a robot?" (490) or 429.
+- **On the map** (the map's filter button, or ⋯ → 🗺️ *On the map*; everything on by default): the game's own 💵 money,
+  📦 store jobs, 👥 players and 🏪 businesses, 📍 every real place within 1.2 km (restaurants,
   cafés, shops, parks — with or without a job; tap for its menu and contacts), Snappfood vendors by kind with their
   logo up close (one sign per store: an OSM place that is a vendor shows as the vendor), 🏷️ Torob's walk-in stores, 📢 Divar — each nearby
   neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…), and 🚦 live
-  traffic. Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
+  traffic — each chip with how many there are around, and real places narrowed by kind (cafés, pharmacies, banks…).
+  Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
   its sign size); nothing groups from zoom 18, plain places name themselves only there, and places, vendors and ads
-  are left out at city zoom. The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor that moves
-  only after a 250 m walk, so they don't reshuffle on every refresh.
+  are left out at city zoom. With everything on, one pass over all layers in screen space (`declutter.ts`) keeps it
+  readable and light: a place that would sit on a game marker — or beyond 120 full markers (60 on lite phones) —
+  becomes a small dot on the map's canvas (still tappable), names show only where they don't collide, and place
+  bubbles are smaller than the game's. The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor
+  that moves only after a 250 m walk, so they don't reshuffle on every refresh.
+- **Visits** — the home page counts its visits (once per browser session, once per network per half hour) and shows
+  the total and today's next to the player count (`src/server/visits.ts`, `/api/visits`).
 - **Who's online** — the HUD's 🟢 chip counts everyone online right now; tap it for your online friends (anywhere,
   with their distance) and players within 5 km (`/api/online`). Strangers' distances are measured to their fuzzed spot
   and rounded to 250 m, so moving around can't pin anyone down; no position is ever sent in the list.
@@ -240,7 +267,7 @@ Torob and Divar. Iranian sites often refuse servers abroad (Snappfood answers Ve
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
 | Store menus, prices & ads: Snappfood (a cell's whole vendor list — every vendor delivering there, read 400 a page — per ~1 km cell, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h), Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h) and Divar (cities and neighbourhoods a week, each neighbourhood's latest ads per category 15 min) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. None has an official API — `SNAPPFOOD_URL` / `TOROB_URL` / `DIVAR_URL` (`off` disables), admin switch *Menus, prices and ads from Snappfood, Torob and Divar*; *Places on the map* range / most at once | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `/api/route`, `src/components/game/StoreInfo.tsx`, `GameMap.tsx` |
-| 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`) | `src/components/drive` |
+| 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`). Traffic and pedestrians are instanced per model / body part (`fleet3d.ts`, `people.ts`) | `src/components/drive`, `src/lib/{fleet,vehicles}.ts` |
 | Street Arena: a separate Node WebSocket server (`realtime/`) holds everyone in memory — no database. The app signs a 10-min ticket (`/api/rt/ticket`: who you are, friends, virtual or real GPS); results come back HMAC-signed (`/api/rt/result`, paid once per match, daily cap). Binary state 20×/s each way, positions in each client's own local metres, interest management (600 m, same privacy rules as the HTTP presence). Hits: the client draws them at once, the server referees with lag compensation (targets rewound ≤ 350 ms), fire-rate/ammo/range checks and, in matches, line of sight through the real buildings (the host's client sends the arena's streets and footprints). Bots walk a street graph built from the same map | `realtime/`, `src/lib/arena`, `src/components/arena`, `/api/rt` |
 | Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
 | Businesses: claim on the spot (≤150 m), campaigns limited by plan, check-in ≤80 m, 6-char coupon codes redeemed once by the owner; plans paid through the same Stripe Checkout + webhook as gems (`biz:<plan>:<id>` purchases) | `src/lib/business.ts`, `src/server/business.ts`, `/api/business`, `src/components/game/Business.tsx` |

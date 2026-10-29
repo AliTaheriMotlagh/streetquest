@@ -1226,6 +1226,11 @@ button, .btn, a.btn { touch-action: manipulation; }
 .mk.cluster.bases .ring { border-color: var(--red); }
 .mk.cluster .cl-n { position: absolute; top: -8px; right: -10px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--pink); color: #fff; font: 800 11px/20px var(--body); text-align: center; text-shadow: none; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
 .mk.cluster.players .cl-n { background: #1f9d55; }
+/* A crowded map (declutter.ts): a name with no room hides; place bubbles are smaller and lighter than the game's. */
+.mk.nolabel .nm { display: none !important; }
+.mk.cluster.poi { font-size: 17px; }
+.mk.cluster.poi .ring { inset: -3px; background: rgba(12,12,22,.6); border-width: 1.5px; }
+.mk.cluster.poi .cl-n { top: -7px; right: -9px; min-width: 18px; height: 18px; font-size: 10px; line-height: 18px; }
 /* Players near you, live: a soft halo so you can tell who's actually with you. */
 .mk.player.live { filter: drop-shadow(0 0 6px rgba(91,211,140,.75)); }
 
@@ -1695,7 +1700,18 @@ html.lite .biz-bar i::after { animation: none; }
 .hud-status .needs-hud .need { height: 18px; width: 5px; }
 /* Everything that isn't needed every second, behind ⋯ */
 .fab-col { gap: 8px; }
-.fab-col:has(.more-menu, .ping-menu) { z-index: 650; }
+.fab-col:has(.more-menu, .ping-menu, .map-filter) { z-index: 650; }
+/* The map's filter (MapFilter.tsx): chips by group, each with how many there are around. */
+.map-filter { position: absolute; inset-inline-end: 60px; bottom: 0; width: min(340px, calc(100vw - 84px)); max-height: min(72vh, 580px); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 18px; background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.5); animation: pop .18s; }
+.map-filter h4 { margin: 0 0 6px; font-weight: 700; }
+.map-filter .close { width: 30px; height: 30px; }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted); font: 700 13px/1.1 var(--body); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.filter-chip.on { background: rgba(240,192,90,.14); border-color: rgba(240,192,90,.55); color: var(--text); }
+.filter-chip .n { font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,.08); font-variant-numeric: tabular-nums; }
+.filter-chip.on .n { background: rgba(240,192,90,.25); color: var(--yellow); }
+.filter-chips.kinds .filter-chip { padding: 5px 9px; font-size: 12px; }
+.map-filter-fab svg { display: block; }
 .more-menu { position: absolute; inset-inline-end: 60px; bottom: 0; display: flex; flex-direction: column; gap: 6px; min-width: 220px; padding: 8px; border-radius: 18px; background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.5); animation: pop .18s; }
 .more-menu button { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; border-radius: 12px; background: rgba(255,255,255,.04); color: var(--text); font-weight: 700; font-size: 14px; text-align: start; cursor: pointer; white-space: normal; }
 .more-menu button.on { background: rgba(240,192,90,.14); color: var(--yellow); }
@@ -1720,9 +1736,9 @@ html.lite .biz-bar i::after { animation: none; }
 .ext-store { margin-top: 12px; }
 .ext-links { gap: 6px; margin-bottom: 4px; }
 .ext-link { text-decoration: none; }
-.ext-link.snappfood { border-color: #ff2f6e; }
-.ext-link.torob { border-color: #e2363c; }
-.ext-link.divar { border-color: #a62626; }
+.ext-link.ext-snappfood { border-color: #ff2f6e; }
+.ext-link.ext-torob { border-color: #e2363c; }
+.ext-link.ext-divar { border-color: #a62626; }
 .ext-menu .input, .ext-torob .input { margin: 4px 0 8px; }
 .ext-torob { margin-top: 12px; }
 .ext-torob .tabs { margin-top: 8px; }
@@ -1758,7 +1774,7 @@ html.lite .biz-bar i::after { animation: none; }
 .ext-cover-logo { position: absolute; bottom: 8px; inset-inline-start: 8px; width: 52px; height: 52px; border-radius: 12px; object-fit: cover; border: 2px solid #fff; background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.5); }
 .ext-about { display: grid; gap: 3px; margin: 0 0 8px; }
 .ext-hours { text-align: start; unicode-bidi: plaintext; }
-.ext-link.instagram { border-color: #d6249f; }
+.ext-link.ext-instagram { border-color: #d6249f; }
 .ext-rating { align-self: flex-start; }
 
 /* ---- Store cards, phone first (StoreInfo.tsx): head, actions, sticky tabs, compact rows */
@@ -1815,7 +1831,7 @@ html.lite .biz-bar i::after { animation: none; }
   .store-actions .btn { padding-inline: 10px; font-size: 13px; }
 }
 .ext-divar-tabs { margin-top: 6px; }
-.ext-link.divar.block { display: block; text-align: center; margin-top: 10px; }
+.ext-link.ext-divar.block { display: block; text-align: center; margin-top: 10px; }
 /* Plain places name themselves only at street level; vendors from neighbourhood zoom in. */
 .mk.place.spot .nm { display: none; }
 .lod-street .mk.place.spot .nm { display: block; }

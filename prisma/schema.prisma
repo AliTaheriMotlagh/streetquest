@@ -1491,3 +1491,10 @@ model ExtCache {
   data      Json
   fetchedAt DateTime @default(now())
 }
+
+// Visits to the home page, one row per (UTC) day: each browser counts once per session
+// (server/visits.ts), and the page shows the total and today's.
+model SiteVisit {
+  day   DateTime @id @db.Date
+  count Int      @default(0)
+}

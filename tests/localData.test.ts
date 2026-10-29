@@ -2,7 +2,7 @@
 // Torob and OpenStreetMap, open-now in the store's time zone, and store-name matching.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clockOf, latinDigits, nameScore, openState, sameName, sameStore, snappfoodCode, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf } from "@/lib/localData";
+import { clockOf, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, openState, sameName, sameStore, snappfoodCode, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
 
 const TEHRAN = { lat: 35.73, lng: 51.53 };
 /** A Tehran wall-clock moment (Iran has kept +03:30 all year since 2022). */
@@ -94,5 +94,39 @@ describe("store names", () => {
     assert.equal(snappfoodCode("https://snappfood.ir/restaurant/menu/0q5252/javan"), "0q5252");
     assert.equal(snappfoodCode("0q5252"), "0q5252");
     assert.equal(snappfoodCode("https://example.com/x"), null);
+  });
+});
+
+describe("walk-in stores: only what each store sells", () => {
+  // A listing (the product) and a row of its map of sellers (one store), as Torob sends them.
+  const listing = { name1: "گوشی سامسونگ A17 4G | حافظه 128 رم 6 گیگابایت", image_url: "https://image.torob.com/a.webp", web_client_absolute_url: "/p/823f/galaxy-a17/" };
+  const row = { price: 52_000_000, name2: "گارانتی ۱۸ ماهه شرکتی", last_price_change_date: "۱ ماه و ۸ روز پیش" };
+  const place = (id: number, stock: TorobPlace["stock"], sells = ["📱"]): TorobPlace => ({ id, name: "Stub", lat: 35.7, lng: 51.4, city: "تهران", address: "", photo: "", week: null, sells, stock });
+
+  it("reads a seller row as the product at that store's own price", () => {
+    assert.deepEqual(stockOf(listing, row), {
+      title: listing.name1,
+      price: 52_000_000,
+      photo: listing.image_url,
+      url: "https://torob.com/p/823f/galaxy-a17/",
+      note: "گارانتی ۱۸ ماهه شرکتی",
+      when: "۱ ماه و ۸ روز پیش",
+    });
+    // No price means "ask in the store"; no product page, nothing to show.
+    assert.equal(stockOf(listing, {})?.price, 0);
+    assert.equal(stockOf({ name1: "x" }, row), null);
+    assert.equal(stockOf({ ...listing, web_client_absolute_url: "https://elsewhere.example/p" }, row), null);
+  });
+
+  it("merges two sightings of one store: kinds and products once each, capped", () => {
+    const a = stockOf(listing, row)!;
+    const b = { ...a, title: "قاب گوشی", url: "https://torob.com/p/case/" };
+    const m = mergeTorobPlace(place(1, [a]), place(1, [a, b], ["📱", "🎧"]));
+    assert.deepEqual(m.sells, ["📱", "🎧"]);
+    assert.deepEqual(m.stock?.map((s) => s.url), [a.url, b.url]);
+    const many = Array.from({ length: 20 }, (_, i) => ({ ...a, url: `https://torob.com/p/${i}/` }));
+    assert.equal(mergeTorobPlace(place(1, many), place(1, many)).stock?.length, MAX_STOCK);
+    // A map built before stock was kept merges too.
+    assert.deepEqual(mergeTorobPlace(place(1, undefined), place(1, [a])).stock, [a]);
   });
 });

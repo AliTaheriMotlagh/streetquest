@@ -2,17 +2,21 @@
 // Live traffic in the 3D city (lib/traffic.ts, server/traffic.ts):
 //  - TrafficFeed: speeds on the streets around us from /api/traffic, every 30 s;
 //  - the minimap's street colours (green flowing … dark red standstill);
-//  - TrafficCars: cars driving the real streets, on the right, at the live speed of the
-//    street they're on (the usual city speed where there's no reading), more of them
-//    where it's jammed. They follow each other, stop at red lights, brake for you and
-//    are solid.
+//  - TrafficCars: the cars of Iran's streets (Prides, Peugeots, Samands, Peykans, yellow
+//    taxis, blue Zamyad pickups, delivery bikes, city buses on the main roads — lib/
+//    fleet.ts) driving the real streets, on the right, at the live speed of the street
+//    they're on (the usual city speed where there's no reading), more of them where it's
+//    jammed. They follow each other bumper to bumper, stop at red lights, brake for you
+//    and are solid; bikes ride by the kerb and lean into the corners. Drawn instanced, per
+//    model (fleet3d.ts).
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, signalPhase, trafficCell, type TrafficCellOut } from "@/lib/traffic";
+import { FLEET, pickFleet, pickPaint, roomBetween, type FleetKey } from "@/lib/fleet";
 import { api } from "../game/client";
+import { FleetInstances } from "./fleet3d";
 import { box, type Footprint } from "./tileMesh";
-import { makeVehicle, type VehicleModel } from "./vehicles3d";
 import type { TileMeshes, Style } from "./world3d";
 
 const POLL_MS = 30_000;
@@ -99,7 +103,9 @@ export function lineColors(feed: TrafficFeed, frame: Frame, line: Float32Array, 
 // ---------------------------------------------------------------- the cars
 type Road = { line: Float32Array; w: number; kind: "major" | "minor" };
 type Car = {
-  model: VehicleModel;
+  /** Which of Iran's street models (lib/fleet.ts), in what paint. */
+  kind: FleetKey;
+  color: THREE.Color;
   road: Road;
   /** Segment index and metres along it; `dir` +1 runs with the line's points, −1 against. */
   seg: number;
@@ -111,12 +117,15 @@ type Car = {
   z: number;
   yaw: number;
   spin: number;
+  lean: number;
   mood: number;
 };
 
-const PAINTS = ["#f2f2ee", "#f2f2ee", "#f2f2ee", "#c0c2c6", "#c0c2c6", "#2b2b2b", "#7a2b25", "#2f3f63", "#8f9296"];
-const TAXI = "#f3c623";
 const SPAWN_MIN = 70, SPAWN_MAX = 240, DROP = 320;
+/** The gap a driver keeps to what's ahead, bumper to bumper (m). */
+const KEEP_M = 2.5;
+/** You, as the cars around see you: about a car's length. */
+const YOU_LEN = 4.4;
 
 export class TrafficCars {
   private cars: Car[] = [];
@@ -128,9 +137,13 @@ export class TrafficCars {
   private known = new WeakSet<TileMeshes>();
   private meshCount = -1;
   private rand = Math.random;
+  /** Every car is drawn by model, instanced: a handful of draw calls for the whole street. */
+  private fleet: FleetInstances;
   enabled = true;
 
-  constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, private style: Style, private lite: boolean) {}
+  constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, style: Style, private lite: boolean) {
+    this.fleet = new FleetInstances(scene, style);
+  }
 
   /** The streets cars can use: re-read when tiles come and go. */
   sync(meshes: TileMeshes[]) {
@@ -163,18 +176,12 @@ export class TrafficCars {
       });
     // Cars on streets that were dropped go too.
     const alive = new Set(this.roads.map((r) => r.line));
-    for (const c of [...this.cars]) if (!alive.has(c.road.line)) this.remove(c);
-  }
-
-  private remove(c: Car) {
-    this.scene.remove(c.model.group);
-    c.model.dispose();
-    this.cars.splice(this.cars.indexOf(c), 1);
+    this.cars = this.cars.filter((c) => alive.has(c.road.line));
   }
 
   /** How many cars around here: more where the readings say it's jammed. */
   private target(px: number, pz: number) {
-    let base = this.lite ? 7 : 16;
+    let base = this.lite ? 8 : 18;
     if (!this.feed.empty) {
       let slow = 0, n = 0;
       for (const c of this.cars) {
@@ -194,11 +201,11 @@ export class TrafficCars {
       const n = road.line.length / 2 - 1, seg = Math.floor(this.rand() * n);
       const x = road.line[seg * 2], z = road.line[seg * 2 + 1], d = Math.hypot(x - px, z - pz);
       if (d < SPAWN_MIN || d > SPAWN_MAX) continue;
-      const taxi = this.rand() < 0.18;
-      const model = makeVehicle(this.rand() < 0.12 ? "pickup" : "car", taxi ? TAXI : PAINTS[Math.floor(this.rand() * PAINTS.length)], this.style, { shadows: false });
-      this.scene.add(model.group);
+      const kind = pickFleet(this.rand, road.kind === "major");
       const dir = road.w < 7 && this.rand() < 0.5 ? -1 : this.rand() < 0.5 ? 1 : -1;
-      this.cars.push({ model, road, seg, along: 0, dir, v: 0, want: 0, x, z, yaw: 0, spin: 0, mood: 0.85 + this.rand() * 0.25 });
+      // Bikes ride quicker than the cars round them (and buses slower).
+      const mood = (FLEET[kind].bike ? 1.05 : kind === "bus" ? 0.8 : 0.85) + this.rand() * 0.25;
+      this.cars.push({ kind, color: new THREE.Color(pickPaint(kind, this.rand)), road, seg, along: 0, dir, v: 0, want: 0, x, z, yaw: 0, spin: 0, lean: 0, mood });
       return;
     }
   }
@@ -210,6 +217,8 @@ export class TrafficCars {
       for (let j = -1; j <= 1; j++)
         for (const e of this.ends.get(`${Math.floor(x / 8) + i}_${Math.floor(z / 8) + j}`) ?? []) {
           if (e.road === c.road) continue;
+          // A bus keeps to the main roads.
+          if (c.kind === "bus" && e.road.kind !== "major") continue;
           const l = e.road.line, ex = l[e.end ? l.length - 2 : 0], ez = l[e.end ? l.length - 1 : 1];
           if (Math.hypot(ex - x, ez - z) < 4) opts.push(e);
         }
@@ -219,30 +228,36 @@ export class TrafficCars {
   /** Move everyone; returns their footprints (solid while you drive). */
   tick(dt: number, px: number, pz: number): Footprint[] {
     if (!this.enabled) {
-      while (this.cars.length) this.remove(this.cars[0]);
+      this.cars = [];
+      this.fleet.begin();
+      this.fleet.end();
       return [];
     }
-    for (const c of [...this.cars]) if (Math.hypot(c.x - px, c.z - pz) > DROP) this.remove(c);
+    this.cars = this.cars.filter((c) => Math.hypot(c.x - px, c.z - pz) <= DROP);
     if (this.cars.length < this.target(px, pz) && this.roads.length) this.spawn(px, pz);
     const out: Footprint[] = [];
+    this.fleet.begin();
     for (const c of [...this.cars]) {
+      const def = FLEET[c.kind];
       const L = c.road.line;
       const i0 = c.dir > 0 ? c.seg : c.seg + 1, i1 = c.dir > 0 ? c.seg + 1 : c.seg;
       const ax = L[i0 * 2], az = L[i0 * 2 + 1], bx = L[i1 * 2], bz = L[i1 * 2 + 1];
       const len = Math.hypot(bx - ax, bz - az) || 0.01, fx = (bx - ax) / len, fz = (bz - az) / len;
-      // The live speed here, else the usual one for the street; then room ahead.
+      // The live speed here, else the usual one for the street; then room ahead (bumper to
+      // bumper: a bus needs more of it than a Pride).
       const at = this.frame.toLatLng(c.x, c.z);
       const live = this.feed.speedAt(at, degOf(ax, az, bx, bz));
       let want = ((live ?? FREE_KMH[c.road.kind]) / 3.6) * c.mood;
-      let gap = Infinity;
+      let room = Infinity;
       for (const o of this.cars) {
         if (o === c) continue;
         const dx = o.x - c.x, dz = o.z - c.z, ahead = dx * fx + dz * fz, side = Math.abs(dx * -fz + dz * fx);
-        if (ahead > 0 && ahead < 25 && side < 2.2) gap = Math.min(gap, ahead);
+        // A bike only queues behind what's in its own strip of road.
+        if (ahead > 0 && ahead < 32 && side < (def.bike ? 1.1 : 2.2)) room = Math.min(room, roomBetween(ahead, c.kind, o.kind));
       }
       {
         const dx = px - c.x, dz = pz - c.z, ahead = dx * fx + dz * fz, side = Math.abs(dx * -fz + dz * fx);
-        if (ahead > 0 && ahead < 25 && side < 2.6) gap = Math.min(gap, ahead);
+        if (ahead > 0 && ahead < 32 && side < 2.6) room = Math.min(room, roomBetween(ahead, c.kind, YOU_LEN));
       }
       // A red (or amber, unless already at the line) light on this street, just ahead.
       const ns = Math.abs(fz) > Math.abs(fx), sec = Date.now() / 1000;
@@ -252,10 +267,12 @@ export class TrafficCars {
             if (l.ns !== ns) continue;
             const dx = l.x - c.x, dz = l.z - c.z, ahead = dx * fx + dz * fz, side = Math.abs(dx * -fz + dz * fx);
             const ph = signalPhase(sec, ns);
-            if (ahead > 2 && ahead < 26 && side < c.road.w / 2 + 6 && (ph === 2 || (ph === 1 && ahead > 6))) gap = Math.min(gap, ahead + 4);
+            // Stop with the nose a metre short of the light.
+            if (ahead > 2 && ahead < 26 && side < c.road.w / 2 + 6 && (ph === 2 || (ph === 1 && ahead > 6))) room = Math.min(room, ahead - def.len / 2 + 1.5);
           }
-      if (gap < 30) want = Math.min(want, Math.max(0, (gap - 7) * 0.8));
-      c.v += Math.max(-9 * dt, Math.min(3 * dt, want - c.v));
+      if (room < 28) want = Math.min(want, Math.max(0, (room - KEEP_M) * 0.8));
+      const braking = c.v > want + 0.3 || c.v < 0.5;
+      c.v += Math.max(-9 * dt, Math.min((c.kind === "bus" ? 1.6 : def.bike ? 3.6 : 3) * dt, want - c.v));
       c.along += c.v * dt;
       // On to the next segment, or the next street at the end of this one.
       let gone = false;
@@ -278,33 +295,33 @@ export class TrafficCars {
         break;
       }
       if (gone) {
-        this.remove(c);
+        this.cars.splice(this.cars.indexOf(c), 1);
         continue;
       }
-      // Pose: on the right-hand half of the street (all of it on narrow lanes).
+      // Pose: on the right-hand half of the street (all of it on narrow lanes), bikes out by the kerb.
       const R = c.road.line, j0 = c.dir > 0 ? c.seg : c.seg + 1, j1 = c.dir > 0 ? c.seg + 1 : c.seg;
       const sx = R[j0 * 2], sz = R[j0 * 2 + 1], ex = R[j1 * 2], ez = R[j1 * 2 + 1];
       const sl = Math.hypot(ex - sx, ez - sz) || 0.01, ux = (ex - sx) / sl, uz = (ez - sz) / sl;
-      const k = Math.min(1, c.along / sl), lane = c.road.w >= 7 ? c.road.w / 4 : 0;
+      const k = Math.min(1, c.along / sl);
+      const lane = (c.road.w >= 7 ? c.road.w / 4 : 0) + (def.bike ? Math.min(1.2, c.road.w / 2 - 0.9) : 0);
       const tx = sx + (ex - sx) * k + -uz * lane, tz = sz + (ez - sz) * k + ux * lane;
       const yaw = Math.atan2(-ux, -uz);
-      // Ease the turn so corners don't snap.
+      // Ease the turn so corners don't snap; a bike leans into it.
       const turn = Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw));
-      c.yaw += turn * Math.min(1, dt * 6);
+      c.yaw += turn * Math.min(1, dt * (def.bike ? 7 : c.kind === "bus" ? 3.5 : 6));
+      if (def.bike) c.lean += (Math.max(-0.4, Math.min(0.4, turn * 1.6)) - c.lean) * Math.min(1, dt * 5);
       c.x = tx;
       c.z = tz;
-      const g = c.model.group;
-      g.position.set(c.x, 0, c.z);
-      g.rotation.y = c.yaw;
-      c.spin += (c.v / 0.36) * dt;
-      for (const w of c.model.wheels) w.rotation.x = -c.spin;
-      c.model.brake.color.set(c.v > want + 0.3 || c.v < 0.5 ? "#ff2a3d" : "#5a0d16");
-      out.push(box(c.x, c.z, 0.95, 2.1, c.yaw, 1.6));
+      c.spin += (c.v / (def.bike ? 0.3 : 0.32)) * dt;
+      this.fleet.put(c.kind, c.x, c.z, c.yaw, c.color, braking, c.spin, c.lean);
+      out.push(box(c.x, c.z, def.wid / 2 + 0.05, def.len / 2, c.yaw, def.hgt));
     }
+    this.fleet.end();
     return out;
   }
 
   dispose() {
-    while (this.cars.length) this.remove(this.cars[0]);
+    this.cars = [];
+    this.fleet.dispose();
   }
 }
