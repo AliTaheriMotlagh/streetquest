@@ -258,8 +258,9 @@ Don't run the demo seed in production.
   button always works. `ADSENSE_TEST=on` shows Google's test ads while you try it. Admin → Game settings → Store & ads
   → *Google video ads on* switches it live; views are counted as "Google video ads" in Admin → Revenue.
 
-- **City packs (3D street detail and real places):** `npm run city:pack -- tehran karaj mashhad isfahan shiraz tabriz`
-  against the production `DATABASE_URL` reads Geofabrik's daily Iran extract and stores every mapped tree, traffic
+- **City packs (3D street detail and real places):** `npm run city:pack:prod -- tehran karaj mashhad isfahan shiraz tabriz`
+  reads production settings from `.env.prod` (a copy of `.env` with the production `DATABASE_URL` and
+  `DATABASE_URL_UNPOOLED`; git-ignored — keep `.env` on your local database) and Geofabrik's daily Iran extract and stores every mapped tree, traffic
   light, crossing, bus stop, bench, fountain and sports pitch per cell (`CityDetail`), and every named restaurant, café,
   shop and park (`CityTile.pois`) — without it, places only arrive with an Overpass tile, which is often busy. `--top 3` builds the three places with the most
   active players (any country — the right extract is found automatically), `--list` shows what's built and where

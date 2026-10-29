@@ -6,6 +6,8 @@
 //   npm run city:pack -- --list            what's built, and where players are
 //   … --pbf file.osm.pbf                   read this extract instead of downloading one
 //   … --dry                                read and count, write nothing
+//   … --env .env.prod                      read settings (DATABASE_URL…) from this file, not .env
+//   npm run city:pack:prod -- tehran       the same, into production (.env.prod)
 //
 // Data comes from Geofabrik's daily extracts (a country in one file, cached in .cache/osm
 // for 3 days) read locally by scripts/osm-pbf.ts, so building a city never queues on a
@@ -14,24 +16,29 @@ import { createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { rename } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { PrismaClient, type Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { bboxAround, CITIES, packCells, packPlaces, rangeOf, type CityDef } from "../src/lib/cityPack";
 import { isNamedPlace, propOfTags } from "../src/lib/city";
 import { readOsm } from "./osm-pbf";
 
-try {
-  process.loadEnvFile(".env");
-} catch {}
-const prisma = new PrismaClient();
-const UA = "StreetQuest/1.0 city-pack (+https://streetquest.app)";
-const CACHE = ".cache/osm";
-const MAX_AGE_MS = 3 * 86_400_000;
 const args = process.argv.slice(2);
 const dry = args.includes("--dry");
 const opt = (name: string) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 };
+const envFile = opt("--env") ?? ".env";
+try {
+  process.loadEnvFile(envFile);
+} catch (e) {
+  if (opt("--env")) throw e;
+}
+// The direct connection when there is one: big bulk writes are a poor fit for a pooler.
+const dbUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+const prisma = new PrismaClient({ datasourceUrl: dbUrl });
+const UA = "StreetQuest/1.0 city-pack (+https://streetquest.app)";
+const CACHE = ".cache/osm";
+const MAX_AGE_MS = 3 * 86_400_000;
 
 /** The extract on disk (downloaded, or refreshed when older than 3 days). */
 async function extractFile(region: string) {
@@ -65,10 +72,47 @@ async function regionAt(p: { lat: number; lng: number }) {
   return best.region;
 }
 
+/**
+ * Upsert rows with one statement per ~1 MB, retrying a batch that fails. A row at a time is
+ * a round trip each — an hour for Tehran against a far-away production database — and one
+ * huge transaction gets its connection closed.
+ */
+async function store(label: string, rows: Record<string, unknown>[], sql: string) {
+  const MAX_BYTES = 1_000_000, TRIES = 5;
+  let done = 0;
+  for (let i = 0; i < rows.length; ) {
+    const batch: string[] = [];
+    let bytes = 0;
+    for (; i < rows.length && (!batch.length || bytes < MAX_BYTES); i++) {
+      const json = JSON.stringify(rows[i]);
+      batch.push(json);
+      bytes += json.length;
+    }
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await prisma.$executeRawUnsafe(sql, `[${batch.join(",")}]`);
+        break;
+      } catch (e) {
+        if (attempt >= TRIES) throw e;
+        process.stdout.write(`\n  ${label}: a batch failed (${String(e).split("\n").pop()?.trim()}), retrying…`);
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      }
+    }
+    done += batch.length;
+    process.stdout.write(`\r  ${label}: ${done.toLocaleString()} / ${rows.length.toLocaleString()}   `);
+  }
+  process.stdout.write("\n");
+}
+const UPSERT_POIS = `INSERT INTO "CityTile" ("key", "pois") SELECT r."key", r."pois" FROM jsonb_to_recordset($1::jsonb) AS r("key" text, "pois" jsonb)
+  ON CONFLICT ("key") DO UPDATE SET "pois" = EXCLUDED."pois"`;
+const UPSERT_DETAIL = `INSERT INTO "CityDetail" ("key", "city", "data", "updatedAt") SELECT r."key", r."city", r."data", now() FROM jsonb_to_recordset($1::jsonb) AS r("key" text, "city" text, "data" jsonb)
+  ON CONFLICT ("key") DO UPDATE SET "city" = EXCLUDED."city", "data" = EXCLUDED."data", "updatedAt" = now()`;
+
 /** Read every city that shares an extract in one pass, then store each city's cells. */
 async function build(cities: CityDef[], file: string) {
   const t0 = Date.now();
   if (!dry) for (const c of cities) await prisma.cityPack.upsert({ where: { slug: c.slug }, create: { slug: c.slug, name: c.name, south: c.south, west: c.west, north: c.north, east: c.east, status: "building" }, update: { name: c.name, south: c.south, west: c.west, north: c.north, east: c.east, status: "building", note: null } });
+  if (!dry) console.log(`▶ writing to ${dbUrl ? new URL(dbUrl).host : "?"} (${envFile})`);
   console.log(`▶ reading ${file} for ${cities.map((c) => c.name).join(", ")}…`);
   const inside = (lat: number, lon: number) => cities.some((c) => lat >= c.south && lat <= c.north && lon >= c.west && lon <= c.east);
   const els = readOsm(
@@ -94,12 +138,9 @@ async function build(cities: CityDef[], file: string) {
       console.log(`  ${city.name}: ${[...kinds].sort((a, b) => a[0] - b[0]).map(([k, n]) => `${n.toLocaleString()} ${names[k]}`).join(", ")}, ${pitches} pitches in ${detail.size} cells; ${placeCount.toLocaleString()} named places in ${places.size} cells`);
       if (dry) continue;
       // Places go where the map and missions read them (a street-map tile from Overpass replaces them with its own copy).
-      const placeRows = [...places];
-      for (let i = 0; i < placeRows.length; i += 200)
-        await prisma.$transaction(placeRows.slice(i, i + 200).map(([key, pois]) => prisma.cityTile.upsert({ where: { key }, create: { key, pois: pois as unknown as Prisma.InputJsonValue }, update: { pois: pois as unknown as Prisma.InputJsonValue } })));
+      await store(`${city.name} places`, [...places].map(([key, pois]) => ({ key, pois })), UPSERT_POIS);
       const rows = [...detail];
-      for (let i = 0; i < rows.length; i += 200)
-        await prisma.$transaction(rows.slice(i, i + 200).map(([key, data]) => prisma.cityDetail.upsert({ where: { key }, create: { key, city: city.slug, data: data as unknown as Prisma.InputJsonValue }, update: { city: city.slug, data: data as unknown as Prisma.InputJsonValue } })));
+      await store(`${city.name} detail`, rows.map(([key, data]) => ({ key, city: city.slug, data })), UPSERT_DETAIL);
       // Cells that had something last time and have nothing now.
       await prisma.cityDetail.deleteMany({ where: { city: city.slug, key: { notIn: rows.map(([k]) => k) } } });
       await prisma.cityPack.update({ where: { slug: city.slug }, data: { status: "ready", cells: detail.size, objects, pitches, builtAt: new Date() } });
@@ -162,7 +203,7 @@ async function main() {
     }
     if (!cities.length) return console.log("No players with a real GPS position in the last 30 days.");
   } else {
-    const flagged = new Set([opt("--pbf")]);
+    const flagged = new Set([opt("--pbf"), opt("--env")]);
     const slugs = args.filter((a) => !a.startsWith("--") && !flagged.has(a));
     cities = slugs.map((s) => CITIES.find((c) => c.slug === s)).filter((c): c is CityDef => !!c);
     if (!slugs.length || cities.length !== slugs.length) {
