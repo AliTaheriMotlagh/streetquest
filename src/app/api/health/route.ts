@@ -50,7 +50,7 @@ export async function GET(req: Request) {
   }
   if (ext)
     for (const [site, r] of Object.entries(ext))
-      if (!r.ok && r.status !== "off") problems.push(`This server can't reach ${site} (${r.status}): its store data stays empty. Host the app in Iran or set ${site.toUpperCase()}_URL to a relay.`);
+      if (!r.ok && r.status !== "off") problems.push(`This server can't reach ${site} (${r.status}): its store data stays empty. Run relay/relay.mjs on a server in Iran and set ${site.toUpperCase()}_URL to it (README → Deploy), or host the app in Iran.`);
   const ok = database === "ok" && schema === "ok";
   return Response.json({ ok, settings, database, schema, problems, ...(ext ? { external: ext } : {}) }, { status: ok ? 200 : 503 });
 }

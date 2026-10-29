@@ -216,8 +216,8 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 `npm run test:mp` (lobbies, squad runs, towers shooting players, C4, squads, skirmishes, raider waves, pings).
 
 **Deployed and the store layers are empty?** Open `/api/health?ext=1`: it says whether the server can reach Snappfood,
-Torob and Divar. Iranian sites often refuse servers abroad — host in Iran, or point `SNAPPFOOD_URL` / `TOROB_URL` /
-`DIVAR_URL` at a relay that can.
+Torob and Divar. Iranian sites often refuse servers abroad (Snappfood answers Vercel with 403) — run the relay in Iran
+(*Deploy → Snappfood from abroad*) and point `SNAPPFOOD_URL` (or `TOROB_URL` / `DIVAR_URL`) at it, or host in Iran.
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.
@@ -284,6 +284,25 @@ Torob and Divar. Iranian sites often refuse servers abroad — host in Iran, or 
 
 After the first deploy, play once, then open `/admin?key=<ADMIN_KEY>` to make yourself admin.
 Don't run the demo seed in production.
+
+### Snappfood from abroad: the relay (ArvanCloud)
+Snappfood refuses servers outside Iran: on Vercel the map shows no restaurants and no menus, and `/api/health?ext=1`
+says `snappfood (403)`. Browsers can't read it either (it only allows its own sites). `relay/relay.mjs` is a small
+relay with no dependencies (any Node 18+) that runs on a server in Iran; the app reads Snappfood through it.
+1. In the ArvanCloud panel, create a **Cloud Server** in an Iranian region with **Ubuntu 24.04** (the smallest size is
+   plenty) and make sure port 80 is open in its security group.
+2. From the repo: `scp relay/relay.mjs relay/install.sh <user>@<server-ip>:` then
+   `ssh -t <user>@<server-ip> sudo bash install.sh`. It installs Node from Ubuntu's mirror, runs the relay as a service
+   on port 80 with a random key (kept in `/etc/streetquest-relay.env`), checks that Snappfood answers the server
+   (`200 = good`) and prints the `SNAPPFOOD_URL` to use. Run it again to update the relay; the key stays.
+3. HTTPS (recommended — the key is part of the URL): put a (sub)domain on **ArvanCloud CDN** with an A record to the
+   server, going through the CDN with HTTPS on. The relay marks every answer `no-store`, so the CDN doesn't cache them.
+4. On Vercel: `vercel env add SNAPPFOOD_URL production` = `https://<domain>/<key>/snappfood` (or the
+   `http://<ip>/<key>/snappfood` the script printed), then redeploy. `/api/health?ext=1` should say `snappfood` `200`.
+
+The relay forwards only the endpoints the game calls (anything else, or a wrong key, is a 404), passes the app's
+User-Agent and nothing about the player, and logs no positions. Torob and Divar answer Vercel directly today; if one
+starts refusing, point `TOROB_URL` / `DIVAR_URL` at the same relay with `/torob` or `/divar` at the end.
 
 ## Production checklist
 
