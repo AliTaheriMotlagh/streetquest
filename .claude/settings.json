@@ -22,5 +22,21 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "deny": [
+      "Read(./node_modules/**)",
+      "Read(./.next*/**)",
+      "Read(./.cache/**)",
+      "Read(./graphify-out/graph.json)",
+      "Read(./graphify-out/graph.html)",
+      "Read(./graphify-out/cache/**)",
+      "Read(./package-lock.json)",
+      "Read(./tsconfig.tsbuildinfo)",
+      "Read(./public/models/**)",
+      "Read(./public/draco/**)",
+      "Read(./test-results/**)",
+      "Read(./playwright-report/**)"
+    ]
   }
 }

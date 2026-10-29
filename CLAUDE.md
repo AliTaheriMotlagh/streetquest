@@ -41,3 +41,11 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Token budget (follow always)
+- Graph first: `graphify query/path/explain` before any grep or file read; never open graph.json/graph.html (denied in `.claude/settings.json`, as are node_modules, .next*, lockfile, models).
+- Read ranges, not whole files; search with `rg`/`fd`/`sg`.
+- Pipe noisy output: `npm test 2>&1 | tail -40`, `| rg -i "fail|error"`; run one spec, full `npm test` only once at the end.
+- Wide multi-file searches → Explore subagent (keeps dumps out of this context).
+- Don't re-read a file just edited; don't repeat what the diff already shows in replies — keep answers short.
+- Unrelated new task → suggest `/clear`; long task → `/compact`.
