@@ -216,6 +216,21 @@ function centroid(geom: { lat: number; lon: number }[]) {
   return { lat: lat / geom.length, lng: lon / geom.length };
 }
 
+/** Named places kept per cell. */
+export const MAX_PLACES = 400;
+/** OpenStreetMap tags of a named place we use (a restaurant, a shop, a park…). */
+export const isNamedPlace = (tags: Record<string, string>) => !!catOfTags(tags) && !!(tags.name || tags["name:en"] || tags.brand);
+/** The named place an element is: a node, or the centre of a building/area that is the place. */
+export function placeOf(el: { type: string; id: number; lat?: number; lon?: number; tags?: Record<string, string>; geometry?: OsmPt[] }): Place | null {
+  const tags = el.tags ?? {};
+  const cat = catOfTags(tags);
+  const name = tags.name || tags["name:en"] || tags.brand;
+  if (!cat || !name) return null;
+  const at = el.type === "node" && el.lat != null && el.lon != null ? { lat: el.lat, lng: el.lon } : el.geometry?.length ? centroid(el.geometry) : null;
+  if (!at) return null;
+  return { id: `${el.type[0]}${el.id}`, name: name.slice(0, 60), cat, lat: Math.round(at.lat * Q) / Q, lng: Math.round(at.lng * Q) / Q, ...(tags.brand && tags.brand !== name ? { brand: tags.brand.slice(0, 40) } : {}) };
+}
+
 /** The street-furniture kind of a mapped point, or -1. */
 export function propOfTags(tags: Record<string, string>): number {
   if (tags.natural === "tree") return PROP.tree;
@@ -304,16 +319,10 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
       const kind = propOfTags(tags);
       if (kind >= 0 && inside({ lat: el.lat, lng: el.lon })) props.push(Math.round((el.lon - sw.lng) * Q), Math.round((el.lat - sw.lat) * Q), kind);
     }
-    // Named places (nodes, or the centre of a building/area that is the place).
-    const cat = catOfTags(tags);
-    const name = tags.name || tags["name:en"] || tags.brand;
-    if (cat && name && tile.p.length < 400) {
-      const at = el.type === "node" && el.lat != null && el.lon != null ? { lat: el.lat, lng: el.lon } : geom?.length ? centroid(geom) : null;
-      const id = `${el.type[0]}${el.id}`;
-      if (at && inside(at) && !seenPlace.has(id)) {
-        seenPlace.add(id);
-        tile.p.push({ id, name: name.slice(0, 60), cat, lat: Math.round(at.lat * Q) / Q, lng: Math.round(at.lng * Q) / Q, ...(tags.brand && tags.brand !== name ? { brand: tags.brand.slice(0, 40) } : {}) });
-      }
+    const place = tile.p.length < MAX_PLACES ? placeOf(el) : null;
+    if (place && inside(place) && !seenPlace.has(place.id)) {
+      seenPlace.add(place.id);
+      tile.p.push(place);
     }
     // Big buildings drawn as multipolygons (courtyards, malls, stations).
     if (el.type === "relation" && tags.building && tags.building !== "no" && el.members && !underground(tags)) {

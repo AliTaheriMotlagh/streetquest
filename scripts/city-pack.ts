@@ -15,8 +15,8 @@ import { rename } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { PrismaClient, type Prisma } from "@prisma/client";
-import { bboxAround, CITIES, packCells, rangeOf, type CityDef } from "../src/lib/cityPack";
-import { propOfTags } from "../src/lib/city";
+import { bboxAround, CITIES, packCells, packPlaces, rangeOf, type CityDef } from "../src/lib/cityPack";
+import { isNamedPlace, propOfTags } from "../src/lib/city";
 import { readOsm } from "./osm-pbf";
 
 try {
@@ -71,7 +71,11 @@ async function build(cities: CityDef[], file: string) {
   if (!dry) for (const c of cities) await prisma.cityPack.upsert({ where: { slug: c.slug }, create: { slug: c.slug, name: c.name, south: c.south, west: c.west, north: c.north, east: c.east, status: "building" }, update: { name: c.name, south: c.south, west: c.west, north: c.north, east: c.east, status: "building", note: null } });
   console.log(`▶ reading ${file} for ${cities.map((c) => c.name).join(", ")}…`);
   const inside = (lat: number, lon: number) => cities.some((c) => lat >= c.south && lat <= c.north && lon >= c.west && lon <= c.east);
-  const els = readOsm(file, { inside, node: (t) => propOfTags(t) >= 0, way: (t) => t.leisure === "pitch" || t.natural === "tree_row" }, (pass, mb) => process.stdout.write(`\r  pass ${pass}: ${Math.round(mb)} MB   `));
+  const els = readOsm(
+    file,
+    { inside, node: (t) => propOfTags(t) >= 0 || isNamedPlace(t), way: (t) => t.leisure === "pitch" || t.natural === "tree_row" || isNamedPlace(t) },
+    (pass, mb) => process.stdout.write(`\r  pass ${pass}: ${Math.round(mb)} MB   `),
+  );
   console.log(`\r  ${els.length.toLocaleString()} features in ${Math.round((Date.now() - t0) / 1000)} s`);
   for (const city of cities) {
     try {
@@ -84,8 +88,15 @@ async function build(cities: CityDef[], file: string) {
         for (let i = 2; i < d.o.length; i += 3) kinds.set(d.o[i], (kinds.get(d.o[i]) ?? 0) + 1);
       }
       const names = ["trees", "lamps", "signals", "bus stops", "crossings", "benches", "bins", "hydrants", "fountains"];
-      console.log(`  ${city.name}: ${[...kinds].sort((a, b) => a[0] - b[0]).map(([k, n]) => `${n.toLocaleString()} ${names[k]}`).join(", ")}, ${pitches} pitches in ${detail.size} cells`);
+      const places = packPlaces(els as Parameters<typeof packPlaces>[0], range);
+      let placeCount = 0;
+      for (const p of places.values()) placeCount += p.length;
+      console.log(`  ${city.name}: ${[...kinds].sort((a, b) => a[0] - b[0]).map(([k, n]) => `${n.toLocaleString()} ${names[k]}`).join(", ")}, ${pitches} pitches in ${detail.size} cells; ${placeCount.toLocaleString()} named places in ${places.size} cells`);
       if (dry) continue;
+      // Places go where the map and missions read them (a street-map tile from Overpass replaces them with its own copy).
+      const placeRows = [...places];
+      for (let i = 0; i < placeRows.length; i += 200)
+        await prisma.$transaction(placeRows.slice(i, i + 200).map(([key, pois]) => prisma.cityTile.upsert({ where: { key }, create: { key, pois: pois as unknown as Prisma.InputJsonValue }, update: { pois: pois as unknown as Prisma.InputJsonValue } })));
       const rows = [...detail];
       for (let i = 0; i < rows.length; i += 200)
         await prisma.$transaction(rows.slice(i, i + 200).map(([key, data]) => prisma.cityDetail.upsert({ where: { key }, create: { key, city: city.slug, data: data as unknown as Prisma.InputJsonValue }, update: { city: city.slug, data: data as unknown as Prisma.InputJsonValue } })));

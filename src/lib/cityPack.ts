@@ -3,8 +3,11 @@
 // stored per cell (CityDetail). The street-map tiles the drive is built from
 // carry buildings and streets but no street furniture; the pack adds every mapped tree,
 // lamp, traffic light, crossing, bus stop, bench, bin, hydrant, fountain and pitch.
-import { pitchOf, propOfTags, TILE_DEG, tileKey, tileOf, tileSW, type CityDetail } from "./city";
+// It also stores the city's named places (CityTile.pois), which otherwise only arrive
+// with a street-map tile from Overpass — often busy, so whole areas had none.
+import { MAX_PLACES, pitchOf, placeOf, propOfTags, TILE_DEG, tileKey, tileOf, tileSW, type CityDetail } from "./city";
 import type { LatLng } from "./geo";
+import type { Place } from "./places";
 
 export type Bbox = { south: number; west: number; north: number; east: number };
 /** `extract`: the Geofabrik region file it's read from ("asia/iran" → asia/iran-latest.osm.pbf). */
@@ -85,6 +88,27 @@ export function packCells(elements: El[], c: { cx0: number; cy0: number; cx1: nu
       const pitch = pitchOf(g, tags, sw);
       if (pitch && d.f.length < 60) d.f.push(pitch);
     }
+  }
+  return out;
+}
+
+/**
+ * Named places (restaurants, shops, parks…) per cell of the range `c`, the same ones a
+ * street-map tile carries, so the map and missions have them without Overpass.
+ */
+export function packPlaces(elements: El[], c: { cx0: number; cy0: number; cx1: number; cy1: number }): Map<string, Place[]> {
+  const out = new Map<string, Place[]>();
+  const seen = new Set<string>();
+  for (const el of elements) {
+    const p = placeOf(el);
+    if (!p || seen.has(p.id)) continue;
+    const t = tileOf(p);
+    if (t.cx < c.cx0 || t.cx >= c.cx1 || t.cy < c.cy0 || t.cy >= c.cy1) continue;
+    seen.add(p.id);
+    const key = tileKey(t.cx, t.cy);
+    let list = out.get(key);
+    if (!list) out.set(key, (list = []));
+    if (list.length < MAX_PLACES) list.push(p);
   }
   return out;
 }

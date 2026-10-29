@@ -131,7 +131,7 @@ docker compose up -d        # local Postgres
 cp .env.example .env        # defaults match docker-compose
 npx prisma db push          # create tables
 npm run db:seed             # demo data (SEED_LAT=.. SEED_LNG=.. to seed near you)
-npm run city:pack -- tehran # street detail for the 3D city (optional, ~20 s per country)
+npm run city:pack -- tehran # street detail and real places (optional, ~20 s per country)
 npm run dev                 # http://localhost:3000
 ```
 
@@ -258,9 +258,10 @@ Don't run the demo seed in production.
   button always works. `ADSENSE_TEST=on` shows Google's test ads while you try it. Admin → Game settings → Store & ads
   → *Google video ads on* switches it live; views are counted as "Google video ads" in Admin → Revenue.
 
-- **City packs (3D street detail):** `npm run city:pack -- tehran karaj mashhad isfahan shiraz tabriz` against the
-  production `DATABASE_URL` reads Geofabrik's daily Iran extract and stores every mapped tree, traffic light, crossing,
-  bus stop, bench, fountain and sports pitch per cell (`CityDetail`). `--top 3` builds the three places with the most
+- **City packs (3D street detail and real places):** `npm run city:pack -- tehran karaj mashhad isfahan shiraz tabriz`
+  against the production `DATABASE_URL` reads Geofabrik's daily Iran extract and stores every mapped tree, traffic
+  light, crossing, bus stop, bench, fountain and sports pitch per cell (`CityDetail`), and every named restaurant, café,
+  shop and park (`CityTile.pois`) — without it, places only arrive with an Overpass tile, which is often busy. `--top 3` builds the three places with the most
   active players (any country — the right extract is found automatically), `--list` shows what's built and where
   players are. Re-run weekly to pick up map edits.
 - **Live traffic:** comes from players' real GPS (shown only where 2+ players drove in the last 15 min) and, with
@@ -283,7 +284,7 @@ Don't run the demo seed in production.
 ## Before going big
 
 - Real places / 3D city: public Overpass servers are slow and rate-limited. Tiles are cached a month per cell, but at
-  scale run your own Overpass and point `OVERPASS_URL` at it.
+  scale run your own Overpass and point `OVERPASS_URL` at it. City packs cover places in the packed cities meanwhile.
 - Store menus: Snappfood and Torob are read through their unofficial web APIs, which can change or block servers
   outside Iran without notice — store cards then simply show no menu. Check `/api/local?near=1&lat=35.7&lng=51.4`
   from the production server after deploying.
