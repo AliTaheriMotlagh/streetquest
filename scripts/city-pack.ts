@@ -12,7 +12,8 @@
 // Data comes from Geofabrik's daily extracts (a country in one file, cached in .cache/osm
 // for 3 days) read locally by scripts/osm-pbf.ts, so building a city never queues on a
 // public Overpass server. Re-running refreshes a city.
-import { createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { parseEnv } from "node:util";
 import { rename } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -28,8 +29,11 @@ const opt = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const envFile = opt("--env") ?? ".env";
+// Overriding on purpose: importing @prisma/client has already loaded .env into
+// process.env, and process.loadEnvFile never replaces a variable that's set — so
+// `--env .env.prod` used to write to the local database.
 try {
-  process.loadEnvFile(envFile);
+  Object.assign(process.env, parseEnv(readFileSync(envFile, "utf8")));
 } catch (e) {
   if (opt("--env")) throw e;
 }
@@ -141,8 +145,9 @@ async function build(cities: CityDef[], file: string) {
       await store(`${city.name} places`, [...places].map(([key, pois]) => ({ key, pois })), UPSERT_POIS);
       const rows = [...detail];
       await store(`${city.name} detail`, rows.map(([key, data]) => ({ key, city: city.slug, data })), UPSERT_DETAIL);
-      // Cells that had something last time and have nothing now.
-      await prisma.cityDetail.deleteMany({ where: { city: city.slug, key: { notIn: rows.map(([k]) => k) } } });
+      // Cells that had something last time and have nothing now (one array parameter: a
+      // whole country is far more keys than Postgres allows as separate parameters).
+      await prisma.$executeRawUnsafe(`DELETE FROM "CityDetail" WHERE "city" = $1 AND NOT ("key" = ANY($2::text[]))`, city.slug, rows.map(([k]) => k));
       await prisma.cityPack.update({ where: { slug: city.slug }, data: { status: "ready", cells: detail.size, objects, pitches, builtAt: new Date() } });
     } catch (e) {
       if (!dry) await prisma.cityPack.update({ where: { slug: city.slug }, data: { status: "failed", note: String(e).slice(0, 300) } });
@@ -184,6 +189,7 @@ async function cityAt(p: { lat: number; lng: number }): Promise<CityDef> {
 
 async function main() {
   if (args.includes("--list")) {
+    console.log(`Database: ${dbUrl ? new URL(dbUrl).host : "?"} (${envFile})\n`);
     const packs = await prisma.cityPack.findMany({ orderBy: { builtAt: "desc" } });
     console.log("Built cities:");
     for (const c of packs) console.log(`  ${c.slug.padEnd(14)} ${c.status.padEnd(9)} ${String(c.objects).padStart(7)} objects ${String(c.pitches).padStart(5)} pitches  ${c.builtAt?.toISOString().slice(0, 16) ?? ""}`);

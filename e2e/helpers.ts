@@ -94,13 +94,13 @@ export function expectOk<T = Record<string, unknown>>(r: Res<T>) {
 
 // ---------------------------------------------------------------- real places
 const CELL = 0.004; // lib/geo CELL_DEG
-export type TestPlace = { id: string; name: string; cat: string; lat: number; lng: number };
+export type TestPlace = { id: string; name: string; cat: string; lat: number; lng: number; info?: Record<string, string> };
 
 /**
  * Upload a map tile (as an admin) for the cell around `at`, with named places spread over
  * it: half cafés, half groceries, so there are visit jobs and deliveries between them.
  */
-export async function uploadPlaces(admin: Player, at: LatLng, n = 24) {
+export async function uploadPlaces(admin: Player, at: LatLng, n = 24, extra: (i: number) => Partial<TestPlace> = () => ({})) {
   const cx = Math.floor(at.lng / CELL), cy = Math.floor(at.lat / CELL);
   const tag = Math.random().toString(36).slice(2, 7);
   const places: TestPlace[] = Array.from({ length: n }, (_, i) => ({
@@ -109,6 +109,7 @@ export async function uploadPlaces(admin: Player, at: LatLng, n = 24) {
     cat: i % 2 ? "grocery" : "cafe",
     lat: cy * CELL + (0.05 + 0.9 * ((i * 7) % n) / n) * CELL,
     lng: cx * CELL + (0.05 + 0.9 * ((i * 11) % n) / n) * CELL,
+    ...extra(i),
   }));
   expectOk(await admin.post("/api/city", { tile: { cx, cy, b: [], r: [{ l: [0, 0, 4000, 4000], w: 8, k: "minor" }], a: [], p: places } }));
   return { cx, cy, places };

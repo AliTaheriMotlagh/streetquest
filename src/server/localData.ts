@@ -1,52 +1,69 @@
 // What other sites know about a real store: Snappfood menus and catalogs (restaurants,
-// cafés, bakeries, supermarkets — with their real position, so they go on the map) and
-// Torob listings and prices. Neither has an official public API, so this stays polite:
+// cafés, bakeries, supermarkets — with their real position, so they go on the map),
+// Torob listings and prices, and the latest Divar ads in each neighbourhood. None has
+// an official public API, so this stays polite:
 //  - everything is cached in ExtCache (vendors per ~1 km cell and name searches for 12 h,
-//    a menu for 6 h, a Torob search or shop for 12 h), so a busy map costs them one
-//    request per area;
+//    a menu for 6 h, a Torob search or shop for 12 h, Divar's neighbourhoods for a week
+//    and their ads for 15 min), so a busy map costs them one request per area;
 //  - each key is fetched once at a time (deduped per instance, at most three requests at
 //    once, honest User-Agent), and a failed refresh serves the stale copy;
-//  - SNAPPFOOD_URL / TOROB_URL point at the sites ("off" disables them — the e2e tests
-//    point them at a local stub instead).
+//  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL point at the sites ("off" disables them — the
+//    e2e tests point them at a local stub instead).
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  divarLink, isFoodCat, LINK_CHECKS, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, torobLink, torobShopId, vendorKind,
-  type Menu, type StoreData, type StoreLink, type TorobItem, type TorobShop, type Vendor,
+  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, torobLink, torobShopId, vendorKind,
+  type DivarArea, type DivarCat, type DivarPost, type Menu, type StoreData, type StoreLink, type TorobItem, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
 
 const base = (env: string | undefined, fallback: string) => (env === "off" ? null : (env || fallback).replace(/\/$/, ""));
 const snappBase = () => base(process.env.SNAPPFOOD_URL, "https://snappfood.ir");
 const torobBase = () => base(process.env.TOROB_URL, "https://api.torob.com");
+const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
 
 const HOUR = 3600_000;
 const VENDORS_TTL = 12 * HOUR;
 const MENU_TTL = 6 * HOUR;
 const TOROB_TTL = 12 * HOUR;
+const DIVAR_PLACES_TTL = 7 * 24 * HOUR;
+const DIVAR_POSTS_TTL = 15 * 60_000;
 /** Vendor lists are cached per cell of this many degrees (~1 km). */
 const CELL = 0.01;
-/** Pages of 30 vendors read per cell: the list is every vendor delivering there, nearest not first. */
-const PAGES = 3;
+/**
+ * The list is every vendor delivering to a point (≈1,200 in central Tehran), nearest not
+ * first: read all of it in pages this big, up to MAX_VENDORS.
+ */
+const PAGE_SIZE = 400;
+const MAX_VENDORS = 2400;
 /** A store and a Snappfood vendor this close, with a similar name, are the same place. */
-const MATCH_M = 120;
+const MATCH_M = 150;
+/** …and this close when the names match word for word (the two sites often place a store a block apart). */
+const MATCH_SAME_NAME_M = 400;
 /** Search hits whose position is checked (one menu fetch each) when a store isn't in the cell's list. */
 const SEARCH_CHECKS = 3;
+/** Divar neighbourhoods whose centre is this close are "around" the player (the nearest always is). */
+const DIVAR_NEAR_M = 2500;
+const DIVAR_MAX_AREAS = 5;
+/** …unless even the nearest is this far: then the player isn't in a neighbourhood Divar knows. */
+const DIVAR_NEAREST_MAX_M = 6000;
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_PARALLEL = 3;
 
 let running = 0;
 const queue: (() => void)[] = [];
-async function getJson<T>(url: string): Promise<T | null> {
+async function getJson<T>(url: string, post?: unknown): Promise<T | null> {
   if (running >= MAX_PARALLEL) await new Promise<void>((r) => queue.push(r));
   running++;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
     const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
-    const res = await fetch(url, { headers: { "user-agent": ua, accept: "application/json" }, signal: ctl.signal });
+    const headers: Record<string, string> = { "user-agent": ua, accept: "application/json" };
+    const init: RequestInit = post === undefined ? { headers } : { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(post) };
+    const res = await fetch(url, { ...init, signal: ctl.signal });
     return res.ok ? ((await res.json().catch(() => null)) as T | null) : null;
   } catch {
     return null;
@@ -99,20 +116,22 @@ function toVendor(v: RawVendor): Vendor | null {
 
 const cellOf = (p: LatLng) => ({ y: Math.round(p.lat / CELL), x: Math.round(p.lng / CELL) });
 
-/** Every Snappfood vendor the first pages list for a cell (it lists vendors delivering there). */
+type RawVendorList = { data?: { count?: number; finalResult?: { type: string; data: RawVendor }[] } };
+
+/** Every Snappfood vendor delivering to a cell (it lists them all, in pages). */
 function vendorsInCell(c: { x: number; y: number }) {
-  return cached<Vendor[]>(`sf:cell:${c.y}:${c.x}`, VENDORS_TTL, async () => {
+  return cached<Vendor[]>(`sf:cell2:${c.y}:${c.x}`, VENDORS_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = { lat: c.y * CELL, lng: c.x * CELL };
-    const pages = await Promise.all(
-      Array.from({ length: PAGES }, (_, page) =>
-        getJson<{ data?: { finalResult?: { type: string; data: RawVendor }[] } }>(`${root}/mobile/v3/restaurant/vendors-list?${snappQuery(at)}&page=${page}&page_size=30`),
-      ),
-    );
-    if (pages.every((p) => !p?.data)) return null;
+    const page = (n: number) => getJson<RawVendorList>(`${root}/mobile/v3/restaurant/vendors-list?${snappQuery(at)}&page=${n}&page_size=${PAGE_SIZE}`);
+    const first = await page(0);
+    if (!first?.data) return null;
+    // The first page says how many there are; the rest come in parallel (getJson queues them).
+    const total = Math.min(MAX_VENDORS, first.data.count ?? 0);
+    const more = await Promise.all(Array.from({ length: Math.max(0, Math.ceil(total / PAGE_SIZE) - 1) }, (_, i) => page(i + 1)));
     const out = new Map<string, Vendor>();
-    for (const p of pages) for (const r of p?.data?.finalResult ?? []) if (r.type === "VENDOR") {
+    for (const p of [first, ...more]) for (const r of p?.data?.finalResult ?? []) if (r.type === "VENDOR") {
       const v = toVendor(r.data);
       if (v) out.set(v.code, v);
     }
@@ -121,7 +140,7 @@ function vendorsInCell(c: { x: number; y: number }) {
 }
 
 /** Snappfood vendors around a point, nearest first (for the map layer). */
-export async function vendorsAround(here: LatLng, radiusM = 1500): Promise<Vendor[]> {
+export async function vendorsAround(here: LatLng, radiusM = 2000): Promise<Vendor[]> {
   const list = (await vendorsInCell(cellOf(here))) ?? [];
   return list
     .map((v) => ({ v, d: distanceM(here, v) }))
@@ -144,17 +163,23 @@ function searchVendors(name: string, at: LatLng) {
   });
 }
 
-/** Next door needs a clear name match; right on top of it, half the name is enough. */
-const matchScore = (name: string, v: Vendor, d: number) => nameScore(name, v.title) - (d > 40 ? 0.15 : 0);
+/**
+ * How sure we are a vendor `d` metres away is this store (≥ 0.5: it is). Right on top of
+ * it, half the name is enough; next door needs a clear match; a block away, every word.
+ */
+const matchScore = (name: string, v: Vendor, d: number) => {
+  if (d > MATCH_SAME_NAME_M) return 0;
+  const s = nameScore(name, v.title);
+  if (d > MATCH_M) return s >= 1 ? 0.6 : 0;
+  return s - (d > 40 ? 0.15 : 0);
+};
 
-/** The Snappfood vendor that is this store: right next to it, with a similar name. */
+/** The Snappfood vendor that is this store: near it, with a similar name. */
 export async function matchVendor(store: { name: string; lat: number; lng: number; cat: string }): Promise<Vendor | null> {
   const list = (await vendorsInCell(cellOf(store))) ?? [];
   let best: { v: Vendor; score: number } | null = null;
   for (const v of list) {
-    const d = distanceM(store, v);
-    if (d > MATCH_M) continue;
-    const score = matchScore(store.name, v, d);
+    const score = matchScore(store.name, v, distanceM(store, v));
     if (score >= 0.5 && (!best || score > best.score)) best = { v, score };
   }
   if (best || !sellsOnSnappfood(store.cat)) return best?.v ?? null;
@@ -167,7 +192,7 @@ export async function matchVendor(store: { name: string; lat: number; lng: numbe
     .slice(0, SEARCH_CHECKS);
   for (const h of hits) {
     const v = (await vendorMenu(h.code, store).catch(() => null))?.vendor;
-    if (v && distanceM(store, v) <= MATCH_M && matchScore(store.name, v, distanceM(store, v)) >= 0.5) return v;
+    if (v && matchScore(store.name, v, distanceM(store, v)) >= 0.5) return v;
   }
   return null;
 }
@@ -274,6 +299,90 @@ async function torobShopById(id: number): Promise<TorobShop | null> {
   return out?.shop ?? null;
 }
 
+// ---------------------------------------------------------------- Divar
+type RawPlace = { id?: number; name?: string; slug?: string; centroid?: { latitude?: number; longitude?: number }; radius?: number };
+type DivarPlace = { id: number; name: string; slug: string; lat: number; lng: number; r: number };
+const toPlace = (p: RawPlace): DivarPlace | null =>
+  p.id && p.name && typeof p.centroid?.latitude === "number" && typeof p.centroid.longitude === "number"
+    ? { id: p.id, name: p.name, slug: p.slug ?? "", lat: p.centroid.latitude, lng: p.centroid.longitude, r: p.radius ?? 0 }
+    : null;
+
+/** Divar's cities, with their centre and radius (a week: they hardly change). */
+function divarCities() {
+  return cached<DivarPlace[]>("dv:cities2", DIVAR_PLACES_TTL, async () => {
+    const root = divarBase();
+    if (!root) return null;
+    const r = await getJson<{ cities?: RawPlace[] }>(`${root}/v8/places/cities`);
+    return r?.cities ? r.cities.map(toPlace).filter((c): c is DivarPlace => !!c) : null;
+  });
+}
+
+/** A city's neighbourhoods (Divar's "districts"), with their centres. */
+function divarDistricts(cityId: number) {
+  return cached<DivarPlace[]>(`dv:districts:${cityId}`, DIVAR_PLACES_TTL, async () => {
+    const root = divarBase();
+    if (!root) return null;
+    const r = await getJson<{ districts?: RawPlace[] }>(`${root}/v8/places/cities/${cityId}/districts`);
+    return r?.districts ? r.districts.map(toPlace).filter((d): d is DivarPlace => !!d) : null;
+  });
+}
+
+type RawPostRow = {
+  widget_type?: string;
+  data?: { title?: string; token?: string; image_url?: string; middle_description_text?: string; bottom_description_text?: string; top_description_text?: string; red_text?: string };
+};
+
+/** The latest ads in one neighbourhood (or the whole city: `districtId` 0), newest first. */
+export async function divarPosts(cityId: number, districtId: number, cat: DivarCat = "all"): Promise<DivarPost[]> {
+  const out = await cached<DivarPost[]>(`dv:posts:${cityId}:${districtId}:${cat}`, DIVAR_POSTS_TTL, async () => {
+    const root = divarBase();
+    if (!root) return null;
+    const data = { category: { str: { value: DIVAR_CATS[cat].slug } }, ...(districtId ? { districts: { repeated_string: { value: [String(districtId)] } } } : {}) };
+    const r = await getJson<{ list_widgets?: RawPostRow[] }>(`${root}/v8/postlist/w/search`, { city_ids: [String(cityId)], search_data: { form_data: { data } } });
+    if (!r?.list_widgets) return null;
+    return r.list_widgets
+      .filter((w) => w.widget_type === "POST_ROW" && w.data?.token && w.data.title)
+      .map((w) => ({
+        token: w.data!.token!,
+        title: w.data!.title!,
+        price: w.data!.middle_description_text ?? "",
+        // "Half an hour ago in Tehranpars": Divar's own words, in Persian.
+        when: w.data!.bottom_description_text ?? "",
+        note: w.data!.red_text || w.data!.top_description_text || "",
+        photo: w.data!.image_url ?? "",
+        url: `https://divar.ir/v/${encodeURIComponent(w.data!.token!)}`,
+      }));
+  });
+  return out ?? [];
+}
+
+/**
+ * Divar around a point: the city it's in, the nearest few neighbourhoods (by their
+ * centre) and the latest ads in each — what the map pins on each neighbourhood.
+ */
+export async function divarAround(here: LatLng): Promise<DivarArea[]> {
+  const cities = (await divarCities()) ?? [];
+  const city = cities
+    .map((c) => ({ c, d: distanceM(here, c) }))
+    .filter((x) => x.d <= Math.max(x.c.r, 5000) + 5000)
+    .sort((a, b) => a.d - b.d)[0]?.c;
+  if (!city) return [];
+  const list = (await divarDistricts(city.id)) ?? [];
+  // Small towns have no neighbourhoods on Divar: the town itself is the one area (id 0).
+  if (!list.length) {
+    const m = distanceM(here, city);
+    if (m > Math.max(city.r, DIVAR_NEAREST_MAX_M)) return [];
+    const posts = await divarPosts(city.id, 0).catch(() => []);
+    return posts.length ? [{ city: city.id, citySlug: city.slug, id: 0, name: city.name, lat: city.lat, lng: city.lng, distanceM: Math.round(m), posts }] : [];
+  }
+  const districts = list.map((d) => ({ d, m: distanceM(here, d) })).sort((a, b) => a.m - b.m);
+  const near = districts.filter((x, i) => x.m <= DIVAR_NEAR_M || (i === 0 && x.m <= DIVAR_NEAREST_MAX_M)).slice(0, DIVAR_MAX_AREAS);
+  const areas = await Promise.all(
+    near.map(async ({ d, m }) => ({ city: city.id, citySlug: city.slug, id: d.id, name: d.name, lat: d.lat, lng: d.lng, distanceM: Math.round(m), posts: await divarPosts(city.id, d.id).catch(() => []) })),
+  );
+  return areas.filter((a) => a.posts.length);
+}
+
 // ---------------------------------------------------------------- one store
 /** The owner's links in the Business center and Market shop forms (empty = guess from the map). */
 export const OwnerLinks = {
@@ -282,7 +391,30 @@ export const OwnerLinks = {
   divar: z.string().trim().max(300).refine(LINK_CHECKS.divar, "Paste a link to your ad on divar.ir").default(""),
 };
 
-export type StoreInfo = { name: string; lat: number; lng: number; cat: string; snappfood?: string; torob?: string; divar?: string; website?: string; phone?: string };
+export type StoreInfo = {
+  name: string;
+  lat: number;
+  lng: number;
+  cat: string;
+  snappfood?: string;
+  torob?: string;
+  divar?: string;
+  website?: string | null;
+  phone?: string | null;
+  /** From the map (OpenStreetMap tags): Instagram handle, opening hours, address, a photo. */
+  instagram?: string;
+  hours?: string;
+  address?: string | null;
+  photo?: string;
+};
+
+const siteIcon = (web: string | null | undefined) => {
+  try {
+    return web ? `${new URL(web).origin}/favicon.ico` : "";
+  } catch {
+    return "";
+  }
+};
 
 /** Everything the store card shows from other sites: menu or catalog, Torob listings, links. */
 export async function storeData(s: StoreInfo): Promise<StoreData> {
@@ -307,6 +439,14 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   const dl = s.divar ? divarLink(s.divar) : null;
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
+  if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
   if (s.phone) links.push({ kind: "phone", url: `tel:${s.phone.replace(/[^\d+]/g, "")}`, label: s.phone });
-  return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links };
+  const about = {
+    photo: menu?.cover || s.photo || shop?.logo || "",
+    // Last resort: the store's own website icon.
+    logo: menu?.vendor.logo || shop?.logo || siteIcon(s.website) || "",
+    address: s.address || menu?.address || "",
+    hours: s.hours ?? "",
+  };
+  return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links, about };
 }

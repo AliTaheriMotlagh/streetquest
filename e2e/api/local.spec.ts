@@ -1,6 +1,7 @@
-// Store menus and prices from other sites: the server reads Snappfood / Torob from a stub
-// this file serves (SNAPPFOOD_URL / TOROB_URL in playwright.config.ts), matches vendors to
-// real places by name and position, and lets owners pin their own links.
+// Store menus and prices from other sites: the server reads Snappfood / Torob / Divar from
+// a stub this file serves (SNAPPFOOD_URL / TOROB_URL / DIVAR_URL in playwright.config.ts),
+// matches vendors to real places by name and position, lets owners pin their own links,
+// shows a place's contacts from the map, and pins Divar ads on neighbourhoods.
 import { createServer, type Server } from "node:http";
 import { expect, test } from "@playwright/test";
 import { STUB_PORT } from "../../playwright.config";
@@ -11,6 +12,20 @@ type StubVendor = { code: string; title: string; lat: number; lon: number; type:
 const vendors: StubVendor[] = [];
 type StubShop = { id: number; name: string; products: string[] };
 const shops: StubShop[] = [];
+/**
+ * Divar: one city, and a fixed row of neighbourhoods at 75°N, where no random test spot
+ * lands. Fixed because the server keeps Divar's neighbourhood list for a week and the e2e
+ * database is never wiped: each run picks its own pair in the row (see the Divar test).
+ * Pair k: "A" at 75°N, (−170 + 0.3k)°E, and "B" 1.2 km east of it; the next pair is ~8 km on.
+ */
+const pairAt = (k: number) => ({ lat: 75, lng: -170 + 0.3 * k });
+const districts = Array.from({ length: 1000 }, (_, k) => [
+  { id: 2 * k + 1, name: `A${k}`, ...pairAt(k) },
+  { id: 2 * k + 2, name: `B${k}`, ...offset(pairAt(k), 0, 1200) },
+]).flat();
+/** `district` 0: a whole town's ads (Smalltown has no neighbourhoods). */
+const ads: { district: number; cat: string; title: string }[] = [{ district: 0, cat: "home-kitchen", title: "Old sofa" }];
+const SMALLTOWN = { latitude: -75, longitude: 20 };
 let server: Server;
 let calls = 0;
 
@@ -25,9 +40,26 @@ test.beforeAll(async () => {
     const u = new URL(req.url ?? "/", "http://stub");
     const send = (body: unknown) => (res.setHeader("content-type", "application/json"), res.end(JSON.stringify(body)));
     if (u.pathname === "/sf/mobile/v3/restaurant/vendors-list") {
+      // Like the real one: everyone delivering here, `count` of them, in pages.
       const at = { lat: Number(u.searchParams.get("lat")), lng: Number(u.searchParams.get("long")) };
-      const page = u.searchParams.get("page") === "0" ? vendors.filter((v) => near(at, v) && !v.unlisted) : [];
-      return send({ status: true, data: { finalResult: page.map((v) => ({ type: "VENDOR", data: vendorJson(v) })) } });
+      const all = vendors.filter((v) => near(at, v) && !v.unlisted);
+      const size = Number(u.searchParams.get("page_size")), from = Number(u.searchParams.get("page")) * size;
+      return send({ status: true, data: { count: all.length, finalResult: all.slice(from, from + size).map((v) => ({ type: "VENDOR", data: vendorJson(v) })) } });
+    }
+    // Northville (neighbourhoods along 75°N) and Smalltown (none) far from every random spot.
+    if (u.pathname === "/dv/v8/places/cities") return send({ cities: [{ id: 1, name: "Northville", slug: "northville", centroid: { latitude: 75, longitude: 0 }, radius: 3_000_000 }, { id: 2, name: "Smalltown", slug: "smalltown", centroid: SMALLTOWN, radius: 3000 }] });
+    if (u.pathname === "/dv/v8/places/cities/2/districts") return send({ districts: [] });
+    if (u.pathname === "/dv/v8/places/cities/1/districts") return send({ districts: districts.map((d) => ({ id: d.id, name: d.name, slug: `d${d.id}`, centroid: { latitude: d.lat, longitude: d.lng } })) });
+    if (u.pathname === "/dv/v8/postlist/w/search" && req.method === "POST") {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const data = JSON.parse(raw).search_data.form_data.data;
+        const cat = data.category.str.value, d = Number(data.districts?.repeated_string.value[0] ?? 0);
+        const rows = ads.filter((a) => a.district === d && (cat === "ROOT" || a.cat === cat));
+        send({ list_widgets: rows.map((a, i) => ({ widget_type: "POST_ROW", data: { title: a.title, token: `t${d}x${i}${a.cat}`, image_url: "", middle_description_text: "۱,۰۰۰ تومان", bottom_description_text: "در محله" } })) });
+      });
+      return;
     }
     if (u.pathname === "/sf/mobile/v2/restaurant/details/dynamic") {
       const v = vendors.find((x) => x.code === u.searchParams.get("vendorCode"));
@@ -204,5 +236,50 @@ test.describe("store menus & prices", () => {
     expect(d2.torobShop?.name).toBe("Some Torob Name");
     expect(d2.torob.map((i) => i.title)).toEqual(["Laptop stand"]);
     await Promise.all([admin.dispose(), seller.dispose(), buyer.dispose()]);
+  });
+});
+
+test.describe("the map's own data", () => {
+  test("a real place's contacts, hours and photo come from the map", async ({ baseURL }) => {
+    const admin = await adminPlayer(baseURL!);
+    const info = { phone: "+98 21 7700 0000", web: "https://shop.example/", ig: "test.shop", hours: "Sa-Th 09:00-22:00", addr: "Farjam St 12", img: "https://img.example/front.jpg" };
+    const { places } = await uploadPlaces(admin, randomSpot(), 2, (i) => (i === 1 ? { info } : {}));
+    const shop = places[1];
+    const p = await Player.create(baseURL!);
+    type D = { links: { kind: string; url: string; label: string }[]; about: { photo: string; logo: string; address: string; hours: string } };
+    const { data } = expectOk(await p.get<D>(`/api/local?store=place&id=${shop.id}&name=${encodeURIComponent(shop.name)}&lat=${shop.lat}&lng=${shop.lng}&cat=grocery`));
+    expect(data.about).toEqual({ photo: info.img, logo: "https://shop.example/favicon.ico", address: info.addr, hours: info.hours });
+    expect(data.links.map((l) => [l.kind, l.url])).toEqual([["website", info.web], ["instagram", "https://instagram.com/test.shop"], ["phone", "tel:+982177000000"]]);
+    // The map itself carries every place, without the contacts (the card asks for them).
+    const w = expectOk(await p.get<{ spots: { id: string; info?: unknown }[] }>(`/api/world?lat=${shop.lat}&lng=${shop.lng}`)).data;
+    expect(w.spots.map((s) => s.id)).toEqual(expect.arrayContaining(places.map((x) => x.id)));
+    expect(w.spots.find((s) => s.id === shop.id)?.info).toBeUndefined();
+    await Promise.all([admin.dispose(), p.dispose()]);
+  });
+
+  test("Divar: the neighbourhoods around you, their latest ads, by category", async ({ baseURL }) => {
+    // A pair of our own in the row, 300 m north of its "A"; the next pair is ~8 km away.
+    const k = Math.floor(Math.random() * 998);
+    const here = offset(pairAt(k), 300);
+    const [mine, next, far] = [districts[2 * k], districts[2 * k + 1], districts[2 * k + 2]];
+    ads.push({ district: mine.id, cat: "vehicles", title: "Pride 131" }, { district: mine.id, cat: "real-estate", title: "2-room flat" }, { district: next.id, cat: "jobs", title: "Courier wanted" }, { district: far.id, cat: "jobs", title: "Too far" });
+    const p = await Player.create(baseURL!);
+    type A = { areas: { id: number; city: number; name: string; distanceM: number; posts: { title: string; url: string; price: string }[] }[] };
+    const { data } = expectOk(await p.get<A>(`/api/local?divar=1&lat=${here.lat}&lng=${here.lng}`));
+    // Nearest first; a neighbourhood 9 km away isn't "around".
+    expect(data.areas.map((a) => a.name)).toEqual([mine.name, next.name]);
+    expect(data.areas[0].posts.map((x) => x.title).sort()).toEqual(["2-room flat", "Pride 131"]);
+    expect(data.areas[0].posts[0]).toMatchObject({ price: "۱,۰۰۰ تومان", url: expect.stringMatching(/^https:\/\/divar\.ir\/v\//) });
+    // The card's tabs: one category at a time.
+    const cars = expectOk(await p.get<{ posts: { title: string }[] }>(`/api/local?divar=${mine.id}&city=1&cat=vehicles`)).data.posts;
+    expect(cars.map((x) => x.title)).toEqual(["Pride 131"]);
+    expect((await p.get(`/api/local?divar=${mine.id}&city=1&cat=nope`)).status).toBe(400);
+    // A town with no neighbourhoods: its own ads, on its centre.
+    const town = expectOk(await p.get<A>(`/api/local?divar=1&lat=${SMALLTOWN.latitude + 0.01}&lng=${SMALLTOWN.longitude}`)).data.areas;
+    expect(town).toEqual([expect.objectContaining({ id: 0, city: 2, name: "Smalltown", posts: [expect.objectContaining({ title: "Old sofa" })] })]);
+    // Nowhere near a neighbourhood Divar knows: nothing to pin.
+    const nowhere = randomSpot();
+    expect(expectOk(await p.get<A>(`/api/local?divar=1&lat=${nowhere.lat}&lng=${nowhere.lng}`)).data.areas).toEqual([]);
+    await p.dispose();
   });
 });

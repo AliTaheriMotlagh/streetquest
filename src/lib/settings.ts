@@ -27,7 +27,7 @@ const DEFAULTS = {
     { amount: 50_000, price: 400_000, perCell: 1 },
     { amount: 100_000, price: 1_000_000, perCell: 0.5 },
   ] as MoneyTier[],
-  mapMaxItems: 10,
+  mapMaxItems: 14,
   placeVisitToman: 10_000,
   placeDeliverToman: 20_000,
   moneyDailyCap: 0,
@@ -50,6 +50,8 @@ const DEFAULTS = {
 
   // ---- real places & businesses
   placeMissionShare: 1,
+  mapPlacesRadiusM: 1200,
+  mapMaxPlaces: 300,
   bizEnabled: true,
   bizCampaignMaxCoins: 200,
   bizTrialDays: 14,
@@ -185,10 +187,12 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "driveSpeedKmh", group: msg("Play from home"), label: msg("3D car top speed (km/h)"), help: msg("Players driving the 3D city from home can move this fast; the server accepts positions up to this speed."), min: 10, max: 300 },
 
   { key: "placeMissionShare", group: msg("Real places & businesses"), label: msg("Places with a mission"), help: msg("Share of real shops, restaurants and cafés that offer a mission in each 30-minute window (1 = every store)."), min: 0, max: 1, step: 0.05 },
+  { key: "mapPlacesRadiusM", group: msg("Real places & businesses"), label: msg("Places on the map: range (m)"), help: msg("How far around a player every real restaurant, café, shop and park is drawn on the map (with or without a mission). 0 hides them."), min: 0, max: 3000, step: 50 },
+  { key: "mapMaxPlaces", group: msg("Real places & businesses"), label: msg("Places on the map: most at once"), help: msg("The nearest this many real places are drawn; further out they group into bubbles as the map zooms out."), min: 0, max: 800 },
   { key: "bizEnabled", group: msg("Real places & businesses"), label: msg("Business accounts on"), help: msg("Real stores can register, claim their place on the map and post campaigns.") },
   { key: "bizCampaignMaxCoins", group: msg("Real places & businesses"), label: msg("Max coins per campaign visit"), help: msg("The most coins a business campaign can pay a player per check-in or redemption."), min: 0, max: 5000 },
   { key: "bizTrialDays", group: msg("Real places & businesses"), label: msg("Free trial (days)"), help: msg("How long a new business can try the Starter plan for free (once)."), min: 0, max: 90 },
-  { key: "localDataEnabled", group: msg("Real places & businesses"), label: msg("Menus & prices from Snappfood and Torob"), help: msg("Store cards show the real menu or catalog (Snappfood) and online prices (Torob), and the map can show Snappfood vendors. Owners can paste their own links.") },
+  { key: "localDataEnabled", group: msg("Real places & businesses"), label: msg("Menus, prices and ads from Snappfood, Torob and Divar"), help: msg("Store cards show the real menu or catalog (Snappfood) and online prices (Torob); the map shows Snappfood vendors and the latest Divar ads in each neighbourhood. Owners can paste their own links.") },
 
   { key: "socialEnabled", group: msg("Social"), label: msg("Social feed on"), help: msg("Players can post, follow each other, like and comment.") },
   { key: "socialPostsPerHour", group: msg("Social"), label: msg("Posts per hour (max)"), help: msg("How many posts one player can publish per hour — keeps the feed free of spam."), min: 1, max: 100 },

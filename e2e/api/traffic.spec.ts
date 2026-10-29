@@ -56,3 +56,16 @@ test.describe("city packs", () => {
     for (const path of ["/api/dem/14/1/1", "/api/dem/6/1/1", "/api/dem/9/512/1", "/api/dem/9/-1/1", "/api/dem/9/1/x"]) expect((await request.get(path)).status(), path).toBe(400);
   });
 });
+
+test.describe("navigation", () => {
+  test("routes need two real points, and say so when routing is off", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    const a = randomSpot(), b = offset(a, 800);
+    expect((await p.get(`/api/route?from=${a.lat},${a.lng}`)).status).toBe(400);
+    expect((await p.get(`/api/route?from=${a.lat},${a.lng}&to=95,10`)).status).toBe(400);
+    expect((await p.get(`/api/route?from=${a.lat},${a.lng}&to=${a.lat + 3},${a.lng}`)).status).toBe(400); // 300+ km
+    // The tests run without a Neshan key: a clear 503, and the card keeps its Directions links.
+    expect((await p.get(`/api/route?from=${a.lat},${a.lng}&to=${b.lat},${b.lng}`)).status).toBe(503);
+    await p.dispose();
+  });
+});

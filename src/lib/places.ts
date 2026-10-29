@@ -14,8 +14,14 @@ export type PlaceCat =
   | "burger" | "pizza" | "restaurant" | "cafe" | "bakery" | "icecream" | "bar"
   | "grocery" | "pharmacy" | "fuel" | "gym" | "park" | "fashion" | "tech" | "books" | "cinema" | "bank" | "shop";
 
+/**
+ * How to reach a real place, from its OpenStreetMap tags: phone, website, Instagram
+ * handle, opening hours (OSM syntax, e.g. "Sa-Th 09:00-23:00"), street address and a
+ * photo or logo URL. Only what's mapped is set.
+ */
+export type PlaceInfo = { phone?: string; web?: string; ig?: string; hours?: string; addr?: string; img?: string };
 /** A named real place, from OpenStreetMap or a business that registered in the game. */
-export type Place = { id: string; name: string; cat: PlaceCat; lat: number; lng: number; brand?: string };
+export type Place = { id: string; name: string; cat: PlaceCat; lat: number; lng: number; brand?: string; info?: PlaceInfo };
 
 export const PLACE_CATS: Record<PlaceCat, { emoji: string; label: string; color: string }> = {
   burger: { emoji: "🍔", label: msg("Burgers & fast food"), color: "#ff9f1c" },

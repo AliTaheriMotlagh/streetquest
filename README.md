@@ -112,13 +112,26 @@ mood scales XP; loot funds research; territory funds the army.
   and coupons (a code the cashier redeems at the till), and see visits, redemptions and repeat customers. Plans:
   Free / Starter / Pro / Chain (Stripe), with a free trial. See `marketing/BUSINESS_PLAN.md` for the monetisation plan.
 - **Real menus & prices** — every store card (real places, businesses, Market shops) shows the store's real menu or
-  catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~120 m, from the
-  area's vendor list or else Snappfood's own search) and, for non-food stores, its own Torob shop (found by exact
-  name or the owner's torob.com/shop link) with that shop's catalog and a search inside it or across all of Torob.
-  Off by default on the map: ⋯ → 🍽️ *Menus on the map* puts Snappfood
-  vendors on the map, filtered by kind; tap one for its menu. Owners can paste their Snappfood / Torob / Divar links
-  in the Business center or their Market shop, which beat the automatic match. (Divar ads near a location aren't
-  shown: Divar's API refuses automated access and its Kenar platform has no public search.)
+  catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~150 m, or up to
+  400 m when every word of the name matches, from the area's whole vendor list or else Snappfood's own search) and,
+  for non-food stores, its own Torob shop (found by exact name or the owner's torob.com/shop link) with that shop's
+  catalog and a search inside it or across all of Torob. On top: a picture (Snappfood cover, an OSM photo), a logo
+  (Snappfood, Torob, or the store website's icon), the address and opening hours, and links to call, its website and
+  Instagram — contacts come from the map (OSM `phone`, `website`, `contact:instagram`, `opening_hours`, `addr:*`,
+  `image` / `wikimedia_commons`, stored with each place by the city pack). Owners can paste their Snappfood / Torob /
+  Divar links in the Business center or their Market shop, which beat the automatic match.
+- **On the map** (⋯ → 🗺️ *On the map*, everything on by default): 📍 every real place within 1.2 km (restaurants,
+  cafés, shops, parks — with or without a job; tap for its menu and contacts), Snappfood vendors by kind with their
+  logo up close (one sign per store: an OSM place that is a vendor shows as the vendor), 📢 Divar — each nearby
+  neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…), and 🚦 live
+  traffic. Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
+  its sign size); nothing groups from zoom 18, plain places name themselves only there, and places, vendors and ads
+  are left out at city zoom. The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor that moves
+  only after a 250 m walk, so they don't reshuffle on every refresh.
+- **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a live driving route (Neshan, with
+  today's traffic) to it: a blue line, the minutes and distance left and the next turn in Persian; it re-routes when
+  you're 70 m off the line, refreshes every 2 minutes, and ends on arrival. Each route also feeds the traffic layer.
+  Without Neshan routing, `/api/route` answers 503 and the card keeps its Directions links (Google, Apple, Waze…).
 
 Plus the original layer: Pokémon-GO-style spawns, GTA-style timed runs, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
@@ -131,7 +144,7 @@ docker compose up -d        # local Postgres
 cp .env.example .env        # defaults match docker-compose
 npx prisma db push          # create tables
 npm run db:seed             # demo data (SEED_LAT=.. SEED_LNG=.. to seed near you)
-npm run city:pack -- tehran # street detail and real places (optional, ~20 s per country)
+npm run city:pack -- iran   # street detail and real places for the whole country (optional, ~4 min; or one city: tehran)
 npm run dev                 # http://localhost:3000
 ```
 
@@ -192,7 +205,7 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 | Tower defense: towers fire when a commander reports their position (`/api/loc` → `takeFire`), HP regenerates from a stored snapshot; raider waves are generated from a seed and fought by a deterministic simulation the server resolves once and clients animate | `src/lib/td.ts`, `src/server/td.ts`, `src/app/api/{towers,waves}` |
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
-| Store menus & prices: Snappfood (vendor list per ~1 km cell, 3 pages, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h) and Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. Neither has an official API — `SNAPPFOOD_URL` / `TOROB_URL` (`off` disables), admin switch *Menus & prices from Snappfood and Torob* | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `src/components/game/StoreInfo.tsx` |
+| Store menus, prices & ads: Snappfood (a cell's whole vendor list — every vendor delivering there, read 400 a page — per ~1 km cell, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h), Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h) and Divar (cities and neighbourhoods a week, each neighbourhood's latest ads per category 15 min) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. None has an official API — `SNAPPFOOD_URL` / `TOROB_URL` / `DIVAR_URL` (`off` disables), admin switch *Menus, prices and ads from Snappfood, Torob and Divar*; *Places on the map* range / most at once | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `/api/route`, `src/components/game/StoreInfo.tsx`, `GameMap.tsx` |
 | 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`) | `src/components/drive` |
 | Street Arena: a separate Node WebSocket server (`realtime/`) holds everyone in memory — no database. The app signs a 10-min ticket (`/api/rt/ticket`: who you are, friends, virtual or real GPS); results come back HMAC-signed (`/api/rt/result`, paid once per match, daily cap). Binary state 20×/s each way, positions in each client's own local metres, interest management (600 m, same privacy rules as the HTTP presence). Hits: the client draws them at once, the server referees with lag compensation (targets rewound ≤ 350 ms), fire-rate/ammo/range checks and, in matches, line of sight through the real buildings (the host's client sends the arena's streets and footprints). Bots walk a street graph built from the same map | `realtime/`, `src/lib/arena`, `src/components/arena`, `/api/rt` |
 | Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
@@ -258,16 +271,19 @@ Don't run the demo seed in production.
   button always works. `ADSENSE_TEST=on` shows Google's test ads while you try it. Admin → Game settings → Store & ads
   → *Google video ads on* switches it live; views are counted as "Google video ads" in Admin → Revenue.
 
-- **City packs (3D street detail and real places):** `npm run city:pack:prod -- tehran karaj mashhad isfahan shiraz tabriz`
-  reads production settings from `.env.prod` (a copy of `.env` with the production `DATABASE_URL` and
-  `DATABASE_URL_UNPOOLED`; git-ignored — keep `.env` on your local database) and Geofabrik's daily Iran extract and stores every mapped tree, traffic
+- **City packs (3D street detail and real places):** `npm run city:pack:prod -- iran` (the whole country — every town
+  and the roads between them, ~118k places in ~35k cells, ~4 min to read; or single cities: `tehran karaj mashhad
+  isfahan shiraz tabriz`) reads production settings from `.env.prod` (a copy of `.env` with the production
+  `DATABASE_URL` and `DATABASE_URL_UNPOOLED`; git-ignored — keep `.env` on your local database; its values win over
+  `.env`, and the first line printed is the database it writes to) and Geofabrik's daily Iran extract and stores every mapped tree, traffic
   light, crossing, bus stop, bench, fountain and sports pitch per cell (`CityDetail`), and every named restaurant, café,
   shop and park (`CityTile.pois`) — without it, places only arrive with an Overpass tile, which is often busy. `--top 3` builds the three places with the most
   active players (any country — the right extract is found automatically), `--list` shows what's built and where
   players are. Re-run weekly to pick up map edits.
 - **Live traffic:** comes from players' real GPS (shown only where 2+ players drove in the last 15 min) and, with
-  `NESHAN_API_KEY`, from Neshan's live routing where players are looking. The key needs the **Direction** service
-  enabled in the Neshan panel — `/api/traffic` reports `"neshan": "no-access"` until it is.
+  `NESHAN_API_KEY`, from Neshan's live routing where players are looking and from every 🧭 route. The key needs the
+  **Direction** service enabled in the Neshan panel — `/api/traffic` reports `"neshan": "no-access"` until it is.
+  The 2D map draws it as short dashes per direction (green → dark red by speed), refreshed every minute.
   AI cars drive the real streets at those speeds and stop at the traffic lights, which run one 40 s cycle on the
   clock (north–south first) so every player sees the same lights.
 - **Mountain skyline:** `/api/dem` proxies Terrarium elevation tiles (AWS open terrain data, cached for a month;
@@ -286,9 +302,11 @@ Don't run the demo seed in production.
 
 - Real places / 3D city: public Overpass servers are slow and rate-limited. Tiles are cached a month per cell, but at
   scale run your own Overpass and point `OVERPASS_URL` at it. City packs cover places in the packed cities meanwhile.
-- Store menus: Snappfood and Torob are read through their unofficial web APIs, which can change or block servers
-  outside Iran without notice — store cards then simply show no menu. Check `/api/local?near=1&lat=35.7&lng=51.4`
-  from the production server after deploying.
+- Store menus and ads: Snappfood, Torob and Divar are read through their unofficial web APIs, which can change or
+  block servers outside Iran without notice — store cards then simply show no menu, and the map no vendors or ads.
+  Check `/api/local?near=1&lat=35.7&lng=51.4` and `/api/local?divar=1&lat=35.7&lng=51.4` from the production server
+  after deploying. Re-run the city packs (`npm run city:pack:prod -- iran`)
+  so production places carry their contacts.
 - Map tiles: the default public OSM tile server is for light use only. Set
   `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia. It replaces the
   default street tiles (fantasy, street, night ops and the filtered looks); the satellite, terrain and CARTO styles

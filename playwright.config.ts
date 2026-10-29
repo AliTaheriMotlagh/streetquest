@@ -55,9 +55,10 @@ export default defineConfig({
           OVERPASS_URL: "off",
           // Traffic tests stay offline (players' GPS only).
           NESHAN_API_KEY: "",
-          // Snappfood / Torob answer from a stub the test starts (e2e/api/local.spec.ts).
+          // Snappfood / Torob / Divar answer from a stub the test starts (e2e/api/local.spec.ts).
           SNAPPFOOD_URL: `http://localhost:${STUB_PORT}/sf`,
           TOROB_URL: `http://localhost:${STUB_PORT}/tr`,
+          DIVAR_URL: `http://localhost:${STUB_PORT}/dv`,
           // No real push notifications or payments from tests.
           VAPID_PUBLIC_KEY: "",
           VAPID_PRIVATE_KEY: "",

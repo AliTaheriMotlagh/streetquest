@@ -1740,3 +1740,28 @@ html.lite .biz-bar i::after { animation: none; }
 .owner-links legend { padding: 0 6px; }
 .more-menu .more-note { margin: 6px 10px 2px; max-width: 220px; }
 .mk.vendor.closed { opacity: .6; filter: saturate(.5); }
+
+/* ---- On the map: every real place, vendor logos, Divar neighbourhoods, navigation */
+.mk.place.spot { font-size: 17px; }
+.mk.place.spot .ring { inset: -4px; border-width: 2px; box-shadow: none; opacity: .85; background: rgba(255,255,255,.28); }
+.mk.place.spot .nm { top: 24px; font-size: 9px; opacity: .92; }
+.mk.vendor img.lg { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); border-radius: 50%; object-fit: cover; background: #fff; border: 2px solid #ff2f6e; box-shadow: 0 3px 8px rgba(0,0,0,.45); }
+.mk.vendor.has-logo .nm { z-index: 1; }
+.mk.divar .ring { border-color: #c0392b; background: rgba(166,38,38,.28); opacity: 1; }
+.mk.divar .cl-n { position: absolute; top: -8px; right: -10px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: #c0392b; color: #fff; font: 800 11px/20px var(--body); text-align: center; text-shadow: none; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.mk.cluster.spots .ring { border-color: rgba(255,255,255,.6); }
+.mk.cluster.spots .cl-n { background: #5a6b85; }
+.route-chip { position: absolute; top: calc(120px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 550; display: flex; gap: 10px; align-items: center; width: max-content; max-width: calc(100% - 20px); padding: 8px 10px 8px 14px; border-radius: 16px; background: var(--panel); border: 2px solid #4cb8ff; box-shadow: 0 0 24px rgba(76,184,255,.35); backdrop-filter: blur(14px); }
+.route-chip .muted { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.ext-cover { position: relative; margin: 4px 0 10px; }
+.ext-cover-img { display: block; width: 100%; max-height: 170px; object-fit: cover; border-radius: 14px; background: rgba(255,255,255,.06); }
+.ext-cover-logo { position: absolute; bottom: 8px; inset-inline-start: 8px; width: 52px; height: 52px; border-radius: 12px; object-fit: cover; border: 2px solid #fff; background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.5); }
+.ext-about { display: grid; gap: 3px; margin: 0 0 8px; }
+.ext-hours { text-align: start; unicode-bidi: plaintext; }
+.ext-link.instagram { border-color: #d6249f; }
+.ext-rating { align-self: flex-start; }
+.ext-divar-tabs { margin-top: 6px; }
+.ext-link.divar.block { display: block; text-align: center; margin-top: 10px; }
+/* Plain places name themselves only at street level; vendors from neighbourhood zoom in. */
+.mk.place.spot .nm { display: none; }
+.lod-street .mk.place.spot .nm { display: block; }

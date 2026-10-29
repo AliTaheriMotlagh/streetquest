@@ -1,6 +1,8 @@
 // Everything on the map around the player, in one call. The map shows money and store
-// missions only — the nearest S.mapMaxItems of them, admin drops and featured
-// businesses first — plus other players. The rest feeds the panels (jobs, market…).
+// missions — the nearest S.mapMaxItems of them, admin drops and featured businesses
+// first — every real place around (spots: restaurants, cafés, shops, parks… within
+// S.mapPlacesRadiusM, tap for the menu) and other players. The rest feeds the panels
+// (jobs, market…).
 import { prisma } from "@/lib/db";
 import { bbox, dayPhase, distanceM, solarHour, type LatLng } from "@/lib/geo";
 import { S } from "@/lib/settings";
@@ -16,10 +18,14 @@ import { LOTTERY_SHOW_DRAWN_MS } from "@/lib/lottery";
 import { shopsInBox } from "@/server/shops";
 import { t } from "@/lib/i18n";
 import { missionsAround } from "@/server/places";
+import { placesNear } from "@/server/city";
 import { bizAround } from "@/server/business";
 import { moneyFor } from "@/server/money";
 import { tierAmount } from "@/lib/money";
 import { placeToman } from "@/lib/places";
+
+/** An anchor further than this from the player is stale: rank from the player instead. */
+const ANCHOR_MAX_M = 400;
 
 export const GET = route(async (req) => {
   const u = await requireUser();
@@ -27,6 +33,11 @@ export const GET = route(async (req) => {
   // Number(null) is 0: a missing param would quietly load the map at 0,0.
   const here = { lat: Number(sp.get("lat") ?? NaN), lng: Number(sp.get("lng") ?? NaN) };
   if (!Number.isFinite(here.lat) || !Number.isFinite(here.lng) || Math.abs(here.lat) > 90 || Math.abs(here.lng) > 180) throw new HttpError(400, t("lat/lng required"));
+  // What's "nearest" is measured from an anchor the client keeps still while the player
+  // walks around one spot (?alat&alng), so the chosen few don't reshuffle — and markers don't
+  // vanish — on every refresh. Ignored when it's far from the player.
+  const anchor = { lat: Number(sp.get("alat") ?? NaN), lng: Number(sp.get("alng") ?? NaN) };
+  const from = Number.isFinite(anchor.lat) && Number.isFinite(anchor.lng) && distanceM(here, anchor) <= ANCHOR_MAX_M ? anchor : here;
   const now = new Date();
 
   const near = bbox(here, 1500);
@@ -34,7 +45,7 @@ export const GET = route(async (req) => {
   const inBox = (b: ReturnType<typeof bbox>) => ({ lat: { gte: b.minLat, lte: b.maxLat }, lng: { gte: b.minLng, lte: b.maxLng } });
 
   await drawDue({ near: wide });
-  const [real, money, businesses, notes, events, deliveries, friends, nearbyUsers, rides, lotteries, shops] = await Promise.all([
+  const [real, money, businesses, notes, events, deliveries, friends, nearbyUsers, rides, lotteries, shops, around] = await Promise.all([
     missionsAround(here),
     moneyFor(u, here),
     bizAround(here, u.id),
@@ -74,6 +85,7 @@ export const GET = route(async (req) => {
       take: 30,
     }),
     shopsInBox(wide, u.id),
+    S.mapPlacesRadiusM > 0 && S.mapMaxPlaces > 0 ? placesNear(here, S.mapPlacesRadiusM, Math.round(S.mapMaxPlaces)) : Promise.resolve([]),
   ]);
   const placeDone = new Set((await prisma.claim.findMany({ where: { userId: u.id, spawnId: { in: real.missions.map((m) => m.id) } }, select: { spawnId: true } })).map((c) => c.spawnId));
 
@@ -84,7 +96,7 @@ export const GET = route(async (req) => {
   const places = real.missions.filter((m) => !claimedOsm.has(m.place.id) && !placeDone.has(m.id)).map((m) => ({ ...m, done: false, toman: placeToman(m.kind, u.remotePlay) }));
   type Item = { kind: "money" | "place" | "biz"; id: string; at: LatLng; worth?: number };
   // Bigger money is worth walking further for: 4× the toman counts as half the distance.
-  const dist = (x: Item) => distanceM(here, x.at) / Math.sqrt(Math.max(1, x.worth ?? 1));
+  const dist = (x: Item) => distanceM(from, x.at) / Math.sqrt(Math.max(1, x.worth ?? 1));
   const first: Item[] = [...money.priority.map((m) => ({ kind: "money" as const, id: m.id, at: m })), ...openBiz.filter((b) => b.featured || b.mine).map((b) => ({ kind: "biz" as const, id: b.id, at: b }))];
   const rest: Item[] = [
     ...money.rest.map((m) => ({ kind: "money" as const, id: m.id, at: m, worth: tierAmount(m.tier) / Math.max(1, S.moneyGps) })),
@@ -117,6 +129,8 @@ export const GET = route(async (req) => {
     solarHour: solarHour(here),
     money: [...money.priority, ...money.rest].filter((m) => moneyIds.has(m.id)),
     places: places.filter((m) => placeIds.has(m.id)),
+    // Every other real place around: a plain sign (a business that claimed one stands in for it).
+    spots: around.filter((p) => !claimedOsm.has(p.id)).map(({ id, name, cat, lat, lng }) => ({ id, name, cat, lat, lng })),
     businesses: businesses.filter((b) => bizIds.has(b.id)),
     notes: notes.map((n) => {
       const unlocked = n.authorId === u.id || (trusted ? distanceM(trusted, n) <= n.radiusM : false);

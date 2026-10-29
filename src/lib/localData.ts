@@ -24,9 +24,45 @@ export type Menu = { vendor: Vendor; cover: string; address: string; sections: M
 export type TorobItem = { title: string; price: number; from?: boolean; shop: string; photo: string; url: string };
 /** A shop on Torob; `count` is how many products it lists. */
 export type TorobShop = { id: number; name: string; logo: string; url: string; count: number };
-export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone"; url: string; label: string };
-/** `torob`: the store's own Torob shop catalog when `torobShop` is set, else listings only it sells. */
-export type StoreData = { menu: Menu | null; torob: TorobItem[]; torobQuery: string; torobShop: TorobShop | null; links: StoreLink[] };
+export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone" | "instagram"; url: string; label: string };
+/**
+ * `torob`: the store's own Torob shop catalog when `torobShop` is set, else listings only it sells.
+ * `about`: what the card shows at the top — a picture (Snappfood cover, OSM photo), a logo,
+ * the address and opening hours, whichever are known.
+ */
+export type StoreData = {
+  menu: Menu | null;
+  torob: TorobItem[];
+  torobQuery: string;
+  torobShop: TorobShop | null;
+  links: StoreLink[];
+  about: { photo: string; logo: string; address: string; hours: string };
+};
+
+// ---------------------------------------------------------------- Divar
+/** An ad on Divar. `price`, `when` ("half an hour ago in Narmak") and `note` are Divar's own words (Persian). */
+export type DivarPost = { token: string; title: string; price: string; when: string; note: string; photo: string; url: string };
+/** A Divar neighbourhood near the player (or a small town with none: `id` 0): pinned on its centre, with its latest ads. */
+export type DivarArea = { city: number; citySlug: string; id: number; name: string; lat: number; lng: number; distanceM: number; posts: DivarPost[] };
+/** The ad categories the Divar card can filter by (Divar's own category slugs). */
+export const DIVAR_CATS = {
+  all: { slug: "ROOT", emoji: "📢", label: msg("All ads") },
+  "real-estate": { slug: "real-estate", emoji: "🏠", label: msg("Homes") },
+  vehicles: { slug: "vehicles", emoji: "🚗", label: msg("Vehicles") },
+  digital: { slug: "electronic-devices", emoji: "📱", label: msg("Electronics") },
+  home: { slug: "home-kitchen", emoji: "🛋️", label: msg("Home & kitchen") },
+  services: { slug: "services", emoji: "🛠️", label: msg("Services") },
+  jobs: { slug: "jobs", emoji: "💼", label: msg("Jobs") },
+} as const;
+export type DivarCat = keyof typeof DIVAR_CATS;
+export const DIVAR_CAT_KEYS = Object.keys(DIVAR_CATS) as [DivarCat, ...DivarCat[]];
+
+/**
+ * Is this real place (OpenStreetMap) the same store as a Snappfood vendor on the map?
+ * Then the map shows one sign — the vendor's, which has the menu.
+ */
+export const sameStore = (p: { name: string; lat: number; lng: number }, v: { title: string; lat: number; lng: number }, metres: number) =>
+  metres <= 150 ? nameScore(p.name, v.title) >= 0.5 : metres <= 400 && nameScore(p.name, v.title) >= 1;
 
 /** Snappfood's vendor types, grouped the way the map filter shows them. */
 export type VendorKind = "food" | "cafe" | "sweets" | "market";
@@ -97,6 +133,9 @@ export function normName(s: string) {
     .replace(/ك/g, "ک")
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
+    // ۱۳۳ / ١٣٣ / 133 are one name.
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660))
     .replace(/[ً-ْ‌‏‎]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();

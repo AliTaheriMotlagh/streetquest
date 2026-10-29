@@ -1,11 +1,15 @@
-// Store menus, catalogs and prices from other sites — Snappfood, Torob, Divar
-// (StoreInfo.tsx, server/localData.ts, the "Menus on the map" filter).
+// Store menus, catalogs and prices from other sites — Snappfood, Torob, Divar — and the
+// map's extra layers and navigation (StoreInfo.tsx, server/localData.ts, the "On the
+// map" filter, the route chip).
 const local: Record<string, string> = {
   // ---- map filter
-  "Menus on the map": "منوها روی نقشه",
+  "On the map": "روی نقشه",
   "Show all": "نشون دادن همه",
   "Hide all": "مخفی کردن همه",
-  "Real menus and catalogs from Snappfood — tap a sign to see it.": "منو و کاتالوگ واقعی از اسنپ‌فود — روی تابلو بزن تا ببینی.",
+  "Real places, menus from Snappfood, ads from Divar and live traffic — tap a sign to see more.": "مکان‌های واقعی، منو از اسنپ‌فود، آگهی از دیوار و ترافیک زنده — روی هر تابلو بزن تا بیشتر ببینی.",
+  "Real places": "مکان‌های واقعی",
+  "Divar ads": "آگهی‌های دیوار",
+  "Live traffic": "ترافیک زنده",
   Restaurants: "رستوران‌ها",
   Cafés: "کافه‌ها",
   "Bakeries & sweets": "نانوایی و شیرینی",
@@ -45,10 +49,37 @@ const local: Record<string, string> = {
   "Paste a link to your shop on torob.com": "لینک فروشگاهت در torob.com رو بذار",
   "Paste a link to your ad on divar.ir": "لینک آگهی‌ات در divar.ir رو بذار",
 
+  "You're here — new jobs show up at real places every 30 minutes.": "همین‌جایی — هر ۳۰ دقیقه کارهای تازه توی مکان‌های واقعی پیدا می‌شه.",
+
+  // ---- Divar
+  "Divar · {area}": "دیوار · {area}",
+  "The latest ads people posted in {area} ({d} away).": "تازه‌ترین آگهی‌هایی که مردم توی {area} گذاشتن ({d} فاصله).",
+  "No ads here right now": "الان آگهی‌ای اینجا نیست",
+  "More on Divar": "بیشتر در دیوار",
+  "From Divar · updated every 15 minutes": "از دیوار · هر ۱۵ دقیقه به‌روز می‌شه",
+  "All ads": "همه‌ی آگهی‌ها",
+  Homes: "املاک",
+  Vehicles: "وسایل نقلیه",
+  Electronics: "کالای دیجیتال",
+  // "Home & kitchen", "Services", "Jobs": shared with the Market and the nav
+
+  // ---- navigation
+  "🏁 You've arrived{name}": "🏁 رسیدی{name}",
+  "{n} min · {d} · live traffic": "{n} دقیقه · {d} · با ترافیک زنده",
+  "Stop navigation": "توقف مسیریابی",
+  "That's too far to route": "برای مسیریابی خیلی دوره",
+  "Routing isn't available right now — try Directions instead": "مسیریابی الان در دسترس نیست — از «مسیریابی» با برنامه‌ی نقشه استفاده کن",
+
   // ---- admin settings
-  "Menus & prices from Snappfood and Torob": "منو و قیمت از اسنپ‌فود و ترب",
-  "Store cards show the real menu or catalog (Snappfood) and online prices (Torob), and the map can show Snappfood vendors. Owners can paste their own links.":
-    "کارت فروشگاه‌ها منو یا کاتالوگ واقعی (اسنپ‌فود) و قیمت آنلاین (ترب) رو نشون می‌ده و نقشه می‌تونه فروشنده‌های اسنپ‌فود رو نشون بده. صاحب‌ها می‌تونن لینک خودشون رو بذارن.",
+  "Menus, prices and ads from Snappfood, Torob and Divar": "منو، قیمت و آگهی از اسنپ‌فود، ترب و دیوار",
+  "Store cards show the real menu or catalog (Snappfood) and online prices (Torob); the map shows Snappfood vendors and the latest Divar ads in each neighbourhood. Owners can paste their own links.":
+    "کارت فروشگاه‌ها منو یا کاتالوگ واقعی (اسنپ‌فود) و قیمت آنلاین (ترب) رو نشون می‌ده؛ نقشه فروشنده‌های اسنپ‌فود و تازه‌ترین آگهی‌های دیوار هر محله رو نشون می‌ده. صاحب‌ها می‌تونن لینک خودشون رو بذارن.",
+  "Places on the map: range (m)": "مکان‌ها روی نقشه: محدوده (متر)",
+  "How far around a player every real restaurant, café, shop and park is drawn on the map (with or without a mission). 0 hides them.":
+    "تا چه فاصله‌ای دور بازیکن همه‌ی رستوران‌ها، کافه‌ها، مغازه‌ها و پارک‌های واقعی روی نقشه کشیده می‌شن (با مأموریت یا بی‌مأموریت). ۰ یعنی مخفی.",
+  "Places on the map: most at once": "مکان‌ها روی نقشه: حداکثر هم‌زمان",
+  "The nearest this many real places are drawn; further out they group into bubbles as the map zooms out.":
+    "این تعداد از نزدیک‌ترین مکان‌های واقعی کشیده می‌شن؛ وقتی نقشه دور می‌شه، به شکل حباب‌های گروهی درمیان.",
 };
 
 export default local;

@@ -7,7 +7,7 @@
 // Coordinates inside a tile are integers: millionths of a degree from the tile's
 // south-west corner (≈ 0.1 m), which keeps the JSON small.
 import { CELL_DEG, cellKey, hashStr, rng, type LatLng } from "./geo";
-import { catOfTags, type Place } from "./places";
+import { catOfTags, type Place, type PlaceInfo } from "./places";
 
 export const TILE_DEG = CELL_DEG;
 const Q = 1e6;
@@ -228,7 +228,32 @@ export function placeOf(el: { type: string; id: number; lat?: number; lon?: numb
   if (!cat || !name) return null;
   const at = el.type === "node" && el.lat != null && el.lon != null ? { lat: el.lat, lng: el.lon } : el.geometry?.length ? centroid(el.geometry) : null;
   if (!at) return null;
-  return { id: `${el.type[0]}${el.id}`, name: name.slice(0, 60), cat, lat: Math.round(at.lat * Q) / Q, lng: Math.round(at.lng * Q) / Q, ...(tags.brand && tags.brand !== name ? { brand: tags.brand.slice(0, 40) } : {}) };
+  const info = infoOfTags(tags);
+  return { id: `${el.type[0]}${el.id}`, name: name.slice(0, 60), cat, lat: Math.round(at.lat * Q) / Q, lng: Math.round(at.lng * Q) / Q, ...(tags.brand && tags.brand !== name ? { brand: tags.brand.slice(0, 40) } : {}), ...(info ? { info } : {}) };
+}
+
+const httpUrl = (v: string | undefined) => {
+  const s = v?.split(";")[0].trim();
+  if (!s) return undefined;
+  const u = /^https?:\/\//i.test(s) ? s : /^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(s) ? `https://${s}` : null;
+  return u && u.length <= 200 ? u : undefined;
+};
+/** A place's contact details from its tags (null when none are mapped). */
+export function infoOfTags(tags: Record<string, string>): PlaceInfo | null {
+  const phone = (tags.phone ?? tags["contact:phone"] ?? tags["contact:mobile"] ?? tags.mobile)?.split(";")[0].trim().slice(0, 30);
+  const site = httpUrl(tags.website ?? tags["contact:website"] ?? tags.url);
+  // Plenty of shops give their Instagram page as their website.
+  const igRaw = (tags["contact:instagram"] ?? tags.instagram ?? (site && /instagram\.com\//i.test(site) ? site : undefined))?.trim();
+  const web = site && !/instagram\.com\//i.test(site) ? site : undefined;
+  const ig = igRaw ? /instagram\.com\/([\w.]{1,30})/i.exec(igRaw)?.[1] ?? (/^@?[\w.]{1,30}$/.test(igRaw) ? igRaw.replace(/^@/, "") : undefined) : undefined;
+  const hours = tags.opening_hours?.trim().slice(0, 80);
+  const addr = (tags["addr:full"] ?? [tags["addr:street"], tags["addr:housenumber"]].filter(Boolean).join(" ")).trim().slice(0, 100);
+  // A picture: a direct image link, or a photo on Wikimedia Commons ("File:…").
+  const pic = [tags.image, tags.logo].map(httpUrl).find((u) => u && (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u) || /\/\/upload\.wikimedia\.org\//.test(u)));
+  const commons = /^File:(.+\.(jpe?g|png|webp))$/i.exec(tags.wikimedia_commons ?? "")?.[1];
+  const img = pic ?? (commons ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(commons.replace(/ /g, "_"))}?width=640` : undefined);
+  const info: PlaceInfo = { ...(phone ? { phone } : {}), ...(web ? { web } : {}), ...(ig ? { ig } : {}), ...(hours ? { hours } : {}), ...(addr ? { addr } : {}), ...(img ? { img } : {}) };
+  return Object.keys(info).length ? info : null;
 }
 
 /** The street-furniture kind of a mapped point, or -1. */

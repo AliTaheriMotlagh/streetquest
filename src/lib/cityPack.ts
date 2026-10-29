@@ -13,8 +13,14 @@ export type Bbox = { south: number; west: number; north: number; east: number };
 /** `extract`: the Geofabrik region file it's read from ("asia/iran" → asia/iran-latest.osm.pbf). */
 export type CityDef = Bbox & { slug: string; name: string; extract?: string };
 
-/** Cities with a known outline. Others are found from where players are (scripts/city-pack.ts --top). */
+/**
+ * Cities with a known outline, and whole countries ("iran": every town and road between
+ * them — the same places, contacts and street detail everywhere). Others are found from
+ * where players are (scripts/city-pack.ts --top). Where packs overlap, the last one built
+ * owns a cell; they hold the same data from the same extract.
+ */
 export const CITIES: CityDef[] = [
+  { slug: "iran", name: "Iran (whole country)", south: 25.0, west: 44.0, north: 39.8, east: 63.4, extract: "asia/iran" },
   { slug: "tehran", name: "Tehran", south: 35.56, west: 51.09, north: 35.83, east: 51.61, extract: "asia/iran" },
   { slug: "karaj", name: "Karaj", south: 35.76, west: 50.88, north: 35.88, east: 51.08, extract: "asia/iran" },
   { slug: "mashhad", name: "Mashhad", south: 36.2, west: 59.45, north: 36.43, east: 59.7, extract: "asia/iran" },

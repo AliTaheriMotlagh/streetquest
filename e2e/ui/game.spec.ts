@@ -173,13 +173,14 @@ test.describe("in the game", () => {
 });
 
 test.describe("map on a phone", () => {
-  test("the map shows only money and stores — at most 10 of them", async ({ page }) => {
+  test("the game layer shows money and store jobs — at most 14 of them", async ({ page }) => {
     await returningPlayer(page);
     await withGps(page);
     await page.goto("/play");
-    const items = page.locator(".leaflet-marker-icon .mk.money, .leaflet-marker-icon .mk.place, .leaflet-marker-icon .mk.biz");
+    // Jobs, not the plain place / vendor / Divar signs that share the .place look.
+    const items = page.locator(".leaflet-marker-icon .mk.money, .leaflet-marker-icon .mk.place:not(.spot):not(.vendor):not(.divar), .leaflet-marker-icon .mk.biz");
     await expect.poll(() => page.locator(".leaflet-marker-icon .mk.money").count(), { timeout: 30_000 }).toBeGreaterThan(0);
-    expect(await items.count()).toBeLessThanOrEqual(10);
+    expect(await items.count()).toBeLessThanOrEqual(14);
     // None of the old war-game layers.
     await expect(page.locator(".mk.base, .mk.tower, .mk.boss, .mk.outpost, .mk.flag, .mk.item, .mk.chest")).toHaveCount(0);
     // Tap one: its card shows the amount in toman.

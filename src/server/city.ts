@@ -11,7 +11,7 @@ import { after } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/db";
 import { fromOverpass, overpassQuery, parseTileKey, TILE_V, tileKey, tileOf, type CityTile } from "../lib/city";
-import type { LatLng } from "../lib/geo";
+import { bbox, distanceM, type LatLng } from "../lib/geo";
 import type { Place } from "../lib/places";
 
 const DEFAULT_ENDPOINTS = "https://overpass-api.de/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter,https://overpass.private.coffee/api/interpreter";
@@ -190,6 +190,25 @@ export async function placesIn(keys: string[], opts: { warm?: boolean } = {}): P
   }
   if (poiCache.size > 4000) poiCache.clear();
   return out;
+}
+
+/**
+ * Every real place within `radiusM` of a point, nearest first, at most `max` (the map's
+ * places layer). Reads the cells covering that circle, up to 9×9 of them.
+ */
+export async function placesNear(here: LatLng, radiusM: number, max: number): Promise<Place[]> {
+  const b = bbox(here, radiusM);
+  const lo = tileOf({ lat: b.minLat, lng: b.minLng }), hi = tileOf({ lat: b.maxLat, lng: b.maxLng });
+  const { cx, cy } = tileOf(here);
+  const keys: string[] = [];
+  for (let x = Math.max(lo.cx, cx - 4); x <= Math.min(hi.cx, cx + 4); x++) for (let y = Math.max(lo.cy, cy - 4); y <= Math.min(hi.cy, cy + 4); y++) keys.push(tileKey(x, y));
+  const out: { p: Place; d: number }[] = [];
+  for (const list of (await placesIn(keys)).values())
+    for (const p of list) {
+      const d = distanceM(here, p);
+      if (d <= radiusM) out.push({ p, d });
+    }
+  return out.sort((a, b) => a.d - b.d).slice(0, max).map((x) => x.p);
 }
 
 /** Find one place by id in a cell (and its neighbours: a mission's place is in its cell). */

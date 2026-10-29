@@ -5,8 +5,11 @@ import { artHtml } from "@/components/art/emoji";
 import { ensureArt } from "@/components/art/sprite";
 
 // LRU-bounded: countdowns and HP bars mint a new icon every second, and an unbounded
-// cache slowly ate memory on low-RAM phones during long sessions.
-const ICON_CACHE_MAX = 400;
+// cache slowly ate memory on low-RAM phones during long sessions. It must still hold every
+// marker on screen (places, vendors, money… several hundred): when it was smaller, each
+// render evicted icons that were in use, every marker got a new one and its drop-in
+// animation replayed — markers blinked out all over the map.
+const ICON_CACHE_MAX = 2000;
 const iconCache = new Map<string, L.DivIcon>();
 export function icon(html: string, cls = "", size = 40) {
   const key = `${cls}|${html}|${size}`;

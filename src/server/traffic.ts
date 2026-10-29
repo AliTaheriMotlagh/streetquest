@@ -134,3 +134,44 @@ export async function refreshNeshan(p: LatLng) {
   }
   await record(samples, "neshan", "neshan");
 }
+
+// ---------------------------------------------------------------- navigation
+type NeshanFullStep = NeshanStep & { name?: string; instruction?: string; modifier?: string; type?: string };
+type NeshanFull = { routes?: { overview_polyline?: { points?: string }; legs?: { distance?: { value?: number }; duration?: { value?: number }; steps?: NeshanFullStep[] }[] }[]; code?: number };
+/** A driving route with live traffic: the line to draw, how far and how long, and the turns. */
+export type LiveRoute = { line: [number, number][]; distanceM: number; durationS: number; steps: { text: string; name: string; distanceM: number; at: [number, number] }[] };
+
+/**
+ * A live driving route from Neshan (null when it can't route: no key, no Direction
+ * service, or it's failing). The route's own speeds feed the traffic map too.
+ */
+export async function liveRoute(from: LatLng, to: LatLng): Promise<LiveRoute | null> {
+  const key = process.env.NESHAN_API_KEY;
+  if (!key || Date.now() < neshanOffUntil) return null;
+  const url = `${NESHAN}/v4/direction?type=car&origin=${from.lat.toFixed(6)},${from.lng.toFixed(6)}&destination=${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;
+  const res = await fetch(url, { headers: { "Api-Key": key }, signal: AbortSignal.timeout(8000) }).catch(() => null);
+  const body = (await res?.json().catch(() => null)) as NeshanFull | null;
+  if (res && (res.status === 485 || res.status === 401 || res.status === 403 || body?.code === 485)) {
+    neshanWhy = "no-access";
+    neshanOffUntil = Date.now() + 3600_000;
+    return null;
+  }
+  const r = body?.routes?.[0];
+  if (!res?.ok || !r?.legs?.length) return null;
+  const line: [number, number][] = [];
+  const steps: LiveRoute["steps"] = [];
+  let distanceM = 0, durationS = 0;
+  for (const leg of r.legs) {
+    distanceM += num(leg.distance);
+    durationS += num(leg.duration);
+    for (const st of leg.steps ?? []) {
+      const poly = typeof st.polyline === "string" ? st.polyline : st.polyline?.points;
+      const pts = poly ? decodePolyline(poly) : [];
+      if (st.instruction && pts.length) steps.push({ text: st.instruction.slice(0, 160), name: (st.name ?? "").slice(0, 80), distanceM: Math.round(num(st.distance)), at: [pts[0].lat, pts[0].lng] });
+      for (const p of pts) line.push([Math.round(p.lat * 1e6) / 1e6, Math.round(p.lng * 1e6) / 1e6]);
+    }
+  }
+  if (line.length < 2 && r.overview_polyline?.points) for (const p of decodePolyline(r.overview_polyline.points)) line.push([p.lat, p.lng]);
+  void record(samplesFromRoute(body as NeshanRoute), "neshan", "neshan").catch(() => {});
+  return { line, distanceM: Math.round(distanceM), durationS: Math.round(durationS), steps: steps.slice(0, 60) };
+}

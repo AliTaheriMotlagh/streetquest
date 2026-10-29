@@ -4,9 +4,9 @@ import type { ItemDef } from "@/lib/catalog";
 import type { QuestDef } from "@/lib/quests";
 import type { MoneyPickup } from "@/lib/money";
 import type { OrderView, ProductView, ShopCard, ShopView } from "@/server/shops";
-import type { PlaceMission } from "@/lib/places";
+import type { Place, PlaceMission } from "@/lib/places";
 import type { WorldBusiness } from "@/server/business";
-import type { Vendor } from "@/lib/localData";
+import type { DivarArea, Vendor } from "@/lib/localData";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
@@ -154,6 +154,8 @@ export type CashoutView = {
 
 export type WorldMoney = MoneyPickup;
 export type WorldPlace = PlaceMission & { done: boolean; toman: number };
+/** A real place with no mission on offer: a plain sign on the map (tap for its menu and contacts). */
+export type WorldSpot = Pick<Place, "id" | "name" | "cat" | "lat" | "lng">;
 export type { WorldBusiness };
 export type WorldNote = { id: string; lat: number; lng: number; radiusM: number; author: { username: string; avatar: string }; createdAt: string; expiresAt: string; unlocked: boolean; body: string | null; hasPhoto: boolean; likes: number; mine: boolean };
 export type WorldEvent = { id: string; slug: string; title: string; description: string; lat: number; lng: number; radiusM: number; startsAt: string; endsAt: string; official: boolean; maxPlayers: number; rewardXp: number; rewardCoins: number; participants: number; joined?: boolean; checkedIn?: boolean };
@@ -179,6 +181,8 @@ export type World = {
   shops: WorldShop[];
   /** Missions at real stores (restaurants, cafés, shops…) around the player. */
   places: WorldPlace[];
+  /** Every other real place around (restaurants, cafés, shops, parks…). */
+  spots: WorldSpot[];
   /** Real businesses on the map, with their running campaigns. */
   businesses: WorldBusiness[];
   players: WorldPlayer[];
@@ -196,6 +200,8 @@ export type Selected =
   | { type: "place"; data: WorldPlace }
   | { type: "biz"; data: WorldBusiness }
   | { type: "vendor"; data: Vendor }
+  | { type: "spot"; data: WorldSpot }
+  | { type: "divar"; data: DivarArea }
   | { type: "player"; data: WorldPlayer };
 
 /** A timestamp in the player's language and calendar (Solar Hijri in Persian). */

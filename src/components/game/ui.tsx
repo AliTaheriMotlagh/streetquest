@@ -36,6 +36,8 @@ export type GameCtx = {
   drive: ((to?: LatLng) => void) | null;
   /** A player's profile in the social feed. */
   openProfile: (userId: string) => void;
+  /** Draw a live driving route there on the map, with the time in today's traffic. Null in test mode / from home. */
+  navigate: ((to: LatLng & { name?: string }) => void) | null;
 };
 
 export const Ctx = createContext<GameCtx | null>(null);

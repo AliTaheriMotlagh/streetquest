@@ -1,16 +1,19 @@
 "use client";
 import L from "leaflet";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
-import { VENDOR_KINDS, type Vendor } from "@/lib/localData";
-import type { GpsView, LatLng, Me, Selected, World, WorldPlayer } from "./client";
+import { distanceM } from "@/lib/geo";
+import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
+import { VENDOR_KINDS, type DivarArea, type Vendor } from "@/lib/localData";
+import type { LiveRoute } from "@/server/traffic";
+import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
 import { esc, icon } from "./mapIcons";
 import { PlayerLayer, type Guide } from "./PlayerLayer";
 import { OthersLayer } from "./OthersLayer";
-import { cellFor, cluster, groupBounds, lodFor, type Group, type Lod } from "./mapLod";
+import { cellFor, cluster, groupBounds, lodFor, NO_CLUSTER_ZOOM, type Group, type Lod } from "./mapLod";
 import { nearby } from "./location/nearby";
 import { getLocation } from "./useLocation";
 import { isLite, isTouch, probeFrameRate } from "../perf";
@@ -48,8 +51,16 @@ type Props = {
   onSelect: (s: Selected) => void;
   /** The style's tiles all fail (e.g. the provider blocks this country): say so, once. */
   onTilesFail?: (look: MapStyle) => void;
-  /** Snappfood vendors the player chose to see (⋯ → Menus on the map). */
+  /** Snappfood vendors the player chose to see (⋯ → On the map). */
   vendors?: Vendor[];
+  /** Real places with no job right now: plain signs (⋯ → On the map → Places). */
+  spots?: WorldSpot[];
+  /** Divar neighbourhoods around, each pinned with its latest ads. */
+  divar?: DivarArea[];
+  /** Live traffic on the roads, coloured by speed. */
+  traffic?: boolean;
+  /** The route being followed (🧭), drawn as a line to its end. */
+  route?: (LiveRoute & { to: LatLng }) | null;
 };
 
 export default memo(GameMap);
@@ -68,7 +79,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, look = DEFAULT_STYLE, onTilesFail }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, traffic, route, look = DEFAULT_STYLE, onTilesFail }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -109,10 +120,12 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {/* Keyed: a TileLayer only follows a new url, not new subdomains or zoom limits. */}
         <TileLayer key={look.id} eventHandlers={tileEvents} url={tiles.url} attribution={tiles.attribution} subdomains={tiles.subdomains ?? "abc"} maxNativeZoom={tiles.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />
         {look.labels && <TileLayer key={`${look.id}-labels`} className="labels" url={look.labels.url} attribution={look.labels.attribution} maxNativeZoom={look.labels.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />}
+        {traffic && <TrafficLayer />}
+        {route && <RouteLine route={route} />}
         <PlayerLayer follow={follow} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} onSelect={onSelect} onUnfollow={onUnfollow} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} onSelect={onSelect} onUnfollow={onUnfollow} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -156,14 +169,91 @@ function useMapView() {
   return view;
 }
 
+/** A road's usual free-flowing speed when we don't know its kind (km/h): Tehran's main streets. */
+const TRAFFIC_FREE_KMH = 50;
+/** Snappfood rates out of 10: vendors at least this good get a ⭐ on their sign. */
+const TOP_RATING = 9.3;
+/** Money or a store job, as the game layer clusters them. */
+type GameItem = { id: string; lat: number; lng: number; m?: World["money"][number]; j?: World["places"][number] };
+/** Game markers are bigger than most: they group a little more loosely. */
+const GAME_SPACING = 1.5;
+/** A real place or a Snappfood vendor, as the points-of-interest layer clusters them. */
+type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot };
+/** Places and vendors cluster this much more loosely than other markers (their signs are wider). */
+const POI_SPACING = 1.35;
+/** Half a traffic dash's length, and how far each direction sits to its right of the road's middle (m). */
+const DASH_M = 22, SIDE_M = 4;
+
+/**
+ * Live traffic around the middle of the map: short dashes along each ~50 m of road and
+ * direction, green → dark red by speed (/api/traffic: players' GPS and Neshan's live
+ * routing). Drawn on one canvas, refreshed every minute and after a long pan; hidden
+ * when zoomed out to the whole city.
+ */
+function TrafficLayer() {
+  const map = useMap();
+  useEffect(() => {
+    const renderer = L.canvas({ padding: 0.3 });
+    const group = L.layerGroup().addTo(map);
+    let last: (LatLng & { at: number }) | null = null;
+    let live = true;
+    const load = async (force = false) => {
+      if (document.visibilityState === "hidden") return;
+      if (map.getZoom() < 13) {
+        group.clearLayers();
+        last = null;
+        return;
+      }
+      const c = map.getCenter();
+      if (!force && last && distanceM(last, c) < 700) return;
+      last = { lat: c.lat, lng: c.lng, at: Date.now() };
+      const r = await api<{ cells: TrafficCellOut[] }>(`/api/traffic?lat=${c.lat.toFixed(5)}&lng=${c.lng.toFixed(5)}`).catch(() => null);
+      if (!live || !r) return;
+      group.clearLayers();
+      for (const [lat, lng, dir, kmh] of r.cells) {
+        const a = (dir * Math.PI) / 4, kx = 111_320 * Math.cos((lat * Math.PI) / 180), ky = 110_540;
+        // Along the road (bearing a), and a step to its right so both directions show.
+        const ax = Math.sin(a), ay = Math.cos(a), sx = Math.cos(a) * SIDE_M, sy = -Math.sin(a) * SIDE_M;
+        const at = (k: number): [number, number] => [lat + (ay * DASH_M * k + sy) / ky, lng + (ax * DASH_M * k + sx) / kx];
+        L.polyline([at(-1), at(1)], { renderer, color: CONGESTION_COLORS[congestion(kmh, TRAFFIC_FREE_KMH)], weight: 5, opacity: 0.85, lineCap: "round", interactive: false }).addTo(group);
+      }
+    };
+    void load(true);
+    const timer = setInterval(() => void load(true), 60_000);
+    const moved = () => void load();
+    map.on("moveend zoomend", moved);
+    return () => {
+      live = false;
+      clearInterval(timer);
+      map.off("moveend zoomend", moved);
+      group.remove();
+    };
+  }, [map]);
+  return null;
+}
+
+/** The route being followed: a cased blue line to the end, and the finish flag. */
+function RouteLine({ route }: { route: LiveRoute & { to: LatLng } }) {
+  const line = route.line;
+  return (
+    <>
+      <Polyline positions={line} interactive={false} pathOptions={{ color: "#0b3d91", weight: 10, opacity: 0.55, lineCap: "round", lineJoin: "round" }} />
+      <Polyline positions={line} interactive={false} pathOptions={{ color: "#4cb8ff", weight: 6, opacity: 0.95, lineCap: "round", lineJoin: "round" }} />
+      <Marker position={[route.to.lat, route.to.lng]} zIndexOffset={1150} interactive={false} icon={icon(`<span class="ring" style="color:#4cb8ff"></span>🏁`, "quest-pt next", 38)} />
+    </>
+  );
+}
+
 /** Money level ring colours (0 = free; the rest are bought in the wallet). */
 const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
 
 /**
- * What the map shows: money to pick up and stores with a mission (the server sends only
- * the nearest few), other players, and where you're headed. Nothing else.
+ * What the map shows, from top to bottom: where you're headed, other players, money to
+ * pick up and stores with a job (the server sends only the nearest few), businesses,
+ * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
+ * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, vendors, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "onSelect" | "onUnfollow">) {
+function Layers({ world, me, game, travelTo, vendors, spots, divar, onSelect, onUnfollow }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "onSelect" | "onUnfollow">) {
   const map = useMap();
   const view = useMapView();
   const lod: Lod = lodFor(view.zoom);
@@ -176,7 +266,9 @@ function Layers({ world, me, game, travelTo, vendors, onSelect, onUnfollow }: Pi
     const el = map.getContainer();
     el.classList.remove("lod-near", "lod-mid", "lod-far");
     el.classList.add(`lod-${lod}`);
-  }, [map, lod]);
+    // Street level, nothing grouped: room for every place's name.
+    el.classList.toggle("lod-street", view.zoom >= NO_CLUSTER_ZOOM);
+  }, [map, lod, view.zoom]);
 
   const zoomInto = useCallback(
     (g: Group<{ lat: number; lng: number }>) => {
@@ -198,8 +290,25 @@ function Layers({ world, me, game, travelTo, vendors, onSelect, onUnfollow }: Pi
     return cluster(list.filter((p) => view.bounds.contains([p.lat, p.lng])), view.zoom, cell, "pl");
   }, [world, view, lod, cell]);
 
-  // Snappfood vendors: up to a hundred around you, so grouped unless they're far apart.
-  const vendorGroups = useMemo(() => cluster((vendors ?? []).filter((v) => view.bounds.contains([v.lat, v.lng])).map((v) => ({ ...v, id: v.code })), view.zoom, cell, "sf"), [vendors, view, cell]);
+  // Places and Snappfood vendors (hundreds around you) are one layer, grouped together so
+  // their bubbles never stack, a little more loosely than the rest (their signs are wider),
+  // and left out at city zoom, where the map is about the game.
+  const poiGroups = useMemo(() => {
+    if (lod === "far") return [];
+    const list: Poi[] = [];
+    for (const v of vendors ?? []) if (view.bounds.contains([v.lat, v.lng])) list.push({ id: `sf${v.code}`, lat: v.lat, lng: v.lng, v });
+    for (const p of spots ?? []) if (view.bounds.contains([p.lat, p.lng])) list.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, p });
+    return cluster(list, view.zoom, cell && Math.round(cell * POI_SPACING), "poi");
+  }, [vendors, spots, view, cell, lod]);
+
+  // Money and store jobs: grouped only where they'd overlap (a bubble shows what's in it),
+  // each on its own from street level. Nothing is dropped — tap a bubble to zoom in.
+  const gameGroups = useMemo(() => {
+    const list: GameItem[] = [];
+    for (const m of world?.money ?? []) list.push({ id: `m${m.id}`, lat: m.lat, lng: m.lng, m });
+    for (const j of world?.places ?? []) list.push({ id: `j${j.id}`, lat: j.place.lat, lng: j.place.lng, j });
+    return cluster(list, view.zoom, cell && Math.round(cell * GAME_SPACING), "g");
+  }, [world, view.zoom, cell]);
 
   const playerMarker = (p: WorldPlayer) => (
     <Marker
@@ -212,19 +321,29 @@ function Layers({ world, me, game, travelTo, vendors, onSelect, onUnfollow }: Pi
 
   return (
     <>
-      {/* Money: green bills, then blue, purple, red for bigger money levels, gold for admin drops; the amount shows at street level. */}
-      {world?.money.map((m) => (
-        <Marker
-          key={m.id}
-          position={[m.lat, m.lng]}
-          zIndexOffset={m.drop ? 800 : 600 + Math.min(3, m.tier ?? 0) * 50}
-          icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : TIER_COLORS[Math.min(TIER_COLORS.length - 1, m.tier ?? 0)]}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : m.tier ? `tier tier${Math.min(3, m.tier)}` : ""}`, m.drop ? 48 : m.tier ? 46 : 42)}
-          eventHandlers={{ click: () => onSelect({ type: "money", data: m }) }}
-        />
-      ))}
-
-      {/* Store missions: the burger delivery starts at the real burger joint. */}
-      {world?.places.map((m) => {
+      {/* Money (green bills, then blue, purple, red for bigger money levels, gold for admin
+          drops; the amount at street level) and store jobs (the burger delivery starts at the
+          real burger joint). */}
+      {gameGroups.map((g) => {
+        if (g.items.length > 1) {
+          const money = g.items.filter((x) => x.m).length;
+          const label = money === g.items.length ? "💵" : money ? "🎯" : "📦";
+          return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={650} icon={clusterIcon(label, g.items.length, "loot")} eventHandlers={{ click: () => zoomInto(g) }} />;
+        }
+        const it = g.items[0];
+        if (it.m) {
+          const m = it.m;
+          return (
+            <Marker
+              key={m.id}
+              position={[m.lat, m.lng]}
+              zIndexOffset={m.drop ? 800 : 600 + Math.min(3, m.tier ?? 0) * 50}
+              icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : TIER_COLORS[Math.min(TIER_COLORS.length - 1, m.tier ?? 0)]}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : m.tier ? `tier tier${Math.min(3, m.tier)}` : ""}`, m.drop ? 48 : m.tier ? 46 : 42)}
+              eventHandlers={{ click: () => onSelect({ type: "money", data: m }) }}
+            />
+          );
+        }
+        const m = it.j!;
         const cat = PLACE_CATS[m.place.cat] ?? PLACE_CATS.shop;
         return (
           <Marker
@@ -260,21 +379,52 @@ function Layers({ world, me, game, travelTo, vendors, onSelect, onUnfollow }: Pi
         );
       })}
 
-      {/* Menus on the map: Snappfood restaurants, cafés, bakeries and shops (tap for the menu). */}
-      {vendorGroups.map((g) => {
-        if (g.items.length > 1) return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={300} icon={clusterIcon("🍽️", g.items.length, "vendors")} eventHandlers={{ click: () => zoomInto(g) }} />;
-        const v = g.items[0];
-        const k = VENDOR_KINDS[v.kind];
+      {/* Every real place around — restaurants, cafés, shops, parks (tap for the menu and
+          contacts) — and Snappfood vendors, with their logo up close (tap for the menu). */}
+      {poiGroups.map((g) => {
+        if (g.items.length > 1) {
+          const food = g.items.filter((x) => x.v).length * 2 >= g.items.length;
+          return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={200} icon={clusterIcon(food ? "🍽️" : "📍", g.items.length, food ? "vendors" : "spots")} eventHandlers={{ click: () => zoomInto(g) }} />;
+        }
+        const it = g.items[0];
+        if (it.v) {
+          const v = it.v;
+          const k = VENDOR_KINDS[v.kind];
+          const logo = lod === "near" && v.logo ? `<img class="lg" src="${esc(v.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+          return (
+            <Marker
+              key={it.id}
+              position={[v.lat, v.lng]}
+              zIndexOffset={300}
+              icon={icon(`<span class="ring" style="color:#ff2f6e"></span>${k.emoji}${logo}<span class="nm">${esc(v.title)}</span>${v.rating >= TOP_RATING ? `<span class="job">⭐</span>` : ""}`, `place vendor ${v.open ? "" : "closed"} ${logo ? "has-logo" : ""}`, 38)}
+              eventHandlers={{ click: () => onSelect({ type: "vendor", data: v }) }}
+            />
+          );
+        }
+        const p = it.p!;
+        const cat = PLACE_CATS[p.cat] ?? PLACE_CATS.shop;
         return (
           <Marker
-            key={`sf${v.code}`}
-            position={[v.lat, v.lng]}
-            zIndexOffset={300}
-            icon={icon(`<span class="ring" style="color:#ff2f6e"></span>${k.emoji}<span class="nm">${esc(v.title)}</span>`, `place vendor ${v.open ? "" : "closed"}`, 38)}
-            eventHandlers={{ click: () => onSelect({ type: "vendor", data: v }) }}
+            key={it.id}
+            position={[p.lat, p.lng]}
+            zIndexOffset={200}
+            icon={icon(`<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(p.name)}</span>`, "place spot", 30)}
+            eventHandlers={{ click: () => onSelect({ type: "spot", data: p }) }}
           />
         );
       })}
+
+      {/* Divar: each neighbourhood around, pinned on its centre with how many fresh ads it has. */}
+      {lod !== "far" &&
+        divar?.map((a) => (
+          <Marker
+            key={`dv${a.city}-${a.id}`}
+            position={[a.lat, a.lng]}
+            zIndexOffset={250}
+            icon={icon(`<span class="ring"></span>📢<span class="cl-n">${fmtNum(a.posts.length)}</span><span class="nm">${esc(t("Divar · {area}", { area: a.name }))}</span>`, "place divar", 40)}
+            eventHandlers={{ click: () => onSelect({ type: "divar", data: a }) }}
+          />
+        ))}
 
       {/* Other players: animated + live at street level, grouped further out */}
       {lod === "near" && world && <OthersLayer players={world.players} onSelect={onSelect} />}

@@ -1,12 +1,13 @@
 "use client";
 // A real store's menu, catalog and prices from other sites (Snappfood; Torob, with the
-// store's own Torob shop and its catalog when it has one) and its links, inside the map
-// cards (real places, businesses, Market shops) and for Snappfood vendors on the map.
+// store's own Torob shop and its catalog when it has one), its picture, contacts and
+// links, inside the map cards (real places, businesses, Market shops) and for Snappfood
+// vendors on the map; and the Divar ads pinned on each neighbourhood.
 // Data: /api/local (server/localData.ts).
 import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
-import { distanceM, formatDistance } from "@/lib/geo";
-import { LINK_CHECKS, VENDOR_KINDS, type Menu, type StoreData, type TorobItem, type TorobShop, type Vendor } from "@/lib/localData";
+import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
+import { DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, VENDOR_KINDS, type DivarArea, type DivarCat, type DivarPost, type Menu, type StoreData, type TorobItem, type TorobShop, type Vendor } from "@/lib/localData";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
@@ -30,7 +31,21 @@ function useLocal<T>(params: Record<string, string | number | undefined> | null)
 }
 
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
-const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞" } as const;
+const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸" } as const;
+
+/** A picture that quietly goes away when it can't load (a dead link, a blocked CDN). */
+function Pic({ src, className }: { src: string; className?: string }) {
+  const [bad, setBad] = useState(false);
+  if (!src || bad) return null;
+  return <img className={className} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBad(true)} />;
+}
+
+/** In-app route there with live traffic (drawn on the map), when routing works. */
+export function RouteButton({ to, name, className = "btn small cyan" }: { to: LatLng; name?: string; className?: string }) {
+  const { navigate } = useGame();
+  if (!navigate) return null;
+  return <Button className={className} onClick={() => navigate({ lat: to.lat, lng: to.lng, name })}>🧭 {t("Route")}</Button>;
+}
 
 /** Prices as the menu shows them: the price now, the old one struck through. */
 function MenuPrice({ price, priceNow }: { price: number; priceNow: number }) {
@@ -153,8 +168,21 @@ export function StoreExtras({ query }: { query: Record<string, string | number |
   const { data, error } = useLocal<StoreData>(query);
   if (error) return <p className="small muted">{error}</p>;
   if (!data) return <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>;
+  const a = data.about;
   return (
     <div className="ext-store">
+      {(a.photo || a.logo) && (
+        <div className="ext-cover">
+          <Pic src={a.photo || a.logo} className="ext-cover-img" />
+          {a.logo && a.photo && <Pic src={a.logo} className="ext-cover-logo" />}
+        </div>
+      )}
+      {(a.address || a.hours) && (
+        <div className="ext-about small">
+          {a.address && <div dir="auto">🏠 {a.address}</div>}
+          {a.hours && <div dir="ltr" className="ext-hours">🕒 {a.hours}</div>}
+        </div>
+      )}
       {!!data.links.length && (
         <div className="row wrap ext-links">
           {data.links.map((l) => (
@@ -181,6 +209,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       <div className="place-card ext-vendor">
         <div className="place-head">
           {v.logo ? <img className="icon-tile place-ic" src={v.logo} alt="" referrerPolicy="no-referrer" /> : <div className="icon-tile place-ic">{kind.emoji}</div>}
+          {v.rating > 0 && <span className="tag ext-rating">⭐ {fmtNum(v.rating)}</span>}
           <div className="grow">
             <b dir="auto">{v.title}</b>
             <div className="small muted">{t(kind.label)}{Number.isFinite(dist) ? ` · ${formatDistance(dist)}` : ""}</div>
@@ -189,12 +218,52 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
           </div>
         </div>
       </div>
+      {data?.menu.cover && <div className="ext-cover"><Pic src={data.menu.cover} className="ext-cover-img" /></div>}
       <div className="row wrap">
         <a className="btn small ghost ext-link snappfood" href={v.url} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
-        {teleport ? <Button className="btn small yellow" onClick={() => teleport(v)}><MoveIcon /> {t("Go there")}</Button> : dist > 150 && <Directions to={v} />}
+        {teleport ? <Button className="btn small yellow" onClick={() => teleport(v)}><MoveIcon /> {t("Go there")}</Button> : dist > 150 && <><RouteButton to={v} name={v.title} /><Directions to={v} /></>}
         {drive && <Button className="btn small cyan" onClick={() => drive(v)}>🚗 {t("Drive there")}</Button>}
       </div>
       {error ? <p className="small warn-text">{error}</p> : data ? <MenuView menu={data.menu} /> : <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>}
+    </Sheet>
+  );
+}
+
+function DivarList({ posts }: { posts: DivarPost[] }) {
+  return (
+    <div className="ext-items">
+      {posts.map((p) => (
+        <a key={p.token} className="ext-item" href={p.url} target="_blank" rel="noopener noreferrer">
+          {p.photo ? <img src={p.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">📢</span>}
+          <div className="grow">
+            <b dir="auto">{p.title}</b>
+            {p.price && <span className="price-tag" dir="auto"><b>{p.price}</b></span>}
+            <p className="small muted" dir="auto">{[p.note, p.when].filter(Boolean).join(" · ")}</p>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** A Divar neighbourhood tapped on the map: its latest ads, by category. */
+export function DivarCard({ area, onClose }: { area: DivarArea; onClose: () => void }) {
+  const [cat, setCat] = useState<DivarCat>("all");
+  const res = useLocal<{ posts: DivarPost[] }>(cat === "all" ? null : { divar: area.id, city: area.city, cat });
+  const posts = cat === "all" ? area.posts : res.data?.posts;
+  return (
+    <Sheet title={`📢 ${t("Divar · {area}", { area: area.name })}`} onClose={onClose} tall>
+      <p className="small muted">{t("The latest ads people posted in {area} ({d} away).", { area: area.name, d: formatDistance(area.distanceM) })}</p>
+      <div className="tabs ext-divar-tabs" role="tablist">
+        {DIVAR_CAT_KEYS.map((k) => (
+          <button key={k} role="tab" aria-selected={k === cat} className={k === cat ? "on" : ""} onClick={() => setCat(k)}>
+            {DIVAR_CATS[k].emoji} {t(DIVAR_CATS[k].label)}
+          </button>
+        ))}
+      </div>
+      {res.error ? <p className="small warn-text">{res.error}</p> : !posts ? <p className="small muted">{t("Loading…")}</p> : posts.length ? <DivarList posts={posts} /> : <p className="small muted">{t("No ads here right now")}</p>}
+      <a className="btn small ghost ext-link divar block" href={`https://divar.ir/s/${encodeURIComponent(area.citySlug || "iran")}${area.id ? `?districts=${area.id}` : ""}`} target="_blank" rel="noopener noreferrer">📢 {t("More on Divar")}</a>
+      <p className="small muted ext-source">{t("From Divar · updated every 15 minutes")}</p>
     </Sheet>
   );
 }

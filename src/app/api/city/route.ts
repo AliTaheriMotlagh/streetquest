@@ -31,6 +31,7 @@ export const GET = route(async (req) => {
 // Admins: upload a tile (e.g. from a self-hosted Overpass) or drop one so it's fetched again.
 const Points = z.array(z.number().int()).max(20_000);
 const Colour = z.string().regex(/^#[0-9a-f]{6}$/i);
+const Info = z.object({ phone: z.string().max(30).optional(), web: z.string().url().max(200).optional(), ig: z.string().max(30).optional(), hours: z.string().max(80).optional(), addr: z.string().max(100).optional(), img: z.string().url().max(200).optional() });
 const Upload = z.object({
   tile: z.object({
     cx: z.number().int(),
@@ -38,7 +39,7 @@ const Upload = z.object({
     b: z.array(z.object({ r: Points, h: z.number().min(0).max(1000), k: z.string().max(20), n: z.string().max(60).optional(), mh: z.number().min(0).max(1000).optional(), rf: z.string().max(12).optional(), c: Colour.optional(), rc: Colour.optional() })).max(5000),
     r: z.array(z.object({ l: Points, w: z.number().min(0).max(60), k: z.string().max(20), n: z.string().max(60).optional(), ln: z.number().int().min(1).max(8).optional(), ow: z.literal(1).optional() })).max(5000),
     a: z.array(z.object({ r: Points, k: z.string().max(20) })).max(1000),
-    p: z.array(z.object({ id: z.string().max(40), name: z.string().max(60), cat: z.string().max(20), lat: z.number(), lng: z.number(), brand: z.string().max(40).optional() })).max(1000),
+    p: z.array(z.object({ id: z.string().max(40), name: z.string().max(60), cat: z.string().max(20), lat: z.number(), lng: z.number(), brand: z.string().max(40).optional(), info: Info.optional() })).max(1000),
     o: Points.optional(),
   }).optional(),
   forget: z.string().max(30).optional(),

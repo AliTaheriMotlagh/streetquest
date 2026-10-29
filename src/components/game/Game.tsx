@@ -34,9 +34,10 @@ import { Art } from "@/components/art/Art";
 import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
-import { BizCard, PlaceCard } from "./PlaceCards";
-import { StoreExtras, VendorCard } from "./StoreInfo";
-import { VENDOR_KIND_KEYS, VENDOR_KINDS, type Vendor, type VendorKind } from "@/lib/localData";
+import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
+import { DivarCard, StoreExtras, VendorCard } from "./StoreInfo";
+import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type DivarArea, type Vendor, type VendorKind } from "@/lib/localData";
+import type { LiveRoute } from "@/server/traffic";
 import { SocialPanel } from "./Social";
 import { BusinessPanel } from "./Business";
 import { WalletPanel } from "./WalletPanel";
@@ -57,9 +58,42 @@ const NAV: [PanelId, string, string][] = [
 
 const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
-const MAP_EXT_KEY = "sq_map_ext";
-/** Fetch Snappfood vendors again once the player is this far from the last fetch. */
+const MAP_LAYERS_KEY = "sq_map_layers";
+/** What the map can show on top of the game (⋯ → On the map): all on until the player says otherwise. */
+type MapLayer = "places" | VendorKind | "divar" | "traffic";
+const MAP_LAYERS: { key: MapLayer; emoji: string; label: string }[] = [
+  { key: "places", emoji: "📍", label: msg("Real places") },
+  ...VENDOR_KIND_KEYS.map((k) => ({ key: k, emoji: VENDOR_KINDS[k].emoji, label: VENDOR_KINDS[k].label })),
+  { key: "divar", emoji: "📢", label: msg("Divar ads") },
+  { key: "traffic", emoji: "🚦", label: msg("Live traffic") },
+];
+const ALL_LAYERS = MAP_LAYERS.map((l) => l.key);
+/** Fetch Snappfood vendors / Divar ads again this far from the last fetch, or after this long. */
 const VENDOR_REFETCH_M = 500;
+const DIVAR_REFETCH_M = 800;
+const EXT_REFRESH_MS = 10 * 60_000;
+/** The world (money, jobs, players…) reloads this often while the app is on screen. */
+const WORLD_REFRESH_MS = 25_000;
+/** The world's "nearest few" are ranked from a point that moves only after this walk (m). */
+const WORLD_ANCHOR_M = 250;
+/** Navigation: re-route this far off the line, or this often for fresh traffic; arrived this close. */
+const OFF_ROUTE_M = 70;
+const ROUTE_REFRESH_MS = 2 * 60_000;
+const ARRIVED_M = 35;
+
+/** How far a point is from a route line (metres, flat-earth: fine at city scale). */
+function offRouteM(p: LatLng, line: [number, number][]) {
+  const kx = 111_320 * Math.cos((p.lat * Math.PI) / 180), ky = 110_540;
+  let best = Infinity;
+  for (let i = 1; i < line.length; i++) {
+    const ax = (line[i - 1][1] - p.lng) * kx, ay = (line[i - 1][0] - p.lat) * ky;
+    const bx = (line[i][1] - p.lng) * kx, by = (line[i][0] - p.lat) * ky;
+    const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+    const k = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+    best = Math.min(best, Math.hypot(ax + dx * k, ay + dy * k));
+  }
+  return best;
+}
 /** Longest an action waits for the latest position to reach the server. */
 const FLUSH_WAIT_MS = 2500;
 const TOAST_OUT_MS = 220;
@@ -128,29 +162,34 @@ export default function Game() {
       localStorage.setItem(MAP_LOOK_KEY, next.id);
     } catch {}
   };
-  // Menus on the map: which kinds of Snappfood vendors to show (none by default).
+  // On the map: real places, Snappfood vendors by kind, Divar ads, live traffic (all on by default).
   const [extOpen, setExtOpen] = useState(false);
-  const [extKinds, setExtKinds] = useState<VendorKind[]>([]);
+  const [layers, setLayers] = useState<MapLayer[]>(ALL_LAYERS);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const vendorsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
+  const [divar, setDivar] = useState<DivarArea[]>([]);
+  const divarAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   useEffect(() => {
     try {
-      const v = JSON.parse(localStorage.getItem(MAP_EXT_KEY) ?? "[]");
-      if (Array.isArray(v)) setExtKinds(VENDOR_KIND_KEYS.filter((k) => v.includes(k)));
+      const v = JSON.parse(localStorage.getItem(MAP_LAYERS_KEY) ?? "null");
+      if (Array.isArray(v)) setLayers(ALL_LAYERS.filter((k) => v.includes(k)));
     } catch {}
   }, []);
-  const toggleExt = (k: VendorKind | "all" | "none") => {
-    const next = k === "all" ? [...VENDOR_KIND_KEYS] : k === "none" ? [] : extKinds.includes(k) ? extKinds.filter((x) => x !== k) : [...extKinds, k];
-    setExtKinds(next);
+  const toggleLayer = (k: MapLayer | "all" | "none") => {
+    const next = k === "all" ? [...ALL_LAYERS] : k === "none" ? [] : layers.includes(k) ? layers.filter((x) => x !== k) : [...layers, k];
+    setLayers(next);
     try {
-      localStorage.setItem(MAP_EXT_KEY, JSON.stringify(next));
+      localStorage.setItem(MAP_LAYERS_KEY, JSON.stringify(next));
     } catch {}
   };
-  // Load them around the player; again after a walk (or a minute after a failed try).
+  const vendorsOn = VENDOR_KIND_KEYS.some((k) => layers.includes(k));
+  const divarOn = layers.includes("divar");
+  // Load them around the player; again after a walk, every 10 minutes (open/closed, new
+  // ads), or a minute after a failed try. `now` ticks while standing still.
   useEffect(() => {
-    if (!extKinds.length || !pos) return;
+    if (!vendorsOn || !pos) return;
     const last = vendorsAt.current;
-    if (last && distanceM(last.pos, pos) < VENDOR_REFETCH_M && (last.ok || Date.now() - last.at < 60_000)) return;
+    if (last && distanceM(last.pos, pos) < VENDOR_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
     const tried = (vendorsAt.current = { pos, at: Date.now(), ok: false as boolean });
     api<{ vendors: Vendor[] }>(`/api/local?near=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
       .then((r) => {
@@ -158,8 +197,29 @@ export default function Game() {
         setVendors(r.vendors);
       })
       .catch(() => {});
-  }, [extKinds.length, pos]);
-  const shownVendors = useMemo(() => vendors.filter((v) => extKinds.includes(v.kind)), [vendors, extKinds]);
+  }, [vendorsOn, pos, now]);
+  useEffect(() => {
+    if (!divarOn || !pos) return;
+    const last = divarAt.current;
+    if (last && distanceM(last.pos, pos) < DIVAR_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
+    const tried = (divarAt.current = { pos, at: Date.now(), ok: false as boolean });
+    api<{ areas: DivarArea[] }>(`/api/local?divar=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
+      .then((r) => {
+        tried.ok = true;
+        setDivar(r.areas);
+      })
+      .catch(() => {});
+  }, [divarOn, pos, now]);
+  const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
+  // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
+  // same store keeps its sign — it has the menu).
+  const shownSpots = useMemo(() => {
+    if (!world || !layers.includes("places")) return [];
+    const jobs = new Set(world.places.map((m) => m.place.id));
+    return (world.spots ?? []).filter(
+      (p) => !jobs.has(p.id) && !shownVendors.some((v) => Math.abs(v.lat - p.lat) < 0.004 && Math.abs(v.lng - p.lng) < 0.005 && sameStore(p, v, distanceM(p, v))),
+    );
+  }, [world, layers, shownVendors]);
   const [meTab, setMeTab] = useState<HeroTabId>("quests");
   const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
@@ -197,6 +257,7 @@ export default function Game() {
   // recreated it and restarted the 45 s refresh timer, which then never fired.
   const posRef = useRef(pos);
   posRef.current = pos;
+  const worldAnchor = useRef<LatLng | null>(null);
   const loadWorld = useCallback(async (force = false) => {
     const pos = posRef.current;
     if (!pos) return;
@@ -205,7 +266,10 @@ export default function Game() {
     lastWorldFetch.current = { at: Date.now(), pos };
     const t = ++worldTicket.current.issued;
     try {
-      const w = await api<World>(`/api/world?lat=${pos.lat}&lng=${pos.lng}`);
+      // Keep the ranking anchor still until the player has walked a block away (see /api/world).
+      const a = worldAnchor.current;
+      const anchor = a && distanceM(a, pos) < WORLD_ANCHOR_M ? a : (worldAnchor.current = { lat: pos.lat, lng: pos.lng });
+      const w = await api<World>(`/api/world?lat=${pos.lat}&lng=${pos.lng}&alat=${anchor.lat.toFixed(6)}&alng=${anchor.lng.toFixed(6)}`);
       if (t < worldTicket.current.shown) return;
       worldTicket.current.shown = t;
       setWorld(w);
@@ -271,10 +335,43 @@ export default function Game() {
   useEffect(() => {
     loadWorld(); // throttled: only refetches after 30 s or 80 m of movement
   }, [pos?.lat, pos?.lng, loadWorld]);
+  // Live while on screen: reload often, never in the background, at once on coming back.
   useEffect(() => {
-    const t = setInterval(() => loadWorld(true), 45_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => document.visibilityState !== "hidden" && loadWorld(true), WORLD_REFRESH_MS);
+    const back = () => document.visibilityState === "visible" && loadWorld(true);
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", back);
+    };
   }, [loadWorld]);
+
+  // ---- navigation: a live route to a spot, re-routed off course and for fresh traffic
+  const [route, setRoute] = useState<(LiveRoute & { to: LatLng; name?: string; at: number }) | null>(null);
+  const routeBusy = useRef(0);
+  const findRoute = useCallback(
+    async (to: LatLng & { name?: string }, quiet = false) => {
+      const from = posRef.current;
+      if (!from || Date.now() - routeBusy.current < 4000) return;
+      routeBusy.current = Date.now();
+      try {
+        const r = await api<LiveRoute>(`/api/route?from=${from.lat.toFixed(6)},${from.lng.toFixed(6)}&to=${to.lat.toFixed(6)},${to.lng.toFixed(6)}`);
+        setRoute({ ...r, to: { lat: to.lat, lng: to.lng }, name: to.name, at: Date.now() });
+      } catch (e) {
+        if (!quiet) toast({ kind: "error", title: (e as Error).message });
+      }
+    },
+    [toast],
+  );
+  useEffect(() => {
+    if (!route || !pos) return;
+    if (distanceM(pos, route.to) <= ARRIVED_M) {
+      setRoute(null);
+      toast({ kind: "reward", title: t("🏁 You've arrived{name}", { name: route.name ? ` · ${route.name}` : "" }) });
+      return;
+    }
+    if (offRouteM(pos, route.line) > OFF_ROUTE_M || Date.now() - route.at > ROUTE_REFRESH_MS) void findRoute({ ...route.to, name: route.name }, true);
+  }, [pos, route, findRoute, toast]);
 
 
   // ---- GPS mini-games & story chapters
@@ -636,8 +733,15 @@ export default function Game() {
           setProfileFocus(id);
           setPanel("social");
         },
+        navigate: pos
+          ? (to) => {
+              setSelected(null);
+              setFollow(true);
+              void findRoute(to);
+            }
+          : null,
       },
-    [me, pos, world, toast, act, refresh, simMode, homeMode, !!homePos, setHomeMode], // eslint-disable-line react-hooks/exhaustive-deps
+    [me, pos, world, toast, act, refresh, simMode, homeMode, !!homePos, setHomeMode, findRoute], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (!me || !ctx)
@@ -718,6 +822,10 @@ export default function Game() {
           onMapClick={handleMapClick}
           onSelect={handleSelect}
           vendors={shownVendors}
+          spots={shownSpots}
+          divar={divarOn ? divar : undefined}
+          traffic={layers.includes("traffic")}
+          route={route}
         />
 
         {/* HUD: who I am on one side, my wallet and status on the other — one tidy row. */}
@@ -768,6 +876,8 @@ export default function Game() {
             setPanel("me");
           }}
         />
+
+        {route && !run && <RouteChip route={route} pos={pos} onClear={() => setRoute(null)} />}
 
         {run && (
           <div className="run-banner">
@@ -858,19 +968,19 @@ export default function Game() {
             </div>
           )}
           {moreOpen && extOpen && (
-            <div className="more-menu styles" role="menu" aria-label={t("Menus on the map")}>
+            <div className="more-menu styles" role="menu" aria-label={t("On the map")}>
               <Button role="menuitem" className="back" onClick={() => setExtOpen(false)}>
-                ‹ {t("Menus on the map")}
+                ‹ {t("On the map")}
               </Button>
-              {VENDOR_KIND_KEYS.map((k) => (
-                <Button key={k} role="menuitemcheckbox" aria-checked={extKinds.includes(k)} className={extKinds.includes(k) ? "on" : ""} onClick={() => toggleExt(k)}>
-                  <span aria-hidden>{VENDOR_KINDS[k].emoji}</span> {t(VENDOR_KINDS[k].label)}
+              {MAP_LAYERS.map((l) => (
+                <Button key={l.key} role="menuitemcheckbox" aria-checked={layers.includes(l.key)} className={layers.includes(l.key) ? "on" : ""} onClick={() => toggleLayer(l.key)}>
+                  <span aria-hidden>{l.emoji}</span> {t(l.label)}
                 </Button>
               ))}
-              <Button role="menuitem" onClick={() => toggleExt(extKinds.length ? "none" : "all")}>
-                {extKinds.length ? `🚫 ${t("Hide all")}` : `✅ ${t("Show all")}`}
+              <Button role="menuitem" onClick={() => toggleLayer(layers.length ? "none" : "all")}>
+                {layers.length ? `🚫 ${t("Hide all")}` : `✅ ${t("Show all")}`}
               </Button>
-              <p className="small muted more-note">{t("Real menus and catalogs from Snappfood — tap a sign to see it.")}</p>
+              <p className="small muted more-note">{t("Real places, menus from Snappfood, ads from Divar and live traffic — tap a sign to see more.")}</p>
             </div>
           )}
           {moreOpen && !stylesOpen && !extOpen && (
@@ -884,7 +994,7 @@ export default function Game() {
                 {mapStyle.emoji} {t("Map style")} <span className="small">· {t(mapStyle.name)}</span>
               </Button>
               <Button role="menuitem" aria-haspopup="menu" onClick={() => setExtOpen(true)}>
-                🍽️ {t("Menus on the map")} {!!extKinds.length && <span className="small">· {fmtNum(extKinds.length)}/{fmtNum(VENDOR_KIND_KEYS.length)}</span>}
+                🗺️ {t("On the map")} <span className="small">· {fmtNum(layers.length)}/{fmtNum(ALL_LAYERS.length)}</span>
               </Button>
               <Button role="menuitem" onClick={() => setMuted(!muted)}>
                 {muted ? "🔇" : "🔊"} {muted ? t("Turn sound on") : t("Turn sound off")}
@@ -1082,6 +1192,34 @@ function StepChip({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+// ---------------------------------------------------------------- navigation
+/** The route being followed: where to, how long in today's traffic, and the next turn. */
+function RouteChip({ route, pos, onClear }: { route: LiveRoute & { to: LatLng; name?: string }; pos: LatLng | null; onClear: () => void }) {
+  const left = pos ? distanceM(pos, route.to) : route.distanceM;
+  // The next turn: the first step start still ahead of the closest one.
+  let next = route.steps[0];
+  if (pos && route.steps.length) {
+    let i = 0, best = Infinity;
+    route.steps.forEach((s, n) => {
+      const d = distanceM(pos, { lat: s.at[0], lng: s.at[1] });
+      if (d < best) (best = d), (i = n);
+    });
+    next = best < 40 ? route.steps[i + 1] ?? route.steps[i] : route.steps[i];
+  }
+  // Time left scales with the distance left (the route is refreshed every couple of minutes).
+  const mins = Math.max(1, Math.round((route.durationS * Math.min(1, left / Math.max(1, route.distanceM))) / 60));
+  return (
+    <div className="route-chip" role="status">
+      <div className="grow">
+        <b dir="auto">🧭 {route.name ?? t("Route")}</b>
+        <div className="small">{t("{n} min · {d} · live traffic", { n: fmtNum(mins), d: formatDistance(left) })}</div>
+        {next && <div className="small muted" dir="auto">↪ {next.text}</div>}
+      </div>
+      <Button className="btn small ghost" onClick={onClear} aria-label={t("Stop navigation")}>✕</Button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- tap-on-map detail card
 function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => void; onCollect: (id: string) => void }) {
   const { pos, act, me, world, openChat, startCall, setPanel, teleport, openShop, openProfile } = useGame();
@@ -1100,6 +1238,12 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   // Stores: a job at a real restaurant/café/shop, or a business and its missions.
   if (sel.type === "place") return <PlaceCard m={world?.places.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
   if (sel.type === "vendor") return <VendorCard v={sel.data} onClose={onClose} />;
+  if (sel.type === "spot") {
+    // A place whose job was just put on the map opens as that job.
+    const job = world?.places.find((x) => x.place.id === sel.data.id);
+    return job ? <PlaceCard m={job} onClose={onClose} /> : <SpotCard p={sel.data} onClose={onClose} />;
+  }
+  if (sel.type === "divar") return <DivarCard area={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
 
   if (sel.type === "money") {

@@ -13,16 +13,26 @@ const gps = (p: Player, at: LatLng) => p.post("/api/loc", { ...at, acc: 8 });
 const metres = (a: LatLng, b: LatLng) => Math.hypot((a.lat - b.lat) * 111_320, (a.lng - b.lng) * 111_320 * Math.cos((a.lat * Math.PI) / 180));
 
 test.describe("money on the map", () => {
-  test("the map shows at most 10 things, nearest first", async ({ baseURL }) => {
+  test("the map shows at most 14 things, nearest first", async ({ baseURL }) => {
     const p = await Player.create(baseURL!);
     const here = randomSpot();
     await p.goTo(here);
     const w = await world(p, here);
     expect(w.money.length).toBeGreaterThan(0);
-    expect(w.money.length + w.places.length + w.businesses.length).toBeLessThanOrEqual(10);
+    expect(w.money.length + w.places.length + w.businesses.length).toBeLessThanOrEqual(14);
     // The world call no longer sends the war layers.
     expect(w).not.toHaveProperty("bases");
     expect(w).not.toHaveProperty("spawns");
+    await p.dispose();
+  });
+
+  test("walking around one spot keeps the same things on the map (no markers vanishing)", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    const here = randomSpot();
+    const ids = async (at: { lat: number; lng: number }) =>
+      expectOk(await p.get<{ money: { id: string }[] }>(`/api/world?lat=${at.lat}&lng=${at.lng}&alat=${here.lat}&alng=${here.lng}`)).data.money.map((m) => m.id).sort();
+    // Ranked from the same anchor: a short walk doesn't reshuffle which few are shown.
+    expect(await ids(offset(here, 120, -60))).toEqual(await ids(here));
     await p.dispose();
   });
 
