@@ -1,4 +1,4 @@
-# StreetQuest — working notes for Claude
+# StreetQuest — working notes for Claude 
 
 A real-world GPS game (Next.js 15 + Prisma/Postgres + Leaflet 2D map + three.js 3D city + a WebSocket
 realtime server for Street Arena). Persian (fa) and English. README.md describes every feature; read
