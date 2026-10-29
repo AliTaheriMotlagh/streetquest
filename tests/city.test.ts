@@ -1,10 +1,11 @@
 // The 3D city's buildings (drive/tileMesh.ts): what each is made of and coloured, the
 // façade every wall vertex wears, balconies and rooftop kit only where they're affordable,
-// mosques with domes and minarets, and a dense block staying inside a triangle budget.
+// mosques with domes and minarets, kerbs, jubes and street trees along the streets, and a
+// dense block staying inside a triangle budget.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { tileSW, TILE_DEG, type CityBuilding, type CityTile } from "@/lib/city";
-import { buildingLook, buildTileArrays, FACADES, middleEast, type Layer } from "@/components/drive/tileMesh";
+import { buildingLook, buildTileArrays, clearRuns, FACADES, KERB_H, middleEast, type Layer } from "@/components/drive/tileMesh";
 
 /** A tile in Tehranpars, so the Middle East's flat roofs, stone and mosques apply. */
 const cx = Math.floor(51.53 / TILE_DEG), cy = Math.floor(35.73 / TILE_DEG);
@@ -85,5 +86,56 @@ describe("drawing a street", () => {
     const ms = performance.now() - t0;
     assert.ok(tris(layers) < 250_000, `${tris(layers)} triangles`);
     assert.ok(ms < 4000, `${Math.round(ms)} ms`);
+  });
+});
+
+/** Distance from (x, z) to the nearest point of a polyline. */
+function toLine(l: Float32Array, x: number, z: number) {
+  let best = Infinity;
+  for (let i = 0; i + 3 < l.length; i += 2) {
+    const dx = l[i + 2] - l[i], dz = l[i + 3] - l[i + 1], l2 = dx * dx + dz * dz || 1;
+    const k = Math.max(0, Math.min(1, ((x - l[i]) * dx + (z - l[i + 1]) * dz) / l2));
+    best = Math.min(best, Math.hypot(l[i] + dx * k - x, l[i + 1] + dz * k - z));
+  }
+  return best;
+}
+
+describe("the street's edge", () => {
+  it("has kerbs, the jube and a raised pavement, in full detail only", () => {
+    const kerbs = layer(buildTileArrays(street(4), origin, "real", false).layers, "kerbs");
+    assert.ok(kerbs && kerbs.idx.length > 0);
+    const ys = Array.from({ length: kerbs!.pos.length / 3 }, (_, i) => kerbs!.pos[i * 3 + 1]);
+    assert.ok(ys.every((y) => y >= 0 && y <= 0.075 + KERB_H + 1e-6), "between the ground and the kerb's top");
+    assert.ok(ys.some((y) => y < 0.075), "the jube sits below the street");
+    assert.equal(layer(buildTileArrays(street(4), origin, "real", true).layers, "kerbs"), undefined, "lite phones");
+    assert.equal(layer(buildTileArrays(street(4), origin, "toon", false).layers, "kerbs"), undefined, "the storybook city");
+  });
+
+  it("stops at a cross street instead of running over it", () => {
+    const tile: CityTile = { ...street(0), r: [{ l: [100, 900, 2400, 900], w: 8, k: "minor" }, { l: [1200, 100, 1200, 1900], w: 11, k: "minor" }] };
+    const a = buildTileArrays(tile, origin, "real", false);
+    const kerbs = layer(a.layers, "kerbs")!;
+    for (let i = 0; i < kerbs.pos.length; i += 3)
+      a.roads.forEach((l, r) => assert.ok(toLine(l, kerbs.pos[i], kerbs.pos[i + 2]) >= a.roadWidths[r] / 2 - 0.05, "a kerb on the asphalt"));
+  });
+
+  it("lines Iranian streets with trees growing out of the jube", () => {
+    const tile: CityTile = { ...street(0), r: Array.from({ length: 12 }, (_, row) => ({ l: [100, 900 + row * 300, 3700, 900 + row * 300], w: 8, k: "minor" as const })) };
+    const a = buildTileArrays(tile, origin, "real", false);
+    const trees = a.props.find((p) => p.kind === "tree")!;
+    let inJube = 0;
+    for (let i = 0; i < trees.mats.length; i += 16) {
+      const d = Math.min(...a.roads.map((l) => toLine(l, trees.mats[i + 12], trees.mats[i + 14])));
+      if (d > 4 + 0.2 && d < 4 + 0.7) inJube++;
+    }
+    assert.ok(inJube > 30, `${inJube} trees in the jube`);
+  });
+
+  it("cuts a line into the stretches that stay clear", () => {
+    const runs = clearRuns(new Float32Array([0, 0, 10, 0, 10, 10]), (x, z) => !(z === 0 && x > 3 && x < 6));
+    assert.equal(runs.length, 2);
+    assert.deepEqual(Array.from(runs[0]), [0, 0, 3, 0]);
+    assert.deepEqual(Array.from(runs[1]), [6, 0, 10, 0, 10, 10]);
+    assert.equal(clearRuns(new Float32Array([0, 0, 5, 0]), () => false).length, 0);
   });
 });

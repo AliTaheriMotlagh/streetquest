@@ -266,6 +266,23 @@ function wearFacades(mat: THREE.MeshStandardMaterial) {
   return mat;
 }
 
+/**
+ * Leaves within a few metres of the camera aren't drawn (thinning out over the next metre),
+ * so a chase camera down a street lined with trees never looks out from inside one.
+ */
+function clearNearCamera<T extends THREE.Material>(mat: T, r = 3.2) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vNearW;")
+      .replace("#include <project_vertex>", "#include <project_vertex>\nvec4 nearW = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nnearW = instanceMatrix * nearW;\n#endif\nvNearW = (modelMatrix * nearW).xyz;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vNearW;")
+      .replace("void main() {", `void main() {\nfloat nearD = distance(vNearW, cameraPosition) - ${r.toFixed(2)};\nif (nearD < 0.0 || (nearD < 1.0 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > nearD)) discard;`);
+  };
+  mat.customProgramCacheKey = () => `clear-near-camera-${r}`;
+  return mat;
+}
+
 /** Glass curtain wall: panels and mullions; lit panels at night. */
 function curtain(lit: boolean) {
   const S = 256, B = S / 4;
@@ -323,7 +340,7 @@ export function makeMaterials(style: Style) {
       marks: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, ...off(-3) }),
       ground: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, ...off(-1) }),
       water: new THREE.MeshPhongMaterial({ color: "#52b8ef", side: THREE.DoubleSide, shininess: 90, specular: new THREE.Color("#ffffff"), transparent: true, opacity: 0.92, ...off(-1) }),
-      trees: toon({ vertexColors: true }),
+      trees: clearNearCamera(toon({ vertexColors: true })),
       props: toon({ vertexColors: true }),
       glow: new THREE.MeshBasicMaterial({ color: "#fff2c0" }),
     };
@@ -337,7 +354,7 @@ export function makeMaterials(style: Style) {
     marks: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }),
     ground: new THREE.MeshStandardMaterial({ vertexColors: true, map: grain(0.78, 0.02, 33), roughness: 1, side: THREE.DoubleSide, ...off(-1) }),
     water: new THREE.MeshStandardMaterial({ color: "#2f5f7c", roughness: 0.06, metalness: 0.35, side: THREE.DoubleSide, transparent: true, opacity: 0.94, ...off(-1) }),
-    trees: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true }),
+    trees: clearNearCamera(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true })),
     props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.35 }),
     glow: new THREE.MeshBasicMaterial({ color: "#6b6150" }),
   };
@@ -638,9 +655,10 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     g.setIndex(new THREE.BufferAttribute(l.idx, 1));
     g.computeBoundingSphere();
     geoms.push(g);
-    // Balconies and rooftop kit are drawn like roofs, and only up close (with the other detail).
-    const trim = l.name === "trim";
-    const mesh = new THREE.Mesh(g, l.name === "trim" ? mats.roofs : mats[l.name]);
+    // Balconies and rooftop kit are drawn like roofs, kerbs and pavements like the street,
+    // and only up close (with the other detail).
+    const trim = l.name === "trim" || l.name === "kerbs";
+    const mesh = new THREE.Mesh(g, l.name === "trim" ? mats.roofs : l.name === "kerbs" ? mats.roads : mats[l.name]);
     const solid = l.name === "walls" || l.name === "glass" || l.name === "roofs";
     mesh.castShadow = opts.shadows && solid;
     mesh.receiveShadow = opts.shadows && l.name !== "water";

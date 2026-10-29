@@ -1,5 +1,5 @@
 "use client";
-// The cars, pickups, buses and motorbikes of Iran's streets in 3D (which drive where, and
+// The cars, pickups, trucks, buses, minibuses and motorbikes of Iran's streets in 3D (which drive where, and
 // how often: lib/fleet.ts). Each model is built once, from its side profile — extruded
 // across its width, with the wheel arches cut in — plus boxes for the lamps, bumpers,
 // grille, mirrors and the Iranian number plate (white, blue strip; yellow on a taxi), and
@@ -389,6 +389,8 @@ const CARS: Partial<Record<FleetKey, () => FleetParts>> = {
   vanet: () => vanet("vanet"),
   vanetLoad: () => vanet("vanetLoad"),
   bus,
+  khavar,
+  minibus,
   bike: () => bike("bike"),
   bikeBox: () => bike("bikeBox"),
 };
@@ -475,6 +477,74 @@ function bus(): FleetParts {
   lamps(b, "head", body, [{ x: 1.0, y: 0.78, w: 0.36, h: 0.16 }], false);
   lamps(b, "tail", body, [{ x: 1.12, y: 0.9, w: 0.16, h: 0.42 }], true);
   return finish("bus", b, { r, w: 0.32, axles, track: 1.0 }, [0, 0.78], [0, 3.6, 6]);
+}
+
+// ---------------------------------------------------------------- the light truck
+/** Khavar: a flat-fronted cab over the front wheels and a drop-side bed, often under a tarp. */
+function khavar(): FleetParts {
+  const { len, wid } = FLEET.khavar;
+  const b = new Build(len);
+  const r = 0.4, axles = [1.0, 4.55], track = 0.82;
+  const cab: P[] = [[0.03, 0.5], [0, 1.2], [0.08, 2.18], [0.24, 2.36], [1.66, 2.36], [1.72, 0.5], ...underside(1.72, 0.48, [axles[0]], r)];
+  b.add("paint", slab(cab, wid, len, 0.07));
+  const ws = surface(cab, 1.72, false);
+  b.box("glass", wid - 0.22, 0.72, 0.05, 0, 1.72, onFront(ws, 0.05), undefined, ws.tilt);
+  for (const side of [-1, 1]) b.box("glass", 0.04, 0.62, 0.95, side * (wid / 2 + 0.012), 1.78, 0.78);
+  // Grille band, bumper, square lamps low on the cab.
+  const g = surface(cab, 0.95, false);
+  b.box("kit", wid - 0.5, 0.36, 0.04, 0, 0.95, onFront(g, 0.04), GRILLE, g.tilt);
+  const bf = surface(cab, 0.56, false);
+  b.box("kit", wid + 0.02, 0.18, 0.14, 0, 0.56, onFront(bf, 0.14), "#2a2c30");
+  lamps(b, "head", cab, [{ x: 0.78, y: 0.9, w: 0.26, h: 0.18 }], false);
+  plate(b, 0.72, onFront(surface(cab, 0.72, false), 0.02) - 0.03, false);
+  for (const side of [-1, 1]) {
+    b.box("kit", 0.2, 0.03, 0.03, side * (wid / 2 + 0.08), 1.95, 0.2, TRIM);
+    b.box("kit", 0.06, 0.34, 0.16, side * (wid / 2 + 0.2), 1.85, 0.2, TRIM);
+  }
+  // Chassis rails and the bed: floor, drop sides, tailgate, headboard; a canvas tarp over half of them.
+  b.box("kit", 0.9, 0.24, len - 1.6, 0, 0.72, len / 2 + 0.7, TRIM);
+  const bed = len - 1.86;
+  b.box("paint", wid, 0.1, bed, 0, 1.12, 1.84 + bed / 2);
+  for (const side of [-1, 1]) b.box("paint", 0.05, 0.5, bed, side * (wid / 2 - 0.025), 1.42, 1.84 + bed / 2);
+  b.box("paint", wid, 0.5, 0.05, 0, 1.42, len - 0.03);
+  b.box("paint", wid, 0.9, 0.05, 0, 1.62, 1.86);
+  b.box("kit", wid - 0.04, 0.5, bed - 0.1, 0, 1.92, 1.84 + bed / 2, "#5f6b4a");
+  for (const side of [-1, 1]) b.box("tail", 0.16, 0.12, 0.05, side * 0.86, 0.86, len + 0.01);
+  b.box("kit", wid - 0.1, 0.1, 0.1, 0, 0.66, len - 0.05, TRIM);
+  plate(b, 0.82, len + 0.02, true);
+  return finish("khavar", b, { r, w: 0.24, axles, track }, [surface(cab, 0.9, false).u, 0.9], [0, 2.7, 3.7]);
+}
+
+// ---------------------------------------------------------------- the minibus
+/** A white city minibus: short sloping nose, a band of windows, the door up front on the kerb side. */
+function minibus(): FleetParts {
+  const { len, wid } = FLEET.minibus;
+  const b = new Build(len);
+  const r = 0.38, axles = [1.2, 5.45];
+  const body: P[] = [[0.04, 0.42], [0, 0.98], [0.28, 1.3], [0.78, 2.5], [0.98, 2.7], [7.02, 2.7], [7.2, 2.52], [7.2, 0.42], ...underside(len, 0.38, axles, r)];
+  b.add("paint", slab(body, wid, len, 0.07));
+  const ws = surface(body, 1.9, false);
+  b.box("glass", wid - 0.16, 1.18, 0.05, 0, 1.9, onFront(ws, 0.05), undefined, ws.tilt);
+  b.box("glass", wid + 0.02, 0.78, 5.5, 0, 2.02, 4.05);
+  b.box("glass", 0.04, 1.85, 0.9, wid / 2 + 0.012, 1.42, 1.45);
+  b.box("glass", wid - 0.4, 0.7, 0.05, 0, 2.05, onBack(surface(body, 2.05, true), 0.05));
+  for (const side of [-1, 1]) {
+    b.box("kit", 0.012, 0.14, len - 1.4, side * (wid / 2 + 0.004), 1.3, len / 2 + 0.5, "#2e8b57");
+    b.box("kit", 0.3, 0.03, 0.03, side * (wid / 2 + 0.14), 2.3, 0.5, TRIM);
+    b.box("kit", 0.06, 0.34, 0.16, side * (wid / 2 + 0.28), 2.12, 0.46, TRIM);
+  }
+  for (const back of [false, true]) {
+    const f = surface(body, 0.5, back);
+    b.box("kit", wid + 0.03, 0.26, 0.14, 0, 0.5, back ? onBack(f, 0.14) : onFront(f, 0.14), "#2a2c30");
+    const pf = surface(body, 0.8, back);
+    plate(b, 0.8, back ? onBack(pf, 0.02) + 0.01 : onFront(pf, 0.02) - 0.01, back);
+  }
+  const g = surface(body, 1.05, false);
+  b.box("kit", 1.1, 0.2, 0.04, 0, 1.05, onFront(g, 0.04), GRILLE, g.tilt);
+  b.box("kit", 0.9, 0.16, 1.2, 0, 2.78, 4.2, "#d4d7db");
+  lamps(b, "head", body, [{ x: 0.82, y: 0.86, w: 0.3, h: 0.15 }], false);
+  lamps(b, "tail", body, [{ x: 0.92, y: 0.95, w: 0.16, h: 0.36 }], true);
+  return finish("minibus", b, { r, w: 0.26, axles, track: 0.86 }, [surface(body, 0.86, false).u, 0.86], [0, 3.0, 3.6]);
 }
 
 // ---------------------------------------------------------------- motorbikes
@@ -582,7 +652,8 @@ export class FleetInstances {
       wheel: wheelMaterial(style),
       blob: new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false }),
     };
-    this.blob = this.inst(BLOB, this.mats.blob, 48);
+    // Traffic and the parked cars near you.
+    this.blob = this.inst(BLOB, this.mats.blob, 160);
   }
 
   private inst(geo: THREE.BufferGeometry, mat: THREE.Material, cap: number, colored = false) {

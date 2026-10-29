@@ -7,7 +7,7 @@
 // coloured per person — so a busy street costs a few draw calls.
 import * as THREE from "three";
 import { insidePacked } from "@/lib/city";
-import { box, type Footprint } from "./tileMesh";
+import { box, KERB_H, type Footprint } from "./tileMesh";
 import { toon, type Style, type TileMeshes } from "./world3d";
 
 type Road = { line: Float32Array; w: number };
@@ -93,9 +93,12 @@ export class Crowd {
   private p = new THREE.Vector3();
   private one = new THREE.Vector3(1, 1, 1);
   private Y = new THREE.Vector3(0, 1, 0);
+  /** Up on the raised pavement (drawn in the real city's full detail). */
+  private base: number;
   enabled = true;
 
   constructor(private scene: THREE.Scene, style: Style, private lite: boolean) {
+    this.base = style === "real" && !lite ? KERB_H : 0;
     this.mat = style === "toon" ? toon({ color: "#ffffff" }) : new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.88 });
     const cap = lite ? 14 : 34;
     for (const k of Object.keys(this.geo) as PartKey[]) {
@@ -286,7 +289,7 @@ export class Crowd {
   private draw(w: Walker) {
     const swing = Math.sin(w.phase) * (w.look === 2 ? 0.25 : 0.42);
     const bob = Math.abs(Math.cos(w.phase)) * 0.025;
-    this.m.compose(this.p.set(w.x, bob, w.z), this.q.setFromAxisAngle(this.Y, w.yaw), this.one);
+    this.m.compose(this.p.set(w.x, this.base + bob, w.z), this.q.setFromAxisAngle(this.Y, w.yaw), this.one);
     const limb = (k: "leg" | "arm", x: number, y: number, a: number, c: THREE.Color) => {
       this.j.makeRotationX(a).setPosition(x, y, 0);
       this.put(k, this.s.multiplyMatrices(this.m, this.j), c);

@@ -30,7 +30,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     shortcuts: [
       { name: t("Play"), short_name: t("Play"), url: "/play?source=shortcut", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: t("Story missions"), short_name: t("Story"), url: "/play?panel=play", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: t("My base"), short_name: t("Base"), url: "/play?panel=base", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: t("Drive the 3D city"), short_name: t("3D city"), url: "/play?drive=1", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
     screenshots: [
       { src: "/screens/map.jpg", sizes: "540x960", type: "image/jpeg", form_factor: "narrow", label: t("Your city is the map") },

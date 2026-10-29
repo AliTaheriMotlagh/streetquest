@@ -2,7 +2,7 @@
 // that every drivable street car has a model and sensible size.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FLEET, FLEET_KEYS, pickFleet, pickPaint, roomBetween, TAXI_YELLOW } from "@/lib/fleet";
+import { FLEET, FLEET_KEYS, heavy, pickFleet, pickPaint, roomBetween, TAXI_YELLOW } from "@/lib/fleet";
 import { applySettings, S } from "@/lib/settings";
 import { allowedVehicle, GARAGE_KEYS, unlocked, VEHICLE_KEYS, VEHICLES } from "@/lib/vehicles";
 
@@ -13,7 +13,7 @@ const seq = (xs: number[]) => {
 };
 
 describe("street traffic", () => {
-  it("is mostly Prides and Peugeots, buses only on main roads", () => {
+  it("is mostly Prides and Peugeots, buses and minibuses only on main roads", () => {
     const n: Record<string, number> = {};
     const r = Math.random;
     for (let i = 0; i < 4000; i++) {
@@ -21,11 +21,16 @@ describe("street traffic", () => {
       n[k] = (n[k] ?? 0) + 1;
     }
     assert.equal(n.bus ?? 0, 0, "no bus down a side street");
+    assert.equal(n.minibus ?? 0, 0, "no minibus either");
+    assert.ok((n.khavar ?? 0) > 0, "Khavar trucks go everywhere");
     assert.ok((n.pride ?? 0) > (n.peykan ?? 0) * 2, "more Prides than Peykans");
-    assert.ok(FLEET_KEYS.every((k) => k === "bus" || (n[k] ?? 0) > 0), "every other model turns up");
-    let buses = 0;
-    for (let i = 0; i < 4000; i++) if (pickFleet(r, true) === "bus") buses++;
-    assert.ok(buses > 0, "buses on the main roads");
+    assert.ok(FLEET_KEYS.every((k) => FLEET[k].majorOnly || (n[k] ?? 0) > 0), "every other model turns up");
+    const main: Record<string, number> = {};
+    for (let i = 0; i < 4000; i++) {
+      const k = pickFleet(r, true);
+      main[k] = (main[k] ?? 0) + 1;
+    }
+    assert.ok(main.bus > 0 && main.minibus > 0, "buses and minibuses on the main roads");
   });
 
   it("walks the shares in order (the first pick on a 0)", () => {
@@ -43,6 +48,11 @@ describe("street traffic", () => {
     near(roomBetween(10, "pride", "pride"), 10 - FLEET.pride.len);
     assert.ok(roomBetween(10, "pride", "bus") < roomBetween(10, "pride", "pride"));
     near(roomBetween(10, "pride", 4), 10 - FLEET.pride.len / 2 - 2);
+  });
+
+  it("knows the big, slow ones", () => {
+    assert.ok(heavy("bus") && heavy("minibus") && heavy("khavar"));
+    assert.ok(!heavy("pride") && !heavy("vanet") && !heavy("bikeBox"));
   });
 });
 

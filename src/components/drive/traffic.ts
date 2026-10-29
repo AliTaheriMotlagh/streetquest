@@ -7,13 +7,16 @@
 //    fleet.ts) driving the real streets, on the right, at the live speed of the street
 //    they're on (the usual city speed where there's no reading), more of them where it's
 //    jammed. They follow each other bumper to bumper, stop at red lights, brake for you
-//    and are solid; bikes ride by the kerb and lean into the corners. Drawn instanced, per
-//    model (fleet3d.ts).
+//    and are solid; bikes ride by the kerb and lean into the corners. Rows of parked cars
+//    line the kerbs (lib/parking.ts) and the traffic keeps to what they leave free. Drawn
+//    instanced, per model (fleet3d.ts).
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, signalPhase, trafficCell, type TrafficCellOut } from "@/lib/traffic";
-import { FLEET, pickFleet, pickPaint, roomBetween, type FleetKey } from "@/lib/fleet";
+import { FLEET, heavy, pickFleet, pickPaint, roomBetween, type FleetKey } from "@/lib/fleet";
+import { hashStr, rng } from "@/lib/geo";
+import { laneOffset, parkedRow, parkingSides, type Parked, type Sides } from "@/lib/parking";
 import { api } from "../game/client";
 import { FleetInstances } from "./fleet3d";
 import { box, type Footprint } from "./tileMesh";
@@ -101,7 +104,7 @@ export function lineColors(feed: TrafficFeed, frame: Frame, line: Float32Array, 
 }
 
 // ---------------------------------------------------------------- the cars
-type Road = { line: Float32Array; w: number; kind: "major" | "minor" };
+type Road = { line: Float32Array; w: number; kind: "major" | "minor"; park: Sides };
 type Car = {
   /** Which of Iran's street models (lib/fleet.ts), in what paint. */
   kind: FleetKey;
@@ -126,6 +129,8 @@ const SPAWN_MIN = 70, SPAWN_MAX = 240, DROP = 320;
 const KEEP_M = 2.5;
 /** You, as the cars around see you: about a car's length. */
 const YOU_LEN = 4.4;
+/** Parked cars are drawn this close to you, the nearest first (and as many at most). */
+const PARKED_M = 140, PARKED_MAX = 90, PARKED_LITE_M = 80, PARKED_LITE_MAX = 30;
 
 export class TrafficCars {
   private cars: Car[] = [];
@@ -139,6 +144,10 @@ export class TrafficCars {
   private rand = Math.random;
   /** Every car is drawn by model, instanced: a handful of draw calls for the whole street. */
   private fleet: FleetInstances;
+  /** Every parked car on the streets loaded, and the ones near you that are drawn. */
+  private parked: (Parked & { color: THREE.Color })[] = [];
+  private shown: (Parked & { color: THREE.Color; box: Footprint })[] = [];
+  private shownAt = { x: Infinity, z: Infinity };
   enabled = true;
 
   constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, style: Style, private lite: boolean) {
@@ -160,11 +169,40 @@ export class TrafficCars {
         if (list) list.push(l);
         else this.lights.set(key, [l]);
       }
+    // Junctions, for the gaps in the rows of parked cars: every point of every street.
+    const joints = new Map<string, { line: Float32Array; x: number; z: number; r: number }[]>();
+    for (const m of meshes)
+      m.roads.forEach((line, i) => {
+        const k = m.roadKinds[i];
+        if ((k !== "major" && k !== "minor" && k !== "path") || !m.roadDrawn[i]) return;
+        for (let j = 0; j + 1 < line.length; j += 2) {
+          const key = `${Math.floor(line[j] / 16)}_${Math.floor(line[j + 1] / 16)}`, p = { line, x: line[j], z: line[j + 1], r: m.roadWidths[i] / 2 + 6 };
+          const l = joints.get(key);
+          if (l) l.push(p);
+          else joints.set(key, [p]);
+        }
+      });
+    this.parked = [];
     for (const m of meshes)
       m.roads.forEach((line, i) => {
         const k = m.roadKinds[i];
         if ((k !== "major" && k !== "minor") || !m.roadDrawn[i] || line.length < 4) return;
-        const r: Road = { line, w: m.roadWidths[i], kind: k };
+        const at = this.frame.toLatLng(line[0], line[1]), seed = hashStr(`park|${at.lat.toFixed(5)}|${at.lng.toFixed(5)}|${line.length}`);
+        const r: Road = { line, w: m.roadWidths[i], kind: k, park: parkingSides(m.roadWidths[i], seed) };
+        // Not on a junction (another street's point close by) nor by a traffic light.
+        const free = (x: number, z: number) => {
+          for (let a = -1; a <= 1; a++)
+            for (let b = -1; b <= 1; b++) {
+              const gx = Math.floor(x / 16) + a, gz = Math.floor(z / 16) + b;
+              if (joints.get(`${gx}_${gz}`)?.some((p) => p.line !== line && Math.hypot(p.x - x, p.z - z) < p.r)) return false;
+              if (this.lights.get(`${gx}_${gz}`)?.some((l) => Math.hypot(l.x - x, l.z - z) < 12)) return false;
+            }
+          return true;
+        };
+        const rand = rng(seed);
+        r.park.forEach((on, s) => {
+          if (on) for (const p of parkedRow(line, r.w, s ? -1 : 1, rand, free, k === "major" ? 0.5 : 0.78)) this.parked.push({ ...p, color: new THREE.Color(p.paint) });
+        });
         this.roads.push(r);
         for (const end of [0, 1] as const) {
           const x = line[end ? line.length - 2 : 0], z = line[end ? line.length - 1 : 1];
@@ -177,6 +215,21 @@ export class TrafficCars {
     // Cars on streets that were dropped go too.
     const alive = new Set(this.roads.map((r) => r.line));
     this.cars = this.cars.filter((c) => alive.has(c.road.line));
+    this.shownAt = { x: Infinity, z: Infinity };
+  }
+
+  /** The parked cars near you (the nearest, up to a cap), picked again every few metres. */
+  private nearParked(px: number, pz: number) {
+    if (Math.hypot(px - this.shownAt.x, pz - this.shownAt.z) < 8) return this.shown;
+    this.shownAt = { x: px, z: pz };
+    const reach = this.lite ? PARKED_LITE_M : PARKED_M, max = this.lite ? PARKED_LITE_MAX : PARKED_MAX;
+    this.shown = this.parked
+      .map((p) => ({ p, d: Math.hypot(p.x - px, p.z - pz) }))
+      .filter((o) => o.d < reach)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, max)
+      .map(({ p }) => ({ ...p, box: box(p.x, p.z, FLEET[p.key].wid / 2 + 0.05, FLEET[p.key].len / 2, p.yaw, FLEET[p.key].hgt) }));
+    return this.shown;
   }
 
   /** How many cars around here: more where the readings say it's jammed. */
@@ -203,8 +256,8 @@ export class TrafficCars {
       if (d < SPAWN_MIN || d > SPAWN_MAX) continue;
       const kind = pickFleet(this.rand, road.kind === "major");
       const dir = road.w < 7 && this.rand() < 0.5 ? -1 : this.rand() < 0.5 ? 1 : -1;
-      // Bikes ride quicker than the cars round them (and buses slower).
-      const mood = (FLEET[kind].bike ? 1.05 : kind === "bus" ? 0.8 : 0.85) + this.rand() * 0.25;
+      // Bikes ride quicker than the cars round them (and buses and trucks slower).
+      const mood = (FLEET[kind].bike ? 1.05 : heavy(kind) ? 0.8 : 0.85) + this.rand() * 0.25;
       this.cars.push({ kind, color: new THREE.Color(pickPaint(kind, this.rand)), road, seg, along: 0, dir, v: 0, want: 0, x, z, yaw: 0, spin: 0, lean: 0, mood });
       return;
     }
@@ -217,8 +270,8 @@ export class TrafficCars {
       for (let j = -1; j <= 1; j++)
         for (const e of this.ends.get(`${Math.floor(x / 8) + i}_${Math.floor(z / 8) + j}`) ?? []) {
           if (e.road === c.road) continue;
-          // A bus keeps to the main roads.
-          if (c.kind === "bus" && e.road.kind !== "major") continue;
+          // A bus or minibus keeps to the main roads.
+          if (FLEET[c.kind].majorOnly && e.road.kind !== "major") continue;
           const l = e.road.line, ex = l[e.end ? l.length - 2 : 0], ez = l[e.end ? l.length - 1 : 1];
           if (Math.hypot(ex - x, ez - z) < 4) opts.push(e);
         }
@@ -272,7 +325,7 @@ export class TrafficCars {
           }
       if (room < 28) want = Math.min(want, Math.max(0, (room - KEEP_M) * 0.8));
       const braking = c.v > want + 0.3 || c.v < 0.5;
-      c.v += Math.max(-9 * dt, Math.min((c.kind === "bus" ? 1.6 : def.bike ? 3.6 : 3) * dt, want - c.v));
+      c.v += Math.max(-9 * dt, Math.min((heavy(c.kind) ? 1.8 : def.bike ? 3.6 : 3) * dt, want - c.v));
       c.along += c.v * dt;
       // On to the next segment, or the next street at the end of this one.
       let gone = false;
@@ -298,17 +351,18 @@ export class TrafficCars {
         this.cars.splice(this.cars.indexOf(c), 1);
         continue;
       }
-      // Pose: on the right-hand half of the street (all of it on narrow lanes), bikes out by the kerb.
+      // Pose: on the right-hand half of what parked cars leave of the street (all of it on
+      // narrow lanes), bikes out by the kerb.
       const R = c.road.line, j0 = c.dir > 0 ? c.seg : c.seg + 1, j1 = c.dir > 0 ? c.seg + 1 : c.seg;
       const sx = R[j0 * 2], sz = R[j0 * 2 + 1], ex = R[j1 * 2], ez = R[j1 * 2 + 1];
       const sl = Math.hypot(ex - sx, ez - sz) || 0.01, ux = (ex - sx) / sl, uz = (ez - sz) / sl;
       const k = Math.min(1, c.along / sl);
-      const lane = (c.road.w >= 7 ? c.road.w / 4 : 0) + (def.bike ? Math.min(1.2, c.road.w / 2 - 0.9) : 0);
+      const lane = laneOffset(c.road.w, c.road.park, c.dir, def.bike);
       const tx = sx + (ex - sx) * k + -uz * lane, tz = sz + (ez - sz) * k + ux * lane;
       const yaw = Math.atan2(-ux, -uz);
       // Ease the turn so corners don't snap; a bike leans into it.
       const turn = Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw));
-      c.yaw += turn * Math.min(1, dt * (def.bike ? 7 : c.kind === "bus" ? 3.5 : 6));
+      c.yaw += turn * Math.min(1, dt * (def.bike ? 7 : heavy(c.kind) ? 3.5 : 6));
       if (def.bike) c.lean += (Math.max(-0.4, Math.min(0.4, turn * 1.6)) - c.lean) * Math.min(1, dt * 5);
       c.x = tx;
       c.z = tz;
@@ -316,12 +370,17 @@ export class TrafficCars {
       this.fleet.put(c.kind, c.x, c.z, c.yaw, c.color, braking, c.spin, c.lean);
       out.push(box(c.x, c.z, def.wid / 2 + 0.05, def.len / 2, c.yaw, def.hgt));
     }
+    for (const p of this.nearParked(px, pz)) {
+      this.fleet.put(p.key, p.x, p.z, p.yaw, p.color, false, 0);
+      out.push(p.box);
+    }
     this.fleet.end();
     return out;
   }
 
   dispose() {
     this.cars = [];
+    this.parked = this.shown = [];
     this.fleet.dispose();
   }
 }

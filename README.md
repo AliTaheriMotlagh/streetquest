@@ -101,7 +101,8 @@ mood scales XP; loot funds research; territory funds the army.
   within 320 m and never on lite phones (`src/components/drive/tileMesh.ts`, `world3d.ts`).
 - **Iran's streets in 3D** — the traffic is what you see in Tehran: Prides everywhere, Peugeot 206 / 207 / Pars,
   Samands, Tibas, old Peykans, crossovers, yellow taxis with their roof sign and yellow plate, the blue Zamyad pickup
-  (empty or stacked with fruit crates), red city buses on the main roads and motorbikes — commuters and delivery bikes
+  (empty or stacked with fruit crates), the Khavar light truck under its tarp, red city buses and white minibuses on
+  the main roads and motorbikes — commuters and delivery bikes
   with their box — riding by the kerb and leaning into corners (`src/lib/fleet.ts`: the mix, paints and sizes). Each
   model is built once from its side profile (wheel arches cut in) with its own lamps, grille, bumpers, mirrors and the
   Iranian number plate, and traffic draws every copy of a model instanced — a handful of draw calls for the whole
@@ -109,6 +110,14 @@ mood scales XP; loot funds research; territory funds the army.
   lights and brake for you. People walk the pavements — men in shirts and jackets, women in a manteau and headscarf or
   a chador — turning back at walls or carrying on round the corner, and are solid (`people.ts`). The pavements also
   have blue-and-yellow charity boxes every block or two and green newspaper kiosks on the main roads.
+- **The street's edge** — up close (within 320 m, not on lite phones) every street has a kerb and a raised pavement,
+  with Tehran's *jube* — the open gutter — between them in Iran, all cut short where they meet the next street
+  (`tileMesh.ts` `streetSide`). About half of Iran's streets are lined on each side with plane trees growing out of
+  the jube. Cars are parked nose to tail along the kerbs — one side of a two-lane side street, both sides of wider
+  ones, none on expressways — with gaps at junctions, driveways and traffic lights; the same cars are there each time
+  you come back, they're solid, and traffic keeps to the lanes they leave (`src/lib/parking.ts`; the nearest 90 are
+  drawn, 30 on lite phones). Leaves close to the camera aren't drawn, so the chase camera never looks out from inside
+  a tree.
 - **The garage** — the same street cars are yours to drive (Pride, Peykan, 206, 207, Pars, Samand, the taxi, the
   Zamyad pickup, the city bus, a delivery bike with its box) next to the hatchback, sports car, pickup, motorbike,
   drone and helicopter. Every vehicle — the drone and the helicopter too — is free from level 1 (admin: *Every vehicle
@@ -339,6 +348,8 @@ starts refusing, point `TOROB_URL` / `DIVAR_URL` at the same relay with `/torob`
   3D city's street maps you've driven through (vector tiles a week, city-pack detail a day). The app asks the browser
   for persistent storage so Android doesn't clear it when space runs low. Every deploy gets a new version id, and
   players see "New version ready → Update".
+  A long-press on the installed icon offers shortcuts: Play, Story missions (`/play?panel=play`) and Drive the 3D city
+  (`/play?drive=1`, straight into the car once there's a position to start from).
 - **Push notifications:** set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`
   (`npx web-push generate-vapid-keys`). Every in-game notification is also pushed to the phone when the player isn't
   in the app; Admin → Campaigns → live push can send to everyone. iPhone needs the app added to the Home Screen

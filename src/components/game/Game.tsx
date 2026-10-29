@@ -656,6 +656,16 @@ export default function Game() {
     act(() => api(`/api/events/${id}`, { body: { action: "join" } })).then(() => setPanel("events"));
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The home-screen shortcut straight into the 3D city: /play?drive=1 (once there's somewhere to start).
+  const wantDrive = useRef(typeof location !== "undefined" && new URLSearchParams(location.search).get("drive") === "1");
+  const canStart = !!(pos || me?.lastPos);
+  useEffect(() => {
+    if (!wantDrive.current || !me || !canStart) return;
+    wantDrive.current = false;
+    history.replaceState(null, "", "/play");
+    setDriveOn({ goal: null });
+  }, [me?.id, canStart]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- map interactions
   const onMapClick = (p: LatLng) => {
     if (picker) {

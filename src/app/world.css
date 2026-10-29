@@ -197,9 +197,9 @@ html.lite .map.light .leaflet-tile { filter: grayscale(1); }
 
 /* ---- messages over the road */
 .drive-credit { position: absolute; bottom: calc(2px + var(--safe-b)); left: 50%; transform: translateX(-50%); font-size: 9px; color: rgba(255, 255, 255, .75); text-shadow: 0 1px 2px rgba(0, 0, 0, .6); text-decoration: none; }
-.drive-banner, .drive-loading, .drive-hint { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 12px; background: var(--hud-bg); border: 1px solid var(--hud-line); color: #fff; font-size: 12px; font-weight: 600; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
-.drive-banner { top: calc(140px + var(--safe-t)); }
-.drive-loading { top: calc(178px + var(--safe-t)); }
+.drive-notes { position: absolute; top: calc(140px + var(--safe-t)); left: 16px; right: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.drive-hint { position: absolute; left: 50%; transform: translateX(-50%); }
+.drive-banner, .drive-loading, .drive-hint { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 12px; background: var(--hud-bg); border: 1px solid var(--hud-line); color: #fff; font-size: 12px; font-weight: 600; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
 .drive-loading .drive-spinner { width: 14px; height: 14px; border-width: 2px; color: var(--dpad-accent); }
 .drive-hint { bottom: calc(60px + var(--safe-b)); }
 .drive-hint.closable { pointer-events: auto; padding-inline-end: 6px; }
@@ -350,7 +350,7 @@ html[lang="fa"] .pedal-lb { letter-spacing: 0; font-size: 11px; }
 .drive-countdown { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; pointer-events: none; font: 800 140px/1 var(--body); font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 8px 30px rgba(0, 0, 0, .55); animation: pop .6s; }
 
 /* ---- Persian: text panels read right to left; the controls never mirror */
-html[dir="rtl"] .drive :is(.drive-sheet, .drive-pick, .party-hud, .drive-street, .drive-nav, .drive-banner, .drive-loading, .drive-hint, .drive-keys, .drive-me-tx, .drive-action, .drive-tab, .drive-tabs) { direction: rtl; }
+html[dir="rtl"] .drive :is(.drive-sheet, .drive-pick, .party-hud, .drive-street, .drive-nav, .drive-notes, .drive-hint, .drive-keys, .drive-me-tx, .drive-action, .drive-tab, .drive-tabs) { direction: rtl; }
 html[dir="rtl"] .drive-me { padding: 4px 4px 4px 12px; flex-direction: row-reverse; }
 html[dir="rtl"] .drive-me-tx { align-items: flex-end; }
 
@@ -370,8 +370,8 @@ html.lite .pedal-v2.on .pedal-plate { box-shadow: inset 0 1px 0 rgba(255, 255, 2
   .drive-menu { top: auto; bottom: calc(8px + var(--safe-b)); right: calc(8px + var(--safe-r)); left: calc(8px + var(--safe-l)); width: auto; max-height: 64vh; }
   .drive-tabs .lb { display: none; }
   .party-hud { top: calc(120px + var(--safe-t)); }
-  .drive-banner { top: calc(150px + var(--safe-t)); }
-  .drive-loading { top: calc(190px + var(--safe-t)); }
+  /* Below the minimap, speedometer and buttons down the right. */
+  .drive-notes { top: calc(250px + var(--safe-t)); }
 }
 @media (max-width: 370px) {
   .drive { --pad-h: 196px; }

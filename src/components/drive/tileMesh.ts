@@ -15,7 +15,7 @@ import type { VtCell } from "./vectorTile";
 
 export type Style = "real" | "toon";
 /** `trim`: balconies and rooftop kit (coolers, water tanks) — drawn like roofs, only up close. */
-export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim";
+export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim" | "kerbs";
 /** `fac`: the façade each wall vertex wears (an index into FACADES), when any isn't plaster. */
 export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
 export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk";
@@ -316,6 +316,71 @@ function offsetLine(pts: Float32Array, off: number) {
   return out;
 }
 
+/** The stretches of a polyline where `ok` holds, tested every `step` metres (kept points are its own corners and the last good test points). */
+export function clearRuns(pts: Float32Array, ok: (x: number, z: number) => boolean, step = 1): Float32Array[] {
+  const runs: Float32Array[] = [];
+  let cur: number[] = [], was = false, lx = 0, lz = 0, kept = false;
+  const end = () => {
+    if (cur.length >= 4) runs.push(new Float32Array(cur));
+    cur = [];
+  };
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const x0 = pts[i], z0 = pts[i + 1], x1 = pts[i + 2], z1 = pts[i + 3];
+    const k = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / step));
+    for (let s = i === 0 ? 0 : 1; s <= k; s++) {
+      const x = x0 + ((x1 - x0) * s) / k, z = z0 + ((z1 - z0) * s) / k, o = ok(x, z);
+      if (o && (!was || s === k)) (cur.push(x, z), (kept = true));
+      else if (o) kept = false;
+      else if (was) {
+        if (!kept) cur.push(lx, lz);
+        end();
+      }
+      (was = o), (lx = x), (lz = z);
+    }
+  }
+  if (was && !kept) cur.push(lx, lz);
+  end();
+  return runs;
+}
+
+/** A raised strip along a polyline, `w` wide with its top at y1, and upright faces (at ±w/2, down to their own y0) where asked. */
+function strip(b: Builder, pts: Float32Array, w: number, y1: number, c: THREE.Color, uv: number, faces: { off: number; y0: number }[]) {
+  ribbon(b, pts, w, y1, c, uv);
+  for (const f of faces) {
+    const e = offsetLine(pts, f.off);
+    for (let i = 0; i + 3 < e.length; i += 2) {
+      // Facing away from the middle of the strip.
+      const inside: V3 = [(pts[i] + pts[i + 2]) / 2, (f.y0 + y1) / 2, (pts[i + 1] + pts[i + 3]) / 2];
+      const a: V3 = [e[i], f.y0, e[i + 1]], bb: V3 = [e[i + 2], f.y0, e[i + 3]], cc: V3 = [e[i + 2], y1, e[i + 3]], d: V3 = [e[i], y1, e[i + 1]];
+      b.tri(a, bb, cc, c, inside);
+      b.tri(a, cc, d, c, inside);
+    }
+  }
+}
+
+/** How high kerbs and pavements stand above the street (m). */
+export const KERB_H = 0.13;
+const KERB_W = 0.2;
+/** Pavement each side of a street, kerb included: wider in Iran, where the jube runs along it. */
+const PAVE_M = { me: 3.0, world: 2.3 };
+/** Tehran's jube: the open gutter between kerb and pavement (wider on the main roads). */
+const jubeW = (major: boolean) => (major ? 0.7 : 0.5);
+const KERB = color("#bcb8ad"), JUBE = color("#45433d");
+
+/**
+ * One side of a street (`side` +1 right of the line's direction, −1 left), cut short where
+ * it meets another street: the kerb, the jube behind it (Iran), the raised pavement.
+ */
+function streetSide(b: Builder, pts: Float32Array, w: number, y: number, side: 1 | -1, jube: number, pave: number, walk: THREE.Color, uv: number, ok: (x: number, z: number) => boolean) {
+  const top = y + KERB_H, low = y - 0.012;
+  for (const run of clearRuns(offsetLine(pts, side * (w / 2 + KERB_W / 2)), ok)) {
+    strip(b, run, KERB_W, top, KERB, uv, [{ off: -side * (KERB_W / 2), y0: y - 0.03 }, ...(jube ? [{ off: side * (KERB_W / 2), y0: low }] : [])]);
+    if (jube) ribbon(b, offsetLine(run, side * (KERB_W / 2 + jube / 2)), jube, low, JUBE);
+    const sw = pave - KERB_W - jube, at = side * (KERB_W / 2 + jube + sw / 2);
+    strip(b, offsetLine(run, at), sw, top, walk, uv, [...(jube ? [{ off: -side * (sw / 2), y0: low }] : []), { off: side * (sw / 2), y0: 0 }]);
+  }
+}
+
 /** Dashes along a polyline: `on` metres painted, `gap` metres bare. */
 function dashes(b: Builder, pts: Float32Array, w: number, y: number, c: THREE.Color, on: number, gap: number) {
   let carry = 0;
@@ -343,7 +408,7 @@ function disc(b: Builder, x: number, z: number, rad: number, y: number, c: THREE
 }
 
 // ---------------------------------------------------------------- streets nearby
-type Seg = { ax: number; az: number; bx: number; bz: number; w: number; y: number };
+type Seg = { ax: number; az: number; bx: number; bz: number; w: number; y: number; line: Float32Array };
 const RG = 24;
 
 /** The tile's drivable asphalt in a 24 m grid: which street is nearest, is a spot on one. */
@@ -353,7 +418,7 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
   lines.forEach((p, li) => {
     if (!drawn[li] || !DRIVABLE.includes(kinds[li])) return;
     for (let i = 0; i + 3 < p.length; i += 2) {
-      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: widths[li], y: ROAD_Y[kinds[li]] };
+      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: widths[li], y: ROAD_Y[kinds[li]], line: p };
       segs.push(sg);
       const pad = sg.w / 2 + 2;
       for (let gx = Math.floor((Math.min(sg.ax, sg.bx) - pad) / RG); gx <= Math.floor((Math.max(sg.ax, sg.bx) + pad) / RG); gx++)
@@ -388,6 +453,11 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
     /** On the asphalt (or within `pad` metres of its edge). */
     on(x: number, z: number, pad: number) {
       for (const sg of grid.get(`${Math.floor(x / RG)}_${Math.floor(z / RG)}`) ?? []) if (project(sg, x, z).d < sg.w / 2 + pad) return true;
+      return false;
+    },
+    /** On the asphalt of a street other than `line` (or within `pad` metres of its edge). */
+    onOther(x: number, z: number, pad: number, line: Float32Array) {
+      for (const sg of grid.get(`${Math.floor(x / RG)}_${Math.floor(z / RG)}`) ?? []) if (sg.line !== line && project(sg, x, z).d < sg.w / 2 + pad) return true;
       return false;
     },
     /**
@@ -621,7 +691,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   const frame = makeFrame(origin);
   const pal = PALETTES[style];
   const realStyle = style === "real";
-  const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder(), trim = new Builder();
+  const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder(), trim = new Builder(), kerbs = new Builder();
   const footprints: Footprint[] = [];
   const labels: Label[] = [];
   const rand = rng(hashStr(`props|${tile.key}`));
@@ -882,6 +952,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
 
   // ---- roads, sidewalks and markings
   const walk = color(pal.roads.walk), white = color(pal.roads.line), yellow = color(pal.roads.center), rail2 = color(pal.roads.rail2);
+  const raised = realStyle && !lite, pave = PAVE_M[region];
+  const jube = (major: boolean) => (region === "me" ? jubeW(major) : 0);
   const UV = realStyle ? 1 / 7 : 0;
   // Intersections: vertices where three or more road ends meet get zebra crossings.
   const degree = new Map<string, number>();
@@ -904,7 +976,9 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     const c = color(pal.roads[r.k]);
     const y = ROAD_Y[r.k];
     const car = r.k === "major" || r.k === "minor";
-    if (car) ribbon(roads, pts, r.w + (realStyle ? 4.6 : 1.2), y - 0.02, walk, UV);
+    if (car) ribbon(roads, pts, r.w + (realStyle ? 2 * pave : 1.2), y - 0.02, walk, UV);
+    // Up close: kerbs, the jube and a raised pavement each side, stopping at the next street.
+    if (car && raised) for (const side of [1, -1] as const) streetSide(kerbs, pts, r.w, y, side, jube(r.k === "major"), pave, walk, UV, (x, z) => !road.onOther(x, z, 0, pts));
     if (r.k === "rail") {
       ribbon(roads, pts, r.w, y, c, UV);
       for (const off of [-0.72, 0.72]) ribbon(marks, offsetLine(pts, off), 0.12, y + 0.03, rail2);
@@ -963,7 +1037,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   });
 
   // ---- parks, water, land use
-  const treeSpots: { x: number; z: number; s: number }[] = [];
+  const treeSpots: { x: number; z: number; s: number; y?: number }[] = [];
   for (const a of tile.a) {
     const pts = frame.unpack(tile.cx, tile.cy, a.r);
     if (pts.length < 6) continue;
@@ -1024,12 +1098,12 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     if ((kind === PROP.lamp || kind === PROP.bus || SMALL[kind]) && lite) continue;
     if (SMALL[kind]) {
       // Benches, bins, hydrants and fountains stand on the pavement, never in the street.
-      const k = road.on(x, z, 0.3) ? road.kerb(x, z, 0.8) : { x, z, yaw: faceRoad(x, z) };
+      const k = road.on(x, z, 0.3) ? road.kerb(x, z, 1.2) : { x, z, yaw: faceRoad(x, z) };
       if (k && !blocked(k.x, k.z, 0.1)) small[SMALL[kind]].push(k);
       continue;
     }
     // Posts mapped on the road itself go to the kerb, facing the street.
-    const k = road.kerb(x, z, kind === PROP.bus ? 2.1 : kind === PROP.signal ? 0.9 : 1.1) ?? { x, z, yaw: faceRoad(x, z) };
+    const k = road.kerb(x, z, kind === PROP.bus ? 2.1 : kind === PROP.signal ? 1.1 : 1.2) ?? { x, z, yaw: faceRoad(x, z) };
     if (blocked(k.x, k.z, 0.2)) continue;
     if (kind === PROP.lamp) (lamps.push(k), osmLamps++);
     else if (kind === PROP.signal && !near(signals, k.x, k.z, 5)) signals.push(k);
@@ -1044,15 +1118,29 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   let planted = 0, lit = 0;
   const lampCap = osmLamps > 5 ? 0 : lite ? 0 : 140;
   const charities: { x: number; z: number; yaw: number }[] = [], kiosks: { x: number; z: number; yaw: number }[] = [];
+  // Iran's streets: whole lengths lined with plane trees growing out of the jube.
+  const rows = realStyle && region === "me", rowCap = lite ? 60 : 200;
+  let rowed = 0;
   roadLines.forEach((pts, ri) => {
     const k = roadKinds[ri], w = roadWidths[ri];
     if ((k !== "major" && k !== "minor") || !roadDrawn[ri]) return;
+    const lined = rows && w >= 6 && w < 19 ? [rand() < 0.5, rand() < 0.5] : [false, false];
     for (let i = 0; i + 3 < pts.length; i += 2) {
       const x0 = pts[i], z0 = pts[i + 1], x1 = pts[i + 2], z1 = pts[i + 3];
       const len = Math.hypot(x1 - x0, z1 - z0);
       if (len < 12) continue;
       const nx = -(z1 - z0) / len, nz = (x1 - x0) / len;
-      if (w >= 7)
+      lined.forEach((on, si) => {
+        const side = si ? -1 : 1, off = w / 2 + KERB_W + jubeW(k === "major") / 2;
+        for (let s = 3 + rand() * 4; on && s < len - 3 && rowed < rowCap; s += 10 + rand() * 3.5) {
+          const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
+          // Not in a building, nor out at a junction.
+          if (blocked(x, z, 1) || road.onOther(x, z, 2.5, pts)) continue;
+          treeSpots.push({ x, z, s: 0.95 + rand() * 0.35, y: 0 });
+          rowed++;
+        }
+      });
+      if (w >= 7 && !rows)
         for (let s = 9; s < len - 4 && planted < roadside; s += 20 + rand() * 16) {
           const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 2.3 + rand() * 0.6;
           const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
@@ -1070,7 +1158,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       }
       if (lite) continue;
       for (let s = 12 + rand() * 50; s < len - 6 && charities.length < 10; s += 110 + rand() * 90) {
-        const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 0.8;
+        const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 1.25;
         const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
         if (rand() < 0.5 || blocked(x, z, 0.4) || road.on(x, z, 0.3) || near(charities, x, z, 90)) continue;
         charities.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
@@ -1085,13 +1173,19 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
 
   const props: Instances[] = [];
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-  const pack = (kind: PropKind, list: { x: number; z: number; yaw?: number; s?: number }[], tint?: () => THREE.Color) => {
+  /** Up on the raised pavement, if it stands on one. */
+  const lift = (x: number, z: number) => {
+    if (!raised) return 0;
+    const q = road.nearest(x, z, 12);
+    return q && q.y > ROAD_Y.path && q.d < q.w / 2 + pave + 0.2 ? KERB_H : 0;
+  };
+  const pack = (kind: PropKind, list: { x: number; z: number; yaw?: number; s?: number; y?: number }[], tint?: () => THREE.Color) => {
     if (!list.length) return;
     const mats = new Float32Array(list.length * 16), cols = tint ? new Float32Array(list.length * 3) : null;
     list.forEach((it, i) => {
       const s = it.s ?? 1;
       q.setFromAxisAngle(Y, it.yaw ?? rand() * Math.PI * 2);
-      m.compose(p.set(it.x, 0, it.z), q, sc.set(s, kind === "tree" ? s * (0.9 + rand() * 0.3) : s, s));
+      m.compose(p.set(it.x, it.y ?? lift(it.x, it.z), it.z), q, sc.set(s, kind === "tree" ? s * (0.9 + rand() * 0.3) : s, s));
       m.toArray(mats, i * 16);
       if (cols && tint) tint().toArray(cols, i * 3);
     });
@@ -1119,7 +1213,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const k of kiosks) obstacles.push(box(k.x, k.z, 1.0, 0.75, k.yaw, 2.4));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
 
-  const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim")].filter((l): l is Layer => !!l);
+  const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
   placeSigns(tile as VtCell, frame, footprints, labels, obstacles, faceRoad);
   // The store's model carries its own sign and number.

@@ -1,10 +1,11 @@
 // The traffic on Iran's streets (pure — the 3D models are in components/drive/fleet3d.ts):
 // which cars, pickups, buses and motorbikes drive around the 3D city, how often you see
 // each (Prides and Peugeots everywhere, the yellow taxi, the blue Zamyad pickup, delivery
-// bikes with their box, a red city bus on the main roads), their usual paint, and how big
-// they are — for following distances and for what you bump into.
+// bikes with their box, the Khavar light truck, a red city bus and the white minibus on
+// the main roads), their usual paint, and how big they are — for following distances and
+// for what you bump into.
 
-export type FleetKey = "pride" | "peykan" | "p206" | "p207" | "pars" | "samand" | "tiba" | "suv" | "taxi" | "vanet" | "vanetLoad" | "bus" | "bike" | "bikeBox";
+export type FleetKey = "pride" | "peykan" | "p206" | "p207" | "pars" | "samand" | "tiba" | "suv" | "taxi" | "vanet" | "vanetLoad" | "bus" | "khavar" | "minibus" | "bike" | "bikeBox";
 
 export type FleetDef = {
   key: FleetKey;
@@ -16,7 +17,7 @@ export type FleetDef = {
   share: number;
   /** Paints it's usually seen in (repeats make a colour more common). */
   paints: string[];
-  /** Only on the main roads (buses). */
+  /** Only on the main roads (buses, minibuses). */
   majorOnly?: boolean;
   /** Two wheels: rides near the kerb. */
   bike?: boolean;
@@ -39,12 +40,14 @@ export const FLEET: Record<FleetKey, FleetDef> = {
   vanet: { key: "vanet", len: 4.9, wid: 1.69, hgt: 1.66, share: 4, paints: ["#2f63c8", "#2f63c8", "#2f63c8", WHITE] },
   vanetLoad: { key: "vanetLoad", len: 4.9, wid: 1.69, hgt: 1.66, share: 2, paints: ["#2f63c8", "#2f63c8", WHITE] },
   bus: { key: "bus", len: 12, wid: 2.55, hgt: 3.35, share: 2, paints: ["#c8102e", "#c8102e", "#c8102e", "#2e8b57"], majorOnly: true },
+  khavar: { key: "khavar", len: 5.9, wid: 2.05, hgt: 2.4, share: 2, paints: ["#2f63c8", "#2f63c8", WHITE, WHITE, "#e9e4d4", "#c23b22"] },
+  minibus: { key: "minibus", len: 7.2, wid: 2.15, hgt: 2.75, share: 1.5, paints: [WHITE, WHITE, WHITE, "#e9e4d4"], majorOnly: true },
   bike: { key: "bike", len: 2.0, wid: 0.7, hgt: 1.75, share: 3, paints: [BLACK, "#b3262b", BLACK, GRAY], bike: true },
   bikeBox: { key: "bikeBox", len: 2.1, wid: 0.7, hgt: 1.75, share: 5, paints: ["#e8384f", "#ff6a13", "#2bb24c", "#1f6feb", TAXI_YELLOW, "#d21f3c", WHITE], bike: true },
 };
 export const FLEET_KEYS = Object.keys(FLEET) as FleetKey[];
 
-/** A model for a new car in traffic, by how common each is (buses only on main roads). */
+/** A model for a new car in traffic, by how common each is (buses and minibuses only on main roads). */
 export function pickFleet(rand: () => number, major: boolean): FleetKey {
   const keys = FLEET_KEYS.filter((k) => major || !FLEET[k].majorOnly);
   const total = keys.reduce((n, k) => n + FLEET[k].share, 0);
@@ -63,4 +66,7 @@ export const pickPaint = (key: FleetKey, rand: () => number) => {
  * Free road between two vehicles in a line (bumper to bumper), from how far apart their
  * middles are: what a driver keeps a gap to.
  */
+/** Big and slow to get going: buses, minibuses and trucks. */
+export const heavy = (key: FleetKey) => FLEET[key].len > 5.5;
+
 export const roomBetween = (centres: number, a: FleetKey, b: FleetKey | number) => centres - FLEET[a].len / 2 - (typeof b === "number" ? b : FLEET[b].len) / 2;

@@ -1836,13 +1836,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       </div>
 
       <a className="drive-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
-      {!canDrive && <div className="drive-banner">🚶 {t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
-      {hud?.village && hud.loading > 0 && (
-        <div className="drive-loading">
-          <i className="drive-spinner" aria-hidden />
-          {t("Drawing this neighbourhood from the real map…")}
-        </div>
-      )}
+      {/* Stacked, so two never sit on top of each other. */}
+      <div className="drive-notes">
+        {!canDrive && <div className="drive-banner">🚶 {t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
+        {hud?.village && hud.loading > 0 && (
+          <div className="drive-loading">
+            <i className="drive-spinner" aria-hidden />
+            {t("Drawing this neighbourhood from the real map…")}
+          </div>
+        )}
+      </div>
       {hud?.flying && !hud.low && hud.near === null && !flyHintOff && (
         <div className="drive-hint small closable">
           <span>{t("Fly low (under {m} m) to pick things up and check in", { m: LAND_ALT_M })}</span>

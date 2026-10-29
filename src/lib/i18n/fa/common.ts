@@ -3,7 +3,6 @@ const common: Record<string, string> = {
   // ---- navigation & everyday words
   Language: "زبان",
   Nearby: "اطراف",
-  Base: "پایگاه",
   Play: "بازی",
   Market: "بازار",
   Jobs: "کارها",

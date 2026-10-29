@@ -214,6 +214,53 @@ test.describe("map on a phone", () => {
     await expect(page.locator(".map.blueprint")).toBeVisible({ timeout: 30_000 });
   });
 
+  test("map filter: hides and shows each layer, from its button or ⋯, and remembers", async ({ page }) => {
+    await returningPlayer(page);
+    await withGps(page);
+    await page.goto("/play");
+    await expect.poll(() => page.locator(".leaflet-marker-icon .mk.money").count(), { timeout: 30_000 }).toBeGreaterThan(0);
+    const fab = page.locator(".map-filter-fab");
+    await fab.click();
+    const panel = page.getByRole("dialog", { name: "Filter the map" });
+    await expect(panel).toBeVisible();
+    await expect(fab).toHaveAttribute("aria-expanded", "true");
+    const chips = panel.locator(".filter-chips:not(.kinds) .filter-chip");
+    const n = await chips.count();
+    expect(n).toBeGreaterThan(5);
+    await expect(panel.getByText(`${n}/${n}`)).toBeVisible();
+    // Money off: its chip is off and the money on the map goes.
+    const money = chips.filter({ hasText: "Money" });
+    await money.click();
+    await expect(money).toHaveAttribute("aria-pressed", "false");
+    await expect(panel.getByText(`${n - 1}/${n}`)).toBeVisible();
+    await expect(page.locator(".leaflet-marker-icon .mk.money")).toHaveCount(0);
+    // Hide all, then show all.
+    await panel.getByRole("button", { name: /Hide all/ }).click();
+    await expect(panel.getByText(`0/${n}`)).toBeVisible();
+    await panel.getByRole("button", { name: /Show all/ }).click();
+    await expect(panel.getByText(`${n}/${n}`)).toBeVisible();
+    await expect.poll(() => page.locator(".leaflet-marker-icon .mk.money").count()).toBeGreaterThan(0);
+    // Money off again; closed with ✕, the choice sticks after a reload — and ⋯ opens the same panel.
+    await money.click();
+    await panel.getByRole("button", { name: "Close" }).click();
+    await expect(panel).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator(".player-card")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: /On the map/ }).click();
+    await expect(panel).toBeVisible();
+    await expect(chips.filter({ hasText: "Money" })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".leaflet-marker-icon .mk.money")).toHaveCount(0);
+  });
+
+  test("the home-screen shortcut /play?drive=1 opens the 3D city", async ({ page }) => {
+    await returningPlayer(page);
+    await withGps(page);
+    await page.goto("/play?drive=1");
+    await expect(page.locator(".drive canvas[data-engine]")).toBeVisible({ timeout: 60_000 });
+    await expect(page).toHaveURL(/\/play$/);
+  });
+
   test("map style: a provider that won't load (blocked in the country) says so instead of a black map", async ({ page }) => {
     await returningPlayer(page);
     await withGps(page);
