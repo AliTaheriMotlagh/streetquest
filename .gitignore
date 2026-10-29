@@ -16,3 +16,6 @@ next-env.d.ts
 
 # Production settings for scripts run from this machine (npm run city:pack:prod) — never commit
 .env.prod
+
+# graphify output is a local, regenerable cache (run `graphify update .`) — never commit
+graphify-out/

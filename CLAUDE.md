@@ -30,7 +30,7 @@ only the section you need.
 
 ## Done means
 Code + Persian translations + README/.env.example for anything user-visible or configurable + a test
-(unit for pure logic, e2e for routes) + `graphify update .` + clean `npm test`.
+(unit for pure logic, e2e for routes) + `graphify update .` (local only — graphify-out/ is gitignored, never commit it) + clean `npm test`.
 
 ## graphify
 
