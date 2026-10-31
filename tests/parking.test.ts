@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { FLEET, heavy } from "@/lib/fleet";
 import { rng } from "@/lib/geo";
-import { laneOffset, parkedRow, parkingSides, ROW_M, type Parked } from "@/lib/parking";
+import { JUNCTION_CLEAR_M, Junctions, laneOffset, parkedRow, parkingSides, ROW_M, type Parked } from "@/lib/parking";
 
 describe("which streets have parked cars", () => {
   it("none on expressways or in narrow lanes, one row on a side street, both on wider streets", () => {
@@ -78,5 +78,52 @@ describe("a row of parked cars", () => {
     assert.ok(cars.every((c) => reach(c).every(clear)), "no car on the junction");
     assert.deepEqual(row(5), row(5));
     assert.notDeepEqual(row(5), row(6));
+  });
+});
+
+describe("junctions, roundabouts and bends", () => {
+  const W = 7.5;
+  /** The ends of a parked car, along its street (+x here). */
+  const ends = (c: Parked) => [c.x - FLEET[c.key].len / 2, c.x + FLEET[c.key].len / 2];
+
+  it("keeps a crossing clear even when the two streets share no point", () => {
+    const main = [0, 0, 120, 0], cross = [60, -50, 60, 50];
+    const j = new Junctions([{ line: main, w: W }, { line: cross, w: 9 }]);
+    const cars = parkedRow(main, W, 1, rng(4), (x, z) => j.clear(x, z, main), 1);
+    assert.ok(cars.length >= 10);
+    for (const c of cars) for (const x of ends(c)) assert.ok(Math.abs(x - 60) >= 9 / 2 + JUNCTION_CLEAR_M - 1e-9, `car end at x ${x}`);
+  });
+
+  it("keeps the mouth of a side street clear (a T from the parking side)", () => {
+    const main = [0, 0, 120, 0], side = [60, 0, 60, 60];
+    const j = new Junctions([{ line: main, w: W }, { line: side, w: 7 }]);
+    const cars = parkedRow(main, W, 1, rng(9), (x, z) => j.clear(x, z, main), 1);
+    for (const c of cars) for (const x of ends(c)) assert.ok(Math.abs(x - 60) >= 7 / 2 + JUNCTION_CLEAR_M - 1e-9, `car end at x ${x}`);
+  });
+
+  it("doesn't leave a gap where the same street just goes on as another line", () => {
+    const a = [0, 0, 60, 0], b = [60, 0, 120, 0];
+    const j = new Junctions([{ line: a, w: W }, { line: b, w: W }]);
+    assert.ok(j.clear(58, W / 2 - 1, a) && j.clear(62, W / 2 - 1, b));
+  });
+
+  it("parks nobody on a roundabout", () => {
+    const ring: number[] = [];
+    for (let k = 0; k <= 24; k++) ring.push(Math.cos((k / 24) * Math.PI * 2) * 40, Math.sin((k / 24) * Math.PI * 2) * 40);
+    assert.equal(parkedRow(ring, 10, 1, rng(1), () => true, 1).length, 0);
+  });
+
+  it("doesn't pile cars into each other on the inside of a bend", () => {
+    const bend = [0, 0, 60, 0, 60, 60];
+    for (const side of [1, -1] as const) {
+      const cars = parkedRow(bend, W, side, rng(2), () => true, 1);
+      for (let i = 0; i < cars.length; i++)
+        for (let k = i + 1; k < cars.length; k++) {
+          const a = cars[i], b = cars[k];
+          const reach = (FLEET[a.key].len + FLEET[b.key].len) / 2;
+          // Cars on different legs of the bend must not overlap.
+          if (Math.abs(Math.cos(a.yaw - b.yaw)) < 0.5) assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= reach * 0.75, `side ${side}: cars ${i} and ${k} overlap`);
+        }
+    }
   });
 });

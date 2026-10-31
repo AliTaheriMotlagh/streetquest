@@ -1749,6 +1749,14 @@ html.lite .biz-bar i::after { animation: none; }
 .ext-item b { display: block; line-height: 1.35; }
 .ext-item p { margin: 2px 0 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ext-item s { color: var(--muted); font-size: 12px; }
+button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.ext-item.tap:active { background: rgba(255,255,255,.1); }
+.ext-dish { display: flex; flex-direction: column; gap: 10px; scroll-margin-top: 56px; }
+.ext-dish-back { align-self: flex-start; }
+.ext-dish-img, .ext-dish-ph { width: 100%; aspect-ratio: 4 / 3; max-height: 300px; object-fit: cover; border-radius: 16px; background: rgba(255,255,255,.06); }
+.ext-dish-ph { display: grid; place-items: center; font-size: 64px; }
+.ext-dish h3 { margin: 0; line-height: 1.4; }
+.ext-dish-about { margin: 0; line-height: 1.7; white-space: pre-line; }
 .ext-source { margin: 8px 0 0; text-align: center; }
 .ext-loading { margin-top: 10px; }
 .ext-vendor img.place-ic { object-fit: cover; padding: 0; }

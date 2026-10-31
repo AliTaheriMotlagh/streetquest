@@ -9,12 +9,12 @@
 // Every store card has one phone-first shape: a compact head (logo, name, rating, open
 // now), a short cover, the actions in one row, then tabs that stick to the top of the
 // sheet while scrolling (Menu / Reviews / Info, or Catalog / Info) with compact rows.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
-  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
-  type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
+  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
+  type DivarArea, type DivarCat, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
@@ -159,15 +159,47 @@ function MenuPrice({ price, priceNow }: { price: number; priceNow: number }) {
   );
 }
 
-/** A Snappfood menu (restaurant) or catalog (supermarket, bakery…), one section at a time. */
+/** One item of a menu, tapped: its picture, all of its description, its price, and where to order it. */
+function MenuItemView({ item, menu, onBack }: { item: MenuItem; menu: Menu; onBack: () => void }) {
+  const el = useRef<HTMLDivElement>(null);
+  useEffect(() => el.current?.scrollIntoView({ block: "nearest" }), []);
+  const pic = item.image || item.photo;
+  const off = item.price > 0 && item.priceNow < item.price ? Math.round((1 - item.priceNow / item.price) * 100) : 0;
+  return (
+    <div className="ext-dish" ref={el}>
+      <button className="btn small ghost ext-dish-back" onClick={onBack}>
+        ↩ {t("Back to the menu")}
+      </button>
+      {pic ? <Pic src={pic} className="ext-dish-img" /> : <div className="ext-dish-ph">{VENDOR_KINDS[menu.vendor.kind].emoji}</div>}
+      <h3 dir="auto">{item.title}</h3>
+      {item.about && <p className="muted ext-dish-about" dir="auto">{item.about}</p>}
+      <span className="price-tag big">
+        <b>{toman(item.priceNow)}</b>
+        {off > 0 && (
+          <>
+            <s>{fmtNum(item.price)}</s>
+            <span className="deal-pill">{t("−{n}%", { n: off })}</span>
+          </>
+        )}
+      </span>
+      <a className="btn yellow block" href={snappfoodMenuUrl(menu.vendor.code)} target="_blank" rel="noopener noreferrer">
+        🍽️ {t("Order on Snappfood")}
+      </a>
+    </div>
+  );
+}
+
+/** A Snappfood menu (restaurant) or catalog (supermarket, bakery…), one section at a time; an item opens on a tap. */
 export function MenuView({ menu }: { menu: Menu }) {
   const [tab, setTab] = useState(0);
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState<MenuItem | null>(null);
   const kind = VENDOR_KINDS[menu.vendor.kind];
   const needle = q.trim().toLowerCase();
   const items = needle
     ? menu.sections.flatMap((s) => s.items).filter((i, n, all) => i.title.toLowerCase().includes(needle) && all.findIndex((x) => x.id === i.id) === n)
     : menu.sections[Math.min(tab, menu.sections.length - 1)]?.items ?? [];
+  if (open) return <MenuItemView item={open} menu={menu} onBack={() => setOpen(null)} />;
   return (
     <div className="ext-menu">
       {menu.sections.reduce((n, s) => n + s.items.length, 0) > 12 && (
@@ -184,14 +216,14 @@ export function MenuView({ menu }: { menu: Menu }) {
       )}
       <div className="ext-items compact">
         {items.map((i) => (
-          <div key={i.id} className="ext-item">
+          <button key={i.id} type="button" className="ext-item tap" onClick={() => setOpen(i)}>
             {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">{kind.emoji}</span>}
             <div className="grow">
               <b dir="auto">{i.title}</b>
               {i.about && <p className="small muted" dir="auto">{i.about}</p>}
             </div>
             <MenuPrice price={i.price} priceNow={i.priceNow} />
-          </div>
+          </button>
         ))}
         {!items.length && <div className="empty">{t("Nothing matches")}</div>}
       </div>
@@ -454,7 +486,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       {v.about && <p className="small muted store-about" dir="auto">{v.about}</p>}
       {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
       <div className="store-actions">
-        <a className="btn small ghost ext-link ext-snappfood" href={v.url} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
+        <a className="btn small ghost ext-link ext-snappfood" href={snappfoodMenuUrl(v.code)} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
         {menu?.phone && <a className="btn small ghost ext-link ext-phone" href={telOf(menu.phone)}>📞 {t("Call")}</a>}
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>

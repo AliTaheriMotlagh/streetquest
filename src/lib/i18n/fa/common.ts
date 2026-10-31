@@ -47,6 +47,7 @@ const common: Record<string, string> = {
   "Couldn't start a game ({status})": "بازی شروع نشد ({status})",
   "The server is taking too long — check your connection and try again": "سرور خیلی دیر جواب می‌ده — اینترنتت رو چک کن و دوباره امتحان کن",
   "You're offline — try again when you're back online": "آفلاینی — وقتی اینترنت وصل شد دوباره امتحان کن",
+  "Couldn't reach the server — check your connection and try again": "به سرور وصل نشدیم — اینترنتت رو چک کن و دوباره امتحان کن",
   "Request failed ({status})": "درخواست انجام نشد ({status})",
   "Something you entered isn't valid ({field})": "یکی از چیزهایی که وارد کردی درست نیست ({field})",
   "That's no longer there — refresh and try again": "این دیگه وجود نداره — صفحه رو تازه کن و دوباره امتحان کن",

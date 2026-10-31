@@ -69,6 +69,10 @@ export const isVehicle = (k: unknown): k is VehicleKey => typeof k === "string" 
 export const MAX_VEHICLE_MULT = Math.max(...VEHICLE_KEYS.map((k) => VEHICLES[k].speed));
 /** Flying this low or lower counts as "on the street" for pick-ups and check-ins. */
 export const LAND_ALT_M = 12;
+/** Climbing back out takes this much more (m), so hovering at the line over uneven roofs doesn't flip it every frame. */
+export const LAND_HYSTERESIS_M = 3;
+/** Whether a vehicle is low enough for pick-ups now, given whether it was a moment ago. */
+export const lowEnough = (flies: boolean, alt: number, wasLow: boolean) => !flies || alt <= LAND_ALT_M + (wasLow ? LAND_HYSTERESIS_M : 0);
 
 /** By level — or all of them, while the admin keeps the whole garage free (the default). */
 export const unlocked = (k: VehicleKey, level: number) => S.garageFree || level >= VEHICLES[k].level;

@@ -2,7 +2,7 @@
 // Torob and OpenStreetMap, open-now in the store's time zone, and store-name matching.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clockOf, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, openState, sameName, sameStore, snappfoodCode, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
+import { clockOf, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, openState, sameName, sameStore, snappfoodCode, snappfoodMenuUrl, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
 
 const TEHRAN = { lat: 35.73, lng: 51.53 };
 /** A Tehran wall-clock moment (Iran has kept +03:30 all year since 2022). */
@@ -94,6 +94,12 @@ describe("store names", () => {
     assert.equal(snappfoodCode("https://snappfood.ir/restaurant/menu/0q5252/javan"), "0q5252");
     assert.equal(snappfoodCode("0q5252"), "0q5252");
     assert.equal(snappfoodCode("https://example.com/x"), null);
+  });
+
+  it("links a vendor to the menu page that opens (its own menuUrl 404s), and back to the same code", () => {
+    // …/menu/<code>/<slug>?… redirects to a 404; …/menu/<code>/ redirects to the real page.
+    assert.equal(snappfoodMenuUrl("p6d6n6"), "https://snappfood.ir/restaurant/menu/p6d6n6/");
+    assert.equal(snappfoodCode(snappfoodMenuUrl("0q5252")), "0q5252");
   });
 });
 

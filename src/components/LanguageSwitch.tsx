@@ -10,6 +10,8 @@ export async function setLanguage(locale: Locale) {
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${365 * 86_400}; samesite=lax`;
   // Best effort: visitors on the website have no account yet, and that's fine.
   await fetch("/api/me", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ locale }) }).catch(() => {});
+  // The service worker keeps the offline page (and the game's shell) in the old language otherwise.
+  navigator.serviceWorker?.controller?.postMessage({ type: "LOCALE" });
   const url = new URL(location.href);
   url.searchParams.delete("lang"); // ?lang= would override the new choice
   location.replace(url);

@@ -124,7 +124,7 @@ export function AdminPanel() {
   const post = async (body: object) => {
     const r = await fetch("/api/admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json();
-    setNotice(r.ok ? null : d.error ?? "Request failed");
+    setNotice(r.ok ? null : d.error ?? t("Request failed"));
     if (r.ok && "action" in body && (body as { action: string }).action === "saveSettings") setSaved(Date.now());
     load();
     return r.ok;

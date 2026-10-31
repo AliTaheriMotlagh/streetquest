@@ -61,6 +61,7 @@ const local: Record<string, string> = {
   "Nothing matches": "چیزی پیدا نشد",
   "From Snappfood · updated {when}": "از اسنپ‌فود · به‌روزرسانی {when}",
   "Order on Snappfood": "سفارش از اسنپ‌فود",
+  "Back to the menu": "برگشت به منو",
   "Shop on Torob": "خرید از ترب",
   "See the ad on Divar": "دیدن آگهی در دیوار",
   "This store on Torob": "این فروشگاه توی ترب",

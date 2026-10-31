@@ -30,6 +30,7 @@ import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { beepSound, boomSound, emptySound, hitSound, hurtSound, killSound, reloadSound, shotSound } from "./gunsound";
 import { medalFor, nextRun, NO_RUN, type KillRun } from "@/lib/arena/medals";
 import { sfx } from "../game/sfx";
+import { errorText } from "../game/client";
 import { HTTP_DELAY_MS, Remotes, RT_DELAY_MS } from "./remotes";
 import type { OtherDriver } from "../drive/net";
 import type { ArenaEvent } from "@/server/arena";
@@ -405,7 +406,8 @@ export class Combat {
       const res = await fetch("/api/drive/arena", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        if (data?.error) this.h.toast(data.error);
+        const text = errorText(res, data);
+        if (text) this.h.toast(text);
         return null;
       }
       return data as T;

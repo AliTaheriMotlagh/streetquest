@@ -8,6 +8,11 @@
 // CSS variables and classes. No React state changes while you drive, so a busy HUD can
 // never make a control lag, and the component itself is memoised: the drive's HUD
 // updates don't re-render it.
+//
+// A control never waits on a touch the browser forgot to end (iOS drops the pointerup
+// when a system swipe, a notification or the edge of the screen takes the finger):
+// useLetGo releases it on any sign the finger is gone, and a new touch on a wheel or
+// stick always takes it over instead of being ignored.
 import { memo, useEffect, useRef, type PointerEvent as RPointerEvent } from "react";
 import { t } from "@/lib/i18n";
 import type { Controls } from "./physics";
@@ -32,6 +37,38 @@ const STICK_R = 46;
 /** Phone tilt (degrees) for full lock. */
 const TILT_FULL = 24;
 const clamp1 = (v: number) => Math.max(-1, Math.min(1, v));
+/**
+ * The safety net behind every control: `end(id)` for a pointer that ended anywhere on the
+ * page, `end(null)` when the last finger leaves the screen or the page is hidden.
+ */
+function useLetGo(end: (id: number | null) => void) {
+  const ref = useRef(end);
+  ref.current = end;
+  useEffect(() => {
+    const one = (e: PointerEvent) => ref.current(e.pointerId);
+    const touch = (e: TouchEvent) => e.touches.length === 0 && ref.current(null);
+    const all = () => ref.current(null);
+    const hidden = () => document.hidden && all();
+    const opts = { capture: true, passive: true };
+    window.addEventListener("pointerup", one, opts);
+    window.addEventListener("pointercancel", one, opts);
+    window.addEventListener("touchend", touch, opts);
+    window.addEventListener("touchcancel", touch, opts);
+    window.addEventListener("blur", all);
+    window.addEventListener("pagehide", all);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("pointerup", one, opts);
+      window.removeEventListener("pointercancel", one, opts);
+      window.removeEventListener("touchend", touch, opts);
+      window.removeEventListener("touchcancel", touch, opts);
+      window.removeEventListener("blur", all);
+      window.removeEventListener("pagehide", all);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, []);
+}
+
 const buzz = (ms: number) => {
   try {
     navigator.vibrate?.(ms);
@@ -93,12 +130,26 @@ export const DrivePad = memo(function DrivePad({ input, kind, mode, onHorn, onLa
 
 /** A button that's on while a finger is on it. */
 function Hold({ set, className, label, children }: { set: (on: boolean) => void; className: string; label: string; children: React.ReactNode }) {
-  const on = (e: RPointerEvent<HTMLButtonElement>, v: boolean) => {
-    e.currentTarget.classList.toggle("on", v);
+  const el = useRef<HTMLButtonElement>(null);
+  const fingers = useRef(new Set<number>());
+  const apply = () => {
+    const v = fingers.current.size > 0;
+    el.current?.classList.toggle("on", v);
     set(v);
   };
+  const on = (e: RPointerEvent<HTMLButtonElement>, v: boolean) => {
+    if (v) fingers.current.add(e.pointerId);
+    else fingers.current.delete(e.pointerId);
+    apply();
+  };
+  useLetGo((id) => {
+    if (id == null ? !fingers.current.size : !fingers.current.delete(id)) return;
+    if (id == null) fingers.current.clear();
+    apply();
+  });
   return (
     <button
+      ref={el}
       className={className}
       aria-label={label}
       title={label}
@@ -154,6 +205,11 @@ function Pedals({ input, air }: { input: Input; air: boolean }) {
   const up = (e: RPointerEvent<HTMLDivElement>) => {
     if (fingers.current.delete(e.pointerId)) apply();
   };
+  useLetGo((id) => {
+    if (id == null ? !fingers.current.size : !fingers.current.delete(id)) return;
+    if (id == null) fingers.current.clear();
+    apply();
+  });
   useEffect(() => () => fingers.current.clear(), []);
 
   return (
@@ -180,19 +236,21 @@ function Wheel({ input, moto }: { input: Input; moto: boolean }) {
     z.style.setProperty("--steer", s.toFixed(3));
     z.classList.toggle("on", held);
   };
-  const end = (e: RPointerEvent) => {
-    if (drag.current?.id !== e.pointerId) return;
+  const release = (id: number | null) => {
+    if (!drag.current || (id != null && drag.current.id !== id)) return;
     drag.current = null;
     input.current.steer = 0;
     show(0, false);
   };
+  const end = (e: RPointerEvent) => release(e.pointerId);
+  useLetGo(release);
   return (
     <div
       ref={zone}
       className={`dwheel ${moto ? "moto" : ""}`}
       aria-label={t("Steering: drag left or right")}
       onPointerDown={(e) => {
-        if (drag.current) return;
+        // A new touch takes the wheel over: the old one may be a finger the browser lost.
         e.currentTarget.setPointerCapture?.(e.pointerId);
         drag.current = { id: e.pointerId, x: e.clientX };
         show(input.current.steer, true);
@@ -266,6 +324,15 @@ function SteerButtons({ input }: { input: Input }) {
     input.current.steer = (l.size ? 1 : 0) - (r.size ? 1 : 0);
     el?.parentElement?.querySelectorAll<HTMLElement>("[data-side]").forEach((b) => b.classList.toggle("on", held.current[b.dataset.side as "l" | "r"].size > 0));
   };
+  const box = useRef<HTMLDivElement>(null);
+  useLetGo((id) => {
+    const { l, r } = held.current;
+    if (id == null) {
+      if (!l.size && !r.size) return;
+      l.clear(), r.clear();
+    } else if (!l.delete(id) && !r.delete(id)) return;
+    apply(box.current?.firstElementChild as HTMLElement | null);
+  });
   const handlers = (side: "l" | "r") => ({
     onPointerDown: (e: RPointerEvent<HTMLButtonElement>) => {
       e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -279,7 +346,7 @@ function SteerButtons({ input }: { input: Input }) {
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
   return (
-    <div className="dsteer-btns">
+    <div className="dsteer-btns" ref={box}>
       <button className="dsteer" data-side="l" aria-label={t("Steer left")} {...handlers("l")}>
         <Icon name="left" size={34} strokeWidth={2.6} />
       </button>
@@ -349,19 +416,21 @@ function Stick({ input }: { input: Input }) {
     z.style.setProperty("--ky", `${y.toFixed(1)}px`);
     z.classList.toggle("on", held);
   };
-  const end = (e: RPointerEvent) => {
-    if (drag.current?.id !== e.pointerId) return;
+  const release = (id: number | null) => {
+    if (!drag.current || (id != null && drag.current.id !== id)) return;
     drag.current = null;
     input.current.steer = input.current.lift = 0;
     show(0, 0, false);
   };
+  const end = (e: RPointerEvent) => release(e.pointerId);
+  useLetGo(release);
   return (
     <div
       ref={zone}
       className="dstick"
       aria-label={t("Stick: left and right to turn, up and down to climb and descend")}
       onPointerDown={(e) => {
-        if (drag.current) return;
+        // A new touch takes the stick over: the old one may be a finger the browser lost.
         e.currentTarget.setPointerCapture?.(e.pointerId);
         drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
         show(0, 0, true);

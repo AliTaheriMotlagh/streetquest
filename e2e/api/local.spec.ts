@@ -146,7 +146,7 @@ test.describe("store hours, reviews and walk-in stores", () => {
     // Saturday first: lunch and dinner every day but Friday; 23:30 stays the same day.
     expect(menu.week[0]).toEqual([[690, 930], [1140, 1410]]);
     expect(menu.week[6]).toEqual([]);
-    expect(menu).toMatchObject({ phone: "02112345678", area: "Stubville", reviews: 2, stars: [0, 0, 10, 30, 60], minOrder: 50_000, deliveryFee: 15_000 });
+    expect(menu).toMatchObject({ phone: "02112345678", area: "Stubville", reviews: 2, stars: [0, 0, 10, 30, 60], minOrder: 500_000, deliveryFee: 150_000 });
 
     const page = expectOk(await p.get<{ reviews: { count: number; reviews: { who: string; rate: number; text: string; foods: string[]; reply: string }[] } }>(`/api/local?reviews=${v.code}`)).data.reviews;
     expect(page.count).toBe(2);
@@ -240,8 +240,9 @@ test.describe("store menus & prices", () => {
     const { data } = expectOk(await p.get<{ menu: { vendor: { code: string; kind: string }; sections: { items: { title: string; price: number; priceNow: number }[] }[] } | null; links: { kind: string }[] }>(`/api/local?${q}`));
     expect(data.menu?.vendor.code).toBe(v.code);
     expect(data.menu?.vendor.kind).toBe("cafe");
-    // Rial → toman, discount applied.
-    expect(data.menu?.sections[0].items[0]).toMatchObject({ title: "Latte", price: 120_000, priceNow: 100_000 });
+    // Toman as Snappfood quotes them, discount applied; the link opens the real menu page.
+    expect(data.menu?.sections[0].items[0]).toMatchObject({ title: "Latte", price: 1_200_000, priceNow: 1_000_000 });
+    expect((data.menu?.vendor as { url?: string } | undefined)?.url).toBe(`https://snappfood.ir/restaurant/menu/${v.code}/`);
     expect(data.links.map((l) => l.kind)).toContain("snappfood");
 
     // The map layer lists both, nearest first; the menu opens by code.

@@ -19,6 +19,15 @@ function ensureGuest() {
   return guest;
 }
 
+/**
+ * What to tell the player about a refused answer: the service worker's offline reply
+ * (x-offline, sw.js) in their language, else the server's own (already translated) error.
+ */
+export function errorText(res: Response, data: { error?: unknown } | null | undefined): string | undefined {
+  if (res.headers.get("x-offline")) return t("You're offline — try again when you're back online");
+  return typeof data?.error === "string" ? data.error : undefined;
+}
+
 /** A dead mobile connection can hang a request for minutes; give up and say so instead. */
 const TIMEOUT_MS = 20_000;
 
@@ -36,7 +45,8 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
     });
   } catch (e) {
     if (ctl.signal.aborted) throw new Error(t("The server is taking too long — check your connection and try again"));
-    throw navigator.onLine === false ? new Error(t("You're offline — try again when you're back online")) : e;
+    // The browser's own words for a failed request ("Failed to fetch", "Load failed") are English.
+    throw new Error(navigator.onLine === false ? t("You're offline — try again when you're back online") : t("Couldn't reach the server — check your connection and try again"));
   } finally {
     clearTimeout(timer);
   }
@@ -45,7 +55,7 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
     await ensureGuest();
     return api<T>(path, init, true);
   }
-  if (!res.ok) throw new ApiError(res.status, data.error ?? t("Request failed ({status})", { status: res.status }));
+  if (!res.ok) throw new ApiError(res.status, errorText(res, data) ?? t("Request failed ({status})", { status: res.status }));
   return data as T;
 }
 

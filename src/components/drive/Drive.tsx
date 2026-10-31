@@ -21,7 +21,7 @@ import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { S } from "@/lib/settings";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
-import { allowedVehicle, isPaint, LAND_ALT_M, PAINTS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
+import { allowedVehicle, isPaint, LAND_ALT_M, lowEnough, PAINTS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { CHECKPOINT_M, type PartyGame, type PartyView } from "@/lib/party";
 import { Button } from "@/components/Button";
 import { Art } from "@/components/art/Art";
@@ -1030,9 +1030,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (k === "l") land();
       startEngine();
     };
-    const keyUp = (e: KeyboardEvent) => input.current.keys.delete(e.key.toLowerCase());
+    const keyUp = (e: KeyboardEvent) => {
+      input.current.keys.delete(e.key.toLowerCase());
+      // A Mac sends no keyup for keys let go while ⌘ is held: start over when it goes.
+      if (e.key === "Meta") input.current.keys.clear();
+    };
+    // Switching away (alt-tab, another window) swallows the keyups: let go of every key.
+    const keysOff = () => input.current.keys.clear();
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
+    window.addEventListener("blur", keysOff);
 
     // Tap something in the city: what is it?
     const ray = new THREE.Raycaster();
@@ -1119,6 +1126,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     // ---- the loop
     let last = performance.now();
+    let wasLow = true;
     let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, lastQuality = performance.now(), frames = 0, fps = 60, goodFor = 0, lastWorld: World | null = null;
     let phase: Phase = "day";
     let streetName: string | null = null;
@@ -1411,7 +1419,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
 
       // -- slower work: tiles, signs, labels, loot pick-ups, position reports
-      const low = !D.flies || st.alt <= LAND_ALT_M;
+      const low = (wasLow = lowEnough(D.flies, st.alt, wasLow));
       if (now - lastSlow > 250) {
         lastSlow = now;
         // The engine starts the moment audio is allowed (the first tap anywhere, the gas
@@ -1642,6 +1650,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       vtPool.dispose();
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("blur", keysOff);
       window.removeEventListener("resize", onResize);
       el.removeEventListener("pointerdown", pDown);
       el.removeEventListener("pointerup", pUp);

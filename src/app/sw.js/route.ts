@@ -27,7 +27,9 @@ const ASSETS = "sq-assets-v1";   // fonts, the arena's 3D models, the 3D decoder
 const CITY = "sq-city-v1";       // 3D-city street maps (vector tiles + street detail) you've driven through
 const MAX_MODELS = 40;
 const MAX_CITY = 800;
-const PRECACHE = ["/offline", "/play", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/badge-96.png", "/media/streetquest-ad.jpg"];
+"// Pages written in the player's language (the server translates them): fetched again when it changes.
+const PAGES = ["/offline", "/play"];
+const PRECACHE = [...PAGES, "/manifest.webmanifest", "/icons/icon-192.png", "/icons/badge-96.png", "/media/streetquest-ad.jpg"];
 // Downloaded once, in the background, when the app is installed or opened — so the first
 // drive, the first match and Persian text never wait on them over a slow phone connection.
 const WARM = ["/fonts/Vazirmatn-UI-FD-Regular.woff2", "/fonts/Vazirmatn-UI-FD-Bold.woff2", "/fonts/Vazirmatn-UI-FD-Black.woff2", "/draco/draco_decoder.wasm", "/draco/draco_wasm_wrapper.js", "/models/arena/soldier.glb", "/models/arena/weapons.glb"];
@@ -77,6 +79,8 @@ self.addEventListener("message", (e) => {
   if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
   if (e.data && e.data.type === "VERSION") e.source && e.source.postMessage({ type: "VERSION", version: VERSION });
   if (e.data && e.data.type === "WARM") e.waitUntil(warm());
+  // The player picked another language: the pages kept for offline are in the old one.
+  if (e.data && e.data.type === "LOCALE") e.waitUntil(caches.open(SHELL).then((c) => Promise.all(PAGES.map((u) => c.add(new Request(u, { cache: "reload" })).catch(() => {})))));
 });
 
 const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms));
@@ -127,8 +131,10 @@ async function cityFirst(req, event, freshMs) {
     throw err;
   }
 }
+// The page shows its own translation of this (client.ts offlineText, keyed on x-offline);
+// the text is only for anything that reads the raw answer.
 function offlineJson() {
-  return new Response(JSON.stringify({ error: "You're offline — this will work again when you're back online" }), { status: 503, headers: { "content-type": "application/json", "x-offline": "1" } });
+  return new Response(JSON.stringify({ error: "You're offline — this will work again when you're back online", code: "offline" }), { status: 503, headers: { "content-type": "application/json", "x-offline": "1" } });
 }
 
 self.addEventListener("fetch", (event) => {

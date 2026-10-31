@@ -114,15 +114,22 @@ mood scales XP; loot funds research; territory funds the army.
   with Tehran's *jube* — the open gutter — between them in Iran, all cut short where they meet the next street
   (`tileMesh.ts` `streetSide`). About half of Iran's streets are lined on each side with plane trees growing out of
   the jube. Cars are parked nose to tail along the kerbs — one side of a two-lane side street, both sides of wider
-  ones, none on expressways — with gaps at junctions, driveways and traffic lights; the same cars are there each time
-  you come back, they're solid, and traffic keeps to the lanes they leave (`src/lib/parking.ts`; the nearest 90 are
-  drawn, 30 on lite phones). Leaves close to the camera aren't drawn, so the chase camera never looks out from inside
+  ones, none on expressways or roundabouts — with gaps at driveways and traffic lights and every junction kept clear
+  5 m past the crossing street's kerb (measured to that street's segments, so a crossing with no shared map point
+  still stays clear, while the same street carrying on as another line leaves no gap), none piled into the inside of
+  a bend, and about half the kerb taken on side streets, a third on avenues; the same cars are there each time
+  you come back, they're solid, and traffic keeps to the lanes they leave (`src/lib/parking.ts`; the nearest 60 are
+  drawn, 20 on lite phones). Leaves close to the camera aren't drawn, so the chase camera never looks out from inside
   a tree.
 - **The garage** — the same street cars are yours to drive (Pride, Peykan, 206, 207, Pars, Samand, the taxi, the
   Zamyad pickup, the city bus, a delivery bike with its box) next to the hatchback, sports car, pickup, motorbike,
   drone and helicopter. Every vehicle — the drone and the helicopter too — is free from level 1 (admin: *Every vehicle
   free from the start*; turn it off to unlock them by level). A bus gets collision circles down its length and a
-  camera further back; bikes lean and steer by the bars (`src/lib/vehicles.ts`).
+  camera further back; bikes lean and steer by the bars (`src/lib/vehicles.ts`). Flyers count as low enough for
+  pick-ups under 12 m and stay so up to 15 m, so the job card at the bottom doesn't flicker while you hover over
+  uneven roofs. The touch controls let go of any finger the browser loses (a system swipe, the screen's edge, the app
+  going to the background) and a new touch always takes the wheel or stick, so a control never sticks or freezes;
+  keys let go when the window loses focus.
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
   nearby shows up live (20 updates a second over WebSockets). Press **F** / 🚶 to get out of the car and walk as a 3D
   soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
@@ -162,6 +169,9 @@ mood scales XP; loot funds research; territory funds the army.
   now / 🔴 closed (in the store's own time zone), the actions in one row, and tabs that stick while you scroll — Menu,
   ⭐ Reviews (Snappfood customers' reviews, ten at a time, with the star split, what they ordered and the store's
   replies) and ℹ️ Info (the week's hours with today marked, the address, the phone, minimum order and delivery fee).
+  Tap a menu item to open it: its full-size picture, whole description, price and discount, and Order on Snappfood.
+  Prices are toman, as Snappfood quotes them; its links go to `snappfood.ir/restaurant/menu/<code>/` (the vendor's
+  own `menuUrl` redirects to a 404).
   Hours come from the map's `opening_hours` when it reads as a week, else from Snappfood's schedule.
 - **Torob walk-in stores** (the map's filter → 🏷️): every store Torob's own map of sellers knows, at its real spot
   — built once a day from the walk-in sellers of a few everyday products (kept per ~2 km cell), plus Torob's own
@@ -347,7 +357,9 @@ starts refusing, point `TOROB_URL` / `DIVAR_URL` at the same relay with `/torob`
   fonts, the arena's 3D models and the 3D decoder (fetched in the background on install and every launch), and the
   3D city's street maps you've driven through (vector tiles a week, city-pack detail a day). The app asks the browser
   for persistent storage so Android doesn't clear it when space runs low. Every deploy gets a new version id, and
-  players see "New version ready → Update".
+  players see "New version ready → Update". Offline, every message is in the player's language: the worker's
+  "offline" answer is shown as the app's own translation (`x-offline`), and picking another language re-fetches the
+  offline page and the game shell it keeps.
   A long-press on the installed icon offers shortcuts: Play, Story missions (`/play?panel=play`) and Drive the 3D city
   (`/play?drive=1`, straight into the car once there's a position to start from).
 - **Push notifications:** set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`

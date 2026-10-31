@@ -221,15 +221,17 @@ html.lite .map.light .leaflet-tile { filter: grayscale(1); }
 .da-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 2px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; touch-action: manipulation; transition: transform .1s ease-out; }
 .da-main:active:not(:disabled) { transform: scale(.97); }
 .da-main:disabled { cursor: progress; }
-.da-ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--job); color: #101116; animation: daPulse 1.8s ease-out infinite; }
+.da-ic { position: relative; isolation: isolate; flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--job); color: #101116; }
+/* The pulse is a scaled, fading copy (transform + opacity): composited, never a repaint over the 3D view. */
+.da-ic::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--job); opacity: 0; animation: daPulse 1.8s ease-out infinite; will-change: transform, opacity; }
 .da-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .da-tx b { font: 800 15px/1.15 var(--body); letter-spacing: .02em; text-transform: uppercase; }
 .da-tx span { font-size: 12px; color: rgba(255, 255, 255, .72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .da-x { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(255, 255, 255, .1); color: #fff; font-size: 14px; cursor: pointer; touch-action: manipulation; }
 .da-x:active { background: rgba(255, 255, 255, .2); }
-.drive-action.busy .da-ic { animation: none; }
+.drive-action.busy .da-ic::after { animation: none; }
 @keyframes daIn { from { opacity: 0; transform: translate(-50%, 14px) scale(.96); } }
-@keyframes daPulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--job) 65%, transparent); } to { box-shadow: 0 0 0 10px transparent; } }
+@keyframes daPulse { from { opacity: .65; transform: scale(1); } to { opacity: 0; transform: scale(1.5); } }
 html[lang="fa"] .da-tx b { text-transform: none; }
 
 /* ---- tapped something in the city */

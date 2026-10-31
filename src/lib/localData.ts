@@ -17,7 +17,8 @@ export type Vendor = {
   open: boolean;
   about: string;
 };
-export type MenuItem = { id: string; title: string; about: string; price: number; priceNow: number; photo: string };
+/** `photo` is the thumbnail for the list; `image` the full-size picture for the item's own sheet. */
+export type MenuItem = { id: string; title: string; about: string; price: number; priceNow: number; photo: string; image?: string };
 export type MenuSection = { title: string; items: MenuItem[] };
 /**
  * A vendor's menu and what its page says about it: opening hours, phone, neighbourhood,
@@ -269,8 +270,11 @@ export const isFoodCat = (cat: string) => FOOD.includes(cat);
 /** Places worth looking up by name on Snappfood: food, and the groceries it delivers from. */
 export const sellsOnSnappfood = (cat: string) => isFoodCat(cat) || cat === "grocery";
 
-/** Rial (what Snappfood quotes) → toman (what the game and Torob show). */
-export const rialToToman = (rial: number) => Math.round(rial / 10);
+/**
+ * A vendor's menu page on Snappfood. Its own `menuUrl` (…/menu/<code>/<slug>?…) redirects
+ * to a 404; the bare code with a trailing slash redirects to the real page.
+ */
+export const snappfoodMenuUrl = (code: string) => `https://snappfood.ir/restaurant/menu/${encodeURIComponent(code)}/`;
 
 // ---------------------------------------------------------------- owner links
 const SNAPP_CODE = /^[0-9a-z]{6}$/;

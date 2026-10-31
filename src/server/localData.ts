@@ -20,7 +20,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, rialToToman, sameName, sellsOnSnappfood, snappfoodCode, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -143,7 +143,7 @@ function toVendor(v: RawVendor): Vendor | null {
     lng: v.lon,
     rating: Math.round((v.rating ?? 0) * 10) / 10,
     logo: v.logo ?? "",
-    url: v.menuUrl || v.shareLink || `https://snappfood.ir/restaurant/menu/${v.vendorCode}`,
+    url: snappfoodMenuUrl(v.vendorCode),
     open: !!v.isOpen,
     about: (v.description ?? "").replace(/\s*,\s*/g, "، ").trim(),
   };
@@ -254,8 +254,9 @@ const phoneOf = (s: string | undefined) => (s && /^[\d+\-\s()]{5,20}$/.test(s.tr
 
 /** A vendor's menu (restaurants) or catalog (supermarkets, bakeries…), prices in toman. */
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
-  // "menu2": menus cached before hours, phone and review counts were read are fetched afresh.
-  return cached<Menu>(`sf:menu2:${code}`, MENU_TTL, async () => {
+  // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
+  // and before the menu link was fixed are fetched afresh.
+  return cached<Menu>(`sf:menu3:${code}`, MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = near ?? { lat: 35.6997, lng: 51.338 };
@@ -273,8 +274,8 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
       area: (raw.area ?? "").trim(),
       reviews: raw.commentCount ?? 0,
       ...(st ? { stars: [st.one ?? 0, st.two ?? 0, st.three ?? 0, st.four ?? 0, st.five ?? 0] } : {}),
-      ...(raw.minOrder ? { minOrder: rialToToman(raw.minOrder) } : {}),
-      ...(raw.deliveryFee != null ? { deliveryFee: rialToToman(raw.deliveryFee) } : {}),
+      ...(raw.minOrder ? { minOrder: Math.round(raw.minOrder) } : {}),
+      ...(raw.deliveryFee != null ? { deliveryFee: Math.round(raw.deliveryFee) } : {}),
       fetchedAt: new Date().toISOString(),
       sections: (r.data.menus ?? [])
         .map((m) => ({
@@ -283,9 +284,11 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
             id: String(p.id ?? p.title),
             title: p.title!,
             about: (p.description ?? "").trim(),
-            price: rialToToman(p.price!),
-            priceNow: rialToToman(p.price! - (p.discount ?? 0)),
+            // Snappfood quotes toman ("قیمت‌ها به تومان" on its own filters).
+            price: Math.round(p.price!),
+            priceNow: Math.round(p.price! - (p.discount ?? 0)),
             photo: p.images?.[0]?.imageThumbnailSrc ?? p.images?.[0]?.imageSrc ?? "",
+            image: p.images?.[0]?.imageSrc ?? p.images?.[0]?.imageThumbnailSrc ?? "",
           })),
         }))
         .filter((s) => s.items.length)
@@ -718,8 +721,8 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
       ? await torobSearch("", shop.id).catch(() => [])
       : (await torobSearch(s.name).catch(() => [])).filter((x) => x.shop && nameScore(x.shop, s.name) >= 1);
   const links: StoreLink[] = [];
-  if (menu) links.push({ kind: "snappfood", url: menu.vendor.url, label: t("Order on Snappfood") });
-  else if (owned) links.push({ kind: "snappfood", url: `https://snappfood.ir/restaurant/menu/${owned}`, label: t("Order on Snappfood") });
+  if (menu) links.push({ kind: "snappfood", url: snappfoodMenuUrl(menu.vendor.code), label: t("Order on Snappfood") });
+  else if (owned) links.push({ kind: "snappfood", url: snappfoodMenuUrl(owned), label: t("Order on Snappfood") });
   if (tl || shop) links.push({ kind: "torob", url: tl ?? shop!.url, label: t("Shop on Torob") });
   const dl = s.divar ? divarLink(s.divar) : null;
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });

@@ -16,7 +16,7 @@ import type { LatLng } from "@/lib/geo";
 import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, signalPhase, trafficCell, type TrafficCellOut } from "@/lib/traffic";
 import { FLEET, heavy, pickFleet, pickPaint, roomBetween, type FleetKey } from "@/lib/fleet";
 import { hashStr, rng } from "@/lib/geo";
-import { laneOffset, parkedRow, parkingSides, type Parked, type Sides } from "@/lib/parking";
+import { Junctions, laneOffset, parkedRow, parkingSides, type Parked, type Sides, type Street } from "@/lib/parking";
 import { api } from "../game/client";
 import { FleetInstances } from "./fleet3d";
 import { box, type Footprint } from "./tileMesh";
@@ -130,7 +130,9 @@ const KEEP_M = 2.5;
 /** You, as the cars around see you: about a car's length. */
 const YOU_LEN = 4.4;
 /** Parked cars are drawn this close to you, the nearest first (and as many at most). */
-const PARKED_M = 140, PARKED_MAX = 90, PARKED_LITE_M = 80, PARKED_LITE_MAX = 30;
+const PARKED_M = 140, PARKED_MAX = 60, PARKED_LITE_M = 80, PARKED_LITE_MAX = 20;
+/** How much of the kerb parked cars take: an avenue's slow lane is mostly kept moving. */
+const PARK_FILL = { major: 0.3, minor: 0.55 };
 
 export class TrafficCars {
   private cars: Car[] = [];
@@ -169,19 +171,14 @@ export class TrafficCars {
         if (list) list.push(l);
         else this.lights.set(key, [l]);
       }
-    // Junctions, for the gaps in the rows of parked cars: every point of every street.
-    const joints = new Map<string, { line: Float32Array; x: number; z: number; r: number }[]>();
+    // Junctions, for the gaps in the rows of parked cars: every street's segments.
+    const streets: Street[] = [];
     for (const m of meshes)
       m.roads.forEach((line, i) => {
         const k = m.roadKinds[i];
-        if ((k !== "major" && k !== "minor" && k !== "path") || !m.roadDrawn[i]) return;
-        for (let j = 0; j + 1 < line.length; j += 2) {
-          const key = `${Math.floor(line[j] / 16)}_${Math.floor(line[j + 1] / 16)}`, p = { line, x: line[j], z: line[j + 1], r: m.roadWidths[i] / 2 + 6 };
-          const l = joints.get(key);
-          if (l) l.push(p);
-          else joints.set(key, [p]);
-        }
+        if ((k === "major" || k === "minor" || k === "path") && m.roadDrawn[i]) streets.push({ line, w: m.roadWidths[i] });
       });
+    const junctions = new Junctions(streets);
     this.parked = [];
     for (const m of meshes)
       m.roads.forEach((line, i) => {
@@ -189,19 +186,17 @@ export class TrafficCars {
         if ((k !== "major" && k !== "minor") || !m.roadDrawn[i] || line.length < 4) return;
         const at = this.frame.toLatLng(line[0], line[1]), seed = hashStr(`park|${at.lat.toFixed(5)}|${at.lng.toFixed(5)}|${line.length}`);
         const r: Road = { line, w: m.roadWidths[i], kind: k, park: parkingSides(m.roadWidths[i], seed) };
-        // Not on a junction (another street's point close by) nor by a traffic light.
+        // Not on a junction (clear of every other street) nor by a traffic light.
         const free = (x: number, z: number) => {
+          if (!junctions.clear(x, z, line)) return false;
           for (let a = -1; a <= 1; a++)
-            for (let b = -1; b <= 1; b++) {
-              const gx = Math.floor(x / 16) + a, gz = Math.floor(z / 16) + b;
-              if (joints.get(`${gx}_${gz}`)?.some((p) => p.line !== line && Math.hypot(p.x - x, p.z - z) < p.r)) return false;
-              if (this.lights.get(`${gx}_${gz}`)?.some((l) => Math.hypot(l.x - x, l.z - z) < 12)) return false;
-            }
+            for (let b = -1; b <= 1; b++)
+              if (this.lights.get(`${Math.floor(x / 16) + a}_${Math.floor(z / 16) + b}`)?.some((l) => Math.hypot(l.x - x, l.z - z) < 12)) return false;
           return true;
         };
         const rand = rng(seed);
         r.park.forEach((on, s) => {
-          if (on) for (const p of parkedRow(line, r.w, s ? -1 : 1, rand, free, k === "major" ? 0.5 : 0.78)) this.parked.push({ ...p, color: new THREE.Color(p.paint) });
+          if (on) for (const p of parkedRow(line, r.w, s ? -1 : 1, rand, free, k === "major" ? PARK_FILL.major : PARK_FILL.minor)) this.parked.push({ ...p, color: new THREE.Color(p.paint) });
         });
         this.roads.push(r);
         for (const end of [0, 1] as const) {
