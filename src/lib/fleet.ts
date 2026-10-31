@@ -5,7 +5,7 @@
 // the main roads), their usual paint, and how big they are — for following distances and
 // for what you bump into.
 
-export type FleetKey = "pride" | "peykan" | "p206" | "p207" | "pars" | "samand" | "tiba" | "suv" | "taxi" | "vanet" | "vanetLoad" | "bus" | "khavar" | "minibus" | "bike" | "bikeBox";
+export type FleetKey = "pride" | "peykan" | "p206" | "p207" | "pars" | "samand" | "tiba" | "shahin" | "l90" | "xantia" | "suv" | "taxi" | "vanet" | "vanetLoad" | "bus" | "khavar" | "minibus" | "bike" | "bikeBox";
 
 export type FleetDef = {
   key: FleetKey;
@@ -35,7 +35,10 @@ export const FLEET: Record<FleetKey, FleetDef> = {
   pars: { key: "pars", len: 4.45, wid: 1.71, hgt: 1.42, share: 12, paints: [WHITE, WHITE, WHITE, SILVER, SILVER, BLACK, DARK, NAVY] },
   samand: { key: "samand", len: 4.5, wid: 1.74, hgt: 1.46, share: 8, paints: [WHITE, WHITE, WHITE, SILVER, SILVER, BLACK, NAVY, DARKRED] },
   tiba: { key: "tiba", len: 4.18, wid: 1.66, hgt: 1.5, share: 9, paints: [WHITE, WHITE, WHITE, WHITE, SILVER, SILVER, DARK, BEIGE] },
-  suv: { key: "suv", len: 4.4, wid: 1.82, hgt: 1.68, share: 5, paints: [WHITE, WHITE, BLACK, BLACK, SILVER, DARK, NAVY, "#6d3a2e"] },
+  shahin: { key: "shahin", len: 4.51, wid: 1.73, hgt: 1.5, share: 6, paints: [WHITE, WHITE, WHITE, SILVER, SILVER, BLACK, DARK, "#8c1d2c"] },
+  l90: { key: "l90", len: 4.29, wid: 1.74, hgt: 1.53, share: 6, paints: [WHITE, WHITE, WHITE, SILVER, SILVER, BLACK, DARK, BEIGE] },
+  xantia: { key: "xantia", len: 4.44, wid: 1.75, hgt: 1.4, share: 2, paints: [WHITE, SILVER, SILVER, BLACK, DARK, NAVY, "#2f5a4e"] },
+  suv: { key: "suv", len: 4.5, wid: 1.84, hgt: 1.67, share: 5, paints: [WHITE, WHITE, BLACK, BLACK, SILVER, DARK, NAVY, "#6d3a2e"] },
   taxi: { key: "taxi", len: 4.5, wid: 1.74, hgt: 1.66, share: 9, paints: [TAXI_YELLOW] },
   vanet: { key: "vanet", len: 4.9, wid: 1.69, hgt: 1.66, share: 4, paints: ["#2f63c8", "#2f63c8", "#2f63c8", WHITE] },
   vanetLoad: { key: "vanetLoad", len: 4.9, wid: 1.69, hgt: 1.66, share: 2, paints: ["#2f63c8", "#2f63c8", WHITE] },

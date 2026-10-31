@@ -10,6 +10,7 @@ import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import type { WorldPlayer } from "../game/client";
+import { onCarModel } from "./carModels";
 import type { OtherDriver } from "./net";
 import { makeVehicle, type VehicleModel } from "./vehicles3d";
 import { makeIcon, makeSign, type Style } from "./world3d";
@@ -19,7 +20,8 @@ const COAST_MS = 1000;
 const MAX_SNAPS = 12;
 
 type Snap = { t: number; x: number; z: number; alt: number; yaw: number; speed: number };
-type Driver = { id: string; data: OtherDriver; model: VehicleModel; tag: ReturnType<typeof makeSign>; tagKey: string; snaps: Snap[]; spin: number; it: THREE.Mesh | null };
+/** `stale`: drawn before its car's real model arrived — rebuilt on the next update. */
+type Driver = { id: string; data: OtherDriver; model: VehicleModel; tag: ReturnType<typeof makeSign>; tagKey: string; snaps: Snap[]; spin: number; it: THREE.Mesh | null; stale?: boolean };
 type Walker = { id: string; data: WorldPlayer; icon: ReturnType<typeof makeIcon>; tag: ReturnType<typeof makeSign>; group: THREE.Group; to: { x: number; z: number } };
 
 const angle = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
@@ -35,6 +37,9 @@ export class Others {
   private itMat = new THREE.MeshBasicMaterial({ color: "#ff2e55", transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
   private itGeo = new THREE.CylinderGeometry(2.4, 2.4, 40, 16, 1, true);
   private itId: string | null = null;
+  private offModel = onCarModel((k) => {
+    for (const d of this.drivers.values()) if (VEHICLES[d.data.vehicle as VehicleKey]?.model === k) d.stale = true;
+  });
 
   constructor(private scene: THREE.Scene, private frame: Frame, private style: Style, private lite: boolean) {
     this.itGeo.translate(0, 20, 0);
@@ -48,7 +53,7 @@ export class Others {
       const p = this.frame.toXZ(o.lat, o.lng);
       const snap = { t: o.at, x: p.x, z: p.z, alt: o.alt, yaw: o.yaw, speed: o.speed };
       let d = this.drivers.get(o.id);
-      if (d && (d.data.vehicle !== o.vehicle || d.data.color !== o.color)) {
+      if (d && (d.data.vehicle !== o.vehicle || d.data.color !== o.color || d.stale)) {
         this.removeDriver(d);
         d = undefined;
       }
@@ -205,6 +210,7 @@ export class Others {
   }
 
   dispose() {
+    this.offModel();
     for (const d of [...this.drivers.values()]) this.removeDriver(d);
     for (const w of [...this.walkers.values()]) this.removeWalker(w);
     this.itMat.dispose();

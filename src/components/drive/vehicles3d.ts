@@ -127,6 +127,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
       pivot.position.set(w.x, w.y, w.z);
       const spin = new THREE.Group();
       const t = new THREE.Mesh(P.wheel, rubber);
+      if (w.flip) t.rotation.y = Math.PI;
       t.castShadow = shadows;
       spin.add(t);
       pivot.add(spin);

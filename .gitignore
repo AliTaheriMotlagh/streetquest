@@ -19,3 +19,6 @@ next-env.d.ts
 
 # graphify output is a local, regenerable cache (run `graphify update .`) — never commit
 graphify-out/
+
+# Source 3D models (big, from Sketchfab): npm run assets:cars builds public/models/cars from them
+/assets/models/*.glb

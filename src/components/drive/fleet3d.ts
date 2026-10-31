@@ -7,10 +7,13 @@
 // glass · head lamps · tail lamps · one wheel. Traffic draws every copy of a model with
 // one instanced mesh per part (FleetInstances: a handful of draw calls for a whole
 // street of cars); a player's own car wraps the same geometry in ordinary meshes
-// (vehicles3d.ts). Forward is −z.
+// (vehicles3d.ts). Forward is −z. Cars that have a real 3D model (carModels.ts) switch to
+// it once it has downloaded — near ones in full detail, far ones (and every car on "lite"
+// phones) in the model's light version.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLEET, type FleetKey } from "@/lib/fleet";
+import { carModel } from "./carModels";
 import { paint as tint, toon, type Style } from "./world3d";
 
 /** One model, split by material. Shared by every copy: never disposed with a car. */
@@ -26,13 +29,15 @@ export type FleetParts = {
   tail: THREE.BufferGeometry;
   /** One wheel, centred on its axle (along x). */
   wheel: THREE.BufferGeometry;
-  /** Wheel centres in the model's frame; the front ones steer. */
-  wheels: { x: number; y: number; z: number; steers: boolean }[];
+  /** Wheel centres in the model's frame; the front ones steer; `flip`: turned round (a real model's wheel is a left one). */
+  wheels: { x: number; y: number; z: number; steers: boolean; flip?: boolean }[];
   wheelR: number;
   /** Where the headlight beam starts. */
   lamp: { y: number; z: number };
   /** Where a delivery parcel rides. */
   cargo: THREE.Vector3;
+  /** The light version, for cars further off (real models only). */
+  far?: FleetParts;
 };
 
 const TRIM = "#1c1d20", CHROME = "#cfd3d8", GRILLE = "#0e0f11", PLATE = "#f4f4f0", PLATE_BLUE = "#1f4fa8", RUBBER = "#151517", RIM = "#aeb2b8";
@@ -588,12 +593,20 @@ function bike(key: "bike" | "bikeBox"): FleetParts {
   return finish(key, b, { r, w: 0.09, axles, track: 0 }, [0.4, 0.94], [0, 1.55, 1.84], true);
 }
 
+/** Kinds only seen as a real model: drawn as a close cousin until it arrives. */
+const STAND_IN: Partial<Record<FleetKey, FleetKey>> = { shahin: "samand", l90: "pars", xantia: "pars" };
+
 const cache = new Map<FleetKey, FleetParts>();
-/** A model's geometry, built the first time it's needed and shared after that. */
-export function fleetParts(key: FleetKey): FleetParts {
+/** The drawn-from-code model, built the first time it's needed and shared after that. */
+export function drawnParts(key: FleetKey): FleetParts {
   let p = cache.get(key);
-  if (!p) cache.set(key, (p = CARS[key]!()));
+  if (!p) cache.set(key, (p = (CARS[key] ?? CARS[STAND_IN[key]!]!)()));
   return p;
+}
+
+/** A model's geometry: the real one once it's here, the drawn one until then. Shared by every copy. */
+export function fleetParts(key: FleetKey): FleetParts {
+  return carModel(key, () => drawnParts(key)) ?? drawnParts(key);
 }
 
 // ---------------------------------------------------------------- materials
@@ -620,7 +633,12 @@ export function blobTexture() {
 const Y = new THREE.Vector3(0, 1, 0), ZA = new THREE.Vector3(0, 0, 1);
 const BRAKE_ON = new THREE.Color("#ff2a3d"), BRAKE_OFF = new THREE.Color("#5a0d16");
 const BLOB = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.InstancedMesh; tail: THREE.InstancedMesh; wheel: THREE.InstancedMesh; cap: number; n: number };
+const TURN = new THREE.Matrix4().makeRotationY(Math.PI);
+/** Cars nearer than this get a real model's full detail. */
+const NEAR_M = 30;
+/** A model nobody has drawn for this many frames gives its GPU memory back. */
+const IDLE_FRAMES = 600;
+type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.InstancedMesh; tail: THREE.InstancedMesh; wheel: THREE.InstancedMesh; cap: number; n: number; idle: number };
 
 /**
  * Every vehicle in traffic, drawn per model with one instanced mesh per part (paint in
@@ -628,7 +646,9 @@ type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.Insta
  * begin() and end().
  */
 export class FleetInstances {
-  private pools = new Map<FleetKey, Pool>();
+  /** By the geometry drawn: a model and its light version are separate pools, and so is a drawn one replaced by a real one. */
+  private pools = new Map<FleetParts, Pool>();
+  private eye = { x: 0, z: 0 };
   private mats: { paint: THREE.Material; kit: THREE.Material; glass: THREE.Material; head: THREE.Material; tail: THREE.Material; wheel: THREE.Material; blob: THREE.Material };
   private blob: THREE.InstancedMesh;
   private blobN = 0;
@@ -641,7 +661,7 @@ export class FleetInstances {
   private sc = new THREE.Vector3();
   private one = new THREE.Vector3(1, 1, 1);
 
-  constructor(private scene: THREE.Scene, style: Style) {
+  constructor(private scene: THREE.Scene, style: Style, private lite = false) {
     const real = style === "real";
     this.mats = {
       paint: real ? new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }) : toon({ color: "#ffffff" }),
@@ -671,7 +691,7 @@ export class FleetInstances {
     const tail = this.inst(parts.tail, this.mats.tail, cap, true);
     const body = [paint, this.inst(parts.kit, this.mats.kit, cap), this.inst(parts.head, this.mats.head, cap), tail];
     if (parts.glass) body.push(this.inst(parts.glass, this.mats.glass, cap));
-    return { parts, body, paint, tail, wheel: this.inst(parts.wheel, this.mats.wheel, cap * parts.wheels.length), cap, n: 0 };
+    return { parts, body, paint, tail, wheel: this.inst(parts.wheel, this.mats.wheel, cap * parts.wheels.length), cap, n: 0, idle: 0 };
   }
 
   private drop(p: Pool) {
@@ -692,19 +712,25 @@ export class FleetInstances {
     copy(p.wheel, big.wheel, p.n * p.parts.wheels.length);
     big.n = p.n;
     this.drop(p);
-    this.pools.set(p.parts.key, big);
+    this.pools.set(p.parts, big);
     return big;
   }
 
-  begin() {
+  /** Start a frame; `x, z`: where you are (what's near gets full detail). */
+  begin(x = this.eye.x, z = this.eye.z) {
     for (const p of this.pools.values()) p.n = 0;
     this.blobN = 0;
+    this.eye.x = x;
+    this.eye.z = z;
   }
 
   /** One vehicle this frame: where, which way, its paint, whether it's braking, how far its wheels have turned, how far it leans. */
   put(key: FleetKey, x: number, z: number, yaw: number, color: THREE.Color, braking: boolean, spin: number, lean = 0) {
-    let p = this.pools.get(key);
-    if (!p) this.pools.set(key, (p = this.make(fleetParts(key), 8)));
+    const model = fleetParts(key);
+    const far = model.far && (this.lite || (x - this.eye.x) ** 2 + (z - this.eye.z) ** 2 > NEAR_M * NEAR_M);
+    const parts = far ? model.far! : model;
+    let p = this.pools.get(parts);
+    if (!p) this.pools.set(parts, (p = this.make(parts, 8)));
     if (p.n >= p.cap) p = this.grow(p);
     const i = p.n++;
     this.q.setFromAxisAngle(Y, yaw);
@@ -715,7 +741,9 @@ export class FleetInstances {
     p.tail.setColorAt(i, braking ? BRAKE_ON : BRAKE_OFF);
     const W = p.parts.wheels;
     for (let j = 0; j < W.length; j++) {
-      this.w.makeRotationX(-spin).setPosition(W[j].x, W[j].y, W[j].z);
+      this.w.makeRotationX(-spin);
+      if (W[j].flip) this.w.multiply(TURN);
+      this.w.setPosition(W[j].x, W[j].y, W[j].z);
       p.wheel.setMatrixAt(i * W.length + j, this.s.multiplyMatrices(this.m, this.w));
     }
     if (this.blobN < this.blob.instanceMatrix.count) {
@@ -726,6 +754,12 @@ export class FleetInstances {
 
   end() {
     for (const p of this.pools.values()) {
+      if (p.n === 0 && ++p.idle > IDLE_FRAMES) {
+        this.drop(p);
+        this.pools.delete(p.parts);
+        continue;
+      }
+      if (p.n) p.idle = 0;
       for (const m of p.body) {
         m.count = p.n;
         m.instanceMatrix.needsUpdate = true;

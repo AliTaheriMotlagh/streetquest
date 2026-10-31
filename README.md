@@ -107,7 +107,21 @@ mood scales XP; loot funds research; territory funds the army.
   model is built once from its side profile (wheel arches cut in) with its own lamps, grille, bumpers, mirrors and the
   Iranian number plate, and traffic draws every copy of a model instanced — a handful of draw calls for the whole
   street (`src/components/drive/fleet3d.ts`). Cars keep a bumper-to-bumper gap sized to what's ahead, stop at red
-  lights and brake for you. People walk the pavements — men in shirts and jackets, women in a manteau and headscarf or
+  lights and brake for you.
+- **Real 3D car models** — the Pars (Peugeot 405), Samand (and the Samand taxi), Shahin, Tondar 90 (Dacia Logan),
+  Xantia, the Zamyad pickup and the crossover are real models, built from CC BY 4.0 Sketchfab models
+  by `npm run assets:cars` (`scripts/cars.ts`; the sources are big and not in git — put them in `assets/models/`).
+  The build bakes each texture into vertex colours, removes everything you can't see from outside (the cabin,
+  engine and underside: it draws the car from 60 directions with the glass opaque), levels the car, scales it to the
+  real car's length, finds its four wheels, sorts the rest into the parts traffic instances (paint, trim, glass,
+  head lamps, tail lamps, wheel) and simplifies them to a near and a far version (~16–23k / ~3–7k triangles,
+  120–260 KB each, meshopt-compressed). Files are named by their hash (`public/models/cars/<car>.<hash>.glb`, listed
+  in `src/lib/carModels.ts`) and served `immutable`; the service worker keeps them cache-first and drops a car's
+  older build. In drive mode they download in the background while traffic shows the drawn models, then swap in
+  (`src/components/drive/carModels.ts`) — full detail within 30 m, the far version beyond (and everywhere on lite
+  phones). `--report` lists a source's materials and draws each one highlighted, `--preview` draws the result;
+  new cars go in the `CARS` list with rules for their material names. Credits are on `/credits`, linked from drive
+  mode. Only CC BY models are used: NonCommercial ones (e.g. CC BY-NC-SA) aren't allowed in a game with paid features. People walk the pavements — men in shirts and jackets, women in a manteau and headscarf or
   a chador — turning back at walls or carrying on round the corner, and are solid (`people.ts`). The pavements also
   have blue-and-yellow charity boxes every block or two and green newspaper kiosks on the main roads.
 - **The street's edge** — up close (within 320 m, not on lite phones) every street has a kerb and a raised pavement,

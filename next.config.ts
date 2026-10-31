@@ -29,6 +29,8 @@ const config: NextConfig = {
       },
       // The service worker must always be re-checked so updates are noticed.
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }, { key: "Service-Worker-Allowed", value: "/" }] },
+      // The street cars' 3D models carry their hash in the name: cache them for good.
+      { source: "/models/cars/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       // The trailer and its poster rarely change: let phones cache them for a week.
       { source: "/media/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=604800, stale-while-revalidate=86400" }] },
       // API responses are per-player and live: never cache them.

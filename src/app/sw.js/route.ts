@@ -24,10 +24,11 @@ const TILES = "sq-tiles-v1";     // map tiles you've seen, so the map works offl
 const DATA = "sq-data-v1";       // last known game state, shown while offline
 const MODELS = "sq-models-v1";   // stores' 3D buildings (immutable, hash in the address)
 const ASSETS = "sq-assets-v1";   // fonts, the arena's 3D models, the 3D decoder: kept on the phone
+const CARS = "sq-cars-v1";       // the street cars' 3D models (immutable, hash in the address)
 const CITY = "sq-city-v1";       // 3D-city street maps (vector tiles + street detail) you've driven through
 const MAX_MODELS = 40;
 const MAX_CITY = 800;
-"// Pages written in the player's language (the server translates them): fetched again when it changes.
+// Pages written in the player's language (the server translates them): fetched again when it changes.
 const PAGES = ["/offline", "/play"];
 const PRECACHE = [...PAGES, "/manifest.webmanifest", "/icons/icon-192.png", "/icons/badge-96.png", "/media/streetquest-ad.jpg"];
 // Downloaded once, in the background, when the app is installed or opened — so the first
@@ -88,6 +89,19 @@ async function trim(name, max) {
   const c = await caches.open(name);
   const keys = await c.keys();
   for (let i = 0; i < keys.length - max; i++) await c.delete(keys[i]);
+}
+/** A street car's model: kept for good (the hash is in its name); a newer build of the same car replaces the older one. */
+async function carFirst(req) {
+  const c = await caches.open(CARS);
+  const hit = await c.match(req);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok) {
+    const car = new URL(req.url).pathname.split("/").pop().split(".")[0];
+    for (const k of await c.keys()) if (new URL(k.url).pathname.split("/").pop().split(".")[0] === car) await c.delete(k);
+    await c.put(req, res.clone());
+  }
+  return res;
 }
 async function cacheFirst(req, name) {
   const hit = await caches.match(req);
@@ -153,6 +167,7 @@ self.addEventListener("fetch", (event) => {
     if (/\.(mp4|webm|mov|m4v)$/i.test(url.pathname) || req.destination === "video" || req.headers.get("range")) return;
     if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) return event.respondWith(cacheFirst(req, STATIC));
     if (url.pathname.startsWith("/landmark/")) return event.respondWith(cacheFirst(req, MODELS).then((res) => (event.waitUntil(trim(MODELS, MAX_MODELS)), res)));
+    if (url.pathname.startsWith("/models/cars/")) return event.respondWith(carFirst(req));
     // Fonts, the arena's models, the 3D decoder: straight from the phone, refreshed behind.
     if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/models/") || url.pathname.startsWith("/draco/")) return event.respondWith(staleWhileRevalidate(req, ASSETS, event));
     // The 3D city's street maps (fetched by its worker, which this worker also serves).

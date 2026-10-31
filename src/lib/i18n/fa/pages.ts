@@ -29,6 +29,13 @@ const pages: Record<string, string> = {
   "Something went wrong": "یه چیزی خراب شد",
   "Something broke": "یه مشکلی پیش اومد",
   "The game hit an error. Your progress is saved on the server.": "بازی به یه خطا خورد. پیشرفتت روی سرور ذخیره شده.",
+
+  // ---- credits (the map and the street cars' 3D models)
+  Credits: "سازنده‌ها",
+  "Map data": "داده‌های نقشه",
+  "OpenStreetMap contributors": "مشارکت‌کنندگان OpenStreetMap",
+  "3D cars": "ماشین‌های سه‌بعدی",
+  "Made lighter for phones and recoloured for the game.": "برای گوشی سبک‌تر شدن و برای بازی دوباره رنگ خوردن.",
 };
 
 export default pages;

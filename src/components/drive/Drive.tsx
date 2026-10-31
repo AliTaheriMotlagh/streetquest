@@ -56,6 +56,8 @@ import { ArenaMenu } from "../arena/ArenaMenu";
 import { RT_DELAY_MS } from "../arena/remotes";
 import { F_FOOT, type ArenaGeo } from "@/lib/arena/protocol";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
+import { onCarModel, preloadCarModels } from "./carModels";
+import { drawnParts } from "./fleet3d";
 import {
   makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, paintSignals, setNight, tileMeshes,
   type Board, type Phase, type TileMeshes,
@@ -542,6 +544,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Live traffic: street speeds for the minimap and the cars on the streets.
     const feed = new TrafficFeed();
     const traffic = new TrafficCars(scene, frame, feed, style, lite);
+    // The street cars' real 3D models download in the background (traffic shows drawn ones
+    // until then); when my own car's lands, it's rebuilt with it.
+    preloadCarModels(drawnParts);
+    const offCarModel = onCarModel((k) => {
+      if (VEHICLES[currentKey()].model === k) modelKey = "";
+    });
     // People on the pavements (solid, like the traffic).
     const crowd = new Crowd(scene, style, lite);
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
@@ -1643,6 +1651,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       source.dispose();
       vsource.dispose();
       details.dispose();
+      offCarModel();
       traffic.dispose();
       crowd.dispose();
       skyline.dispose();
@@ -1844,7 +1853,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </div>
       </div>
 
-      <a className="drive-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+      <a className="drive-credit" href="/credits" target="_blank" rel="noreferrer">© OpenStreetMap · {t("3D cars")}</a>
       {/* Stacked, so two never sit on top of each other. */}
       <div className="drive-notes">
         {!canDrive && <div className="drive-banner">🚶 {t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}

@@ -153,7 +153,7 @@ export class TrafficCars {
   enabled = true;
 
   constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, style: Style, private lite: boolean) {
-    this.fleet = new FleetInstances(scene, style);
+    this.fleet = new FleetInstances(scene, style, lite);
   }
 
   /** The streets cars can use: re-read when tiles come and go. */
@@ -284,7 +284,7 @@ export class TrafficCars {
     this.cars = this.cars.filter((c) => Math.hypot(c.x - px, c.z - pz) <= DROP);
     if (this.cars.length < this.target(px, pz) && this.roads.length) this.spawn(px, pz);
     const out: Footprint[] = [];
-    this.fleet.begin();
+    this.fleet.begin(px, pz);
     for (const c of [...this.cars]) {
       const def = FLEET[c.kind];
       const L = c.road.line;

@@ -18,6 +18,7 @@
     "city:pack": "tsx scripts/city-pack.ts",
     "city:pack:prod": "tsx scripts/city-pack.ts --env .env.prod",
     "assets:arena": "/Applications/Blender.app/Contents/MacOS/Blender -b -P assets/blender/arena.py",
+    "assets:cars": "tsx scripts/cars.ts",
     "typecheck": "tsc --noEmit",
     "i18n:check": "tsx scripts/i18n-check.ts",
     "test": "npm run -s test:unit && npm run -s typecheck && npm run -s i18n:check",
@@ -44,6 +45,9 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@playwright/test": "^1.63.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/leaflet": "^1.9.22",
@@ -53,7 +57,9 @@
     "@types/three": "^0.180.0",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.2",
+    "meshoptimizer": "^1.3.0",
     "prisma": "^6.19.3",
+    "sharp": "^0.35.5",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   },
