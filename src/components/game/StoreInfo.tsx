@@ -21,22 +21,41 @@ import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
 
-/** GET /api/local with these params; null while loading, and the error if it failed. */
+/**
+ * GET /api/local with these params; null while loading, and the error if it failed. A
+ * failure is retried once by itself after a moment (the store sites behind the Iran relay
+ * drop out for a few seconds now and then); `retry` asks again on demand.
+ */
 function useLocal<T>(params: Record<string, string | number | undefined> | null) {
   const qs = params ? new URLSearchParams(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])).toString() : null;
   const [state, setState] = useState<{ qs: string | null; data: T | null; error: string | null }>({ qs: null, data: null, error: null });
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     if (!qs) return;
     let live = true;
-    api<T>(`/api/local?${qs}`)
-      .then((data) => live && setState({ qs, data, error: null }))
-      .catch((e) => live && setState({ qs, data: null, error: (e as Error).message }));
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const load = (again: boolean) =>
+      api<T>(`/api/local?${qs}`)
+        .then((data) => live && setState({ qs, data, error: null }))
+        .catch((e) => {
+          if (!live) return;
+          if (again) timer = setTimeout(() => void load(false), AUTO_RETRY_MS);
+          else setState({ qs, data: null, error: (e as Error).message });
+        });
+    void load(true);
     return () => {
       live = false;
+      if (timer) clearTimeout(timer);
     };
-  }, [qs]);
-  return state.qs === qs ? state : { qs, data: null, error: null };
+  }, [qs, tries]);
+  const retry = () => {
+    setState({ qs: null, data: null, error: null });
+    setTries((n) => n + 1);
+  };
+  return { ...(state.qs === qs ? state : { qs, data: null, error: null }), retry };
 }
+/** A failed store lookup asks once more by itself after this long. */
+const AUTO_RETRY_MS = 1500;
 
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
 const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸" } as const;
@@ -477,7 +496,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
   const { pos } = useGame();
   const kind = VENDOR_KINDS[v.kind];
   const dist = pos ? distanceM(pos, v) : Infinity;
-  const { data, error } = useLocal<{ menu: Menu }>({ menu: v.code, lat: v.lat.toFixed(5), lng: v.lng.toFixed(5) });
+  const { data, error, retry } = useLocal<{ menu: Menu }>({ menu: v.code, lat: v.lat.toFixed(5), lng: v.lng.toFixed(5) });
   const menu = data?.menu;
   const sub = [t(kind.label), Number.isFinite(dist) ? formatDistance(dist) : "", menu?.area ?? ""].filter(Boolean).join(" · ");
   return (
@@ -491,7 +510,10 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>
       {error ? (
-        <p className="small warn-text">{error}</p>
+        <div className="ext-error">
+          <p className="small warn-text">{error}</p>
+          <Button className="btn small cyan" onClick={retry}>🔄 {t("Try again")}</Button>
+        </div>
       ) : menu ? (
         <StoreTabs
           tabs={[

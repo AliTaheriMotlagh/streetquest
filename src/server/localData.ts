@@ -81,6 +81,9 @@ const DIVAR_MAX_TOWNS = 3;
 /** …unless even the nearest is this far: then the player isn't in a neighbourhood Divar knows. */
 const DIVAR_NEAREST_MAX_M = 6000;
 const FETCH_TIMEOUT_MS = 15_000;
+/** Snappfood / Divar / Balad / Google: each try this long, and one more try after a timeout or a dropped connection. */
+const ATTEMPT_TIMEOUT_MS = 8_000;
+const RETRIES = 1;
 const MAX_PARALLEL = 3;
 /** Torob's calls start at least this far apart (0 in the e2e tests, which talk to a stub). */
 const TOROB_GAP_MS = Number(process.env.TOROB_GAP_MS ?? 450);
@@ -110,19 +113,28 @@ async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<str
   }
   if (running >= MAX_PARALLEL) await new Promise<void>((r) => queue.push(r));
   running++;
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
+  const headers: Record<string, string> = { "user-agent": ua, accept: "application/json", ...extraHeaders };
+  const init: RequestInit = post === undefined ? { headers } : { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(post) };
   try {
-    const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
-    const headers: Record<string, string> = { "user-agent": ua, accept: "application/json", ...extraHeaders };
-    const init: RequestInit = post === undefined ? { headers } : { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(post) };
-    const res = await fetch(url, { ...init, signal: ctl.signal });
-    if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
-    return res.ok ? ((await res.json().catch(() => null)) as T | null) : null;
-  } catch {
-    return null;
+    // The relay in Iran drops out for a few seconds now and then (international links):
+    // a timeout, a dropped connection or a 502/503/504 is tried once more, each attempt short
+    // enough that both fit inside the player's 20 s wait. Torob is never asked twice.
+    for (let attempt = 0; ; attempt++) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), torob ? FETCH_TIMEOUT_MS : ATTEMPT_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { ...init, signal: ctl.signal });
+        if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
+        if (!torob && attempt < RETRIES && [502, 503, 504].includes(res.status)) continue;
+        return res.ok ? ((await res.json().catch(() => null)) as T | null) : null;
+      } catch {
+        if (torob || attempt >= RETRIES) return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
   } finally {
-    clearTimeout(timer);
     running--;
     queue.shift()?.();
   }
@@ -287,8 +299,8 @@ const phoneOf = (s: string | undefined) => storePhone(s);
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
-  // "menu5": Snappfood's call-centre number is dropped and the restaurant's own looked up on Balad, then Google.
-  return cached<Menu>(`sf:menu5:${code}`, MENU_TTL, async () => {
+  // "menu6": Snappfood's call-centre number is dropped (the restaurant's own is added per request, phoneFor).
+  return cached<Menu>(`sf:menu6:${code}`, MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = near ?? { lat: 35.6997, lng: 51.338 };
@@ -302,7 +314,9 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
       cover: raw.coverPath ?? "",
       address: raw.address ?? "",
       week: weekFromSnappfood(raw.schedules),
-      phone: (await realPhone({ name: v.title, lat: v.lat, lng: v.lng })) || phoneOf(raw.customerPhone),
+      // The restaurant's own number is added when the card is asked for (phoneFor), never
+      // holding the menu up; Snappfood's own call centre is dropped here.
+      phone: phoneOf(raw.customerPhone),
       area: (raw.area ?? "").trim(),
       reviews: raw.commentCount ?? 0,
       ...(st ? { stars: [st.one ?? 0, st.two ?? 0, st.three ?? 0, st.four ?? 0, st.five ?? 0] } : {}),
@@ -771,7 +785,7 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
   if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
   // The map's own record, else Balad's (looked up where the store stands), else the menu's.
-  const phone = storePhone(s.phone) || (await realPhone(s)) || menu?.phone || "";
+  const phone = storePhone(s.phone) || (await phoneFor(s)) || menu?.phone || "";
   if (phone) links.push({ kind: "phone", url: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone });
   const about = {
     photo: menu?.cover || s.photo || shop?.logo || "",
@@ -854,6 +868,19 @@ export async function googlePhone(store: { name: string; lat: number; lng: numbe
 /** The store's own number from the other maps: Balad first (free), then Google (paid, if set up). */
 async function realPhone(store: { name: string; lat: number; lng: number }) {
   return (await baladPhone(store).catch(() => "")) || (await googlePhone(store).catch(() => ""));
+}
+
+/** How long a card waits for the phone lookup; a slower one finishes in the background (cached for next time). */
+const PHONE_WAIT_MS = 3000;
+/** The store's own number, or "" if it takes longer than PHONE_WAIT_MS — a card never waits on it. */
+export async function phoneFor(store: { name: string; lat: number; lng: number }): Promise<string> {
+  const p = realPhone(store);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const late = new Promise<string>((r) => (timer = setTimeout(() => r(""), PHONE_WAIT_MS)));
+  const phone = await Promise.race([p, late]);
+  if (timer) clearTimeout(timer);
+  keepAlive(p);
+  return phone;
 }
 
 // ---------------------------------------------------------------- reachability

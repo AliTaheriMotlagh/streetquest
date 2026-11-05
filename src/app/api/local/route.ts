@@ -21,7 +21,7 @@ import { requireUser } from "@/server/auth";
 import { findPlace, placesNear } from "@/server/city";
 import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
-import { divarAround, divarPosts, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
+import { divarAround, divarPosts, phoneFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
 
 const num = z.coerce.number().finite();
 const Query = z.union([
@@ -41,10 +41,13 @@ const Query = z.union([
 
 const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [], about: { photo: "", logo: "", address: "", hours: "", week: null, phone: "" } };
 
-/** No number from Balad: the map's own record of the same restaurant (OpenStreetMap's phone tag) may have one. */
+/** The restaurant's own number: Balad / Google, else the map's own record of the same restaurant (OpenStreetMap's phone tag). */
 async function withMapPhone(menu: Menu): Promise<Menu> {
   if (menu.phone) return menu;
   const v = menu.vendor;
+  // Balad / Google (cached a month; at most a few seconds' wait the first time).
+  const own = await phoneFor({ name: v.title, lat: v.lat, lng: v.lng });
+  if (own) return { ...menu, phone: own };
   const around = await placesNear(v, 200, 40).catch(() => []);
   const same = around.find((p) => p.info?.phone && sameStore(p, v, distanceM(p, v)));
   const phone = storePhone(same?.info?.phone);
