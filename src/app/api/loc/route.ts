@@ -9,7 +9,7 @@ import { canSimulate } from "@/server/session";
 import { trackStat } from "@/server/goals";
 import { addGpsSteps } from "@/server/steps";
 import { S } from "@/lib/settings";
-import { nearbyLive } from "@/server/presence";
+import { NEAR_MAX_ACC_M, nearbyLive } from "@/server/presence";
 import { t } from "@/lib/i18n";
 import { MAX_VEHICLE_MULT } from "@/lib/vehicles";
 import { after } from "next/server";
@@ -59,6 +59,6 @@ export const POST = route(async (req) => {
   }
   // Players right next to us, exact and live — only for a real, reasonably sharp GPS fix,
   // so test-mode teleports and play-from-home can't be used to pinpoint anyone.
-  const near = !d.sim && !remote && (d.acc ?? 0) <= 100 ? await nearbyLive(u.id, d) : [];
+  const near = !d.sim && !remote && (d.acc ?? 0) <= NEAR_MAX_ACC_M ? await nearbyLive(u.id, d) : [];
   return { ok: true, near, serverTime: Date.now() };
 });

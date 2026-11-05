@@ -36,6 +36,12 @@ export type GameCtx = {
   drive: ((to?: LatLng) => void) | null;
   /** A player's profile in the social feed. */
   openProfile: (userId: string) => void;
+  /** Explore mode: look around the map anywhere (optionally starting at a spot) — no location needed. */
+  explore: (at?: LatLng | null) => void;
+  /** Look at where an online friend is (explore mode, centred on them). */
+  visitFriend: (id: string) => Promise<void>;
+  /** Play from home: jump right next to an online friend. Null when not playing from home. */
+  travelToFriend: ((id: string) => Promise<void>) | null;
   /** Draw a live driving route there on the map, with the time in today's traffic. Null in test mode / from home. */
   navigate: ((to: LatLng & { name?: string }) => void) | null;
 };

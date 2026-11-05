@@ -11,7 +11,7 @@ import { requireUser } from "@/server/auth";
 import { onlineSince } from "@/server/hub";
 import { HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
-import { fuzzed, onlineCount } from "@/server/presence";
+import { fuzzed, NEAR_EXACT_M, onlineCount, realSpot } from "@/server/presence";
 import { drawDue, lotteryView } from "@/server/lottery";
 import { RIDE_REQUEST_TTL_MS } from "@/lib/rides";
 import { LOTTERY_SHOW_DRAWN_MS } from "@/lib/lottery";
@@ -111,6 +111,10 @@ export const GET = route(async (req) => {
   const trusted = u.lastLat != null && u.lastLng != null && u.lastSeenAt && Date.now() - u.lastSeenAt.getTime() < 120_000 ? { lat: u.lastLat, lng: u.lastLng } : null;
 
   const friendSet = new Set(friends);
+  // Where the server knows we really are (a live GPS fix): anyone within NEAR_EXACT_M of it
+  // comes exact here too, the same spot /api/loc's live list gives — so when that list
+  // lapses for a moment (a slow network, their phone locked) they don't jump 60–150 m.
+  const mine = realSpot(u);
   const players = nearbyUsers
     .map((x) => ({ ...x, lat: x.lastLat!, lng: x.lastLng! }))
     .filter((x) => distanceM(here, x) < 3000)
@@ -119,7 +123,8 @@ export const GET = route(async (req) => {
       const friend = friendSet.has(x.id);
       // Strangers are shown 60–150 m off for privacy; players right next to you come
       // exact (and live) with your own /api/loc reports instead.
-      const at = friend ? { lat: x.lat, lng: x.lng } : fuzzed(x.id, x);
+      const close = !!mine && distanceM(mine, x) <= NEAR_EXACT_M;
+      const at = friend || close ? { lat: x.lat, lng: x.lng } : fuzzed(x.id, x);
       return { id: x.id, username: x.username, avatar: x.avatar, level: levelForXp(x.xp), friend, home: x.remotePlay, lat: at.lat, lng: at.lng };
     });
 

@@ -12,7 +12,9 @@
 //    once, honest User-Agent), and a failed refresh serves the stale copy; Torob's calls
 //    are spaced out (TOROB_GAP_MS), and when it says "slow down" (490/429) we stop asking
 //    for half an hour;
-//  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL point at the sites ("off" disables them — the
+//  - restaurant phone numbers come from Balad (Snappfood only gives its own call centre),
+//    looked up by name where the store stands and cached for a month;
+//  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
 import { Prisma } from "@prisma/client";
 import { after } from "next/server";
@@ -20,7 +22,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  DIVAR_CATS, divarLink, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhoneOf, DIVAR_CATS, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -29,6 +31,9 @@ const base = (env: string | undefined, fallback: string) => (env === "off" ? nul
 const snappBase = () => base(process.env.SNAPPFOOD_URL, "https://snappfood.ir");
 const torobBase = () => base(process.env.TOROB_URL, "https://api.torob.com");
 const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
+// Balad (balad.ir) — the map Iranians use most — knows each place's real phone number.
+const baladBase = () => base(process.env.BALAD_URL, "https://search.raah.ir");
+const baladPoiBase = () => base(process.env.BALAD_POI_URL, "https://poi.raah.ir");
 
 const HOUR = 3600_000;
 const VENDORS_TTL = 12 * HOUR;
@@ -39,6 +44,9 @@ const TOROB_TTL = 12 * HOUR;
 const TOROB_MAP_TTL = 24 * HOUR;
 /** …and kept per cell of this many degrees (~2 km), so an area reads a handful of rows. */
 const TOROB_CELL = 0.02;
+/** A store's phone from Balad: numbers rarely change (a miss is retried after a week). */
+const BALAD_TTL = 30 * 24 * HOUR;
+const BALAD_MISS_TTL = 7 * 24 * HOUR;
 const DIVAR_PLACES_TTL = 7 * 24 * HOUR;
 const DIVAR_POSTS_TTL = 15 * 60_000;
 /** Vendor lists are cached per cell of this many degrees (~1 km). */
@@ -49,6 +57,8 @@ const CELL = 0.01;
  */
 const PAGE_SIZE = 400;
 const MAX_VENDORS = 2400;
+/** Fewer vendors than this deliver to a spot: it's a small town, read the cells around it (vendorsAround). */
+const SPARSE_VENDORS = 25;
 /** A store and a Snappfood vendor this close, with a similar name, are the same place. */
 const MATCH_M = 150;
 /** …and this close when the names match word for word (the two sites often place a store a block apart). */
@@ -58,6 +68,10 @@ const SEARCH_CHECKS = 3;
 /** Divar neighbourhoods whose centre is this close are "around" the player (the nearest always is). */
 const DIVAR_NEAR_M = 2500;
 const DIVAR_MAX_AREAS = 5;
+/** A town is "here" within its radius (at least 5 km) plus this much. */
+const DIVAR_TOWN_SLACK_M = 5000;
+/** Small towns (no neighbourhoods on Divar) shown at once. */
+const DIVAR_MAX_TOWNS = 3;
 /** …unless even the nearest is this far: then the player isn't in a neighbourhood Divar knows. */
 const DIVAR_NEAREST_MAX_M = 6000;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -176,12 +190,22 @@ function vendorsInCell(c: { x: number; y: number }) {
 
 /** Snappfood vendors around a point, nearest first (for the map layer). */
 export async function vendorsAround(here: LatLng, radiusM = 2000): Promise<Vendor[]> {
-  const list = (await vendorsInCell(cellOf(here))) ?? [];
-  return list
-    .map((v) => ({ v, d: distanceM(here, v) }))
-    .filter((x) => x.d <= radiusM)
-    .sort((a, b) => a.d - b.d)
-    .map((x) => x.v);
+  const c = cellOf(here);
+  let list = (await vendorsInCell(c)) ?? [];
+  // Small towns (the Caspian coast: Royan, Nur, Chalus…): each restaurant delivers only a
+  // short way, so one spot's list misses most of the town — read the cells around it too.
+  for (let ring = 1; ring <= 2 && list.length < SPARSE_VENDORS; ring++) {
+    const cells: { x: number; y: number }[] = [];
+    for (let dy = -ring; dy <= ring; dy++) for (let dx = -ring; dx <= ring; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === ring) cells.push({ x: c.x + dx, y: c.y + dy });
+    const more = await Promise.all(cells.map((n) => vendorsInCell(n).catch(() => null)));
+    const all = new Map(list.map((v) => [v.code, v]));
+    for (const l of more) for (const v of l ?? []) all.set(v.code, v);
+    list = [...all.values()];
+  }
+  const byDist = list.map((v) => ({ v, d: distanceM(here, v) })).sort((a, b) => a.d - b.d);
+  // …and in a small town, reach a little further: the next town's restaurants beat an empty map.
+  const reach = list.length < SPARSE_VENDORS * 2 && byDist.filter((x) => x.d <= radiusM).length < 10 ? radiusM * 2.5 : radiusM;
+  return byDist.filter((x) => x.d <= reach).map((x) => x.v);
 }
 
 type RawSearch = { data?: { vendor?: { items?: { code?: string; title?: string }[] } } };
@@ -250,13 +274,15 @@ type RawMenu = {
     menus?: { category?: string; products?: RawProduct[] }[];
   };
 };
-const phoneOf = (s: string | undefined) => (s && /^[\d+\-\s()]{5,20}$/.test(s.trim()) ? s.trim() : "");
+/** A store's own number — never a platform's call centre (Snappfood answers its own for every vendor). */
+const phoneOf = (s: string | undefined) => storePhone(s);
 
 /** A vendor's menu (restaurants) or catalog (supermarkets, bakeries…), prices in toman. */
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
-  return cached<Menu>(`sf:menu3:${code}`, MENU_TTL, async () => {
+  // "menu4": Snappfood's call-centre number is dropped and the restaurant's own looked up on Balad.
+  return cached<Menu>(`sf:menu4:${code}`, MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = near ?? { lat: 35.6997, lng: 51.338 };
@@ -270,7 +296,7 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
       cover: raw.coverPath ?? "",
       address: raw.address ?? "",
       week: weekFromSnappfood(raw.schedules),
-      phone: phoneOf(raw.customerPhone),
+      phone: (await baladPhone({ name: v.title, lat: v.lat, lng: v.lng }).catch(() => "")) || phoneOf(raw.customerPhone),
       area: (raw.area ?? "").trim(),
       reviews: raw.commentCount ?? 0,
       ...(st ? { stars: [st.one ?? 0, st.two ?? 0, st.three ?? 0, st.four ?? 0, st.five ?? 0] } : {}),
@@ -650,18 +676,28 @@ export async function divarPosts(cityId: number, districtId: number, cat: DivarC
  */
 export async function divarAround(here: LatLng): Promise<DivarArea[]> {
   const cities = (await divarCities()) ?? [];
-  const city = cities
+  // Divar's own centre of a town is often kilometres off (Chalus's is 7 km out at sea-side
+  // Hachirud): anywhere within its radius plus DIVAR_TOWN_SLACK_M counts as in it.
+  const reach = (c: { r: number }) => Math.max(c.r, 5000) + DIVAR_TOWN_SLACK_M;
+  const inReach = cities
     .map((c) => ({ c, d: distanceM(here, c) }))
-    .filter((x) => x.d <= Math.max(x.c.r, 5000) + 5000)
-    .sort((a, b) => a.d - b.d)[0]?.c;
+    .filter((x) => x.d <= reach(x.c))
+    .sort((a, b) => a.d - b.d);
+  const city = inReach[0]?.c;
   if (!city) return [];
   const list = (await divarDistricts(city.id)) ?? [];
-  // Small towns have no neighbourhoods on Divar: the town itself is the one area (id 0).
+  // Small towns have no neighbourhoods on Divar: each town is one area (id 0). Along the
+  // Caspian coast they sit a few km apart (Royan, Izadshahr, Nur): show the nearest few.
   if (!list.length) {
-    const m = distanceM(here, city);
-    if (m > Math.max(city.r, DIVAR_NEAREST_MAX_M)) return [];
-    const posts = await divarPosts(city.id, 0).catch(() => []);
-    return posts.length ? [{ city: city.id, citySlug: city.slug, id: 0, name: city.name, lat: city.lat, lng: city.lng, distanceM: Math.round(m), posts }] : [];
+    const towns = inReach.slice(0, DIVAR_MAX_TOWNS);
+    const areas = await Promise.all(
+      towns.map(async ({ c, d }) => {
+        if ((await divarDistricts(c.id).catch(() => null))?.length) return null; // a big city: its neighbourhoods are another visit
+        const posts = await divarPosts(c.id, 0).catch(() => []);
+        return { city: c.id, citySlug: c.slug, id: 0, name: c.name, lat: c.lat, lng: c.lng, distanceM: Math.round(d), posts };
+      }),
+    );
+    return areas.filter((a): a is DivarArea => !!a && a.posts.length > 0);
   }
   const districts = list.map((d) => ({ d, m: distanceM(here, d) })).sort((a, b) => a.m - b.m);
   const near = districts.filter((x, i) => x.m <= DIVAR_NEAR_M || (i === 0 && x.m <= DIVAR_NEAREST_MAX_M)).slice(0, DIVAR_MAX_AREAS);
@@ -728,7 +764,8 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
   if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
-  const phone = s.phone || menu?.phone || "";
+  // The map's own record, else Balad's (looked up where the store stands), else the menu's.
+  const phone = storePhone(s.phone) || (await baladPhone(s).catch(() => "")) || menu?.phone || "";
   if (phone) links.push({ kind: "phone", url: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone });
   const about = {
     photo: menu?.cover || s.photo || shop?.logo || "",
@@ -741,6 +778,40 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
     phone,
   };
   return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links, about };
+}
+
+// ---------------------------------------------------------------- Balad phone numbers
+/**
+ * A store's real phone number from Balad: search its name where it stands, take the place
+ * that is this store (pickBaladPoi), and read the number off its page. "" when Balad
+ * doesn't know it — cached either way, so each store costs Balad two requests a month.
+ */
+export async function baladPhone(store: { name: string; lat: number; lng: number }): Promise<string> {
+  const root = baladBase(), poi = baladPoiBase();
+  const name = store.name.trim();
+  if (!root || !poi || !name || !Number.isFinite(store.lat) || !Number.isFinite(store.lng)) return "";
+  const key = `balad:phone:${normName(name).slice(0, 60)}:${store.lat.toFixed(4)},${store.lng.toFixed(4)}`;
+  const row = await prisma.extCache.findUnique({ where: { key } });
+  if (row) {
+    const hit = (row.data as { phone?: string }).phone ?? "";
+    if (Date.now() - row.fetchedAt.getTime() < (hit ? BALAD_TTL : BALAD_MISS_TTL)) return hit;
+  }
+  const r = await cached<{ phone: string }>(key, 0, async () => {
+    // Snappfood names a branch "Name (Area)"; Balad finds the bare name far more often.
+    const bare = name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    let token: string | null = null;
+    for (const text of [...new Set([bare, name])].filter(Boolean)) {
+      const q = new URLSearchParams({ text, camera: `${store.lng.toFixed(6)},${store.lat.toFixed(6)}`, zoom: "16" });
+      const found = await getJson<BaladSearch>(`${root}/v6/bundle-search/?${q}`);
+      if (!found) return null; // Balad unreachable: try again next time, don't cache a miss
+      token = pickBaladPoi(found, store);
+      if (token) break;
+    }
+    if (!token) return { phone: "" };
+    const page = await getJson<unknown>(`${poi}/web/v4/${encodeURIComponent(token)}`);
+    return page ? { phone: baladPhoneOf(page) } : null;
+  });
+  return r?.phone ?? "";
 }
 
 // ---------------------------------------------------------------- reachability
@@ -760,11 +831,12 @@ export async function extHealth() {
       return { ok: false, status: (e as Error).name, ms: Date.now() - t0 };
     }
   };
-  const sf = snappBase(), tr = torobBase(), dv = divarBase();
-  const [snappfood, torob, divar] = await Promise.all([
+  const sf = snappBase(), tr = torobBase(), dv = divarBase(), bl = baladBase();
+  const [snappfood, torob, divar, balad] = await Promise.all([
     probe(sf && `${sf}/mobile/v3/restaurant/vendors-list?${snappQuery({ lat: 35.6997, lng: 51.338 })}&page=0&page_size=1`),
     probe(tr && `${tr}/v4/base-product/search/?q=test&page=0&size=1`),
     probe(dv && `${dv}/v8/places/cities`),
+    probe(bl && `${bl}/v6/bundle-search/?text=${encodeURIComponent("رستوران")}&camera=51.338,35.6997&zoom=15`),
   ]);
-  return { snappfood, torob, divar };
+  return { snappfood, torob, divar, balad };
 }

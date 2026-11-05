@@ -4,7 +4,7 @@
 // bar (mode, clock, score), bomb status, the death screen, the scoreboard and the results.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { fmtNum, t } from "@/lib/i18n";
-import { bombSide, MODES, TEAM_COLORS, TEAM_NAMES, type MatchView } from "@/lib/arena/modes";
+import { bombSide, GUN_KILLS_PER_STEP, GUN_LADDER, gunFor, MODES, TEAM_COLORS, TEAM_NAMES, type MatchView } from "@/lib/arena/modes";
 import { WEAPONS } from "@/lib/arena/weapons";
 import { ActButton } from "./CombatPad";
 import type { Combat, CombatHud as Hud } from "./combat";
@@ -114,6 +114,8 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
 
       {s.outside && <div className="chud-warn">{t("Get back inside the arena!")}</div>}
       {s.carrying && m?.phase === "live" && !s.act?.can && <div className="chud-tip">💣 {t("You have the bomb — plant it at site A or B")}</div>}
+      {s.uav && <div className="chud-tip">📡 {t("UAV up — enemies show through walls")}</div>}
+      {s.onHill && <div className="chud-tip">🚩 {t("You're on the hardpoint — hold it!")}</div>}
       {s.act && (touch ? (
         <ActButton input={combat.input} label={s.act.kind === "plant" ? (s.act.can ? t("Hold to plant") : t("Go to a site")) : t("Hold to defuse")} progress={s.act.progress} />
       ) : (
@@ -179,6 +181,14 @@ function MatchBar({ m, now, me, team, children }: { m: MatchView; now: number; m
       </div>
       {bomb?.state === "planted" && <div className="chud-bomb">💣 {t("Bomb planted at {s}", { s: bomb.site })} · <b>{clock(bomb.at - now)}</b></div>}
       {bomb?.state === "dropped" && <div className="chud-bomb soft">💣 {t("The bomb is on the ground")}</div>}
+      {m.hill && m.phase === "live" && (
+        <div className="chud-bomb soft" style={{ borderColor: m.hill.contested ? "#ffb020" : m.hill.owner ? TEAM_COLORS[m.hill.owner] : undefined }}>
+          🚩 {m.hill.contested ? t("Hardpoint contested!") : m.hill.owner ? t("{team} holds the hardpoint", { team: t(TEAM_NAMES[m.hill.owner]) }) : t("Hardpoint empty — go take it")} · {t("moves in {t}", { t: clock(m.hill.moves - now) })}
+        </div>
+      )}
+      {m.mode === "gun" && m.phase !== "lobby" && myLine && (
+        <div className="chud-bomb soft">🔫 {t("Gun {n} of {all}: {w}", { n: fmtNum(Math.min(GUN_LADDER.length, Math.floor(myLine.kills / GUN_KILLS_PER_STEP) + 1)), all: fmtNum(GUN_LADDER.length), w: t(WEAPONS[gunFor(myLine.kills)].name) })}</div>
+      )}
       {banner && <div className="chud-banner" key={banner}>{banner}{m.phase === "warmup" && <b> {fmtNum(Math.max(0, Math.ceil(left / 1000)))}</b>}</div>}
     </div>
   );

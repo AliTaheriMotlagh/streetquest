@@ -138,6 +138,20 @@ const arena: Record<string, string> = {
   "FIRST BLOOD": "اولین خون",
   HEADSHOT: "تیر به سر",
   "Kills without dying": "کشته بدون مردن",
+  "Gun Game": "گان‌گیم",
+  "Every 2 kills hand you the next gun. First through all {n} kills wins.": "هر ۲ کیل، اسلحه‌ی بعدی رو می‌گیری. اولین کسی که هر {n} کیل رو تموم کنه می‌بره.",
+  "Hardpoint": "هاردپوینت",
+  "Hold the glowing zone with your team — it moves every minute. First team to {n} points wins.": "با تیمت منطقه‌ی نورانی رو نگه دار — هر دقیقه جاش عوض می‌شه. اولین تیمی که به {n} امتیاز برسه می‌بره.",
+  "UAV up — enemies show through walls": "پهپاد شناسایی فعاله — دشمن‌ها از پشت دیوار دیده می‌شن",
+  "You're on the hardpoint — hold it!": "روی هاردپوینتی — نگهش دار!",
+  "Hardpoint contested!": "سر هاردپوینت دعواست!",
+  "{team} holds the hardpoint": "هاردپوینت دست {team}ه",
+  "Hardpoint empty — go take it": "هاردپوینت خالیه — برو بگیرش",
+  "moves in {t}": "جابه‌جایی تا {t}",
+  "Gun {n} of {all}: {w}": "اسلحه‌ی {n} از {all}: {w}",
+  "📡 UAV online — enemies show through walls": "📡 پهپاد شناسایی بالاست — دشمن‌ها از پشت دیوار دیده می‌شن",
+  "📡 {name} called in a UAV": "📡 {name} پهپاد شناسایی فرستاد",
+  "🚩 The hardpoint moved!": "🚩 هاردپوینت جابه‌جا شد!",
 };
 
 export default arena;

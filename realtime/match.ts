@@ -10,7 +10,7 @@
 import { distanceM } from "../src/lib/geo";
 import { FootprintIndex } from "../src/lib/arena/geom";
 import {
-  BOMB_REACH_M, BOMB_TIMER_S, bombSide, DEFUSE_S, FREEZE_S, JOIN_MARGIN_M, MAX_BOTS, MAX_PLAYERS, MODES, OUTSIDE_DPS, OUTSIDE_GRACE_S, PLANT_S, RESPAWN_S, RESULTS_S,
+  BOMB_REACH_M, BOMB_TIMER_S, bombSide, DEFUSE_S, earnsUav, FREEZE_S, gunFor, HILL_MAX_OUT, HILL_MIN_OUT, HILL_MOVE_S, HILL_PLAYER_SCORE, HILL_PTS, HILL_R, hillOwner, JOIN_MARGIN_M, UAV_S, MAX_BOTS, MAX_PLAYERS, MODES, OUTSIDE_DPS, OUTSIDE_GRACE_S, PLANT_S, RESPAWN_S, RESULTS_S,
   ROUND_END_S, ROUND_S, ROUNDS_TO_WIN, SITE_R, SPAWN_SHIELD_S, WARMUP_S,
   type Difficulty, type LobbyView, type MatchView, type ModeDef, type ModeKey, type Phase, type Team,
 } from "../src/lib/arena/modes";
@@ -45,6 +45,12 @@ export class Match extends Space {
   private spawnA: number[] = [];
   private spawnB: number[] = [];
   bomb: Bomb | null = null;
+  /** Hardpoint: the zone (match frame) and the spots it moves between. */
+  hill: { x: number; z: number; moves: number; owner: Team; contested: boolean } | null = null;
+  private hillSpots: { x: number; z: number }[] = [];
+  private hillAcc = 0;
+  /** Kills in a row without dying, for killstreaks. */
+  private streak = new Map<Player, number>();
   winner: MatchView["winner"] = null;
   private brains = new Map<Player, Brain>();
   private decided = false;
@@ -102,7 +108,7 @@ export class Match extends Space {
 
   /** Enough streets to play on? (Checked before the match is announced.) */
   get playable() {
-    return this.nav.nodes.length >= 25 && this.spawnA.length > 0 && this.spawnB.length > 0 && (this.mode !== "bomb" || this.sites.length === 2);
+    return this.nav.nodes.length >= 25 && this.spawnA.length > 0 && this.spawnB.length > 0 && (this.mode !== "bomb" || this.sites.length === 2) && (this.mode !== "hill" || this.hillSpots.length >= 2);
   }
 
   /** Two spawn areas on opposite sides of the circle, and (bomb) two sites on the defenders' half. */
@@ -144,6 +150,27 @@ export class Match extends Space {
         }
       if (best && bd > this.radius * 0.35) this.sites = [{ name: "A", x: best[0].x, z: best[0].z }, { name: "B", x: best[1].x, z: best[1].z }];
     }
+    if (this.mode === "hill") {
+      // Up to five zones on streets around the middle, each well away from the last picked.
+      const cands = N.filter((n) => {
+        const r = Math.hypot(n.x, n.z);
+        return r >= this.radius * HILL_MIN_OUT && r <= this.radius * HILL_MAX_OUT;
+      });
+      const spots: { x: number; z: number }[] = [];
+      const centre = this.nav.nearest(0, 0);
+      if (centre) spots.push({ x: centre.x, z: centre.z });
+      for (let k = 0; k < 400 && spots.length < 5 && cands.length; k++) {
+        const n = cands[Math.floor(Math.random() * cands.length)];
+        if (spots.every((q) => Math.hypot(q.x - n.x, q.z - n.z) > this.radius * 0.35)) spots.push({ x: n.x, z: n.z });
+      }
+      this.hillSpots = spots;
+    }
+  }
+
+  /** Hand a player their guns for a (re)spawn: Gun Game's ladder gun, else their own pick. */
+  private arm(p: Player) {
+    if (this.mode === "gun") p.setGun(gunFor(p.kills));
+    else p.setLoadout(p.primary);
   }
 
   // ------------------------------------------------------------ people
@@ -173,7 +200,7 @@ export class Match extends Space {
     p.carrying = false;
     p.actingUntil = 0;
     p.passive = false;
-    p.setLoadout(p.primary);
+    this.arm(p);
     p.revive(now, SPAWN_SHIELD_S);
     this.add(p);
     if (this.phase === "lobby") this.place(p, now);
@@ -212,6 +239,8 @@ export class Match extends Space {
   setLoadout(p: Player, w: WeaponKey) {
     if (!PRIMARIES.includes(w) && w !== "pistol") return;
     p.primary = w;
+    // Gun Game hands out the guns; the pick is kept for later matches.
+    if (this.mode === "gun") return p.status(this.id);
     // Takes effect now in the lobby / freeze time, otherwise at the next spawn.
     if (this.phase === "lobby" || this.phase === "warmup" || p.dead) p.setLoadout(w);
     p.status(this.id);
@@ -226,6 +255,7 @@ export class Match extends Space {
     b.team = team;
     b.passive = false;
     b.setLoadout(Math.random() < 0.6 ? "rifle" : "smg");
+    if (this.mode === "gun") b.setGun(gunFor(0));
     b.weapon = WEAPONS[b.loadout[0]].idx;
     b.flags = F_FOOT;
     b.color = "#7d8597";
@@ -293,14 +323,16 @@ export class Match extends Space {
     this.fillBots(now);
     if (this.players.size < this.def.minPlayers) return by.send({ t: "err", text: "Need at least {n} players — add bots or wait for friends", vars: { n: this.def.minPlayers } });
     this.teamScore = [0, 0, 0];
+    this.streak.clear();
     for (const p of this.players) (p.kills = p.deaths = p.score = p.botKills = 0);
+    if (this.mode === "hill") this.moveHill(Date.now() + WARMUP_S * 1000);
     if (this.mode === "bomb") this.startRound(now);
     else {
       this.phase = "warmup";
       this.until = now + WARMUP_S * 1000;
       for (const p of this.players) {
         p.revive(now, WARMUP_S + SPAWN_SHIELD_S);
-        p.setLoadout(p.primary);
+        this.arm(p);
         this.place(p, now);
       }
     }
@@ -316,7 +348,7 @@ export class Match extends Space {
       p.carrying = false;
       p.actingUntil = 0;
       p.revive(now, FREEZE_S);
-      p.setLoadout(p.primary);
+      this.arm(p);
       this.place(p, now);
     }
     const attackers = [...this.players].filter((p) => bombSide(p.team, this.round) === "attack");
@@ -356,7 +388,18 @@ export class Match extends Space {
       if (victim.bot) killer.botKills++;
       killer.score += 100 + (head ? 25 : 0);
       if (this.mode === "tdm") this.teamScore[killer.team]++;
+      // Gun Game: on to the next gun, right away.
+      if (this.mode === "gun" && !killer.dead) {
+        const next = gunFor(killer.kills);
+        // The HUD names the new gun (Gun n of 5), in the player's language.
+        if (!killer.loadout.includes(next)) killer.setGun(next);
+      }
+      // Killstreaks: a UAV every UAV_STREAK kills without dying.
+      const run = (this.streak.get(killer) ?? 0) + 1;
+      this.streak.set(killer, run);
+      if (earnsUav(run)) this.uav(killer);
     }
+    this.streak.delete(victim);
     if (this.def.respawn) victim.respawnAt = now + RESPAWN_S * 1000;
     if (victim.carrying) this.dropBomb(victim);
     this.feed(victim, killer, w, head);
@@ -364,6 +407,50 @@ export class Match extends Space {
     killer?.status(this.id);
     this.dirty = true;
     this.checkRound(now);
+  }
+
+  /** A UAV: the killer (and their team) see every enemy through walls for UAV_S. */
+  private uav(by: Player) {
+    for (const p of this.humans)
+      if (p === by || (this.def.teams && p.team === by.team)) p.send({ t: "uav", ms: UAV_S * 1000, by: by.name, mine: p === by });
+  }
+
+  /** Hardpoint: the zone moves to the next spot (never the same one twice running). */
+  private moveHill(now: number) {
+    if (!this.hillSpots.length) return;
+    const options = this.hillSpots.filter((s) => !this.hill || s.x !== this.hill.x || s.z !== this.hill.z);
+    const s = (options.length ? options : this.hillSpots)[Math.floor(Math.random() * (options.length || this.hillSpots.length))];
+    this.hill = { x: s.x, z: s.z, moves: now + HILL_MOVE_S * 1000, owner: 0, contested: false };
+    this.hillAcc = 0;
+    this.dirty = true;
+  }
+
+  private tickHill(dt: number, now: number) {
+    const h = this.hill;
+    if (!h) return this.moveHill(now);
+    if (now >= h.moves) {
+      for (const o of this.humans) o.send({ t: "toast", text: "🚩 The hardpoint moved!" });
+      return this.moveHill(now);
+    }
+    const inside = [...this.players].filter((p) => {
+      if (p.dead || !p.placed) return false;
+      const q = this.frame.toXZ(p.lat, p.lng);
+      return Math.hypot(q.x - h.x, q.z - h.z) <= HILL_R;
+    });
+    const { owner, contested } = hillOwner(inside);
+    if (owner !== h.owner || contested !== h.contested) {
+      h.owner = owner;
+      h.contested = contested;
+      this.dirty = true;
+    }
+    if (!owner) return void (this.hillAcc = 0);
+    this.hillAcc += dt;
+    while (this.hillAcc >= 1) {
+      this.hillAcc -= 1;
+      this.teamScore[owner] += HILL_PTS;
+      for (const p of inside) p.score += HILL_PLAYER_SCORE;
+      this.dirty = true;
+    }
   }
 
   private dropBomb(p: Player) {
@@ -416,7 +503,7 @@ export class Match extends Space {
         // Respawns.
         if (p.dead && this.def.respawn && p.respawnAt && now >= p.respawnAt) {
           p.revive(now, SPAWN_SHIELD_S);
-          p.setLoadout(p.primary);
+          this.arm(p);
           this.place(p, now);
           this.dirty = true;
         }
@@ -431,7 +518,10 @@ export class Match extends Space {
         }
       }
       if (this.mode === "bomb") this.tickBomb(now);
-      else this.checkLimits(now);
+      else {
+        if (this.mode === "hill") this.tickHill(dt, now);
+        this.checkLimits(now);
+      }
     }
     if (this.phase === "roundEnd" && now >= this.until) {
       if (this.teamScore[1] >= ROUNDS_TO_WIN || this.teamScore[2] >= ROUNDS_TO_WIN) this.finish(now);
@@ -521,13 +611,13 @@ export class Match extends Space {
   private checkLimits(now: number) {
     if (this.phase !== "live") return;
     const lim = this.def.killLimit;
-    if (this.mode === "ffa") {
+    if (this.mode === "ffa" || this.mode === "gun") {
       const top = [...this.players].sort((a, b) => b.kills - a.kills)[0];
       if (top && (top.kills >= lim || now >= this.until)) {
         this.winner = { team: 0, sid: top.sid, reason: top.kills >= lim ? "limit" : "time" };
         this.finish(now);
       }
-    } else if (this.mode === "tdm") {
+    } else if (this.mode === "tdm" || this.mode === "hill") {
       const [, r, b] = this.teamScore;
       if (r >= lim || b >= lim || now >= this.until) {
         this.winner = { team: r === b ? 0 : r > b ? 1 : 2, sid: 0, reason: r >= lim || b >= lim ? "limit" : "time" };
@@ -573,6 +663,7 @@ export class Match extends Space {
       id: this.id, mode: this.mode, hostSid: this.host.sid, phase: this.phase, center: this.frame.origin, radius: this.radius, until: this.until, round: this.round,
       teamScore: this.teamScore, players, sites: this.sites.map((s) => ({ name: s.name, ...this.frame.toLL(s.x, s.z) })), bomb: this.bomb ? { ...this.bomb } : null,
       bots: this.botsWanted, difficulty: this.difficulty, winner: this.winner, killLimit: this.def.killLimit,
+      hill: this.hill ? { ...this.frame.toLL(this.hill.x, this.hill.z), r: HILL_R, moves: this.hill.moves, owner: this.hill.owner, contested: this.hill.contested } : null,
     };
   }
 

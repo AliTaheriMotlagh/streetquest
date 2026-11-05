@@ -154,5 +154,6 @@ export type ServerMsg =
   | { t: "spawn"; x: number; y: number; z: number; yaw: number }
   | { t: "lobbies"; list: LobbyView[] }
   | { t: "match"; m: MatchView | null }
+  | { t: "uav"; ms: number; by: string; mine: boolean }
   | { t: "toast"; text: string; vars?: Record<string, string | number> }
   | { t: "err"; text: string; vars?: Record<string, string | number> };

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { Button } from "@/components/Button";
+import { S } from "@/lib/settings";
 import { api } from "./client";
 import { Sheet, useGame } from "./ui";
 
@@ -23,23 +24,44 @@ export function OnlineChip({ total, onOpen }: { total: number | undefined; onOpe
   );
 }
 
-function Row({ p }: { p: OnlinePlayer }) {
-  const { openProfile } = useGame();
+function Row({ p, onDone }: { p: OnlinePlayer; onDone: () => void }) {
+  const { openProfile, visitFriend, travelToFriend } = useGame();
+  const [busy, setBusy] = useState(false);
+  const run = (fn: () => Promise<void>) => async () => {
+    setBusy(true);
+    await fn().finally(() => setBusy(false));
+    onDone();
+  };
   return (
-    <button className="online-row" onClick={() => openProfile(p.id)}>
-      <span className="online-av" aria-hidden>
-        {p.avatar}
-        <span className="dot on" />
-      </span>
-      <span className="grow">
-        <b dir="auto">{p.username}</b>
-        <span className="small muted">
-          {t("Level {n}", { n: fmtNum(p.level) })}
-          {p.home && ` · 🛋️ ${t("playing from home")}`}
+    <div className="online-item">
+      <button className="online-row" onClick={() => openProfile(p.id)}>
+        <span className="online-av" aria-hidden>
+          {p.avatar}
+          <span className="dot on" />
         </span>
-      </span>
-      <span className="small muted online-dist">{p.distM == null ? t("far away") : p.friend ? formatDistance(p.distM) : t("about {d}", { d: formatDistance(p.distM) })}</span>
-    </button>
+        <span className="grow">
+          <b dir="auto">{p.username}</b>
+          <span className="small muted">
+            {t("Level {n}", { n: fmtNum(p.level) })}
+            {p.home && ` · 🛋️ ${t("playing from home")}`}
+          </span>
+        </span>
+        <span className="small muted online-dist">{p.distM == null ? t("far away") : p.friend ? formatDistance(p.distM) : t("about {d}", { d: formatDistance(p.distM) })}</span>
+      </button>
+      {/* Friends see each other exactly: look around where they are, or (from home) go there. */}
+      {p.friend && (
+        <div className="online-acts">
+          <Button className="btn small ghost" disabled={busy} onClick={run(() => visitFriend(p.id))} title={t("See where {name} is on the map", { name: p.username })}>
+            👀 {t("Visit")}
+          </Button>
+          {travelToFriend && (
+            <Button className="btn small green" disabled={busy} onClick={run(() => travelToFriend(p.id))} title={t("Jump right next to {name}", { name: p.username })}>
+              🚀 {t("Travel")}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -59,6 +81,8 @@ export function OnlineSheet({ onClose }: { onClose: () => void }) {
       clearInterval(id);
     };
   }, []);
+  const { travelToFriend } = useGame();
+  const travelHint = travelToFriend ? t("🚀 Travel puts you right next to a friend (from home, every {n} min).", { n: fmtNum(S.friendTravelMin) }) : t("👀 Visit shows a friend's street on the map; from home you can also 🚀 travel there.");
   const friends = data?.players.filter((p) => p.friend) ?? [];
   const around = data?.players.filter((p) => !p.friend) ?? [];
   return (
@@ -70,10 +94,11 @@ export function OnlineSheet({ onClose }: { onClose: () => void }) {
         <>
           <p className="online-total">{t("{n} players online", { n: fmtNum(data.total) })}</p>
           <h4 className="online-h">👥 {t("Friends online")}</h4>
-          {friends.length ? friends.map((p) => <Row key={p.id} p={p} />) : <p className="small muted">{t("None of your friends is online right now.")}</p>}
+          {friends.length ? friends.map((p) => <Row key={p.id} p={p} onDone={onClose} />) : <p className="small muted">{t("None of your friends is online right now.")}</p>}
           <h4 className="online-h">📍 {t("Around you")}</h4>
-          {around.length ? around.map((p) => <Row key={p.id} p={p} />) : <p className="small muted">{t("No one else is playing within 5 km right now.")}</p>}
+          {around.length ? around.map((p) => <Row key={p.id} p={p} onDone={onClose} />) : <p className="small muted">{t("No one else is playing within 5 km right now.")}</p>}
           <p className="small muted ext-source">{t("Players see only roughly where you are; friends see you exactly.")}</p>
+          <p className="small muted">{travelHint}</p>
         </>
       )}
     </Sheet>

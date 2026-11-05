@@ -74,6 +74,10 @@ export type CombatHud = {
   hurt: { id: number; angle: number; at: number }[];
   autoFire: boolean;
   carrying: boolean;
+  /** A UAV is up (enemies show through walls). */
+  uav: boolean;
+  /** Hardpoint: am I standing in the zone. */
+  onHill: boolean;
   /** No realtime server: matches are practice with bots; the open city's fights go over HTTP. */
   local: boolean;
   /** The banner for what I just pulled off (lib/arena/medals.ts), while it shows; kills since I last died. */
@@ -196,6 +200,9 @@ export class Combat {
   private arena: THREE.Group | null = null;
   private arenaKey = "";
   private bombMesh: THREE.Mesh | null = null;
+  private hillMesh: THREE.Mesh[] | null = null;
+  /** A UAV is up until then (Date.now()). */
+  private uavUntil = 0;
   private hitEl: HTMLElement | null = null;
   private crossEl: HTMLElement | null = null;
   private keys = new Set<string>();
@@ -313,6 +320,8 @@ export class Combat {
       local: this.rt.local,
       medal: this.medal && Date.now() - this.medal.at < MEDAL_MS ? { id: this.medal.id, text: this.medal.text, big: this.medal.big } : null,
       streak: this.run.streak,
+      uav: Date.now() < this.uavUntil,
+      onHill: !!m?.hill && m.phase === "live" && !this.dead && this.distTo(m.hill) <= m.hill.r,
     };
   }
 
@@ -760,6 +769,13 @@ export class Combat {
         this.syncArena();
         break;
       }
+      case "uav":
+        this.remotes.revealUntil = Date.now() + m.ms;
+        this.uavUntil = this.remotes.revealUntil;
+        H.toast(m.mine ? t("📡 UAV online — enemies show through walls") : t("📡 {name} called in a UAV", { name: m.by }));
+        sfx("levelup");
+        setTimeout(() => this.publish(true), m.ms + 50);
+        break;
       case "toast":
         H.toast(t(m.text, m.vars));
         break;
@@ -773,7 +789,7 @@ export class Combat {
   /** The arena's edge (a glowing wall), bomb sites and the bomb, while in a match. */
   private syncArena() {
     const m = this.match;
-    const key = m ? `${m.id}|${m.radius}|${m.sites.map((s) => s.name).join()}` : "";
+    const key = m ? `${m.id}|${m.radius}|${m.sites.map((s) => s.name).join()}|${m.hill ? `${m.hill.lat.toFixed(6)},${m.hill.lng.toFixed(6)}` : ""}` : "";
     if (key !== this.arenaKey) {
       this.arenaKey = key;
       if (this.arena) {
@@ -784,6 +800,7 @@ export class Combat {
         this.arena.removeFromParent();
         this.arena = null;
         this.bombMesh = null;
+        this.hillMesh = null;
       }
       if (m) {
         const g = new THREE.Group();
@@ -803,6 +820,19 @@ export class Combat {
           sign.sprite.position.set(p.x, 7, p.z);
           g.add(ring, sign.sprite);
         }
+        // Hardpoint: a glowing disc and a beacon, coloured by who holds it.
+        if (m.hill) {
+          const p = this.h.frame.toXZ(m.hill.lat, m.hill.lng);
+          const disc = new THREE.Mesh(new THREE.CircleGeometry(m.hill.r, 48), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+          disc.rotation.x = -Math.PI / 2;
+          disc.position.set(p.x, 0.12, p.z);
+          const beam = new THREE.Mesh(new THREE.CylinderGeometry(m.hill.r, m.hill.r, 6, 48, 1, true), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+          beam.position.set(p.x, 3, p.z);
+          const sign = makeSign("🚩", t("Hardpoint"), "#ffffff", { big: true });
+          sign.sprite.position.set(p.x, 8, p.z);
+          g.add(disc, beam, sign.sprite);
+          this.hillMesh = [disc, beam];
+        }
         const bomb = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.25, 0.3), new THREE.MeshStandardMaterial({ color: "#3b2b22", emissive: "#ff2a2a", emissiveIntensity: 0.4 }));
         bomb.visible = false;
         g.add(bomb);
@@ -810,6 +840,10 @@ export class Combat {
         this.h.scene.add(g);
         this.arena = g;
       }
+    }
+    if (this.hillMesh && m?.hill) {
+      const c = m.hill.contested ? "#ffb020" : m.hill.owner ? TEAM_COLORS[m.hill.owner] : "#ffffff";
+      for (const mesh of this.hillMesh) (mesh.material as THREE.MeshBasicMaterial).color.set(c);
     }
     const b = m?.bomb;
     if (this.bombMesh) {

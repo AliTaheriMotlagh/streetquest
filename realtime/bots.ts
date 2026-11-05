@@ -194,6 +194,11 @@ function pickGoal(m: Match, b: Player, br: Brain): number | null {
     const s = m.sites[br.post];
     return m.nav.random(Math.random, (n) => Math.hypot(n.x - s.x, n.z - s.z) < 25).i;
   }
+  // Hardpoint: most bots go for the zone (and stay in it), the rest hunt.
+  if (m.mode === "hill" && m.hill && Math.random() < 0.75) {
+    const h = m.hill;
+    return m.nav.random(Math.random, (n) => Math.hypot(n.x - h.x, n.z - h.z) < 7).i;
+  }
   // Deathmatch: hunt the nearest enemy most of the time, roam otherwise.
   let best: Player | null = null, bd = Infinity;
   for (const p of m.players) {

@@ -274,6 +274,11 @@ const server: Record<string, string> = {
   "🏦 Empire dividend ready": "🏦 سود امپراتوری آماده‌ست",
   "🎁 Daily reward is ready": "🎁 جایزهٔ روزانه آماده‌ست",
   "Day {n}: +{coins} 🪙 · +{xp} XP": "روز {n}: +{coins} 🪙 · +{xp} XP",
+  "That friend isn't online right now": "این دوستت الان آنلاین نیست",
+  "Travelling to friends is off right now": "سفر پیش دوستان الان خاموشه",
+  "Only from home: on GPS, walk there — or explore the map to look around them": "فقط در حالت بازی از خونه: با جی‌پی‌اس باید پیاده بری — یا روی نقشه گشت بزن و اطرافشون رو ببین",
+  "You can travel to a friend again in {n} min": "{n} دقیقه‌ی دیگه می‌تونی دوباره پیش دوستت سفر کنی",
+  "🚀 You're next to {name}": "🚀 الان کنار {name} هستی",
 };
 
 export default server;

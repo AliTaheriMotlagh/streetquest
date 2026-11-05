@@ -119,6 +119,13 @@ export class Player {
     this.fillAmmo();
   }
 
+  /** Gun Game: only the ladder's gun, in hand (the player's own pick is kept for later matches). */
+  setGun(w: WeaponKey) {
+    this.loadout = [w];
+    this.weapon = WEAPONS[w].idx;
+    this.fillAmmo();
+  }
+
   moveTo(ll: LL, y: number, now: number) {
     this.lat = ll.lat;
     this.lng = ll.lng;

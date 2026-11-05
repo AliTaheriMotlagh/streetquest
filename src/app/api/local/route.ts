@@ -15,9 +15,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
 import { t } from "@/lib/i18n";
-import { DIVAR_CAT_KEYS, type StoreData } from "@/lib/localData";
+import { DIVAR_CAT_KEYS, sameStore, storePhone, type Menu, type StoreData } from "@/lib/localData";
+import { distanceM } from "@/lib/geo";
 import { requireUser } from "@/server/auth";
-import { findPlace } from "@/server/city";
+import { findPlace, placesNear } from "@/server/city";
 import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
 import { divarAround, divarPosts, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
@@ -39,6 +40,16 @@ const Query = z.union([
 ]);
 
 const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [], about: { photo: "", logo: "", address: "", hours: "", week: null, phone: "" } };
+
+/** No number from Balad: the map's own record of the same restaurant (OpenStreetMap's phone tag) may have one. */
+async function withMapPhone(menu: Menu): Promise<Menu> {
+  if (menu.phone) return menu;
+  const v = menu.vendor;
+  const around = await placesNear(v, 200, 40).catch(() => []);
+  const same = around.find((p) => p.info?.phone && sameStore(p, v, distanceM(p, v)));
+  const phone = storePhone(same?.info?.phone);
+  return phone ? { ...menu, phone } : menu;
+}
 
 export const GET = route(async (req) => {
   await requireUser();
@@ -67,7 +78,7 @@ export const GET = route(async (req) => {
   if ("menu" in q) {
     const menu = await vendorMenu(q.menu, q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : undefined);
     if (!menu) throw new HttpError(503, t("Couldn't load the menu — try again in a moment"));
-    return { menu };
+    return { menu: await withMapPhone(menu) };
   }
   if ("torob" in q) return { items: await torobSearch(q.torob, q.shop) };
   if (q.store === "place") {

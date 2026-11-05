@@ -44,6 +44,8 @@ export class Remotes {
   /** Team I'm on in a match (0 = free roam / deathmatch): decides tag colours. */
   myTeam = 0;
   inMatch = false;
+  /** A UAV is up until then (Date.now()): enemies' tags show from far away, through walls. */
+  revealUntil = 0;
   /** Realtime snapshots draw the drivers too (off when the HTTP presence draws them). */
   ownsDrivers = true;
 
@@ -164,7 +166,13 @@ export class Remotes {
           e.tag.sprite.position.y = 2.35;
           av.group.add(e.tag.sprite);
         }
-        if (e.tag) e.tag.sprite.visible = !p.dead && far < (this.inMatch ? 45 : 120);
+        if (e.tag) {
+          const uav = this.inMatch && (!p.team || p.team !== this.myTeam) && Date.now() < this.revealUntil;
+          e.tag.sprite.visible = !p.dead && far < (this.inMatch ? (uav ? 400 : 45) : 120);
+          const mat = e.tag.sprite.material as THREE.SpriteMaterial;
+          if (mat.depthTest === uav) (mat.depthTest = !uav), (mat.needsUpdate = true);
+          e.tag.sprite.renderOrder = uav ? 999 : 0;
+        }
         if (av.group.visible) av.update(dt, { vx: p.vx, vz: p.vz, yaw: p.yaw, pitch: p.pitch, crouch: p.crouch, air: p.air, dead: p.dead }, far);
       } else if (e.avatar) {
         e.avatar.dispose();

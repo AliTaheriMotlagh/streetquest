@@ -120,6 +120,8 @@ const settings: Record<string, string> = {
   "Edited in the Game data tab.": "از تب داده‌های بازی ویرایش می‌شه.",
   "priceCents is in the currency below (e.g. 499 = 4.99).": "priceCents به واحد پولِ زیر است (مثلاً ۴۹۹ = ۴٫۹۹).",
   "Stat overrides": "بازنویسی آمار",
+  "Travel to a friend: wait between trips (min)": "سفر پیش دوست: فاصله‌ی بین سفرها (دقیقه)",
+  "A home player can jump straight to an online friend (Online now → 🚀). This long between jumps; 0 turns it off.": "بازیکنی که از خونه بازی می‌کنه می‌تونه مستقیم بره پیش یه دوست آنلاین (آنلاین‌ها ← 🚀). این مقدار فاصله‌ی بین سفرهاست؛ ۰ خاموشش می‌کنه.",
 };
 
 export default settings;

@@ -8,7 +8,8 @@ import { STUB_PORT } from "../../playwright.config";
 import { adminPlayer, expectOk, fund, offset, Player, randomSpot, uploadPlaces, type LatLng } from "../helpers";
 
 /** `unlisted`: missing from the area's vendor list, so only Snappfood's search finds it. */
-type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; items: { title: string; price: number; discount?: number }[] };
+/** `phone`: what Snappfood says ("customerPhone"); `balad`: the number Balad has for the same place. */
+type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; phone?: string; balad?: string; items: { title: string; price: number; discount?: number }[] };
 const vendors: StubVendor[] = [];
 type StubShop = { id: number; name: string; products: string[]; address?: string; phone?: string };
 const shops: StubShop[] = [];
@@ -61,7 +62,7 @@ test.beforeAll(async () => {
       return send({ status: true, data: { count: all.length, finalResult: all.slice(from, from + size).map((v) => ({ type: "VENDOR", data: vendorJson(v) })) } });
     }
     // Northville (neighbourhoods along 75°N) and Smalltown (none) far from every random spot.
-    if (u.pathname === "/dv/v8/places/cities") return send({ cities: [{ id: 1, name: "Northville", slug: "northville", centroid: { latitude: 75, longitude: 0 }, radius: 3_000_000 }, { id: 2, name: "Smalltown", slug: "smalltown", centroid: SMALLTOWN, radius: 3000 }] });
+    if (u.pathname === "/dv/v8/places/cities") return send({ cities: [{ id: 1, name: "Northville", slug: "northville", centroid: { latitude: 75, longitude: 0 }, radius: 4_000_000 }, { id: 2, name: "Smalltown", slug: "smalltown", centroid: SMALLTOWN, radius: 3000 }] });
     if (u.pathname === "/dv/v8/places/cities/2/districts") return send({ districts: [] });
     if (u.pathname === "/dv/v8/places/cities/1/districts") return send({ districts: districts.map((d) => ({ id: d.id, name: d.name, slug: `d${d.id}`, centroid: { latitude: d.lat, longitude: d.lng } })) });
     if (u.pathname === "/dv/v8/postlist/w/search" && req.method === "POST") {
@@ -80,8 +81,19 @@ test.beforeAll(async () => {
       if (!v) return (res.statusCode = 404), res.end();
       // Saturday (1) … Thursday (6) lunch and dinner, closed on Friday (7).
       const schedules = [1, 2, 3, 4, 5, 6].flatMap((weekday) => [{ weekday, allDay: false, startHour: "11:30", stopHour: "15:30" }, { weekday, allDay: false, startHour: "19:00", stopHour: "23:30" }]);
-      const vendor = { ...vendorJson(v), coverPath: "", address: "Stub street 1", schedules, customerPhone: "02112345678", area: "Stubville", commentCount: 2, reviewStars: { one: 0, two: 0, three: 10, four: 30, five: 60 }, minOrder: 500_000, deliveryFee: 150_000 };
+      const vendor = { ...vendorJson(v), coverPath: "", address: "Stub street 1", schedules, customerPhone: v.phone ?? "02112345678", area: "Stubville", commentCount: 2, reviewStars: { one: 0, two: 0, three: 10, four: 30, five: 60 }, minOrder: 500_000, deliveryFee: 150_000 };
       return send({ status: true, data: { vendor, menus: [{ category: "Popular", products: v.items.map((p, i) => ({ id: i + 1, ...p, description: "", images: [] })) }] } });
+    }
+    // Balad: a name search near a point (tokens + names/positions in the same order), and a place's page.
+    if (u.pathname === "/bl/v6/bundle-search/") {
+      const [lng, lat] = (u.searchParams.get("camera") ?? "").split(",").map(Number);
+      const hits = vendors.filter((v) => v.balad && near({ lat, lng }, v));
+      return send({ "poi-tokens": hits.map((v) => `tok${v.code}`), geojson: { type: "FeatureCollection", features: hits.map((v) => ({ type: "Feature", geometry: { type: "Point", coordinates: [v.lon, v.lat] }, properties: { name: v.title } })) } });
+    }
+    if (u.pathname.startsWith("/blp/web/v4/tok")) {
+      const v = vendors.find((x) => `/blp/web/v4/tok${x.code}` === u.pathname);
+      if (!v) return (res.statusCode = 404), res.end();
+      return send({ token: `tok${v.code}`, name: v.title, seo_details: { schemas: [{ "@type": "Restaurant", telephone: v.balad }] }, phone_link: `tel://${v.balad}` });
     }
     if (u.pathname === "/sf/mobile/v1/restaurant/vendor-comment") {
       // Two reviews on the first page, then none.
@@ -155,6 +167,20 @@ test.describe("store hours, reviews and walk-in stores", () => {
     expect(page.reviews[1]).toMatchObject({ rate: 2, foods: [], reply: "" });
     expect(expectOk(await p.get<{ reviews: { reviews: unknown[] } }>(`/api/local?reviews=${v.code}&page=1`)).data.reviews.reviews).toEqual([]);
     expect((await p.get(`/api/local?reviews=NOT-A-CODE`)).status).toBe(400);
+    await p.dispose();
+  });
+
+  test("a restaurant's phone is its own (from Balad), never Snappfood's call centre", async ({ baseURL }) => {
+    const spot = randomSpot();
+    const known = { code: code(), title: "Balad Known Pizza", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", phone: "02196612", balad: "02188023649", items: [{ title: "Pizza", price: 3_000_000 }] };
+    const unknown = { code: code(), title: "Nobody Knows Kebab", ...{ lat: spot.lat + 0.002, lon: spot.lng }, type: "RESTAURANT", phone: "021-96612", items: [{ title: "Kebab", price: 2_000_000 }] };
+    vendors.push(known, unknown);
+    const p = await Player.create(baseURL!);
+    const a = expectOk(await p.get<{ menu: { phone: string } }>(`/api/local?menu=${known.code}`)).data.menu;
+    expect(a.phone).toBe("02188023649");
+    // Balad doesn't know it, and Snappfood's own number is no phone for the restaurant.
+    const b = expectOk(await p.get<{ menu: { phone?: string } }>(`/api/local?menu=${unknown.code}`)).data.menu;
+    expect(b.phone ?? "").toBe("");
     await p.dispose();
   });
 

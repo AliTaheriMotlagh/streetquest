@@ -136,3 +136,30 @@ describe("walk-in stores: only what each store sells", () => {
     assert.deepEqual(mergeTorobPlace(place(1, undefined), place(1, [a])).stock, [a]);
   });
 });
+
+it("store phones: Snappfood's call centre is never a restaurant's number", async () => {
+  const { storePhone, isPlatformPhone } = await import("../src/lib/localData");
+  assert.equal(storePhone("02196612"), "");
+  assert.equal(storePhone("021-96612"), "");
+  assert.equal(storePhone("+98 21 96612"), "");
+  assert.equal(isPlatformPhone("۰۲۱۹۶۶۱۲"), true);
+  assert.equal(storePhone("۰۲۱ ۸۸۰۲ ۳۶۴۹"), "021 8802 3649");
+  assert.equal(storePhone("tel://02188023649"), "02188023649");
+  assert.equal(storePhone("call us"), "");
+});
+
+it("Balad: the place that is this store, by name and position", async () => {
+  const { pickBaladPoi, baladPhoneOf } = await import("../src/lib/localData");
+  const store = { name: "پیتزا میلاد", lat: 35.7285, lng: 51.4072 };
+  const feat = (name: string, lat: number, lng: number) => ({ geometry: { coordinates: [lng, lat] }, properties: { name } });
+  const r = {
+    "poi-tokens": ["far", "other", "me"],
+    geojson: { features: [feat("پیتزا میلاد", 35.74, 51.4072), feat("پیتزا مدبر", 35.7286, 51.4072), feat("پیتزا میلاد", 35.7286, 51.4073)] },
+  };
+  assert.equal(pickBaladPoi(r, store), "me");
+  assert.equal(pickBaladPoi({ "poi-tokens": ["x"], geojson: { features: [feat("کبابی رضا", 35.7285, 51.4072)] } }, store), null);
+  assert.equal(pickBaladPoi(null, store), null);
+  assert.equal(baladPhoneOf({ seo_details: { schemas: [{ telephone: "02188023649" }] } }), "02188023649");
+  assert.equal(baladPhoneOf({ phone_link: "tel://02133334444" }), "02133334444");
+  assert.equal(baladPhoneOf({ seo_details: { schemas: [{ telephone: "02196612" }] } }), "");
+});

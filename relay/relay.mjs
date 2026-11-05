@@ -5,7 +5,8 @@
 // Snappfood refuses servers abroad (from Vercel it answers 403, so the map shows no
 // restaurants and no menus), and it only allows its own sites to read it from a browser.
 // The app asks this relay instead: SNAPPFOOD_URL=https://<relay>/<RELAY_KEY>/snappfood
-// (and TOROB_URL / DIVAR_URL with /torob, /divar if those start refusing too).
+// (and TOROB_URL / DIVAR_URL with /torob, /divar if those start refusing too; BALAD_URL /
+// BALAD_POI_URL with /balad, /baladpoi for restaurants' phone numbers).
 //  - only the endpoints the game calls are forwarded (GET, and POST for Divar's ad
 //    search); anything else, or a wrong key, is a 404 — it is not an open proxy;
 //  - the app's User-Agent goes through, nothing else about the caller (no cookies, no
@@ -41,6 +42,17 @@ const SITES = {
     origin: process.env.DIVAR_ORIGIN || "https://api.divar.ir",
     get: ["/v8/places/cities", /^\/v8\/places\/cities\/\d{1,9}\/districts$/],
     post: ["/v8/postlist/w/search"],
+  },
+  // Balad: restaurants' real phone numbers (a name search near a spot, then the place's page).
+  balad: {
+    origin: process.env.BALAD_ORIGIN || "https://search.raah.ir",
+    get: ["/v6/bundle-search/"],
+    post: [],
+  },
+  baladpoi: {
+    origin: process.env.BALAD_POI_ORIGIN || "https://poi.raah.ir",
+    get: [/^\/web\/v4\/[A-Za-z0-9]{6,24}$/],
+    post: [],
   },
 };
 

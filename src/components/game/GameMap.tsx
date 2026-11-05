@@ -6,6 +6,7 @@ import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { distanceM } from "@/lib/geo";
+import { EXPLORE_ZOOM } from "@/lib/explore";
 import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
 import { VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor } from "@/lib/localData";
 import type { LiveRoute } from "@/server/traffic";
@@ -67,6 +68,10 @@ type Props = {
   traffic?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
   route?: (LiveRoute & { to: LatLng }) | null;
+  /** Other players to draw instead of the world's (explore mode: those around the explored spot). */
+  others?: WorldPlayer[];
+  /** Explore mode: the map moves freely; `jump` flies it somewhere, `onCenter` reports where it ends up. */
+  explore?: { jump: { at: LatLng; n: number } | null; onCenter: (c: LatLng) => void } | null;
 };
 
 export default memo(GameMap);
@@ -85,9 +90,9 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, torob, traffic, route, look = DEFAULT_STYLE, onTilesFail }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, torob, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
-  const center = getLocation().pos ?? { lat: 51.5074, lng: -0.1278 };
+  const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
   const tint = world ? `${world.phase}-tint` : "";
   const guides = useMemo(() => guidesFor(run, game, travelTo), [run, game, travelTo]);
@@ -136,10 +141,11 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {look.labels && !onFallback && <TileLayer key={`${look.id}-labels`} className="labels" url={look.labels.url} attribution={look.labels.attribution} maxNativeZoom={look.labels.maxNativeZoom} maxZoom={19} keepBuffer={tuning.lite ? 1 : 2} updateWhenZooming={false} />}
         {traffic && <TrafficLayer />}
         {route && <RouteLine route={route} />}
-        <PlayerLayer follow={follow} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
+        <PlayerLayer follow={follow && !explore} guides={guides} onUnfollow={onUnfollow} onFollow={onFollow} />
+        {explore && <ExploreView jump={explore.jump} onCenter={explore.onCenter} />}
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -181,6 +187,30 @@ function useMapView() {
     };
   }, [map, read]);
   return view;
+}
+
+/**
+ * Explore mode's camera: flies to each new `jump`, and reports the middle of the map after
+ * every pan or zoom (the layers then load around it).
+ */
+function ExploreView({ jump, onCenter }: { jump: { at: LatLng; n: number } | null; onCenter: (c: LatLng) => void }) {
+  const map = useMap();
+  const report = useRef(onCenter);
+  report.current = onCenter;
+  useEffect(() => {
+    // A far jump (another city) lands zoomed out a little; a hop nearby keeps the zoom.
+    if (jump) map.setView([jump.at.lat, jump.at.lng], map.distance(map.getCenter(), [jump.at.lat, jump.at.lng]) > 5000 ? EXPLORE_ZOOM : map.getZoom(), { animate: true });
+  }, [map, jump]);
+  useEffect(() => {
+    const moved = () => {
+      const c = map.getCenter();
+      report.current({ lat: c.lat, lng: c.lng });
+    };
+    moved();
+    map.on("moveend", moved);
+    return () => void map.off("moveend", moved);
+  }, [map]);
+  return null;
 }
 
 /** A road's usual free-flowing speed when we don't know its kind (km/h): Tehran's main streets. */
@@ -271,7 +301,8 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
  * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
+function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
+  const players = others ?? world?.players;
   const map = useMap();
   const view = useMapView();
   const lod: Lod = lodFor(view.zoom);
@@ -299,14 +330,14 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
 
   // Other players further out: grouped. At street level OthersLayer animates them.
   const playerGroups = useMemo(() => {
-    if (!world || lod === "near") return [];
+    if (!players || lod === "near") return [];
     const live = new Map(nearby.list().map((n) => [n.id, n.last]));
-    const list = world.players.map((p) => {
+    const list = players.map((p) => {
       const l = live.get(p.id);
       return l ? { ...p, lat: l.lat, lng: l.lng } : p;
     });
     return cluster(list.filter((p) => view.bounds.contains([p.lat, p.lng])), view.zoom, cell, "pl");
-  }, [world, view, lod, cell]);
+  }, [players, view, lod, cell]);
 
   // Places, Snappfood vendors and Torob's walk-in stores (hundreds around you) are one layer, grouped together so
   // their bubbles never stack, a little more loosely than the rest (their signs are wider),
@@ -496,7 +527,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, onSel
         ))}
 
       {/* Other players: animated + live at street level, grouped further out */}
-      {lod === "near" && world && <OthersLayer players={world.players} onSelect={onSelect} />}
+      {lod === "near" && players && <OthersLayer players={players} onSelect={onSelect} />}
       {playerGroups.map((g) =>
         g.items.length === 1 ? playerMarker(g.items[0], g.key) : <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={850} icon={clusterIcon("👥", g.items.length, "players")} eventHandlers={{ click: () => zoomInto(g) }} />,
       )}

@@ -13,8 +13,20 @@ import { serverKey } from "./session";
 import { onlineSince } from "./hub";
 import { friendIds } from "./rooms";
 
-/** Closer than this, privacy fuzz is pointless: you can see each other. */
-export const NEAR_EXACT_M = 120;
+/**
+ * Closer than this, privacy fuzz is pointless: you can see each other (down the street,
+ * across a square). Wider than the 60–150 m fuzz itself, so a stranger walking up never
+ * flips between a made-up spot and the real one right next to you.
+ */
+export const NEAR_EXACT_M = 250;
+/** A GPS fix this rough (m) still counts as "really here" for seeing players near you exactly. */
+export const NEAR_MAX_ACC_M = 150;
+/** The server's own record of where a player really is right now: a fresh, real GPS fix (not test mode, not play-from-home). */
+export function realSpot(u: { lastLat: number | null; lastLng: number | null; locAt?: Date | null; lastSeenAt: Date | null; locSim?: boolean; remotePlay?: boolean }, now = Date.now()): LatLng | null {
+  if (u.lastLat == null || u.lastLng == null || u.locSim || u.remotePlay) return null;
+  const at = u.locAt ?? u.lastSeenAt;
+  return at && now - at.getTime() < NEAR_FRESH_MS * 2 ? { lat: u.lastLat, lng: u.lastLng } : null;
+}
 const NEAR_FRESH_MS = 30_000;
 const FUZZ_MIN_M = 60;
 const FUZZ_MAX_M = 150;

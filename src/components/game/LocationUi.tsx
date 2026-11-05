@@ -18,7 +18,7 @@ const TITLE: Record<GeoError, string> = {
   timeout: msg("GPS is taking a while"),
 };
 
-export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void; onHome?: () => void }) {
+export function LocationGate({ error, onRetry, onSimulate, onHome, onExplore }: { error: GeoError | null; onRetry: () => void; onSimulate?: () => void; onHome?: () => void; onExplore?: () => void }) {
   const b = useMemo(() => browserInfo(), []);
   const [copied, setCopied] = useState(false);
   const openUrl = openInBrowserUrl(b);
@@ -102,6 +102,11 @@ export function LocationGate({ error, onRetry, onSimulate, onHome }: { error: Ge
           {onSimulate && (
             <Button className="btn yellow" onClick={onSimulate}>
               {t("🕹️ Test mode — no GPS")}
+            </Button>
+          )}
+          {onExplore && (
+            <Button className="btn ghost" onClick={onExplore}>
+              {t("🧭 Just explore the map")}
             </Button>
           )}
         </div>

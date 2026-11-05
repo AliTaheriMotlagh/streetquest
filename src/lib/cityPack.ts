@@ -27,6 +27,16 @@ export const CITIES: CityDef[] = [
   { slug: "isfahan", name: "Isfahan", south: 32.55, west: 51.55, north: 32.75, east: 51.8, extract: "asia/iran" },
   { slug: "shiraz", name: "Shiraz", south: 29.55, west: 52.4, north: 29.7, east: 52.62, extract: "asia/iran" },
   { slug: "tabriz", name: "Tabriz", south: 37.99, west: 46.18, north: 38.15, east: 46.4, extract: "asia/iran" },
+  // The north (shomal): Mazandaran and Gilan's cities and the Caspian coast.
+  { slug: "sari", name: "Sari", south: 36.52, west: 53.0, north: 36.62, east: 53.14, extract: "asia/iran" },
+  { slug: "babol", name: "Babol & Babolsar", south: 36.5, west: 52.62, north: 36.74, east: 52.74, extract: "asia/iran" },
+  { slug: "amol", name: "Amol", south: 36.43, west: 52.3, north: 36.51, east: 52.4, extract: "asia/iran" },
+  { slug: "qaemshahr", name: "Qaemshahr", south: 36.43, west: 52.83, north: 36.5, east: 52.91, extract: "asia/iran" },
+  { slug: "royan", name: "Royan, Nur & Izadshahr", south: 36.53, west: 51.85, north: 36.63, east: 52.18, extract: "asia/iran" },
+  { slug: "chalus", name: "Chalus & Nowshahr", south: 36.6, west: 51.36, north: 36.7, east: 51.56, extract: "asia/iran" },
+  { slug: "ramsar", name: "Ramsar & Tonekabon", south: 36.78, west: 50.6, north: 36.95, east: 50.94, extract: "asia/iran" },
+  { slug: "rasht", name: "Rasht & Anzali", south: 37.22, west: 49.4, north: 37.5, east: 49.68, extract: "asia/iran" },
+  { slug: "gorgan", name: "Gorgan", south: 36.8, west: 54.38, north: 36.88, east: 54.5, extract: "asia/iran" },
 ];
 
 /** A city's cells, as the range [cx0, cx1) × [cy0, cy1). */

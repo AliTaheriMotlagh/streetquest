@@ -83,13 +83,36 @@ test.describe("players near each other", () => {
     expect(metres(seen, bAt)).toBeLessThan(1);
     expect(seen.at).toBeLessThanOrEqual(r.data.serverTime);
 
-    // The slower world list keeps strangers fuzzed (60–150 m), not reversible from the id.
+    // The slower world list agrees with the live one for a player right next to us, so the
+    // marker never jumps 60–150 m when the live list lapses for a moment.
     const w = (await a.get<WorldP>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data;
-    const fuzzed = w.players.find((p) => p.id === bId)!;
+    expect(metres(w.players.find((p) => p.id === bId)!, bAt)).toBeLessThan(1);
+    await a.dispose();
+    await b.dispose();
+  });
+
+  test("walking up to a stranger: exact within 250 m, fuzzed beyond", async ({ baseURL }) => {
+    const a = await Player.create(baseURL!);
+    const b = await Player.create(baseURL!);
+    const here = randomSpot();
+    const bAt = offset(here, 200);
+    expectOk(await gps(b, bAt));
+    const bId = (await b.me()).id;
+    // 200 m apart, both on real GPS (even a rough indoor fix): exact, live and in the world list.
+    expect((await a.post<Loc>("/api/loc", { ...here, acc: 120 })).data.near.map((n) => n.id)).toContain(bId);
+    const w = (await a.get<WorldP>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data;
+    expect(metres(w.players.find((p) => p.id === bId)!, bAt)).toBeLessThan(1);
+    // 1 km apart: the world list keeps strangers fuzzed (60–150 m), not reversible from the id.
+    const c = await Player.create(baseURL!);
+    const far = offset(bAt, 1000);
+    expectOk(await gps(c, far));
+    const w2 = (await c.get<WorldP>(`/api/world?lat=${far.lat}&lng=${far.lng}`)).data;
+    const fuzzed = w2.players.find((p) => p.id === bId)!;
     expect(metres(fuzzed, bAt)).toBeGreaterThan(55);
     expect(metres(fuzzed, bAt)).toBeLessThan(160);
     await a.dispose();
     await b.dispose();
+    await c.dispose();
   });
 
   test("nobody is pinpointed from afar or from test mode", async ({ baseURL }) => {
@@ -104,6 +127,10 @@ test.describe("players near each other", () => {
     const sim = await a.post<Loc>("/api/loc", { ...offset(here, 5), sim: true });
     expect(sim.status).toBe(200);
     expect(sim.data.near).toEqual([]);
+    // …nor does the world list: test mode isn't a real spot.
+    const w = (await a.get<WorldP>(`/api/world?lat=${here.lat}&lng=${here.lng}`)).data;
+    const seen = w.players.find((p) => p.id === bId);
+    if (seen) expect(metres(seen, here)).toBeGreaterThan(55);
     await a.dispose();
     await b.dispose();
   });

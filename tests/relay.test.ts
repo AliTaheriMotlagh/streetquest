@@ -1,4 +1,4 @@
-// The relay a server abroad reads Snappfood, Torob and Divar through (relay/relay.mjs): only
+// The relay a server abroad reads Snappfood, Torob, Divar and Balad through (relay/relay.mjs): only
 // the game's own endpoints, only with the key, nothing about the caller, body passed through.
 // It runs as its own process against a local stub of the sites.
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import { gzipSync } from "node:zlib";
 
 const KEY = "test-key-0123456789";
-const SITES = ["snappfood", "torob", "divar"];
+const SITES = ["snappfood", "torob", "divar", "balad", "baladpoi"];
 
 type Seen = { method?: string; url?: string; headers: http.IncomingHttpHeaders; body: string };
 let seen: Seen[] = [];
@@ -37,7 +37,7 @@ before(async () => {
   const dead = await listen(gone);
   await new Promise((r) => gone.close(r));
   relay = spawn(process.execPath, ["relay/relay.mjs"], {
-    env: { ...process.env, PORT: "0", RELAY_KEY: KEY, SNAPPFOOD_ORIGIN: site, DIVAR_ORIGIN: site, TOROB_ORIGIN: `http://127.0.0.1:${dead}` },
+    env: { ...process.env, PORT: "0", RELAY_KEY: KEY, SNAPPFOOD_ORIGIN: site, DIVAR_ORIGIN: site, BALAD_ORIGIN: site, BALAD_POI_ORIGIN: site, TOROB_ORIGIN: `http://127.0.0.1:${dead}` },
     stdio: ["ignore", "pipe", "inherit"],
   });
   base = await new Promise<string>((resolve, reject) => {
@@ -110,7 +110,7 @@ describe("store-site relay", () => {
 
   it("allows every endpoint the game calls", async () => {
     const src = readFileSync("src/server/localData.ts", "utf8");
-    const paths = [...new Set([...src.matchAll(/`\$\{(?:root|sf|tr|dv)\}(\/[^`?]*)/g)].map((m) => m[1].replace(/\$\{[^}]+\}/g, "1")))];
+    const paths = [...new Set([...src.matchAll(/`\$\{(?:root|sf|tr|dv|bl|poi)\}(\/[^`?]*)/g)].map((m) => m[1].replace(/\$\{[^}]+\}/g, "123456")))];
     assert.ok(paths.length >= 10, `found only ${paths.length} endpoints in server/localData.ts`);
     for (const path of paths) {
       const codes = await Promise.all(

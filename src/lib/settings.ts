@@ -46,6 +46,7 @@ const DEFAULTS = {
   remoteEnabled: true,
   remoteRewardMult: 0.5,
   remoteSpeedKmh: 40,
+  friendTravelMin: 10,
   driveSpeedKmh: 80,
   garageFree: true,
 
@@ -185,6 +186,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "remoteEnabled", group: msg("Play from home"), label: msg("Play from home on"), help: msg("Players who don't want to walk can play from the couch: they move by tapping the map and travel at a capped speed.") },
   { key: "remoteRewardMult", group: msg("Play from home"), label: msg("Reward multiplier at home"), help: msg("XP and coins earned from home are multiplied by this (0.5 = half). Toman from home is set under Money & cash-out."), min: 0, max: 1, step: 0.05 },
   { key: "remoteSpeedKmh", group: msg("Play from home"), label: msg("Travel speed at home (km/h)"), help: msg("How fast a home player's commander moves across the map toward where they tapped."), min: 5, max: 1000 },
+  { key: "friendTravelMin", group: msg("Play from home"), label: msg("Travel to a friend: wait between trips (min)"), help: msg("A home player can jump straight to an online friend (Online now → 🚀). This long between jumps; 0 turns it off."), min: 0, max: 1440 },
   { key: "driveSpeedKmh", group: msg("Play from home"), label: msg("3D car top speed (km/h)"), help: msg("Players driving the 3D city from home can move this fast; the server accepts positions up to this speed."), min: 10, max: 300 },
   { key: "garageFree", group: msg("Play from home"), label: msg("Every vehicle free from the start"), help: msg("The drone, the helicopter and every car in the 3D city's garage can be driven from level 1. Turn off to unlock them by level instead.") },
 

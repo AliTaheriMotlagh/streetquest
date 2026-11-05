@@ -2,6 +2,7 @@
 // or catalog, its Torob listings, its Divar ad. The fetching and caching is in
 // server/localData.ts; this file has the shapes, the link parsing and the name matching.
 import { msg } from "./i18n";
+import { distanceM } from "./geo";
 import type { PlaceCat } from "./places";
 
 /** A Snappfood vendor on the map: restaurants, cafés, bakeries, supermarkets… */
@@ -350,3 +351,52 @@ export const sameName = (a: string, b: string) => {
   const x = words(a), y = words(b);
   return !!x.length && !!y.length && (x.join("") === y.join("") || (x.length === y.length && nameScore(a, b) >= 1));
 };
+
+// ---------------------------------------------------------------- real phone numbers
+/**
+ * Snappfood answers every vendor's "customerPhone" with its own call centre, not the
+ * restaurant's: a number on this list is never shown as the store's phone.
+ */
+export const PLATFORM_PHONES = ["02196612", "2196612", "02141629", "41629", "02141629000"];
+const digitsOf = (s: string) => latinDigits(s).replace(/\D/g, "");
+export const isPlatformPhone = (phone: string | null | undefined) => {
+  const d = digitsOf(phone ?? "");
+  return !!d && PLATFORM_PHONES.some((p) => d === p || d === `98${p.replace(/^0/, "")}`);
+};
+/** A store's own phone as written (Persian digits read as Latin); "" for a platform's number or junk. */
+export function storePhone(phone: string | null | undefined) {
+  const s = latinDigits((phone ?? "").trim()).replace(/^tel:\/*/i, "").trim();
+  return /^[\d+\-\s()]{5,20}$/.test(s) && !isPlatformPhone(s) ? s : "";
+}
+
+/** Balad (balad.ir) search: POI tokens and, in the same order, their names and positions. */
+export type BaladSearch = { "poi-tokens"?: string[]; geojson?: { features?: { geometry?: { coordinates?: number[] }; properties?: { name?: string } }[] } };
+/** A Balad place and this store are the same this close with a similar name, or this far with the same name. */
+export const BALAD_MATCH_M = 120;
+export const BALAD_SAME_NAME_M = 300;
+/** The token of the Balad place that is this store, if the search found it. */
+export function pickBaladPoi(r: BaladSearch | null, store: { name: string; lat: number; lng: number }): string | null {
+  const tokens = r?.["poi-tokens"] ?? [];
+  const feats = r?.geojson?.features ?? [];
+  let best: { token: string; score: number } | null = null;
+  feats.forEach((f, i) => {
+    const c = f.geometry?.coordinates, name = f.properties?.name ?? "", token = tokens[i];
+    if (!token || !c || c.length < 2 || !name) return;
+    const d = distanceM(store, { lat: c[1], lng: c[0] });
+    const ns = nameScore(name, store.name);
+    const ok = (d <= BALAD_MATCH_M && ns >= 0.5) || (d <= BALAD_SAME_NAME_M && ns >= 1);
+    // Closer and better-named wins.
+    const score = ns * 1000 - d;
+    if (ok && (!best || score > best.score)) best = { token, score };
+  });
+  return (best as { token: string } | null)?.token ?? null;
+}
+/** A Balad place page's phone (its schema.org "telephone", else the call link). */
+export function baladPhoneOf(r: unknown): string {
+  const x = r as { phone_link?: string; seo_details?: { schemas?: { telephone?: string }[] } } | null;
+  for (const s of x?.seo_details?.schemas ?? []) {
+    const p = storePhone(s?.telephone);
+    if (p) return p;
+  }
+  return storePhone(x?.phone_link);
+}

@@ -148,13 +148,17 @@ mood scales XP; loot funds research; territory funds the army.
   nearby shows up live (20 updates a second over WebSockets). Press **F** / 🚶 to get out of the car and walk as a 3D
   soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
   everyone starts in 🕊️ passive mode, fighting unlocks at level 3, and you can't drop back to passive mid-fight. Or start a
-  **match** on the streets around you (Menu → Street Arena): 💀 Deathmatch, ⚔️ Team Deathmatch or 💣 Bomb Defusal (plant at
-  site A or B, defuse, rounds, side swap), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
+  **match** on the streets around you (Menu → Street Arena): 💀 Deathmatch, ⚔️ Team Deathmatch, 💣 Bomb Defusal (plant at
+  site A or B, defuse, rounds, side swap), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
+  pistol; first through all 10 wins) or 🚩 Hardpoint (a glowing zone on a street, coloured by who holds it, moves every
+  minute; a point a second for the team alone in it, first to 120), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
   fun with one friend or none. Five guns (pistol, SMG, rifle, sniper with a scope, shotgun), aim down sights, recoil,
   headshots, kill feed, scoreboard. Phones get a shooter layout (floating stick, drag to aim, fire buttons on both sides,
   aim assist and optional auto-fire); desktop uses mouse look and WASD. Matches pay XP and coins (12 paid matches a day;
   beating people pays more than farming bots). Medals pop up for double / triple kills, rampages, killing sprees (5 and
   every 5 after 10 without dying), first blood and headshots, with a 🔥 run counter (`src/lib/arena/medals.ts`). Every
+  3 kills without dying call in a 📡 UAV: for 12 s enemies' name tags show from 400 m, through walls — to your whole
+  team in team modes (`earnsUav`, `UAV_S`). `npm run rt:sim -- gun|hill` plays a whole bot match of either. Every
   primary is the fastest killer in its own band of range — shotgun point-blank, SMG up close, rifle mid, sniper far — and
   `tests/balance.test.ts` keeps it that way when the numbers are tuned.
 - **Fantasy map** — the 2D map is an illustrated parchment map (paper grain, drifting cloud shadows, compass rose, colours
@@ -177,7 +181,11 @@ mood scales XP; loot funds research; territory funds the army.
   has no Torob tab; a catalog row shows Torob's lowest price and says so). On top: a picture (Snappfood cover, an OSM photo), a logo
   (Snappfood, Torob, or the store website's icon), the address and opening hours, and links to call, its website and
   Instagram — contacts come from the map (OSM `phone`, `website`, `contact:instagram`, `opening_hours`, `addr:*`,
-  `image` / `wikimedia_commons`, stored with each place by the city pack). Owners can paste their Snappfood / Torob /
+  `image` / `wikimedia_commons`, stored with each place by the city pack). **Phone numbers are the store's own:**
+  Snappfood answers every vendor with its own call centre (021-96612), which is never shown; the number comes from the
+  map, else from **Balad** (searched by name where the store stands — a Snappfood "Name (Area)" without the area —
+  matched by name and distance, read off the place's page, cached a month, a miss retried after a week; `BALAD_URL` /
+  `BALAD_POI_URL`, `off` disables), else from the same restaurant on the map near a Snappfood vendor. Owners can paste their Snappfood / Torob /
   Divar links in the Business center or their Market shop, which beat the automatic match. Names match however Persian
   words are spaced ("چلوکباب" / "چلو کباب"). The card is built for phones: a compact head with the rating and 🟢 open
   now / 🔴 closed (in the store's own time zone), the actions in one row, and tabs that stick while you scroll — Menu,
@@ -211,7 +219,22 @@ mood scales XP; loot funds research; territory funds the army.
   the total and today's next to the player count (`src/server/visits.ts`, `/api/visits`).
 - **Who's online** — the HUD's 🟢 chip counts everyone online right now; tap it for your online friends (anywhere,
   with their distance) and players within 5 km (`/api/online`). Strangers' distances are measured to their fuzzed spot
-  and rounded to 250 m, so moving around can't pin anyone down; no position is ever sent in the list.
+  and rounded to 250 m, so moving around can't pin anyone down; no position is ever sent in the list. Each online
+  friend has 👀 *Visit* (the map flies to their street in explore mode) and, playing from home, 🚀 *Travel* — you land
+  12 m beside them, once every *Travel to a friend* minutes (Admin → Game settings, default 10; `/api/explore`).
+- **Walking together** — players within 250 m of you on real GPS (a fix of 150 m or better) are exact and live on both
+  maps (every report, ~1 s apart while someone is near), and the slower world list agrees with them, so a friend or a
+  stranger walking beside you never jumps to a made-up spot. Further away strangers stay 60–150 m off
+  (`src/server/presence.ts`).
+- **Explore the map** — ⋯ → 🧭 *Explore the map*, or *Just explore the map* when there's no GPS: the map moves freely and
+  Snappfood, Torob, Divar, the real places and players load around the middle of the map instead of around you, with
+  quick jumps to big cities and the north (Sari, Babol, Babolsar, Amol, Royan, Nur, Chalus, Nowshahr, Ramsar, Rasht,
+  Gorgan). Picking things up still needs you there; ◎ goes back to you (`src/lib/explore.ts`, `/api/explore`).
+- **The north (shomal)** — city packs for Sari, Babol & Babolsar, Amol, Qaemshahr, Royan / Nur / Izadshahr, Chalus &
+  Nowshahr, Ramsar & Tonekabon, Rasht & Anzali and Gorgan (`npm run city:pack -- sari babol amol qaemshahr royan chalus
+  ramsar rasht gorgan`). In small towns Snappfood's vendors deliver only a short way, so the map reads the cells around
+  you too and reaches 5 km; Divar's small towns (no neighbourhoods) show the nearest three together, even when Divar
+  puts a town's centre kilometres off.
 - **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a live driving route (Neshan, with
   today's traffic) to it: a blue line, the minutes and distance left and the next turn in Persian; it re-routes when
   you're 70 m off the line, refreshes every 2 minutes, and ends on arrival. Each route also feeds the traffic layer.
@@ -362,7 +385,9 @@ relay with no dependencies (any Node 18+) that runs on a server in Iran; the app
 
 The relay forwards only the endpoints the game calls (anything else, or a wrong key, is a 404), passes the app's
 User-Agent and nothing about the player, and logs no positions. Torob and Divar answer Vercel directly today; if one
-starts refusing, point `TOROB_URL` / `DIVAR_URL` at the same relay with `/torob` or `/divar` at the end.
+starts refusing, point `TOROB_URL` / `DIVAR_URL` at the same relay with `/torob` or `/divar` at the end — and
+`BALAD_URL` / `BALAD_POI_URL` with `/balad` and `/baladpoi` if restaurants' phone numbers stop showing (redeploy the relay
+first with `relay/install.sh` so it knows Balad).
 
 ## Production checklist
 

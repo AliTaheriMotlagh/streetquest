@@ -1855,3 +1855,16 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .online-av { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; font-size: 26px; border-radius: 12px; background: rgba(255,255,255,.06); }
 .online-av .dot { position: absolute; bottom: 2px; inset-inline-end: 2px; }
 .online-dist { flex: none; white-space: nowrap; }
+/* Online now: a friend's quick actions under their row */
+.online-item { margin-bottom: 6px; }
+.online-item .online-row { margin-bottom: 0; }
+.online-acts { display: flex; gap: 6px; justify-content: flex-end; padding: 4px 4px 0; }
+
+/* Explore mode: the bar on top of the map (Explore.tsx) */
+.explore-bar { position: absolute; z-index: 640; top: calc(env(safe-area-inset-top, 0px) + 122px); inset-inline: 8px; padding: 8px 10px; border-radius: 14px; background: rgba(12, 18, 32, .9); border: 1px solid var(--cyan, #4cb8ff); box-shadow: 0 6px 22px rgba(0,0,0,.35); color: #fff; backdrop-filter: blur(6px); }
+.explore-head { display: flex; gap: 8px; align-items: center; }
+.explore-head .grow { flex: 1; min-width: 0; line-height: 1.35; }
+.explore-chips { display: flex; gap: 6px; overflow-x: auto; padding-top: 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.explore-chips::-webkit-scrollbar { display: none; }
+.explore-chips .chip { flex: none; }
+@media (max-width: 420px) { .explore-head .muted { display: none; } }

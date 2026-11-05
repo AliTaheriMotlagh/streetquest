@@ -8,7 +8,9 @@ import { S } from "@/lib/settings";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import type { HeroTabId } from "./Panels";
-import { api, fmtTime, type LatLng, type Me, type Selected, type World } from "./client";
+import { api, fmtTime, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
+import { ExploreBar } from "./Explore";
+import { EXPLORE_PLACES, exploreMoved } from "@/lib/explore";
 import { NoteCard } from "./Panels";
 import { LotteryCard } from "./Lottery";
 import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
@@ -22,7 +24,7 @@ import { CrewPanel, EventsPanel, JobsPanel, NearbyPanel, ProfilePanel } from "./
 import { MarketPanel } from "./Market";
 import { SHOP_WARN_MS } from "@/lib/shops";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
-import { useLocation, useWakeLock } from "./useLocation";
+import { getLocation, useLocation, useWakeLock } from "./useLocation";
 import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
 import { AdModal, type AdOffer, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 import { flyRewards, parseRewards } from "./Rewards";
@@ -182,6 +184,36 @@ export default function Game() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [layers, setLayers] = useState<MapLayer[]>(ALL_LAYERS);
   const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
+  // Explore mode: the map moves freely, and the store layers and places load around its
+  // middle instead of around the player (lib/explore.ts). `explore` is that middle.
+  const [explore, setExplore] = useState<LatLng | null>(null);
+  const [exploreOn, setExploreOn] = useState(false);
+  const [exploreJump, setExploreJump] = useState<{ at: LatLng; n: number } | null>(null);
+  const [exploreData, setExploreData] = useState<{ at: LatLng; spots: WorldSpot[]; players: WorldPlayer[] } | null>(null);
+  const exploreAt = exploreOn ? explore : null;
+  /** Where the store layers load: the explored spot, else the player. */
+  const look = exploreAt ?? pos;
+  const startExplore = useCallback((at?: LatLng | null) => {
+    setExploreOn(true);
+    setFollow(false);
+    const to = at ?? getLocation().pos;
+    if (to) setExploreJump((j) => ({ at: { lat: to.lat, lng: to.lng }, n: (j?.n ?? 0) + 1 }));
+  }, []);
+  const stopExplore = useCallback(() => {
+    setExploreOn(false);
+    setExplore(null);
+    setExploreData(null);
+    setFollow(true);
+  }, []);
+  const onExploreCenter = useCallback((c: LatLng) => setExplore((old) => (old && distanceM(old, c) < 50 ? old : c)), []);
+  const exploreProp = useMemo(() => (exploreOn ? { jump: exploreJump, onCenter: onExploreCenter } : null), [exploreOn, exploreJump, onExploreCenter]);
+  useEffect(() => {
+    if (!exploreAt || !exploreMoved(exploreData?.at ?? null, exploreAt)) return;
+    const at = exploreAt;
+    api<{ spots: WorldSpot[]; players: WorldPlayer[] }>(`/api/explore?lat=${at.lat.toFixed(5)}&lng=${at.lng.toFixed(5)}`)
+      .then((r) => setExploreData({ at, ...r }))
+      .catch(() => {});
+  }, [exploreAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const vendorsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [torobShops, setTorobShops] = useState<TorobPlace[]>([]);
@@ -226,55 +258,58 @@ export default function Game() {
   const vendorsOn = VENDOR_KIND_KEYS.some((k) => layers.includes(k));
   const divarOn = layers.includes("divar");
   const torobOn = layers.includes("torob");
-  // Load them around the player; again after a walk, every 10 minutes (open/closed, new
+  // Load them around the player (or the explored spot); again after a walk, every 10 minutes (open/closed, new
   // ads), or a minute after a failed try. `now` ticks while standing still.
   useEffect(() => {
-    if (!vendorsOn || !pos) return;
+    if (!vendorsOn || !look) return;
     const last = vendorsAt.current;
-    if (last && distanceM(last.pos, pos) < VENDOR_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
-    const tried = (vendorsAt.current = { pos, at: Date.now(), ok: false as boolean });
-    api<{ vendors: Vendor[] }>(`/api/local?near=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
+    if (last && distanceM(last.pos, look) < VENDOR_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
+    const tried = (vendorsAt.current = { pos: look, at: Date.now(), ok: false as boolean });
+    api<{ vendors: Vendor[] }>(`/api/local?near=1&lat=${look.lat.toFixed(4)}&lng=${look.lng.toFixed(4)}`)
       .then((r) => {
         tried.ok = true;
         setVendors(r.vendors);
       })
       .catch(() => {});
-  }, [vendorsOn, pos, now]);
+  }, [vendorsOn, look, now]);
   useEffect(() => {
-    if (!divarOn || !pos) return;
+    if (!divarOn || !look) return;
     const last = divarAt.current;
-    if (last && distanceM(last.pos, pos) < DIVAR_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
-    const tried = (divarAt.current = { pos, at: Date.now(), ok: false as boolean });
-    api<{ areas: DivarArea[] }>(`/api/local?divar=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
+    if (last && distanceM(last.pos, look) < DIVAR_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
+    const tried = (divarAt.current = { pos: look, at: Date.now(), ok: false as boolean });
+    api<{ areas: DivarArea[] }>(`/api/local?divar=1&lat=${look.lat.toFixed(4)}&lng=${look.lng.toFixed(4)}`)
       .then((r) => {
         tried.ok = true;
         setDivar(r.areas);
       })
       .catch(() => {});
-  }, [divarOn, pos, now]);
+  }, [divarOn, look, now]);
   useEffect(() => {
-    if (!torobOn || !pos) return;
+    if (!torobOn || !look) return;
     const last = torobAt.current;
-    if (last && distanceM(last.pos, pos) < TOROB_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
-    const tried = (torobAt.current = { pos, at: Date.now(), ok: false as boolean });
-    api<{ shops: TorobPlace[]; pending?: boolean }>(`/api/local?torobNear=1&lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}`)
+    if (last && distanceM(last.pos, look) < TOROB_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS : 60_000)) return;
+    const tried = (torobAt.current = { pos: look, at: Date.now(), ok: false as boolean });
+    api<{ shops: TorobPlace[]; pending?: boolean }>(`/api/local?torobNear=1&lat=${look.lat.toFixed(4)}&lng=${look.lng.toFixed(4)}`)
       .then((r) => {
         // Still building the store map (the first time ever): ask again in a minute.
         tried.ok = !r.pending;
         setTorobShops(r.shops);
       })
       .catch(() => {});
-  }, [torobOn, pos, now]);
+  }, [torobOn, look, now]);
   const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
   const spotsAround = useMemo(() => {
-    if (!world || !layers.includes("places")) return [];
+    if (!layers.includes("places")) return [];
+    // Exploring: the places around the explored spot (no jobs there — you aren't).
+    if (exploreOn) return (exploreData?.spots ?? []).filter((p) => !shownVendors.some((v) => Math.abs(v.lat - p.lat) < 0.004 && Math.abs(v.lng - p.lng) < 0.005 && sameStore(p, v, distanceM(p, v))));
+    if (!world) return [];
     const jobs = new Set(world.places.map((m) => m.place.id));
     return (world.spots ?? []).filter(
       (p) => !jobs.has(p.id) && !shownVendors.some((v) => Math.abs(v.lat - p.lat) < 0.004 && Math.abs(v.lng - p.lng) < 0.005 && sameStore(p, v, distanceM(p, v))),
     );
-  }, [world, layers, shownVendors]);
+  }, [world, layers, shownVendors, exploreOn, exploreData]);
   const shownSpots = useMemo(() => (hiddenKinds.length ? spotsAround.filter((p) => !hiddenKinds.includes(p.cat)) : spotsAround), [spotsAround, hiddenKinds]);
   // The game's own markers, as the filter has them.
   const mapWorld = useMemo(
@@ -835,6 +870,37 @@ export default function Game() {
           setProfileFocus(id);
           setPanel("social");
         },
+        explore: (at) => {
+          setSelected(null);
+          setPanel(null);
+          startExplore(at ?? null);
+        },
+        visitFriend: async (id) => {
+          try {
+            const f = await api<{ at: LatLng; username: string }>(`/api/explore?friend=${encodeURIComponent(id)}`);
+            setSelected(null);
+            setPanel(null);
+            startExplore(f.at);
+            toast({ kind: "info", title: t("👀 Looking around {name}", { name: f.username }) });
+          } catch (e) {
+            toast({ kind: "error", title: (e as Error).message });
+          }
+        },
+        travelToFriend: homeMode
+          ? async (id) => {
+              await act(() =>
+                api<{ at: LatLng; message: string }>("/api/explore", { method: "POST", body: { friend: id } }).then((r) => {
+                  setTravel(null);
+                  setHomePos(r.at);
+                  if (exploreOn) stopExplore();
+                  setFollow(true);
+                  setSelected(null);
+                  setPanel(null);
+                  return { message: r.message };
+                }),
+              );
+            }
+          : null,
         navigate: pos
           ? (to) => {
               setSelected(null);
@@ -843,7 +909,7 @@ export default function Game() {
             }
           : null,
       },
-    [me, pos, world, toast, act, refresh, simMode, homeMode, !!homePos, setHomeMode, findRoute], // eslint-disable-line react-hooks/exhaustive-deps
+    [me, pos, world, toast, act, refresh, simMode, homeMode, !!homePos, setHomeMode, findRoute, startExplore, stopExplore, exploreOn], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (!me || !ctx)
@@ -929,7 +995,10 @@ export default function Game() {
           torob={torobOn ? torobShops : undefined}
           traffic={layers.includes("traffic")}
           route={route}
+          others={exploreOn ? (layers.includes("players") ? exploreData?.players ?? [] : []) : undefined}
+          explore={exploreProp}
         />
+        {exploreOn && <ExploreBar hasMe={!!pos} onJump={(at) => startExplore(at)} onExit={stopExplore} />}
 
         {/* HUD: who I am on one side, my wallet and status on the other — one tidy row. */}
         <div className="hud">
@@ -1045,7 +1114,7 @@ export default function Game() {
             }}
           />
         )}
-        {!pos && !homeMode && !modeAsk && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} onHome={S.remoteEnabled ? () => setHomeMode(true) : undefined} />}
+        {!pos && !homeMode && !modeAsk && !exploreOn && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} onHome={S.remoteEnabled ? () => setHomeMode(true) : undefined} onExplore={() => startExplore(me.lastPos ?? EXPLORE_PLACES[0])} />}
 
         {homeMode && travel && pos && !picker && (
           <div className="travel-banner">
@@ -1093,6 +1162,9 @@ export default function Game() {
                   🕹️ {simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")}
                 </Button>
               )}
+              <Button role="menuitem" onClick={() => (exploreOn ? stopExplore() : startExplore(look), setMoreOpen(false))} className={exploreOn ? "on" : ""}>
+                🧭 {exploreOn ? t("Exploring — tap to go back to me") : t("Explore the map (no location needed)")}
+              </Button>
               <Button role="menuitem" aria-haspopup="menu" onClick={() => setStylesOpen(true)}>
                 {mapStyle.emoji} {t("Map style")} <span className="small">· {t(mapStyle.name)}</span>
               </Button>
@@ -1104,7 +1176,7 @@ export default function Game() {
               </Button>
             </div>
           )}
-          <Button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title={t("Re-center on me")} aria-label={t("Re-center the map on me")} aria-pressed={follow} onClick={() => setFollow(true)} style={{ color: follow ? "var(--cyan)" : undefined }}>
+          <Button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title={t("Re-center on me")} aria-label={t("Re-center the map on me")} aria-pressed={follow} onClick={() => (exploreOn ? stopExplore() : setFollow(true))} style={{ color: follow ? "var(--cyan)" : undefined }}>
             ◎
           </Button>
         </div>
