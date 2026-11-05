@@ -185,7 +185,9 @@ mood scales XP; loot funds research; territory funds the army.
   Snappfood answers every vendor with its own call centre (021-96612), which is never shown; the number comes from the
   map, else from **Balad** (searched by name where the store stands — a Snappfood "Name (Area)" without the area —
   matched by name and distance, read off the place's page, cached a month, a miss retried after a week; `BALAD_URL` /
-  `BALAD_POI_URL`, `off` disables), else from the same restaurant on the map near a Snappfood vendor. Owners can paste their Snappfood / Torob /
+  `BALAD_POI_URL`, `off` disables), else from **Google Places** (the official Text Search API, only when
+  `GOOGLE_PLACES_KEY` is set: same name-and-distance match, at most `GOOGLE_PLACES_PER_DAY` paid lookups a day, default
+  300, cached a month), else from the same restaurant on the map near a Snappfood vendor. Neshan's API has no phone numbers. Owners can paste their Snappfood / Torob /
   Divar links in the Business center or their Market shop, which beat the automatic match. Names match however Persian
   words are spaced ("چلوکباب" / "چلو کباب"). The card is built for phones: a compact head with the rating and 🟢 open
   now / 🔴 closed (in the store's own time zone), the actions in one row, and tabs that stick while you scroll — Menu,

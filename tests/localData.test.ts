@@ -163,3 +163,13 @@ it("Balad: the place that is this store, by name and position", async () => {
   assert.equal(baladPhoneOf({ phone_link: "tel://02133334444" }), "02133334444");
   assert.equal(baladPhoneOf({ seo_details: { schemas: [{ telephone: "02196612" }] } }), "");
 });
+
+it("Google Places: the phone of the place that is this store", async () => {
+  const { googlePhoneOf } = await import("../src/lib/localData");
+  const store = { name: "پیتزا میلاد", lat: 35.7285, lng: 51.4072 };
+  const pl = (name: string, lat: number, lng: number, nationalPhoneNumber?: string) => ({ displayName: { text: name }, location: { latitude: lat, longitude: lng }, nationalPhoneNumber });
+  assert.equal(googlePhoneOf({ places: [pl("پیتزا مدبر", 35.7285, 51.4072, "021 1111 1111"), pl("Pizza Milad پیتزا میلاد", 35.7286, 51.4073, "021 8802 3649")] }, store), "021 8802 3649");
+  assert.equal(googlePhoneOf({ places: [pl("پیتزا میلاد", 35.75, 51.4072, "021 8802 3649")] }, store), "", "2 km away is another branch");
+  assert.equal(googlePhoneOf({ places: [pl("پیتزا میلاد", 35.7285, 51.4072, "021 96612")] }, store), "", "a platform's number");
+  assert.equal(googlePhoneOf(null, store), "");
+});

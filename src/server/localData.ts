@@ -12,8 +12,9 @@
 //    once, honest User-Agent), and a failed refresh serves the stale copy; Torob's calls
 //    are spaced out (TOROB_GAP_MS), and when it says "slow down" (490/429) we stop asking
 //    for half an hour;
-//  - restaurant phone numbers come from Balad (Snappfood only gives its own call centre),
-//    looked up by name where the store stands and cached for a month;
+//  - restaurant phone numbers come from Balad, then Google Places when GOOGLE_PLACES_KEY is
+//    set (Snappfood only gives its own call centre), looked up by name where the store
+//    stands and cached for a month;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
 import { Prisma } from "@prisma/client";
@@ -22,7 +23,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  baladPhoneOf, DIVAR_CATS, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhoneOf, googlePhoneOf, type GoogleSearch, DIVAR_CATS, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -34,6 +35,11 @@ const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
 // Balad (balad.ir) — the map Iranians use most — knows each place's real phone number.
 const baladBase = () => base(process.env.BALAD_URL, "https://search.raah.ir");
 const baladPoiBase = () => base(process.env.BALAD_POI_URL, "https://poi.raah.ir");
+// Google Places (official API, paid per request): only with a key, only when Balad has no number.
+const googleKey = () => process.env.GOOGLE_PLACES_KEY?.trim() || "";
+const googleBase = () => base(process.env.GOOGLE_PLACES_URL, "https://places.googleapis.com");
+/** Google lookups a day at most (each costs money; cached a month, so the same store never asks twice). */
+const GOOGLE_PER_DAY = Number(process.env.GOOGLE_PLACES_PER_DAY ?? 300);
 
 const HOUR = 3600_000;
 const VENDORS_TTL = 12 * HOUR;
@@ -94,7 +100,7 @@ function keepAlive(p: Promise<unknown>) {
 
 let running = 0;
 const queue: (() => void)[] = [];
-async function getJson<T>(url: string, post?: unknown): Promise<T | null> {
+async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<string, string>): Promise<T | null> {
   const tr = torobBase(), torob = !!tr && url.startsWith(tr);
   if (torob) {
     if (torobCooling()) return null;
@@ -108,7 +114,7 @@ async function getJson<T>(url: string, post?: unknown): Promise<T | null> {
   const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
     const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
-    const headers: Record<string, string> = { "user-agent": ua, accept: "application/json" };
+    const headers: Record<string, string> = { "user-agent": ua, accept: "application/json", ...extraHeaders };
     const init: RequestInit = post === undefined ? { headers } : { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(post) };
     const res = await fetch(url, { ...init, signal: ctl.signal });
     if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
@@ -281,8 +287,8 @@ const phoneOf = (s: string | undefined) => storePhone(s);
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
-  // "menu4": Snappfood's call-centre number is dropped and the restaurant's own looked up on Balad.
-  return cached<Menu>(`sf:menu4:${code}`, MENU_TTL, async () => {
+  // "menu5": Snappfood's call-centre number is dropped and the restaurant's own looked up on Balad, then Google.
+  return cached<Menu>(`sf:menu5:${code}`, MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = near ?? { lat: 35.6997, lng: 51.338 };
@@ -296,7 +302,7 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
       cover: raw.coverPath ?? "",
       address: raw.address ?? "",
       week: weekFromSnappfood(raw.schedules),
-      phone: (await baladPhone({ name: v.title, lat: v.lat, lng: v.lng }).catch(() => "")) || phoneOf(raw.customerPhone),
+      phone: (await realPhone({ name: v.title, lat: v.lat, lng: v.lng })) || phoneOf(raw.customerPhone),
       area: (raw.area ?? "").trim(),
       reviews: raw.commentCount ?? 0,
       ...(st ? { stars: [st.one ?? 0, st.two ?? 0, st.three ?? 0, st.four ?? 0, st.five ?? 0] } : {}),
@@ -765,7 +771,7 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
   if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
   // The map's own record, else Balad's (looked up where the store stands), else the menu's.
-  const phone = storePhone(s.phone) || (await baladPhone(s).catch(() => "")) || menu?.phone || "";
+  const phone = storePhone(s.phone) || (await realPhone(s)) || menu?.phone || "";
   if (phone) links.push({ kind: "phone", url: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone });
   const about = {
     photo: menu?.cover || s.photo || shop?.logo || "",
@@ -812,6 +818,42 @@ export async function baladPhone(store: { name: string; lat: number; lng: number
     return page ? { phone: baladPhoneOf(page) } : null;
   });
   return r?.phone ?? "";
+}
+
+/**
+ * A store's real phone number from Google Places (Text Search, New) — only with
+ * GOOGLE_PLACES_KEY, at most GOOGLE_PLACES_PER_DAY lookups a day, cached like Balad's.
+ */
+export async function googlePhone(store: { name: string; lat: number; lng: number }): Promise<string> {
+  // Straight to Google, never through the Iran relay (Google refuses Iran).
+  const key = googleKey(), gapi = googleBase();
+  const name = store.name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  if (!key || !gapi || !name || !Number.isFinite(store.lat) || !Number.isFinite(store.lng)) return "";
+  const ck = `google:phone:${normName(name).slice(0, 60)}:${store.lat.toFixed(4)},${store.lng.toFixed(4)}`;
+  const row = await prisma.extCache.findUnique({ where: { key: ck } });
+  if (row) {
+    const hit = (row.data as { phone?: string }).phone ?? "";
+    if (Date.now() - row.fetchedAt.getTime() < (hit ? BALAD_TTL : BALAD_MISS_TTL)) return hit;
+  }
+  // The day's budget (a counter row per UTC day).
+  const dayKey = `google:count:${new Date().toISOString().slice(0, 10)}`;
+  const used = ((await prisma.extCache.findUnique({ where: { key: dayKey } }))?.data as { n?: number } | undefined)?.n ?? 0;
+  if (used >= GOOGLE_PER_DAY) return (row?.data as { phone?: string } | undefined)?.phone ?? "";
+  await prisma.extCache.upsert({ where: { key: dayKey }, create: { key: dayKey, data: { n: 1 } }, update: { data: { n: used + 1 } } });
+  const r = await cached<{ phone: string }>(ck, 0, async () => {
+    const found = await getJson<GoogleSearch>(
+      `${gapi}/v1/places:searchText`,
+      { textQuery: name, languageCode: "fa", maxResultCount: 5, locationBias: { circle: { center: { latitude: store.lat, longitude: store.lng }, radius: 300 } } },
+      { "x-goog-api-key": key, "x-goog-fieldmask": "places.displayName,places.location,places.nationalPhoneNumber,places.internationalPhoneNumber" },
+    );
+    return found ? { phone: googlePhoneOf(found, store) } : null;
+  });
+  return r?.phone ?? "";
+}
+
+/** The store's own number from the other maps: Balad first (free), then Google (paid, if set up). */
+async function realPhone(store: { name: string; lat: number; lng: number }) {
+  return (await baladPhone(store).catch(() => "")) || (await googlePhone(store).catch(() => ""));
 }
 
 // ---------------------------------------------------------------- reachability

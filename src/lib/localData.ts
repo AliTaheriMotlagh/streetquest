@@ -400,3 +400,21 @@ export function baladPhoneOf(r: unknown): string {
   }
   return storePhone(x?.phone_link);
 }
+
+/** Google Places (New) Text Search: the fields we ask for (X-Goog-FieldMask). */
+export type GoogleSearch = { places?: { displayName?: { text?: string }; location?: { latitude?: number; longitude?: number }; nationalPhoneNumber?: string; internationalPhoneNumber?: string }[] };
+/** The phone of the Google place that is this store (same name/distance rule as Balad), or "". */
+export function googlePhoneOf(r: GoogleSearch | null, store: { name: string; lat: number; lng: number }): string {
+  let best: { phone: string; score: number } | null = null;
+  for (const p of r?.places ?? []) {
+    const name = p.displayName?.text ?? "", lat = p.location?.latitude, lng = p.location?.longitude;
+    const phone = storePhone(p.nationalPhoneNumber) || storePhone(p.internationalPhoneNumber);
+    if (!name || lat == null || lng == null || !phone) continue;
+    const d = distanceM(store, { lat, lng });
+    const ns = nameScore(name, store.name);
+    if (!((d <= BALAD_MATCH_M && ns >= 0.5) || (d <= BALAD_SAME_NAME_M && ns >= 1))) continue;
+    const score = ns * 1000 - d;
+    if (!best || score > best.score) best = { phone, score };
+  }
+  return best?.phone ?? "";
+}

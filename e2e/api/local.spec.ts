@@ -9,7 +9,7 @@ import { adminPlayer, expectOk, fund, offset, Player, randomSpot, uploadPlaces, 
 
 /** `unlisted`: missing from the area's vendor list, so only Snappfood's search finds it. */
 /** `phone`: what Snappfood says ("customerPhone"); `balad`: the number Balad has for the same place. */
-type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; phone?: string; balad?: string; items: { title: string; price: number; discount?: number }[] };
+type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; phone?: string; balad?: string; google?: string; items: { title: string; price: number; discount?: number }[] };
 const vendors: StubVendor[] = [];
 type StubShop = { id: number; name: string; products: string[]; address?: string; phone?: string };
 const shops: StubShop[] = [];
@@ -95,6 +95,18 @@ test.beforeAll(async () => {
       if (!v) return (res.statusCode = 404), res.end();
       return send({ token: `tok${v.code}`, name: v.title, seo_details: { schemas: [{ "@type": "Restaurant", telephone: v.balad }] }, phone_link: `tel://${v.balad}` });
     }
+    // Google Places Text Search (POST, the key in a header): places with that name near the bias circle.
+    if (u.pathname === "/gp/v1/places:searchText" && req.method === "POST") {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        if (req.headers["x-goog-api-key"] !== "test-google-key") return (res.statusCode = 403), res.end();
+        const b = JSON.parse(raw), c = b.locationBias.circle.center;
+        const hits = vendors.filter((v) => v.google && near({ lat: c.latitude, lng: c.longitude }, v) && b.textQuery && v.title.includes(b.textQuery));
+        send({ places: hits.map((v) => ({ displayName: { text: v.title }, location: { latitude: v.lat, longitude: v.lon }, nationalPhoneNumber: v.google })) });
+      });
+      return;
+    }
     if (u.pathname === "/sf/mobile/v1/restaurant/vendor-comment") {
       // Two reviews on the first page, then none.
       const first = u.searchParams.get("page") === "0";
@@ -178,9 +190,13 @@ test.describe("store hours, reviews and walk-in stores", () => {
     const p = await Player.create(baseURL!);
     const a = expectOk(await p.get<{ menu: { phone: string } }>(`/api/local?menu=${known.code}`)).data.menu;
     expect(a.phone).toBe("02188023649");
-    // Balad doesn't know it, and Snappfood's own number is no phone for the restaurant.
+    // Neither Balad nor Google knows it, and Snappfood's own number is no phone for the restaurant.
     const b = expectOk(await p.get<{ menu: { phone?: string } }>(`/api/local?menu=${unknown.code}`)).data.menu;
     expect(b.phone ?? "").toBe("");
+    // Not on Balad, but on Google.
+    const onGoogle = { code: code(), title: "Google Only Grill", lat: spot.lat - 0.002, lon: spot.lng, type: "RESTAURANT", phone: "02196612", google: "021 2222 3333", items: [{ title: "Grill", price: 2_500_000 }] };
+    vendors.push(onGoogle);
+    expect(expectOk(await p.get<{ menu: { phone: string } }>(`/api/local?menu=${onGoogle.code}`)).data.menu.phone).toBe("021 2222 3333");
     await p.dispose();
   });
 

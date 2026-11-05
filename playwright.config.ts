@@ -61,6 +61,8 @@ export default defineConfig({
           DIVAR_URL: `http://localhost:${STUB_PORT}/dv`,
           BALAD_URL: `http://localhost:${STUB_PORT}/bl`,
           BALAD_POI_URL: `http://localhost:${STUB_PORT}/blp`,
+          GOOGLE_PLACES_URL: `http://localhost:${STUB_PORT}/gp`,
+          GOOGLE_PLACES_KEY: "test-google-key",
           // The stub needs no spacing between Torob calls.
           TOROB_GAP_MS: "0",
           // No real push notifications or payments from tests.
