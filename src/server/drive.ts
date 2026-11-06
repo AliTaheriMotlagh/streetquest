@@ -21,14 +21,16 @@ import { bbox, distanceM, type LatLng } from "../lib/geo";
 import { t } from "../lib/i18n";
 import {
   CHECKPOINT_M, checkPoints, COIN_M, COUNTDOWN_MS, gridSpot, isPartyCode, newPartyCode, PARTY_GAMES, PARTY_IDLE_MS, PARTY_MAX, PARTY_REWARDS_PER_DAY,
-  partyPrize, standings, TAG_COOLDOWN_MS, TAG_M, type PartyGame, type PartyState, type PartyView,
+  partyPrize, standings, TAG_COOLDOWN_MS, TAG_M, type PartyArena, type PartyGame, type PartyState, type PartyView,
 } from "../lib/party";
+import { isMode, MODES } from "../lib/arena/modes";
 import { levelForXp } from "../lib/progression";
 import { ROOKIE_LEVEL } from "../lib/arena/modes";
 import { F_DEAD } from "../lib/arena/protocol";
 import { S } from "../lib/settings";
 import { allowedVehicle, isPaint, VEHICLES, type VehicleKey } from "../lib/vehicles";
-import { notify } from "./hub";
+import { notify, onlineSince } from "./hub";
+import { ONLINE_LIST_M } from "./presence";
 import { HttpError } from "./http";
 import { grant } from "./rewards";
 import { areFriends, friendIds } from "./rooms";
@@ -86,7 +88,7 @@ export type OtherDriver = {
   passive: boolean;
 };
 
-const isVirtual = (u: User, sim?: boolean) => u.remotePlay || (!!sim && canSimulate(u.role));
+export const isVirtual = (u: User, sim?: boolean) => u.remotePlay || (!!sim && canSimulate(u.role));
 
 // Friends change rarely; presence asks a few times a second.
 const friendCache = new Map<string, { at: number; ids: Set<string> }>();
@@ -152,7 +154,7 @@ export async function report(u: User, d: DriveReport) {
   if (party) party = await tickParty(party);
 
   const others = await othersAround(u.id, here, party);
-  return { serverTime: Date.now(), vehicle, rejected, others, party: party ? partyView(party, u.id, others) : null, me: prev ? arenaMe(prev) : null };
+  return { serverTime: Date.now(), vehicle, rejected, others, party: party ? partyView(party, u.id, others, here) : null, me: prev ? arenaMe(prev) : null };
 }
 
 async function othersAround(userId: string, here: LatLng, party: PartyWithMembers | null): Promise<OtherDriver[]> {
@@ -240,15 +242,29 @@ export async function leaveParty(userId: string) {
   await prisma.driveState.updateMany({ where: { userId }, data: { partyId: null } });
 }
 
-export async function inviteToParty(u: User, partyId: string, friendId: string) {
+/** Invites per party (each player is pinged once). */
+const INVITES_MAX = 40;
+
+/** Friends anywhere, or players online near me (the Online now list), may be invited. */
+export async function inviteToParty(u: User, partyId: string, userId: string) {
   const p = await loadParty(partyId);
   if (!p || !p.members.some((m) => m.userId === u.id)) throw new HttpError(403, t("You're not in this party"));
-  if (!(await areFriends(u.id, friendId))) throw new HttpError(403, t("You can only invite friends"));
-  if (!p.invited.includes(friendId)) await prisma.driveParty.update({ where: { id: p.id }, data: { invited: { push: friendId } } });
-  await notify(friendId, () => ({
+  if (userId === u.id || p.members.some((m) => m.userId === userId)) return;
+  if (!(await areFriends(u.id, userId))) {
+    const them = await prisma.user.findUnique({ where: { id: userId }, select: { banned: true, lastSeenAt: true, lastLat: true, lastLng: true } });
+    const near =
+      !!them && !them.banned && !!them.lastSeenAt && them.lastSeenAt > onlineSince() && u.lastLat != null && u.lastLng != null && them.lastLat != null && them.lastLng != null &&
+      distanceM({ lat: u.lastLat, lng: u.lastLng }, { lat: them.lastLat, lng: them.lastLng }) <= ONLINE_LIST_M;
+    if (!near) throw new HttpError(403, t("You can invite friends, and players online near you"));
+  }
+  // Already invited: no second ping.
+  if (p.invited.includes(userId)) return;
+  if (p.invited.length >= INVITES_MAX) throw new HttpError(429, t("That's plenty of invites — give them a minute to answer"));
+  await prisma.driveParty.update({ where: { id: p.id }, data: { invited: { push: userId } } });
+  await notify(userId, () => ({
     kind: "social",
-    title: t("🎉 {name} invited you to a party in the 3D city", { name: u.username }),
-    body: t("Open the 3D city, tap 🎉 and enter code {code} — or accept the invite there.", { code: p.code }),
+    title: t("🎉 {name} invited you to play together in the 3D city", { name: u.username }),
+    body: t("Open the 3D city → Play together and enter code {code} — or accept the invite there.", { code: p.code }),
   }));
 }
 
@@ -395,7 +411,11 @@ async function endRound(p: PartyWithMembers, s: PartyState) {
   }
 }
 
-function partyView(p: PartyWithMembers, userId: string, others: OtherDriver[]): PartyView {
+/** The party's arena match, while it can still be going (relayed ones are cleared when they close). */
+const arenaOf = (p: DriveParty): PartyArena | null =>
+  p.arena && (p.arenaKind === "relay" || p.arenaKind === "ws") && p.arenaMode && p.arenaAt && Date.now() - p.arenaAt.getTime() < 2 * 3600_000 ? { id: p.arena, kind: p.arenaKind, mode: p.arenaMode } : null;
+
+function partyView(p: PartyWithMembers, userId: string, others: Pick<OtherDriver, "id" | "vehicle" | "lat" | "lng">[], here?: LatLng | null): PartyView {
   const s = stateOf(p);
   const seen = new Map(others.map((o) => [o.id, o]));
   const startsAt = p.startsAt?.getTime() ?? null;
@@ -412,9 +432,11 @@ function partyView(p: PartyWithMembers, userId: string, others: OtherDriver[]): 
     members: p.members.map((m) => ({
       userId: m.userId, name: m.name, avatar: m.avatar, vehicle: seen.get(m.userId)?.vehicle ?? null, score: m.score, place: m.place, reward: m.reward,
       online: m.userId === userId || seen.has(m.userId),
+      dist: m.userId === userId ? 0 : here && seen.has(m.userId) ? Math.round(distanceM(here, seen.get(m.userId)!) / 10) * 10 : null,
     })),
     state: s,
     warp,
+    arena: arenaOf(p),
   };
 }
 
@@ -423,5 +445,42 @@ export async function partyViewFor(userId: string) {
   if (!p) return null;
   const ticked = await tickParty(p);
   const states = await prisma.driveState.findMany({ where: { userId: { in: ticked.members.map((m) => m.userId) }, updatedAt: { gt: new Date(Date.now() - FRESH_MS) } } });
-  return partyView(ticked, userId, states.map((r) => ({ id: r.userId, vehicle: r.vehicle }) as OtherDriver));
+  const mine = states.find((r) => r.userId === userId);
+  return partyView(ticked, userId, states.filter((r) => r.userId !== userId).map((r) => ({ id: r.userId, vehicle: allowedVehicle(r.vehicle, 99), lat: r.lat, lng: r.lng })), mine ?? null);
+}
+
+/** The party's Street Arena match on the realtime server (relayed ones are set by server/arenaRelay.ts), or none. */
+export async function setPartyArena(u: User, partyId: string | undefined, id: string | null, mode?: string) {
+  const p = partyId ? await loadParty(partyId) : await myParty(u.id);
+  if (!p || !p.members.some((m) => m.userId === u.id)) throw new HttpError(403, t("You're not in this party"));
+  if (id === null) {
+    // Only the match's own host clears it (a member leaving doesn't end it for everyone).
+    if (p.hostId === u.id) await prisma.driveParty.update({ where: { id: p.id }, data: { arena: null, arenaKind: null, arenaMode: null, arenaAt: null } });
+    return;
+  }
+  if (p.hostId !== u.id) throw new HttpError(403, t("Only the host can start a round"));
+  if (!isMode(mode)) throw new HttpError(400, "mode");
+  await prisma.driveParty.update({ where: { id: p.id }, data: { arena: id, arenaKind: "ws", arenaMode: mode, arenaAt: new Date() } });
+  // Members already in the 3D city are pulled in; the others hear about it.
+  const def = MODES[mode];
+  for (const m of p.members)
+    if (m.userId !== u.id) await notify(m.userId, () => ({ kind: "event", link: "play", title: t("{emoji} {name} started {mode} for the party — open the 3D city to join", { emoji: def.emoji, name: u.username, mode: t(def.name) }) }));
+}
+
+/** Go to the party's host: my car moves right behind theirs (so we see each other and can play). */
+export async function gatherAtHost(u: User, sim?: boolean) {
+  assertCanParty(u, sim);
+  const p = await myParty(u.id);
+  if (!p) throw new HttpError(400, t("You're not in a party"));
+  if (p.hostId === u.id) return null;
+  const hostName = p.members.find((m) => m.userId === p.hostId)?.name ?? "";
+  const [host, me] = await Promise.all([prisma.driveState.findUnique({ where: { userId: p.hostId } }), prisma.driveState.findUnique({ where: { userId: u.id } })]);
+  if (!host || Date.now() - host.updatedAt.getTime() > FRESH_MS) throw new HttpError(409, t("{name} isn't in the 3D city right now", { name: hostName }));
+  if (!me) throw new HttpError(400, t("Open the 3D city first"));
+  const idx = Math.max(1, p.members.findIndex((m) => m.userId === u.id));
+  const spot = gridSpot({ lat: host.lat, lng: host.lng, yaw: host.yaw }, idx);
+  // My game position moves too, so the next report isn't refused as a teleport.
+  await prisma.driveState.update({ where: { userId: u.id }, data: { lat: spot.lat, lng: spot.lng, alt: 0, yaw: spot.yaw, speed: 0 } });
+  await prisma.user.update({ where: { id: u.id }, data: { lastLat: spot.lat, lastLng: spot.lng, locAt: new Date() } });
+  return spot;
 }

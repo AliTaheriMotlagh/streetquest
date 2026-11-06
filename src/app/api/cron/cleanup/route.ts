@@ -14,7 +14,7 @@ const days = (n: number) => new Date(Date.now() - n * 86_400_000);
 export const GET = route(async (req) => {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) throw new HttpError(401, t("Unauthorized"));
-  const [notifications, lobbies, pings, waves, matches, strikes, locks, calls] = await Promise.all([
+  const [notifications, lobbies, pings, waves, matches, strikes, locks, calls, arenaRooms] = await Promise.all([
     prisma.notification.deleteMany({ where: { createdAt: { lt: days(14) } } }),
     prisma.lobby.deleteMany({ where: { createdAt: { lt: days(1) } } }), // players cascade
     prisma.ping.deleteMany({ where: { expiresAt: { lt: new Date() } } }),
@@ -26,6 +26,8 @@ export const GET = route(async (req) => {
     prisma.actionLock.deleteMany({ where: { expiresAt: { lt: new Date() } } }),
     // Call handshakes are useless once the call is over (signals cascade).
     prisma.call.deleteMany({ where: { createdAt: { lt: days(1) } } }),
+    // Street Arena matches whose host's browser went quiet (peers and messages cascade).
+    prisma.arenaRoom.deleteMany({ where: { hostAt: { lt: new Date(Date.now() - 3600_000) } } }),
   ]);
   // Street combat is gone, so nobody can collect a bounty any more: refund every open one.
   let refunded = 0;
@@ -40,5 +42,5 @@ export const GET = route(async (req) => {
   const ridesExpired = await expireRides();
   // Shop orders nobody handed over in time are refunded; owners hear their shop is closing.
   const shops = await shopHousekeeping();
-  return { refunded, ridesExpired, shops, deleted: { notifications: notifications.count, lobbies: lobbies.count, pings: pings.count, waves: waves.count, matches: matches.count, strikes: strikes.count, locks: locks.count, calls: calls.count } };
+  return { refunded, ridesExpired, shops, deleted: { notifications: notifications.count, lobbies: lobbies.count, pings: pings.count, waves: waves.count, matches: matches.count, strikes: strikes.count, locks: locks.count, calls: calls.count, arenaRooms: arenaRooms.count } };
 });

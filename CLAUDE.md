@@ -11,7 +11,8 @@ only the section you need.
 | Store cards (Snappfood menus/reviews/hours, Torob walk-in stores, Divar) | `src/components/game/StoreInfo.tsx`, `src/lib/localData.ts` (pure), `src/server/localData.ts` (fetch + ExtCache), `src/app/api/local/route.ts`; prod reads Snappfood via the Iran relay `relay/{relay.mjs,install.sh}` (`SNAPPFOOD_URL`) |
 | 3D city geometry (worker) / look | `src/components/drive/tileMesh.ts` / `world3d.ts`; data: `vectorTile.ts`, `src/lib/city.ts` |
 | Driving mode, items in 3D | `src/components/drive/Drive.tsx` (beacons, loot, `settle()`), `markers.ts`, `pins.ts` |
-| Street Arena | `src/lib/arena/{weapons,modes,medals,protocol}.ts`, `src/components/arena/*`, `realtime/*` |
+| Street Arena | `src/lib/arena/{weapons,modes,medals,protocol}.ts`, `src/components/arena/*`, `realtime/*`; without the realtime server matches are relayed: `src/lib/arena/relay.ts` (pure), `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts`, `/api/arena` |
+| Play together (party + games tab in the 3D city) | `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts` (parties, gather, invites), `/api/party` |
 | Who's online / presence | `src/server/presence.ts`, `src/app/api/online/route.ts`, `src/components/game/Online.tsx` |
 | Settings & economy defaults | `src/lib/settings.ts` (Admin → Game settings edits them live) |
 | Translations | `src/lib/i18n/fa/*.ts` — every `t()`/`msg()` key needs a Persian entry |

@@ -34,7 +34,9 @@ import { layCourse } from "./course";
 import { DriveGarage } from "./DriveGarage";
 import { DrivePad, STEER_MODES, type SteerMode } from "./DrivePad";
 import { Icon, type IconName } from "./icons";
-import { DriveParty, PartyHud } from "./DriveParty";
+import { MODES, type ModeKey } from "@/lib/arena/modes";
+import { PartyHud } from "./PartyHud";
+import { PlayTogether } from "./PlayTogether";
 import { Markers, markersOf } from "./markers";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
@@ -52,7 +54,6 @@ import { NAME_MODES, type NameMode } from "./vectorTile";
 import { Combat } from "../arena/combat";
 import { CombatHud, useCombat } from "../arena/CombatHud";
 import { CombatPad } from "../arena/CombatPad";
-import { ArenaMenu } from "../arena/ArenaMenu";
 import { RT_DELAY_MS } from "../arena/remotes";
 import { F_FOOT, type ArenaGeo } from "@/lib/arena/protocol";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
@@ -100,7 +101,7 @@ type Job = {
 };
 
 type CamMode = "cockpit" | "chase" | "far" | "top";
-type MenuTab = "jobs" | "places" | "garage" | "party" | "arena";
+type MenuTab = "jobs" | "places" | "garage" | "play";
 /** A line in the Places list: a real shop from the map, a player's shop or a business. */
 type PlaceRow = { id: string; emoji: string; name: string; sub: string; dist: number; lat: number; lng: number; sel: Selected | null };
 const CAM_LABEL: Record<CamMode, string> = { cockpit: "1P", chase: "3P", far: "FAR", top: "TOP" };
@@ -194,6 +195,24 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [query, setQuery] = useState("");
   const placeQuery = useRef("");
   const [party, setParty] = useState<PartyView | null>(null);
+  // The party's host started a Street Arena match: everyone in the party is pulled in
+  // (once per match — leaving it sticks; Play together has a button to go back in).
+  const pulledInto = useRef<string | null>(null);
+  const partyArena = party?.arena ?? null;
+  // The realtime server shows party members to each other in the open city (like friends).
+  const partyKey = party?.members.map((m) => m.userId).filter((id) => id !== me?.id).join() ?? "";
+  useEffect(() => {
+    combat?.setParty(partyKey ? partyKey.split(",") : []);
+  }, [combat, partyKey]);
+  const amHost = !!party && party.hostId === me?.id;
+  const rtOn = fight?.rt === "on";
+  const inMatch = !!fight?.inMatch;
+  useEffect(() => {
+    if (!partyArena || !combat || !canDrive || amHost || !rtOn || inMatch || pulledInto.current === partyArena.id) return;
+    pulledInto.current = partyArena.id;
+    toast({ kind: "social", title: t("{emoji} Joining the party's {mode}…", { emoji: MODES[partyArena.mode as ModeKey]?.emoji ?? "🔫", mode: t(MODES[partyArena.mode as ModeKey]?.name ?? "Street Arena") }) });
+    combat.join(partyArena.id, partyArena.kind);
+  }, [partyArena?.id, combat, canDrive, amHost, rtOn, inMatch]); // eslint-disable-line react-hooks/exhaustive-deps
   const [picked, setPicked] = useState<Picked | null>(null);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
   // "Fly low to pick things up": once waved away, gone for good on this device.
@@ -224,6 +243,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     land: () => void;
     course: (g: PartyGame) => { start: LatLng & { yaw: number }; points: LatLng[] } | null;
     kick: () => void;
+    /** Put my car here (back in it first if I'm walking): going to the party's host. */
+    teleport: (at: LatLng & { yaw: number }) => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -857,14 +878,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       coins.forEach((c, i) => (c.mesh.visible = !s?.taken?.[i]));
       others.setIt(p?.status === "LIVE" && s?.game === "tag" ? (s.it ?? null) : null);
       // The round's start grid: line up there once per round.
-      if (p?.warp && p.warp.round !== P.warpRound && live.current.canDrive) {
+      if (p?.warp && p.warp.round !== P.warpRound && live.current.canDrive && !combat.inMatch) {
         P.warpRound = p.warp.round;
+        // Rounds are driven: back in the car (wherever it's parked) before lining up.
+        combat.backInCar();
         const q = frame.toXZ(p.warp.lat, p.warp.lng);
         Object.assign(st, { x: q.x, z: q.z, yaw: p.warp.yaw, vx: 0, vz: 0, vy: 0, alt: 0, cruise: 0, speed: 0 });
         camPos.set(st.x + Math.sin(st.yaw) * 10, 5, st.z + Math.cos(st.yaw) * 10);
         live.current.onMove?.({ lat: p.warp.lat, lng: p.warp.lng });
         st0.lastReport = performance.now();
         st0.reported = { x: st.x, z: st.z };
+        combat.warp(st.x, st.z, st.yaw);
       }
     };
     /** The party round's current target for the nav arrow. */
@@ -952,6 +976,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           parked = null;
           camPos.set(st.x + Math.sin(st.yaw) * 10, 5, st.z + Math.cos(st.yaw) * 10);
         }
+      },
+      placeCar: (x, z, yaw) => {
+        Object.assign(st, { x, z, yaw, vx: 0, vz: 0, vy: 0, speed: 0, cruise: 0 });
+        st0.reported = { x, z };
       },
       toast: (text) => live.current.toast({ title: text }),
       me: () => live.current.me,
@@ -1123,6 +1151,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       horn,
       land,
       kick: () => net.kick(),
+      teleport: (at) => {
+        if (combat.inMatch) return;
+        combat.backInCar();
+        const q = frame.toXZ(at.lat, at.lng);
+        Object.assign(st, { x: q.x, z: q.z, yaw: at.yaw, vx: 0, vz: 0, vy: 0, alt: 0, cruise: 0, speed: 0 });
+        camPos.set(st.x + Math.sin(st.yaw) * 10, 5, st.z + Math.cos(st.yaw) * 10);
+        live.current.onMove?.({ lat: at.lat, lng: at.lng });
+        st0.lastReport = performance.now();
+        st0.reported = { x: st.x, z: st.z };
+        combat.warp(st.x, st.z, st.yaw);
+        net.kick();
+      },
       course: (g) => {
         const near = [...tiles.values()].filter((s) => s.mesh && s.dist < 700).map((s) => s.mesh!);
         const pts = layCourse(g, near, { x: st.x, z: st.z, yaw: st.yaw });
@@ -1773,8 +1813,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     { key: "jobs", icon: "list", label: t("Jobs nearby"), badge: hud?.jobs.length },
     { key: "places", icon: "store", label: t("Places") },
     { key: "garage", icon: "garage", label: t("Garage") },
-    { key: "party", icon: "people", label: t("Party games"), badge: party?.members.length },
-    { key: "arena", icon: "target", label: t("Street Arena"), badge: fight?.lobbies.length || undefined },
+    { key: "play", icon: "people", label: t("Play together"), badge: party?.members.length || fight?.lobbies.length || undefined },
   ];
   const cam = hud?.cam ?? "cockpit";
 
@@ -1936,16 +1975,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               onClose={() => setMenu(null)}
             />
           )}
-          {menu === "arena" && combat && <ArenaMenu combat={combat} canDrive={canDrive} onGo={goTo} onClose={() => setMenu(null)} />}
-          {menu === "party" && (
-            <DriveParty
-              embedded
+          {menu === "play" && (
+            <PlayTogether
               party={party}
               meId={me?.id ?? ""}
               canDrive={canDrive}
               sim={!!sim}
+              combat={combat}
               course={(g) => api3d.current?.course(g) ?? null}
               onChange={() => api3d.current?.kick()}
+              onTeleport={(at) => api3d.current?.teleport(at)}
+              onGo={goTo}
               onClose={() => setMenu(null)}
             />
           )}

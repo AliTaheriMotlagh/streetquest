@@ -144,6 +144,10 @@ export type LobbyView = {
   max: number;
   phase: Phase;
   dist: number;
+  /** Where it runs: the realtime server, or a player's browser through the game server (lib/arena/relay). */
+  kind?: "ws" | "relay";
+  /** My party's match. */
+  party?: boolean;
 };
 
 export type MatchPlayerView = { sid: number; name: string; avatar: string; team: Team; kills: number; deaths: number; score: number; alive: boolean; bot: boolean; ping: number };

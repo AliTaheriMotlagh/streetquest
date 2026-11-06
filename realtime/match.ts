@@ -52,6 +52,8 @@ export class Match extends Space {
   /** Kills in a row without dying, for killstreaks. */
   private streak = new Map<Player, number>();
   winner: MatchView["winner"] = null;
+  /** Players the host invited (their party): they may join from anywhere — they're spawned in the arena anyway. */
+  readonly allow = new Set<string>();
   private brains = new Map<Player, Brain>();
   private decided = false;
   private touched = Date.now();
@@ -184,7 +186,7 @@ export class Match extends Space {
   canJoin(p: Player): string | null {
     if (this.phase === "ended") return "This match is over";
     if (this.humans.length >= MAX_PLAYERS) return "This match is full";
-    if (distanceM(p.ll, this.frame.origin) > this.radius + JOIN_MARGIN_M) return "Drive closer to join — you need to be within {m} m";
+    if (!this.allow.has(p.userId) && distanceM(p.ll, this.frame.origin) > this.radius + JOIN_MARGIN_M) return "Drive closer to join — you need to be within {m} m";
     return null;
   }
 

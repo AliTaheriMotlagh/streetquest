@@ -2,7 +2,8 @@
 // Everyone else on foot, drawn a little in the past and interpolated between the two
 // samples around that moment (coasting briefly past the newest): ~110 ms behind on the
 // realtime link's 20 Hz snapshots, ~450 ms behind on the HTTP presence (a few reports a
-// second). Players on foot are soldiers (avatar.ts); players driving on the realtime link
+// second), and as far behind as their samples arrive late in matches relayed through the
+// game server (relay.ts Mixer, each player's own delay). Players on foot are soldiers (avatar.ts); players driving on the realtime link
 // are handed to the city's vehicle renderer (drive/others.ts), which interpolates the same way.
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
@@ -91,10 +92,10 @@ export class Remotes {
     return e;
   }
 
-  snap(t: number, list: SnapEntity[]) {
+  snap(t: number, list: SnapEntity[], delay = RT_DELAY_MS) {
     const drivers: OtherDriver[] = [];
     for (const s of list) {
-      const e = this.push(s, t, RT_DELAY_MS);
+      const e = this.push(s, t, delay);
       if (!(s.flags & F_FOOT) && e.info) {
         const ll = this.frame.toLatLng(s.x, s.z);
         drivers.push({
@@ -191,6 +192,11 @@ export class Remotes {
 
   info(sid: number) {
     return this.ents.get(sid)?.info ?? null;
+  }
+
+  /** How far behind this player is drawn (ms). */
+  delayOf(sid: number) {
+    return this.ents.get(sid)?.delay ?? RT_DELAY_MS;
   }
 
   pose(sid: number) {

@@ -1361,18 +1361,18 @@ model Follow {
 // position (anti-cheat, rewards); this is what other drivers see, with heading,
 // altitude and the vehicle. Rows go stale on their own — readers only look at fresh ones.
 model DriveState {
-  userId    String   @id
-  name      String   @default("")
-  avatar    String   @default("🙂")
-  level     Int      @default(1)
+  userId    String    @id
+  name      String    @default("")
+  avatar    String    @default("🙂")
+  level     Int       @default(1)
   lat       Float
   lng       Float
-  alt       Float    @default(0)
-  yaw       Float    @default(0)
-  speed     Float    @default(0)
-  vehicle   String   @default("car")
-  color     String   @default("#d7263d")
-  virtual   Boolean  @default(true) // Driving from home / test mode (a virtual position), not following real GPS.
+  alt       Float     @default(0)
+  yaw       Float     @default(0)
+  speed     Float     @default(0)
+  vehicle   String    @default("car")
+  color     String    @default("#d7263d")
+  virtual   Boolean   @default(true) // Driving from home / test mode (a virtual position), not following real GPS.
   startLat  Float // Where this drive started: strangers only see you once you've driven away from it.
   startLng  Float
   partyId   String?
@@ -1405,6 +1405,12 @@ model DriveParty {
   invited   String[]           @default([])
   startsAt  DateTime?
   endsAt    DateTime?
+  // The Street Arena match the party is playing (the host started it from Play together):
+  // a relay room (ArenaRoom id) or a match on the realtime server. Members' clients join it.
+  arena     String?
+  arenaKind String? // relay | ws
+  arenaMode String?
+  arenaAt   DateTime?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   members   DrivePartyMember[]
@@ -1482,6 +1488,71 @@ model ArenaResult {
 
   @@unique([matchId, userId])
   @@index([userId, rewardedAt])
+}
+
+// Street Arena without the realtime server (server/arenaRelay.ts): the match runs in its
+// host's browser (realtime/hub.ts there) and the other players link to it through
+// /api/arena. Everyone's position goes straight to everyone (ArenaPeer.trail, one hop);
+// the host's referee messages and bots go host → server → player (ArenaMsg, room.snap).
+model ArenaRoom {
+  id        String      @id // the match id in the host's hub
+  hostId    String
+  hostName  String
+  partyId   String?
+  mode      String
+  radius    Int
+  lat       Float // the arena's centre (the match frame's origin)
+  lng       Float
+  phase     String      @default("lobby")
+  humans    Int         @default(1)
+  bots      Int         @default(0)
+  /// The host's clock minus the server's (ms): players line their clocks up with the match.
+  clock     Float       @default(0)
+  /// The host's latest snapshots of everyone (lib/arena/relay encodeWorld), base64.
+  snap      String?
+  /// Everyone who ever joined (results may only name them).
+  joined    String[]    @default([])
+  paid      Boolean     @default(false)
+  hostAt    DateTime    @default(now()) // the host's last report: quiet for HOST_GONE_MS → gone
+  createdAt DateTime    @default(now())
+  peers     ArenaPeer[]
+  msgs      ArenaMsg[]
+
+  @@index([hostAt])
+  @@index([partyId])
+}
+
+/// A human in a relay room (the host too): who they are, the 3D city origin their
+/// coordinates are in, and their last few positions (lat/lng, match clock).
+model ArenaPeer {
+  roomId    String
+  userId    String
+  name      String
+  avatar    String
+  level     Int
+  color     String    @default("#d7263d")
+  anchorLat Float
+  anchorLng Float
+  trail     Json      @default("[]")
+  seenAt    DateTime  @default(now())
+  joinedAt  DateTime  @default(now())
+  room      ArenaRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+}
+
+/// One batch of messages between a player and the host: to "" = to the host (the player's
+/// moves and actions), to a user id = from the host (what the referee told them).
+model ArenaMsg {
+  id     Int       @id @default(autoincrement())
+  roomId String
+  to     String
+  from   String
+  body   Json
+  at     DateTime  @default(now())
+  room   ArenaRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, to, id])
 }
 
 // Menus, catalogs and price searches fetched from other sites (Snappfood, Torob), cached so

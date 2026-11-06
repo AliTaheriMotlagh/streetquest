@@ -37,7 +37,6 @@ const arena: Record<string, string> = {
   "Other players who turned fighting on can shoot you — and you them.": "بازیکن‌هایی که مبارزه رو روشن کردن می‌تونن بهت شلیک کنن — تو هم به اون‌ها.",
   "Turn fighting on": "روشن کردن مبارزه",
   "Go passive": "برگرد به حالت صلح",
-  "New match here": "مسابقه‌ی جدید همین‌جا",
   Arena: "میدان",
   Small: "کوچیک",
   Medium: "متوسط",
@@ -47,7 +46,6 @@ const arena: Record<string, string> = {
   Easy: "آسون",
   Normal: "معمولی",
   Hard: "سخت",
-  "Create match on these streets": "ساختن مسابقه توی همین خیابون‌ها",
   "Matches nearby": "مسابقه‌های این اطراف",
   "No matches around here yet — start one and invite your friends.": "هنوز این دور و بر مسابقه‌ای نیست — یکی راه بنداز و دوستات رو دعوت کن.",
   "{n} players · {b} bots": "{n} بازیکن · {b} ربات",
@@ -125,9 +123,17 @@ const arena: Record<string, string> = {
   "Daily match rewards used up — play again tomorrow for more": "جایزه‌های امروزِ مسابقه تموم شد — فردا دوباره بازی کن",
 
   // ---- without the realtime server (server/arena.ts, the in-browser hub)
-  "Practice match done — matches with friends pay XP and coins once the live server is on": "مسابقه‌ی تمرینی تموم شد — وقتی سرور زنده روشن باشه، مسابقه با دوستات تجربه و سکه می‌ده",
+  "Practice match done — matches with other players pay XP and coins": "مسابقه‌ی تمرینی تموم شد — مسابقه با بازیکن‌های دیگه تجربه و سکه می‌ده",
   "Open the 3D city first": "اول شهر سه‌بعدی رو باز کن",
-  "Matches here are practice against bots. Fights in the open city work with everyone nearby — matches with friends need the live server.": "مسابقه‌ها این‌جا تمرینی و با ربات‌ان. درگیری توی شهر با همه‌ی بازیکن‌های اطراف کار می‌کنه — مسابقه با دوستات به سرور زنده نیاز داره.",
+  // matches through the game server (lib/arena/relay, server/arenaRelay.ts)
+  "{n} players": "{n} بازیکن",
+  "your party": "پارتی تو",
+  "Your phone runs this match — keep the game open until it's over.": "این مسابقه روی گوشی تو اجرا می‌شه — تا تموم نشده بازی رو باز نگه دار.",
+  "Played through the game server: others move a moment behind, that's normal.": "این مسابقه از طریق سرور بازی اجرا می‌شه: بقیه یه لحظه با تأخیر حرکت می‌کنن، طبیعیه.",
+  "That match is over": "این مسابقه تموم شده",
+  "The host left — the match is over": "میزبان رفت — مسابقه تموم شد",
+  "Start the match from where you are": "مسابقه رو از همون جایی که هستی شروع کن",
+  "Finish your own match first — players are in it": "اول مسابقهٔ خودت رو تموم کن — بازیکن‌ها توشن",
 
   // ---- medals (lib/arena/medals.ts) and the kill run in the HUD
   "RAMPAGE!": "قتل‌عام!",

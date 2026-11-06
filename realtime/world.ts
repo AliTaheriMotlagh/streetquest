@@ -1,8 +1,9 @@
 // The open city: everyone driving or walking around, GTA Online's free mode.
 //
-// Who sees whom follows the map's privacy rules (as server/drive.ts does): friends
-// always; strangers only once you've moved 300 m from where your drive began (usually
-// home). Only players on a virtual position (play from home / test mode) are here at all.
+// Who sees whom follows the map's privacy rules (as server/drive.ts does): friends and
+// party members always (a party counts when both say so — see "party"); strangers only
+// once you've moved 300 m from where your drive began (usually home). Only players on a
+// virtual position (play from home / test mode) are here at all.
 //
 // Fighting is opt-in: everyone starts in passive mode (can't shoot, can't be shot).
 // Turning it off needs level 3; turning it back on waits until you haven't fired or been
@@ -44,7 +45,7 @@ export class World extends Space {
   }
 
   private friends(a: Player, b: Player) {
-    return a.friends.has(b.userId) || b.friends.has(a.userId);
+    return a.friends.has(b.userId) || b.friends.has(a.userId) || (a.party.has(b.userId) && b.party.has(a.userId));
   }
 
   /** May `viewer` see `p` at all (privacy)? */

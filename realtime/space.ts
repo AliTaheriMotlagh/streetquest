@@ -4,7 +4,8 @@
 //  1. The shooter must be alive, on foot, carrying that gun, with a round in it, and not
 //     firing faster than the gun can (a token bucket absorbs network bunching).
 //  2. Lag compensation: each target is put back where it was at the moment the shooter
-//     saw it (`at`, server clock, ≤ 350 ms ago) before the ray is tested.
+//     saw it (`at`, server clock, ≤ 350 ms ago — longer for players relayed through the
+//     game server, see lib/arena/relay) before the ray is tested.
 //  3. The ray must meet the target's hitbox (plus a little padding for the rewind's
 //     error) within the gun's range — and, where the server knows the buildings (a
 //     match), before any wall. The server decides the body part from where it hit.
@@ -71,12 +72,12 @@ export abstract class Space {
     if (shooter.passive) return;
     shooter.passiveLockUntil = now + 12_000;
 
-    const at = Math.max(now - REWIND_MAX_MS, Math.min(now, Number(m.at) || now));
+    const at = Math.max(now - (shooter.rewindMs || REWIND_MAX_MS), Math.min(now, Number(m.at) || now));
     const F = shooter.frame;
     // The muzzle must be where the shooter is (their own latest position, in their frame).
     const me = F.toXZ(shooter.lat, shooter.lng);
     const [ox, oy, oz] = m.o.map(Number);
-    if (![ox, oy, oz].every(Number.isFinite) || Math.hypot(ox - me.x, oz - me.z) > MUZZLE_SLACK_M || Math.abs(oy - shooter.y - 1.4) > 2.5) return;
+    if (![ox, oy, oz].every(Number.isFinite) || Math.hypot(ox - me.x, oz - me.z) > (shooter.slackM || MUZZLE_SLACK_M) || Math.abs(oy - shooter.y - 1.4) > 2.5) return;
 
     // Who could be hit, where they were then (in the shooter's frame).
     const targets: { p: Player; x: number; y: number; z: number; crouch: boolean }[] = [];

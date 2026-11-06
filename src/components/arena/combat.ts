@@ -35,6 +35,7 @@ import { HTTP_DELAY_MS, Remotes, RT_DELAY_MS } from "./remotes";
 import type { OtherDriver } from "../drive/net";
 import type { ArenaEvent } from "@/server/arena";
 import { RtClient } from "./rt";
+import { relayApi } from "./relay";
 import { Vfx } from "./vfx";
 import { Viewmodel } from "./viewmodel";
 
@@ -78,8 +79,10 @@ export type CombatHud = {
   uav: boolean;
   /** Hardpoint: am I standing in the zone. */
   onHill: boolean;
-  /** No realtime server: matches are practice with bots; the open city's fights go over HTTP. */
+  /** No realtime server: the open city's fights go over HTTP and matches through the game server. */
   local: boolean;
+  /** In a match relayed through the game server: hosting it (in this tab) or playing in someone's. */
+  relay: "host" | "guest" | null;
   /** The banner for what I just pulled off (lib/arena/medals.ts), while it shows; kills since I last died. */
   medal: { id: number; text: string; big: boolean } | null;
   streak: number;
@@ -107,6 +110,8 @@ export type CombatHost = {
   arenaGeo: (r: number) => ArenaGeo;
   /** Hop out (park the car where it is and stand at x, z) or back in. */
   setFoot: (on: boolean, at?: { x: number; z: number; yaw: number }) => void;
+  /** Put the car somewhere (the referee's correction). */
+  placeCar: (x: number, z: number, yaw: number) => void;
   toast: (text: string) => void;
   /** Who I am (the in-browser hub needs it when there's no realtime server). */
   me: () => { id: string; username: string; avatar: string; level: number } | null;
@@ -208,6 +213,9 @@ export class Combat {
   private keys = new Set<string>();
   private disposed = false;
   private myAccent = "";
+  /** The party a match I'm creating is for (the realtime server's matches: the party is told its id). */
+  private partyFor: string | null = null;
+  private partyMatch: string | null = null;
 
   constructor(private h: CombatHost) {
     this.vfx = new Vfx(h.scene);
@@ -215,6 +223,7 @@ export class Combat {
     this.remotes = new Remotes(h.scene, h.frame, h.others, h.shadows);
     this.rt = new RtClient(h.frame.origin, h.sim, {
       snap: (st, list) => this.remotes.snap(st, list.filter((e) => e.sid !== this.rt.sid)),
+      push: (e, st, delay) => void (e.sid !== this.rt.sid && this.remotes.push(e, st, delay)),
       msg: (m) => this.onMsg(m),
       status: (on) => {
         this.remotes.ownsDrivers = !this.rt.local;
@@ -227,7 +236,7 @@ export class Combat {
       },
     }, () => {
       const m = h.me();
-      return m && { id: m.id, name: m.username, avatar: m.avatar, level: m.level, friends: [], virtual: h.canDrive() };
+      return m && { id: m.id, name: m.username, avatar: m.avatar, level: m.level, friends: [], virtual: h.canDrive(), color: h.vehicle().paint };
     });
     this.fill();
     this.snapshot = this.build();
@@ -318,6 +327,7 @@ export class Combat {
       autoFire: this.autoFire,
       carrying: !!m?.bomb && m.bomb.state === "carried" && m.bomb.carrier === this.rt.sid,
       local: this.rt.local,
+      relay: this.rt.relay,
       medal: this.medal && Date.now() - this.medal.at < MEDAL_MS ? { id: this.medal.id, text: this.medal.text, big: this.medal.big } : null,
       streak: this.run.streak,
       uav: Date.now() < this.uavUntil,
@@ -344,7 +354,7 @@ export class Combat {
     if (!force && now - this.hudAt < 100) return;
     this.hudAt = now;
     const s = this.build();
-    const sig = JSON.stringify([s.rt, s.onFoot, s.nearCar, s.hp, s.dead, s.respawnIn, s.canRespawn, s.passive, s.inMatch, s.team, s.weapon, s.loadout, s.ammo, s.reloading, s.scoped, s.cam, s.feed.map((f) => f.id), s.match, s.lobbies, s.act && [s.act.kind, s.act.can, Math.round(s.act.progress * 20)], s.outside, s.hurt.map((x) => x.id), s.autoFire, s.carrying, s.match && Math.floor(this.rt.serverNow() / 1000), s.medal?.id, s.streak]);
+    const sig = JSON.stringify([s.rt, s.onFoot, s.nearCar, s.hp, s.dead, s.respawnIn, s.canRespawn, s.passive, s.inMatch, s.team, s.weapon, s.loadout, s.ammo, s.reloading, s.scoped, s.cam, s.feed.map((f) => f.id), s.match, s.lobbies, s.act && [s.act.kind, s.act.can, Math.round(s.act.progress * 20)], s.outside, s.hurt.map((x) => x.id), s.autoFire, s.carrying, s.match && Math.floor(this.rt.serverNow() / 1000), s.medal?.id, s.streak, s.relay]);
     if (sig === this.hudSig) return;
     this.hudSig = sig;
     this.snapshot = s;
@@ -370,6 +380,27 @@ export class Combat {
     if (!this.me || this.inMatch) return;
     const p = this.h.parked();
     if (!p || Math.hypot(p.x - this.me.x, p.z - this.me.z) > CAR_REACH_M) return;
+    this.leaveFoot();
+    this.h.setFoot(false);
+  }
+
+  private partyIds: string[] = [];
+  /** My party's members: we always see each other in the open city (the referee needs both of us to say so). */
+  setParty(ids: string[]) {
+    if ([...ids].sort().join() === [...this.partyIds].sort().join()) return;
+    this.partyIds = ids;
+    this.rt.send({ t: "party", ids });
+  }
+
+  /** The city moved my car on purpose (start line, going to the host): tell the referee, so it isn't taken for a speed hack. */
+  warp(x: number, z: number, yaw: number) {
+    if (this.inMatch || this.me) return;
+    this.rt.send({ t: "warp", x, y: 0, z, yaw });
+  }
+
+  /** Back in the car wherever it's parked (a trip to the party's host takes the car). */
+  backInCar() {
+    if (!this.me || this.inMatch) return;
     this.leaveFoot();
     this.h.setFoot(false);
   }
@@ -602,19 +633,37 @@ export class Combat {
   }
 
   // matches
+  /** Where I am (on foot or in the car), for matches nearby. */
+  private here() {
+    const p = this.me ?? this.h.vehicle();
+    return this.h.frame.toLatLng(p.x, p.z);
+  }
   lobbiesRefresh() {
-    this.rt.send({ t: "lobbies" });
+    // No realtime server: matches other people host in their browsers, through the game server.
+    if (this.rt.local)
+      void relayApi<{ rooms: LobbyView[] }>({ action: "list", ...this.here() })
+        .then((r) => {
+          this.lobbies = r.rooms;
+          this.publish(true);
+        })
+        .catch(() => {});
+    else this.rt.send({ t: "lobbies" });
   }
-  create(mode: MatchView["mode"], radius: number, bots: number, difficulty: MatchView["difficulty"]) {
+  /** A new match here. For my party: its members may join from anywhere (and are pulled in). */
+  create(mode: MatchView["mode"], radius: number, bots: number, difficulty: MatchView["difficulty"], party?: { id: string; members: string[] }) {
     if (!this.h.canDrive()) return this.h.toast(t("Switch to Play from home to fight in Street Arena"));
-    this.rt.send({ t: "create", mode, radius, bots, difficulty, geo: this.h.arenaGeo(radius) });
+    this.partyFor = party?.id ?? null;
+    this.rt.nextHost = { party: !!party };
+    this.rt.send({ t: "create", mode, radius, bots, difficulty, geo: this.h.arenaGeo(radius), ...(party ? { invite: party.members } : {}) });
   }
-  join(id: string) {
+  join(id: string, kind?: LobbyView["kind"]) {
     if (!this.h.canDrive()) return this.h.toast(t("Switch to Play from home to fight in Street Arena"));
-    this.rt.send({ t: "join", id });
+    if (kind === "relay" || (!kind && this.rt.local)) void this.rt.joinRelay(id);
+    else this.rt.send({ t: "join", id });
   }
   leave() {
-    this.rt.send({ t: "leave" });
+    if (this.rt.relay === "guest") this.rt.leaveRelay();
+    else this.rt.send({ t: "leave" });
   }
   start() {
     this.rt.send({ t: "start" });
@@ -626,6 +675,12 @@ export class Combat {
     this.primary = w;
     store.set(PRIMARY_KEY, w);
     this.rt.send({ t: "loadout", primary: w });
+  }
+
+  private async partyArena(body: { partyId?: string; id: string | null; mode?: string }) {
+    try {
+      await fetch("/api/party", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "arena", kind: "ws", ...body }) });
+    } catch {}
   }
 
   // ------------------------------------------------------------ server messages
@@ -640,6 +695,7 @@ export class Combat {
       case "welcome":
         this.passive = m.passive;
         this.rt.send({ t: "look", color: H.vehicle().paint });
+        if (this.partyIds.length) this.rt.send({ t: "party", ids: this.partyIds });
         break;
       case "roster":
         this.remotes.roster(m.add, m.del);
@@ -667,6 +723,11 @@ export class Combat {
         break;
       }
       case "spawn": {
+        // In the open city while driving, it's the referee putting my car back (a jump it didn't believe).
+        if (!this.me && !this.match && this.space === "world") {
+          H.placeCar(m.x, m.z, m.yaw);
+          break;
+        }
         // Matches are on foot: a spawn while driving parks the car and gets me out.
         if (!this.me) {
           H.setFoot(true, { x: m.x, z: m.z, yaw: m.yaw });
@@ -746,6 +807,16 @@ export class Combat {
         if (m.m && !prev) {
           H.toast(t("Joined {mode}", { mode: t(MODES[m.m.mode].name) }));
           this.rt.send({ t: "loadout", primary: this.primary });
+          // A party match on the realtime server: tell the party where it is (relayed ones are listed by the game server itself).
+          if (this.partyFor && !this.rt.local && m.m.hostSid === this.rt.sid) {
+            this.partyMatch = m.m.id;
+            void this.partyArena({ partyId: this.partyFor, id: m.m.id, mode: m.m.mode });
+          }
+          this.partyFor = null;
+        }
+        if (!m.m && prev && this.partyMatch === prev.id) {
+          this.partyMatch = null;
+          void this.partyArena({ id: null });
         }
         const mm = m.m;
         if (mm && prev?.id === mm.id && mm.phase !== prev.phase) {
@@ -1060,7 +1131,7 @@ export class Combat {
     this.hurt = this.hurt.filter((x) => now - x.at < 1200);
 
     // -- my state out, 20×/s
-    if (now - this.lastSend >= 50 && this.rt.connected) {
+    if (now - this.lastSend >= 50 && this.rt.linked) {
       this.lastSend = now;
       const v = H.vehicle();
       const vi = Math.max(0, VEHICLE_KEYS.indexOf(v.key));
@@ -1118,6 +1189,8 @@ export class Combat {
     const spread = this.spread(me, speed);
     const dirs: [number, number, number][] = [];
     const httpHits = new Map<number, { zone: "head" | "body" | "legs"; n: number }>();
+    /** Whom the shot hit (as I drew them): the referee looks back as far as I saw them. */
+    let hitSid: number | null = null;
     // Where the bullet visibly leaves: the third-person gun, or just below-right of the eye.
     const muzzle = this.avatar && this.cam === "tps" ? this.avatar.muzzle(v3) : v3.set(ox + rx * 0.12 + dx * 0.6, oy - 0.12 + dy * 0.6, oz + rz * 0.12 + dz * 0.6);
     for (let i = 0; i < W.pellets; i++) {
@@ -1142,10 +1215,11 @@ export class Combat {
       const ex = ox + d.dx * end, ey = oy + d.dy * end, ez = oz + d.dz * end;
       if (i < 3) this.vfx.tracer(muzzle.x, muzzle.y, muzzle.z, ex, ey, ez);
       if (Number.isFinite(tt)) this.vfx.impact(ex, ey, ez, body ? "body" : ey < 0.1 ? "ground" : "wall");
+      if (who && hitSid == null) hitSid = who.sid;
     }
     this.vfx.flash(muzzle.x, muzzle.y, muzzle.z, W.key === "shotgun" || W.key === "sniper");
     if (!this.inMatch) for (const [sid, h] of httpHits) this.httpHit(sid, h.zone, h.n);
-    this.rt.send({ t: "fire", w: W.key, at: sNow - RT_DELAY_MS, o: [ox, oy, oz], d: dirs });
+    this.rt.send({ t: "fire", w: W.key, at: sNow - (hitSid != null ? this.remotes.delayOf(hitSid) : this.rt.delay), o: [ox, oy, oz], d: dirs });
     this.ammo.set(W.key, (this.ammo.get(W.key) ?? 1) - 1);
     this.nextShot = now + shotGap(W) * 1000;
     this.firedAt = now;

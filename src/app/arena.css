@@ -162,6 +162,17 @@
 .arena-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
 .btn.wide { width: 100%; }
 
+/* ---- Play together (the city menu's tab: the party, the game, matches nearby) */
+.play-sec { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 16px; background: rgba(255, 255, 255, .035); border: 1px solid var(--hud-line); }
+.play-tab .play-sec > h4 { margin: 0; }
+.play-games { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.play-games .lbl { grid-column: 1 / -1; font-size: 11px; font-weight: 700; opacity: .65; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+.play-game { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; min-width: 0; padding: 8px 4px; border-radius: 12px; border: 1.5px solid var(--hud-line); background: rgba(255, 255, 255, .04); color: inherit; cursor: pointer; font: 700 11.5px/1.15 var(--body); text-align: center; overflow-wrap: anywhere; }
+.play-game .ic { font-size: 22px; line-height: 1.1; }
+.play-game.on { border-color: #ffb020; background: rgba(255, 176, 32, .12); }
+.play-blurb { margin: 0; font-size: 12.5px; opacity: .85; line-height: 1.4; }
+.play-member .dist { font-size: 12px; opacity: .7; }
+
 /* phones, portrait: the right column (map, camera, menu) owns the top right, so the match bar
    sits under the player card (the street name is hidden in a match) and health / ammo stack
    above the stick, out of the right thumb's buttons. */

@@ -132,8 +132,12 @@ export type ClientMsg =
   | { t: "reload" }
   | { t: "passive"; on: boolean }
   | { t: "respawn"; x: number; y: number; z: number }
+  /** My party's members (the game server's party): we see each other in the open city once they list me too. */
+  | { t: "party"; ids: string[] }
+  /** The 3D city moved my car on purpose (a party's start line, going to the host): not a speed hack. */
+  | { t: "warp"; x: number; y: number; z: number; yaw: number }
   | { t: "lobbies" }
-  | { t: "create"; mode: ModeKey; radius: number; bots: number; difficulty: Difficulty; geo: ArenaGeo }
+  | { t: "create"; mode: ModeKey; radius: number; bots: number; difficulty: Difficulty; geo: ArenaGeo; invite?: string[] }
   | { t: "join"; id: string }
   | { t: "leave" }
   | { t: "start" }

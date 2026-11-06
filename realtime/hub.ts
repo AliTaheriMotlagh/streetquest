@@ -7,7 +7,7 @@
 //  - components/arena/rt.ts: inside the browser when no realtime server is deployed
 //    (the game on Vercel alone). Then it's just you — and bots — in matches, and the
 //    open city's other players come over HTTP instead (server/arena.ts).
-import { isMode, RADII, type Difficulty, type Team } from "../src/lib/arena/modes";
+import { isMode, MAX_PLAYERS, RADII, type Difficulty, type Team } from "../src/lib/arena/modes";
 import { encodeSnap, F_FOOT, type ArenaGeo, type ClientMsg, type LL, type RosterEntry, type SnapEntity, type State } from "../src/lib/arena/protocol";
 import { isWeapon, WEAPON_BY_IDX } from "../src/lib/arena/weapons";
 import { Match, type MatchResult } from "./match";
@@ -16,6 +16,9 @@ import { World } from "./world";
 
 const FOOT_MPS = 11;
 const VEHICLE_MPS = 130;
+/** Deliberate jumps of the car (see "warp"): at most this often, shielded this long after. */
+const WARP_GAP_MS = 1500;
+const WARP_SHIELD_MS = 4000;
 
 export type Identity = { id: string; name: string; avatar: string; level: number; friends: string[]; virtual: boolean };
 
@@ -121,6 +124,9 @@ export class Hub {
       case "look":
         if (typeof m.color === "string" && /^#[0-9a-f]{6}$/i.test(m.color)) p.color = m.color;
         return;
+      case "party":
+        p.party = new Set(Array.isArray(m.ids) ? m.ids.filter((id) => typeof id === "string" && id.length <= 64).slice(0, 16) : []);
+        return;
       case "fire":
         if (!this.hidden.has(p)) space?.fire(p, m, now);
         return;
@@ -132,6 +138,19 @@ export class Hub {
       case "respawn":
         if (space === world && [m.x, m.y, m.z].every(Number.isFinite)) world.respawn(p, p.frame.toLL(m.x, m.z), m.y, now);
         return;
+      case "warp": {
+        // The city moved my car (a party's start line, a trip to the host). Open city only, not
+        // too often, and shielded for a moment so a jump can't be used to ambush anyone.
+        if (space !== world || this.hidden.has(p) || p.dead || ![m.x, m.y, m.z, m.yaw].every(Number.isFinite) || now - p.warpAt < WARP_GAP_MS) return;
+        p.warpAt = now;
+        p.history = [];
+        p.vx = p.vz = 0;
+        p.yaw = Number(m.yaw);
+        p.moveTo(p.frame.toLL(Number(m.x), Number(m.z)), Math.max(0, Math.min(400, Number(m.y))), now);
+        p.lastState = now;
+        p.shieldUntil = now + WARP_SHIELD_MS;
+        return;
+      }
       case "lobbies":
         return p.send({ t: "lobbies", list: [...this.matches.values()].filter((x) => x.phase !== "ended").map((x) => x.lobby(p)).filter((l) => l.dist < 3000).sort((a, b) => a.dist - b.dist).slice(0, 20) });
       case "create": {
@@ -145,6 +164,7 @@ export class Hub {
         const id = Math.random().toString(36).slice(2, 10);
         const match = new Match(id, p, m.mode, m.radius, Math.max(0, Math.min(10, Math.floor(Number(m.bots) || 0))), diff, geo, { newSid: this.newSid, ended: this.report, disband: (x) => this.disband(x) });
         if (!match.playable) return p.send({ t: "err", text: "Not enough streets here for an arena — try a busier spot, or wait for the map to load" });
+        if (Array.isArray(m.invite)) for (const id of m.invite.slice(0, MAX_PLAYERS)) if (typeof id === "string" && id.length <= 64) match.allow.add(id);
         this.matches.set(match.id, match);
         world.remove(p);
         match.join(p, now);

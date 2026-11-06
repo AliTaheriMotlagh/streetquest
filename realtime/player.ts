@@ -20,6 +20,8 @@ export class Player {
   level: number;
   color = "#d7263d";
   friends: Set<string>;
+  /** My party's members, as my client says (a pair counts only when both list each other). */
+  party = new Set<string>();
   ws: Sock | null;
   frame: LocalFrame;
   bot: boolean;
@@ -79,10 +81,14 @@ export class Player {
 
   // link
   rtt = 0;
+  /** Lag compensation for this player's shots (ms), and how far their muzzle may be from where we have them (m); 0 = the defaults. Relayed players get more (lib/arena/relay). */
+  rewindMs = 0;
+  slackM = 0;
   known = new Set<number>();
   msgs = 0;
   msgWindow = 0;
   lastCorrection = 0;
+  warpAt = 0;
 
   constructor(o: { sid: number; userId: string; name: string; avatar: string; level: number; friends?: string[]; ws: Sock | null; anchor: LL; bot?: boolean }) {
     this.sid = o.sid;

@@ -50,7 +50,12 @@ export type PartyState = {
   lastTagAt?: number;
 };
 
-export type PartyMemberView = { userId: string; name: string; avatar: string; vehicle: string | null; score: number; place: number | null; reward: string | null; online: boolean };
+/** dist: metres from me while both of us are in the 3D city (null: not there). */
+export type PartyMemberView = { userId: string; name: string; avatar: string; vehicle: string | null; score: number; place: number | null; reward: string | null; online: boolean; dist: number | null };
+/** The Street Arena match the party is playing: a relayed match (lib/arena/relay) or one on the realtime server. */
+export type PartyArena = { id: string; kind: "relay" | "ws"; mode: string };
+/** Members further than this from the host are offered (and, on joining, sent) a trip to them. */
+export const GATHER_M = 250;
 
 export type PartyView = {
   id: string;
@@ -64,6 +69,7 @@ export type PartyView = {
   state: PartyState | null;
   /** Where *I* line up for this round (set while the round is fresh). */
   warp: (LatLng & { yaw: number; round: number }) | null;
+  arena: PartyArena | null;
 };
 
 /** Spread players on the start line: one behind the other, well out of tagging reach. */

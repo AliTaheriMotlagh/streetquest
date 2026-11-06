@@ -144,8 +144,18 @@ mood scales XP; loot funds research; territory funds the army.
   uneven roofs. The touch controls let go of any finger the browser loses (a system swipe, the screen's edge, the app
   going to the background) and a new touch always takes the wheel or stick, so a control never sticks or freezes;
   keys let go when the window loses focus.
+- **Play together** — one tab in the 3D city's menu (☰ → 👥 Play together) for everything with other people: start
+  a party (or join one by its code or an invite), invite friends or players online near you (each is pinged once),
+  and 🚀 go to the host — your car lines up right behind theirs, so you see each other drive. Then the host picks the
+  game for everyone: a party round (🏁 checkpoint race, 🫵 tag, 🪙 coin rush — the server referees it from the
+  position stream and warps everyone to the start line) or a Street Arena match (below), and starts it. Members in
+  the 3D city are pulled into the host's match on their own; the others get a notification. Games with others are
+  played from home (players on real GPS can watch, and switch with one tap). Members see how far each other is, and
+  a deliberate jump of the car (start line, going to the host) is announced to the referee so it isn't taken for a
+  speed hack (`warp`). `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts`, `src/app/api/party`.
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
-  nearby shows up live (20 updates a second over WebSockets). Press **F** / 🚶 to get out of the car and walk as a 3D
+  nearby shows up live (20 updates a second over WebSockets, or a few a second over HTTP without the realtime
+  server). Press **F** / 🚶 to get out of the car and walk as a 3D
   soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
   everyone starts in 🕊️ passive mode, fighting unlocks at level 3, and you can't drop back to passive mid-fight. Or start a
   **match** on the streets around you (Menu → Street Arena): 💀 Deathmatch, ⚔️ Team Deathmatch, 💣 Bomb Defusal (plant at
@@ -158,7 +168,15 @@ mood scales XP; loot funds research; territory funds the army.
   beating people pays more than farming bots). Medals pop up for double / triple kills, rampages, killing sprees (5 and
   every 5 after 10 without dying), first blood and headshots, with a 🔥 run counter (`src/lib/arena/medals.ts`). Every
   3 kills without dying call in a 📡 UAV: for 12 s enemies' name tags show from 400 m, through walls — to your whole
-  team in team modes (`earnsUav`, `UAV_S`). `npm run rt:sim -- gun|hill` plays a whole bot match of either. Every
+  team in team modes (`earnsUav`, `UAV_S`). `npm run rt:sim -- gun|hill` plays a whole bot match of either. Matches
+  work between real players with or without the realtime server: without it the match runs in its host's browser
+  (the same referee code) and the others link to it through the game server — everyone's moves go straight to
+  everyone (one hop), the referee's messages and bots go through the host, and soldiers are drawn as far behind as
+  their news arrives (adaptive, ~0.5–1.5 s on phones), with lag compensation to match. A match is open to its host's
+  party from anywhere and to players within its circle + 250 m (Matches nearby); one with two or more people pays
+  like the realtime server's. The host keeps the game open until it's over; if the host vanishes for 25 s, the
+  others are sent back to the city (`src/lib/arena/relay.ts`, `src/components/arena/relay.ts`,
+  `src/server/arenaRelay.ts`, `/api/arena`). Every
   primary is the fastest killer in its own band of range — shotgun point-blank, SMG up close, rifle mid, sniper far — and
   `tests/balance.test.ts` keeps it that way when the numbers are tuned.
 - **Fantasy map** — the 2D map is an illustrated parchment map (paper grain, drifting cloud shadows, compass rose, colours
@@ -277,8 +295,10 @@ npm run rt:smoke                                    # two scripted players: open
 npm run rt:sim -- bomb                              # a whole match of bots in simulated time (tdm | ffa | bomb)
 ```
 
-Without `NEXT_PUBLIC_RT_URL` the 3D city still works (driving, walking, other drivers over HTTP) but there's no
-fighting. The soldier and gun models are generated in Blender from `assets/blender/arena.py`: `npm run assets:arena`
+Without `NEXT_PUBLIC_RT_URL` everything still works over HTTP: other drivers and soldiers through `/api/drive`,
+fights in the open city through `/api/drive/arena`, and matches with other players hosted in a player's browser and
+relayed through `/api/arena` (slower than the realtime server's 20 Hz, but real multiplayer). `ARENA_PAID_MIN_S`
+(default 60) is how long such a match must run before it pays. The soldier and gun models are generated in Blender from `assets/blender/arena.py`: `npm run assets:arena`
 rebuilds `public/models/arena/*.glb` (add `-- preview.png` to render a preview).
 
 **Fast checks:** `npm test` runs the unit tests, the typecheck and the translation check in about a minute.
@@ -326,6 +346,7 @@ Torob and Divar. Iranian sites often refuse servers abroad (Snappfood answers Ve
 | Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
 | Store menus, prices & ads: Snappfood (a cell's whole vendor list — every vendor delivering there, read 400 a page — per ~1 km cell, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h), Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h) and Divar (cities and neighbourhoods a week, each neighbourhood's latest ads per category 15 min) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. None has an official API — `SNAPPFOOD_URL` / `TOROB_URL` / `DIVAR_URL` (`off` disables), admin switch *Menus, prices and ads from Snappfood, Torob and Divar*; *Places on the map* range / most at once | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `/api/route`, `src/components/game/StoreInfo.tsx`, `GameMap.tsx` |
 | 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`). Traffic and pedestrians are instanced per model / body part (`fleet3d.ts`, `people.ts`) | `src/components/drive`, `src/lib/{fleet,vehicles}.ts` |
+| Street Arena without the realtime server: the host's browser runs the hub; players poll `/api/arena` (one request in flight, ≤ ~6/s): their trail (last ~0.7 s of samples, lat/lng on the host's clock) is written to `ArenaPeer` and read by everyone, the referee's messages wait in `ArenaMsg` until acknowledged, the host's snapshots (bots, health, teams) sit on `ArenaRoom`. Party members see each other on the realtime server too (a pair counts when both list each other) | `src/lib/arena/relay.ts`, `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts` |
 | Street Arena: a separate Node WebSocket server (`realtime/`) holds everyone in memory — no database. The app signs a 10-min ticket (`/api/rt/ticket`: who you are, friends, virtual or real GPS); results come back HMAC-signed (`/api/rt/result`, paid once per match, daily cap). Binary state 20×/s each way, positions in each client's own local metres, interest management (600 m, same privacy rules as the HTTP presence). Hits: the client draws them at once, the server referees with lag compensation (targets rewound ≤ 350 ms), fire-rate/ammo/range checks and, in matches, line of sight through the real buildings (the host's client sends the arena's streets and footprints). Bots walk a street graph built from the same map | `realtime/`, `src/lib/arena`, `src/components/arena`, `/api/rt` |
 | Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
 | Businesses: claim on the spot (≤150 m), campaigns limited by plan, check-in ≤80 m, 6-char coupon codes redeemed once by the owner; plans paid through the same Stripe Checkout + webhook as gems (`biz:<plan>:<id>` purchases) | `src/lib/business.ts`, `src/server/business.ts`, `/api/business`, `src/components/game/Business.tsx` |
