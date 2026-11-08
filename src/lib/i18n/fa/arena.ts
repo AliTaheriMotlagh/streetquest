@@ -174,6 +174,12 @@ const arena: Record<string, string> = {
   "Set off the C4": "منفجر کردن سی‌فور",
   "Hold to aim, let go to throw: {name}": "نگه دار تا نشانه بگیری، رها کن تا پرتاب شود: {name}",
   "Switch grenade": "عوض کردن نارنجک",
+  // guns from real models (lib/arena/weapons)
+  "Hammer .50 pistol": "کلت سنگین هَمِر .۵۰",
+  "KR-47 battle rifle": "تفنگ جنگی KR-47",
+  "Bulldog LMG": "تیربار سبک بولداگ",
+  "Marksman DMR": "تفنگ تک‌تیرانداز نیمه‌خودکار مارکس‌من",
+  "Sidearm": "سلاح کمری",
 };
 
 export default arena;

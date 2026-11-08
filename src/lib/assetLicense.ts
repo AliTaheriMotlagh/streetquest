@@ -23,7 +23,8 @@ const RIP_WORDS = [
   "gta", "grand theft auto", "call of duty", "cod mw", "modern warfare", "warzone", "black ops",
   "counter-strike", "counter strike", "csgo", "cs:go", "cs2", "cs 1.6", "valorant", "pubg", "fortnite",
   "battlefield", "apex legends", "rainbow six", "escape from tarkov", "tarkov", "halo", "overwatch",
-  "rip", "ripped", "game rip", "game asset from", "from the game", "extracted",
+  "metro exodus", "stalker", "fallout", "resident evil", "the last of us", "far cry",
+  "rip", "ripped", "game rip", "game asset from", "from the game", "extracted", "fan art", "fanart",
 ];
 
 /** Does a model's name, tags or description say it comes from (or copies) another game? */

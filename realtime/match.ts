@@ -15,7 +15,7 @@ import {
   type Difficulty, type LobbyView, type MatchView, type ModeDef, type ModeKey, type Phase, type Team,
 } from "../src/lib/arena/modes";
 import { localFrame, type ArenaGeo, type KillCause, type LL, F_FOOT } from "../src/lib/arena/protocol";
-import { PRIMARIES, WEAPONS, type WeaponKey } from "../src/lib/arena/weapons";
+import { isSecondary, PRIMARIES, WEAPONS, type WeaponKey } from "../src/lib/arena/weapons";
 import { BOT_NAMES, newBrain, tickBot, type Brain } from "./bots";
 import { Nav } from "./nav";
 import { Player } from "./player";
@@ -238,13 +238,14 @@ export class Match extends Space {
     this.dirty = true;
   }
 
-  setLoadout(p: Player, w: WeaponKey) {
-    if (!PRIMARIES.includes(w) && w !== "pistol") return;
+  setLoadout(p: Player, w: WeaponKey, side?: WeaponKey) {
+    if (!PRIMARIES.includes(w) && !isSecondary(w)) return;
     p.primary = w;
+    if (side && isSecondary(side)) p.secondary = side;
     // Gun Game hands out the guns; the pick is kept for later matches.
     if (this.mode === "gun") return p.status(this.id);
     // Takes effect now in the lobby / freeze time, otherwise at the next spawn.
-    if (this.phase === "lobby" || this.phase === "warmup" || p.dead) p.setLoadout(w);
+    if (this.phase === "lobby" || this.phase === "warmup" || p.dead) p.setLoadout(w, p.secondary);
     p.status(this.id);
   }
 

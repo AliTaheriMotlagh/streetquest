@@ -197,7 +197,7 @@ export class Hub {
         if (space instanceof Match) space.setTeam(p, m.team as Team);
         return;
       case "loadout":
-        if (space instanceof Match && isWeapon(m.primary)) space.setLoadout(p, m.primary);
+        if (space instanceof Match && isWeapon(m.primary)) space.setLoadout(p, m.primary, isWeapon(m.secondary) ? m.secondary : undefined);
         return;
       case "act":
         if (space instanceof Match) space.act(p, !!m.on, now);

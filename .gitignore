@@ -24,3 +24,6 @@ graphify-out/
 /assets/models/*.glb
 # npm run assets:get puts sources in assets/models/<kind>/ (credits: assets/credits.json, in git)
 /assets/models/**/*.glb
+
+# Blender build helpers (assets/blender/*.py) leave Python bytecode behind
+__pycache__/

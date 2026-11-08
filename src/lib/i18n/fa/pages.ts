@@ -35,6 +35,8 @@ const pages: Record<string, string> = {
   "Map data": "داده‌های نقشه",
   "OpenStreetMap contributors": "مشارکت‌کنندگان OpenStreetMap",
   "3D cars": "ماشین‌های سه‌بعدی",
+  "3D weapons": "سلاح‌های سه‌بعدی",
+  "Made lighter for phones, recoloured and given new names in the game.": "برای گوشی سبک‌تر شده‌اند، رنگشان عوض شده و در بازی اسم تازه گرفته‌اند.",
   "Made lighter for phones and recoloured for the game.": "برای گوشی سبک‌تر شدن و برای بازی دوباره رنگ خوردن.",
 };
 

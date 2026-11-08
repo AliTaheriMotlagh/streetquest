@@ -95,7 +95,7 @@ async function get() {
     uid, title: m.name, author: m.user.displayName || m.user.username, url: m.viewerUrl, license: OK_LICENSES[licenseSlug(m.license)!],
     kind, file: path.relative(ROOT, file), faces: m.faceCount, at: new Date().toISOString().slice(0, 10),
   };
-  writeFileSync(CREDITS, JSON.stringify([...credits.filter((c) => c.uid !== uid), credit].sort((a, b) => a.file.localeCompare(b.file)), null, 2) + "\n");
+  writeFileSync(CREDITS, JSON.stringify([...credits.filter((c) => c.uid !== uid && c.file !== credit.file), credit].sort((a, b) => a.file.localeCompare(b.file)), null, 2) + "\n");
   console.log(`${credit.file}  ${(bytes.length / 1e6).toFixed(1)} MB  ${m.faceCount} tris  ${credit.license}  by ${credit.author}`);
 }
 

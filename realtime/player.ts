@@ -81,6 +81,8 @@ export class Player {
   deaths = 0;
   score = 0;
   primary: WeaponKey = "rifle";
+  /** The sidearm they carry with it (the pistol or the heavy pistol). */
+  secondary: WeaponKey = "pistol";
   /** Where to put them back when their match ends. */
   returnLL: LL | null = null;
   carrying = false;
@@ -127,10 +129,11 @@ export class Player {
     this.reloading = null;
   }
 
-  setLoadout(primary: WeaponKey) {
+  setLoadout(primary: WeaponKey, secondary = this.secondary) {
     this.primary = primary;
+    this.secondary = secondary;
     this.gearless = false;
-    this.loadout = primary === "pistol" ? ["pistol"] : [primary, "pistol"];
+    this.loadout = primary === secondary ? [primary] : [primary, secondary];
     this.fillAmmo();
   }
 

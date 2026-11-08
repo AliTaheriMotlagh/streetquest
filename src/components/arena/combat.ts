@@ -20,7 +20,7 @@ import { t } from "@/lib/i18n";
 import { aimDir, eyeHeight, rayPlayer, spreadDir, type Normal, type Ray } from "@/lib/arena/geom";
 import { BOMB_REACH_M, bombSide, MODES, SITE_R, TEAM_COLORS, type LobbyView, type MatchView, type Team } from "@/lib/arena/modes";
 import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT, G_PASSIVE, type ArenaGeo, type RosterEntry, type ServerMsg } from "@/lib/arena/protocol";
-import { MAX_HP, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
+import { isSecondary, MAX_HP, PRIMARIES, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
 import { VEHICLE_KEYS, type VehicleKey } from "@/lib/vehicles";
 import type { CollisionWorld } from "../drive/physics";
 import type { Others } from "../drive/others";
@@ -141,6 +141,7 @@ const HTTP_FIRE_MS = 350;
 
 const AUTO_FIRE_KEY = "sq_arena_autofire";
 const PRIMARY_KEY = "sq_arena_primary";
+const SECONDARY_KEY = "sq_arena_secondary";
 const CAM_KEY = "sq_arena_cam";
 const THROW_KEY = "sq_arena_throw";
 const SENS_MOUSE = 0.0022;
@@ -231,7 +232,9 @@ export class Combat {
   private snapshot: CombatHud;
   private autoFire = store.get(AUTO_FIRE_KEY) !== "0";
   /** The main gun I take into matches (everyone also carries the pistol). */
-  primary: WeaponKey = ((p) => (p && p in WEAPONS && p !== "pistol" ? (p as WeaponKey) : "rifle"))(store.get(PRIMARY_KEY));
+  primary: WeaponKey = ((p) => (p && PRIMARIES.includes(p as WeaponKey) ? (p as WeaponKey) : "rifle"))(store.get(PRIMARY_KEY));
+  /** The sidearm that goes with it (the pistol or the heavy pistol). */
+  secondary: WeaponKey = ((p) => (isSecondary(p) ? p : "pistol"))(store.get(SECONDARY_KEY));
   private beepAt = 0;
   private lastBomb: string | null = null;
   // match furniture
@@ -812,7 +815,12 @@ export class Combat {
   setPrimary(w: WeaponKey) {
     this.primary = w;
     store.set(PRIMARY_KEY, w);
-    this.rt.send({ t: "loadout", primary: w });
+    this.rt.send({ t: "loadout", primary: w, secondary: this.secondary });
+  }
+  setSecondary(w: WeaponKey) {
+    this.secondary = w;
+    store.set(SECONDARY_KEY, w);
+    this.rt.send({ t: "loadout", primary: this.primary, secondary: w });
   }
 
   private async partyArena(body: { partyId?: string; id: string | null; mode?: string }) {
@@ -972,7 +980,7 @@ export class Combat {
         if (!m.m) this.space = "world";
         if (m.m && !prev) {
           H.toast(t("Joined {mode}", { mode: t(MODES[m.m.mode].name) }));
-          this.rt.send({ t: "loadout", primary: this.primary });
+          this.rt.send({ t: "loadout", primary: this.primary, secondary: this.secondary });
           // A party match on the realtime server: tell the party where it is (relayed ones are listed by the game server itself).
           if (this.partyFor && !this.rt.local && m.m.hostSid === this.rt.sid) {
             this.partyMatch = m.m.id;

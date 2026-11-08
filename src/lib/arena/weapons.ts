@@ -7,7 +7,7 @@
 // fire, aiming down sights, and extra bloom per shot that recovers over time.
 import { msg } from "../i18n";
 
-export type WeaponKey = "pistol" | "smg" | "rifle" | "sniper" | "shotgun";
+export type WeaponKey = "pistol" | "smg" | "rifle" | "sniper" | "shotgun" | "deagle" | "battle" | "lmg" | "dmr";
 export type Zone = "head" | "body" | "legs";
 
 export type WeaponDef = {
@@ -47,9 +47,12 @@ export type WeaponDef = {
 
 const W = (d: Omit<WeaponDef, "pellets" | "minDamage"> & { pellets?: number; minDamage?: number }): WeaponDef => ({ pellets: 1, minDamage: Math.round(d.damage * 0.6), ...d });
 
-// Balance (tests/arena-balance.test.ts holds it): every primary is the fastest killer in
-// its own band of range — the shotgun point-blank, the SMG up close (a 4-shot kill at 820
-// rpm), the rifle at mid range, the sniper far out — and the pistol is a sidearm.
+// Balance (tests/balance.test.ts holds it): every primary but the LMG is the fastest killer
+// in its own band of range — the shotgun point-blank, the SMG up close (a 4-shot kill at 820
+// rpm), the battle rifle just past that (3 heavy rounds, slower and kicking harder), the
+// rifle at mid range, the DMR across a long street, the sniper beyond. The LMG is never the
+// quickest kill: it's a 100-round belt that holds a corner against several. The pistol and
+// the heavy pistol are sidearms (you pick one).
 
 export const WEAPONS: Record<WeaponKey, WeaponDef> = {
   pistol: W({ key: "pistol", name: msg("P9 pistol"), idx: 0, damage: 28, near: 12, far: 40, range: 90, headMult: 2.2, rpm: 380, auto: false, mag: 12, reloadS: 1.4, hip: 0.018, ads: 0.006, bloom: 0.012, move: 0.012, kick: 0.025, wobble: 0.006, adsFov: 55, mobility: 1.05, sound: { body: 0.55, crack: 0.7, tail: 0.25 } }),
@@ -57,13 +60,19 @@ export const WEAPONS: Record<WeaponKey, WeaponDef> = {
   rifle: W({ key: "rifle", name: msg("AR-7 rifle"), idx: 2, damage: 29, near: 25, far: 70, range: 160, headMult: 2.0, rpm: 620, auto: true, mag: 30, reloadS: 2.3, hip: 0.032, ads: 0.004, bloom: 0.005, move: 0.02, kick: 0.016, wobble: 0.008, adsFov: 45, mobility: 0.94, sound: { body: 0.75, crack: 0.8, tail: 0.4 } }),
   sniper: W({ key: "sniper", name: msg("Longshot sniper"), idx: 3, damage: 95, minDamage: 80, near: 60, far: 200, range: 400, headMult: 2.5, rpm: 48, auto: false, mag: 5, reloadS: 3.0, hip: 0.09, ads: 0.0004, bloom: 0.02, move: 0.06, kick: 0.07, wobble: 0.004, adsFov: 18, mobility: 0.86, sound: { body: 1, crack: 1, tail: 0.8 } }),
   shotgun: W({ key: "shotgun", name: msg("Breacher shotgun"), idx: 4, damage: 15, minDamage: 4, near: 6, far: 20, range: 35, headMult: 1.5, rpm: 75, auto: false, mag: 6, reloadS: 2.8, hip: 0.075, ads: 0.06, bloom: 0, move: 0.01, kick: 0.06, wobble: 0.01, pellets: 9, adsFov: 58, mobility: 0.95, sound: { body: 1, crack: 0.6, tail: 0.6 } }),
+  deagle: W({ key: "deagle", name: msg("Hammer .50 pistol"), idx: 5, damage: 55, minDamage: 33, near: 10, far: 35, range: 90, headMult: 2.0, rpm: 150, auto: false, mag: 7, reloadS: 1.9, hip: 0.03, ads: 0.008, bloom: 0.03, move: 0.015, kick: 0.07, wobble: 0.012, adsFov: 52, mobility: 1.02, sound: { body: 0.95, crack: 0.9, tail: 0.5 } }),
+  battle: W({ key: "battle", name: msg("KR-47 battle rifle"), idx: 6, damage: 34, minDamage: 24, near: 15, far: 40, range: 150, headMult: 2.2, rpm: 520, auto: true, mag: 30, reloadS: 2.5, hip: 0.036, ads: 0.007, bloom: 0.008, move: 0.022, kick: 0.022, wobble: 0.013, adsFov: 45, mobility: 0.92, sound: { body: 0.9, crack: 0.85, tail: 0.45 } }),
+  lmg: W({ key: "lmg", name: msg("Bulldog LMG"), idx: 7, damage: 24, minDamage: 18, near: 20, far: 70, range: 170, headMult: 1.8, rpm: 750, auto: true, mag: 100, reloadS: 5.0, hip: 0.045, ads: 0.01, bloom: 0.004, move: 0.03, kick: 0.013, wobble: 0.012, adsFov: 48, mobility: 0.82, sound: { body: 0.85, crack: 0.75, tail: 0.5 } }),
+  dmr: W({ key: "dmr", name: msg("Marksman DMR"), idx: 8, damage: 48, minDamage: 40, near: 40, far: 120, range: 200, headMult: 2.1, rpm: 200, auto: false, mag: 10, reloadS: 2.6, hip: 0.06, ads: 0.0012, bloom: 0.012, move: 0.04, kick: 0.04, wobble: 0.006, adsFov: 28, mobility: 0.9, sound: { body: 0.95, crack: 0.95, tail: 0.65 } }),
 };
 
 export const WEAPON_KEYS = Object.keys(WEAPONS) as WeaponKey[];
 export const WEAPON_BY_IDX: WeaponKey[] = WEAPON_KEYS.slice().sort((a, b) => WEAPONS[a].idx - WEAPONS[b].idx);
 export const isWeapon = (k: unknown): k is WeaponKey => typeof k === "string" && k in WEAPONS;
-/** Primaries you can pick for a match; everyone also carries the pistol. */
-export const PRIMARIES: WeaponKey[] = ["rifle", "smg", "shotgun", "sniper"];
+/** Primaries you can pick for a match, and the sidearm that goes with it. */
+export const PRIMARIES: WeaponKey[] = ["rifle", "battle", "smg", "shotgun", "lmg", "dmr", "sniper"];
+export const SECONDARIES: WeaponKey[] = ["pistol", "deagle"];
+export const isSecondary = (k: unknown): k is WeaponKey => SECONDARIES.includes(k as WeaponKey);
 
 export const MAX_HP = 100;
 

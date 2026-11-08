@@ -5,20 +5,19 @@
 // and comes up to the eye when you aim down the sights (a sniper's scope takes over the
 // whole screen instead — that's the HUD's job).
 import * as THREE from "three";
-import type { WeaponKey } from "@/lib/arena/weapons";
+import { GUN_FIT } from "@/lib/arena/gunFit";
+import { WEAPON_KEYS, type WeaponKey } from "@/lib/arena/weapons";
 import { loadWeapons } from "./avatar";
 
 /** The guns are life-size; in the hand they're drawn a little smaller, like every shooter does. */
 const SCALE = 0.78;
 const HIP = new THREE.Vector3(0.17, -0.19, -0.42);
-// Aiming: the sight's top on the screen's centre line (sight heights from the Blender model × SCALE).
-const ADS: Record<WeaponKey, THREE.Vector3> = {
-  pistol: new THREE.Vector3(0, -0.066, -0.36),
-  smg: new THREE.Vector3(0, -0.104, -0.32),
-  rifle: new THREE.Vector3(0, -0.106, -0.3),
-  sniper: new THREE.Vector3(0, -0.118, -0.24),
-  shotgun: new THREE.Vector3(0, -0.08, -0.34),
-};
+// Aiming: the sight line on the screen's centre line — each gun's sight height comes from its
+// model (lib/arena/gunFit, written by the Blender build) × SCALE; handguns are held further out.
+const ADS_DIST: Partial<Record<WeaponKey, number>> = { pistol: -0.36, deagle: -0.36, smg: -0.32, shotgun: -0.34, sniper: -0.24, dmr: -0.26 };
+const ADS = Object.fromEntries(
+  WEAPON_KEYS.map((k) => [k, new THREE.Vector3(0, -(GUN_FIT[k]?.sight ?? 0.13) * SCALE + 0.004, ADS_DIST[k] ?? -0.3)]),
+) as Record<WeaponKey, THREE.Vector3>;
 
 export class Viewmodel {
   readonly scene = new THREE.Scene();

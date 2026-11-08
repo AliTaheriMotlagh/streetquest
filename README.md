@@ -132,6 +132,10 @@ mood scales XP; loot funds research; territory funds the army.
   NonCommercial, and nothing that names another game or calls itself a rip — `src/lib/assetLicense.ts`);
   `npm run assets:get -- <uid> --kind=weapon|character|car|prop|building|fx` downloads one into
   `assets/models/<kind>/` and credits it in `assets/credits.json` (needs your own `SKETCHFAB_TOKEN` in `.env`).
+  `npm run assets:arena` (Blender) turns `assets/models/weapon/<key>.glb` into the soldier's and the first-person
+  guns (`assets/blender/guns.py`: joined, turned barrel-forward, scaled to the real gun, grip at the hand, colours
+  baked into vertex colours so each gun is two draw calls, thinned to 3,500 triangles) and writes each gun's sight
+  line and muzzle to `src/lib/arena/gunFit.ts`; a gun without its source falls back to a procedural one.
   The build bakes each texture into vertex colours, removes everything you can't see from outside (the cabin,
   engine and underside: it draws the car from 60 directions with the glass opaque), levels the car, scales it to the
   real car's length, finds its four wheels, sorts the rest into the parts traffic instances (paint, trim, glass,
@@ -183,7 +187,11 @@ mood scales XP; loot funds research; territory funds the army.
   site A or B, defuse, rounds, side swap), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
   pistol; first through all 10 wins) or 🚩 Hardpoint (a glowing zone on a street, coloured by who holds it, moves every
   minute; a point a second for the team alone in it, first to 120), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
-  fun with one friend or none. Five guns (pistol, SMG, rifle, sniper with a scope, shotgun), aim down sights, recoil,
+  fun with one friend or none. Nine guns built from real low-poly models (CC BY, credited on /credits): pick a primary —
+  AR-7 rifle, KR-47 battle rifle (three heavy rounds, kicks harder; best just past SMG range), Vex SMG, Breacher shotgun,
+  Bulldog LMG (a 100-round belt, slow to move and reload), Marksman DMR (semi-auto, owns 100–200 m) or the Longshot
+  sniper with a scope — and a sidearm (P9 pistol or the Hammer .50, whose headshot drops anyone up close); every
+  primary but the LMG is the fastest kill in its own band of range (`tests/balance.test.ts`). Aim down sights, recoil,
   headshots, kill feed, scoreboard. **Grenades and C4** (`src/lib/arena/throwables.ts`): every life carries a 💣 frag,
   two ⚡ flashbangs, a 💨 smoke, a 🔥 molotov and a 🧨 C4 (none in Gun Game). Hold **G** (or the touch grenade button)
   to see the throw's dotted arc, let go to throw; **4** / ⟳ switches which one. They bounce off walls and roll; a frag

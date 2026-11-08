@@ -147,7 +147,7 @@ export type ClientMsg =
   | { t: "leave" }
   | { t: "start" }
   | { t: "team"; team: Team }
-  | { t: "loadout"; primary: WeaponKey }
+  | { t: "loadout"; primary: WeaponKey; secondary?: WeaponKey }
   | { t: "act"; on: boolean }
   /** A grenade or C4 leaves my hand (o, v in my metres); `rest` is where my city has it land (the open city's referee doesn't know the buildings). */
   | { t: "throw"; k: ThrowKey; o: V3; v: V3; rest?: V3 }

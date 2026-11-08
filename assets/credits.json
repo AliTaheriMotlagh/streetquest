@@ -1,0 +1,101 @@
+[
+  {
+    "uid": "849b7cdf8622487485febc40db89e734",
+    "title": "Low-Poly AKM",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-akm-849b7cdf8622487485febc40db89e734",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/battle.glb",
+    "faces": 6910,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "b81da261345f4462b2c4412352162287",
+    "title": "Low-Poly Desert Eagle",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-desert-eagle-b81da261345f4462b2c4412352162287",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/deagle.glb",
+    "faces": 4299,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "fe40c5c2696441bc8696ed042056709e",
+    "title": "Low-Poly SVD Dragunov",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-svd-dragunov-fe40c5c2696441bc8696ed042056709e",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/dmr.glb",
+    "faces": 9173,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "76011c365636451c90a8e3a46c2d8ca5",
+    "title": "Low-Poly M249 SAW",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-m249-saw-76011c365636451c90a8e3a46c2d8ca5",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/lmg.glb",
+    "faces": 12281,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "117f542d21954ae0a59afaedadcff338",
+    "title": "Low-Poly M1911",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-m1911-117f542d21954ae0a59afaedadcff338",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/pistol.glb",
+    "faces": 2822,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "059e968f6f764357880807c62c117ab7",
+    "title": "Low-Poly HK416",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-hk416-059e968f6f764357880807c62c117ab7",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/rifle.glb",
+    "faces": 9253,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "8766498ce778479aa03c3b6078937510",
+    "title": "Low-Poly Remington 870",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-remington-870-8766498ce778479aa03c3b6078937510",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/shotgun.glb",
+    "faces": 1444,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "a79689d37bb547c4a1ab6628f60dd05f",
+    "title": "Low-Poly HK MP5SD",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-hk-mp5sd-a79689d37bb547c4a1ab6628f60dd05f",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/smg.glb",
+    "faces": 5477,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "92a68245d813405f849fd0f023c09bfe",
+    "title": "Low-Poly M24a2",
+    "author": "TastyTony",
+    "url": "https://sketchfab.com/3d-models/low-poly-m24a2-92a68245d813405f849fd0f023c09bfe",
+    "license": "CC-BY-4.0",
+    "kind": "weapon",
+    "file": "assets/models/weapon/sniper.glb",
+    "faces": 4685,
+    "at": "2026-11-08"
+  }
+]

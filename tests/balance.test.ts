@@ -6,8 +6,9 @@
 //  - the economy's defaults keep their order (harder → more, from home ≤ on foot).
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { damageAt, MAX_HP, PRIMARIES, shotGap, WEAPONS, type WeaponDef, type WeaponKey } from "@/lib/arena/weapons";
+import { damageAt, MAX_HP, PRIMARIES, SECONDARIES, shotGap, WEAPON_KEYS, WEAPONS, type WeaponDef, type WeaponKey } from "@/lib/arena/weapons";
 import { ARENA_REWARDS_PER_DAY, matchPrize } from "@/lib/arena/modes";
+import { GUN_FIT } from "@/lib/arena/gunFit";
 import { medalFor, MULTI_KILL_MS, nextRun, NO_RUN } from "@/lib/arena/medals";
 import { settingDefault as D } from "@/lib/settings";
 
@@ -39,6 +40,21 @@ describe("Street Arena guns", () => {
     assert.ok(damageAt(WEAPONS.sniper, WEAPONS.sniper.range, "head") >= MAX_HP);
   });
 
+  it("the newer guns each have a job: battle rifle just past SMG range, DMR across a long street, LMG a belt that holds a corner", () => {
+    assert.equal(fastest(15), "battle", "15 m");
+    assert.equal(fastest(140), "dmr", "140 m");
+    for (const d of [4, 9, 15, 30, 45, 60, 140, 250]) assert.notEqual(fastest(d), "lmg", `${d} m: never the quickest kill`);
+    const w = WEAPONS.lmg, perKill = Math.ceil(MAX_HP / damageAt(w, 20, "body"));
+    assert.ok(perKill * 3 <= w.mag, "three people on one belt at 20 m");
+    assert.ok(w.mobility < WEAPONS.rifle.mobility && w.reloadS > WEAPONS.rifle.reloadS, "and you pay for it in speed");
+  });
+
+  it("the heavy pistol is a sidearm too, but a headshot up close drops anyone", () => {
+    for (const d of [4, 9, 30]) assert.ok(ttk(WEAPONS.deagle, d) > ttk(WEAPONS[fastest(d)], d), `${d} m`);
+    assert.ok(damageAt(WEAPONS.deagle, 8, "head") >= MAX_HP);
+    assert.ok(SECONDARIES.includes("deagle") && SECONDARIES.includes("pistol") && !PRIMARIES.some((k) => SECONDARIES.includes(k)));
+  });
+
   it("the shotgun one-shots point-blank but not across a street", () => {
     assert.equal(ttk(WEAPONS.shotgun, 4), 0);
     assert.ok(ttk(WEAPONS.shotgun, 18) > 0);
@@ -47,6 +63,11 @@ describe("Street Arena guns", () => {
   it("the pistol is a sidearm: never the best, never useless", () => {
     for (const d of [4, 9, 30]) assert.ok(ttk(WEAPONS.pistol, d) > ttk(WEAPONS[fastest(d)], d), `${d} m`);
     assert.ok(ttk(WEAPONS.pistol, 10) < 1, "four shots in under a second");
+  });
+
+  it("every gun has a model with a sight line and a muzzle, and its own snapshot index", () => {
+    for (const k of WEAPON_KEYS) assert.ok(GUN_FIT[k] && GUN_FIT[k].sight > 0 && GUN_FIT[k].muzzle > 0.1, k);
+    assert.equal(new Set(WEAPON_KEYS.map((k) => WEAPONS[k].idx)).size, WEAPON_KEYS.length);
   });
 
   it("keeps the numbers sane", () => {

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { formatDistance } from "@/lib/geo";
 import { fmtNum, t } from "@/lib/i18n";
 import { JOIN_MARGIN_M, MAX_BOTS, MODES, RADII, TEAM_COLORS, TEAM_NAMES, type Difficulty } from "@/lib/arena/modes";
-import { PRIMARIES, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
+import { PRIMARIES, SECONDARIES, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
 import { Button } from "@/components/Button";
 import type { Combat, CombatHud as Hud } from "./combat";
 
@@ -17,20 +17,33 @@ const DIFF_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal",
 export type ArenaSettings = { radius: number; bots: number; diff: Difficulty };
 export const ARENA_DEFAULTS: ArenaSettings = { radius: 250, bots: 6, diff: "normal" };
 
-/** The main gun I take into matches (everyone also carries the pistol). */
+/** The main gun I take into matches, and the sidearm that goes with it. */
 export function GunPicker({ combat }: { combat: Combat }) {
   const [primary, setPrimary] = useState<WeaponKey>(combat.primary);
+  const [secondary, setSecondary] = useState<WeaponKey>(combat.secondary);
   return (
-    <div className="arena-row">
-      <span className="lbl">{t("Your gun")}</span>
-      <div className="arena-chips">
-        {PRIMARIES.map((w: WeaponKey) => (
-          <button key={w} className={`chip ${primary === w ? "on" : ""}`} onClick={() => (setPrimary(w), combat.setPrimary(w))}>
-            {t(WEAPONS[w].name)}
-          </button>
-        ))}
+    <>
+      <div className="arena-row">
+        <span className="lbl">{t("Your gun")}</span>
+        <div className="arena-chips">
+          {PRIMARIES.map((w: WeaponKey) => (
+            <button key={w} className={`chip ${primary === w ? "on" : ""}`} onClick={() => (setPrimary(w), combat.setPrimary(w))}>
+              {t(WEAPONS[w].name)}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+      <div className="arena-row">
+        <span className="lbl">{t("Sidearm")}</span>
+        <div className="arena-chips">
+          {SECONDARIES.map((w: WeaponKey) => (
+            <button key={w} className={`chip ${secondary === w ? "on" : ""}`} onClick={() => (setSecondary(w), combat.setSecondary(w))}>
+              {t(WEAPONS[w].name)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
