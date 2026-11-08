@@ -14,7 +14,7 @@ import {
   ROUND_END_S, ROUND_S, ROUNDS_TO_WIN, SITE_R, SPAWN_SHIELD_S, WARMUP_S,
   type Difficulty, type LobbyView, type MatchView, type ModeDef, type ModeKey, type Phase, type Team,
 } from "../src/lib/arena/modes";
-import { localFrame, type ArenaGeo, type LL, F_FOOT } from "../src/lib/arena/protocol";
+import { localFrame, type ArenaGeo, type KillCause, type LL, F_FOOT } from "../src/lib/arena/protocol";
 import { PRIMARIES, WEAPONS, type WeaponKey } from "../src/lib/arena/weapons";
 import { BOT_NAMES, newBrain, tickBot, type Brain } from "./bots";
 import { Nav } from "./nav";
@@ -343,6 +343,8 @@ export class Match extends Space {
 
   private startRound(now: number) {
     this.round++;
+    // Last round's smoke, fire and C4 don't carry over.
+    this.nades = [];
     this.phase = "warmup";
     this.until = now + FREEZE_S * 1000;
     this.winner = null;
@@ -364,7 +366,8 @@ export class Match extends Space {
   }
 
   canHurt(a: Player, b: Player, now: number) {
-    if (this.phase !== "live" || a.dead || b.dead) return false;
+    // (a may have died since: their grenade or fire still counts.)
+    if (this.phase !== "live" || b.dead) return false;
     if (a === b) return true;
     void now;
     return !this.def.teams || a.team !== b.team;
@@ -383,7 +386,13 @@ export class Match extends Space {
     return true;
   }
 
-  onKill(victim: Player, killer: Player | null, w: WeaponKey | "zone" | "bomb", head: boolean, now: number) {
+  /** Grenades only while the round is live (not in warmup or freeze time). */
+  armed(p: Player, now: number) {
+    void now;
+    return this.phase === "live" && !p.dead;
+  }
+
+  onKill(victim: Player, killer: Player | null, w: KillCause, head: boolean, now: number) {
     victim.deaths++;
     if (killer && killer !== victim && (!this.def.teams || killer.team !== victim.team)) {
       killer.kills++;
@@ -486,6 +495,7 @@ export class Match extends Space {
 
   tick(dt: number, now: number) {
     this.tickReloads(now);
+    this.tickNades(now);
     if (this.phase === "lobby") {
       if (now - this.touched > LOBBY_IDLE_MS) {
         for (const p of this.humans) p.send({ t: "toast", text: "The lobby closed — nobody started it" });

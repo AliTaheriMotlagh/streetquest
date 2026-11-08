@@ -122,3 +122,54 @@ export function boomSound(dist: number) {
   n.stop(t + 2.3);
   blip(60, 1.2, vol * 0.8, "sine", 0.5);
 }
+
+// ---- grenades and C4 (lib/arena/throwables)
+
+/** A filtered noise burst: `type` filter at `freq`, `len` seconds, swelling for `attack`. */
+function hiss(freq: number, len: number, vol: number, type: BiquadFilterType = "bandpass", attack = 0.01, pan = 0) {
+  const o = out(pan);
+  if (!o || vol < 0.005) return;
+  const { ctx, dest, t } = o;
+  voice(len * 1000 + 50);
+  const n = ctx.createBufferSource();
+  n.buffer = noiseOf(ctx);
+  n.loop = true;
+  const f = ctx.createBiquadFilter();
+  f.type = type;
+  f.frequency.value = freq;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0008, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + len);
+  n.connect(f).connect(g).connect(dest);
+  n.start(t, Math.random() * 0.3);
+  n.stop(t + len + 0.02);
+}
+
+const near = (dist: number, k = 25) => 1 / (1 + dist / k);
+
+/** The pin and the throw: a click and a swish. */
+export function throwSound() {
+  blip(2600, 0.025, 0.06, "square");
+  setTimeout(() => hiss(1400, 0.22, 0.08, "bandpass", 0.08), 60);
+}
+
+/** Metal on stone: a grenade bouncing or landing `dist` m away. */
+export const clinkSound = (dist: number) => blip(1700 + Math.random() * 500, 0.07, 0.07 * near(dist, 15), "triangle", 0.8);
+
+/** A smoke grenade's long hiss as the cloud pours out. */
+export const smokeSound = (dist: number) => hiss(2400, 3.2, 0.12 * near(dist), "highpass", 0.15);
+
+/** Fire: a run of crackles over `seconds` (a molotov breaking, then burning). */
+export function fireSound(dist: number, seconds: number) {
+  const v = near(dist, 18);
+  hiss(900, 0.5, 0.25 * v, "lowpass", 0.02);
+  for (let i = 0; i < seconds * 6; i++) setTimeout(() => hiss(1800 + Math.random() * 2400, 0.05 + Math.random() * 0.08, (0.03 + Math.random() * 0.05) * v, "bandpass"), i * 160 + Math.random() * 120);
+}
+
+/** A flashbang's bang, then the ringing in your ears for as long as you're blind. */
+export function flashSound(dist: number, blindS: number) {
+  hiss(3000, 0.35, 0.5 * near(dist, 30), "highpass", 0.005);
+  blip(180, 0.25, 0.4 * near(dist, 30), "sine", 0.4);
+  if (blindS > 0.3) blip(3600 + Math.random() * 400, blindS, 0.05, "sine", 0.98);
+}

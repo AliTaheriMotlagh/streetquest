@@ -132,6 +132,11 @@ export class Hub {
         return;
       case "reload":
         return space?.reload(p, now);
+      case "throw":
+        if (!this.hidden.has(p)) space?.throwNade(p, m, now);
+        return;
+      case "detonate":
+        return space?.detonate(p, now);
       case "passive":
         if (space === world) world.setPassive(p, !!m.on, now);
         return;
@@ -228,6 +233,7 @@ export class Hub {
     this.last = now;
     this.world.index();
     this.world.tickReloads(now);
+    this.world.tickNades(now);
     for (const m of [...this.matches.values()]) m.tick(dt, now);
     const refresh = now - this.matchViewAt > 3000;
     if (refresh) this.matchViewAt = now;

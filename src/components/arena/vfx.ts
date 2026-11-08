@@ -70,6 +70,7 @@ export class Vfx {
   private fireTex = radial([[0, "rgba(255,255,220,1)"], [0.25, "rgba(255,190,60,1)"], [0.6, "rgba(220,70,20,.7)"], [1, "rgba(60,30,20,0)"]], 128);
   private ring: THREE.Mesh;
   private ringAge = Infinity;
+  private ringSize = 1;
 
   constructor(private scene: THREE.Scene) {
     const geo = new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true);
@@ -125,13 +126,31 @@ export class Vfx {
     this.puff(this.dustTex, x, y + 0.05, z, 0.3, 0.45, 2.4, false, 0.5);
   }
 
-  explosion(x: number, y: number, z: number) {
-    this.puff(this.fireTex, x, y + 2, z, 6, 0.7, 2.2, true, 1.5);
-    this.puff(this.fireTex, x + 1.5, y + 1, z - 1, 4, 0.6, 2, true, 2);
-    this.puff(this.dustTex, x, y + 3, z, 8, 1.8, 1.6, false, 2.5);
+  /** A blast: fireball, smoke and a shockwave ring; `size` 1 is the bomb, a grenade less. */
+  explosion(x: number, y: number, z: number, size = 1) {
+    const k = size;
+    this.puff(this.fireTex, x, y + 2 * k, z, 6 * k, 0.7, 2.2, true, 1.5 * k);
+    this.puff(this.fireTex, x + 1.5 * k, y + 1 * k, z - 1 * k, 4 * k, 0.6, 2, true, 2 * k);
+    this.puff(this.fireTex, x - 1.2 * k, y + 0.8 * k, z + 0.9 * k, 3.4 * k, 0.5, 2.4, true, 1.6 * k);
+    this.puff(this.dustTex, x, y + 3 * k, z, 8 * k, 1.8, 1.6, false, 2.5 * k);
+    this.puff(this.dustTex, x + 2 * k, y + 1.5 * k, z + 1 * k, 5 * k, 2.2, 1.4, false, 1.2 * k);
+    // Sparks thrown out low.
+    for (let i = 0; i < 6; i++) {
+      const a = Math.random() * Math.PI * 2, r = (1 + Math.random() * 2.5) * k;
+      this.puff(this.sparkTex, x + Math.cos(a) * r, y + 0.3 + Math.random() * k, z + Math.sin(a) * r, 0.5 * k, 0.25, 1, true, 2);
+    }
     this.ring.position.set(x, y + 0.2, z);
+    this.ring.scale.setScalar(k);
     this.ring.visible = true;
     this.ringAge = 0;
+    this.ringSize = k;
+  }
+
+  /** A flashbang popping: a blinding white burst. */
+  flashBurst(x: number, y: number, z: number) {
+    this.puff(this.flashTex, x, y + 0.3, z, 5, 0.12, 3, true);
+    this.puff(this.sparkTex, x, y + 0.3, z, 3, 0.3, 2, true);
+    this.puff(this.dustTex, x, y + 0.4, z, 1.2, 1.2, 1.5, false, 0.3);
   }
 
   tick(dt: number) {
@@ -172,7 +191,7 @@ export class Vfx {
     if (this.ringAge < 1) {
       this.ringAge += dt;
       const k = Math.min(1, this.ringAge / 0.8);
-      this.ring.scale.setScalar(1 + k * 22);
+      this.ring.scale.setScalar((1 + k * 22) * this.ringSize);
       (this.ring.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - k);
       if (k >= 1) this.ring.visible = false;
     }

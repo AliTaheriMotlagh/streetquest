@@ -10,9 +10,15 @@
 //     error) within the gun's range — and, where the server knows the buildings (a
 //     match), before any wall. The server decides the body part from where it hit.
 //  4. Damage falls off with distance; shields (fresh spawns) and passive players take none.
-import { rayPlayer, type FootprintIndex, type Ray } from "../src/lib/arena/geom";
-import type { ClientMsg, LL } from "../src/lib/arena/protocol";
+//
+// Grenades and C4 (lib/arena/throwables) are refereed here too: the server flies each throw
+// through the buildings it knows (a match's) or takes the thrower's own landing spot when
+// that's shorter (the open city, where it only knows the ground), sets it off, and deals
+// the blast to whoever it can reach — walls shelter you, smoke hides you from bots.
+import { aimDir, rayPlayer, type FootprintIndex, type Ray } from "../src/lib/arena/geom";
+import type { ClientMsg, KillCause, LL } from "../src/lib/arena/protocol";
 import { localFrame } from "../src/lib/arena/protocol";
+import { blastDamage, BURN_TICK_MS, flashSeconds, fly, isThrow, smokeBlocks, smokeRadius, THROW_GAP_MS, THROW_MAX_M, THROWABLES, type ThrowDef, type Vec3 } from "../src/lib/arena/throwables";
 import { damageAt, isWeapon, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey, type Zone } from "../src/lib/arena/weapons";
 import type { Player } from "./player";
 
@@ -22,6 +28,26 @@ const SHOT_FX_M = 220;
 const MUZZLE_SLACK_M = 3.5;
 
 export type FireMsg = Extract<ClientMsg, { t: "fire" }>;
+export type ThrowMsg = Extract<ClientMsg, { t: "throw" }>;
+
+/** A thrown thing, from leaving the hand until its cloud or fire is gone. */
+type Nade = {
+  id: number;
+  def: ThrowDef;
+  by: Player;
+  /** Where it ends up. */
+  ll: LL;
+  y: number;
+  /** When it lands (C4 can be set off from then) and when it goes off (Infinity: C4 waiting for its owner). */
+  landAt: number;
+  goAt: number;
+  live: boolean;
+  /** A cloud's or a fire's end, and the fire's next burn. */
+  until: number;
+  nextBurn: number;
+};
+const NADE_FX_M = 300;
+const finite3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
 
 export abstract class Space {
   readonly players = new Set<Player>();
@@ -31,7 +57,14 @@ export abstract class Space {
   abstract canHurt(a: Player, b: Player, now: number): boolean;
   /** Who p can see right now. */
   abstract visible(p: Player): Iterable<Player>;
-  abstract onKill(victim: Player, killer: Player | null, w: WeaponKey | "zone" | "bomb", head: boolean, now: number): void;
+  abstract onKill(victim: Player, killer: Player | null, w: KillCause, head: boolean, now: number): void;
+  /** Can p throw right now? (A match: only while the round is live.) */
+  armed(p: Player, now: number) {
+    void p, now;
+    return true;
+  }
+  nades: Nade[] = [];
+  private nadeId = 0;
   /** Buildings, in this space's frame (matches only). */
   geo: { frame: ReturnType<typeof localFrame>; index: FootprintIndex } | null = null;
 
@@ -45,11 +78,150 @@ export abstract class Space {
     if (p.space === this) p.space = null;
   }
 
-  /** Is this point (a player's eye) and that one in clear sight of each other? */
-  sight(a: LL, ay: number, b: LL, by: number) {
-    if (!this.geo) return true;
-    const pa = this.geo.frame.toXZ(a.lat, a.lng), pb = this.geo.frame.toXZ(b.lat, b.lng);
-    return this.geo.index.clear(pa.x, ay, pa.z, pb.x, by, pb.z);
+  /** Is this point (a player's eye) and that one in clear sight of each other (no wall, no smoke)? */
+  sight(a: LL, ay: number, b: LL, by: number, now = Date.now()) {
+    const F = this.geo?.frame ?? localFrame(a);
+    const pa = F.toXZ(a.lat, a.lng), pb = F.toXZ(b.lat, b.lng);
+    if (this.nades.length && smokeBlocks(this.smokes(F, now), pa.x, ay, pa.z, pb.x, by, pb.z)) return false;
+    return !this.geo || this.geo.index.clear(pa.x, ay, pa.z, pb.x, by, pb.z);
+  }
+
+  /** Smoke clouds now, as spheres in frame F. */
+  private *smokes(F: ReturnType<typeof localFrame>, now: number) {
+    for (const n of this.nades) {
+      if (!n.live || n.def.key !== "smoke") continue;
+      const r = smokeRadius((now - n.goAt) / 1000);
+      if (r <= 0) continue;
+      const q = F.toXZ(n.ll.lat, n.ll.lng);
+      yield { x: q.x, y: n.y + r * 0.45, z: q.z, r };
+    }
+  }
+
+  // ------------------------------------------------------------ grenades and C4
+  throwNade(p: Player, m: ThrowMsg, now: number) {
+    if (p.dead || !p.onFoot || p.passive || !isThrow(m.k) || !this.armed(p, now)) return;
+    const def = THROWABLES[m.k];
+    if ((p.gear[m.k] ?? 0) <= 0 || now - p.thrownAt < THROW_GAP_MS || !finite3(m.o) || !finite3(m.v)) return;
+    // One C4 out at a time (the client sets the first one off instead).
+    if (def.sticky && this.nades.some((n) => n.by === p && n.def.sticky)) return;
+    const F = p.frame;
+    const me = F.toXZ(p.lat, p.lng);
+    const [ox, oy, oz] = m.o;
+    if (Math.hypot(ox - me.x, oz - me.z) > (p.slackM || MUZZLE_SLACK_M) || Math.abs(oy - p.y - 1.4) > 2.5) return;
+    if (Math.hypot(...m.v) > def.speed * 1.2 + 8) return;
+    p.gear[m.k]--;
+    p.thrownAt = now;
+    p.passiveLockUntil = now + 12_000;
+
+    // Fly it through the buildings we know (a match's), else over open ground in the thrower's frame.
+    let restLL: LL, restY: number, landS: number, goS: number;
+    if (this.geo) {
+      const G = this.geo, ll = F.toLL(ox, oz), g = G.frame.toXZ(ll.lat, ll.lng);
+      const f = fly(def, [g.x, oy, g.z], m.v, (r, maxT, n) => G.index.ray(r, maxT, n));
+      (restLL = G.frame.toLL(f.rest[0], f.rest[2])), (restY = f.rest[1]), (landS = f.landS), (goS = f.goS);
+    } else {
+      const f = fly(def, m.o, m.v, () => Infinity);
+      let [rx, ry, rz] = f.rest;
+      // The thrower's city hit a wall sooner: believe it (it can only shorten the throw).
+      if (finite3(m.rest)) {
+        const mine = Math.hypot(rx - ox, rz - oz), theirs = Math.hypot(m.rest[0] - ox, m.rest[2] - oz);
+        if (theirs <= mine + 0.5 && theirs <= THROW_MAX_M) [rx, ry, rz] = [m.rest[0], Math.max(0, Math.min(60, m.rest[1])), m.rest[2]];
+      }
+      (restLL = F.toLL(rx, rz)), (restY = ry), (landS = f.landS), (goS = f.goS);
+    }
+    const n: Nade = {
+      id: ++this.nadeId, def, by: p, ll: restLL, y: restY,
+      landAt: now + (Number.isFinite(landS) ? landS : 1) * 1000,
+      goAt: Number.isFinite(goS) ? now + goS * 1000 : Infinity,
+      live: false, until: 0, nextBurn: 0,
+    };
+    this.nades.push(n);
+    // Everyone near draws the throw (the thrower too: its own copy learns the id).
+    const from = F.toLL(ox, oz);
+    for (const q of this.players) {
+      if (q.bot || !q.ws || !this.within(q, from, NADE_FX_M)) continue;
+      const o = q.frame.toXZ(from.lat, from.lng);
+      q.send({ t: "nade", id: n.id, k: def.key, by: p.sid, o: [o.x, oy, o.z], v: m.v, at: now });
+    }
+  }
+
+  /** Set off my C4 (once it has landed; straight away if it already has). */
+  detonate(p: Player, now: number) {
+    const n = this.nades.find((x) => x.by === p && x.def.sticky && !x.live);
+    if (n) n.goAt = Math.max(now, n.landAt);
+  }
+
+  private within(q: Player, ll: LL, m: number) {
+    const a = q.frame.toXZ(q.lat, q.lng), b = q.frame.toXZ(ll.lat, ll.lng);
+    return Math.hypot(a.x - b.x, a.z - b.z) <= m;
+  }
+
+  /** Fuses, C4 going off, fires burning, clouds clearing. */
+  tickNades(now: number) {
+    if (!this.nades.length) return;
+    for (const n of this.nades) {
+      if (!n.live && now >= n.goAt) this.goOff(n, now);
+      while (n.live && n.def.key === "molotov" && now >= n.nextBurn && n.nextBurn < n.until) {
+        this.burn(n, n.nextBurn);
+        n.nextBurn += BURN_TICK_MS;
+      }
+    }
+    // Gone: done clouds and fires, and C4 whose owner left (it never goes off).
+    this.nades = this.nades.filter((n) => (n.live ? now < n.until : n.goAt !== Infinity || this.players.has(n.by)));
+  }
+
+  private goOff(n: Nade, now: number) {
+    n.live = true;
+    n.until = now + n.def.lastsS * 1000;
+    n.nextBurn = now;
+    for (const q of this.players) {
+      if (q.bot || !q.ws || !this.within(q, n.ll, NADE_FX_M)) continue;
+      const p = q.frame.toXZ(n.ll.lat, n.ll.lng);
+      q.send({ t: "boom", id: n.id, k: n.def.key, by: n.by.sid, x: p.x, y: n.y, z: p.z });
+    }
+    const k = n.def.key;
+    if (k === "frag" || k === "c4") this.blast(n, now);
+    else if (k === "flash") this.blind(n, now);
+  }
+
+  /** A blast: everyone it can see within its radius, by distance to their chest. */
+  private blast(n: Nade, now: number) {
+    const F = this.geo?.frame ?? n.by.frame;
+    const c = F.toXZ(n.ll.lat, n.ll.lng), cy = n.y + 0.3;
+    for (const p of [...this.players]) {
+      if (p.dead || !p.placed) continue;
+      const q = F.toXZ(p.lat, p.lng), py = p.y + (p.crouch ? 0.7 : 1.0);
+      const d = Math.hypot(q.x - c.x, py - cy, q.z - c.z);
+      if (d >= n.def.radius || !this.sight(n.ll, cy, p.ll, py, now)) continue;
+      const dmg = blastDamage(n.def, d);
+      // In a car the body takes less (the car takes the rest).
+      if (dmg > 0) this.hurt(p, n.by, p.onFoot ? dmg : Math.round(dmg * 0.5), "body", n.def.key, now);
+    }
+  }
+
+  /** Molotov: whoever stands in the fire burns. */
+  private burn(n: Nade, now: number) {
+    const F = this.geo?.frame ?? n.by.frame;
+    const c = F.toXZ(n.ll.lat, n.ll.lng);
+    for (const p of [...this.players]) {
+      if (p.dead || !p.placed || !p.onFoot || p.y > n.y + 1.5) continue;
+      const q = F.toXZ(p.lat, p.lng);
+      if (Math.hypot(q.x - c.x, q.z - c.z) <= n.def.radius) this.hurt(p, n.by, n.def.damage, "legs", "molotov", now);
+    }
+  }
+
+  /** Flashbang: bots that see it go blind (people's own screens work out theirs). */
+  private blind(n: Nade, now: number) {
+    const F = this.geo?.frame ?? n.by.frame;
+    const c = F.toXZ(n.ll.lat, n.ll.lng), cy = n.y + 0.2;
+    for (const b of this.players) {
+      if (!b.bot || b.dead) continue;
+      const q = F.toXZ(b.lat, b.lng), ey = b.y + 1.5;
+      const dx = c.x - q.x, dy = cy - ey, dz = c.z - q.z, d = Math.hypot(dx, dy, dz) || 1;
+      const a = aimDir(b.yaw, b.pitch);
+      const s = flashSeconds(d, (a.dx * dx + a.dy * dy + a.dz * dz) / d, this.sight(b.ll, ey, n.ll, cy, now));
+      if (s > 0) b.blindUntil = Math.max(b.blindUntil, now + s * 1000);
+    }
   }
 
   // ------------------------------------------------------------ gunfire
@@ -152,7 +324,7 @@ export abstract class Space {
     }
   }
 
-  hurt(victim: Player, attacker: Player | null, dmg: number, zone: Zone, w: WeaponKey | "zone" | "bomb", now: number) {
+  hurt(victim: Player, attacker: Player | null, dmg: number, zone: Zone, w: KillCause, now: number) {
     if (victim.dead || now < victim.shieldUntil) return;
     if (attacker && !this.canHurt(attacker, victim, now)) return;
     victim.hp = Math.max(0, victim.hp - dmg);
@@ -176,7 +348,7 @@ export abstract class Space {
   }
 
   /** Tell everyone in the space about a kill (the kill feed). */
-  feed(victim: Player, killer: Player | null, w: WeaponKey | "zone" | "bomb", head: boolean) {
+  feed(victim: Player, killer: Player | null, w: KillCause, head: boolean) {
     const m = { t: "kill" as const, killer: killer?.sid ?? 0, victim: victim.sid, w, head, killerName: killer?.name ?? "", victimName: victim.name, killerTeam: killer?.team ?? 0, victimTeam: victim.team };
     for (const p of this.players) p.send(m);
   }

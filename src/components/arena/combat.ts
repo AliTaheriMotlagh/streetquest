@@ -17,7 +17,7 @@
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { t } from "@/lib/i18n";
-import { aimDir, eyeHeight, rayPlayer, spreadDir, type Ray } from "@/lib/arena/geom";
+import { aimDir, eyeHeight, rayPlayer, spreadDir, type Normal, type Ray } from "@/lib/arena/geom";
 import { BOMB_REACH_M, bombSide, MODES, SITE_R, TEAM_COLORS, type LobbyView, type MatchView, type Team } from "@/lib/arena/modes";
 import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT, G_PASSIVE, type ArenaGeo, type RosterEntry, type ServerMsg } from "@/lib/arena/protocol";
 import { MAX_HP, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
@@ -27,7 +27,9 @@ import type { Others } from "../drive/others";
 import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
-import { beepSound, boomSound, emptySound, hitSound, hurtSound, killSound, reloadSound, shotSound } from "./gunsound";
+import { beepSound, boomSound, clinkSound, emptySound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
+import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
+import { Nades } from "./nades";
 import { medalFor, nextRun, NO_RUN, type KillRun } from "@/lib/arena/medals";
 import { sfx } from "../game/sfx";
 import { errorText } from "../game/client";
@@ -36,6 +38,7 @@ import type { OtherDriver } from "../drive/net";
 import type { ArenaEvent } from "@/server/arena";
 import { RtClient } from "./rt";
 import { relayApi } from "./relay";
+import { Decals } from "./decals";
 import { Vfx } from "./vfx";
 import { Viewmodel } from "./viewmodel";
 
@@ -51,6 +54,8 @@ export type FeedLine = { id: number; killer: string; victim: string; w: string; 
 
 export type CombatHud = {
   rt: "off" | "connecting" | "on";
+  /** The last hit I took: a blood splash over the screen (k 0–1 by damage), keyed so each hit replays it. */
+  bleed: { id: number; k: number } | null;
   onFoot: boolean;
   nearCar: boolean;
   hp: number;
@@ -79,6 +84,16 @@ export type CombatHud = {
   uav: boolean;
   /** Hardpoint: am I standing in the zone. */
   onHill: boolean;
+  /** Grenades and C4 left this life, the one in hand, and whether my C4 is out (the button sets it off). */
+  gear: Record<ThrowKey, number>;
+  throwKey: ThrowKey;
+  c4Out: boolean;
+  /** Lining a throw up (the arc is showing). */
+  aimingThrow: boolean;
+  /** A flashbang blinded me for s seconds (keyed so each one replays the white-out). */
+  flash: { id: number; s: number } | null;
+  /** Standing in a fire. */
+  burning: boolean;
   /** No realtime server: the open city's fights go over HTTP and matches through the game server. */
   local: boolean;
   /** In a match relayed through the game server: hosting it (in this tab) or playing in someone's. */
@@ -127,12 +142,15 @@ const HTTP_FIRE_MS = 350;
 const AUTO_FIRE_KEY = "sq_arena_autofire";
 const PRIMARY_KEY = "sq_arena_primary";
 const CAM_KEY = "sq_arena_cam";
+const THROW_KEY = "sq_arena_throw";
 const SENS_MOUSE = 0.0022;
 export const SENS_TOUCH = 0.0058;
 const CAR_REACH_M = 4.5;
 const FEED_MS = 6000;
 /** How long a medal's banner stays up. */
 const MEDAL_MS = 2400;
+/** How long the blood splash of a hit stays on the screen. */
+const BLEED_MS = 1600;
 const store = {
   get: (k: string) => {
     try {
@@ -151,12 +169,25 @@ const store = {
 const v3 = new THREE.Vector3();
 const v3b = new THREE.Vector3();
 const camFwd = new THREE.Vector3();
+/** The surface the last bullet raycast met. */
+const hitN: Normal = { x: 0, y: 1, z: 0 };
 
 export class Combat {
   readonly input: CombatInput = { mx: 0, mz: 0, sprint: false, crouch: false, aim: false, jump: false, fire: false, lookX: 0, lookY: 0, act: false };
   readonly rt: RtClient;
   readonly remotes: Remotes;
   private vfx: Vfx;
+  /** Bullet holes, blood and scorch marks left in the city. */
+  private decals: Decals;
+  /** Grenades and C4: in flight, smoke clouds, fires, the throw's arc. */
+  private nades: Nades;
+  private gear: Record<ThrowKey, number> = fullGear();
+  throwKey: ThrowKey = ((k) => (isThrow(k) ? k : "frag"))(store.get(THROW_KEY));
+  private throwHeld = false;
+  private thrownAt = 0;
+  private flashFx: { id: number; s: number; at: number } | null = null;
+  /** Camera shake from a blast nearby (0–1, dies away). */
+  private shake = 0;
   private vm: Viewmodel;
   me: FootBody | null = null;
   private avatar: Avatar | null = null;
@@ -185,6 +216,8 @@ export class Combat {
   private lobbies: LobbyView[] = [];
   private feed: FeedLine[] = [];
   private hurt: CombatHud["hurt"] = [];
+  /** The last hit I took (the HUD splashes blood on the screen, stronger for a bigger hit). */
+  private bleed: { id: number; k: number; at: number } | null = null;
   private feedId = 0;
   /** My kills without dying, the multi-kill chain, and the banner they earned. */
   private run: KillRun = NO_RUN;
@@ -219,6 +252,8 @@ export class Combat {
 
   constructor(private h: CombatHost) {
     this.vfx = new Vfx(h.scene);
+    this.decals = new Decals(h.scene, h.collision);
+    this.nades = new Nades(h.scene, h.collision, this.vfx, this.decals);
     this.vm = new Viewmodel(h.el.clientWidth / Math.max(1, h.el.clientHeight));
     this.remotes = new Remotes(h.scene, h.frame, h.others, h.shadows);
     this.rt = new RtClient(h.frame.origin, h.sim, {
@@ -300,6 +335,7 @@ export class Combat {
     }
     return {
       rt: this.rt.available === false ? "off" : this.rt.connected ? "on" : "connecting",
+      bleed: this.bleed && performance.now() - this.bleed.at < BLEED_MS ? { id: this.bleed.id, k: this.bleed.k } : null,
       onFoot: !!this.me,
       nearCar: !!this.me && !!parked && !this.inMatch && Math.hypot(parked.x - this.me.x, parked.z - this.me.z) < CAR_REACH_M,
       hp: Math.round(this.hp),
@@ -332,6 +368,12 @@ export class Combat {
       streak: this.run.streak,
       uav: Date.now() < this.uavUntil,
       onHill: !!m?.hill && m.phase === "live" && !this.dead && this.distTo(m.hill) <= m.hill.r,
+      gear: this.gear,
+      throwKey: this.throwKey,
+      c4Out: this.nades.myC4(),
+      aimingThrow: this.throwHeld && !!this.me && !this.dead,
+      flash: this.flashFx && performance.now() - this.flashFx.at < this.flashFx.s * 1000 + 600 ? { id: this.flashFx.id, s: this.flashFx.s } : null,
+      burning: !!this.me && !this.dead && this.nades.inFire(this.me.x, this.me.z),
     };
   }
 
@@ -354,7 +396,7 @@ export class Combat {
     if (!force && now - this.hudAt < 100) return;
     this.hudAt = now;
     const s = this.build();
-    const sig = JSON.stringify([s.rt, s.onFoot, s.nearCar, s.hp, s.dead, s.respawnIn, s.canRespawn, s.passive, s.inMatch, s.team, s.weapon, s.loadout, s.ammo, s.reloading, s.scoped, s.cam, s.feed.map((f) => f.id), s.match, s.lobbies, s.act && [s.act.kind, s.act.can, Math.round(s.act.progress * 20)], s.outside, s.hurt.map((x) => x.id), s.autoFire, s.carrying, s.match && Math.floor(this.rt.serverNow() / 1000), s.medal?.id, s.streak, s.relay]);
+    const sig = JSON.stringify([s.rt, s.onFoot, s.nearCar, s.hp, s.dead, s.respawnIn, s.canRespawn, s.passive, s.inMatch, s.team, s.weapon, s.loadout, s.ammo, s.reloading, s.scoped, s.cam, s.feed.map((f) => f.id), s.match, s.lobbies, s.act && [s.act.kind, s.act.can, Math.round(s.act.progress * 20)], s.outside, s.hurt.map((x) => x.id), s.autoFire, s.carrying, s.match && Math.floor(this.rt.serverNow() / 1000), s.medal?.id, s.streak, s.relay, s.bleed?.id, THROW_KEYS.map((k) => s.gear[k]).join(), s.throwKey, s.c4Out, s.aimingThrow, s.flash?.id, s.burning]);
     if (sig === this.hudSig) return;
     this.hudSig = sig;
     this.snapshot = s;
@@ -487,6 +529,102 @@ export class Combat {
     this.reloadUntil = now + this.reloadLen;
     this.rt.send({ t: "reload" });
     reloadSound(W.reloadS);
+    this.publish(true);
+  }
+
+  // ------------------------------------------------------------ grenades and C4
+  /** The next kind of grenade in hand (the HUD shows how many of each are left). */
+  cycleThrow() {
+    const i = THROW_KEYS.indexOf(this.throwKey);
+    this.throwKey = THROW_KEYS[(i + 1) % THROW_KEYS.length];
+    store.set(THROW_KEY, this.throwKey);
+    this.publish(true);
+  }
+
+  pickThrow(k: ThrowKey) {
+    this.throwKey = k;
+    store.set(THROW_KEY, k);
+    this.publish(true);
+  }
+
+  /**
+   * The throw button (G, or the touch button): hold to see the arc, let go to throw. With
+   * my C4 already out, pressing it sets the C4 off instead.
+   */
+  holdThrow(on: boolean) {
+    if (on) {
+      if (!this.me || this.dead || this.throwHeld) return;
+      if (this.throwKey === "c4" && this.nades.myC4()) {
+        this.rt.send({ t: "detonate" });
+        beepSound(true);
+        return;
+      }
+      if ((this.gear[this.throwKey] ?? 0) <= 0) {
+        emptySound();
+        this.h.toast(t("No {name} left", { name: t(THROWABLES[this.throwKey].name) }));
+        return;
+      }
+      this.throwHeld = true;
+      this.publish(true);
+      return;
+    }
+    if (!this.throwHeld) return;
+    this.throwHeld = false;
+    this.nades.preview(null);
+    this.throwNow();
+    this.publish(true);
+  }
+
+  /** Where a throw leaves my hand and how fast: along where I'm looking, lifted into an arc. */
+  private throwFrom(me: FootBody): { o: Vec3; v: Vec3 } | null {
+    const cam = this.h.camera;
+    cam.getWorldDirection(camFwd);
+    const def = THROWABLES[this.throwKey];
+    const rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
+    const eye = eyeHeight(me.crouch);
+    const o: Vec3 = [me.x + rx * 0.2 + camFwd.x * 0.35, me.y + eye - 0.1, me.z + rz * 0.2 + camFwd.z * 0.35];
+    // C4 is lobbed at your feet a few metres on; the rest are thrown hard.
+    const lob = def.sticky ? 0.05 : 0.18;
+    return { o, v: throwVelocity(def, { dx: camFwd.x, dy: camFwd.y, dz: camFwd.z }, { vx: me.vx, vz: me.vz }, lob) };
+  }
+
+  private throwNow() {
+    const me = this.me, k = this.throwKey, now = performance.now();
+    if (!me || this.dead || (this.gear[k] ?? 0) <= 0 || now - this.thrownAt < THROW_GAP_MS) return;
+    if (this.match && this.match.phase !== "live") return this.h.toast(t("Wait for the round to start"));
+    if (!this.inMatch && this.passive) return this.h.toast(t("Turn off passive mode to fight"));
+    const tr = this.throwFrom(me);
+    if (!tr) return;
+    const flight = this.nades.fly(k, tr.o, tr.v);
+    this.rt.send({ t: "throw", k, o: tr.o, v: tr.v, rest: flight.rest });
+    this.nades.mine(k, flight, this.rt.sid);
+    this.gear = { ...this.gear, [k]: this.gear[k] - 1 };
+    this.thrownAt = now;
+    throwSound();
+    this.vm.fire(0.02);
+  }
+
+  /** A grenade or C4 went off at (x, y, z): its effect, its sound, and what it does to me. */
+  private onBoom(id: number, k: ThrowKey, by: number, x: number, y: number, z: number) {
+    const H = this.h, cam = H.camera;
+    this.nades.boom(id, k, by, by === this.rt.sid, x, y, z);
+    const dx = x - cam.position.x, dy = y + 0.2 - cam.position.y, dz = z - cam.position.z;
+    const dist = Math.hypot(dx, dy, dz) || 0.01;
+    if (k === "frag" || k === "c4") {
+      boomSound(dist * (k === "frag" ? 1.5 : 1));
+      this.shake = Math.max(this.shake, Math.min(1, (k === "c4" ? 16 : 10) / (dist + 2)));
+      if (dist < 15) navigator.vibrate?.(k === "c4" ? 160 : 90);
+    } else if (k === "flash") {
+      // How blind am I: how near, how squarely I'm looking at it, and nothing in between.
+      cam.getWorldDirection(camFwd);
+      const facing = (camFwd.x * dx + camFwd.y * dy + camFwd.z * dz) / dist;
+      const ray = { ox: cam.position.x, oy: cam.position.y, oz: cam.position.z, dx: dx / dist, dy: dy / dist, dz: dz / dist };
+      const clear = H.collision.raycast(ray, dist) >= dist - 0.3 && !smokeBlocks(this.nades.smokes(), cam.position.x, cam.position.y, cam.position.z, x, y + 0.2, z);
+      const s = this.dead ? 0 : flashSeconds(dist, facing, clear);
+      flashSound(dist, s);
+      if (s > 0) this.flashFx = { id: ++this.feedId, s, at: performance.now() };
+    } else if (k === "smoke") smokeSound(dist);
+    else if (k === "molotov") fireSound(dist, THROWABLES.molotov.lastsS);
     this.publish(true);
   }
 
@@ -713,6 +851,7 @@ export class Combat {
         } else if (wasDead && this.space !== "world") (this.dead = false), (this.hp = MAX_HP);
         this.team = m.team;
         this.space = m.space;
+        if (m.gear) this.gear = { ...m.gear };
         if (loadoutChanged) {
           this.loadout = m.loadout;
           this.fill();
@@ -737,12 +876,21 @@ export class Combat {
         break;
       }
       case "hit": {
+        // In the open city without a realtime server my health lives on the game server
+        // (fromHttp); the in-browser hub's world only has me in it (my own grenade).
+        if (this.httpMode && this.space === "world") break;
         const mine = m.from === this.rt.sid && m.to !== this.rt.sid;
         if (m.to === this.rt.sid) {
           this.hp = m.hp;
           if (m.kill) this.dead = true;
           hurtSound();
           if (m.kill) sfx("down");
+          this.bleed = { id: ++this.feedId, k: Math.min(1, 0.3 + m.dmg / 70), at: performance.now() };
+          // Flinch: a hit knocks the aim up a little, harder for a bigger one.
+          if (this.me && !m.kill) {
+            this.me.pitch = Math.min(1.35, this.me.pitch + 0.01 + Math.min(0.045, m.dmg / 1600));
+            this.me.yaw += (Math.random() - 0.5) * Math.min(0.05, m.dmg / 1200);
+          }
           navigator.vibrate?.(m.kill ? 120 : 25);
           if (this.me && m.from && m.from !== this.rt.sid) {
             const a = Math.atan2(-(m.fx - this.me.x), -(m.fz - this.me.z));
@@ -769,6 +917,9 @@ export class Combat {
           { id: ++this.feedId, killer: m.killerName, victim: m.victimName, w: m.w, head: m.head, mine: m.killer === me, me: m.victim === me, kc: tc(m.killerTeam, m.killerName), vc: tc(m.victimTeam, m.victimName), at: Date.now() },
         ];
         if (m.killer === me && m.victim !== me) H.toast(t("You took down {name}", { name: m.victimName }));
+        // A pool of blood where they fell (on foot; not for the arena's edge).
+        const fell = m.victim === me ? this.me : this.remotes.pose(m.victim);
+        if (fell && m.w !== "zone" && (m.victim === me || this.remotes.pose(m.victim)?.foot)) this.decals.pool(fell.x, fell.z);
         // Medals: multi-kills and runs without dying, first blood of a match, headshots.
         const firstBlood = !!this.match && this.bloodFor !== this.match.id;
         if (this.match) this.bloodFor = this.match.id;
@@ -787,8 +938,17 @@ export class Combat {
       case "shot": {
         const from = this.remotes.muzzle(m.sid, v3) ?? v3.set(m.x, m.y, m.z);
         this.vfx.flash(from.x, from.y, from.z);
-        this.vfx.tracer(from.x, from.y, from.z, m.ex, m.ey, m.ez);
-        this.vfx.impact(m.ex, m.ey, m.ez, m.ey < 0.1 ? "ground" : "wall");
+        // What the bullet met, as this city has it: a wall short of where the referee ended
+        // it (it doesn't know every building), else a body standing at the end of its path.
+        const W = WEAPONS[m.w] ?? WEAPONS.rifle;
+        const lx = m.ex - m.x, ly = m.ey - m.y, lz = m.ez - m.z, len = Math.hypot(lx, ly, lz) || 1;
+        const ux = lx / len, uy = ly / len, uz = lz / len;
+        const wall = H.collision.raycast({ ox: m.x, oy: m.y, oz: m.z, dx: ux, dy: uy, dz: uz }, len + 0.3, hitN);
+        const body = !Number.isFinite(wall) && len < W.range - 1;
+        const end = Number.isFinite(wall) ? wall : len;
+        const ex = m.x + ux * end, ey = m.y + uy * end, ez = m.z + uz * end;
+        this.vfx.tracer(from.x, from.y, from.z, ex, ey, ez);
+        if (Number.isFinite(wall) || body) this.impact(ex, ey, ez, ux, uy, uz, body, W.key === "sniper", W.pellets > 1 ? 0.6 : 1);
         const cam = H.camera;
         cam.getWorldDirection(camFwd);
         const dx = m.x - cam.position.x, dz = m.z - cam.position.z, d = Math.hypot(dx, dz) || 1;
@@ -796,6 +956,12 @@ export class Combat {
         shotSound(WEAPONS[m.w]?.sound ?? WEAPONS.rifle.sound, d, pan);
         break;
       }
+      case "nade":
+        if (isThrow(m.k)) this.nades.thrown(m.id, m.k, m.by, m.o, m.v, (this.rt.serverNow() - m.at) / 1000, m.by === this.rt.sid);
+        break;
+      case "boom":
+        if (isThrow(m.k)) this.onBoom(m.id, m.k, m.by, m.x, m.y, m.z);
+        break;
       case "lobbies":
         this.lobbies = m.list;
         break;
@@ -819,6 +985,8 @@ export class Combat {
           void this.partyArena({ id: null });
         }
         const mm = m.m;
+        // A new match or round (or leaving one): no smoke, fire or C4 carries over.
+        if ((prev?.id ?? null) !== (mm?.id ?? null) || (mm && prev && mm.round !== prev.round)) this.nades.clear();
         if (mm && prev?.id === mm.id && mm.phase !== prev.phase) {
           // A round starts, a round is won or lost, the match is over.
           const won = !!mm.winner && (mm.winner.team ? mm.winner.team === this.team : mm.winner.sid === this.rt.sid);
@@ -969,12 +1137,19 @@ export class Combat {
       if (k === "c") this.input.crouch = !this.input.crouch;
       if (k === " ") this.input.jump = true;
       if (k === "v") this.toggleCam();
+      if (k === "g") this.holdThrow(true);
+      if (k === "4") this.cycleThrow();
       if (k === "enter" && this.snapshot.canRespawn) this.respawn();
     };
-    const ku = (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase());
+    const ku = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      this.keys.delete(k);
+      if (k === "g") this.holdThrow(false);
+    };
     const blur = () => {
       this.keys.clear();
       this.input.fire = this.input.aim = false;
+      this.throwHeld = false;
     };
     el.addEventListener("click", canvasClick);
     document.addEventListener("mousemove", move);
@@ -1089,6 +1264,12 @@ export class Combat {
       }
       if (!reloading && (this.ammo.get(this.weapon) ?? 0) === 0 && !this.dead && now > this.nextShot) this.reload();
 
+      // -- lining up a throw: the arc it would fly
+      if (this.throwHeld && !this.dead) {
+        const t = this.throwFrom(me);
+        this.nades.preview(t && this.nades.fly(this.throwKey, t.o, t.v));
+      } else this.nades.preview(null);
+
       // -- my soldier (third person) and the camera
       const fps = this.cam === "fps" && !this.dead;
       if (this.avatar) {
@@ -1128,6 +1309,10 @@ export class Combat {
     // -- everyone else and the effects
     this.remotes.tick(dt, sNow, H.camera.position);
     this.vfx.tick(dt);
+    this.decals.tick(dt);
+    this.nades.tick(dt, (x, z) => clinkSound(Math.hypot(x - H.camera.position.x, z - H.camera.position.z)));
+    this.shake *= Math.exp(-dt * 4);
+    if (!me) this.nades.preview(null);
     this.hurt = this.hurt.filter((x) => now - x.at < 1200);
 
     // -- my state out, 20×/s
@@ -1168,6 +1353,20 @@ export class Combat {
     return v3b.set(ray.ox + ray.dx * tt, ray.oy + ray.dy * tt, ray.oz + ray.dz * tt);
   }
 
+  /**
+   * Where a bullet stopped (unit direction d): blood thrown on behind a body; sparks, dust
+   * and a hole on a wall or the ground (whose normal the last raycast left in hitN).
+   */
+  private impact(x: number, y: number, z: number, dx: number, dy: number, dz: number, body: boolean, big: boolean, blood: number) {
+    if (body) {
+      this.vfx.impact(x, y, z, "body");
+      this.decals.spray(x, y, z, dx, dy, dz, blood);
+      return;
+    }
+    this.vfx.impact(x, y, z, hitN.y > 0.5 ? "ground" : "wall");
+    this.decals.hole(x, y, z, hitN, big);
+  }
+
   private hostile(tg: { team: number; passive: boolean; dead: boolean }) {
     if (tg.dead) return false;
     if (this.inMatch) return this.match?.mode === "ffa" || tg.team !== this.team;
@@ -1197,7 +1396,7 @@ export class Combat {
       const d = spreadDir({ dx, dy, dz }, spread);
       dirs.push([d.dx, d.dy, d.dz]);
       const ray: Ray = { ox, oy, oz, dx: d.dx, dy: d.dy, dz: d.dz };
-      let tt = H.collision.raycast(ray, W.range);
+      let tt = H.collision.raycast(ray, W.range, hitN);
       let body = false;
       let who: { sid: number; zone: "head" | "body" | "legs" } | null = null;
       for (const tg of this.remotes.targets()) {
@@ -1214,7 +1413,7 @@ export class Combat {
       const end = Number.isFinite(tt) ? tt : W.range;
       const ex = ox + d.dx * end, ey = oy + d.dy * end, ez = oz + d.dz * end;
       if (i < 3) this.vfx.tracer(muzzle.x, muzzle.y, muzzle.z, ex, ey, ez);
-      if (Number.isFinite(tt)) this.vfx.impact(ex, ey, ez, body ? "body" : ey < 0.1 ? "ground" : "wall");
+      if (Number.isFinite(tt)) this.impact(ex, ey, ez, d.dx, d.dy, d.dz, body, W.key === "sniper", W.pellets > 1 ? 0.6 : 1);
       if (who && hitSid == null) hitSid = who.sid;
     }
     this.vfx.flash(muzzle.x, muzzle.y, muzzle.z, W.key === "shotgun" || W.key === "sniper");
@@ -1250,7 +1449,8 @@ export class Combat {
       const ang = Math.acos(Math.max(-1, Math.min(1, (dx * camFwd.x + dy * camFwd.y + dz * camFwd.z) / d)));
       const window = Math.max(0.035, Math.min(0.09, 1.6 / d));
       if (ang > window || (best && ang > best.ang)) continue;
-      // Not through walls.
+      // Not through smoke, nor walls.
+      if (smokeBlocks(this.nades.smokes(), cam.position.x, cam.position.y, cam.position.z, tg.x, cy, tg.z)) continue;
       const wall = this.h.collision.raycast({ ox: cam.position.x, oy: cam.position.y, oz: cam.position.z, dx: dx / d, dy: dy / d, dz: dz / d }, d);
       if (wall < d - 0.5) continue;
       const wantYaw = Math.atan2(-dx, -dz);
@@ -1290,6 +1490,13 @@ export class Combat {
     }
     cam.up.set(0, 1, 0);
     cam.lookAt(cam.position.x + d.dx * 10, cam.position.y + d.dy * 10, cam.position.z + d.dz * 10);
+    // A blast nearby rattles the view.
+    if (this.shake > 0.01) {
+      const k = this.shake * 0.035;
+      cam.rotateX((Math.random() - 0.5) * k);
+      cam.rotateY((Math.random() - 0.5) * k);
+      cam.rotateZ((Math.random() - 0.5) * k * 0.6);
+    }
     const fov = aiming ? (fps ? W.adsFov : Math.max(40, W.adsFov + 12)) : fps ? 72 : 66;
     const near = fps ? 0.05 : 0.15;
     const f = cam.fov + (fov - cam.fov) * Math.min(1, dt * 14);
@@ -1319,6 +1526,8 @@ export class Combat {
     this.rt.stop();
     this.remotes.dispose();
     this.vfx.dispose();
+    this.nades.dispose();
+    this.decals.dispose();
     this.vm.dispose();
     this.avatar?.dispose();
     this.match = null;

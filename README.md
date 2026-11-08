@@ -128,6 +128,10 @@ mood scales XP; loot funds research; territory funds the army.
 - **Real 3D car models** — the Pars (Peugeot 405), Samand (and the Samand taxi), Shahin, Tondar 90 (Dacia Logan),
   Xantia, the Zamyad pickup and the crossover are real models, built from CC BY 4.0 Sketchfab models
   by `npm run assets:cars` (`scripts/cars.ts`; the sources are big and not in git — put them in `assets/models/`).
+  To find more: `npm run assets:find -- "assault rifle"` lists downloadable **CC BY / CC0** Sketchfab models (never
+  NonCommercial, and nothing that names another game or calls itself a rip — `src/lib/assetLicense.ts`);
+  `npm run assets:get -- <uid> --kind=weapon|character|car|prop|building|fx` downloads one into
+  `assets/models/<kind>/` and credits it in `assets/credits.json` (needs your own `SKETCHFAB_TOKEN` in `.env`).
   The build bakes each texture into vertex colours, removes everything you can't see from outside (the cabin,
   engine and underside: it draws the car from 60 directions with the glass opaque), levels the car, scales it to the
   real car's length, finds its four wheels, sorts the rest into the parts traffic instances (paint, trim, glass,
@@ -180,7 +184,17 @@ mood scales XP; loot funds research; territory funds the army.
   pistol; first through all 10 wins) or 🚩 Hardpoint (a glowing zone on a street, coloured by who holds it, moves every
   minute; a point a second for the team alone in it, first to 120), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
   fun with one friend or none. Five guns (pistol, SMG, rifle, sniper with a scope, shotgun), aim down sights, recoil,
-  headshots, kill feed, scoreboard. Phones get a shooter layout (floating stick, drag to aim, fire buttons on both sides,
+  headshots, kill feed, scoreboard. **Grenades and C4** (`src/lib/arena/throwables.ts`): every life carries a 💣 frag,
+  two ⚡ flashbangs, a 💨 smoke, a 🔥 molotov and a 🧨 C4 (none in Gun Game). Hold **G** (or the touch grenade button)
+  to see the throw's dotted arc, let go to throw; **4** / ⟳ switches which one. They bounce off walls and roll; a frag
+  or C4 hurts everyone its blast can see (walls shelter you, your own grenade hurts you too), a flashbang whites out
+  the screen of whoever looks at it (longer the closer and more squarely), smoke is a cloud nobody — bots and aim assist
+  included — sees through for 16 s, a molotov breaks into a pool of fire that burns whoever stands in it for 7 s, and C4
+  sticks where it lands until you press G again. The referee flies each throw with the same code the clients draw it
+  with (`fly()`), so a grenade lands where everyone saw it land. **Battle damage**: bullets leave holes in walls and
+  the street, hits throw blood onto the wall behind and the pavement, whoever falls leaves a pool, blasts and fires leave
+  scorch marks (all pooled, `src/components/arena/decals.ts`); a hit flinches your aim and splashes blood on your
+  screen. Phones get a shooter layout (floating stick, drag to aim, fire buttons on both sides,
   aim assist and optional auto-fire); desktop uses mouse look and WASD. Matches pay XP and coins (12 paid matches a day;
   beating people pays more than farming bots). Medals pop up for double / triple kills, rampages, killing sprees (5 and
   every 5 after 10 without dying), first blood and headshots, with a 🔥 run counter (`src/lib/arena/medals.ts`). Every

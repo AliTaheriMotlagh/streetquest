@@ -3,6 +3,7 @@
 // positions for lag compensation, health, guns and ammo, and their match stats.
 import { localFrame, type LL, type LocalFrame, type ServerMsg, F_CROUCH, F_DEAD, F_FOOT, G_BOMB, G_BOT, G_PASSIVE, G_SHIELD, G_ACTING } from "../src/lib/arena/protocol";
 import { MAX_HP, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "../src/lib/arena/weapons";
+import { fullGear, THROW_KEYS, type ThrowKey } from "../src/lib/arena/throwables";
 import type { Team } from "../src/lib/arena/modes";
 import type { Space } from "./space";
 
@@ -64,6 +65,13 @@ export class Player {
   spawnLL: LL | null = null;
   lastHurtAt = 0;
   lastHurtBy = 0;
+  /** Grenades and C4 left this life, and when the last one was thrown. */
+  gear: Record<ThrowKey, number> = fullGear();
+  thrownAt = 0;
+  /** Gun Game: guns only, no grenades. */
+  gearless = false;
+  /** A flashbang blinded them until then (bots hold fire; people see it on their own screens). */
+  blindUntil = 0;
 
   // match
   space: Space | null = null;
@@ -121,12 +129,15 @@ export class Player {
 
   setLoadout(primary: WeaponKey) {
     this.primary = primary;
+    this.gearless = false;
     this.loadout = primary === "pistol" ? ["pistol"] : [primary, "pistol"];
     this.fillAmmo();
   }
 
   /** Gun Game: only the ladder's gun, in hand (the player's own pick is kept for later matches). */
   setGun(w: WeaponKey) {
+    this.gearless = true;
+    this.gear = Object.fromEntries(THROW_KEYS.map((k) => [k, 0])) as Record<ThrowKey, number>;
     this.loadout = [w];
     this.weapon = WEAPONS[w].idx;
     this.fillAmmo();
@@ -172,7 +183,9 @@ export class Player {
     this.dead = false;
     this.respawnAt = 0;
     this.shieldUntil = now + shieldS * 1000;
+    this.blindUntil = 0;
     this.fillAmmo();
+    if (!this.gearless) this.gear = fullGear();
   }
 
   flags2(now: number) {
@@ -195,6 +208,6 @@ export class Player {
   }
 
   status(space: string) {
-    this.send({ t: "you", hp: this.hp, dead: this.dead, respawnAt: this.respawnAt, passive: this.passive, ammo: this.ammo.get(WEAPON_BY_IDX[this.weapon]) ?? 0, reloadUntil: this.reloadUntil, loadout: this.loadout, team: this.team, space });
+    this.send({ t: "you", hp: this.hp, dead: this.dead, respawnAt: this.respawnAt, passive: this.passive, ammo: this.ammo.get(WEAPON_BY_IDX[this.weapon]) ?? 0, reloadUntil: this.reloadUntil, loadout: this.loadout, team: this.team, space, gear: this.gear });
   }
 }

@@ -158,6 +158,22 @@ const arena: Record<string, string> = {
   "📡 UAV online — enemies show through walls": "📡 پهپاد شناسایی بالاست — دشمن‌ها از پشت دیوار دیده می‌شن",
   "📡 {name} called in a UAV": "📡 {name} پهپاد شناسایی فرستاد",
   "🚩 The hardpoint moved!": "🚩 هاردپوینت جابه‌جا شد!",
+  // grenades and C4 (lib/arena/throwables)
+  "Frag grenade": "نارنجک انفجاری",
+  "Flashbang": "نارنجک صوتی‌ـ‌نوری",
+  "Smoke grenade": "نارنجک دودزا",
+  "Molotov": "کوکتل مولوتف",
+  "C4": "سی‌فور",
+  "Grenades": "نارنجک‌ها",
+  "No {name} left": "{name} تمام شده",
+  "Wait for the round to start": "صبر کن راند شروع شود",
+  "Turn off passive mode to fight": "برای مبارزه حالت صلح را خاموش کن",
+  "You're standing in fire — move!": "وسط آتش ایستاده‌ای — برو کنار!",
+  "G: set off the C4": "G: منفجر کردن سی‌فور",
+  "Hold G to throw · 4 to switch": "G را نگه دار تا پرتاب کنی · ۴ برای عوض کردن",
+  "Set off the C4": "منفجر کردن سی‌فور",
+  "Hold to aim, let go to throw: {name}": "نگه دار تا نشانه بگیری، رها کن تا پرتاب شود: {name}",
+  "Switch grenade": "عوض کردن نارنجک",
 };
 
 export default arena;

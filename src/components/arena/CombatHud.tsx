@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { bombSide, GUN_KILLS_PER_STEP, GUN_LADDER, gunFor, MODES, TEAM_COLORS, TEAM_NAMES, type MatchView } from "@/lib/arena/modes";
 import { WEAPONS } from "@/lib/arena/weapons";
-import { ActButton } from "./CombatPad";
+import { THROW_KEYS, THROWABLES } from "@/lib/arena/throwables";
+import { ActButton, ThrowButton } from "./CombatPad";
 import type { Combat, CombatHud as Hud } from "./combat";
 
 const clock = (ms: number) => {
@@ -14,7 +15,7 @@ const clock = (ms: number) => {
   return `${fmtNum(Math.floor(s / 60))}:${fmtNum(s % 60).padStart(2, fmtNum(0))}`;
 };
 
-const WEAPON_ICON: Record<string, string> = { pistol: "🔫", smg: "🔫", rifle: "🔫", sniper: "🎯", shotgun: "💥", zone: "☠️", bomb: "💣" };
+const WEAPON_ICON: Record<string, string> = { pistol: "🔫", smg: "🔫", rifle: "🔫", sniper: "🎯", shotgun: "💥", zone: "☠️", bomb: "💣", ...Object.fromEntries(THROW_KEYS.map((k) => [k, THROWABLES[k].emoji])) };
 
 export function useCombat(c: Combat | null): Hud | null {
   return useSyncExternalStore(c?.subscribe ?? noop, c ? c.getSnapshot : nil, nil);
@@ -66,6 +67,8 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
             <div key={h.id} className="chud-hurt" style={{ transform: `rotate(${(-h.angle * 180) / Math.PI}deg)` }} aria-hidden />
           ))}
           {s.hp < 35 && !s.dead && <div className="chud-low" aria-hidden />}
+          {s.bleed && !s.dead && <div key={s.bleed.id} className="chud-bleed" style={{ "--k": s.bleed.k } as React.CSSProperties} aria-hidden />}
+          {s.flash && !s.dead && <div key={s.flash.id} className="chud-flash" style={{ "--s": `${s.flash.s.toFixed(2)}s` } as React.CSSProperties} aria-hidden />}
         </>
       )}
 
@@ -113,6 +116,30 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
       )}
 
       {s.outside && <div className="chud-warn">{t("Get back inside the arena!")}</div>}
+      {s.burning && !s.outside && <div className="chud-warn">🔥 {t("You're standing in fire — move!")}</div>}
+      {s.onFoot && !s.dead && (
+        <div className="chud-gear" aria-label={t("Grenades")}>
+          {THROW_KEYS.map((k) => (
+            <button key={k} className={`${k === s.throwKey ? "on" : ""} ${s.gear[k] <= 0 ? "out" : ""}`} title={t(THROWABLES[k].name)} onClick={() => combat.pickThrow(k)} tabIndex={-1}>
+              {THROWABLES[k].emoji}
+              <b>{fmtNum(s.gear[k])}</b>
+            </button>
+          ))}
+          {!touch && <small>{s.throwKey === "c4" && s.c4Out ? t("G: set off the C4") : t("Hold G to throw · 4 to switch")}</small>}
+        </div>
+      )}
+      {touch && s.onFoot && !s.dead && (
+        <ThrowButton
+          emoji={THROWABLES[s.throwKey].emoji}
+          left={s.gear[s.throwKey]}
+          c4Out={s.throwKey === "c4" && s.c4Out}
+          aiming={s.aimingThrow}
+          onHold={(on) => combat.holdThrow(on)}
+          onCycle={() => combat.cycleThrow()}
+          label={s.throwKey === "c4" && s.c4Out ? t("Set off the C4") : t("Hold to aim, let go to throw: {name}", { name: t(THROWABLES[s.throwKey].name) })}
+          cycleLabel={t("Switch grenade")}
+        />
+      )}
       {s.carrying && m?.phase === "live" && !s.act?.can && <div className="chud-tip">💣 {t("You have the bomb — plant it at site A or B")}</div>}
       {s.uav && <div className="chud-tip">📡 {t("UAV up — enemies show through walls")}</div>}
       {s.onHill && <div className="chud-tip">🚩 {t("You're on the hardpoint — hold it!")}</div>}

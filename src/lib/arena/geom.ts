@@ -84,8 +84,14 @@ export function pointInPoly(pts: ArrayLike<number>, x: number, z: number) {
   return inside;
 }
 
-/** Distance along the ray to a building (walls between mh and h, its roof and underside), or Infinity. */
-export function rayFootprint(r: Ray, f: Footprint, maxT: number) {
+/** A surface's unit normal, facing back along the ray that hit it (bullet holes are laid on it). */
+export type Normal = { x: number; y: number; z: number };
+
+/**
+ * Distance along the ray to a building (walls between mh and h, its roof and underside), or
+ * Infinity. With `n`, the face it hit is written there when this is the nearest hit so far.
+ */
+export function rayFootprint(r: Ray, f: Footprint, maxT: number, n?: Normal) {
   // Quick reject: the ray's 2D box against the footprint's.
   const ex = r.ox + r.dx * maxT, ez = r.oz + r.dz * maxT;
   if (Math.max(r.ox, ex) < f.minX || Math.min(r.ox, ex) > f.maxX || Math.max(r.oz, ez) < f.minZ || Math.min(r.oz, ez) > f.maxZ) return Infinity;
@@ -100,7 +106,14 @@ export function rayFootprint(r: Ray, f: Footprint, maxT: number) {
     const u = ((ax - r.ox) * r.dz - (az - r.oz) * r.dx) / den;
     if (t < 0 || t >= best || t > maxT || u < 0 || u > 1) continue;
     const y = r.oy + r.dy * t;
-    if (y >= f.mh && y <= f.h) best = t;
+    if (y >= f.mh && y <= f.h) {
+      best = t;
+      if (n) {
+        // The wall's perpendicular, turned to face the shooter.
+        const l = Math.hypot(sx, sz) || 1, s = r.dx * sz - r.dz * sx > 0 ? -1 : 1;
+        (n.x = (sz / l) * s), (n.y = 0), (n.z = (-sx / l) * s);
+      }
+    }
   }
   // Through the roof (or the underside of a canopy).
   if (Math.abs(r.dy) > 1e-6)
@@ -108,7 +121,10 @@ export function rayFootprint(r: Ray, f: Footprint, maxT: number) {
       if (y <= 0.01) continue;
       const t = (y - r.oy) / r.dy;
       if (t < 0 || t >= best || t > maxT) continue;
-      if (pointInPoly(p, r.ox + r.dx * t, r.oz + r.dz * t)) best = t;
+      if (pointInPoly(p, r.ox + r.dx * t, r.oz + r.dz * t)) {
+        best = t;
+        if (n) (n.x = 0), (n.y = r.dy < 0 ? 1 : -1), (n.z = 0);
+      }
     }
   return best;
 }
@@ -132,8 +148,8 @@ export class FootprintIndex {
       }
   }
 
-  /** Distance to the first building along the ray within maxT, or Infinity. */
-  ray(r: Ray, maxT: number) {
+  /** Distance to the first building along the ray within maxT, or Infinity (n gets the face it hit). */
+  ray(r: Ray, maxT: number, n?: Normal) {
     const S = FootprintIndex.S;
     const seen = new Set<Footprint>();
     let best = Infinity;
@@ -148,7 +164,7 @@ export class FootprintIndex {
           for (const f of this.cells.get(this.key(cx + ox, cz + oz)) ?? []) {
             if (seen.has(f)) continue;
             seen.add(f);
-            best = Math.min(best, rayFootprint(r, f, maxT));
+            best = Math.min(best, rayFootprint(r, f, Math.min(maxT, best), n));
           }
     }
     return best;

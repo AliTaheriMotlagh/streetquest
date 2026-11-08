@@ -10,8 +10,7 @@
 // hit for a while, so it can't be used to escape a fight.
 import { distanceM } from "../src/lib/geo";
 import { FREE_RESPAWN_S, PASSIVE_COOLDOWN_S, ROOKIE_LEVEL } from "../src/lib/arena/modes";
-import type { LL } from "../src/lib/arena/protocol";
-import type { WeaponKey } from "../src/lib/arena/weapons";
+import type { KillCause, LL } from "../src/lib/arena/protocol";
 import type { Player } from "./player";
 import { Space } from "./space";
 
@@ -74,7 +73,7 @@ export class World extends Space {
     return this.shows(a, b) && this.shows(b, a);
   }
 
-  onKill(victim: Player, killer: Player | null, w: WeaponKey | "zone" | "bomb", head: boolean, now: number) {
+  onKill(victim: Player, killer: Player | null, w: KillCause, head: boolean, now: number) {
     victim.respawnAt = now + FREE_RESPAWN_S * 1000;
     victim.deaths++;
     if (killer && killer !== victim) killer.kills++;

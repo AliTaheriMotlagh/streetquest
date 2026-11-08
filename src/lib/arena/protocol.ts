@@ -7,7 +7,12 @@
 // origin, see lib/city makeFrame); the server keeps lat/lng and converts per recipient,
 // so players who opened the city in different places still line up exactly.
 import type { Difficulty, LobbyView, MatchView, ModeKey, Team } from "./modes";
+import type { ThrowKey } from "./throwables";
 import type { WeaponKey, Zone } from "./weapons";
+
+/** What took someone down, for the kill feed. */
+export type KillCause = WeaponKey | ThrowKey | "zone" | "bomb";
+type V3 = [number, number, number];
 
 export const PROTOCOL = 1;
 export const TICK_HZ = 20;
@@ -143,7 +148,11 @@ export type ClientMsg =
   | { t: "start" }
   | { t: "team"; team: Team }
   | { t: "loadout"; primary: WeaponKey }
-  | { t: "act"; on: boolean };
+  | { t: "act"; on: boolean }
+  /** A grenade or C4 leaves my hand (o, v in my metres); `rest` is where my city has it land (the open city's referee doesn't know the buildings). */
+  | { t: "throw"; k: ThrowKey; o: V3; v: V3; rest?: V3 }
+  /** Set off my C4. */
+  | { t: "detonate" };
 
 export type RosterEntry = { sid: number; id: string; name: string; avatar: string; level: number; color: string; friend: boolean; bot: boolean };
 
@@ -152,12 +161,16 @@ export type ServerMsg =
   | { t: "pong"; c: number; s: number }
   | { t: "roster"; add: RosterEntry[]; del: number[] }
   | { t: "hit"; from: number; to: number; dmg: number; zone: Zone; hp: number; kill: boolean; fx: number; fz: number }
-  | { t: "kill"; killer: number; victim: number; w: WeaponKey | "zone" | "bomb"; head: boolean; killerName: string; victimName: string; killerTeam: Team; victimTeam: Team }
-  | { t: "you"; hp: number; dead: boolean; respawnAt: number; passive: boolean; ammo: number; reloadUntil: number; loadout: WeaponKey[]; team: Team; space: string }
+  | { t: "kill"; killer: number; victim: number; w: KillCause; head: boolean; killerName: string; victimName: string; killerTeam: Team; victimTeam: Team }
+  | { t: "you"; hp: number; dead: boolean; respawnAt: number; passive: boolean; ammo: number; reloadUntil: number; loadout: WeaponKey[]; team: Team; space: string; gear: Record<ThrowKey, number> }
   | { t: "shot"; sid: number; w: WeaponKey; x: number; y: number; z: number; ex: number; ey: number; ez: number }
   | { t: "spawn"; x: number; y: number; z: number; yaw: number }
   | { t: "lobbies"; list: LobbyView[] }
   | { t: "match"; m: MatchView | null }
   | { t: "uav"; ms: number; by: string; mine: boolean }
+  /** Someone threw something (server time `at`): everyone flies it in their own city to draw it. */
+  | { t: "nade"; id: number; k: ThrowKey; by: number; o: V3; v: V3; at: number }
+  /** It went off here (the referee's spot, in my metres). */
+  | { t: "boom"; id: number; k: ThrowKey; by: number; x: number; y: number; z: number }
   | { t: "toast"; text: string; vars?: Record<string, string | number> }
   | { t: "err"; text: string; vars?: Record<string, string | number> };

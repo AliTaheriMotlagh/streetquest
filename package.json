@@ -19,6 +19,8 @@
     "city:pack:prod": "tsx scripts/city-pack.ts --env .env.prod",
     "assets:arena": "/Applications/Blender.app/Contents/MacOS/Blender -b -P assets/blender/arena.py",
     "assets:cars": "tsx scripts/cars.ts",
+    "assets:find": "tsx scripts/sketchfab.ts find",
+    "assets:get": "tsx --env-file-if-exists=.env scripts/sketchfab.ts get",
     "typecheck": "tsc --noEmit",
     "i18n:check": "tsx scripts/i18n-check.ts",
     "test": "npm run -s test:unit && npm run -s typecheck && npm run -s i18n:check",

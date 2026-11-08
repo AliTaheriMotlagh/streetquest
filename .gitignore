@@ -22,3 +22,5 @@ graphify-out/
 
 # Source 3D models (big, from Sketchfab): npm run assets:cars builds public/models/cars from them
 /assets/models/*.glb
+# npm run assets:get puts sources in assets/models/<kind>/ (credits: assets/credits.json, in git)
+/assets/models/**/*.glb

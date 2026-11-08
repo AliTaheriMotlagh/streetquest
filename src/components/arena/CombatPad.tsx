@@ -166,6 +166,31 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
   );
 });
 
+/**
+ * Grenades on touch: hold the big button to see the throw's arc (keep looking with the
+ * other thumb), let go to throw; with my C4 out it sets it off. The chip above it changes
+ * which one is in hand.
+ */
+export function ThrowButton({ emoji, left, c4Out, aiming, onHold, onCycle, label, cycleLabel }: { emoji: string; left: number; c4Out: boolean; aiming: boolean; onHold: (on: boolean) => void; onCycle: () => void; label: string; cycleLabel: string }) {
+  return (
+    <div className="cpad-throw">
+      <button className="cpad-throw-pick" aria-label={cycleLabel} onPointerDown={onCycle}>
+        ⟳
+      </button>
+      <button
+        className={`cpad-btn throw ${aiming ? "on" : ""} ${c4Out ? "det" : ""} ${left <= 0 && !c4Out ? "empty" : ""}`}
+        aria-label={label}
+        onPointerDown={(e) => (e.currentTarget.setPointerCapture(e.pointerId), onHold(true))}
+        onPointerUp={() => onHold(false)}
+        onPointerCancel={() => onHold(false)}
+      >
+        <span aria-hidden>{c4Out ? "📡" : emoji}</span>
+        {!c4Out && <b>{left}</b>}
+      </button>
+    </div>
+  );
+}
+
 /** Hold-to-act (plant / defuse): a separate button, shown only when it applies. */
 export function ActButton({ input, label, progress }: { input: CombatInput; label: string; progress: number }) {
   return (

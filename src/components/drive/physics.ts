@@ -5,7 +5,7 @@
 // range it overlaps — wheels hit walls, a helicopter clears the roofs (and can land on
 // them), a car drives under a petrol-station canopy.
 import type { VehicleDef } from "@/lib/vehicles";
-import { rayFootprint, type Ray } from "@/lib/arena/geom";
+import { rayFootprint, type Normal, type Ray } from "@/lib/arena/geom";
 import type { Footprint } from "./tileMesh";
 
 const HASH = 30;
@@ -81,10 +81,14 @@ export class CollisionWorld {
 
   /**
    * Distance along a ray (unit direction) to the first wall, roof or the ground, up to
-   * maxT (Infinity if nothing): what a bullet or the shoulder camera runs into.
+   * maxT (Infinity if nothing): what a bullet or the shoulder camera runs into. With `n`,
+   * the surface it met is written there (the ground is straight up).
    */
-  raycast(r: Ray, maxT: number) {
-    let best = r.dy < -1e-6 ? Math.min(maxT, -r.oy / r.dy) : Infinity;
+  raycast(r: Ray, maxT: number, n?: Normal) {
+    // The ground, if the ray reaches it within maxT (beyond that it hit nothing).
+    const ground = r.dy < -1e-6 ? -r.oy / r.dy : Infinity;
+    let best = ground <= maxT ? ground : Infinity;
+    if (n) (n.x = 0), (n.y = 1), (n.z = 0);
     const seen = new Set<Footprint>();
     const steps = Math.ceil(Math.min(maxT, best) / (HASH * 0.5)) + 1;
     for (let i = 0; i <= steps; i++) {
@@ -93,7 +97,7 @@ export class CollisionWorld {
       for (const f of this.near(x, z, this.scratch)) {
         if (seen.has(f)) continue;
         seen.add(f);
-        const ft = rayFootprint(r, f, maxT);
+        const ft = rayFootprint(r, f, Math.min(maxT, best), n);
         if (ft < best) best = ft;
       }
     }

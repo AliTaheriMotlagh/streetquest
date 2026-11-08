@@ -44,7 +44,8 @@ export function tickBot(m: Match, b: Player, br: Brain, dt: number, now: number)
     br.thinkAt = now + 220 + Math.random() * 80;
     let best: Player | null = null, bd = Infinity;
     for (const p of m.players) {
-      if (p === b || p.dead || !p.placed || !m.canHurt(b, p, now)) continue;
+      // Blinded by a flashbang: sees nobody.
+      if (p === b || p.dead || !p.placed || now < b.blindUntil || !m.canHurt(b, p, now)) continue;
       const q = F.toXZ(p.lat, p.lng), d = Math.hypot(q.x - br.x, q.z - br.z);
       if (d > S.see || d >= bd) continue;
       if (!m.sight(b.ll, b.y + 1.5, p.ll, p.y + (p.crouch ? 1.0 : 1.4))) continue;
@@ -126,7 +127,7 @@ export function tickBot(m: Match, b: Player, br: Brain, dt: number, now: number)
 
   const ammo = b.ammo.get(w) ?? 0;
   if (ammo <= 0 && !b.reloading) m.reload(b, now);
-  if (engaging && !frozen && !acting && !b.reloading && ammo > 0 && now >= br.nextShot && m.canHurt(b, tgt!, now)) {
+  if (engaging && !frozen && !acting && !b.reloading && ammo > 0 && now >= br.nextShot && now >= b.blindUntil && m.canHurt(b, tgt!, now)) {
     const q = F.toXZ(tgt!.lat, tgt!.lng);
     const dist = Math.hypot(q.x - br.x, q.z - br.z);
     const moving = Math.hypot(tgt!.vx, tgt!.vz) > 1.5;
