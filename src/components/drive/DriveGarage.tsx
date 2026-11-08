@@ -1,11 +1,13 @@
 "use client";
-// The garage: pick what you drive (or fly) and its paint, how the city looks, and which
-// names its streets and shops show.
+// The garage: pick what you drive (or fly) and its paint, how the city looks (style,
+// picture quality, time of day, weather), and which names its streets and shops show.
 import { useState } from "react";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { GARAGE_KEYS, PAINTS, unlocked, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { PARTY_GAMES, type PartyGame } from "@/lib/party";
 import { Button } from "@/components/Button";
+import type { TimePick, Weather } from "@/lib/daylight";
+import type { QualityPick, Tier } from "./graphics/quality";
 import type { Style } from "./tileMesh";
 import type { NameMode } from "./vectorTile";
 import { askTilt, type SteerMode } from "./DrivePad";
@@ -23,12 +25,39 @@ const NAMES: { key: NameMode; label: string }[] = [
   { key: "both", label: msg("Both") },
 ];
 
+const QUALITY: { key: QualityPick; label: string }[] = [
+  { key: "auto", label: msg("Auto") },
+  { key: "ultra", label: msg("Ultra") },
+  { key: "high", label: msg("High") },
+  { key: "medium", label: msg("Medium") },
+  { key: "low", label: msg("Low") },
+];
+const TIER_LABEL: Record<Tier, string> = { ultra: msg("Ultra"), high: msg("High"), medium: msg("Medium"), low: msg("Low") };
+
+const TIMES: { key: TimePick; icon: string; label: string }[] = [
+  { key: "day", icon: "☀️", label: msg("Day") },
+  { key: "live", icon: "🕒", label: msg("Real time") },
+  { key: "sunset", icon: "🌇", label: msg("Sunset") },
+  { key: "night", icon: "🌙", label: msg("Night") },
+];
+
+const WEATHERS: { key: Weather; icon: string; label: string }[] = [
+  { key: "clear", icon: "🌤️", label: msg("Clear sky") },
+  { key: "cloudy", icon: "☁️", label: msg("Cloudy") },
+  { key: "rain", icon: "🌧️", label: msg("Rain") },
+];
+
 type Props = {
   level: number;
   vehicle: VehicleKey;
   paint: string;
   style: Style;
   names: NameMode;
+  /** Picture quality, and the tier "auto" chose for this device. */
+  quality: QualityPick;
+  autoTier: Tier;
+  timeOfDay: TimePick;
+  weather: Weather;
   fps: number;
   /** A ground-only round is running: flyers are parked until it ends. */
   locked: PartyGame | null;
@@ -38,13 +67,16 @@ type Props = {
   onPaint: (c: string) => void;
   onStyle: (s: Style) => void;
   onNames: (n: NameMode) => void;
+  onQuality: (q: QualityPick) => void;
+  onTime: (t: TimePick) => void;
+  onWeather: (w: Weather) => void;
   onCtl: (m: SteerMode) => void;
   onClose: () => void;
   /** Inside the drive menu: no window of its own. */
   embedded?: boolean;
 };
 
-export function DriveGarage({ level, vehicle, paint, style, names, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onCtl, onClose, embedded }: Props) {
+export function DriveGarage({ level, vehicle, paint, style, names, quality, autoTier, timeOfDay, weather, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onQuality, onTime, onWeather, onCtl, onClose, embedded }: Props) {
   const groundOnly = !!locked && PARTY_GAMES[locked].groundOnly;
   const [tiltError, setTiltError] = useState(false);
   const pickCtl = async (m: SteerMode) => {
@@ -104,6 +136,32 @@ export function DriveGarage({ level, vehicle, paint, style, names, fps, locked, 
       <div className="seg">
         <Button className={`btn small ${style === "real" ? "yellow" : "ghost"}`} onClick={() => onStyle("real")}>🏙️ {t("Realistic")}</Button>
         <Button className={`btn small ${style === "toon" ? "yellow" : "ghost"}`} onClick={() => onStyle("toon")}>🧸 {t("Cartoon")}</Button>
+      </div>
+      <b className="small">{t("Picture quality")}</b>
+      <div className="seg seg5 seg-fill" role="radiogroup" aria-label={t("Picture quality")}>
+        {QUALITY.map((q) => (
+          <Button key={q.key} role="radio" aria-checked={quality === q.key} className={`btn small ${quality === q.key ? "yellow" : "ghost"}`} onClick={() => onQuality(q.key)}>
+            {t(q.label)}
+          </Button>
+        ))}
+      </div>
+      {quality === "auto" && <p className="small muted">{t("Auto chose {tier} for this device, and steps down by itself if the frame rate drops.", { tier: t(TIER_LABEL[autoTier]) })}</p>}
+      <b className="small">{t("Time of day")}</b>
+      <div className="seg seg4 seg-fill" role="radiogroup" aria-label={t("Time of day")}>
+        {TIMES.map((o) => (
+          <Button key={o.key} role="radio" aria-checked={timeOfDay === o.key} className={`btn small ${timeOfDay === o.key ? "yellow" : "ghost"}`} onClick={() => onTime(o.key)}>
+            {o.icon} {t(o.label)}
+          </Button>
+        ))}
+      </div>
+      {timeOfDay === "live" && <p className="small muted">{t("The sun is where it really is over your streets right now: day, sunset and night as they happen.")}</p>}
+      <b className="small">{t("Weather")}</b>
+      <div className="seg seg3 seg-fill" role="radiogroup" aria-label={t("Weather")}>
+        {WEATHERS.map((o) => (
+          <Button key={o.key} role="radio" aria-checked={weather === o.key} className={`btn small ${weather === o.key ? "yellow" : "ghost"}`} onClick={() => onWeather(o.key)}>
+            {o.icon} {t(o.label)}
+          </Button>
+        ))}
       </div>
       <b className="small">{t("Street and shop names")}</b>
       <div className="seg" role="radiogroup" aria-label={t("Street and shop names")}>

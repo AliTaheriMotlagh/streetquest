@@ -3,6 +3,9 @@
 //  - "real": physically based materials, an atmospheric sky that lights and reflects
 //    off glass and water, asphalt, lane markings, street lamps that glow at night;
 //  - "toon": the storybook city — toon shading, pastel walls, lollipop trees.
+// What each tier adds (graphics/quality.ts): relief, glossy glass and grime on façades,
+// detailed asphalt and slabs that get wet with puddles in the rain, a cloud layer, trees
+// in the wind, light pools under the lamps at night.
 // Tile geometry arrives as plain arrays from the build workers (tileMesh.ts) and is only
 // wrapped in meshes here: a handful of draw calls per neighbourhood, props instanced.
 import * as THREE from "three";
@@ -12,6 +15,8 @@ import { rng } from "@/lib/geo";
 import { artFor } from "../art/emoji";
 import { ICONS } from "../art/icons";
 import { materialDefs, render } from "../art/kit";
+import { after, DISPLAY, displayReferred, patchShader, swap } from "./graphics/shaders";
+import { heightToNormal, surfaces } from "./graphics/surfaces";
 import { FACADES, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
 import { nameLines, oneLine, tradeOf } from "./trades";
 
@@ -19,7 +24,7 @@ export type Phase = "night" | "dawn" | "day" | "dusk";
 export type { Style };
 
 // ---------------------------------------------------------------- light per phase
-type Light = { top: string; horizon: string; ground: string; sun: string; sunI: number; hemi: number; hemiSky: string; fog: string; fogNear: number; fogFar: number; elev: number; exposure: number };
+export type Light = { top: string; horizon: string; ground: string; sun: string; sunI: number; hemi: number; hemiSky: string; fog: string; fogNear: number; fogFar: number; elev: number; exposure: number };
 export const LIGHT: Record<Style, Record<Phase, Light>> = {
   real: {
     day: { top: "#4f86c6", horizon: "#c9d9e6", ground: "#7a8262", sun: "#fff3e0", sunI: 3.1, hemi: 0.95, hemiSky: "#d6e6ff", fog: "#c3d2df", fogNear: 260, fogFar: 1100, elev: 48, exposure: 0.62 },
@@ -125,15 +130,26 @@ function facade(style: Style, lit: boolean) {
 function facadeLayers(lit: boolean) {
   const S = 256, B = S / 4;
   const data = new Uint8Array(S * S * 4 * FACADES.length);
+  // Surface (day layers only): per texel normal, roughness and metalness, from a relief
+  // painted alongside the picture — R height, G glass, B window frame.
+  const surf = lit ? null : new Uint8Array(S * S * 4 * FACADES.length);
   FACADES.forEach((kind, layer) => {
     const { g } = canvas(S);
     const mask = canvas(S);
     const m = mask.g;
+    const relief = canvas(S).g;
     const r = rng(lit ? 101 + layer : 31 + layer);
     g.fillStyle = lit ? "#000" : "#fff";
     g.fillRect(0, 0, S, S);
     m.fillStyle = "#000";
     m.fillRect(0, 0, S, S);
+    relief.fillStyle = "rgb(200,0,0)";
+    relief.fillRect(0, 0, S, S);
+    /** Relief: `h` height (0–255, wall 200), glass and frame flags. */
+    const hp = (x: number, y: number, w: number, h: number, height: number, glass = 0, frame = 0) => {
+      relief.fillStyle = `rgb(${height},${glass},${frame})`;
+      relief.fillRect(x, y, w, h);
+    };
     /** Painted in its own colour, not the wall's (glass, frames, mortar). */
     const own = (x: number, y: number, w: number, h: number, col: string) => {
       g.fillStyle = col;
@@ -145,8 +161,10 @@ function facadeLayers(lit: boolean) {
       // The wall between the windows, around white so the paint colour shows through.
       if (kind === "plaster")
         for (let i = 0; i < 900; i++) {
+          const x = r() * S, y = r() * S;
           g.fillStyle = `rgba(0,0,0,${0.02 + r() * 0.03})`;
-          g.fillRect(r() * S, r() * S, 2, 2);
+          g.fillRect(x, y, 2, 2);
+          hp(x, y, 2, 2, 186 + Math.floor(r() * 24));
         }
       if (kind === "brick")
         for (let y = 0; y < S; y += 5) {
@@ -154,8 +172,10 @@ function facadeLayers(lit: boolean) {
             const v = 222 + Math.floor(r() * 33);
             g.fillStyle = `rgb(${v},${v},${v})`;
             g.fillRect(x, y, 12, 4);
+            hp(x, y, 12, 4, 205 + Math.floor(r() * 18));
           }
           own(0, y + 4, S, 1, "#c9c3b8");
+          hp(0, y + 4, S, 1, 150);
         }
       if (kind === "stone")
         for (let y = 0; y < S; y += 16) {
@@ -163,18 +183,25 @@ function facadeLayers(lit: boolean) {
             const v = 232 + Math.floor(r() * 23);
             g.fillStyle = `rgb(${v},${v},${v - 4})`;
             g.fillRect(x + 1, y + 1, 39, 15);
+            hp(x + 1, y + 1, 39, 15, 206 + Math.floor(r() * 8));
             // Travertine's little holes and veins.
-            for (let k = 0; k < 6; k++) (g.fillStyle = "rgba(120,100,70,.18)"), g.fillRect(x + 2 + r() * 34, y + 2 + r() * 11, 2 + r() * 4, 1);
+            for (let k = 0; k < 6; k++) {
+              const hx = x + 2 + r() * 34, hy = y + 2 + r() * 11, hw = 2 + r() * 4;
+              (g.fillStyle = "rgba(120,100,70,.18)"), g.fillRect(hx, hy, hw, 1);
+              hp(hx, hy, hw, 1, 185);
+            }
           }
           g.fillStyle = "rgba(90,80,60,.28)";
           g.fillRect(0, y, S, 1);
+          hp(0, y, S, 1, 165);
         }
       if (kind === "concrete") {
-        for (let y = 0; y < S; y += 32) (g.fillStyle = "rgba(0,0,0,.16)"), g.fillRect(0, y, S, 2);
-        for (let x = 0; x < S; x += 64) (g.fillStyle = "rgba(0,0,0,.12)"), g.fillRect(x, 0, 2, S);
+        for (let y = 0; y < S; y += 32) (g.fillStyle = "rgba(0,0,0,.16)"), g.fillRect(0, y, S, 2), hp(0, y, S, 2, 160);
+        for (let x = 0; x < S; x += 64) (g.fillStyle = "rgba(0,0,0,.12)"), g.fillRect(x, 0, 2, S), hp(x, 0, 2, S, 160);
         for (let i = 0; i < 40; i++) (g.fillStyle = `rgba(60,60,60,${0.03 + r() * 0.05})`), g.fillRect(r() * S, r() * S, 3, 10 + r() * 30);
       }
-      if (kind === "metal") for (let y = 0; y < S; y += 6) (g.fillStyle = "rgba(0,0,0,.13)"), g.fillRect(0, y, S, 2);
+      if (kind === "metal") for (let y = 0; y < S; y += 6) (g.fillStyle = "rgba(0,0,0,.13)"), g.fillRect(0, y, S, 2), hp(0, y, S, 2, 165, 0, 255);
+      if (kind === "metal") for (let y = 0; y < S; y += 6) hp(0, y + 2, S, 4, 205, 0, 255);
     }
     for (let y = 0; y < 4; y++)
       for (let x = 0; x < 4; x++) {
@@ -188,13 +215,15 @@ function facadeLayers(lit: boolean) {
             continue;
           }
           own(wx - 2, wy - 2, ww + 4, wh + 2, "#2b2f35");
+          hp(wx - 2, wy - 2, ww + 4, wh + 2, 175, 0, 255);
           const grd = g.createLinearGradient(wx, wy, wx + ww, wy + wh);
           grd.addColorStop(0, "#7d93a8");
           grd.addColorStop(0.6, "#3a4756");
           grd.addColorStop(1, "#58697c");
           g.fillStyle = grd;
           g.fillRect(wx, wy, ww, wh);
-          if (x % 2) own(wx + ww - 18, wy + 4, 14, wh - 4, "#22262b");
+          hp(wx, wy, ww, wh, 125, 255);
+          if (x % 2) own(wx + ww - 18, wy + 4, 14, wh - 4, "#22262b"), hp(wx + ww - 18, wy + 4, 14, wh - 4, 118, 255);
           continue;
         }
         if (kind === "metal") {
@@ -202,7 +231,7 @@ function facadeLayers(lit: boolean) {
           if (y % 2) continue;
           const wx = bx + 6, wy = by + 10, ww = B - 12, wh = 12;
           if (lit) (g.fillStyle = r() < 0.5 ? "#dfe8ff" : "#000"), g.fillRect(wx, wy, ww, wh);
-          else own(wx, wy, ww, wh, "#4a5868");
+          else own(wx, wy, ww, wh, "#4a5868"), hp(wx, wy, ww, wh, 150, 255);
           continue;
         }
         const wx = bx + 15, wy = by + 13, ww = 34, wh = 38;
@@ -213,16 +242,22 @@ function facadeLayers(lit: boolean) {
           continue;
         }
         // Frame (white on brick and plaster, dark aluminium on stone and concrete), glass, a sill.
-        own(wx - 3, wy - 3, ww + 6, wh + 6, kind === "stone" || kind === "concrete" ? "#5c636b" : "#e4e0d8");
+        const dark = kind === "stone" || kind === "concrete";
+        own(wx - 3, wy - 3, ww + 6, wh + 6, dark ? "#5c636b" : "#e4e0d8");
+        hp(wx - 5, wy - 5, ww + 10, wh + 10, 160); // the reveal: the opening is set into the wall
+        hp(wx - 3, wy - 3, ww + 6, wh + 6, 150, 0, 255);
         const grd = g.createLinearGradient(wx, wy, wx + ww, wy + wh);
         grd.addColorStop(0, "#5e7186");
         grd.addColorStop(0.55, "#2f3b48");
         grd.addColorStop(1, "#46566a");
         g.fillStyle = grd;
         g.fillRect(wx, wy, ww, wh);
+        hp(wx, wy, ww, wh, 105, 255);
         if (r() < 0.3) own(wx, wy, ww, wh * (0.25 + r() * 0.5), "rgba(225,214,190,.95)");
-        own(wx + ww / 2 - 1, wy, 2, wh, kind === "stone" || kind === "concrete" ? "#4a5058" : "#cfcac0");
+        own(wx + ww / 2 - 1, wy, 2, wh, dark ? "#4a5058" : "#cfcac0");
+        hp(wx + ww / 2 - 1, wy, 2, wh, 135, 0, 255);
         own(wx - 5, wy + wh + 2, ww + 10, 4, kind === "brick" ? "#d8d2c6" : "#bdb8ae");
+        hp(wx - 5, wy + wh + 2, ww + 10, 4, 240);
       }
     const rgb = g.getImageData(0, 0, S, S).data, a = m.getImageData(0, 0, S, S).data;
     const off = layer * S * S * 4;
@@ -231,6 +266,22 @@ function facadeLayers(lit: boolean) {
       data[off + i * 4 + 1] = rgb[i * 4 + 1];
       data[off + i * 4 + 2] = rgb[i * 4 + 2];
       data[off + i * 4 + 3] = lit ? 255 : 255 - a[i * 4];
+    }
+    if (surf) {
+      const rel = relief.getImageData(0, 0, S, S).data;
+      const h = new Float32Array(S * S);
+      for (let i = 0; i < S * S; i++) h[i] = rel[i * 4] / 255;
+      const n = heightToNormal(h, S, 9);
+      const wallRough = { plaster: 0.9, brick: 0.86, stone: 0.5, concrete: 0.92, metal: 0.4, shopfront: 0.85 }[kind];
+      const wallMetal = kind === "metal" ? 0.55 : 0;
+      for (let i = 0; i < S * S; i++) {
+        const glass = rel[i * 4 + 1] > 127, frame = rel[i * 4 + 2] > 127;
+        const o = off + i * 4;
+        surf[o] = Math.round((n[i * 2] * 0.5 + 0.5) * 255);
+        surf[o + 1] = Math.round((n[i * 2 + 1] * 0.5 + 0.5) * 255);
+        surf[o + 2] = Math.round((glass ? 0.04 : frame ? 0.42 : wallRough) * 255);
+        surf[o + 3] = Math.round((glass ? 0 : frame ? (kind === "stone" || kind === "concrete" || kind === "shopfront" || kind === "metal" ? 0.7 : 0.05) : wallMetal) * 255);
+      }
     }
   });
   const t = new THREE.DataArrayTexture(data, S, S, FACADES.length);
@@ -241,29 +292,71 @@ function facadeLayers(lit: boolean) {
   t.generateMipmaps = true;
   t.anisotropy = 4;
   t.needsUpdate = true;
-  return t;
+  if (!surf) return { tex: t, surf: null };
+  const st = new THREE.DataArrayTexture(surf, S, S, FACADES.length);
+  st.wrapS = st.wrapT = THREE.RepeatWrapping;
+  st.colorSpace = THREE.NoColorSpace;
+  st.minFilter = THREE.LinearMipmapLinearFilter;
+  st.magFilter = THREE.LinearFilter;
+  st.generateMipmaps = true;
+  st.anisotropy = 4;
+  st.needsUpdate = true;
+  return { tex: t, surf: st };
 }
+
+// ---------------------------------------------------------------- shared uniforms
+/** Uniforms every city material shares: the clock (wind), how wet the streets are, the wind's strength. */
+export const WORLD = { time: { value: 0 }, wet: { value: 0 }, wind: { value: 1 } };
+
+/** What the quality tier allows the materials (graphics/quality.ts Profile). */
+export type MaterialOpts = { surfaces: boolean; wind: boolean; lampPools: boolean; anisotropy: number };
+const PLAIN: MaterialOpts = { surfaces: false, wind: false, lampPools: false, anisotropy: 4 };
 
 /**
  * The real walls read their façade from `facadeLayers` by each vertex's `fac` (geometry
  * without it is plaster, layer 0). `map` and `emissiveMap` stay set so three.js keeps the
- * bay UVs and their repeat; the arrays replace what is sampled.
+ * bay UVs and their repeat; the arrays replace what is sampled. With `noise` (the surfaces
+ * tier) the façade also gets its relief, glass that reflects the sky, metal frames, grime
+ * toward the pavement, large soft weathering, and darkens when it rains.
  */
-function wearFacades(mat: THREE.MeshStandardMaterial) {
+function wearFacades(mat: THREE.MeshStandardMaterial, noise: THREE.Texture | null) {
   const base = facadeLayers(false), lit = facadeLayers(true);
-  mat.userData.textures = [base, lit];
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.facadeMap = { value: base };
-    sh.uniforms.facadeLit = { value: lit };
-    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute float fac;\nvarying float vFac;").replace("#include <uv_vertex>", "#include <uv_vertex>\nvFac = fac;");
-    sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform highp sampler2DArray facadeMap;\nuniform highp sampler2DArray facadeLit;\nvarying float vFac;\nvec4 facadeTexel;")
-      .replace("#include <map_fragment>", "facadeTexel = texture(facadeMap, vec3(vMapUv, floor(vFac + 0.5)));\ndiffuseColor.rgb *= facadeTexel.rgb;")
-      .replace("#include <color_fragment>", "diffuseColor.rgb *= mix(vec3(1.0), vColor, facadeTexel.a);")
-      .replace("#include <emissivemap_fragment>", "totalEmissiveRadiance *= texture(facadeLit, vec3(vEmissiveMapUv, floor(vFac + 0.5))).rgb;");
-  };
-  mat.customProgramCacheKey = () => "facade-layers-1";
-  return mat;
+  mat.userData.textures = [base.tex, lit.tex, ...(base.surf ? [base.surf] : [])];
+  const surf = noise ? base.surf : null;
+  if (surf) {
+    mat.normalMap = mat.map; // only so three.js builds the tangent frame; the array is sampled
+    mat.roughness = 1;
+    mat.metalness = 1;
+  }
+  return patchShader(mat, surf ? "facade-surf-1" : "facade-layers-1", (sh) => {
+    sh.uniforms.facadeMap = { value: base.tex };
+    sh.uniforms.facadeLit = { value: lit.tex };
+    sh.vertexShader = after(sh.vertexShader, "common", "attribute float fac;\nvarying float vFac;\nvarying vec3 vSqW;");
+    sh.vertexShader = after(sh.vertexShader, "uv_vertex", "vFac = fac;");
+    sh.vertexShader = after(sh.vertexShader, "project_vertex", "vSqW = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    let f = after(sh.fragmentShader, "common", "uniform highp sampler2DArray facadeMap;\nuniform highp sampler2DArray facadeLit;\nvarying float vFac;\nvarying vec3 vSqW;\nvec4 facadeTexel;");
+    f = swap(f, "map_fragment", "float sqLayer = floor(vFac + 0.5);\nfacadeTexel = texture(facadeMap, vec3(vMapUv, sqLayer));\ndiffuseColor.rgb *= facadeTexel.rgb;" + (surf ? "\nvec4 facadeS = texture(facadeSurf, vec3(vMapUv, sqLayer));" : ""));
+    f = swap(f, "color_fragment", "diffuseColor.rgb *= mix(vec3(1.0), vColor, facadeTexel.a);");
+    f = swap(f, "emissivemap_fragment", "totalEmissiveRadiance *= texture(facadeLit, vec3(vEmissiveMapUv, floor(vFac + 0.5))).rgb;");
+    if (surf) {
+      sh.uniforms.facadeSurf = { value: surf };
+      sh.uniforms.sqNoise = { value: noise };
+      sh.uniforms.sqWet = WORLD.wet;
+      f = after(f, "common", "uniform highp sampler2DArray facadeSurf;\nuniform sampler2D sqNoise;\nuniform float sqWet;");
+      f = f.replace(
+        "diffuseColor.rgb *= mix(vec3(1.0), vColor, facadeTexel.a);",
+        `diffuseColor.rgb *= mix(vec3(1.0), vColor, facadeTexel.a);
+float sqWall = facadeTexel.a;
+float sqN = texture2D(sqNoise, vSqW.xz * 0.011 + vec2(vSqW.y * 0.006, 0.0)).r;
+float sqGrime = (1.0 - smoothstep(0.2, 2.8, vSqW.y)) * 0.24 + max(sqN - 0.45, 0.0) * 0.34;
+diffuseColor.rgb *= 1.0 - sqWall * (sqGrime + 0.2 * sqWet);`,
+      );
+      f = swap(f, "roughnessmap_fragment", "float roughnessFactor = mix(facadeS.b, 0.35, sqWet * sqWall * 0.6);");
+      f = swap(f, "metalnessmap_fragment", "float metalnessFactor = facadeS.a;");
+      f = swap(f, "normal_fragment_maps", "vec3 mapN = vec3(facadeS.xy * 2.0 - 1.0, 0.0);\nmapN.z = sqrt(max(1e-4, 1.0 - dot(mapN.xy, mapN.xy)));\nnormal = normalize(tbn * mapN);");
+    }
+    sh.fragmentShader = f;
+  });
 }
 
 /**
@@ -271,16 +364,108 @@ function wearFacades(mat: THREE.MeshStandardMaterial) {
  * so a chase camera down a street lined with trees never looks out from inside one.
  */
 function clearNearCamera<T extends THREE.Material>(mat: T, r = 3.2) {
-  mat.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vNearW;")
-      .replace("#include <project_vertex>", "#include <project_vertex>\nvec4 nearW = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nnearW = instanceMatrix * nearW;\n#endif\nvNearW = (modelMatrix * nearW).xyz;");
-    sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vNearW;")
-      .replace("void main() {", `void main() {\nfloat nearD = distance(vNearW, cameraPosition) - ${r.toFixed(2)};\nif (nearD < 0.0 || (nearD < 1.0 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > nearD)) discard;`);
-  };
-  mat.customProgramCacheKey = () => `clear-near-camera-${r}`;
-  return mat;
+  return patchShader(mat, `clear-near-camera-${r}`, (sh) => {
+    sh.vertexShader = after(sh.vertexShader, "common", "varying vec3 vNearW;");
+    sh.vertexShader = after(sh.vertexShader, "project_vertex", "vec4 nearW = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nnearW = instanceMatrix * nearW;\n#endif\nvNearW = (modelMatrix * nearW).xyz;");
+    sh.fragmentShader = after(sh.fragmentShader, "common", "varying vec3 vNearW;");
+    sh.fragmentShader = after(sh.fragmentShader, "void main() {", `float nearD = distance(vNearW, cameraPosition) - ${r.toFixed(2)};\nif (nearD < 0.0 || (nearD < 1.0 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > nearD)) discard;`);
+  });
+}
+
+/** Trees sway, each to its own beat (phase from where it stands), leaves flutter; stronger in the rain. */
+function windy<T extends THREE.Material>(mat: T) {
+  return patchShader(mat, "wind", (sh) => {
+    sh.uniforms.sqTime = WORLD.time;
+    sh.uniforms.sqWind = WORLD.wind;
+    sh.vertexShader = after(sh.vertexShader, "common", "uniform float sqTime;\nuniform float sqWind;");
+    sh.vertexShader = after(
+      sh.vertexShader,
+      "begin_vertex",
+      `#ifdef USE_INSTANCING
+vec2 sqRoot = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
+#else
+vec2 sqRoot = vec2(0.0);
+#endif
+float sqH = max(transformed.y - 2.0, 0.0);
+float sqPh = dot(sqRoot, vec2(0.37, 0.23));
+transformed.x += (sin(sqTime * 1.4 + sqPh) * 0.6 + sin(sqTime * 2.3 + sqPh * 1.7) * 0.4) * 0.035 * sqH * sqWind;
+transformed.z += cos(sqTime * 1.1 + sqPh * 0.8) * 0.025 * sqH * sqWind;
+transformed += 0.012 * sqH * sqWind * sin(sqTime * 6.0 + transformed.yzx * 3.0 + sqPh);`,
+    );
+  });
+}
+
+/**
+ * Large-scale tone variation (so a park or a roof isn't one flat colour) and the rain: wet
+ * surfaces darken and turn glossy. `macro`: world-space frequency of the variation (0: none).
+ */
+function weathered<T extends THREE.MeshStandardMaterial>(mat: T, noise: THREE.Texture | null, o: { macro?: number; darken: number; rough: number }) {
+  const macro = noise && o.macro ? o.macro : 0;
+  return patchShader(mat, `weather-${macro}-${o.darken}-${o.rough}`, (sh) => {
+    sh.uniforms.sqWet = WORLD.wet;
+    let v = sh.vertexShader, f = sh.fragmentShader;
+    f = after(f, "common", "uniform float sqWet;");
+    if (macro) {
+      sh.uniforms.sqNoise = { value: noise };
+      v = after(v, "common", "varying vec3 vSqW;");
+      v = after(v, "project_vertex", "vec4 sqW4 = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nsqW4 = instanceMatrix * sqW4;\n#endif\nvSqW = (modelMatrix * sqW4).xyz;");
+      f = after(f, "common", "uniform sampler2D sqNoise;\nvarying vec3 vSqW;");
+      f = after(f, "color_fragment", `diffuseColor.rgb *= 0.84 + 0.32 * texture2D(sqNoise, vSqW.xz * ${macro.toFixed(4)}).r;`);
+    }
+    f = after(f, "color_fragment", `diffuseColor.rgb *= 1.0 - sqWet * ${o.darken.toFixed(3)};`);
+    f = after(f, "roughnessmap_fragment", `roughnessFactor = mix(roughnessFactor, ${o.rough.toFixed(3)}, sqWet);`);
+    sh.vertexShader = v;
+    sh.fragmentShader = f;
+  });
+}
+
+/**
+ * Asphalt and pavements in detail: world-planar asphalt (aggregate, cracks, patches) on the
+ * dark surfaces and 50 cm slabs on the light ones (the vertex colour tells them apart),
+ * large-scale wear, and in the rain a wet sheen with puddles that mirror the sky.
+ */
+function streetSurface(mat: THREE.MeshStandardMaterial, s: { asphalt: THREE.Texture; paving: THREE.Texture; noise: THREE.Texture }) {
+  return patchShader(mat, "street-surface-1", (sh) => {
+    Object.assign(sh.uniforms, { sqAsph: { value: s.asphalt }, sqPave: { value: s.paving }, sqNoise: { value: s.noise }, sqWet: WORLD.wet });
+    sh.vertexShader = after(sh.vertexShader, "common", "varying vec3 vSqW;");
+    sh.vertexShader = after(sh.vertexShader, "project_vertex", "vSqW = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    let f = after(sh.fragmentShader, "common", "uniform sampler2D sqAsph;\nuniform sampler2D sqPave;\nuniform sampler2D sqNoise;\nuniform float sqWet;\nvarying vec3 vSqW;");
+    f = after(
+      f,
+      "color_fragment",
+      `float sqLum = dot(vColor, vec3(0.2126, 0.7152, 0.0722));
+float sqPaved = smoothstep(0.16, 0.3, sqLum);
+vec4 sqS = mix(texture2D(sqAsph, vSqW.xz * 0.25), texture2D(sqPave, vSqW.xz * 0.5), sqPaved);
+vec4 sqN = texture2D(sqNoise, vSqW.xz * 0.019);
+diffuseColor.rgb *= sqS.a * 2.0 * (0.86 + 0.28 * sqN.r);
+float sqPud = smoothstep(0.62, 0.68, sqN.g + (sqS.a - 0.5) * 0.15) * sqWet * (1.0 - 0.7 * sqPaved);
+diffuseColor.rgb *= 1.0 - sqWet * 0.42 - sqPud * 0.15;`,
+    );
+    f = swap(f, "roughnessmap_fragment", "float roughnessFactor = sqS.b * (0.92 + 0.16 * sqN.b);\nroughnessFactor = mix(roughnessFactor, 0.3, sqWet * 0.8);\nroughnessFactor = mix(roughnessFactor, 0.06, sqPud);");
+    f = after(
+      f,
+      "normal_fragment_maps",
+      `vec3 sqUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+vec3 sqTx = normalize((viewMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz), sqTz = normalize((viewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+vec2 sqD = sqS.xy * 2.0 - 1.0;
+vec3 sqP = normalize(sqTx * sqD.x + sqTz * sqD.y + sqUp * sqrt(max(1e-4, 1.0 - dot(sqD, sqD))));
+normal = normalize(mix(normal, sqP, smoothstep(0.8, 0.95, dot(normal, sqUp)) * (1.0 - sqPud)));`,
+    );
+    sh.fragmentShader = f;
+  });
+}
+
+/** A soft round glow for the light under a street lamp at night. */
+function poolTexture() {
+  const S = 128;
+  const { c, g } = canvas(S);
+  const grd = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  for (let i = 0; i <= 8; i++) grd.addColorStop(i / 8, `rgba(255,255,255,${Math.pow(1 - i / 8, 1.7).toFixed(3)})`);
+  g.fillStyle = grd;
+  g.fillRect(0, 0, S, S);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /** Glass curtain wall: panels and mullions; lit panels at night. */
@@ -329,9 +514,12 @@ function grain(lo: number, speckle: number, seed: number) {
 
 // ---------------------------------------------------------------- materials
 export type Materials = ReturnType<typeof makeMaterials>;
-export function makeMaterials(style: Style) {
+export function makeMaterials(style: Style, opts: MaterialOpts = PLAIN) {
   const off = (f: number) => ({ polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f });
+  // The glow under each street lamp at night (both styles); invisible by day.
+  const pool = new THREE.MeshBasicMaterial({ map: poolTexture(), color: "#ffc27a", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, ...off(-4) });
   if (style === "toon") {
+    const trees = clearNearCamera(toon({ vertexColors: true }));
     const m = {
       walls: toon({ map: facade("toon", false), vertexColors: true, emissiveMap: facade("toon", true), emissive: new THREE.Color("#ffcf6b"), emissiveIntensity: 0 }),
       glass: toon({ map: facade("toon", false), vertexColors: true }),
@@ -340,30 +528,40 @@ export function makeMaterials(style: Style) {
       marks: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, ...off(-3) }),
       ground: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, ...off(-1) }),
       water: new THREE.MeshPhongMaterial({ color: "#52b8ef", side: THREE.DoubleSide, shininess: 90, specular: new THREE.Color("#ffffff"), transparent: true, opacity: 0.92, ...off(-1) }),
-      trees: clearNearCamera(toon({ vertexColors: true })),
+      trees: opts.wind ? windy(trees) : trees,
       props: toon({ vertexColors: true }),
       glow: new THREE.MeshBasicMaterial({ color: "#fff2c0" }),
+      pool,
     };
-    return withDispose(m);
+    return withDispose(m, { pools: opts.lampPools, release: () => {} });
   }
+  const s = opts.surfaces ? surfaces(opts.anisotropy) : null;
+  const noise = s?.noise ?? null;
+  const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(o);
+  const trees = weathered(clearNearCamera(std({ vertexColors: true, roughness: 0.92, flatShading: true })), null, { darken: 0.18, rough: 0.55 });
   const m = {
-    walls: wearFacades(new THREE.MeshStandardMaterial({ map: facade("real", false), vertexColors: true, roughness: 0.86, metalness: 0, emissiveMap: facade("real", true), emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 0 })),
-    glass: new THREE.MeshStandardMaterial({ map: curtain(false), vertexColors: true, roughness: 0.12, metalness: 0.75, emissiveMap: curtain(true), emissive: new THREE.Color("#ffe6b8"), emissiveIntensity: 0, envMapIntensity: 1.2 }),
-    roofs: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }),
-    roads: new THREE.MeshStandardMaterial({ vertexColors: true, map: grain(0.8, 0.06, 21), roughness: 0.93, side: THREE.DoubleSide, ...off(-2) }),
-    marks: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }),
-    ground: new THREE.MeshStandardMaterial({ vertexColors: true, map: grain(0.78, 0.02, 33), roughness: 1, side: THREE.DoubleSide, ...off(-1) }),
-    water: new THREE.MeshStandardMaterial({ color: "#2f5f7c", roughness: 0.06, metalness: 0.35, side: THREE.DoubleSide, transparent: true, opacity: 0.94, ...off(-1) }),
-    trees: clearNearCamera(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true })),
-    props: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.35 }),
+    walls: wearFacades(std({ map: facade("real", false), vertexColors: true, roughness: 0.86, metalness: 0, emissiveMap: facade("real", true), emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 0 }), noise),
+    glass: weathered(std({ map: curtain(false), vertexColors: true, roughness: s ? 0.06 : 0.12, metalness: s ? 0.6 : 0.75, emissiveMap: curtain(true), emissive: new THREE.Color("#ffe6b8"), emissiveIntensity: 0, envMapIntensity: s ? 1.35 : 1.2 }), null, { darken: 0.05, rough: 0.04 }),
+    roofs: weathered(std({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }), noise, { macro: 0.03, darken: 0.3, rough: 0.4 }),
+    roads: s
+      ? streetSurface(std({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, ...off(-2) }), s)
+      : std({ vertexColors: true, map: grain(0.8, 0.06, 21), roughness: 0.93, side: THREE.DoubleSide, ...off(-2) }),
+    marks: weathered(std({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }), null, { darken: 0.25, rough: 0.22 }),
+    ground: weathered(std({ vertexColors: true, map: grain(0.78, 0.02, 33), roughness: 1, side: THREE.DoubleSide, ...off(-1) }), noise, { macro: 0.012, darken: 0.32, rough: 0.6 }),
+    water: std({ color: "#2f5f7c", roughness: 0.06, metalness: 0.35, side: THREE.DoubleSide, transparent: true, opacity: 0.94, ...off(-1) }),
+    trees: opts.wind ? windy(trees) : trees,
+    props: weathered(std({ vertexColors: true, roughness: 0.55, metalness: 0.35 }), null, { darken: 0.15, rough: 0.25 }),
     glow: new THREE.MeshBasicMaterial({ color: "#6b6150" }),
+    pool,
   };
-  return withDispose(m);
+  return withDispose(m, { pools: opts.lampPools, release: () => s?.release() });
 }
 
-function withDispose<T extends Record<string, THREE.Material>>(m: T) {
+function withDispose<T extends Record<string, THREE.Material>>(m: T, extra: { pools: boolean; release: () => void }) {
   return {
     ...m,
+    /** Lamps throw light pools at night. */
+    pools: extra.pools,
     dispose() {
       for (const mat of Object.values(m)) {
         const s = mat as THREE.MeshStandardMaterial;
@@ -372,15 +570,20 @@ function withDispose<T extends Record<string, THREE.Material>>(m: T) {
         for (const tex of (s.userData.textures as THREE.Texture[] | undefined) ?? []) tex.dispose();
         mat.dispose();
       }
+      extra.release();
     },
   };
 }
 
-/** Lit windows and street lamps: 0 by day, 1 at night. */
+/** Lit windows, street lamps and the light they throw: 0 by day, 1 at night. */
 export function setNight(mats: Materials, style: Style, night: number) {
   mats.walls.emissiveIntensity = night * (style === "real" ? 1.6 : 1.1);
   if ("emissiveIntensity" in mats.glass) mats.glass.emissiveIntensity = night * 0.9;
+  // Lamp heads glow brighter than white at night (the HDR pipeline blooms them).
   mats.glow.color.set(night > 0.3 ? "#ffd58a" : style === "real" ? "#6b6150" : "#fff2c0");
+  if (night > 0.3) mats.glow.color.multiplyScalar(1 + 3 * night);
+  mats.pool.opacity = Math.max(0, Math.min(1, (night - 0.3) / 0.6)) * (style === "real" ? 0.6 : 0.4);
+  mats.pool.visible = mats.pool.opacity > 0.001;
 }
 
 // ---------------------------------------------------------------- sky
@@ -410,13 +613,51 @@ function gradientSky() {
   return { mesh, mat };
 }
 
+/** Cloud layer of the realistic sky: soft noise projected on a plane far overhead, lit by the sun, drifting. */
+function cloudDome(noise: THREE.Texture) {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    uniforms: { tNoise: { value: noise }, uCover: { value: 0.3 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color() }, uAmb: { value: new THREE.Color() } },
+    vertexShader: "varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `uniform sampler2D tNoise; uniform float uCover; uniform float uTime; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmb; varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        if (d.y <= 0.0) discard;
+        vec2 p = d.xz / (d.y + 0.12) * 0.32 + vec2(uTime * 0.0035, uTime * 0.0012);
+        float n = texture2D(tNoise, p * 0.23).r * 0.62 + texture2D(tNoise, p * 0.81 + 0.37).g * 0.28 + texture2D(tNoise, p * 2.9).b * 0.1;
+        float c = smoothstep(1.0 - uCover, 1.0 - uCover + 0.3, n);
+        float a = c * smoothstep(0.015, 0.2, d.y) * 0.96;
+        float toSun = pow(max(dot(d, uSunDir), 0.0), 5.0);
+        vec3 col = mix(uAmb, uSunCol, 0.45 + 0.55 * toSun) * (1.0 - 0.38 * c * c);
+        gl_FragColor = vec4(col, a);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(950, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -1.5;
+  return { mesh, mat };
+}
+
+/** Everything the sky and its light need for one moment: the (blended) light table, where the sun is, how dark and how grey it is. */
+export type SkyState = { L: Light; sunDir: THREE.Vector3; night: number; overcast: number; cover: number };
+
 /**
  * The sky dome, its lighting and (real style) the environment map that glass, paint and
- * water reflect. `apply(phase)` re-lights everything for the time of day.
+ * water reflect. `apply(state)` re-lights everything for the time of day and weather; the
+ * environment map is only re-rendered when the sky has visibly changed.
  */
-export function makeSkySystem(renderer: THREE.WebGLRenderer, scene: THREE.Scene, style: Style) {
+export function makeSkySystem(renderer: THREE.WebGLRenderer, scene: THREE.Scene, style: Style, opts: { noise?: THREE.Texture | null } = {}) {
   const grad = gradientSky();
-  // The sky first, then the mountain skyline (renderOrder −1, skyline.ts), then the city.
+  displayReferred(grad.mat, true);
+  // The sky first, then the clouds, the mountain skyline (renderOrder −1, skyline.ts), then the city.
   grad.mesh.renderOrder = -2;
   scene.add(grad.mesh);
   let atmo: Sky | null = null;
@@ -425,60 +666,87 @@ export function makeSkySystem(renderer: THREE.WebGLRenderer, scene: THREE.Scene,
     atmo.scale.setScalar(1800);
     atmo.frustumCulled = false;
     atmo.renderOrder = -2;
-    const u = atmo.material.uniforms;
-    u.turbidity.value = 6;
-    u.rayleigh.value = 1.4;
-    u.mieCoefficient.value = 0.004;
-    u.mieDirectionalG.value = 0.85;
     scene.add(atmo);
   }
-  const sunDir = new THREE.Vector3();
+  const clouds = style === "real" && opts.noise ? cloudDome(opts.noise) : null;
+  if (clouds) scene.add(clouds.mesh);
   const pmrem = style === "real" ? new THREE.PMREMGenerator(renderer) : null;
   let env: THREE.WebGLRenderTarget | null = null;
+  let envKey = "";
+  let cloudsOn = true;
 
-  const apply = (phase: Phase) => {
-    const L = LIGHT[style][phase];
-    const el = THREE.MathUtils.degToRad(L.elev), az = THREE.MathUtils.degToRad(phase === "dusk" ? 250 : phase === "dawn" ? 110 : 200);
-    sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+  const apply = ({ L, sunDir, night, overcast, cover }: SkyState) => {
     grad.mat.uniforms.top.value.set(L.top);
     grad.mat.uniforms.horizon.value.set(L.horizon);
     grad.mat.uniforms.sunCol.value.set(L.sun);
     grad.mat.uniforms.sunDir.value.copy(sunDir);
-    grad.mat.uniforms.stars.value = phase === "night" ? 1 : 0;
-    grad.mat.uniforms.sunSize.value = phase === "night" && style === "real" ? 2400 : 600;
-    const atmoOn = !!atmo && phase !== "night";
+    grad.mat.uniforms.stars.value = Math.max(0, night - 0.6) / 0.4 * (1 - overcast);
+    grad.mat.uniforms.sunSize.value = night > 0.6 && style === "real" ? 2400 : 600;
+    // The atmosphere until the sun is well below the horizon, then the night gradient with stars.
+    const atmoOn = !!atmo && night < 0.85;
     if (atmo) {
       atmo.visible = atmoOn;
-      atmo.material.uniforms.sunPosition.value.copy(sunDir);
+      const u = atmo.material.uniforms;
+      u.sunPosition.value.copy(sunDir);
+      u.turbidity.value = 6 + 10 * overcast;
+      u.rayleigh.value = 1.4 - 0.9 * overcast;
+      u.mieCoefficient.value = 0.004 + 0.012 * overcast;
+      u.mieDirectionalG.value = 0.85 - 0.25 * overcast;
     }
     grad.mesh.visible = !atmoOn;
-    if (pmrem) {
-      // Reflections: render the sky alone into a prefiltered environment map.
-      const envScene = new THREE.Scene();
-      const sky = atmoOn ? atmo!.clone() : grad.mesh.clone();
-      sky.visible = true;
-      envScene.add(sky);
-      const next = pmrem.fromScene(envScene, 0, 0.1, 2000);
-      env?.dispose();
-      env = next;
-      scene.environment = env.texture;
-      scene.environmentIntensity = phase === "night" ? 0.35 : 0.9;
+    if (clouds) {
+      const u = clouds.mat.uniforms;
+      u.uCover.value = cover;
+      u.uSunDir.value.copy(sunDir);
+      u.uSunCol.value.set(L.sun).multiplyScalar(night > 0.6 ? 0.25 : 1.7 * (1 - 0.5 * overcast));
+      u.uAmb.value.set(L.hemiSky).lerp(new THREE.Color(L.fog), 0.5).multiplyScalar(night > 0.6 ? 0.12 : 0.9);
+      clouds.mesh.visible = cloudsOn && cover > 0.01;
     }
     renderer.toneMappingExposure = L.exposure;
-    return { L, sunDir };
+    if (pmrem) {
+      // Reflections: render the sky alone into a prefiltered environment map — only when it changed enough to see.
+      const q = (v: number) => Math.round(v * 20);
+      const key = [L.top, L.horizon, L.sun, atmoOn, q(sunDir.x), q(sunDir.y), q(sunDir.z), q(overcast), q(night)].join();
+      if (key !== envKey) {
+        envKey = key;
+        const envScene = new THREE.Scene();
+        const sky = atmoOn ? atmo!.clone() : grad.mesh.clone();
+        sky.visible = true;
+        envScene.add(sky);
+        const was = DISPLAY.post.value;
+        DISPLAY.post.value = 0; // the environment is light, not a picture
+        const next = pmrem.fromScene(envScene, 0, 0.1, 2000);
+        DISPLAY.post.value = was;
+        env?.dispose();
+        env = next;
+        scene.environment = env.texture;
+      }
+      scene.environmentIntensity = (night > 0.6 ? 0.3 : 0.6) * (1 - 0.3 * overcast);
+    }
   };
 
   return {
     apply,
-    follow(p: THREE.Vector3) {
+    /** The adaptive controller drops the cloud layer when frames are short. */
+    cloudsOn(on: boolean) {
+      cloudsOn = on;
+      if (clouds && !on) clouds.mesh.visible = false;
+    },
+    follow(p: THREE.Vector3, time: number) {
       grad.mesh.position.copy(p);
       atmo?.position.copy(p);
+      if (clouds) {
+        clouds.mesh.position.copy(p);
+        clouds.mat.uniforms.uTime.value = time;
+      }
     },
     dispose() {
       grad.mat.dispose();
       grad.mesh.geometry.dispose();
       atmo?.material.dispose();
       atmo?.geometry.dispose();
+      clouds?.mat.dispose();
+      clouds?.mesh.geometry.dispose();
       env?.dispose();
       pmrem?.dispose();
     },
@@ -545,6 +813,8 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(0.42, 0.14, 0.62), 0, 6.5, 1.6), metal),
   ])!;
   const lampHead = paint(at(new THREE.BoxGeometry(0.34, 0.05, 0.52), 0, 6.41, 1.6), "#ffffff");
+  // Where its light lands at night: a flat patch under the head, reaching a little into the street.
+  const pool = new THREE.PlaneGeometry(24, 24).rotateX(-Math.PI / 2).translate(0, 0.3, 2.0);
   // Traffic light: a pole and a head facing the road (+z); its three lamps are separate
   // (white, tinted per light by paintSignals) so they can show the phase.
   const signal = mergeGeometries([
@@ -599,7 +869,7 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(1.4, 0.12, 0.26), 0, 1.07, 0.82), "#ff6a13"),
     ...[-0.5, 0, 0.5].map((x, i) => paint(at(new THREE.BoxGeometry(0.3, 0.4, 0.03), x, 1.45, 0.7), ["#e8384f", "#f2c230", "#1f6feb"][i])),
   ])!;
-  const all = { tree, lamp, lampHead, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk };
+  const all = { tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk };
   return { ...all, dispose: () => Object.values(all).forEach((g) => g.dispose()) };
 }
 
@@ -681,6 +951,7 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
   for (const p of a.props) {
     inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree");
     if (p.kind === "lamp") inst(tpl.lampHead, mats.glow, { mats: p.mats, cols: null }, false);
+    if (p.kind === "lamp" && mats.pools) inst(tpl.pool, mats.pool, { mats: p.mats, cols: null }, false);
   }
   const lamps: THREE.InstancedMesh[] = [];
   for (const p of a.props)

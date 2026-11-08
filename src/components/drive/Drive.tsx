@@ -48,6 +48,12 @@ import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import { Crowd } from "./people";
 import { signalPhase } from "@/lib/traffic";
 import { Skyline } from "./skyline";
+import { GraphicsEngine } from "./graphics/engine";
+import { autoTier, forgetDemotion, qualityPick, setQualityPick, setTimePick, setWeatherPick, timePick, weatherPick } from "./graphics/caps";
+import type { QualityPick } from "./graphics/quality";
+import { surfaces } from "./graphics/surfaces";
+import { Rain } from "./graphics/weather";
+import { mixHex, mixRecord, phaseOf, skyFor, sunVector, WEATHER_LOOK, type TimePick, type Weather } from "@/lib/daylight";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
 import { NAME_MODES, type NameMode } from "./vectorTile";
@@ -60,8 +66,8 @@ import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./veh
 import { onCarModel, preloadCarModels } from "./carModels";
 import { drawnParts } from "./fleet3d";
 import {
-  makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, paintSignals, setNight, tileMeshes,
-  type Board, type Phase, type TileMeshes,
+  LIGHT, makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, paintSignals, setNight, tileMeshes, WORLD,
+  type Board, type Light, type Phase, type TileMeshes,
 } from "./world3d";
 
 type Props = {
@@ -121,12 +127,13 @@ type Hud = {
   serverNow: number;
 };
 
+/** My vehicle's lamp colours (scaled past white when lit, for the HDR pipeline's bloom). */
+const LAMP = { brake: new THREE.Color("#ff2a3d"), tail: new THREE.Color("#5a0d16"), tailNight: new THREE.Color("#9a1424"), head: new THREE.Color("#fff6d8") };
 const VEHICLE_KEY = "sq_vehicle";
 const COLOR_KEY = "sq_car_color";
 const STYLE_KEY = "sq_drive_style";
 const LOAD_M = 600; // load tiles whose box is this close
 const DROP_M = 1150; // and drop them past this
-const DETAIL_M = 320; // street furniture only this close
 const LOOT_PICKUP_M = 16;
 const CAMS: CamMode[] = ["cockpit", "chase", "far", "top"];
 const CAM_KEY = "sq_drive_cam";
@@ -182,6 +189,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     return () => window.removeEventListener("pointerdown", on);
   }, [touch]);
   const [style, setStyle] = useState<Style>(() => (store.get(STYLE_KEY) === "toon" ? "toon" : "real"));
+  // Graphics quality (rebuilds the scene), time of day and weather (live): graphics/caps.ts keeps them.
+  const [quality, setQuality] = useState<QualityPick>(() => qualityPick());
+  const [timeOfDay, setTimeOfDay] = useState<TimePick>(() => timePick());
+  const [weather, setWeather] = useState<Weather>(() => weatherPick());
   const [vehicle, setVehicle] = useState<VehicleKey>(() => allowedVehicle(store.get(VEHICLE_KEY), me?.level ?? 1));
   const [paint, setPaint] = useState(() => {
     const c = store.get(COLOR_KEY);
@@ -234,8 +245,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
    * action button; pickups and check-ins you merely drive past don't pop one up. */
   const wanted = useRef<string | null>(null);
   // Latest props/context for the render loop (it lives as long as the component).
-  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim, toast, touch });
-  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim, toast, touch };
+  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather });
+  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather };
   const api3d = useRef<{
     setGoal: (p: LatLng | null) => void;
     cycleCam: () => void;
@@ -271,32 +282,26 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const st0 = { lastReport: 0, reported: { x: st.x, z: st.z }, bumpAt: 0 };
 
     // ---- renderer & scene
-    const renderer = new THREE.WebGLRenderer({ antialias: !lite, powerPreference: "high-performance" });
-    const maxDpr = Math.min(window.devicePixelRatio || 1, lite ? 1 : 1.75);
-    let dpr = maxDpr;
-    renderer.setPixelRatio(dpr);
-    renderer.setSize(el.clientWidth, el.clientHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    let shadows = !lite;
-    renderer.shadowMap.enabled = shadows;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    el.appendChild(renderer.domElement);
+    // graphics/engine.ts: the quality tier, dynamic resolution, the HDR pipeline (high/ultra).
+    const gfx = new GraphicsEngine(el, { lite, direct: style === "toon" });
+    const renderer = gfx.renderer;
+    let prof = gfx.profile;
+    let shadows = prof.shadows;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(62, el.clientWidth / el.clientHeight, 0.5, 2400);
-    const sky = makeSkySystem(renderer, scene, style);
+    // Shared procedural detail (graphics/surfaces.ts) for the realistic sky's cloud layer.
+    const skyNoise = style === "real" && prof.clouds ? surfaces(prof.anisotropy) : null;
+    const sky = makeSkySystem(renderer, scene, style, { noise: skyNoise?.noise });
+    /** The fog's colour as it should look on screen (the scene's fog may be the HDR equivalent). */
+    const fogShown = new THREE.Color("#c3d2df");
     // The real mountains on the horizon, from elevation data.
-    const skyline = new Skyline(frame, () => (scene.fog as THREE.Fog | null)?.color ?? new THREE.Color("#c3d2df"), lite);
+    const skyline = new Skyline(frame, () => fogShown, lite);
     scene.add(skyline.group);
     const hemi = new THREE.HemisphereLight("#ffffff", "#88aa77", 1);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight("#ffffff", 2);
-    sun.castShadow = shadows;
-    sun.shadow.mapSize.set(lite ? 1024 : 2048, lite ? 1024 : 2048);
-    Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 1, far: 500 });
-    sun.shadow.bias = -0.0006;
-    sun.shadow.normalBias = 0.6;
+    gfx.shadeSun(sun);
     scene.add(sun, sun.target);
     const groundMat = style === "real" ? new THREE.MeshStandardMaterial({ color: "#7a8262", roughness: 1 }) : new THREE.MeshLambertMaterial({ color: "#9bd27f" });
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), groundMat);
@@ -305,7 +310,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     scene.add(ground);
     const clouds = style === "toon" ? makeClouds(lite ? 8 : 18) : null;
     if (clouds) scene.add(clouds.group);
-    const mats = makeMaterials(style);
+    const mats = makeMaterials(style, { surfaces: prof.surfaces, wind: prof.wind, lampPools: prof.lampPools, anisotropy: prof.anisotropy });
+    // Rain streaks around the camera (shown in rainy weather).
+    const rain = new Rain(prof.rainDrops);
+    scene.add(rain.mesh);
     const tpl = makeTemplates(style);
     const collision = new CollisionWorld();
     // Street furniture apart from the buildings: it stops the vehicle, but never the
@@ -323,7 +331,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     if (dustN) scene.add(dust);
 
     // ---- my vehicle
-    let model: VehicleModel = makeVehicle(live.current.vehicle, live.current.paint, style, { lights: true, shadows });
+    let model: VehicleModel = makeVehicle(live.current.vehicle, live.current.paint, style, { lights: true, shadows, clearcoat: prof.clearcoat });
     scene.add(model.group);
     // First person: the view from the driver's seat replaces the body.
     let cockpit: Cockpit = makeCockpit(live.current.vehicle, live.current.paint, style);
@@ -338,7 +346,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (want === modelKey) return;
       scene.remove(model.group);
       model.dispose();
-      model = makeVehicle(currentKey(), live.current.paint, style, { lights: true, shadows });
+      model = makeVehicle(currentKey(), live.current.paint, style, { lights: true, shadows, clearcoat: prof.clearcoat });
       scene.add(model.group);
       cockpit.dispose();
       cockpit = makeCockpit(currentKey(), live.current.paint, style);
@@ -442,7 +450,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           labelsDirty = true;
           continue;
         }
-        if (s.mesh) s.mesh.detail.visible = s.dist < (lite ? DETAIL_M * 0.6 : DETAIL_M);
+        if (s.mesh) s.mesh.detail.visible = s.dist < prof.detailM;
       }
     };
 
@@ -486,7 +494,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (slot.mesh) (scene.remove(slot.mesh.group), slot.mesh.dispose());
       slot.mesh = job.mesh;
       slot.data = job.data;
-      job.mesh.detail.visible = slot.dist < DETAIL_M;
+      job.mesh.detail.visible = slot.dist < prof.detailM;
       scene.add(job.mesh.group);
       collision.add(job.key, job.mesh.footprints);
       obstacles.add(job.key, job.mesh.obstacles);
@@ -564,7 +572,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const others = new Others(scene, frame, style, lite);
     // Live traffic: street speeds for the minimap and the cars on the streets.
     const feed = new TrafficFeed();
-    const traffic = new TrafficCars(scene, frame, feed, style, lite);
+    // Clear-coated paint on every car in traffic only on ultra (instanced, but many pixels).
+    const traffic = new TrafficCars(scene, frame, feed, style, lite, { clearcoat: prof.clearcoat && prof.tier === "ultra" });
     // The street cars' real 3D models download in the background (traffic shows drawn ones
     // until then); when my own car's lands, it's rebuilt with it.
     preloadCarModels(drawnParts);
@@ -729,7 +738,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
       want.sort((a, b) => a.d - b.d);
       const pxPerUnit = renderer.domElement.height / 2 / Math.tan((camera.fov * Math.PI) / 360);
-      pins.set(want.slice(0, lite ? 90 : 240), pxPerUnit, dpr);
+      pins.set(want.slice(0, lite ? 90 : 240), pxPerUnit, gfx.dpr);
     };
 
     /** The Places list (only while it's open): shops on the map, players' shops, businesses. */
@@ -1175,36 +1184,97 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- the loop
     let last = performance.now();
     let wasLow = true;
-    let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, lastQuality = performance.now(), frames = 0, fps = 60, goodFor = 0, lastWorld: World | null = null;
+    let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, fps = 60, lastWorld: World | null = null;
     let phase: Phase = "day";
+    /** 0 by day … 1 at night (blended through dusk and dawn). */
+    let night = 0;
     let streetName: string | null = null;
     const maxV = () => (Math.max(10, S.driveSpeedKmh) / 3.6) * 0.95 * def().speed;
 
-    const sunDir = new THREE.Vector3(0.3, 0.8, 0.5);
-    const applyPhase = (p: Phase) => {
-      phase = p;
-      const { L, sunDir: dir } = sky.apply(p);
-      // Keep shadows readable when the sun is near the horizon.
-      sunDir.copy(dir).setY(Math.max(dir.y, 0.35)).normalize();
-      scene.fog = new THREE.Fog(L.fog, L.fogNear, lite ? Math.min(L.fogFar, 650) : L.fogFar);
-      renderer.setClearColor(L.fog);
+    // ---- time of day & weather (src/lib/daylight.ts): the sky, its light, fog, wet streets, rain
+    const sunDir = new THREE.Vector3(0.3, 0.8, 0.5); // the light's direction (kept high enough for readable shadows)
+    const skyDir = new THREE.Vector3(); // where the sun (or moon) really is in the sky
+    const vec3 = [0, 0, 0];
+    let skyKey = "", lastSky = 0, wet = -1, wetTarget = 0, rainAmount = 0;
+    let skyPick = live.current.timeOfDay, skyWeather = live.current.weather;
+    const rainTint = new THREE.Color();
+    const applySky = (force = false) => {
+      const { timeOfDay: pick, weather: w } = live.current;
+      const here = frame.toLatLng(st.x, st.z);
+      const s = skyFor(pick, new Date(), here.lat, here.lng);
+      const key = [pick, w, Math.round(s.elevation * 2), Math.round(s.azimuth / 2)].join();
+      if (!force && key === skyKey) return;
+      skyKey = key;
+      const W = WEATHER_LOOK[w];
+      let L: Light = mixRecord(LIGHT[style][s.a], LIGHT[style][s.b], s.t);
+      if (W.overcast) {
+        // Overcast: the sky and its light go grey (dark grey at night), the sun's light is diffused.
+        const k = W.overcast, dark = s.night > 0.6;
+        const grey = (c: string, day: string) => mixHex(c, dark ? "#1c212b" : day, k);
+        L = { ...L, top: grey(L.top, "#8f99a3"), horizon: grey(L.horizon, "#b7bec5"), fog: grey(L.fog, "#a9b1b9"), hemiSky: grey(L.hemiSky, "#cfd5da"), sunI: L.sunI * W.sun, hemi: L.hemi * (1 + 0.3 * k), fogNear: L.fogNear * W.fogNear, fogFar: L.fogFar * W.fogFar, exposure: L.exposure * (1 + 0.12 * k) };
+      }
+      if (s.live) {
+        // The real sun; below the horizon the moon stands opposite, high enough to light the streets.
+        if (s.elevation > -4) sunVector(s.elevation, s.azimuth, vec3);
+        else sunVector(35, (s.azimuth + 180) % 360, vec3);
+        skyDir.set(vec3[0], vec3[1], vec3[2]);
+      } else {
+        const el = THREE.MathUtils.degToRad(L.elev), az = THREE.MathUtils.degToRad(s.azimuth);
+        skyDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+      }
+      sunDir.copy(skyDir).setY(Math.max(skyDir.y, 0.3)).normalize();
+      // Realistic style: the sky's environment map already lights everything from all round, so
+      // the hemisphere fill is weaker and the sun a bit stronger — shade with depth, not flat.
+      // At night the fill stays (moonlit streets must stay readable).
+      if (style === "real") L = { ...L, hemi: L.hemi * (0.45 + 0.6 * s.night), sunI: L.sunI * 1.15, exposure: L.exposure * (1.15 + 0.1 * s.night) };
+      sky.apply({ L, sunDir: skyDir, night: s.night, overcast: W.overcast, cover: prof.clouds ? W.clouds : 0 });
+      fogShown.set(L.fog);
+      const fogColor = gfx.sceneColor(fogShown);
+      scene.fog = new THREE.Fog(fogColor, L.fogNear, Math.min(L.fogFar, prof.fogFar));
+      renderer.setClearColor(fogColor);
       hemi.intensity = L.hemi;
       hemi.color.set(L.hemiSky);
       hemi.groundColor.set(L.ground);
       sun.intensity = L.sunI;
       sun.color.set(L.sun);
       groundMat.color.set(L.ground);
-      const night = p === "night" ? 1 : p === "dusk" || p === "dawn" ? 0.45 : 0;
+      phase = phaseOf(s);
+      night = s.night;
       setNight(mats, style, night);
       landmarks.setNight(night);
+      traffic.setNight(night);
       boardNight = 0.15 + night * 0.85;
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
-      dustMat.opacity = p === "night" ? 0.95 : 0.35;
-      dustMat.color.set(p === "night" ? "#b8ff7a" : "#fff3b0");
+      dustMat.opacity = night > 0.6 ? 0.95 : 0.35;
+      dustMat.color.set(night > 0.6 ? "#b8ff7a" : "#fff3b0");
+      // Wet streets come and go over a few seconds; starting out in the rain they already are.
+      wetTarget = style === "real" ? W.wet : 0;
+      if (wet < 0) wet = wetTarget;
+      rainAmount = W.rain;
+      rainTint.set(night > 0.6 ? "#59626e" : W.overcast ? "#bcc6cf" : "#d4dde6");
+      WORLD.wind.value = 1 + 1.3 * W.rain;
+      // The final image (HDR pipeline): bloom mostly for lamps and windows at night, a warmer
+      // grade at golden hour, a cooler one at night, flatter and greyer in bad weather.
+      const G = gfx.grade, toonish = style === "toon";
+      G.bloom = (toonish ? 0.05 : 0.06) + 0.14 * night;
+      G.threshold = night > 0.5 ? 1.1 : 1.6;
+      G.saturation = toonish ? 1.04 : 1.08 - 0.22 * W.overcast;
+      G.contrast = toonish ? 1.02 : 1.06 - 0.04 * W.overcast;
+      G.vignette = 0.2 + 0.1 * night;
+      G.ao = 0.7;
+      const warm = !toonish && night > 0.2 && night < 0.6 ? 1 - Math.abs(night - 0.45) / 0.25 : 0;
+      G.tint.setRGB(1 + 0.05 * warm - 0.05 * Math.max(0, night - 0.6), 1, 1 - 0.06 * warm + 0.07 * Math.max(0, night - 0.6));
     };
-    // Always daylight in the 3D city: night scenes were too dark to see the streets, and
-    // the headlight and lit windows cost frames on phones.
-    applyPhase("day");
+    applySky(true);
+    gfx.onProfile((p) => {
+      // The adaptive controller gave something back or took it away.
+      prof = p;
+      shadows = p.shadows;
+      gfx.shadeSun(sun);
+      sky.cloudsOn(p.clouds);
+      applySky(true);
+    });
+    const camFwd = new THREE.Vector3();
 
     const tick = () => {
       if (disposed) return;
@@ -1331,10 +1401,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         blob.position.y = -st.alt + 0.12;
         blob.scale.setScalar(Math.max(0.3, 1 - st.alt / 80));
       }
-      model.brake.color.set(c.brake && vF > 0.3 ? "#ff2a3d" : "#5a0d16");
-      const dark = phase === "night" || phase === "dusk";
+      // Brake lamps blaze (brighter than white: the HDR pipeline blooms them); tail and head lamps glow at night.
+      if (c.brake && vF > 0.3) model.brake.color.copy(LAMP.brake).multiplyScalar(3.5);
+      else if (night > 0.3) model.brake.color.copy(LAMP.tailNight).multiplyScalar(1.6);
+      else model.brake.color.copy(LAMP.tail);
+      model.head.color.copy(LAMP.head).multiplyScalar(1 + 2.5 * night);
+      const dark = night > 0.3 || rainAmount > 0;
       if (model.beams) model.beams.visible = dark;
-      if (model.light) model.light.visible = phase === "night";
+      if (model.light) model.light.visible = night > 0.6 || (dark && rainAmount > 0);
       model.cargo.visible = !!L.me?.activeRun;
 
       // -- camera (the soldier placed it already when on foot)
@@ -1391,10 +1465,21 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (!onFoot && (Math.abs(camera.fov - fov) > 0.1 || camera.near !== near)) (camera.fov = fov), (camera.near = near), camera.updateProjectionMatrix();
 
       // -- lights & sky follow the vehicle
-      sky.follow(camera.position);
+      if (now - lastSky > 15_000 || live.current.timeOfDay !== skyPick || live.current.weather !== skyWeather) {
+        lastSky = now;
+        skyPick = live.current.timeOfDay;
+        skyWeather = live.current.weather;
+        applySky();
+      }
+      sky.follow(camera.position, time);
       ground.position.set(Math.round(st.x / 50) * 50, 0, Math.round(st.z / 50) * 50);
-      sun.position.set(st.x + sunDir.x * 220, sunDir.y * 220, st.z + sunDir.z * 220);
-      sun.target.position.set(st.x, 0, st.z);
+      camera.getWorldDirection(camFwd);
+      const fl = Math.hypot(camFwd.x, camFwd.z) || 1;
+      gfx.aimSun(sun, camera.position.x, camera.position.z, camFwd.x / fl, camFwd.z / fl, sunDir);
+      wet += Math.sign(wetTarget - wet) * Math.min(Math.abs(wetTarget - wet), dt / 12);
+      WORLD.wet.value = wet;
+      WORLD.time.value = time;
+      rain.update(camera.position, time, rainAmount, rainTint);
       if (clouds)
         for (const cl of clouds.group.children) {
           cl.position.x += (cl.userData.speed as number) * dt;
@@ -1504,28 +1589,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       scheduleBuilds();
       addReady();
 
-      // -- adaptive quality: hold ~50+ fps by trading resolution (and shadows) for speed
-      frames++;
-      if (now - lastQuality > 2000) {
-        fps = (frames * 1000) / (now - lastQuality);
-        frames = 0;
-        lastQuality = now;
-        if (fps < 42 && dpr > 0.6) {
-          dpr = Math.max(0.6, dpr - 0.25);
-          renderer.setPixelRatio(dpr);
-          goodFor = 0;
-          if (dpr <= 0.85 && shadows) {
-            shadows = false;
-            sun.castShadow = false;
-          }
-        } else if (fps > 57 && dpr < maxDpr) {
-          if (++goodFor >= 3) {
-            dpr = Math.min(maxDpr, dpr + 0.25);
-            renderer.setPixelRatio(dpr);
-            goodFor = 0;
-          }
-        } else goodFor = 0;
-      }
+      // -- adaptive quality (graphics/engine.ts): resolution first, then effects on "auto"
+      gfx.frame(now);
+      fps = gfx.fps;
 
       // -- instruments (~20 Hz, straight into the DOM: a moving needle never re-renders React)
       if (now - lastGauge > 50) {
@@ -1665,15 +1731,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
 
       skyline.update(camera, st.x, st.z);
-      renderer.render(scene, camera);
+      gfx.render(scene, camera);
       combat.renderOverlay();
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, skyline, applyPhase: (p: Phase) => applyPhase(p), fps: () => fps, dpr: () => dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
 
     const onResize = () => {
-      renderer.setSize(el.clientWidth, el.clientHeight);
+      gfx.resize(el.clientWidth, el.clientHeight);
       camera.aspect = el.clientWidth / el.clientHeight;
       camera.updateProjectionMatrix();
       combat.resize(el.clientWidth, el.clientHeight);
@@ -1739,11 +1805,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       arrowMat.dispose();
       ground.geometry.dispose();
       groundMat.dispose();
-      renderer.dispose();
-      renderer.domElement.remove();
+      rain.dispose();
+      skyNoise?.release();
+      gfx.dispose();
       api3d.current = null;
     };
-  }, [style, names]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [style, names, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The job button can be waved away (see `dismissed`); hide it now, the loop picks the next.
   const dismiss = (id: string) => {
@@ -1774,6 +1841,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const pickStyle = (s: Style) => {
     setStyle(s);
     store.set(STYLE_KEY, s);
+  };
+  const pickQuality = (q: QualityPick) => {
+    // Choosing "auto" again forgets what it learned on a bad day (it starts from the hardware).
+    if (q === "auto") forgetDemotion();
+    setQualityPick(q);
+    setQuality(q);
+  };
+  const pickTime = (p: TimePick) => {
+    setTimePick(p);
+    setTimeOfDay(p);
+  };
+  const pickWeather = (w: Weather) => {
+    setWeatherPick(w);
+    setWeather(w);
   };
   const pickNames = (n: NameMode) => {
     setNames(n);
@@ -1964,6 +2045,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               paint={paint}
               style={style}
               names={names}
+              quality={quality}
+              autoTier={autoTier()}
+              timeOfDay={timeOfDay}
+              weather={weather}
               fps={hud?.fps ?? 0}
               locked={live2 ? party?.game ?? null : null}
               ctl={touch && canDrive ? ctl : null}
@@ -1971,6 +2056,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               onPaint={pickPaint}
               onStyle={pickStyle}
               onNames={pickNames}
+              onQuality={pickQuality}
+              onTime={pickTime}
+              onWeather={pickWeather}
               onCtl={pickCtl}
               onClose={() => setMenu(null)}
             />

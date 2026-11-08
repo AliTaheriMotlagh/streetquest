@@ -6,6 +6,7 @@
 // them. It's scaled toward the camera every frame (which keeps every point exactly where
 // it appears) so it fits inside the camera's far plane. The streets themselves stay flat.
 import * as THREE from "three";
+import { displayReferred } from "./graphics/shaders";
 import type { Frame } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 
@@ -57,7 +58,8 @@ export class Skyline {
   readonly group = new THREE.Group();
   private mesh: THREE.Mesh | null = null;
   // Unlit: the shading is baked in (recolor), so the low ground matches the fog exactly.
-  private mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthTest: false, depthWrite: false, toneMapped: false });
+  // Drawn in the fog's on-screen colour: display-referred, so the HDR pipeline keeps it so.
+  private mat = displayReferred(new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthTest: false, depthWrite: false, toneMapped: false }));
   /** Per vertex: height above sea level and distance from us (for recolouring). */
   private heights: Float32Array | null = null;
   private dists: Float32Array | null = null;

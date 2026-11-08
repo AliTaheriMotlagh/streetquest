@@ -172,6 +172,22 @@ const drive: Record<string, string> = {
   Office: "دفتر کار",
   Parking: "پارکینگ",
   "Cinema & culture": "سینما و فرهنگ",
+  // Graphics: picture quality, time of day, weather
+  "Picture quality": "کیفیت تصویر",
+  Ultra: "فوق‌العاده",
+  High: "بالا",
+  Low: "پایین",
+  "Auto chose {tier} for this device, and steps down by itself if the frame rate drops.": "حالت خودکار برای این دستگاه «{tier}» را انتخاب کرد و اگر روانی تصویر کم شود، خودش کیفیت را پایین می‌آورد.",
+  "Time of day": "زمان روز",
+  Day: "روز",
+  "Real time": "زمان واقعی",
+  Sunset: "غروب",
+  Night: "شب",
+  "The sun is where it really is over your streets right now: day, sunset and night as they happen.": "خورشید همان‌جایی است که همین حالا واقعاً بالای خیابان‌های شماست: روز، غروب و شب همان‌طور که پیش می‌آیند.",
+  Weather: "آب‌وهوا",
+  "Clear sky": "آفتابی",
+  Cloudy: "ابری",
+  Rain: "بارانی",
 };
 
 export default drive;

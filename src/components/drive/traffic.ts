@@ -152,8 +152,8 @@ export class TrafficCars {
   private shownAt = { x: Infinity, z: Infinity };
   enabled = true;
 
-  constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, style: Style, private lite: boolean) {
-    this.fleet = new FleetInstances(scene, style, lite);
+  constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, style: Style, private lite: boolean, look: { clearcoat?: boolean } = {}) {
+    this.fleet = new FleetInstances(scene, style, lite, look);
   }
 
   /** The streets cars can use: re-read when tiles come and go. */
@@ -371,6 +371,11 @@ export class TrafficCars {
     }
     this.fleet.end();
     return out;
+  }
+
+  /** Head and tail lamps glow at night (0 day … 1 night). */
+  setNight(n: number) {
+    this.fleet.setNight(n);
   }
 
   dispose() {

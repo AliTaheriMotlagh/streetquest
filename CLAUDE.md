@@ -10,6 +10,7 @@ only the section you need.
 | 2D map, layers, map styles | `src/components/game/{Game,GameMap,mapStyles}.ts(x)`, `src/app/world.css` |
 | Store cards (Snappfood menus/reviews/hours, Torob walk-in stores, Divar) | `src/components/game/StoreInfo.tsx`, `src/lib/localData.ts` (pure), `src/server/localData.ts` (fetch + ExtCache), `src/app/api/local/route.ts`; prod reads Snappfood via the Iran relay `relay/{relay.mjs,install.sh}` (`SNAPPFOOD_URL`) |
 | 3D city geometry (worker) / look | `src/components/drive/tileMesh.ts` / `world3d.ts`; data: `vectorTile.ts`, `src/lib/city.ts` |
+| 3D renderer, quality tiers, post-processing, weather/time of day | `src/components/drive/graphics/*` (`engine.ts` renderer + adaptive, `quality.ts` pure tiers, `post.ts` HDR pipeline, `shaders.ts` patches + ACES inverse, `surfaces.ts` procedural textures, `weather.ts` rain), `src/lib/daylight.ts` (pure sun/sky) |
 | Driving mode, items in 3D | `src/components/drive/Drive.tsx` (beacons, loot, `settle()`), `markers.ts`, `pins.ts` |
 | Street Arena | `src/lib/arena/{weapons,modes,medals,protocol}.ts`, `src/components/arena/*`, `realtime/*`; without the realtime server matches are relayed: `src/lib/arena/relay.ts` (pure), `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts`, `/api/arena` |
 | Play together (party + games tab in the 3D city) | `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts` (parties, gather, invites), `/api/party` |

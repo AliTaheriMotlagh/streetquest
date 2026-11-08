@@ -1350,6 +1350,8 @@ html.lite .nav button, html.lite .fab { will-change: auto; }
    ===================================================================== */
 .seg.seg3 { grid-template-columns: repeat(3, 1fr); }
 .seg.seg3 button { font-size: 13px; padding: 0 4px; min-width: 0; }
+.seg.seg5 { grid-template-columns: repeat(5, 1fr); }
+.seg.seg5 button { font-size: 12px; padding: 0 2px; min-width: 0; }
 .back-btn { font-size: 22px; line-height: 1; }
 [dir="rtl"] .back-btn { transform: scaleX(-1); }
 [dir="rtl"] .back-btn:active { transform: scaleX(-1) scale(.88); }

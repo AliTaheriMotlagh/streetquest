@@ -631,7 +631,9 @@ export function blobTexture() {
 
 // ---------------------------------------------------------------- traffic, instanced
 const Y = new THREE.Vector3(0, 1, 0), ZA = new THREE.Vector3(0, 0, 1);
-const BRAKE_ON = new THREE.Color("#ff2a3d"), BRAKE_OFF = new THREE.Color("#5a0d16");
+// Lit brake lamps are brighter than white (instance colours are floats), so the HDR pipeline blooms them.
+const BRAKE_ON = new THREE.Color("#ff2a3d").multiplyScalar(3), BRAKE_OFF = new THREE.Color("#5a0d16");
+const HEADLAMP = new THREE.Color("#fff6d8");
 const BLOB = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 const TURN = new THREE.Matrix4().makeRotationY(Math.PI);
 /** Cars nearer than this get a real model's full detail. */
@@ -661,10 +663,14 @@ export class FleetInstances {
   private sc = new THREE.Vector3();
   private one = new THREE.Vector3(1, 1, 1);
 
-  constructor(private scene: THREE.Scene, style: Style, private lite = false) {
+  constructor(private scene: THREE.Scene, style: Style, private lite = false, look: { clearcoat?: boolean } = {}) {
     const real = style === "real";
     this.mats = {
-      paint: real ? new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }) : toon({ color: "#ffffff" }),
+      paint: !real
+        ? toon({ color: "#ffffff" })
+        : look.clearcoat
+          ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
+          : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
       kit: kitMaterial(style),
       glass: real ? new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.9, roughness: 0.06 }) : toon({ color: "#1d3557", emissive: new THREE.Color("#2a4d7a"), emissiveIntensity: 0.35 }),
       head: new THREE.MeshBasicMaterial({ color: "#fff6d8" }),
@@ -674,6 +680,12 @@ export class FleetInstances {
     };
     // Traffic and the parked cars near you.
     this.blob = this.inst(BLOB, this.mats.blob, 160);
+  }
+
+  /** Headlamps and tail lamps glow at night (0 day … 1 night). */
+  setNight(n: number) {
+    (this.mats.head as THREE.MeshBasicMaterial).color.copy(HEADLAMP).multiplyScalar(1 + 2.5 * n);
+    (this.mats.tail as THREE.MeshBasicMaterial).color.setScalar(1 + 1.5 * n);
   }
 
   private inst(geo: THREE.BufferGeometry, mat: THREE.Material, cap: number, colored = false) {
