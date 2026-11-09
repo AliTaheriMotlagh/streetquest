@@ -46,6 +46,8 @@ import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physi
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import { Crowd } from "./people";
+import { StreetLife } from "./street";
+import { StreetHud } from "./StreetHud";
 import { signalPhase } from "@/lib/traffic";
 import { Skyline } from "./skyline";
 import { GraphicsEngine } from "./graphics/engine";
@@ -173,6 +175,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   }, []);
   const [busy, setBusy] = useState(false);
   const [combat, setCombat] = useState<Combat | null>(null);
+  const [street, setStreet] = useState<StreetLife | null>(null);
   const fight = useCombat(combat);
   const onFoot = !!fight?.onFoot;
   const [footKeys, setFootKeys] = useState(false);
@@ -230,6 +233,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
   // "Fly low to pick things up": once waved away, gone for good on this device.
   const [flyHintOff, setFlyHintOff] = useState(() => store.get(FLY_HINT_KEY) === "1");
+  /** The "following your real GPS" note shrinks to a small chip after a few seconds (it covered the road on small phones). */
+  const [gpsNoteSmall, setGpsNoteSmall] = useState(false);
+  useEffect(() => {
+    setGpsNoteSmall(false);
+    if (canDrive) return;
+    const id = setTimeout(() => setGpsNoteSmall(true), 7000);
+    return () => clearTimeout(id);
+  }, [canDrive]);
   const input = useRef({ gas: 0, brake: 0, steer: 0, lift: 0, hand: false, keys: new Set<string>() });
   const [ctl, setCtl] = useState<SteerMode>(() => {
     const c = store.get(CTL_KEY) as SteerMode | null;
@@ -278,7 +289,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const frame = makeFrame(start);
       const p = frame.toXZ(start.lat, start.lng);
       const savedCam = store.get(CAM_KEY);
-      persist.current = { frame, body: { x: p.x, z: p.z, alt: 0, cruise: 0, yaw: 0, vx: 0, vz: 0, vy: 0, speed: 0, steer: 0, roll: 0, pitch: 0, wheelSpin: 0 }, placed: "", placedAt: p, cam: CAMS.includes(savedCam as CamMode) ? (savedCam as CamMode) : "cockpit", warpRound: 0 };
+      persist.current = { frame, body: { x: p.x, z: p.z, alt: 0, cruise: 0, yaw: 0, vx: 0, vz: 0, vy: 0, speed: 0, steer: 0, roll: 0, pitch: 0, wheelSpin: 0 }, placed: "", placedAt: p, cam: CAMS.includes(savedCam as CamMode) ? (savedCam as CamMode) : "chase", warpRound: 0 };
     }
     const P = persist.current;
     const frame = P.frame;
@@ -372,6 +383,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       model.dispose();
       model = makeVehicle(currentKey(), paintNow(), style, { lights: true, shadows, clearcoat: prof.clearcoat });
       scene.add(model.group);
+      street?.car.attach(model);
       cockpit.dispose();
       cockpit = makeCockpit(currentKey(), paintNow(), style);
       model.group.add(cockpit.group);
@@ -604,8 +616,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const offCarModel = onCarModel((k) => {
       if (VEHICLES[currentKey()].model === k) modelKey = "";
     });
-    // People on the pavements (solid, like the traffic).
+    // People on the pavements: they run from trouble, and cars knock them down.
     const crowd = new Crowd(scene, style, lite);
+    // Street life outside matches: crashes and damage, crime and the police (street.ts).
+    let shakeK = 0;
+    const street: StreetLife = new StreetLife({
+      scene, camera, collision, obstacles, crowd, traffic, lite, shadows,
+      combat: (): Combat | null => combat,
+      street: (x, z, d) => nearestStreet(x, z, d),
+      push: (vx, vz) => {
+        if (combat.onFoot) return;
+        st.vx += vx;
+        st.vz += vz;
+      },
+      shake: (k) => (shakeK = Math.max(shakeK, k)),
+    });
+    setStreet(street);
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
     let trafficSync = 0, lightsAt = 0;
     const markers = new Markers(scene, frame, lite ? 30 : 60);
@@ -992,7 +1018,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- on foot and live (Street Arena): the soldier, guns, the realtime link
     /** Where the car waits while I'm on foot. */
     let parked: { x: number; z: number; yaw: number; alt: number } | null = null;
-    const combat = new Combat({
+    const combat: Combat = new Combat({
       scene, camera, renderer, el, frame, collision, obstacles, others, shadows, sim: !!live.current.sim,
       get touch() {
         return live.current.touch;
@@ -1004,6 +1030,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       takeCar: (x, z) => {
         const c = traffic.take(x, z);
         if (!c) return null;
+        // Its health is mine now — and pulling a driver out of it is a crime. (Built afresh:
+        // the same model and paint as a wreck I left must not keep its charred shell.)
+        street.tookCar(c, c.x, c.z);
+        modelKey = "";
         // It isn't in my way any more: the street's cars as solid things, without it, before I'm placed in it.
         obstacles.add("traffic", traffic.tick(0, c.x, c.z));
         // The car I got out of stays at the kerb (when it's one of the street's own models).
@@ -1033,8 +1063,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       },
       toast: (text) => live.current.toast({ title: text }),
       me: () => live.current.me,
+      npc: street.npc,
+      carUsable: () => street.carUsable,
     });
     setCombat(combat);
+    street.car.attach(model);
     /** Streets and buildings within r m of me, rounded to 10 cm: the map a new arena is played on. */
     const arenaGeo = (r: number): ArenaGeo => {
       const roads: number[][] = [], buildings: ArenaGeo["buildings"] = [];
@@ -1203,6 +1236,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       kick: () => net.kick(),
       ownCar: () => {
         streetCar = null;
+        street.freshCar();
+        // Built again even if it's the same model and paint (a wreck's charred shell goes).
+        modelKey = "";
         net.kick();
       },
       teleport: (at) => {
@@ -1355,11 +1391,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         lift: (keys.has("r") || keys.has("e") || keys.has("pageup") ? 1 : 0) - (keys.has("f") || keys.has("q") || keys.has("pagedown") ? 1 : 0) || input.current.lift,
       };
       let vF = 0;
+      // A hurt engine pulls less; a burnt-out wreck doesn't go at all.
+      const power = combat.inMatch || D.flies ? 1 : street.car.power;
+      if (power < 1) (c.gas *= power), (c.lift *= power);
       if (onFoot) {
         // The car waits where it was parked.
       } else if (L.canDrive) {
         if (D.flies) vF = stepAir(st, D, c, dt, maxV(), collision.floor(st.x, st.z, st.alt));
-        else vF = stepGround(st, D, c, dt, maxV());
+        else vF = stepGround(st, D, c, dt, maxV() * Math.max(0.05, power));
       } else if (L.follow) {
         // Walking with GPS: glide to where the phone says you are, nose first.
         const p = frame.toXZ(L.follow.lat, L.follow.lng);
@@ -1385,15 +1424,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (onFoot) (nx = st.x), (nz = st.z);
       else if (L.canDrive) {
         // Circles along the body on wheels (nose and tail; more down a bus); one around a flyer or a bike.
-        let hit = null as { nx: number; nz: number } | null;
+        let hit = null as { nx: number; nz: number; ref?: object; x: number; z: number } | null;
         const offs = D.flies || D.bike ? [0] : D.probes ?? [1.15, -1.15];
         for (const off of offs)
-          for (const world of [collision, obstacles]) {
+          for (const world of [collision, obstacles, street.solid]) {
             const r = world.collide(nx + nfx * off, nz + nfz * off, D.radius, st.alt, model.height);
             if (r.hit) {
               nx = r.x - nfx * off;
               nz = r.z - nfz * off;
-              hit = r.hit;
+              // Where on the body it hit (for the dent), and what it was.
+              hit = { nx: r.hit.nx, nz: r.hit.nz, ref: r.hit.f.ref, x: r.x - r.hit.nx * D.radius, z: r.z - r.hit.nz * D.radius };
             }
           }
         // Other players' cars are solid too (flyers pass over each other).
@@ -1403,7 +1443,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           if (d >= min || d < 1e-3) continue;
           nx = o.x + (dx / d) * min;
           nz = o.z + (dz / d) * min;
-          hit = { nx: dx / d, nz: dz / d };
+          hit = { nx: dx / d, nz: dz / d, x: nx - (dx / d) * D.radius, z: nz - (dz / d) * D.radius };
         }
         if (hit) {
           const into = st.vx * hit.nx + st.vz * hit.nz;
@@ -1412,7 +1452,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             st.vz -= into * hit.nz * 1.3;
             st.vx *= 0.7;
             st.vz *= 0.7;
-            if (-into > 6 && now - st0.bumpAt > 400) {
+            // Outside matches it's a real crash: dents, damage, the other car shoved (street.ts).
+            if (!combat.inMatch && !D.flies && now - st0.bumpAt > 250 && -into > 2) {
+              st0.bumpAt = now;
+              street.crash({ ref: hit.ref, into: -into, nx: hit.nx, nz: hit.nz, x: hit.x, z: hit.z, heavy: model.height > 2.2 });
+            } else if (-into > 6 && now - st0.bumpAt > 400) {
               st0.bumpAt = now;
               sfx("hit");
               navigator.vibrate?.(30);
@@ -1506,6 +1550,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camLook.set(st.x + nfx * 4, st.alt + 1.2, st.z + nfz * 4);
         camera.lookAt(camLook);
       }
+      // A crash or a blast shakes the camera (on foot, the soldier's camera has its own).
+      if (shakeK > 0.01 && !onFoot) {
+        const a = shakeK * (fp ? 0.06 : 0.22);
+        camera.position.x += (Math.random() - 0.5) * a;
+        camera.position.y += (Math.random() - 0.5) * a;
+        camera.position.z += (Math.random() - 0.5) * a;
+      }
+      shakeK *= Math.exp(-dt * 7);
       const fov = (fp ? 70 : 62) + speedK * (fp ? 12 : 10), near = fp ? 0.06 : 0.5;
       if (!onFoot && (Math.abs(camera.fov - fov) > 0.1 || camera.near !== near)) (camera.fov = fov), (camera.near = near), camera.updateProjectionMatrix();
 
@@ -1554,7 +1606,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         crowd.sync(real);
       }
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z));
-      obstacles.add("people", crowd.tick(dt, st.x, st.z));
+      crowd.tick(dt, st.x, st.z);
+      street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
       if (now - lightsAt > 500) {
         lightsAt = now;
         const sec = Date.now() / 1000;
@@ -1781,7 +1834,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -1803,6 +1856,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       vsource.dispose();
       details.dispose();
       offCarModel();
+      street.dispose();
+      setStreet(null);
       traffic.dispose();
       crowd.dispose();
       skyline.dispose();
@@ -1942,7 +1997,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     { key: "garage", icon: "garage", label: t("Garage") },
     { key: "play", icon: "people", label: t("Play together"), badge: party?.members.length || fight?.lobbies.length || undefined },
   ];
-  const cam = hud?.cam ?? "cockpit";
+  const cam = hud?.cam ?? "chase";
 
   return (
     <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""}`} role="application" aria-label={t("3D city")}>
@@ -2022,7 +2077,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       <a className="drive-credit" href="/credits" target="_blank" rel="noreferrer">© OpenStreetMap · {t("3D cars")}</a>
       {/* Stacked, so two never sit on top of each other. */}
       <div className="drive-notes">
-        {!canDrive && <div className="drive-banner">🚶 {t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
+        {!canDrive && <div className={`drive-banner ${gpsNoteSmall ? "small" : ""}`}>🚶 {gpsNoteSmall ? t("Real GPS") : t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
         {hud?.village && hud.loading > 0 && (
           <div className="drive-loading">
             <i className="drive-spinner" aria-hidden />
@@ -2153,6 +2208,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </div>
       )}
 
+      {street && !fight?.inMatch && <StreetHud street={street} />}
       {combat && <CombatHud combat={combat} touch={touch} />}
       {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} />}
       {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.bike ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}

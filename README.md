@@ -159,8 +159,42 @@ mood scales XP; loot funds research; territory funds the army.
   phones). `--report` lists a source's materials and draws each one highlighted, `--preview` draws the result;
   new cars go in the `CARS` list with rules for their material names. Credits are on `/credits`, linked from drive
   mode. Only CC BY models are used: NonCommercial ones (e.g. CC BY-NC-SA) aren't allowed in a game with paid features. People walk the pavements — men in shirts and jackets, women in a manteau and headscarf or
-  a chador — turning back at walls or carrying on round the corner, and are solid (`people.ts`). The pavements also
-  have blue-and-yellow charity boxes every block or two and green newspaper kiosks on the main roads.
+  a chador — turning back at walls or carrying on round the corner (`people.ts`). The men nearest you (14, 6 on lite
+  phones, within 60 m) are **real rigged, animated people** — three CC BY Sketchfab models with walk, run, idle and
+  fall clips, in a few clothing shades (`src/components/drive/peopleModels.ts`); everyone else is drawn instanced.
+  `npm run assets:people` (`scripts/people.ts`) builds them from `assets/models/character/*.glb`: only the street's
+  clips kept (fingers and face channels dropped, long clips cut to 4 s), textures 512 px WebP, meshopt-compressed —
+  ~200 KB each (`public/models/people/<key>.<hash>.glb`, manifest `src/lib/peopleModels.ts`, credits on /credits);
+  the game measures each skinned figure with three.js itself (these rigs' stored rest pose lies flat) to set its
+  height, feet and facing. No CC BY animated woman in a hijab or chador exists on Sketchfab yet, so the women stay
+  drawn. The pavements also have blue-and-yellow charity boxes every block or two and green newspaper kiosks on the
+  main roads.
+- **Street life — crashes, crime and the police** (outside matches; `src/components/drive/street.ts`, numbers in
+  `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game:
+  - *Crashes are real*: your car takes damage by how hard it hit (a scrape is free, ~18 at 36 km/h, ~70 at 72 km/h, a
+    wreck at 90), dents where it hit (`carDamage.ts` folds the body in; the shared model is copied first), loses pull,
+    smokes grey then black, catches fire at zero and explodes ~6 s later — inside it you're thrown out hurt and it's a
+    charred shell (take another car off the street with F, or pick one in the garage). The car you hit is shoved off
+    its lane and slides to a stop with its hazards flashing, damaged the same way; traffic behind honks and pulls round
+    the wreck. A health bar shows while your car is hurt.
+  - *Explosions* throw cars (some onto their roofs) and people, and set the cars beside them burning — chain
+    reactions; your grenades do the same in the open city.
+  - *People react*: gunfire, crashes and blasts send everyone near running (off the pavement if need be, back to it
+    when they calm down); a speeding car makes them dive aside; a car hits them hard enough and they're thrown (fast,
+    they don't get up); bullets hit them; drivers near trouble floor it through red lights.
+  - *Crime and the wanted level* (1–5 ★): what a passer-by or an officer sees raises it — shooting, hitting or killing
+    someone, pulling a driver out of their car, blowing a car up, ramming or shooting the police (one crime per
+    victim, a burst of fire is one report). The police send patrol cars — white Samands with a flashing red-blue
+    light bar and a siren — up the streets with a clear run at you; from 2 ★ they ram your car, officers get out
+    (the rigged soldier in police colours) and shoot at you on foot, from 3 ★ at your car too. Out of every
+    officer's sight long enough (6 s + 4 s per star), they lose you; stopped beside an officer (on foot, or in a
+    stopped car with one at the door), you're arrested. Their shots hurt only in the open city and apart from the
+    referee's health (`Combat.streetHurt`): at zero you're knocked out and up again 5 s later.
+  - All of it is local to your phone, like the traffic: nobody else sees your wanted level, and it never touches a
+    match (a match is a clean shooter: no traffic, no people, no police).
+- **Small phones** — on screens ≤ 380 px wide or ≤ 680 px tall (iPhone SE, 360×640 Androids) the HUD is a size
+  smaller everywhere (`src/app/compact.css`): map chips, toasts (two at most, long text clamped), pop-ups, the 3D top
+  bar (buttons beside the minimap), the driving and on-foot pads and the crime HUD.
 - **The street's edge** — up close (within 320 m, not on lite phones) every street has a kerb and a raised pavement,
   with Tehran's *jube* — the open gutter — between them in Iran, all cut short where they meet the next street
   (`tileMesh.ts` `streetSide`). About half of Iran's streets are lined on each side with plane trees growing out of

@@ -20,7 +20,7 @@ import { t } from "@/lib/i18n";
 import { aimDir, eyeHeight, rayPlayer, spreadDir, type Normal, type Ray } from "@/lib/arena/geom";
 import { BOMB_REACH_M, bombSide, MODES, SITE_R, TEAM_COLORS, type LobbyView, type MatchView, type Team } from "@/lib/arena/modes";
 import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT, G_PASSIVE, type ArenaGeo, type RosterEntry, type ServerMsg } from "@/lib/arena/protocol";
-import { isSecondary, MAX_HP, PRIMARIES, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
+import { damageAt, isSecondary, MAX_HP, PRIMARIES, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey, type Zone } from "@/lib/arena/weapons";
 import { VEHICLE_KEYS, type VehicleKey } from "@/lib/vehicles";
 import type { CollisionWorld } from "../drive/physics";
 import type { Others } from "../drive/others";
@@ -134,6 +134,22 @@ export type CombatHost = {
   toast: (text: string) => void;
   /** Who I am (the in-browser hub needs it when there's no realtime server). */
   me: () => { id: string; username: string; avatar: string; level: number } | null;
+  /** The open city's people, cars and police (drive/street.ts) — outside matches only. */
+  npc?: NpcTargets;
+  /** May I get back into my own car (a burnt-out wreck: no)? */
+  carUsable?: () => boolean;
+};
+
+/** What bullets and blasts meet in the open city besides players (drive/street.ts). */
+export type NpcTargets = {
+  /** The nearest person, car or officer a bullet meets within `maxT` m, and what hitting it does (damage, the bullet's heading). */
+  ray(r: Ray, maxT: number): { t: number; body: boolean; zone: Zone; hit(dmg: number, dx: number, dz: number): boolean } | null;
+  /** I fired here. */
+  shot(x: number, z: number): void;
+  /** A grenade or C4 went off here (`mine`: I threw it). */
+  blast(x: number, z: number, mine: boolean): void;
+  /** I'm knocked out (the street's damage took the last of my health). */
+  down(): void;
 };
 
 /** My fight state from the HTTP presence (/api/drive) when there's no realtime server. */
@@ -210,6 +226,13 @@ export class Combat {
   private nextShot = 0;
   private firedAt = 0;
   private triggerWas = false;
+  /**
+   * Hurt by the street (police fire, a blast, my car blowing up) outside matches: counted
+   * apart from the referee's health (which only other players change), and a knock-out of
+   * its own — up again a few seconds later where I fell.
+   */
+  private streetDmg = 0;
+  private streetUpAt = 0;
   // server's word
   private hp = MAX_HP;
   private dead = false;
@@ -300,6 +323,48 @@ export class Combat {
     this.hitEl = hit;
   }
 
+  /** Out of the fight for now: dead (the referee says so) or knocked out by the street. */
+  private get down() {
+    return this.dead || this.streetUpAt > 0;
+  }
+
+  /** Knocked out by the street right now. */
+  get streetDown() {
+    return this.streetUpAt > 0;
+  }
+
+  /**
+   * Hurt by the street (not another player): only on foot, outside matches. `from` turns the
+   * damage arrow toward where it came from. A knock-out stands me up again 5 s later.
+   */
+  streetHurt(dmg: number, from?: { x: number; z: number }) {
+    const me = this.me;
+    if (!me || this.inMatch || this.down || dmg <= 0) return;
+    this.streetDmg += dmg;
+    hurtSound();
+    this.bleed = { id: ++this.feedId, k: Math.min(1, 0.3 + dmg / 70), at: performance.now() };
+    navigator.vibrate?.(30);
+    if (from) {
+      const a = Math.atan2(-(from.x - me.x), -(from.z - me.z));
+      this.hurt = [...this.hurt.filter((x) => performance.now() - x.at < 1200).slice(-3), { id: ++this.feedId, angle: a, at: performance.now() }];
+    }
+    if (this.hp - this.streetDmg <= 0) {
+      this.streetUpAt = performance.now() + 5000;
+      sfx("down");
+      this.h.npc?.down();
+    }
+    this.publish(true);
+  }
+
+  /** Thrown out of my exploding car: on my feet beside it, already hurt. */
+  ejectFromCar(x: number, z: number, yaw: number, dmg: number) {
+    if (this.me || this.inMatch) return;
+    const c = this.h.collision.collide(x, z, 0.4, 0, 1.7);
+    this.h.setFoot(true, { x: c.x, z: c.z, yaw });
+    this.enterFoot(c.x, c.z, yaw);
+    this.streetHurt(dmg);
+  }
+
   get onFoot() {
     return !!this.me;
   }
@@ -345,9 +410,9 @@ export class Combat {
       bleed: this.bleed && performance.now() - this.bleed.at < BLEED_MS ? { id: this.bleed.id, k: this.bleed.k } : null,
       onFoot: !!this.me,
       nearCar: !!this.me && !this.inMatch && (this.ownCarAt() < CAR_REACH_M || this.h.streetCar(this.me.x, this.me.z) != null),
-      hp: Math.round(this.hp),
-      dead: this.dead,
-      respawnIn: this.dead && this.respawnAt ? Math.max(0, Math.ceil((this.respawnAt - sNow) / 1000)) : 0,
+      hp: Math.round(Math.max(0, this.hp - this.streetDmg)),
+      dead: this.dead || this.streetUpAt > 0,
+      respawnIn: this.streetUpAt > 0 ? Math.max(0, Math.ceil((this.streetUpAt - performance.now()) / 1000)) : this.dead && this.respawnAt ? Math.max(0, Math.ceil((this.respawnAt - sNow) / 1000)) : 0,
       // (A moment's margin over HTTP: our clocks differ a little.)
       canRespawn: this.dead && !this.inMatch && sNow >= this.respawnAt + (this.httpMode ? 600 : 0),
       passive: this.passive,
@@ -358,7 +423,7 @@ export class Combat {
       ammo: this.ammo.get(this.weapon) ?? 0,
       mag: W.mag,
       reloading: now < this.reloadUntil,
-      scoped: this.weapon === "sniper" && this.input.aim && !!this.me && !this.dead && now >= this.reloadUntil,
+      scoped: this.weapon === "sniper" && this.input.aim && !!this.me && !this.down && now >= this.reloadUntil,
       cam: this.cam,
       feed: this.feed,
       match: m,
@@ -378,9 +443,9 @@ export class Combat {
       gear: this.gear,
       throwKey: this.throwKey,
       c4Out: this.nades.myC4(),
-      aimingThrow: this.throwHeld && !!this.me && !this.dead,
+      aimingThrow: this.throwHeld && !!this.me && !this.down,
       flash: this.flashFx && performance.now() - this.flashFx.at < this.flashFx.s * 1000 + 600 ? { id: this.flashFx.id, s: this.flashFx.s } : null,
-      burning: !!this.me && !this.dead && this.nades.inFire(this.me.x, this.me.z),
+      burning: !!this.me && !this.down && this.nades.inFire(this.me.x, this.me.z),
     };
   }
 
@@ -434,13 +499,14 @@ export class Combat {
   /** Into my own car, or into whichever street car (parked or stopped in traffic) is nearer. */
   getIn() {
     if (!this.me || this.inMatch) return;
-    const own = this.ownCarAt(), street = this.dead ? null : this.h.streetCar(this.me.x, this.me.z);
+    const own = this.ownCarAt(), street = this.down ? null : this.h.streetCar(this.me.x, this.me.z);
     // (Mine is measured to its middle, a street car to its body: about a metre between them.)
-    if (street != null && street < own - 1) {
+    if (street != null && (street < own - 1 || this.h.carUsable?.() === false)) {
       const name = this.h.takeCar(this.me.x, this.me.z);
       if (!name) return;
       this.h.toast(t("You took the {car}", { car: name }));
     } else if (own > CAR_REACH_M) return;
+    else if (this.h.carUsable?.() === false) return this.h.toast(t("Your car is a wreck — take another one off the street, or pick one in the garage"));
     this.leaveFoot();
     this.h.setFoot(false);
   }
@@ -543,7 +609,7 @@ export class Combat {
   reload() {
     const W = WEAPONS[this.weapon];
     const now = performance.now();
-    if (!this.me || this.dead || now < this.reloadUntil || (this.ammo.get(this.weapon) ?? 0) >= W.mag) return;
+    if (!this.me || this.down || now < this.reloadUntil || (this.ammo.get(this.weapon) ?? 0) >= W.mag) return;
     this.reloadLen = W.reloadS * 1000;
     this.reloadUntil = now + this.reloadLen;
     this.rt.send({ t: "reload" });
@@ -572,7 +638,7 @@ export class Combat {
    */
   holdThrow(on: boolean) {
     if (on) {
-      if (!this.me || this.dead || this.throwHeld) return;
+      if (!this.me || this.down || this.throwHeld) return;
       if (this.throwKey === "c4" && this.nades.myC4()) {
         this.rt.send({ t: "detonate" });
         beepSound(true);
@@ -609,7 +675,7 @@ export class Combat {
 
   private throwNow() {
     const me = this.me, k = this.throwKey, now = performance.now();
-    if (!me || this.dead || (this.gear[k] ?? 0) <= 0 || now - this.thrownAt < THROW_GAP_MS) return;
+    if (!me || this.down || (this.gear[k] ?? 0) <= 0 || now - this.thrownAt < THROW_GAP_MS) return;
     if (this.match && this.match.phase !== "live") return this.h.toast(t("Wait for the round to start"));
     if (!this.inMatch && this.passive) return this.h.toast(t("Turn off passive mode to fight"));
     const tr = this.throwFrom(me);
@@ -633,6 +699,8 @@ export class Combat {
       boomSound(dist * (k === "frag" ? 1.5 : 1));
       this.shake = Math.max(this.shake, Math.min(1, (k === "c4" ? 16 : 10) / (dist + 2)));
       if (dist < 15) navigator.vibrate?.(k === "c4" ? 160 : 90);
+      // In the open city it throws people and cars about too.
+      if (!this.inMatch) H.npc?.blast(x, z, by === this.rt.sid);
     } else if (k === "flash") {
       // How blind am I: how near, how squarely I'm looking at it, and nothing in between.
       cam.getWorldDirection(camFwd);
@@ -1225,6 +1293,17 @@ export class Combat {
       inp.act = k.has("e");
     }
 
+    // The street's knock-out wears off (up again where I fell); its damage heals slowly
+    // after a quiet spell; a match starts everyone clean.
+    if (this.streetUpAt && (performance.now() >= this.streetUpAt || this.inMatch)) {
+      this.streetUpAt = 0;
+      this.streetDmg = 0;
+      this.publish(true);
+    } else if (this.streetDmg > 0 && !this.streetUpAt && (this.inMatch || performance.now() - (this.bleed?.at ?? 0) > 8000)) {
+      this.streetDmg = this.inMatch ? 0 : Math.max(0, this.streetDmg - dt * 4);
+      this.publish();
+    }
+
     if (me) {
       const reloading = performance.now() < this.reloadUntil;
       if (this.reloadUntil && !reloading) {
@@ -1235,7 +1314,7 @@ export class Combat {
       // -- look (with touch aim assist)
       let lx = inp.lookX, ly = inp.lookY;
       inp.lookX = inp.lookY = 0;
-      const assist = H.touch && !this.dead ? this.assistTarget(me) : null;
+      const assist = H.touch && !this.down ? this.assistTarget(me) : null;
       if (assist) {
         lx *= 0.55;
         ly *= 0.55;
@@ -1244,7 +1323,7 @@ export class Combat {
           me.pitch += assist.dpitch * Math.min(1, dt * 3);
         }
       }
-      if (!this.dead) {
+      if (!this.down) {
         me.yaw -= lx;
         me.pitch = Math.max(-1.35, Math.min(1.35, me.pitch - ly));
       }
@@ -1258,7 +1337,7 @@ export class Combat {
       // -- move (pulling the trigger ends a sprint, so a shot is never swallowed)
       const frozen = this.match?.phase === "warmup" || (this.match?.phase === "live" && this.input.act && !!this.snapshot.act);
       const fireHeld = inp.fire || (this.autoFire && H.touch && !!assist?.onTarget);
-      const moveIn = this.dead || frozen ? { ...inp, mx: 0, mz: 0, jump: false, sprint: false } : fireHeld ? { ...inp, sprint: false } : inp;
+      const moveIn = this.down || frozen ? { ...inp, mx: 0, mz: 0, jump: false, sprint: false } : fireHeld ? { ...inp, sprint: false } : inp;
       const speed = stepFoot(me, moveIn, dt, W.mobility, (x, z, r, y, tall) => {
         const a = H.collision.collide(x, z, r, y, tall);
         const b = H.obstacles.collide(a.x, a.z, r, y, tall);
@@ -1276,7 +1355,7 @@ export class Combat {
       }
 
       // -- shoot
-      const canFire = !this.dead && !reloading && !frozen && !me.sprint && now >= this.nextShot;
+      const canFire = !this.down && !reloading && !frozen && !me.sprint && now >= this.nextShot;
       const wants = W.auto ? fireHeld : fireHeld && !this.triggerWas;
       this.triggerWas = fireHeld;
       if (wants && canFire) {
@@ -1286,26 +1365,26 @@ export class Combat {
           this.nextShot = now + 300;
         } else this.shoot(me, sNow, now, speed);
       }
-      if (!reloading && (this.ammo.get(this.weapon) ?? 0) === 0 && !this.dead && now > this.nextShot) this.reload();
+      if (!reloading && (this.ammo.get(this.weapon) ?? 0) === 0 && !this.down && now > this.nextShot) this.reload();
 
       // -- lining up a throw: the arc it would fly
-      if (this.throwHeld && !this.dead) {
+      if (this.throwHeld && !this.down) {
         const t = this.throwFrom(me);
         this.nades.preview(t && this.nades.fly(this.throwKey, t.o, t.v));
       } else this.nades.preview(null);
 
       // -- my soldier (third person) and the camera
-      const fps = this.cam === "fps" && !this.dead;
+      const fps = this.cam === "fps" && !this.down;
       if (this.avatar) {
         const accent = this.inMatch && this.team ? TEAM_COLORS[this.team as 1 | 2] : "#f0c05a";
         if (accent !== this.myAccent) (this.myAccent = accent), this.avatar.setColors("#7d8a6a", accent);
         this.avatar.group.visible = !fps;
         this.avatar.group.position.set(me.x, me.y, me.z);
-        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: me.yaw, pitch: me.pitch, crouch: me.crouch, air: me.air, dead: this.dead }, 0);
+        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: me.yaw, pitch: me.pitch, crouch: me.crouch, air: me.air, dead: this.down }, 0);
       }
       this.placeCamera(me, dt, fps);
       const scoped = this.snapshot.scoped;
-      this.vm.visible = fps && !scoped && !this.dead;
+      this.vm.visible = fps && !scoped && !this.down;
       this.vm.update(dt, { speed, lookX: lx, lookY: ly, ads: inp.aim && !reloading, reload: reloading ? 1 - (this.reloadUntil - performance.now()) / this.reloadLen : -1, air: me.air, sprint: me.sprint });
 
       // -- crosshair: grows with spread
@@ -1314,7 +1393,7 @@ export class Combat {
         const px = (spread / Math.tan(((H.camera.fov / 2) * Math.PI) / 180)) * (H.el.clientHeight / 2);
         this.crossEl.style.setProperty("--spread", `${Math.max(4, Math.min(80, px)).toFixed(1)}px`);
         this.crossEl.classList.toggle("on-target", !!assist?.onTarget);
-        this.crossEl.classList.toggle("hidden", this.dead || scoped || (inp.aim && fps));
+        this.crossEl.classList.toggle("hidden", this.down || scoped || (inp.aim && fps));
       }
     }
 
@@ -1414,6 +1493,8 @@ export class Combat {
     const httpHits = new Map<number, { zone: "head" | "body" | "legs"; n: number }>();
     /** Whom the shot hit (as I drew them): the referee looks back as far as I saw them. */
     let hitSid: number | null = null;
+    /** People and officers in the street my shot hit (marked here: no referee for them). */
+    const npcHits: { head: boolean; kill: boolean }[] = [];
     // Where the bullet visibly leaves: the third-person gun, or just below-right of the eye.
     const muzzle = this.avatar && this.cam === "tps" ? this.avatar.muzzle(v3) : v3.set(ox + rx * 0.12 + dx * 0.6, oy - 0.12 + dy * 0.6, oz + rz * 0.12 + dz * 0.6);
     for (let i = 0; i < W.pellets; i++) {
@@ -1427,6 +1508,15 @@ export class Combat {
         if (!tg.foot || !this.hostile(tg)) continue;
         const hit = rayPlayer(ray, tg.x, tg.y, tg.z, tg.crouch);
         if (hit && hit.t < tt) (tt = hit.t), (body = true), (who = { sid: tg.sid, zone: hit.zone });
+      }
+      // The open city's people, cars and police (my client is their referee).
+      const npc = this.inMatch ? null : (H.npc?.ray(ray, Math.min(tt, W.range)) ?? null);
+      if (npc && npc.t < tt) {
+        tt = npc.t;
+        body = npc.body;
+        who = null;
+        const killed = npc.hit(damageAt(W, npc.t, npc.zone), d.dx, d.dz);
+        if (npc.body) npcHits.push({ head: npc.zone === "head", kill: killed });
       }
       // Players on the HTTP presence: my client is the one that saw the hit, so it reports it.
       if (who && who.sid >= HTTP_SID) {
@@ -1442,6 +1532,18 @@ export class Combat {
     }
     this.vfx.flash(muzzle.x, muzzle.y, muzzle.z, W.key === "shotgun" || W.key === "sniper");
     if (!this.inMatch) for (const [sid, h] of httpHits) this.httpHit(sid, h.zone, h.n);
+    if (!this.inMatch) H.npc?.shot(me.x, me.z);
+    if (npcHits.length) {
+      const head = npcHits.some((x) => x.head), kill = npcHits.some((x) => x.kill);
+      hitSound(head);
+      if (kill) killSound();
+      const el = this.hitEl;
+      if (el) {
+        el.classList.remove("on", "kill", "head");
+        void el.offsetWidth;
+        el.classList.add("on", ...(kill ? ["kill"] : []), ...(head ? ["head"] : []));
+      }
+    }
     this.rt.send({ t: "fire", w: W.key, at: sNow - (hitSid != null ? this.remotes.delayOf(hitSid) : this.rt.delay), o: [ox, oy, oz], d: dirs });
     this.ammo.set(W.key, (this.ammo.get(W.key) ?? 1) - 1);
     this.nextShot = now + shotGap(W) * 1000;
@@ -1489,9 +1591,9 @@ export class Combat {
     const H = this.h;
     const cam = H.camera;
     const W = WEAPONS[this.weapon];
-    const aiming = this.input.aim && !this.dead;
+    const aiming = this.input.aim && !this.down;
     const eye = eyeHeight(me.crouch);
-    const pitch = this.dead ? -0.5 : me.pitch;
+    const pitch = this.down ? -0.5 : me.pitch;
     const d = aimDir(me.yaw, pitch);
     if (fps) {
       cam.position.set(me.x, me.y + eye, me.z);
@@ -1500,8 +1602,8 @@ export class Combat {
       // Over the right shoulder; pulled in when aiming, orbiting the body when dead.
       // A narrow (portrait) screen sees less to the sides: shoulder in, camera back a little.
       const narrow = Math.min(1, cam.aspect / 1.3);
-      const back = (this.dead ? 5 : aiming ? 1.7 : 3) * (1 + (1 - narrow) * 0.35);
-      const side = (this.dead ? 0 : aiming ? 0.72 : 0.7) * (0.35 + 0.65 * narrow);
+      const back = (this.down ? 5 : aiming ? 1.7 : 3) * (1 + (1 - narrow) * 0.35);
+      const side = (this.down ? 0 : aiming ? 0.72 : 0.7) * (0.35 + 0.65 * narrow);
       const rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
       const px = me.x, py = me.y + (me.crouch ? 1.2 : 1.6), pz = me.z;
       const want = v3.set(px + rx * side - d.dx * back, py + 0.32 - d.dy * back, pz + rz * side - d.dz * back);
@@ -1533,7 +1635,7 @@ export class Combat {
 
   /** After the city: the first-person gun on top. */
   renderOverlay() {
-    if (this.me && this.cam === "fps" && !this.dead) this.vm.render(this.h.renderer);
+    if (this.me && this.cam === "fps" && !this.down) this.vm.render(this.h.renderer);
   }
 
   resize(w: number, hgt: number) {

@@ -3,6 +3,7 @@ import { CAR_MODELS } from "@/lib/carModels";
 import type { Credit } from "@/lib/assetLicense";
 import downloaded from "../../../assets/credits.json";
 import { PROP_MODELS } from "@/lib/propModels";
+import { PEOPLE_MODELS } from "@/lib/peopleModels";
 import { getT } from "@/server/i18n";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,8 +19,9 @@ export default async function Credits() {
   const { t } = await getT();
   const cars = Object.values(CAR_MODELS);
   const weapons = (downloaded as Credit[]).filter((c) => c.kind === "weapon");
-  // Only the street furniture the game actually ships (the build's own list).
+  // Only the street furniture and people the game actually ships (the builds' own lists).
   const props = PROP_MODELS.credits;
+  const people = PEOPLE_MODELS.flatMap((p) => (p.credit ? [p.credit] : []));
   return (
     <main className="page" style={{ display: "grid", placeItems: "center", padding: 16 }}>
       <div className="modal" style={{ maxWidth: 560 }}>
@@ -71,6 +73,25 @@ export default async function Credits() {
             <p className="muted" style={{ lineHeight: 1.6 }}>{t("Made lighter for phones and recoloured for the game.")}</p>
             <ul style={{ lineHeight: 1.8, paddingInlineStart: 18 }}>
               {props.map((c) => (
+                <li key={c.url} dir="ltr" style={{ textAlign: "start" }}>
+                  <a href={c.url} target="_blank" rel="noreferrer">
+                    {c.title}
+                  </a>{" "}
+                  — {c.author} ·{" "}
+                  <a href={c.license === "CC0-1.0" ? "https://creativecommons.org/publicdomain/zero/1.0/" : "https://creativecommons.org/licenses/by/4.0/"} target="_blank" rel="noreferrer">
+                    {c.license === "CC0-1.0" ? "CC0" : "CC BY 4.0"}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {people.length > 0 && (
+          <>
+            <h3>{t("3D people")}</h3>
+            <p className="muted" style={{ lineHeight: 1.6 }}>{t("Made lighter for phones and recoloured for the game.")}</p>
+            <ul style={{ lineHeight: 1.8, paddingInlineStart: 18 }}>
+              {people.map((c) => (
                 <li key={c.url} dir="ltr" style={{ textAlign: "start" }}>
                   <a href={c.url} target="_blank" rel="noreferrer">
                     {c.title}

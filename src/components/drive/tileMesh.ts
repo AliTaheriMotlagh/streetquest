@@ -20,7 +20,8 @@ export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glas
 export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
 export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk" | "dumpster";
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
-export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number };
+/** A solid outline (mh..h m up). `ref`: what moves with it (a street car), for whoever bumps into it. */
+export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number; ref?: object };
 /**
  * Text to show in the city: street names on the asphalt, landmark names over buildings,
  * storefront signs on the wall nearest a shop ("shop", with its OSM class in `cls`; on a

@@ -122,6 +122,7 @@ const world: Record<string, string> = {
   "Back to the map": "برگشت به نقشه",
   "km/h": "کیلومتر/ساعت",
   "Following your real GPS — switch to Play from home to drive anywhere": "دنبال GPS واقعی‌ات می‌ره — برای رانندگی آزاد، «بازی از خونه» رو روشن کن",
+  "Real GPS": "GPS واقعی",
   "Drawing this neighbourhood from the real map…": "داریم این محله رو از روی نقشهٔ واقعی می‌کشیم…",
   "Loading the city…": "شهر داره بار می‌شه…",
   "Jobs nearby": "کارهای اطراف",

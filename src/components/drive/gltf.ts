@@ -62,6 +62,12 @@ export async function loadModel(src: string | ArrayBuffer): Promise<THREE.Group>
   return root;
 }
 
+/** Parse a .glb with its animations (rigged people). */
+export async function loadAnimated(src: string): Promise<{ scene: THREE.Group; clips: THREE.AnimationClip[] }> {
+  const gltf = await gltfLoader().loadAsync(src);
+  return { scene: gltf.scene, clips: gltf.animations };
+}
+
 /** What a model costs, and its outline at street level (model metres, x/z pairs). */
 export function measure(root: THREE.Object3D, bytes: number): { stats: ModelStats; hull: number[]; height: number } {
   root.updateMatrixWorld(true);

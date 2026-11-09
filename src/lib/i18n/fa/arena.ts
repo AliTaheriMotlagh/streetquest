@@ -181,6 +181,7 @@ const arena: Record<string, string> = {
   "Bulldog LMG": "تیربار سبک بولداگ",
   "Marksman DMR": "تفنگ تک‌تیرانداز نیمه‌خودکار مارکس‌من",
   "Sidearm": "سلاح کمری",
+  "Your car is a wreck — take another one off the street, or pick one in the garage": "ماشینت داغونه — یکی دیگه از خیابون بردار، یا از گاراژ یکی انتخاب کن",
 };
 
 export default arena;

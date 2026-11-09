@@ -13,6 +13,7 @@ import "./globals.css";
 import "./world.css";
 import "./arena.css";
 import "./theme.css";
+import "./compact.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "800"], display: "swap", variable: "--font-inter" });

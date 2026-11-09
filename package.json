@@ -29,7 +29,8 @@
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
     "test:e2e": "playwright test",
     "test:e2e:api": "playwright test --project=api",
-    "test:e2e:ui": "playwright test --project=mobile"
+    "test:e2e:ui": "playwright test --project=mobile",
+    "assets:people": "tsx scripts/people.ts"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

@@ -173,3 +173,70 @@ export function flashSound(dist: number, blindS: number) {
   blip(180, 0.25, 0.4 * near(dist, 30), "sine", 0.4);
   if (blindS > 0.3) blip(3600 + Math.random() * 400, blindS, 0.05, "sine", 0.98);
 }
+
+// ---- the street (crashes, horns, sirens — drive/street.ts)
+
+/** A crash `dist` m away, `k` 0 (a scrape) … 1 (a wreck): a thump, crunching metal, glass, a panel ringing. */
+export function crashSound(k: number, dist: number, pan = 0) {
+  const v = Math.min(1, 0.25 + k * 0.75) * near(dist, 30);
+  if (v < 0.02) return;
+  blip(70 + Math.random() * 25, 0.28, v * 0.7, "sine", 0.5);
+  hiss(1300, 0.22 + k * 0.35, v * 0.5, "bandpass", 0.004, pan);
+  if (k > 0.25) setTimeout(() => hiss(5200, 0.15 + k * 0.3, v * 0.22, "highpass", 0.004, pan), 40);
+  if (k > 0.45) blip(300 + Math.random() * 220, 0.45, v * 0.1, "triangle", 0.88);
+}
+
+/** A street car's horn `dist` m away: two reedy notes at once (each car a little sharper or flatter). */
+export function hornSound(dist: number, pitch = 1, len = 0.32) {
+  const v = 0.09 * near(dist, 28);
+  if (v < 0.008) return;
+  blip(415 * pitch, len, v, "square", 1);
+  blip(523 * pitch, len, v * 0.75, "square", 1);
+}
+
+/** Someone falling hard (hit by a car): a dull thud. */
+export const thudSound = (dist: number) => blip(95, 0.18, 0.35 * near(dist, 20), "sine", 0.6);
+
+/**
+ * The police siren: one wailing voice for every patrol car together, louder the nearer the
+ * nearest one is. `level(v)` each frame (0 = off).
+ */
+export class Siren {
+  private node: { osc: OscillatorNode; lfo: OscillatorNode; lfoGain: GainNode; gain: GainNode; filter: BiquadFilterNode } | null = null;
+  level(v: number) {
+    // Silent and not started: don't touch the audio (asking for it keeps it awake).
+    if (!this.node && v <= 0) return;
+    const o = audioOut();
+    if (!o) return;
+    const { ctx } = o;
+    const want = isMuted() ? 0 : Math.max(0, Math.min(1, v)) * 0.05;
+    if (!this.node) {
+      if (want <= 0) return;
+      const osc = ctx.createOscillator(), lfo = ctx.createOscillator(), lfoGain = ctx.createGain(), gain = ctx.createGain(), filter = ctx.createBiquadFilter();
+      osc.type = "sawtooth";
+      osc.frequency.value = 900;
+      // A slow wail: up and down between ~650 and ~1350 Hz.
+      lfo.type = "sine";
+      lfo.frequency.value = 0.42;
+      lfoGain.gain.value = 350;
+      filter.type = "lowpass";
+      filter.frequency.value = 2400;
+      gain.gain.value = 0;
+      lfo.connect(lfoGain).connect(osc.frequency);
+      osc.connect(filter).connect(gain).connect(o.out);
+      osc.start();
+      lfo.start();
+      this.node = { osc, lfo, lfoGain, gain, filter };
+    }
+    this.node.gain.gain.setTargetAtTime(want, ctx.currentTime, 0.25);
+  }
+  stop() {
+    if (!this.node) return;
+    try {
+      this.node.osc.stop();
+      this.node.lfo.stop();
+    } catch {}
+    this.node.gain.disconnect();
+    this.node = null;
+  }
+}

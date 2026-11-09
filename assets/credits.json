@@ -1,5 +1,38 @@
 [
   {
+    "uid": "b6f6740f883b4749abac47af0045a9dd",
+    "title": "Business Man - Low Polygon game character",
+    "author": "manoeldarochadeoliveira",
+    "url": "https://sketchfab.com/3d-models/business-man-low-polygon-game-character-b6f6740f883b4749abac47af0045a9dd",
+    "license": "CC-BY-4.0",
+    "kind": "character",
+    "file": "assets/models/character/businessman.glb",
+    "faces": 4574,
+    "at": "2026-11-09"
+  },
+  {
+    "uid": "caac59c9b30c4c428a3116d3f7ec8748",
+    "title": "Casual Male - Architectural and Mobile Games",
+    "author": "manoeldarochadeoliveira",
+    "url": "https://sketchfab.com/3d-models/casual-male-architectural-and-mobile-games-caac59c9b30c4c428a3116d3f7ec8748",
+    "license": "CC-BY-4.0",
+    "kind": "character",
+    "file": "assets/models/character/casual.glb",
+    "faces": 4460,
+    "at": "2026-11-09"
+  },
+  {
+    "uid": "f4e1f9f3463141188281b2212d62a76d",
+    "title": "casual male-architectural Updated",
+    "author": "manoeldarochadeoliveira",
+    "url": "https://sketchfab.com/3d-models/casual-male-architectural-updated-f4e1f9f3463141188281b2212d62a76d",
+    "license": "CC-BY-4.0",
+    "kind": "character",
+    "file": "assets/models/character/casual2.glb",
+    "faces": 4460,
+    "at": "2026-11-09"
+  },
+  {
     "uid": "e53ad46c604c44e59a98bad27041cb19",
     "title": "Wooden Park Bench",
     "author": "TheMadraver",

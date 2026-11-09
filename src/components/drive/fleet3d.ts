@@ -630,7 +630,7 @@ export function blobTexture() {
 }
 
 // ---------------------------------------------------------------- traffic, instanced
-const Y = new THREE.Vector3(0, 1, 0), ZA = new THREE.Vector3(0, 0, 1);
+const Y = new THREE.Vector3(0, 1, 0), ZA = new THREE.Vector3(0, 0, 1), XA = new THREE.Vector3(1, 0, 0);
 // Lit brake lamps are brighter than white (instance colours are floats), so the HDR pipeline blooms them.
 const BRAKE_ON = new THREE.Color("#ff2a3d").multiplyScalar(3), BRAKE_OFF = new THREE.Color("#5a0d16");
 const HEADLAMP = new THREE.Color("#fff6d8");
@@ -736,8 +736,12 @@ export class FleetInstances {
     this.eye.z = z;
   }
 
-  /** One vehicle this frame: where, which way, its paint, whether it's braking, how far its wheels have turned, how far it leans. */
-  put(key: FleetKey, x: number, z: number, yaw: number, color: THREE.Color, braking: boolean, spin: number, lean = 0) {
+  /**
+   * One vehicle this frame: where, which way, its paint, whether it's braking, how far its
+   * wheels have turned, how far it leans; `pose` lifts and tips one (a car thrown by a blast
+   * or knocked onto its side).
+   */
+  put(key: FleetKey, x: number, z: number, yaw: number, color: THREE.Color, braking: boolean, spin: number, lean = 0, pose?: { y: number; roll: number; pitch: number }) {
     const model = fleetParts(key);
     const far = model.far && (this.lite || (x - this.eye.x) ** 2 + (z - this.eye.z) ** 2 > NEAR_M * NEAR_M);
     const parts = far ? model.far! : model;
@@ -747,7 +751,9 @@ export class FleetInstances {
     const i = p.n++;
     this.q.setFromAxisAngle(Y, yaw);
     if (lean) this.q.multiply(this.qr.setFromAxisAngle(ZA, lean));
-    this.m.compose(this.p.set(x, 0, z), this.q, this.one);
+    if (pose?.pitch) this.q.multiply(this.qr.setFromAxisAngle(XA, pose.pitch));
+    if (pose?.roll) this.q.multiply(this.qr.setFromAxisAngle(ZA, pose.roll));
+    this.m.compose(this.p.set(x, pose?.y ?? 0, z), this.q, this.one);
     for (const mesh of p.body) mesh.setMatrixAt(i, this.m);
     p.paint.setColorAt(i, color);
     p.tail.setColorAt(i, braking ? BRAKE_ON : BRAKE_OFF);

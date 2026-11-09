@@ -48,10 +48,11 @@ export class CollisionWorld {
 
   /**
    * Push a circle at height [alt, alt + tall] out of every footprint it overlaps.
-   * Returns the corrected spot and the last wall normal hit (or null).
+   * Returns the corrected spot and the last wall normal hit (or null), with the footprint
+   * it belongs to (its `ref` says what it is, for a street car).
    */
   collide(x: number, z: number, r: number, alt = 0, tall = 2) {
-    let hit: { nx: number; nz: number } | null = null;
+    let hit: { nx: number; nz: number; f: Footprint } | null = null;
     for (const f of this.near(x, z, this.scratch)) {
       if (x < f.minX - r || x > f.maxX + r || z < f.minZ - r || z > f.maxZ + r) continue;
       if (alt >= f.h - 0.3 || alt + tall <= f.mh) continue; // above the roof / under the canopy
@@ -74,7 +75,7 @@ export class CollisionWorld {
       const depth = inside ? d + r : r - d;
       x += nx * depth;
       z += nz * depth;
-      hit = { nx, nz };
+      hit = { nx, nz, f };
     }
     return { x, z, hit };
   }

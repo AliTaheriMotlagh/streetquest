@@ -24,7 +24,7 @@ const TILES = "sq-tiles-v1";     // map tiles you've seen, so the map works offl
 const DATA = "sq-data-v1";       // last known game state, shown while offline
 const MODELS = "sq-models-v1";   // stores' 3D buildings (immutable, hash in the address)
 const ASSETS = "sq-assets-v1";   // fonts, the arena's 3D models, the 3D decoder: kept on the phone
-const CARS = "sq-cars-v1";       // the street cars' 3D models (immutable, hash in the address)
+const CARS = "sq-cars-v1";       // the street cars' and the people's 3D models (immutable, hash in the address)
 const CITY = "sq-city-v1";       // 3D-city street maps (vector tiles + street detail) you've driven through
 const MAX_MODELS = 40;
 const MAX_CITY = 800;
@@ -167,7 +167,7 @@ self.addEventListener("fetch", (event) => {
     if (/\.(mp4|webm|mov|m4v)$/i.test(url.pathname) || req.destination === "video" || req.headers.get("range")) return;
     if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) return event.respondWith(cacheFirst(req, STATIC));
     if (url.pathname.startsWith("/landmark/")) return event.respondWith(cacheFirst(req, MODELS).then((res) => (event.waitUntil(trim(MODELS, MAX_MODELS)), res)));
-    if (url.pathname.startsWith("/models/cars/")) return event.respondWith(carFirst(req));
+    if (url.pathname.startsWith("/models/cars/") || url.pathname.startsWith("/models/people/")) return event.respondWith(carFirst(req));
     // Fonts, the arena's models, the 3D decoder: straight from the phone, refreshed behind.
     if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/models/") || url.pathname.startsWith("/draco/")) return event.respondWith(staleWhileRevalidate(req, ASSETS, event));
     // The 3D city's street maps (fetched by its worker, which this worker also serves).

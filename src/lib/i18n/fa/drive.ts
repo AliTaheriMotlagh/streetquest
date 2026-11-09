@@ -203,6 +203,21 @@ const drive: Record<string, string> = {
   "Clear sky": "آفتابی",
   Cloudy: "ابری",
   Rain: "بارانی",
+  // ---- street life: crashes, crime and the police (components/drive/street.ts, StreetHud.tsx)
+  "Wanted!": "تحت تعقیب!",
+  "The police are after you": "پلیس افتاده دنبالت",
+  "You lost them": "از دستشون در رفتی",
+  "The police have given up the search": "پلیس دیگه دنبالت نمی‌گرده",
+  Arrested: "دستگیر شدی",
+  "They let you off with a warning — this time": "این دفعه با یه تذکر ولت کردن",
+  Wrecked: "ماشینت منفجر شد",
+  "Take another car off the street (F), or pick one in the garage": "یه ماشین دیگه از خیابون بردار (F)، یا از گاراژ یکی انتخاب کن",
+  "Knocked out": "از پا افتادی",
+  "Back on your feet in a moment": "یه لحظه دیگه دوباره سرپا می‌شی",
+  "Your car is on fire!": "ماشینت آتیش گرفته!",
+  "Get out before it blows": "تا منفجر نشده پیاده شو",
+  "Wanted level {n} of 5": "سطح تعقیب {n} از ۵",
+  "Car health {n}%": "سلامت ماشین {n}٪",
 };
 
 export default drive;
