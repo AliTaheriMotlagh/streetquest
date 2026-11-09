@@ -15,6 +15,7 @@ import type { Frame } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, signalPhase, trafficCell, type TrafficCellOut } from "@/lib/traffic";
 import { FLEET, heavy, pickFleet, pickPaint, roomBetween, type FleetKey } from "@/lib/fleet";
+import { carToTake } from "@/lib/vehicles";
 import { hashStr, rng } from "@/lib/geo";
 import { Junctions, laneOffset, parkedRow, parkingSides, type Parked, type Sides, type Street } from "@/lib/parking";
 import { api } from "../game/client";
@@ -108,6 +109,7 @@ type Road = { line: Float32Array; w: number; kind: "major" | "minor"; park: Side
 type Car = {
   /** Which of Iran's street models (lib/fleet.ts), in what paint. */
   kind: FleetKey;
+  paint: string;
   color: THREE.Color;
   road: Road;
   /** Segment index and metres along it; `dir` +1 runs with the line's points, −1 against. */
@@ -133,6 +135,10 @@ const YOU_LEN = 4.4;
 const PARKED_M = 140, PARKED_MAX = 60, PARKED_LITE_M = 80, PARKED_LITE_MAX = 20;
 /** How much of the kerb parked cars take: an avenue's slow lane is mostly kept moving. */
 const PARK_FILL = { major: 0.3, minor: 0.55 };
+/** Cars you got out of and left at the kerb (the oldest drive off after this many). */
+const LEFT_MAX = 12;
+/** A parked car's spot, to know it again when the streets are re-read (to 0.5 m). */
+const spotOf = (x: number, z: number) => `${Math.round(x * 2)}_${Math.round(z * 2)}`;
 
 export class TrafficCars {
   private cars: Car[] = [];
@@ -150,6 +156,9 @@ export class TrafficCars {
   private parked: (Parked & { color: THREE.Color })[] = [];
   private shown: (Parked & { color: THREE.Color; box: Footprint })[] = [];
   private shownAt = { x: Infinity, z: Infinity };
+  /** Parked cars you drove off in (they stay gone when the streets are re-read), and the ones you left. */
+  private taken = new Set<string>();
+  private left: (Parked & { color: THREE.Color })[] = [];
   enabled = true;
 
   constructor(private scene: THREE.Scene, private frame: Frame, private feed: TrafficFeed, style: Style, private lite: boolean, look: { clearcoat?: boolean } = {}) {
@@ -196,7 +205,9 @@ export class TrafficCars {
         };
         const rand = rng(seed);
         r.park.forEach((on, s) => {
-          if (on) for (const p of parkedRow(line, r.w, s ? -1 : 1, rand, free, k === "major" ? PARK_FILL.major : PARK_FILL.minor)) this.parked.push({ ...p, color: new THREE.Color(p.paint) });
+          if (!on) return;
+          for (const p of parkedRow(line, r.w, s ? -1 : 1, rand, free, k === "major" ? PARK_FILL.major : PARK_FILL.minor))
+            if (!this.taken.has(spotOf(p.x, p.z))) this.parked.push({ ...p, color: new THREE.Color(p.paint) });
         });
         this.roads.push(r);
         for (const end of [0, 1] as const) {
@@ -207,6 +218,7 @@ export class TrafficCars {
           else this.ends.set(key, [{ road: r, end }]);
         }
       });
+    this.parked.push(...this.left);
     // Cars on streets that were dropped go too.
     const alive = new Set(this.roads.map((r) => r.line));
     this.cars = this.cars.filter((c) => alive.has(c.road.line));
@@ -253,7 +265,8 @@ export class TrafficCars {
       const dir = road.w < 7 && this.rand() < 0.5 ? -1 : this.rand() < 0.5 ? 1 : -1;
       // Bikes ride quicker than the cars round them (and buses and trucks slower).
       const mood = (FLEET[kind].bike ? 1.05 : heavy(kind) ? 0.8 : 0.85) + this.rand() * 0.25;
-      this.cars.push({ kind, color: new THREE.Color(pickPaint(kind, this.rand)), road, seg, along: 0, dir, v: 0, want: 0, x, z, yaw: 0, spin: 0, lean: 0, mood });
+      const paint = pickPaint(kind, this.rand);
+      this.cars.push({ kind, paint, color: new THREE.Color(paint), road, seg, along: 0, dir, v: 0, want: 0, x, z, yaw: 0, spin: 0, lean: 0, mood });
       return;
     }
   }
@@ -371,6 +384,49 @@ export class TrafficCars {
     }
     this.fleet.end();
     return out;
+  }
+
+  /** The street cars you could get into from here, on foot: parked, or traffic that's (nearly) stopped. */
+  private takeable() {
+    if (!this.enabled) return [];
+    const dims = (key: FleetKey) => ({ len: FLEET[key].len, wid: FLEET[key].wid });
+    return [
+      ...this.cars.map((c) => ({ x: c.x, z: c.z, yaw: c.yaw, v: c.v, key: c.kind, paint: c.paint, ...dims(c.kind), car: c as Car | null })),
+      ...this.shown.map((p) => ({ x: p.x, z: p.z, yaw: p.yaw, v: 0, key: p.key, paint: p.paint, ...dims(p.key), car: null })),
+    ];
+  }
+
+  /** How far (m) the body of the nearest car you could get into is, or null. */
+  nearestToTake(x: number, z: number) {
+    return carToTake(this.takeable(), x, z)?.d ?? null;
+  }
+
+  /** Get into the nearest street car: it leaves the street (it's yours now). Where it was, and what it is. */
+  take(x: number, z: number): Parked | null {
+    const hit = carToTake(this.takeable(), x, z)?.car;
+    if (!hit) return null;
+    if (hit.car) this.cars.splice(this.cars.indexOf(hit.car), 1);
+    else {
+      const spot = spotOf(hit.x, hit.z);
+      this.parked = this.parked.filter((p) => spotOf(p.x, p.z) !== spot);
+      const before = this.left.length;
+      this.left = this.left.filter((p) => spotOf(p.x, p.z) !== spot);
+      if (this.left.length === before) this.taken.add(spot);
+      this.shownAt = { x: Infinity, z: Infinity };
+    }
+    return { key: hit.key, paint: hit.paint, x: hit.x, z: hit.z, yaw: hit.yaw };
+  }
+
+  /** The car you got out of for another one stays at the kerb, a parked car like the rest. */
+  leave(p: Parked) {
+    const car = { ...p, color: new THREE.Color(p.paint) };
+    this.left.push(car);
+    this.parked.push(car);
+    if (this.left.length > LEFT_MAX) {
+      const gone = this.left.shift();
+      this.parked = this.parked.filter((q) => q !== gone);
+    }
+    this.shownAt = { x: Infinity, z: Infinity };
   }
 
   /** Head and tail lamps glow at night (0 day … 1 night). */

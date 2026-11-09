@@ -28,7 +28,7 @@ import { levelForXp } from "../lib/progression";
 import { ROOKIE_LEVEL } from "../lib/arena/modes";
 import { F_DEAD } from "../lib/arena/protocol";
 import { S } from "../lib/settings";
-import { allowedVehicle, isPaint, VEHICLES, type VehicleKey } from "../lib/vehicles";
+import { drivenVehicle, isPaint, VEHICLES, type VehicleKey } from "../lib/vehicles";
 import { notify, onlineSince } from "./hub";
 import { ONLINE_LIST_M } from "./presence";
 import { HttpError } from "./http";
@@ -115,7 +115,7 @@ export async function report(u: User, d: DriveReport) {
   const now = Date.now();
   const level = levelForXp(u.xp);
   const prev = await prisma.driveState.findUnique({ where: { userId: u.id } });
-  let vehicle = allowedVehicle(d.vehicle, level);
+  let vehicle = drivenVehicle(d.vehicle, level);
   let here: LatLng;
   let rejected = false;
   let party: PartyWithMembers | null = null;
@@ -174,7 +174,7 @@ async function othersAround(userId: string, here: LatLng, party: PartyWithMember
   return rows
     .filter((r) => members.has(r.userId) || friends.has(r.userId) || (r.virtual && distanceM({ lat: r.startLat, lng: r.startLng }, r) > PRIVATE_START_M))
     .map((r) => ({
-      id: r.userId, name: r.name, avatar: r.avatar, level: r.level, vehicle: allowedVehicle(r.vehicle, 99), color: r.color,
+      id: r.userId, name: r.name, avatar: r.avatar, level: r.level, vehicle: drivenVehicle(r.vehicle, 99), color: r.color,
       lat: r.lat, lng: r.lng, alt: r.alt, yaw: r.yaw, speed: r.speed, at: r.updatedAt.getTime(), friend: friends.has(r.userId), party: members.has(r.userId),
       flags: r.flags | (isDead(r) ? F_DEAD : 0), pitch: r.pitch, weapon: r.weapon, hp: isDead(r) ? 0 : r.hp, passive: r.passive || r.level < ROOKIE_LEVEL,
     }));
@@ -446,7 +446,7 @@ export async function partyViewFor(userId: string) {
   const ticked = await tickParty(p);
   const states = await prisma.driveState.findMany({ where: { userId: { in: ticked.members.map((m) => m.userId) }, updatedAt: { gt: new Date(Date.now() - FRESH_MS) } } });
   const mine = states.find((r) => r.userId === userId);
-  return partyView(ticked, userId, states.filter((r) => r.userId !== userId).map((r) => ({ id: r.userId, vehicle: allowedVehicle(r.vehicle, 99), lat: r.lat, lng: r.lng })), mine ?? null);
+  return partyView(ticked, userId, states.filter((r) => r.userId !== userId).map((r) => ({ id: r.userId, vehicle: drivenVehicle(r.vehicle, 99), lat: r.lat, lng: r.lng })), mine ?? null);
 }
 
 /** The party's Street Arena match on the realtime server (relayed ones are set by server/arenaRelay.ts), or none. */

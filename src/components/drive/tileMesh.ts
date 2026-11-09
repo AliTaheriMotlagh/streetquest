@@ -18,7 +18,7 @@ export type Style = "real" | "toon";
 export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim" | "kerbs";
 /** `fac`: the façade each wall vertex wears (an index into FACADES), when any isn't plaster. */
 export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
-export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk";
+export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk" | "dumpster";
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
 export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number };
 /**
@@ -1118,6 +1118,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   let planted = 0, lit = 0;
   const lampCap = osmLamps > 5 ? 0 : lite ? 0 : 140;
   const charities: { x: number; z: number; yaw: number }[] = [], kiosks: { x: number; z: number; yaw: number }[] = [];
+  // The municipality's big waste containers: one every block or two at the kerb (never mapped).
+  const dumpsters: { x: number; z: number; yaw: number }[] = [];
   // Iran's streets: whole lengths lined with plane trees growing out of the jube.
   const rows = realStyle && region === "me", rowCap = lite ? 60 : 200;
   let rowed = 0;
@@ -1163,6 +1165,12 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
         if (rand() < 0.5 || blocked(x, z, 0.4) || road.on(x, z, 0.3) || near(charities, x, z, 90)) continue;
         charities.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
       }
+      for (let s = 30 + rand() * 60; s < len - 8 && dumpsters.length < 6; s += 150 + rand() * 100) {
+        const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 1.0;
+        const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
+        if (blocked(x, z, 1.1) || road.on(x, z, 0.6) || road.onOther(x, z, 6, pts) || near(dumpsters, x, z, 100)) continue;
+        dumpsters.push({ x, z, yaw: Math.atan2(-nx * side, -nz * side) });
+      }
       if (k === "major" && len > 40 && kiosks.length < 3 && rand() < 0.22) {
         const side = rand() < 0.5 ? 1 : -1, off = w / 2 + 2.1, s = 10 + rand() * (len - 20);
         const x = x0 + ((x1 - x0) * s) / len + nx * off * side, z = z0 + ((z1 - z0) * s) / len + nz * off * side;
@@ -1199,6 +1207,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const [kind, list] of Object.entries(small)) pack(kind as PropKind, list);
   pack("charity", charities);
   pack("kiosk", kiosks);
+  pack("dumpster", dumpsters);
 
   // What a car can hit: the trunk (and canopy, for low flyers), posts and shelters.
   const obstacles: Footprint[] = [];
@@ -1211,6 +1220,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const f of small.fountain) obstacles.push(box(f.x, f.z, 0.3, 0.25, f.yaw, 1.1));
   for (const c of charities) obstacles.push(post(c.x, c.z, 0.2, 1.4));
   for (const k of kiosks) obstacles.push(box(k.x, k.z, 1.0, 0.75, k.yaw, 2.4));
+  for (const d of dumpsters) obstacles.push(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
 
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs")].filter((l): l is Layer => !!l);

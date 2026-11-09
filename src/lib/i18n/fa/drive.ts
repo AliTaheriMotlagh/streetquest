@@ -36,6 +36,21 @@ const drive: Record<string, string> = {
   "Long, slow and unstoppable on the main roads.": "دراز، آروم و بی‌وقفه توی خیابون‌های اصلی.",
   "Delivery bike": "موتور پیک",
   "A motorbike with a box — weave through traffic with your orders.": "موتور با باکس — با سفارش‌ها از لای ترافیک لایی بکش.",
+  // Taken off the street
+  Tiba: "تیبا",
+  "Saipa's little saloon, on every street.": "سدان کوچیک سایپا، توی هر خیابونی.",
+  Shahin: "شاهین",
+  "A newer saloon with a bit of punch.": "یه سدان تازه‌تر با یه کم زور بیشتر.",
+  "Tondar 90": "تندر ۹۰",
+  "Plain, tough and easy to drive.": "ساده، محکم و راحت برای رانندگی.",
+  Xantia: "زانتیا",
+  "A smooth old saloon that floats over the bumps.": "یه سدان قدیمیِ نرم که از روی دست‌اندازها سُر می‌خوره.",
+  SUV: "شاسی‌بلند",
+  "Big and high: shrugs off the kerbs.": "بزرگ و بلند: جدول‌ها براش مهم نیستن.",
+  "Khavar truck": "کامیونت خاور",
+  "A small lorry: slow, heavy, hard to stop.": "یه کامیون کوچیک: کُند، سنگین، سخت ترمز می‌گیره.",
+  Minibus: "مینی‌بوس",
+  "The old city minibus, rattling along.": "مینی‌بوس قدیمی شهر، تلق‌تلوق‌کنان.",
 
   // ---- garage
   Garage: "گاراژ",

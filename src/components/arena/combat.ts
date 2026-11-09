@@ -121,6 +121,10 @@ export type CombatHost = {
   vehicle: () => { x: number; z: number; alt: number; yaw: number; vx: number; vz: number; key: VehicleKey; paint: string; flies: boolean };
   /** Where my car is parked while I'm on foot. */
   parked: () => { x: number; z: number } | null;
+  /** How far (m) the body of the street car I could get into from here is, or null (none in reach). */
+  streetCar: (x: number, z: number) => number | null;
+  /** Get into that street car (it waits where it stood until I'm in): its name, or null if it's gone. */
+  takeCar: (x: number, z: number) => string | null;
   street: (x: number, z: number) => { x: number; z: number; yaw: number } | null;
   arenaGeo: (r: number) => ArenaGeo;
   /** Hop out (park the car where it is and stand at x, z) or back in. */
@@ -340,7 +344,7 @@ export class Combat {
       rt: this.rt.available === false ? "off" : this.rt.connected ? "on" : "connecting",
       bleed: this.bleed && performance.now() - this.bleed.at < BLEED_MS ? { id: this.bleed.id, k: this.bleed.k } : null,
       onFoot: !!this.me,
-      nearCar: !!this.me && !!parked && !this.inMatch && Math.hypot(parked.x - this.me.x, parked.z - this.me.z) < CAR_REACH_M,
+      nearCar: !!this.me && !this.inMatch && (this.ownCarAt() < CAR_REACH_M || this.h.streetCar(this.me.x, this.me.z) != null),
       hp: Math.round(this.hp),
       dead: this.dead,
       respawnIn: this.dead && this.respawnAt ? Math.max(0, Math.ceil((this.respawnAt - sNow) / 1000)) : 0,
@@ -421,10 +425,22 @@ export class Combat {
     this.enterFoot(x, z, v.yaw);
   }
 
+  /** Metres from me (on foot) to the middle of my parked car; Infinity without one. */
+  private ownCarAt() {
+    const p = this.h.parked();
+    return p && this.me ? Math.hypot(p.x - this.me.x, p.z - this.me.z) : Infinity;
+  }
+
+  /** Into my own car, or into whichever street car (parked or stopped in traffic) is nearer. */
   getIn() {
     if (!this.me || this.inMatch) return;
-    const p = this.h.parked();
-    if (!p || Math.hypot(p.x - this.me.x, p.z - this.me.z) > CAR_REACH_M) return;
+    const own = this.ownCarAt(), street = this.dead ? null : this.h.streetCar(this.me.x, this.me.z);
+    // (Mine is measured to its middle, a street car to its body: about a metre between them.)
+    if (street != null && street < own - 1) {
+      const name = this.h.takeCar(this.me.x, this.me.z);
+      if (!name) return;
+      this.h.toast(t("You took the {car}", { car: name }));
+    } else if (own > CAR_REACH_M) return;
     this.leaveFoot();
     this.h.setFoot(false);
   }

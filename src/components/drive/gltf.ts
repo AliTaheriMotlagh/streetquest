@@ -28,6 +28,29 @@ function gltfLoader() {
 
 export const isReference = (o: THREE.Object3D) => /^(ref_|footprint)/i.test(o.name);
 
+/**
+ * A mesh of a loaded model as plain float geometry in the model's frame: quantized,
+ * compressed attributes (meshopt + KHR_mesh_quantization keep the scale in the node's
+ * transform) unpacked and the node's transform applied, once, at load. Call after
+ * `root.updateMatrixWorld(true)`; the source geometry is disposed.
+ */
+export function plainGeometry(m: THREE.Mesh) {
+  const src = m.geometry;
+  const g = new THREE.BufferGeometry();
+  for (const name of ["position", "normal", "color"]) {
+    const a = src.getAttribute(name);
+    if (!a) continue;
+    const out = new Float32Array(a.count * 3);
+    for (let i = 0; i < a.count; i++) out.set([a.getX(i), a.getY(i), a.getZ(i)], i * 3);
+    g.setAttribute(name, new THREE.BufferAttribute(out, 3));
+  }
+  if (src.index) g.setIndex(new THREE.BufferAttribute(src.index.array.slice(), 1));
+  g.applyMatrix4(m.matrixWorld);
+  g.computeBoundingSphere();
+  src.dispose();
+  return g;
+}
+
 /** Parse a .glb (an address or its bytes) into a scene, reference objects removed. */
 export async function loadModel(src: string | ArrayBuffer): Promise<THREE.Group> {
   const l = gltfLoader();

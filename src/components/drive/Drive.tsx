@@ -21,7 +21,7 @@ import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { S } from "@/lib/settings";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
-import { allowedVehicle, isPaint, LAND_ALT_M, lowEnough, PAINTS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
+import { allowedVehicle, drivableOf, isPaint, LAND_ALT_M, lowEnough, PAINTS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { CHECKPOINT_M, type PartyGame, type PartyView } from "@/lib/party";
 import { Button } from "@/components/Button";
 import { Art } from "@/components/art/Art";
@@ -66,9 +66,11 @@ import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./veh
 import { onCarModel, preloadCarModels } from "./carModels";
 import { drawnParts } from "./fleet3d";
 import {
-  LIGHT, makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, paintSignals, setNight, tileMeshes, WORLD,
+  LIGHT, makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, adoptModels, paintSignals, setNight, tileMeshes, WORLD,
   type Board, type Light, type Phase, type TileMeshes,
 } from "./world3d";
+import { loadPropModels } from "./propModels";
+import { PROP_MODELS } from "@/lib/propModels";
 
 type Props = {
   start: LatLng;
@@ -254,6 +256,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     land: () => void;
     course: (g: PartyGame) => { start: LatLng & { yaw: number }; points: LatLng[] } | null;
     kick: () => void;
+    /** Back to my own car (a new pick in the garage): any car I took off the street is left behind. */
+    ownCar: () => void;
     /** Put my car here (back in it first if I'm walking): going to the party's host. */
     teleport: (at: LatLng & { yaw: number }) => void;
   } | null>(null);
@@ -315,6 +319,21 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const rain = new Rain(prof.rainDrops);
     scene.add(rain.mesh);
     const tpl = makeTemplates(style);
+    // Real street furniture once its models are in (the drawn ones meanwhile, and always in
+    // the storybook city): new tiles use them, and tiles already up swap theirs over.
+    if (style === "real")
+      void loadPropModels().then((models) => {
+        if (!models || disposed) return void (models && Object.values(models).forEach((g) => g.dispose()));
+        const old = adoptModels(tpl, models, PROP_MODELS.kinds.lamp?.top ?? null);
+        const byName = tpl as unknown as Record<string, THREE.BufferGeometry | undefined>;
+        scene.traverse((o) => {
+          const im = o as THREE.InstancedMesh;
+          const k = im.isInstancedMesh ? (im.userData.prop as string | undefined) : undefined;
+          const g = k ? byName[k] : undefined;
+          if (g?.isBufferGeometry) im.geometry = g;
+        });
+        for (const g of old) g.dispose();
+      });
     const collision = new CollisionWorld();
     // Street furniture apart from the buildings: it stops the vehicle, but never the
     // camera, a landing flyer or the search for a street to start on.
@@ -339,17 +358,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let modelKey = `${live.current.vehicle}|${live.current.paint}`;
     /** What the server lets me drive right now (party rounds can force wheels). */
     let serverVehicle: VehicleKey | null = null;
-    const currentKey = (): VehicleKey => serverVehicle ?? live.current.vehicle;
+    /** A car I took off the street (on foot, F at it), driven in its own paint until I pick in the garage again. */
+    let streetCar: { key: VehicleKey; paint: string } | null = null;
+    /** What I'm driving by choice (the server may still force other wheels): a street car I took, else my pick. */
+    const driving = (): VehicleKey => streetCar?.key ?? live.current.vehicle;
+    const currentKey = (): VehicleKey => serverVehicle ?? driving();
+    const paintNow = () => streetCar?.paint ?? live.current.paint;
     const def = () => VEHICLES[currentKey()];
     const rebuildModel = () => {
-      const want = `${currentKey()}|${live.current.paint}`;
+      const want = `${currentKey()}|${paintNow()}`;
       if (want === modelKey) return;
       scene.remove(model.group);
       model.dispose();
-      model = makeVehicle(currentKey(), live.current.paint, style, { lights: true, shadows, clearcoat: prof.clearcoat });
+      model = makeVehicle(currentKey(), paintNow(), style, { lights: true, shadows, clearcoat: prof.clearcoat });
       scene.add(model.group);
       cockpit.dispose();
-      cockpit = makeCockpit(currentKey(), live.current.paint, style);
+      cockpit = makeCockpit(currentKey(), paintNow(), style);
       model.group.add(cockpit.group);
       modelKey = want;
       if (!VEHICLES[currentKey()].flies) st.alt = st.cruise = st.vy = 0;
@@ -932,15 +956,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     // ---- the network: my position out, everyone else in
     let serverOffset = 0;
+    /** The vehicle my last report asked for: anything else in the answer is the server's say. */
+    let asked: VehicleKey = driving();
     const net = new DriveNet(
       () => {
         const L = live.current;
         // In a match the arena is my world; the city sees me again when I'm back.
         if (combat.inMatch) return null;
         const here = frame.toLatLng(st.x, st.z);
-        if (!L.canDrive) return { here: L.follow ?? here, alt: 0, yaw: st.yaw, speed: 0, vehicle: L.vehicle, color: L.paint };
+        asked = driving();
+        if (!L.canDrive) return { here: L.follow ?? here, alt: 0, yaw: st.yaw, speed: 0, vehicle: asked, color: paintNow() };
         // On foot, others see my soldier (and, without a realtime server, fight me) through this.
-        return { lat: here.lat, lng: here.lng, alt: st.alt, yaw: st.yaw, speed: st.speed, vehicle: L.vehicle, color: L.paint, sim: L.sim, ...combat.footReport() };
+        return { lat: here.lat, lng: here.lng, alt: st.alt, yaw: st.yaw, speed: st.speed, vehicle: asked, color: paintNow(), sim: L.sim, ...combat.footReport() };
       },
       (s: NetState) => {
         if (disposed) return;
@@ -949,7 +976,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         // here, players on foot as soldiers (combat), with my health and the hits I took.
         if (!combat.live) others.setDrivers(s.others.filter((o) => !(o.flags & F_FOOT)));
         combat.fromHttp(s.others, s.me, s.offset);
-        const forced = s.vehicle !== live.current.vehicle ? s.vehicle : null;
+        const forced = s.vehicle !== asked ? s.vehicle : null;
         if (forced !== serverVehicle) {
           serverVehicle = forced;
           rebuildModel();
@@ -971,8 +998,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         return live.current.touch;
       },
       canDrive: () => live.current.canDrive,
-      vehicle: () => ({ x: st.x, z: st.z, alt: st.alt, yaw: st.yaw, vx: st.vx, vz: st.vz, key: currentKey(), paint: live.current.paint, flies: def().flies }),
+      vehicle: () => ({ x: st.x, z: st.z, alt: st.alt, yaw: st.yaw, vx: st.vx, vz: st.vz, key: currentKey(), paint: paintNow(), flies: def().flies }),
       parked: () => parked,
+      streetCar: (x, z) => traffic.nearestToTake(x, z),
+      takeCar: (x, z) => {
+        const c = traffic.take(x, z);
+        if (!c) return null;
+        // It isn't in my way any more: the street's cars as solid things, without it, before I'm placed in it.
+        obstacles.add("traffic", traffic.tick(0, c.x, c.z));
+        // The car I got out of stays at the kerb (when it's one of the street's own models).
+        const was = def();
+        if (parked && was.model && !was.flies) traffic.leave({ key: was.model, paint: paintNow(), x: parked.x, z: parked.z, yaw: parked.yaw });
+        streetCar = { key: drivableOf(c.key), paint: c.paint };
+        // It waits where it stood: getting in (setFoot) puts me in it there.
+        parked = { x: c.x, z: c.z, yaw: c.yaw, alt: 0 };
+        return t(VEHICLES[streetCar.key].name);
+      },
       street: (x, z) => nearestStreet(x, z, 120),
       arenaGeo: (r) => arenaGeo(r),
       setFoot: (on, at) => {
@@ -1160,6 +1201,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       horn,
       land,
       kick: () => net.kick(),
+      ownCar: () => {
+        streetCar = null;
+        net.kick();
+      },
       teleport: (at) => {
         if (combat.inMatch) return;
         combat.backInCar();
@@ -1289,7 +1334,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         lastWorld = L.world;
         syncWorld();
       }
-      if (`${currentKey()}|${L.paint}` !== modelKey) rebuildModel();
+      if (`${currentKey()}|${paintNow()}` !== modelKey) rebuildModel();
       const D = def();
 
       // -- on foot: the soldier moves (and owns the camera); "me" follows the soldier
@@ -1832,11 +1877,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const pickVehicle = (k: VehicleKey) => {
     setVehicle(k);
     store.set(VEHICLE_KEY, k);
-    api3d.current?.kick();
+    api3d.current?.ownCar();
   };
   const pickPaint = (c: string) => {
     setPaint(c);
     store.set(COLOR_KEY, c);
+    api3d.current?.ownCar();
   };
   const pickStyle = (s: Style) => {
     setStyle(s);

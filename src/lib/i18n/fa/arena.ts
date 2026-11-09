@@ -103,6 +103,7 @@ const arena: Record<string, string> = {
   "Site {s}": "سایت {s}",
   "Get in the car": "سوار ماشین شو",
   "Get in the car (F)": "سوار ماشین شو (F)",
+  "You took the {car}": "سوار {car} شدی",
   "Get out and walk": "پیاده شو و راه برو",
   "Get out and walk (F)": "پیاده شو و راه برو (F)",
   "Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Tab scores · F car":

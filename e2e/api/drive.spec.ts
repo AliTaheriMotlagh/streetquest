@@ -76,7 +76,7 @@ test.describe("3D city presence", () => {
     await Promise.all([a.dispose(), b.dispose(), c.dispose()]);
   });
 
-  test("teleports are refused, the whole garage is free, unknown vehicles fall back to the hatchback, GPS players only watch", async ({ baseURL }) => {
+  test("teleports are refused, the whole garage is free, street cars can be driven, unknown vehicles fall back to the hatchback, GPS players only watch", async ({ baseURL }) => {
     const here = randomSpot();
     const p = await homePlayer(baseURL!, here);
     const first = await drive(p, here, { vehicle: "heli", alt: 80 });
@@ -84,6 +84,8 @@ test.describe("3D city presence", () => {
     // Free by default (S.garageFree): a level-1 guest flies the helicopter, or drives a Pride.
     expect(first.data.vehicle).toBe("heli");
     expect((await drive(p, here, { vehicle: "pride" })).data.vehicle).toBe("pride");
+    // A car taken off the street (never a garage pick) is reported and kept, whatever your level.
+    expect((await drive(p, here, { vehicle: "khavar" })).data.vehicle).toBe("khavar");
     expect((await drive(p, here, { vehicle: "tank" })).data.vehicle).toBe("car");
     const jump = await drive(p, offset(here, 2000));
     expect(jump.data.rejected).toBe(true);

@@ -1,5 +1,93 @@
 [
   {
+    "uid": "e53ad46c604c44e59a98bad27041cb19",
+    "title": "Wooden Park Bench",
+    "author": "TheMadraver",
+    "url": "https://sketchfab.com/3d-models/wooden-park-bench-e53ad46c604c44e59a98bad27041cb19",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/bench.glb",
+    "faces": 714,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "6dfba42794e445719010caf0a1ceca7c",
+    "title": "Trash Can. Low Poly",
+    "author": "katykate",
+    "url": "https://sketchfab.com/3d-models/trash-can-low-poly-6dfba42794e445719010caf0a1ceca7c",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/bin.glb",
+    "faces": 356,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "bca23ba2d6794c4aab20c9a3d6e01b6a",
+    "title": "Bus Stop Shelter",
+    "author": "R3indeer",
+    "url": "https://sketchfab.com/3d-models/bus-stop-shelter-bca23ba2d6794c4aab20c9a3d6e01b6a",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/bus.glb",
+    "faces": 606,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "337b3a4424b745699cda776545070e04",
+    "title": "Dumpster",
+    "author": "txnomod",
+    "url": "https://sketchfab.com/3d-models/dumpster-337b3a4424b745699cda776545070e04",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/dumpster.glb",
+    "faces": 542,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "f05b0c2f9bcf41cea188a4b4c848068a",
+    "title": "fire hydrant",
+    "author": "Lora",
+    "url": "https://sketchfab.com/3d-models/fire-hydrant-f05b0c2f9bcf41cea188a4b4c848068a",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/hydrant.glb",
+    "faces": 946,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "17e2bc2ec7de42d08d98e3a6c886a8b2",
+    "title": "Street lamp (low poly)",
+    "author": "pinokio21",
+    "url": "https://sketchfab.com/3d-models/street-lamp-low-poly-17e2bc2ec7de42d08d98e3a6c886a8b2",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/lamp_pk.glb",
+    "faces": 972,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "d799c08100974e1ba352fcd646cb0694",
+    "title": "Leaf Tree - PS1 Low Poly",
+    "author": "Wersaus33",
+    "url": "https://sketchfab.com/3d-models/leaf-tree-ps1-low-poly-d799c08100974e1ba352fcd646cb0694",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/tree_leaf.glb",
+    "faces": 1695,
+    "at": "2026-11-08"
+  },
+  {
+    "uid": "dcf20a5a86784331a34657e94442511f",
+    "title": "Stylize Tree Lowpoly",
+    "author": "uday",
+    "url": "https://sketchfab.com/3d-models/stylize-tree-lowpoly-dcf20a5a86784331a34657e94442511f",
+    "license": "CC-BY-4.0",
+    "kind": "prop",
+    "file": "assets/models/prop/tree_uday.glb",
+    "faces": 1024,
+    "at": "2026-11-08"
+  },
+  {
     "uid": "849b7cdf8622487485febc40db89e734",
     "title": "Low-Poly AKM",
     "author": "TastyTony",

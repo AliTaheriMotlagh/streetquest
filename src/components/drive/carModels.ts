@@ -16,7 +16,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { CAR_MODELS } from "@/lib/carModels";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import type { FleetParts } from "./fleet3d";
-import { loadModel } from "./gltf";
+import { loadModel, plainGeometry } from "./gltf";
 import { paint as tint } from "./world3d";
 
 /** Kinds drawn from another kind's model: the city taxi is a yellow Samand with its roof sign. */
@@ -98,7 +98,7 @@ function toParts(key: FleetKey, root: THREE.Object3D, meta: Meta, suffix: string
   root.updateMatrixWorld(true);
   const part = (name: string) => {
     const m = root.getObjectByName(name + suffix) as THREE.Mesh | undefined;
-    return m?.isMesh ? unpack(m) : null;
+    return m?.isMesh ? plainGeometry(m) : null;
   };
   const paint = part("paint"), kit = part("kit"), head = part("head"), tail = part("tail"), wheel = part("wheel");
   if (!paint || !kit || !head || !tail || !wheel) return null;
@@ -122,24 +122,6 @@ function toParts(key: FleetKey, root: THREE.Object3D, meta: Meta, suffix: string
     // A parcel rides on the roof — in the bed of a pickup, where the drawn model knows.
     cargo: key === "vanet" ? drawn.cargo.clone() : new THREE.Vector3(0, meta.roof.y + 0.25, meta.roof.z),
   };
-}
-
-/** Quantized, compressed attributes → plain floats with the node's transform applied (once, at load). */
-function unpack(m: THREE.Mesh) {
-  const src = m.geometry;
-  const g = new THREE.BufferGeometry();
-  for (const name of ["position", "normal", "color"]) {
-    const a = src.getAttribute(name);
-    if (!a) continue;
-    const out = new Float32Array(a.count * 3);
-    for (let i = 0; i < a.count; i++) out.set([a.getX(i), a.getY(i), a.getZ(i)], i * 3);
-    g.setAttribute(name, new THREE.BufferAttribute(out, 3));
-  }
-  if (src.index) g.setIndex(new THREE.BufferAttribute(src.index.array.slice(), 1));
-  g.applyMatrix4(m.matrixWorld);
-  g.computeBoundingSphere();
-  src.dispose();
-  return g;
 }
 
 /** The taxi's roof sign (as the drawn taxi has it), on the model's roof. */

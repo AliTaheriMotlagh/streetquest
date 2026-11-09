@@ -18,6 +18,7 @@ import { materialDefs, render } from "../art/kit";
 import { after, DISPLAY, displayReferred, patchShader, swap } from "./graphics/shaders";
 import { heightToNormal, surfaces } from "./graphics/surfaces";
 import { FACADES, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
+import { treeVariant } from "@/lib/streetProps";
 import { nameLines, oneLine, tradeOf } from "./trades";
 
 export type Phase = "night" | "dawn" | "day" | "dusk";
@@ -869,8 +870,67 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(1.4, 0.12, 0.26), 0, 1.07, 0.82), "#ff6a13"),
     ...[-0.5, 0, 0.5].map((x, i) => paint(at(new THREE.BoxGeometry(0.3, 0.4, 0.03), x, 1.45, 0.7), ["#e8384f", "#f2c230", "#1f6feb"][i])),
   ])!;
-  const all = { tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk };
-  return { ...all, dispose: () => Object.values(all).forEach((g) => g.dispose()) };
+  // The municipality's waste container: a green bin on wheels with a hinged lid, front (+z) to the road.
+  const dumpster = mergeGeometries([
+    paint(at(new THREE.BoxGeometry(1.75, 1.05, 1.1), 0, 0.68, 0), real ? "#2f6b3f" : "#3fbf6a"),
+    paint(at(new THREE.BoxGeometry(1.85, 0.1, 1.2), 0, 1.25, -0.02), real ? "#26583a" : "#2f9e55"),
+    ...[-0.7, 0.7].flatMap((x) => [-0.42, 0.42].map((z) => paint(at(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 8).rotateZ(Math.PI / 2), x, 0.1, z), "#1b1b1b"))),
+  ])!;
+  const tpl = {
+    tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk, dumpster,
+    /** Other kinds of tree from real models (adoptModels): a street's trees are spread over all of them. */
+    variants: [] as THREE.BufferGeometry[],
+    /** Real models are in (tree tints soften: the models bring their own colours). */
+    modelled: false,
+    dispose() {
+      for (const v of Object.values(tpl)) if ((v as THREE.BufferGeometry)?.isBufferGeometry) (v as THREE.BufferGeometry).dispose();
+      for (const g of tpl.variants) g.dispose();
+    },
+  };
+  return tpl;
+}
+
+/** The kinds a real model can stand in for (scripts/props.ts builds them). */
+const MODELLED = ["tree", "lamp", "bus", "bench", "bin", "hydrant", "dumpster"] as const;
+
+/**
+ * Real street furniture (drive/propModels.ts) in place of the drawn templates. Returns the
+ * drawn geometries it replaced, for the caller to swap on tiles already built (their
+ * instanced meshes carry `userData.prop`) and then dispose.
+ */
+export function adoptModels(tpl: Templates, models: Partial<Record<string, THREE.BufferGeometry>>, lampTop: [number, number, number] | null) {
+  const old: THREE.BufferGeometry[] = [];
+  for (const k of MODELLED) {
+    const g = models[k];
+    if (!g) continue;
+    old.push(tpl[k]);
+    tpl[k] = g;
+  }
+  // The lamp's glow and its pool of light go where the model's head is.
+  if (models.lamp && lampTop) {
+    const [x, y, z] = lampTop;
+    old.push(tpl.lampHead, tpl.pool);
+    tpl.lampHead = paint(at(new THREE.BoxGeometry(0.3, 0.04, 0.46), x, y - 0.12, z), "#ffffff");
+    tpl.pool = new THREE.PlaneGeometry(24, 24).rotateX(-Math.PI / 2).translate(x, 0.3, z + 0.4);
+  }
+  tpl.variants = [models.tree2, models.pine].filter((g): g is THREE.BufferGeometry => !!g);
+  tpl.modelled = true;
+  return old;
+}
+
+
+/**
+ * A tile's trees spread over the kinds of tree (treeVariant), each tree's tint softened
+ * toward white: a real model brings its own greens, the tint only varies them a little.
+ */
+function treeGroups(p: { mats: Float32Array; cols: Float32Array | null }, variants: number) {
+  const groups = Array.from({ length: variants + 1 }, () => ({ m: [] as number[], c: [] as number[] }));
+  for (let i = 0; i < p.mats.length / 16; i++) {
+    const g = groups[treeVariant(p.mats[i * 16 + 12], p.mats[i * 16 + 14], variants)];
+    for (let k = 0; k < 16; k++) g.m.push(p.mats[i * 16 + k]);
+    for (let k = 0; k < 3; k++) g.c.push(p.cols ? 0.78 + 0.22 * p.cols[i * 3 + k] : 1);
+  }
+  return groups.map((g) => ({ mats: new Float32Array(g.m), cols: new Float32Array(g.c) }));
 }
 
 // ---------------------------------------------------------------- a tile's meshes
@@ -936,9 +996,11 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     (trim ? detail : group).add(mesh);
   }
   const insts: THREE.InstancedMesh[] = [];
-  const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, p: { mats: Float32Array; cols: Float32Array | null }, shadow: boolean) => {
+  const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, p: { mats: Float32Array; cols: Float32Array | null }, shadow: boolean, prop?: string) => {
     const n = p.mats.length / 16;
     const m = new THREE.InstancedMesh(geo, mat, n);
+    // Which template it draws, so real models can take over on tiles already built.
+    if (prop) m.userData.prop = prop;
     m.instanceMatrix = new THREE.InstancedBufferAttribute(p.mats, 16);
     if (p.cols) m.instanceColor = new THREE.InstancedBufferAttribute(p.cols, 3);
     m.castShadow = shadow && opts.shadows;
@@ -947,11 +1009,15 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     detail.add(m);
     insts.push(m);
   };
-  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain, charity: tpl.charity, kiosk: tpl.kiosk };
+  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain, charity: tpl.charity, kiosk: tpl.kiosk, dumpster: tpl.dumpster };
   for (const p of a.props) {
-    inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree");
-    if (p.kind === "lamp") inst(tpl.lampHead, mats.glow, { mats: p.mats, cols: null }, false);
-    if (p.kind === "lamp" && mats.pools) inst(tpl.pool, mats.pool, { mats: p.mats, cols: null }, false);
+    if (p.kind === "tree" && tpl.modelled) {
+      treeGroups(p, tpl.variants.length).forEach((g, vi) => g.mats.length && inst(vi ? tpl.variants[vi - 1] : tpl.tree, mats.trees, g, true, vi ? undefined : "tree"));
+      continue;
+    }
+    inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree", p.kind);
+    if (p.kind === "lamp") inst(tpl.lampHead, mats.glow, { mats: p.mats, cols: null }, false, "lampHead");
+    if (p.kind === "lamp" && mats.pools) inst(tpl.pool, mats.pool, { mats: p.mats, cols: null }, false, "pool");
   }
   const lamps: THREE.InstancedMesh[] = [];
   for (const p of a.props)

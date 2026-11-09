@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { FLEET, FLEET_KEYS, heavy, pickFleet, pickPaint, roomBetween, TAXI_YELLOW } from "@/lib/fleet";
 import { applySettings, S } from "@/lib/settings";
-import { allowedVehicle, GARAGE_KEYS, unlocked, VEHICLE_KEYS, VEHICLES } from "@/lib/vehicles";
+import { allowedVehicle, carToTake, drivableOf, drivenVehicle, GARAGE_KEYS, TAKE_MAX_MPS, TAKE_REACH_M, toBody, unlocked, VEHICLE_KEYS, VEHICLES } from "@/lib/vehicles";
 
 /** A fixed sequence of "random" numbers. */
 const seq = (xs: number[]) => {
@@ -57,8 +57,8 @@ describe("street traffic", () => {
 });
 
 describe("the garage", () => {
-  it("lists every vehicle once, new ones after the old (Street Arena sends the index)", () => {
-    assert.deepEqual([...GARAGE_KEYS].sort(), [...VEHICLE_KEYS].sort());
+  it("lists every vehicle but the street-only ones once, new ones after the old (Street Arena sends the index)", () => {
+    assert.deepEqual([...GARAGE_KEYS].sort(), VEHICLE_KEYS.filter((k) => !VEHICLES[k].street).sort());
     assert.deepEqual(VEHICLE_KEYS.slice(0, 6), ["car", "moto", "pickup", "drone", "sports", "heli"]);
   });
 
@@ -83,5 +83,54 @@ describe("the garage", () => {
     } finally {
       applySettings({});
     }
+  });
+});
+
+describe("taking a car off the street", () => {
+  it("drives every street model as a vehicle of its own (a loaded pickup as the pickup, a box bike as the courier)", () => {
+    for (const k of FLEET_KEYS) {
+      const v = VEHICLES[drivableOf(k)];
+      assert.ok(v.model === k || (k === "vanetLoad" && v.key === "vanet") || (k === "bikeBox" && v.key === "courier"), `${k} → ${v.key}`);
+      assert.equal(!!v.bike, !!FLEET[k].bike, `${k}: a bike drives as a bike`);
+      assert.ok(!v.flies);
+    }
+  });
+
+  it("never offers the street-only cars in the garage, but lets anyone report driving one", () => {
+    try {
+      applySettings({ garageFree: false });
+      for (const k of VEHICLE_KEYS.filter((v) => VEHICLES[v].street)) {
+        assert.equal(allowedVehicle(k, 99), "car", `${k} isn't a garage pick`);
+        assert.equal(drivenVehicle(k, 1), k, `${k} can be taken at level 1`);
+      }
+      // A bus taken off the street, at level 1; the garage's flyers still need their level.
+      assert.equal(drivenVehicle("bus", 1), "bus");
+      assert.equal(drivenVehicle("heli", 1), "car");
+      assert.equal(drivenVehicle("sports", 1), "car");
+      assert.equal(drivenVehicle("nope", 1), "car");
+    } finally {
+      applySettings({});
+    }
+  });
+
+  it("measures to the car's body, not its middle", () => {
+    const bus = { x: 0, z: 0, yaw: 0, len: 12, wid: 2.5 };
+    assert.equal(toBody(bus, 0, 5.9), 0);
+    assert.ok(Math.abs(toBody(bus, 0, 7) - 1) < 1e-9, "a metre past its tail");
+    assert.ok(Math.abs(toBody(bus, 2.25, 0) - 1) < 1e-9, "a metre off its side");
+    // Turned a quarter: its length now runs along x.
+    assert.ok(Math.abs(toBody({ ...bus, yaw: Math.PI / 2 }, 7, 0) - 1) < 1e-9);
+  });
+
+  it("gets into the nearest car in reach that isn't driving off", () => {
+    const cars = [
+      { id: "far", x: 10, z: 0, yaw: 0, len: 4, wid: 1.7 },
+      { id: "near", x: 2, z: 0, yaw: 0, len: 4, wid: 1.7 },
+      { id: "moving", x: 1.2, z: 0, yaw: 0, len: 4, wid: 1.7, v: TAKE_MAX_MPS + 1 },
+    ];
+    assert.equal(carToTake(cars, 0, 0)?.car.id, "near");
+    assert.ok(Math.abs(carToTake(cars, 0, 0)!.d - (2 - 0.85)) < 1e-9);
+    assert.equal(carToTake(cars, 0, -20), null);
+    assert.equal(carToTake([cars[1]], 2 + 0.85 + TAKE_REACH_M + 0.1, 0), null);
   });
 });

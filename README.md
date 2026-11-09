@@ -136,6 +136,18 @@ mood scales XP; loot funds research; territory funds the army.
   guns (`assets/blender/guns.py`: joined, turned barrel-forward, scaled to the real gun, grip at the hand, colours
   baked into vertex colours so each gun is two draw calls, thinned to 3,500 triangles) and writes each gun's sight
   line and muzzle to `src/lib/arena/gunFit.ts`; a gun without its source falls back to a procedural one.
+- **Real street furniture** — where OpenStreetMap maps them (trees, street lamps, bus stops, benches, bins,
+  hydrants) and where the city fills them in along the real streets (rows of trees, lamps every 34 m, and a
+  municipal dumpster every block or two at the kerb, solid to cars), the 3D city draws real CC BY models: a
+  full broadleaf and a pine (a street's trees spread over both, the same tree on the same spot every time), a
+  street lamp whose arm and glow reach out over the road, a bus shelter, a bench, a bin, a hydrant and a
+  dumpster. `npm run assets:props` (`scripts/props.ts`) builds them from `assets/models/prop/*.glb`: colours
+  and textures baked into vertex colours, each stood on its foot, turned to the street, scaled to its real
+  height and simplified (≤ 760 triangles), all in one ~80 KB file (`public/models/props`, manifest
+  `src/lib/propModels.ts`, credits on /credits). Every kind stays one instanced draw call per tile; tiles show
+  the drawn ones until the file arrives and then swap over. The storybook style keeps its drawn furniture;
+  Iran's own (the green kiosk, the blue charity box, the water-cooler fountain) stays drawn too.
+  `scripts/lib/meshSoup.ts` is the reading / baking / welding / preview code the car and furniture builds share.
   The build bakes each texture into vertex colours, removes everything you can't see from outside (the cabin,
   engine and underside: it draws the car from 60 directions with the glass opaque), levels the car, scales it to the
   real car's length, finds its four wheels, sorts the rest into the parts traffic instances (paint, trim, glass,
@@ -181,7 +193,11 @@ mood scales XP; loot funds research; territory funds the army.
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
   nearby shows up live (20 updates a second over WebSockets, or a few a second over HTTP without the realtime
   server). Press **F** / 🚶 to get out of the car and walk as a 3D
-  soldier (third-person over the shoulder, or first-person with the gun in hand). In the open city fighting is opt-in:
+  soldier (third-person over the shoulder, or first-person with the gun in hand). On foot, **F** / the car button next to
+  any car on the street — parked at the kerb, or stopped at a light or in a jam — takes it: you drive it in its own paint
+  (a Tiba, a Shahin, a Khavar truck, the city bus…, each with its own handling; the street-only ones never show in the
+  garage), the car you got out of stays parked at the kerb, and a new pick in the garage puts you back in your own
+  (`TrafficCars.take/leave`, `carToTake` in `src/lib/vehicles.ts`; the server accepts any street car in a report). In the open city fighting is opt-in:
   everyone starts in 🕊️ passive mode, fighting unlocks at level 3, and you can't drop back to passive mid-fight. Or start a
   **match** on the streets around you (Menu → Street Arena): 💀 Deathmatch, ⚔️ Team Deathmatch, 💣 Bomb Defusal (plant at
   site A or B, defuse, rounds, side swap), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
