@@ -15,7 +15,7 @@ import { rng } from "@/lib/geo";
 import { artFor } from "../art/emoji";
 import { ICONS } from "../art/icons";
 import { materialDefs, render } from "../art/kit";
-import { after, DISPLAY, displayReferred, patchShader, swap } from "./graphics/shaders";
+import { after, DISPLAY, displayReferred, mirrored, patchShader, swap } from "./graphics/shaders";
 import { heightToNormal, surfaces } from "./graphics/surfaces";
 import { FACADES, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
 import { treeVariant } from "@/lib/streetProps";
@@ -400,8 +400,10 @@ transformed += 0.012 * sqH * sqWind * sin(sqTime * 6.0 + transformed.yzx * 3.0 +
  * Large-scale tone variation (so a park or a roof isn't one flat colour) and the rain: wet
  * surfaces darken and turn glossy. `macro`: world-space frequency of the variation (0: none).
  */
-function weathered<T extends THREE.MeshStandardMaterial>(mat: T, noise: THREE.Texture | null, o: { macro?: number; darken: number; rough: number }) {
+function weathered<T extends THREE.MeshStandardMaterial>(mat: T, noise: THREE.Texture | null, o: { macro?: number; darken: number; rough: number; mirror?: number }) {
   const macro = noise && o.macro ? o.macro : 0;
+  // Wet, it mirrors the street a little (screen-space reflections).
+  if (o.mirror) mirrored(mat, `sqWet * ${o.mirror.toFixed(3)}`);
   return patchShader(mat, `weather-${macro}-${o.darken}-${o.rough}`, (sh) => {
     sh.uniforms.sqWet = WORLD.wet;
     let v = sh.vertexShader, f = sh.fragmentShader;
@@ -455,6 +457,8 @@ normal = normalize(mix(normal, sqP, smoothstep(0.8, 0.95, dot(normal, sqUp)) * (
     sh.fragmentShader = f;
   });
 }
+/** How mirror-like the street is, wet: a sheen everywhere (less on paving slabs), a near mirror in the puddles. */
+const STREET_MIRROR = "sqWet * 0.42 * (1.0 - 0.5 * sqPaved) + sqPud * 0.5";
 
 /** A soft round glow for the light under a street lamp at night. */
 function poolTexture() {
@@ -545,9 +549,9 @@ export function makeMaterials(style: Style, opts: MaterialOpts = PLAIN) {
     glass: weathered(std({ map: curtain(false), vertexColors: true, roughness: s ? 0.06 : 0.12, metalness: s ? 0.6 : 0.75, emissiveMap: curtain(true), emissive: new THREE.Color("#ffe6b8"), emissiveIntensity: 0, envMapIntensity: s ? 1.35 : 1.2 }), null, { darken: 0.05, rough: 0.04 }),
     roofs: weathered(std({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }), noise, { macro: 0.03, darken: 0.3, rough: 0.4 }),
     roads: s
-      ? streetSurface(std({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, ...off(-2) }), s)
+      ? mirrored(streetSurface(std({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, ...off(-2) }), s), STREET_MIRROR)
       : std({ vertexColors: true, map: grain(0.8, 0.06, 21), roughness: 0.93, side: THREE.DoubleSide, ...off(-2) }),
-    marks: weathered(std({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }), null, { darken: 0.25, rough: 0.22 }),
+    marks: weathered(std({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }), null, { darken: 0.25, rough: 0.22, mirror: 0.22 }),
     ground: weathered(std({ vertexColors: true, map: grain(0.78, 0.02, 33), roughness: 1, side: THREE.DoubleSide, ...off(-1) }), noise, { macro: 0.012, darken: 0.32, rough: 0.6 }),
     water: std({ color: "#2f5f7c", roughness: 0.06, metalness: 0.35, side: THREE.DoubleSide, transparent: true, opacity: 0.94, ...off(-1) }),
     trees: opts.wind ? windy(trees) : trees,

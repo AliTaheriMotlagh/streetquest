@@ -50,7 +50,7 @@ describe("profiles", () => {
   it("every higher tier is at least as good as the one below", () => {
     for (let i = 1; i < TIERS.length; i++) {
       const lo = PROFILES[TIERS[i - 1]], hi = PROFILES[TIERS[i]];
-      for (const k of ["maxDpr", "shadowMap", "shadowRange", "detailM", "fogFar", "rainDrops", "anisotropy"] as const) assert.ok(hi[k] >= lo[k], `${TIERS[i]}.${k}`);
+      for (const k of ["maxDpr", "shadowMap", "shadowRange", "detailM", "fogFar", "rainDrops", "anisotropy", "ssr"] as const) assert.ok(hi[k] >= lo[k], `${TIERS[i]}.${k}`);
       for (const k of ["post", "bloom", "ao", "cinematic", "shadows", "surfaces", "clouds", "clearcoat", "lampPools", "wind"] as const) assert.ok(!lo[k] || hi[k], `${TIERS[i]}.${k}`);
     }
   });
@@ -85,6 +85,8 @@ describe("profiles", () => {
     assert.deepEqual(effective("ultra", 0), PROFILES.ultra);
     assert.equal(effective("ultra", 1).ao, false);
     assert.equal(effective("ultra", 1).cinematic, true);
+    assert.deepEqual([PROFILES.ultra.ssr, PROFILES.high.ssr, PROFILES.medium.ssr, PROFILES.low.ssr], [2, 1, 0, 0], "full, half, then the environment map only");
+    assert.deepEqual([effective("ultra", 1).ssr, effective("ultra", 2).ssr, effective("high", 1).ssr], [1, 0, 1]);
     assert.equal(effective("ultra", 2).cinematic, false);
     assert.equal(effective("ultra", 2).bloom, true);
     assert.equal(effective("ultra", 3).bloom, false);

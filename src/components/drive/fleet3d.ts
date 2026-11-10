@@ -11,6 +11,7 @@
 // it once it has downloaded — near ones in full detail, far ones (and every car on "lite"
 // phones) in the model's light version.
 import * as THREE from "three";
+import { mirrored, PAINT_MIRROR } from "./graphics/shaders";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import { tumbleOrigin } from "@/lib/street/carPhysics";
@@ -696,9 +697,12 @@ export class FleetInstances {
       paint: withDents(
         !real
           ? toon({ color: "#ffffff" })
-          : look.clearcoat
-            ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
-            : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
+          : mirrored(
+              look.clearcoat
+                ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
+                : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
+              PAINT_MIRROR,
+            ),
       ),
       kit: withDents(kitMaterial(style)),
       // Tinted, not blacked out: the driver and the cabin show through.

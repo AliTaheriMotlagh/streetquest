@@ -8,6 +8,11 @@
 //    the way, except what's nearer than the player's car — and the sun's shafts: the sky
 //    around the sun, smeared outwards from it at ¼ size, so they pour through the gaps in
 //    the skyline;
+//  - screen-space reflections (`ssr`: half size on high, full on ultra): surfaces say how
+//    mirror-like they are in the target's alpha (shaders.ts `mirrored` — wet asphalt, puddles,
+//    car paint); for those a ray is marched along the reflection through the depth buffer and
+//    what it hits is laid over the surface. A ray that leaves the screen or passes behind
+//    something leaves the surface as drawn: reflecting the sky's environment map;
 //  - a dual-filter bloom chain;
 //  - one last pass that adds them up, sharpens, fringes the corners (chromatic aberration),
 //    adds a lens flare while the sun is in view, tone-maps (three.js's ACES, so it matches
@@ -284,6 +289,80 @@ void main() {
   gl_FragColor = vec4(s, 1.0);
 }`;
 
+// Screen-space reflections, step one: for every mirror-like pixel (alpha < 1) march the
+// reflected ray through the depth buffer in growing steps, refine where it first goes behind
+// something, and write what's there — premultiplied by how sure the hit is (fading at the
+// screen's edges and for rays coming back at the camera) and how strongly this surface
+// mirrors at this angle (Fresnel: a wet road is a mirror at a glancing angle, hardly looking down).
+const SSR_FRAG = /* glsl */ `
+uniform sampler2D tScene; uniform highp sampler2D tDepth; uniform mat4 uProj; uniform mat4 uInvProj; uniform vec2 uTexel; uniform float uSeed;
+varying vec2 vUv;
+vec3 viewPos(vec2 uv) { float d = texture2D(tDepth, uv).r; vec4 p = uInvProj * vec4(vec3(uv, d) * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  float m = 1.0 - texture2D(tScene, vUv).a;
+  if (m < 0.03) { gl_FragColor = vec4(0.0); return; }
+  vec3 P = viewPos(vUv);
+  vec3 pl = viewPos(vUv - vec2(uTexel.x, 0.0)), pr = viewPos(vUv + vec2(uTexel.x, 0.0));
+  vec3 pd = viewPos(vUv - vec2(0.0, uTexel.y)), pu = viewPos(vUv + vec2(0.0, uTexel.y));
+  vec3 dx = abs(pr.z - P.z) < abs(P.z - pl.z) ? pr - P : P - pl;
+  vec3 dy = abs(pu.z - P.z) < abs(P.z - pd.z) ? pu - P : P - pd;
+  vec3 N = normalize(cross(dx, dy));
+  vec3 V = normalize(P);
+  float n1 = hash(gl_FragCoord.xy + uSeed), n2 = hash(gl_FragCoord.yx * 1.37 + uSeed);
+  // A rougher surface scatters its reflection: the ray is nudged, the blur afterwards does the rest.
+  vec3 R = normalize(reflect(V, N) + (vec3(n1, n2, n1 * n2 * 2.0) - 0.5) * (1.0 - m) * 0.025);
+  float away = smoothstep(0.3, 0.0, R.z);
+  if (away <= 0.0) { gl_FragColor = vec4(0.0); return; }
+  float stepLen = max(0.12, -P.z * 0.025), t = stepLen * (0.8 + 0.4 * n1), tPrev = 0.0, hit = 0.0;
+  vec2 hitUv = vUv;
+  for (int i = 0; i < STEPS; i++) {
+    vec3 q = P + R * t;
+    vec4 c = uProj * vec4(q, 1.0);
+    if (c.w <= 0.0) break;
+    vec2 uv = c.xy / c.w * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
+    float behind = viewPos(uv).z - q.z;
+    if (behind > 0.0) {
+      // Behind something — if only just, that's what the ray hit; if far behind, it went
+      // past the back of something we can't see the far side of: no answer.
+      if (behind < stepLen * 1.5 + 0.6) {
+        hit = 1.0;
+        hitUv = uv;
+        float lo = tPrev, hi = t;
+        for (int j = 0; j < 4; j++) {
+          float mid = (lo + hi) * 0.5;
+          vec3 qm = P + R * mid;
+          vec4 cm = uProj * vec4(qm, 1.0);
+          vec2 um = cm.xy / cm.w * 0.5 + 0.5;
+          if (viewPos(um).z - qm.z > 0.0) { hi = mid; hitUv = um; } else lo = mid;
+        }
+      }
+      break;
+    }
+    tPrev = t;
+    stepLen *= 1.2;
+    t += stepLen;
+  }
+  vec2 e = abs(hitUv - 0.5) * 2.0;
+  float fres = mix(0.22, 1.0, pow(1.0 - max(dot(-V, N), 0.0), 3.0));
+  float a = hit * (1.0 - smoothstep(0.82, 1.0, max(e.x, e.y))) * away * fres * min(1.0, m * 1.35);
+  gl_FragColor = vec4(min(texture2D(tScene, hitUv).rgb, vec3(24.0)) * a, a);
+}`;
+// …step two: laid over the scene, a little blurred (more for a duller mirror).
+const SSR_MIX_FRAG = /* glsl */ `
+uniform sampler2D tScene; uniform sampler2D tRefl; uniform vec2 uTexel; varying vec2 vUv;
+void main() {
+  vec4 s = texture2D(tScene, vUv);
+  if (s.a > 0.975) { gl_FragColor = vec4(s.rgb, 1.0); return; }
+  // A 3×3 tent, wider for a duller mirror.
+  vec2 o = uTexel * (0.7 + 1.6 * s.a);
+  vec4 r = texture2D(tRefl, vUv) * 0.25
+    + (texture2D(tRefl, vUv + vec2(o.x, 0.0)) + texture2D(tRefl, vUv - vec2(o.x, 0.0)) + texture2D(tRefl, vUv + vec2(0.0, o.y)) + texture2D(tRefl, vUv - vec2(0.0, o.y))) * 0.125
+    + (texture2D(tRefl, vUv + o) + texture2D(tRefl, vUv - o) + texture2D(tRefl, vUv + vec2(o.x, -o.y)) + texture2D(tRefl, vUv - vec2(o.x, -o.y))) * 0.0625;
+  gl_FragColor = vec4(s.rgb * (1.0 - r.a) + r.rgb, 1.0);
+}`;
+
 // FXAA (Lottes' fast approximate anti-aliasing, the short form): find the edge from the
 // corners' brightness and blend along it. Works on the finished, display-space frame.
 const FXAA_FRAG = /* glsl */ `
@@ -310,7 +389,7 @@ const pass = (frag: string, uniforms: Record<string, THREE.IUniform>, defines: R
 
 const BLOOM_MIPS = 5;
 
-export type PostOptions = { msaa: number; bloom: boolean; ao: boolean; cinematic: boolean; fxaa: boolean; bloomDiv: number };
+export type PostOptions = { msaa: number; bloom: boolean; ao: boolean; cinematic: boolean; fxaa: boolean; bloomDiv: number; ssr: 0 | 1 | 2 };
 
 /** Further than this (m) is sky to the sun shafts (the city ends in fog well before). */
 const SKY_Z = 1500;
@@ -325,6 +404,8 @@ export class PostPipeline {
   private rayA: THREE.WebGLRenderTarget | null = null;
   private rayB: THREE.WebGLRenderTarget | null = null;
   private ldr: THREE.WebGLRenderTarget | null = null;
+  private refl: THREE.WebGLRenderTarget | null = null;
+  private lit: THREE.WebGLRenderTarget | null = null;
   private down: THREE.WebGLRenderTarget[] = [];
   private up: THREE.WebGLRenderTarget[] = [];
   private final: THREE.ShaderMaterial;
@@ -336,6 +417,8 @@ export class PostPipeline {
   private motionMat = pass(MOTION_FRAG, { tScene: { value: null }, tDepth: { value: null }, uReproject: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uAmount: { value: 0 }, uNear: { value: 10 }, uSeed: { value: 0 } }, { SAMPLES: 8 });
   private rayMaskMat = pass(RAY_MASK_FRAG, { tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uSkyZ: { value: SKY_Z } });
   private rayBlurMat = pass(RAY_BLUR_FRAG, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uReach: { value: 0.5 } }, { SAMPLES: 14 });
+  private ssrMat = pass(SSR_FRAG, { tScene: { value: null }, tDepth: { value: null }, uProj: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uSeed: { value: 0 } }, { STEPS: 22 });
+  private ssrMixMat = pass(SSR_MIX_FRAG, { tScene: { value: null }, tRefl: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private fxaaMat = pass(FXAA_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private size = new THREE.Vector2();
   private opts: PostOptions;
@@ -370,7 +453,7 @@ export class PostPipeline {
 
   /** Needs the scene's depth as a texture? */
   private get depth() {
-    return this.opts.ao || this.opts.cinematic;
+    return this.opts.ao || this.opts.cinematic || this.opts.ssr > 0;
   }
   private makeHdr(w: number, h: number) {
     const t = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: this.opts.msaa, depthBuffer: true, stencilBuffer: false });
@@ -408,13 +491,13 @@ export class PostPipeline {
   }
 
   private get aux() {
-    return [this.aoA, this.aoB, this.motion, this.rayA, this.rayB, this.ldr, ...this.down, ...this.up];
+    return [this.aoA, this.aoB, this.motion, this.rayA, this.rayB, this.ldr, this.refl, this.lit, ...this.down, ...this.up];
   }
   private resizeAux() {
     const { x: w, y: h } = this.size;
     if (!w || !h) return;
     for (const t of this.aux) t?.dispose();
-    this.aoA = this.aoB = this.motion = this.rayA = this.rayB = this.ldr = null;
+    this.aoA = this.aoB = this.motion = this.rayA = this.rayB = this.ldr = this.refl = this.lit = null;
     this.down = [];
     this.up = [];
     const o = this.opts;
@@ -428,6 +511,11 @@ export class PostPipeline {
       this.rayB = this.target(w >> 2, h >> 2, THREE.UnsignedByteType);
     }
     if (o.fxaa) this.ldr = this.target(w, h, THREE.UnsignedByteType);
+    if (o.ssr) {
+      const half = o.ssr === 1 ? 1 : 0;
+      this.refl = this.target(w >> half, h >> half);
+      this.lit = this.target(w, h);
+    }
     if (o.bloom) {
       // From half size (five steps down) or, on the light pipeline, from a quarter (four).
       const first = o.bloomDiv >= 4 ? 2 : 1, mips = BLOOM_MIPS - (first - 1);
@@ -473,6 +561,24 @@ export class PostPipeline {
       this.blurMat.uniforms.tAO.value = this.aoB.texture;
       this.blurMat.uniforms.uDir.value.set(0, 1 / this.aoA.height);
       this.draw(this.blurMat, this.aoA);
+    }
+
+    // -- reflections, before anything smears the picture
+    if (o.ssr && depth && this.refl && this.lit) {
+      const u = this.ssrMat.uniforms;
+      u.tScene.value = sceneTex;
+      u.tDepth.value = depth;
+      u.uProj.value.copy(camera.projectionMatrix);
+      u.uInvProj.value.copy(camera.projectionMatrixInverse);
+      u.uTexel.value.set(1 / this.refl.width, 1 / this.refl.height);
+      u.uSeed.value = (u.uSeed.value + 3.77) % 1000;
+      this.draw(this.ssrMat, this.refl);
+      const m = this.ssrMixMat.uniforms;
+      m.tScene.value = sceneTex;
+      m.tRefl.value = this.refl.texture;
+      m.uTexel.value.set(1 / this.refl.width, 1 / this.refl.height);
+      this.draw(this.ssrMixMat, this.lit);
+      sceneTex = this.lit.texture;
     }
 
     // -- the film look: motion blur, then the sun's shafts
@@ -605,7 +711,7 @@ export class PostPipeline {
     this.hdr.depthTexture?.dispose();
     this.hdr.dispose();
     for (const t of this.aux) t?.dispose();
-    for (const m of [this.final, this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat, this.motionMat, this.rayMaskMat, this.rayBlurMat, this.fxaaMat]) m.dispose();
+    for (const m of [this.final, this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat, this.motionMat, this.rayMaskMat, this.rayBlurMat, this.fxaaMat, this.ssrMat, this.ssrMixMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }

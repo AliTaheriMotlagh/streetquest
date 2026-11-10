@@ -74,13 +74,13 @@ export class GraphicsEngine {
 
   private make(level: number) {
     const p = withCaps(effective(this.tier, level), readCaps());
-    if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false), (p.fxaa = false), (p.cinematic = false);
+    if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false), (p.fxaa = false), (p.cinematic = false), (p.ssr = 0);
     return p;
   }
 
   private postOpts() {
     const p = this.profile;
-    return { msaa: p.msaa, bloom: p.bloom, ao: p.ao, cinematic: p.cinematic, fxaa: p.fxaa, bloomDiv: p.bloomDiv };
+    return { msaa: p.msaa, bloom: p.bloom, ao: p.ao, cinematic: p.cinematic, fxaa: p.fxaa, bloomDiv: p.bloomDiv, ssr: p.ssr };
   }
 
   /** Effects or distances changed (adaptive level): re-apply shadows, detail range… */
@@ -208,6 +208,7 @@ export class GraphicsEngine {
     this.renderer.info.reset();
     DISPLAY.post.value = this.post ? 1 : 0;
     DISPLAY.exposure.value = this.renderer.toneMappingExposure;
+    DISPLAY.mirror.value = this.post && this.profile.ssr ? 1 : 0;
     if (this.post) this.post.render(scene, camera, this.grade);
     else {
       this.renderer.setRenderTarget(null);
@@ -234,7 +235,7 @@ export class GraphicsEngine {
     this.post?.dispose();
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onLost);
     this.renderer.domElement.removeEventListener("webglcontextrestored", this.onRestored);
-    DISPLAY.post.value = 0;
+    DISPLAY.post.value = DISPLAY.mirror.value = 0;
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

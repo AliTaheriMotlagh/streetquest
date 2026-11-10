@@ -7,6 +7,7 @@
 // the sky; "toon" the chunky cartoon look. Other players' vehicles use the same models
 // (without lights).
 import * as THREE from "three";
+import { mirrored, PAINT_MIRROR } from "./graphics/shaders";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { TAXI_YELLOW } from "@/lib/fleet";
 import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
@@ -48,9 +49,9 @@ function materials(style: Style, color: string, keep: <T extends { dispose: () =
     };
   return {
     // Clear-coated metallic paint on the tiers that can afford it: a glossy lacquer over a softer metallic base.
-    paint: keep(clearcoat ? new THREE.MeshPhysicalMaterial({ color, metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 }) : new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.3 })),
+    paint: keep(mirrored(clearcoat ? new THREE.MeshPhysicalMaterial({ color, metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 }) : new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.3 }), PAINT_MIRROR)),
     trim: keep(new THREE.MeshStandardMaterial({ color: "#1f2124", metalness: 0.2, roughness: 0.65 })),
-    glass: keep(new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.9, roughness: clearcoat ? 0.03 : 0.06 })),
+    glass: keep(mirrored(new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.9, roughness: clearcoat ? 0.03 : 0.06 }), "0.5")),
     tire: keep(new THREE.MeshStandardMaterial({ color: "#161618", roughness: 0.92 })),
     rim: keep(new THREE.MeshStandardMaterial({ color: "#c9ccd1", metalness: 0.9, roughness: 0.28 })),
     skin: keep(new THREE.MeshStandardMaterial({ color: "#2a2d33", roughness: 0.7 })),

@@ -88,8 +88,25 @@ vec3 sqACESInv(vec3 c, float exposure) { return max(${glMat(IN_INV)} * sqRRTInv(
 vec3 sqToSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 `;
 
-/** Shared with every display-referred material; the engine sets them each frame. */
-export const DISPLAY = { post: { value: 0 }, exposure: { value: 1 } };
+/** Shared with every display-referred material; the engine sets them each frame. `mirror`: screen-space reflections are on. */
+export const DISPLAY = { post: { value: 0 }, exposure: { value: 1 }, mirror: { value: 0 } };
+
+/**
+ * Mark how mirror-like an opaque surface is, for screen-space reflections (graphics/post.ts):
+ * `expr` — a GLSL float 0…1 that may use the material's own variables (so the street's
+ * puddles can say "here") — leaves in the HDR target's alpha as 1 − m. Surfaces that aren't
+ * marked stay at alpha 1: no reflection traced for them.
+ */
+/** How mirror-like car paint is: the lacquer shows the street in it. */
+export const PAINT_MIRROR = "0.32";
+export function mirrored<T extends THREE.Material>(mat: T, expr: string): T {
+  return patchShader(mat, `mirror:${expr}`, (sh) => {
+    sh.uniforms.sqMirrorOn = DISPLAY.mirror;
+    let f = after(sh.fragmentShader, "common", "uniform float sqMirrorOn;");
+    f = after(f, "dithering_fragment", `if (sqMirrorOn > 0.5) gl_FragColor.a = 1.0 - clamp(${expr}, 0.0, 0.97);`);
+    sh.fragmentShader = f;
+  });
+}
 
 /**
  * For a material whose output is meant as the final screen colour, not light (the night
