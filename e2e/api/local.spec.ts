@@ -200,6 +200,20 @@ test.describe("store hours, reviews and walk-in stores", () => {
     await p.dispose();
   });
 
+  test("a card without a number asks again: ?phone=1 finds it on Balad, or says nobody knows it", async ({ baseURL }) => {
+    const spot = randomSpot();
+    // Balad knows this one (the stub's search answers from the vendors with a `balad` number).
+    const known = { code: code(), title: "Late Phone Bakery", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", balad: "021 4444 1212", items: [{ title: "Bread", price: 100_000 }] };
+    vendors.push(known);
+    const p = await Player.create(baseURL!);
+    const q = (name: string, lat: number, lng: number) => `/api/local?phone=1&name=${encodeURIComponent(name)}&lat=${lat}&lng=${lng}`;
+    expect(expectOk(await p.get<{ phone: string }>(q(known.title, known.lat, known.lon))).data.phone).toBe("021 4444 1212");
+    // Nobody has a number for this one: "" (the card then links a Balad / web search).
+    expect(expectOk(await p.get<{ phone: string }>(q("Nobody Has This Shop", spot.lat + 0.003, spot.lng))).data.phone).toBe("");
+    expect((await p.get(`/api/local?phone=1&name=&lat=1&lng=1`)).status).toBe(400);
+    await p.dispose();
+  });
+
   test("a place spelled without the space still finds its menu, and the map's hours become a week", async ({ baseURL }) => {
     const admin = await adminPlayer(baseURL!);
     const tag = Math.random().toString(36).slice(2, 6);
@@ -417,7 +431,7 @@ test.describe("the map's own data", () => {
     const { data } = expectOk(await p.get<D>(`/api/local?store=place&id=${shop.id}&name=${encodeURIComponent(shop.name)}&lat=${shop.lat}&lng=${shop.lng}&cat=grocery`));
     // The map's hours also come as a week, Saturday first: 09:00–22:00 but Friday.
     const open = [[540, 1320]];
-    expect(data.about).toEqual({ photo: info.img, logo: "https://shop.example/favicon.ico", address: info.addr, hours: info.hours, week: [open, open, open, open, open, open, []], phone: info.phone });
+    expect(data.about).toEqual({ photo: info.img, logo: "https://shop.example/favicon.ico", address: info.addr, hours: info.hours, week: [open, open, open, open, open, open, []], phone: info.phone, name: shop.name });
     expect(data.links.map((l) => [l.kind, l.url])).toEqual([["website", info.web], ["instagram", "https://instagram.com/test.shop"], ["phone", "tel:+982177000000"]]);
     // The map itself carries every place, without the contacts (the card asks for them).
     const w = expectOk(await p.get<{ spots: { id: string; info?: unknown }[] }>(`/api/world?lat=${shop.lat}&lng=${shop.lng}`)).data;

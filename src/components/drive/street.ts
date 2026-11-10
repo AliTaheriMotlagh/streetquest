@@ -14,18 +14,25 @@
 //    client is the referee for these, nobody else sees them (they're local, like traffic).
 // The HUD (StreetHud.tsx) reads a tiny store: stars, the car's health, the big banners.
 import * as THREE from "three";
+import { CAR_RESTITUTION, felt, massOf } from "@/lib/street/carPhysics";
 import { blastOnCar, blastOnPerson, bulletDamage, burnCar, crashDamage, dentDepth, hurtCar } from "@/lib/street/damage";
 import { calm, report, response, tickWanted, type Crime, type Witness } from "@/lib/street/wanted";
 import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { WEAPONS } from "@/lib/arena/weapons";
-import { boomSound, crashSound, fireSound, hornSound, shotSound, Siren, thudSound } from "../arena/gunsound";
+import { boomSound, crashSound, fireSound, hornSound, shotSound, Siren, skidSound, thudSound } from "../arena/gunsound";
+import { SampleLoop, warmSamples } from "../game/samples";
+import { SOUND_KEYS } from "@/lib/soundSlots";
 import type { Combat, NpcTargets } from "../arena/combat";
 import { CarDamage } from "./carDamage";
 import type { Crowd } from "./people";
 import { CollisionWorld, forward } from "./physics";
 import { Police, type PoliceEvent } from "./police";
 import { StreetFx } from "./streetFx";
-import type { TrafficCars, TrafficEvent } from "./traffic";
+import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
+import { FLEET } from "@/lib/fleet";
+
+/** My car's mass (kg) from its collision radius (a hatchback ≈ 1 t; a truck-sized one more). */
+const myMass = (r: number, heavy: boolean) => massOf({ len: r * 3.2, wid: r * 1.4, hgt: heavy ? 2.4 : 1.45 });
 
 export type StreetHost = {
   scene: THREE.Scene;
@@ -86,6 +93,8 @@ export class StreetLife {
   private hurtIds = new Set<number>();
   private killedIds = new Set<number>();
   private me: StreetMe | null = null;
+  /** When my car last crashed into something by itself (performance.now ms). */
+  private crashAt = 0;
   private bannerAt = 0;
   private banner: StreetHud["banner"] = null;
   private bannerId = 0;
@@ -94,11 +103,65 @@ export class StreetLife {
   private listeners = new Set<() => void>();
   private hudAt = 0;
 
+  /** The city around you (a recorded loop, when there is one: lib/soundSlots.ts). */
+  private city = new SampleLoop("city", 0.35);
+
   constructor(private h: StreetHost) {
+    warmSamples(SOUND_KEYS);
     this.police = new Police(h.scene, h.collision, h.obstacles, h.lite, h.shadows);
     this.fx = new StreetFx(h.scene, h.lite);
     h.traffic.world = h.collision;
     h.traffic.extra = (put) => this.police.draw(put);
+    h.traffic.solids = () => this.solids();
+  }
+
+  /**
+   * The patrol cars and mine as the traffic's crashes see them: a loose car sliding into
+   * one of them shoves and hurts it (and a patrol car at speed can knock traffic about).
+   */
+  private solids(): Solid[] {
+    const me = this.me;
+    if (!me || me.matchOn) return [];
+    const pd = FLEET.samand, pm = massOf(pd);
+    const out: Solid[] = this.police.units.map((u) => ({
+      x: u.body.x, z: u.body.z, yaw: u.body.yaw, vx: u.body.vx, vz: u.body.vz, len: pd.len, wid: pd.wid, mass: pm,
+      moving: Math.hypot(u.body.vx, u.body.vz) > 2,
+      hit: (h) => this.police.shove(u, h.dvx, h.dvz, h.spin, crashDamage(h.felt)),
+    }));
+    if (!me.flying) {
+      const len = Math.max(2, me.carR * 3.2), wid = Math.max(0.8, me.carR * 1.4);
+      out.push({
+        x: me.carX, z: me.carZ, yaw: me.carYaw, vx: me.inCar ? me.vx : 0, vz: me.inCar ? me.vz : 0, len, wid,
+        // Parked while I'm on foot: it's in the way, but nothing moves it.
+        mass: me.inCar ? myMass(me.carR, false) : Infinity,
+        moving: false,
+        hit: (h) => this.hitMe(h),
+      });
+    }
+    return out;
+  }
+
+  /** A loose street car slid into mine. */
+  private hitMe(h: SolidHit) {
+    const me = this.me;
+    // My own crash into that car was just counted (Drive's collision): not twice.
+    if (!me || performance.now() - this.crashAt < 250) return;
+    const k = Math.min(1, Math.max(0, h.felt - 2) / 16);
+    if (me.inCar) this.h.push(h.dvx, h.dvz);
+    const dmg = crashDamage(h.felt);
+    if (dmg > 0) {
+      this.hurtMyCar(dmg);
+      this.car.dent(h.x, 0.55, h.z, dentDepth(h.felt));
+    }
+    if (h.felt > 2) {
+      this.fx.sparks(h.x, 0.5, h.z, k);
+      this.fx.debris(h.x, 0.6, h.z, k, h.nx, h.nz);
+      crashSound(k, Math.hypot(h.x - me.x, h.z - me.z));
+      if (me.inCar) {
+        this.h.shake(Math.min(0.8, 0.15 + k));
+        navigator.vibrate?.(Math.round(20 + 80 * k));
+      }
+    }
   }
 
   // ------------------------------------------------------------ the HUD's store
@@ -253,9 +316,14 @@ export class StreetLife {
   crash(c: { ref?: object; into: number; nx: number; nz: number; x: number; z: number; heavy: boolean }) {
     const me = this.me;
     if (!me || me.matchOn || c.into < 2) return;
+    this.crashAt = performance.now();
     const k = Math.min(1, (c.into - 2) / 16);
-    if (c.ref && this.h.traffic.kindOf(c.ref)) {
-      this.h.traffic.bump(c.ref, -c.nx * c.into * 0.85, -c.nz * c.into * 0.85, crashDamage(c.into));
+    const other = c.ref ? this.h.traffic.massOfRef(c.ref) : null;
+    if (c.ref && other) {
+      // Momentum: the struck car takes the speed it's handed in proportion to the masses
+      // (a Pride shunts a Pride on; a bus hardly moves).
+      const mine = myMass(me.carR, c.heavy), dv = (c.into * (1 + CAR_RESTITUTION) * mine) / (mine + other);
+      this.h.traffic.bump(c.ref, -c.nx * dv, -c.nz * dv, crashDamage(felt(dv)));
       this.byMe.set(c.ref, performance.now());
     } else if (this.police.isUnit(c.ref)) {
       this.police.bump(c.ref, -c.nx * c.into, -c.nz * c.into, crashDamage(c.into));
@@ -267,6 +335,7 @@ export class StreetLife {
       this.car.dent(c.x, 0.55, c.z, dentDepth(c.into));
     }
     this.fx.sparks(c.x, 0.5, c.z, k);
+    this.fx.debris(c.x, 0.6, c.z, k, -c.nx, -c.nz);
     crashSound(k, 0);
     this.h.shake(Math.min(0.8, 0.15 + k));
     navigator.vibrate?.(Math.round(20 + 80 * k));
@@ -326,6 +395,8 @@ export class StreetLife {
   // ------------------------------------------------------------ every frame
   tick(dt: number, me: StreetMe) {
     this.me = me;
+    // The street's hum: quieter with the windows up, none in a match.
+    this.city.level(me.matchOn ? 0 : me.inCar ? 0.45 : 1);
     if (me.matchOn) {
       if (this.police.units.length) this.police.clear();
       if (this.wanted.stars) this.wanted = calm();
@@ -449,6 +520,15 @@ export class StreetLife {
       }
     } else if (e.kind === "fire") {
       if (d < 60) fireSound(d, 1);
+    } else if (e.kind === "crash") {
+      // Two street cars met: metal, glass, sparks; people near look round and run.
+      const k = Math.min(1, ((e.into ?? 0) - 2) / 16);
+      if (d < 90) crashSound(k, d);
+      if (k > 0.3 && d < 60) setTimeout(() => skidSound(k, d), 80);
+      this.fx.sparks(e.x, 0.5, e.z, k);
+      this.fx.debris(e.x, 0.6, e.z, k);
+      if (d < 25) this.h.shake(Math.min(0.4, k * 0.5 * (1 - d / 25)));
+      if ((e.into ?? 0) > 6) this.h.crowd.alarm(e.x, e.z, 10 + 20 * k);
     } else {
       const when = this.byMe.get(e.ref);
       this.explode(e.x, e.z, when != null && now - when < 90_000);
@@ -467,6 +547,7 @@ export class StreetLife {
       this.hurtMyCar(crashDamage(e.into, 0.8));
       this.car.dent(e.x - e.nx * me.carR, 0.55, e.z - e.nz * me.carR, dentDepth(e.into) * 0.8);
       this.fx.sparks(e.x - e.nx * me.carR, 0.5, e.z - e.nz * me.carR, k);
+      this.fx.debris(e.x - e.nx * me.carR, 0.6, e.z - e.nz * me.carR, k, e.nx, e.nz);
       crashSound(k, 0);
       this.h.shake(Math.min(0.7, 0.15 + k));
       return;
@@ -494,6 +575,7 @@ export class StreetLife {
 
   dispose() {
     this.siren.stop();
+    this.city.stop();
     this.police.dispose();
     this.fx.dispose();
     this.h.traffic.extra = null;

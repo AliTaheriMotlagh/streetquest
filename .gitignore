@@ -27,3 +27,6 @@ graphify-out/
 
 # Blender build helpers (assets/blender/*.py) leave Python bytecode behind
 __pycache__/
+
+# Sound recordings you license (e.g. soundsnap.ir): npm run assets:sounds converts them to public/sounds
+/assets/sounds/

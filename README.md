@@ -65,7 +65,8 @@ Three games stacked on one real-world map:
 - **3D art kit** — every emoji in the game (UI, server messages, translations, map markers) is drawn as a glossy,
   outlined, top-lit vector icon with idle animations (`src/components/art`); preview them all with
   `npx tsx scripts/art-preview.ts art.html`.
-- **Polish** — synthesized sound effects (Web Audio, no files; mute button), 3D game-feel animations, in-app
+- **Polish** — synthesized sound effects (Web Audio; mute button) that real recordings replace slot by slot (see
+  *Recorded sounds* below), 3D game-feel animations, in-app
   dialogs instead of browser pop-ups, iPhone (notch/landscape) and iPad (side panels) layouts, achievements
   for every system.
 
@@ -177,6 +178,12 @@ mood scales XP; loot funds research; territory funds the army.
     charred shell (take another car off the street with F, or pick one in the garage). The car you hit is shoved off
     its lane and slides to a stop with its hazards flashing, damaged the same way; traffic behind honks and pulls round
     the wreck. A health bar shows while your car is hurt.
+  - *Pile-ups are physical*: every car is a box with a mass (from its size: a Pride ≈ 1 t, a bus ≈ 11 t) and a spin,
+    and a car knocked loose crashes into whatever it slides into — driving cars, parked cars, wrecks, patrol cars and
+    yours — passing its momentum on (`lib/street/carPhysics.ts`: separating-axis contact, impulse with restitution,
+    friction and spin from where the hit lands). Hit hard enough, that car comes loose too and hits the next one, so a
+    crash runs down the line; a bus hardly notices a Pride. Hard hits throw glass and bits of bumper that bounce and
+    lie on the road, kick up dust, spark, shake the camera and screech.
   - *Explosions* throw cars (some onto their roofs) and people, and set the cars beside them burning — chain
     reactions; your grenades do the same in the open city.
   - *People react*: gunfire, crashes and blasts send everyone near running (off the pavement if need be, back to it
@@ -184,8 +191,8 @@ mood scales XP; loot funds research; territory funds the army.
     they don't get up); bullets hit them; drivers near trouble floor it through red lights.
   - *Crime and the wanted level* (1–5 ★): what a passer-by or an officer sees raises it — shooting, hitting or killing
     someone, pulling a driver out of their car, blowing a car up, ramming or shooting the police (one crime per
-    victim, a burst of fire is one report). The police send patrol cars — white Samands with a flashing red-blue
-    light bar and a siren — up the streets with a clear run at you; from 2 ★ they ram your car, officers get out
+    victim, a burst of fire is one report). The police send patrol cars — Samands in Iran's police green with a
+    white band down each side, a flashing red-blue light bar and a siren — up the streets with a clear run at you; from 2 ★ they ram your car, officers get out
     (the rigged soldier in police colours) and shoot at you on foot, from 3 ★ at your car too. Out of every
     officer's sight long enough (6 s + 4 s per star), they lose you; stopped beside an officer (on foot, or in a
     stopped car with one at the door), you're arrested. Their shots hurt only in the open city and apart from the
@@ -294,7 +301,10 @@ mood scales XP; loot funds research; territory funds the army.
   matched by name and distance, read off the place's page, cached a month, a miss retried after a week; `BALAD_URL` /
   `BALAD_POI_URL`, `off` disables), else from **Google Places** (the official Text Search API, only when
   `GOOGLE_PLACES_KEY` is set: same name-and-distance match, at most `GOOGLE_PLACES_PER_DAY` paid lookups a day, default
-  300, cached a month), else from the same restaurant on the map near a Snappfood vendor. Neshan's API has no phone numbers. Owners can paste their Snappfood / Torob /
+  300, cached a month), else from the same restaurant on the map near a Snappfood vendor. Torob's walk-in shops get the same
+  lookup when their Torob page has no number. A card that came back without one asks again on its own
+  (`/api/local?phone=1`, waiting up to 12 s for Balad and Google), and with no number anywhere it offers **Find the
+  number** — a Balad search and a web search for the store — so every store has a way to call. Neshan's API has no phone numbers. Owners can paste their Snappfood / Torob /
   Divar links in the Business center or their Market shop, which beat the automatic match. Names match however Persian
   words are spaced ("چلوکباب" / "چلو کباب"). The card is built for phones: a compact head with the rating and 🟢 open
   now / 🔴 closed (in the store's own time zone), the actions in one row, and tabs that stick while you scroll — Menu,
@@ -412,6 +422,16 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 **Deployed and the store layers are empty?** Open `/api/health?ext=1`: it says whether the server can reach Snappfood,
 Torob and Divar. Iranian sites often refuse servers abroad (Snappfood answers Vercel with 403) — run the relay in Iran
 (*Deploy → Snappfood from abroad*) and point `SNAPPFOOD_URL` (or `TOROB_URL` / `DIVAR_URL`) at it, or host in Iran.
+
+**Recorded sounds:** every street sound is synthesized until you give it a recording. The slots
+(`src/lib/soundSlots.ts`): `siren` (looped), `crashLight`, `crashHeavy`, `glass`, `horn`, `explosion`, `fire` (looped),
+`skid`, `thud` and `city` (street ambience, stereo loop). Put recordings you're licensed to ship — e.g. downloaded with
+a [soundsnap.ir](https://soundsnap.ir) subscription (its free previews are watermarked; don't use those) — in
+`assets/sounds/<slot>/` (any of wav / mp3 / ogg / flac / aiff / m4a; several files = random variations) and run
+`npm run assets:sounds` (needs `ffmpeg`): it trims leading silence, cuts one-shots short, loudness-matches everything
+(EBU R128), and writes `public/sounds/<slot>-<n>.mp3` plus `public/sounds/manifest.json` — commit those. `--check`
+lists which slots have files and the words to search for. Sources stay out of git (`assets/sounds/` is ignored); a slot
+without a file keeps its synth, so nothing goes silent.
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.

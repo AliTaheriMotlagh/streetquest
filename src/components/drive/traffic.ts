@@ -19,6 +19,7 @@ import type { Frame } from "@/lib/city";
 import type { LatLng } from "@/lib/geo";
 import { congestion, CONGESTION_COLORS, dirOf, FREE_KMH, signalPhase, trafficCell, type TrafficCellOut } from "@/lib/traffic";
 import { FLEET, heavy, pickFleet, pickPaint, roomBetween, type FleetKey } from "@/lib/fleet";
+import { contact, felt, massOf, resolve, type Contact, type Rigid } from "@/lib/street/carPhysics";
 import { carToTake } from "@/lib/vehicles";
 import { hashStr, rng } from "@/lib/geo";
 import { Junctions, laneOffset, parkedRow, parkingSides, type Parked, type Sides, type Street } from "@/lib/parking";
@@ -149,8 +150,30 @@ type Car = {
   parked: boolean;
 };
 
-/** Something the street life layer draws or plays: a car catching fire, blowing up, a horn. */
-export type TrafficEvent = { kind: "fire" | "boom" | "honk"; x: number; z: number; key: FleetKey; ref: CarRef };
+/**
+ * Something the street life layer draws or plays: a car catching fire, blowing up, a horn,
+ * two cars meeting (`into`: how hard, m/s).
+ */
+export type TrafficEvent = { kind: "fire" | "boom" | "honk" | "crash"; x: number; z: number; key: FleetKey; ref: CarRef; into?: number };
+
+/** What a car-to-car hit did to something that isn't traffic (a patrol car, your car). */
+export type SolidHit = { dvx: number; dvz: number; spin: number; felt: number; x: number; z: number; nx: number; nz: number };
+/**
+ * Something solid on the street that isn't traffic but takes part in the crashes: a
+ * patrol car, your car. `moving`: it can set one off (a patrol car at speed); it isn't
+ * moved here — it's told what it took (`hit`) and its own physics carries on from there.
+ */
+export type Solid = { x: number; z: number; yaw: number; vx: number; vz: number; len: number; wid: number; mass: number; moving: boolean; hit: (h: SolidHit) => void };
+
+/** One body in this frame's crashes: a traffic car, a parked one, or a solid; `mover` can set one off. */
+type Crasher = { r: Rigid; car?: Car; parked?: Parked & { color: THREE.Color; box: Footprint }; solid?: Solid; mover: boolean };
+
+/** A driving or parked car comes off its lane / the kerb when a hit changes its speed by more than this (m/s). */
+const DISLODGE_MS = 1.2;
+/** Car-to-car hits at least this hard (m/s) are heard and seen (sparks). */
+const CRASH_FX_MS = 2.5;
+/** A loose car this high (m) flies over the cars below it. */
+const FLY_OVER_M = 1;
 /** A car hit by something (the footprint's `ref`): a driving one, or a parked one. */
 export type CarRef = object;
 
@@ -197,6 +220,8 @@ export class TrafficCars {
   enabled = true;
   /** The buildings, for cars knocked loose to slide into. */
   world: CollisionWorld | null = null;
+  /** Patrol cars and yours, this frame: loose cars crash into them too (street.ts). */
+  solids: (() => Solid[]) | null = null;
   /** Other things on the road the traffic queues behind and steers round (police cars). */
   blockers: { x: number; z: number }[] = [];
   /** Drawn with the traffic, in the same instanced meshes (the police cars). */
@@ -354,6 +379,7 @@ export class TrafficCars {
       return d <= DROP && !(c.loose && c.idle > WRECK_S && d > 90);
     });
     if (this.cars.reduce((n, c) => n + (c.loose ? 0 : 1), 0) < this.target(px, pz) && this.roads.length) this.spawn(px, pz);
+    this.crashes();
     const out: Footprint[] = [];
     const blink = Math.floor(Date.now() / 450) % 2 === 0;
     this.fleet.begin(px, pz);
@@ -546,6 +572,84 @@ export class TrafficCars {
     c.idle = sp < 0.2 && L.y <= 0 ? c.idle + dt : 0;
   }
 
+  /**
+   * Cars against cars: every loose car (sliding, spinning) and every patrol car at speed is
+   * checked against every other car — driving, parked, loose, the police, yours — and the
+   * two exchange momentum (lib/street/carPhysics.ts). A driving or parked car hit hard enough
+   * comes loose and slides on into the next one: a pile-up runs down the street by itself.
+   */
+  private crashes() {
+    const ps: Crasher[] = [];
+    const moving = (r: Rigid) => Math.hypot(r.vx, r.vz) > 0.4 || Math.abs(r.spin) > 0.3;
+    for (const c of this.cars) {
+      if (c.loose && c.loose.y > FLY_OVER_M) continue;
+      const def = FLEET[c.kind];
+      const r: Rigid = { x: c.x, z: c.z, yaw: c.yaw, vx: c.loose ? c.loose.vx : -Math.sin(c.yaw) * c.v, vz: c.loose ? c.loose.vz : -Math.cos(c.yaw) * c.v, spin: c.loose?.spin ?? 0, mass: massOf(def), len: def.len, wid: def.wid };
+      ps.push({ r, car: c, mover: !!c.loose && moving(r) });
+    }
+    if (!ps.some((p) => p.mover) && !this.solids) return;
+    const solids = this.solids?.() ?? [];
+    for (const s of solids) ps.push({ r: { x: s.x, z: s.z, yaw: s.yaw, vx: s.vx, vz: s.vz, spin: 0, mass: s.mass, len: s.len, wid: s.wid }, solid: s, mover: s.moving });
+    if (!ps.some((p) => p.mover)) return;
+    for (const p of this.shown) {
+      const def = FLEET[p.key];
+      ps.push({ r: { x: p.x, z: p.z, yaw: p.yaw, vx: 0, vz: 0, spin: 0, mass: massOf(def), len: def.len, wid: def.wid }, parked: p, mover: false });
+    }
+    for (let i = 0; i < ps.length; i++) {
+      const a = ps[i];
+      if (!a.mover) continue;
+      for (let j = 0; j < ps.length; j++) {
+        const b = ps[j];
+        // Each pair once; patrol cars against each other and yours are police.ts's business.
+        if (i === j || (b.mover && j < i) || (a.solid && b.solid)) continue;
+        const c = contact(a.r, b.r);
+        if (c) this.meet(a, b, c);
+      }
+    }
+  }
+
+  /** Two cars touching: the impulse, then what each one does with it. */
+  private meet(a: Crasher, b: Crasher, c: Contact) {
+    const before = [a, b].map((p) => ({ x: p.r.x, z: p.r.z, vx: p.r.vx, vz: p.r.vz, spin: p.r.spin }));
+    const h = resolve(a.r, b.r, c);
+    [a, b].forEach((p, k) => {
+      const o = before[k], other = k ? a : b;
+      const dvx = p.r.vx - o.vx, dvz = p.r.vz - o.vz, dv = Math.hypot(dvx, dvz);
+      const hard = felt(dv);
+      // Stays put (a solid moves itself; a car only comes loose when it's hit hard enough):
+      // the other one takes all of the push out of the overlap.
+      const stays = !!p.solid || (!p.car?.loose && dv < DISLODGE_MS);
+      if (stays) {
+        other.r.x -= p.r.x - o.x;
+        other.r.z -= p.r.z - o.z;
+        (p.r.x = o.x), (p.r.z = o.z);
+      }
+      if (p.solid) {
+        if (dv > 0.05) p.solid.hit({ dvx, dvz, spin: p.r.spin - o.spin, felt: hard, x: c.px, z: c.pz, nx: k ? c.nx : -c.nx, nz: k ? c.nz : -c.nz });
+        return;
+      }
+      let car = p.car ?? null;
+      if (stays) {
+        // A jolt: the driver brakes hard and leans on the horn.
+        if (car && dv > 0.2) (car.v = Math.max(0, car.v - dv * 2)), (car.upset = Math.max(car.upset, 5));
+        return;
+      }
+      if (!car && p.parked) car = this.car(p.parked);
+      if (!car) return;
+      const L = car.loose ?? this.loosen(car);
+      (car.x = p.r.x), (car.z = p.r.z);
+      (L.vx = p.r.vx), (L.vz = p.r.vz), (L.spin = p.r.spin);
+      car.upset = 8;
+      p.car = car;
+      p.parked = undefined;
+      if (hurtCar(car.health, crashDamage(hard, heavy(car.kind) ? 0.4 : 1))) this.events.push({ kind: "fire", x: car.x, z: car.z, key: car.kind, ref: car });
+    });
+    if (h.closing > CRASH_FX_MS) {
+      const key = a.car?.kind ?? b.car?.kind ?? a.parked?.key ?? b.parked?.key ?? "samand";
+      this.events.push({ kind: "crash", x: c.px, z: c.pz, key, ref: a.car ?? b.car ?? {}, into: h.closing });
+    }
+  }
+
   /** A parked car knocked off its spot becomes a loose car (it won't be parked there again). */
   private unpark(p: Parked & { color: THREE.Color }): Car {
     const spot = spotOf(p.x, p.z);
@@ -567,6 +671,12 @@ export class TrafficCars {
     return p ? this.unpark(p) : null;
   }
 
+  /** A footprint's car's mass (kg), if it's one of these. */
+  massOfRef(ref: CarRef): number | null {
+    const k = this.kindOf(ref);
+    return k ? massOf(FLEET[k]) : null;
+  }
+
   /** What kind of car a footprint is, if it's one of these. */
   kindOf(ref: CarRef): FleetKey | null {
     if ((this.cars as object[]).includes(ref)) return (ref as Car).kind;
@@ -581,7 +691,8 @@ export class TrafficCars {
     const c = this.car(ref);
     if (!c) return;
     const L = c.loose ?? this.loosen(c);
-    const heavyK = heavy(c.kind) ? 0.25 : 1;
+    // The push is already its change of speed (by mass, carPhysics); spin from how hard.
+    const heavyK = 1;
     L.vx += vx * heavyK;
     L.vz += vz * heavyK;
     L.spin += (this.rand() - 0.5) * Math.hypot(vx, vz) * 0.25 * heavyK;

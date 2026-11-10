@@ -1,6 +1,7 @@
 "use client";
 // The police of the open 3D city (street.ts runs them; lib/street/wanted.ts says how hard):
-//  - patrol cars — white Samands with a flashing red-blue light bar and the siren — that
+//  - patrol cars — Samands in the police's dark green with a white band down each side, a
+//    flashing red-blue light bar and the siren — that
 //    come in from a street out of sight and chase you on the same car physics as yours
 //    (stepGround), feeling their way round walls with whiskers and backing out when stuck;
 //    from two stars they ram you;
@@ -24,7 +25,9 @@ import type { FleetInstances } from "./fleet3d";
 
 const KEY: FleetKey = "samand";
 const DEF = VEHICLES.samand;
-const WHITE = new THREE.Color("#f4f4f0");
+/** Iran's police green (the patrol cars' body), and the white band down their sides. */
+const POLICE_GREEN = new THREE.Color("#1d5a3c");
+const BAND = "#f4f4f0";
 const BURNT = new THREE.Color("#17140f");
 /** Police uniform and the band on the cap. */
 const UNIFORM = "#3d4a3a", ACCENT = "#1d2c52";
@@ -86,6 +89,8 @@ export class Police {
   units: Unit[] = [];
   events: PoliceEvent[] = [];
   private bars: THREE.InstancedMesh;
+  /** The white band down each side of a patrol car (two per car). */
+  private bands: THREE.InstancedMesh;
   private soldier: Awaited<ReturnType<typeof loadSoldier>> | null = null;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -106,6 +111,12 @@ export class Police {
     this.bars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.bars.setColorAt(0, this.c.set("#000"));
     scene.add(this.bars);
+    const band = new THREE.BoxGeometry(0.03, 0.17, FLEET[KEY].len * 0.8);
+    this.bands = new THREE.InstancedMesh(band, new THREE.MeshStandardMaterial({ color: BAND, roughness: 0.35, metalness: 0.1 }), 24);
+    this.bands.count = 0;
+    this.bands.frustumCulled = false;
+    this.bands.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.bands);
     loadSoldier()
       .then((t) => (this.soldier = t))
       .catch(() => {});
@@ -147,7 +158,7 @@ export class Police {
     const blink = Math.floor(Date.now() / 450) % 2 === 0;
     for (const u of this.units) {
       const burnt = u.health.exploded;
-      put(KEY, u.body.x, u.body.z, u.body.yaw, burnt ? BURNT : WHITE, !burnt && blink && u.health.hp < 30, u.body.wheelSpin, 0, u.health.exploded ? { y: 0, roll: 0, pitch: 0 } : undefined);
+      put(KEY, u.body.x, u.body.z, u.body.yaw, burnt ? BURNT : POLICE_GREEN, !burnt && blink && u.health.hp < 30, u.body.wheelSpin, 0, u.health.exploded ? { y: 0, roll: 0, pitch: 0 } : undefined);
     }
   }
 
@@ -204,6 +215,21 @@ export class Police {
     }
     this.bars.count = bars;
     this.bars.instanceMatrix.needsUpdate = true;
+    // The white bands, along the doors of every car that isn't burnt out.
+    let bands = 0;
+    const def = FLEET[KEY];
+    for (const u of this.units) {
+      if (u.health.exploded || bands + 2 > this.bands.instanceMatrix.count) continue;
+      const f = forward(u.body.yaw), rx = -f.fz, rz = f.fx;
+      this.q.setFromAxisAngle(Y, u.body.yaw);
+      for (const side of [-1, 1]) {
+        const out = def.wid / 2 + 0.005;
+        this.m.compose(this.p.set(u.body.x + rx * out * side, 0.74, u.body.z + rz * out * side), this.q, this.s);
+        this.bands.setMatrixAt(bands++, this.m);
+      }
+    }
+    this.bands.count = bands;
+    this.bands.instanceMatrix.needsUpdate = true;
     if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true;
   }
 
@@ -312,6 +338,15 @@ export class Police {
     b.speed = Math.hypot(b.vx, b.vz);
     b.wheelSpin += ((b.vx * f.fx + b.vz * f.fz) / 0.32) * dt;
     u.idle = b.speed < 0.3 ? u.idle + dt : 0;
+  }
+
+  /** A car-to-car hit (traffic.ts crashes): its change of speed (m/s) and spin, and the damage. */
+  shove(u: Unit, dvx: number, dvz: number, spin: number, dmg: number) {
+    // Added to the body every frame while it fades (×4/s), so a tenth of it adds up to about the hit.
+    u.push.vx += dvx * 0.1;
+    u.push.vz += dvz * 0.1;
+    u.push.spin += spin;
+    if (hurtCar(u.health, dmg)) this.events.push({ kind: "fire", x: u.body.x, z: u.body.z });
   }
 
   /** A car hit this unit: pushed, spun, hurt. */
@@ -492,11 +527,14 @@ export class Police {
   clear() {
     for (const u of [...this.units]) this.remove(u);
     this.bars.count = 0;
+    this.bands.count = 0;
   }
 
   dispose() {
     this.clear();
-    this.scene.remove(this.bars);
+    this.scene.remove(this.bars, this.bands);
+    this.bands.geometry.dispose();
+    (this.bands.material as THREE.Material).dispose();
     this.bars.geometry.dispose();
     (this.bars.material as THREE.Material).dispose();
   }

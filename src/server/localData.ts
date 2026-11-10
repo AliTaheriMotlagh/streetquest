@@ -12,9 +12,11 @@
 //    once, honest User-Agent), and a failed refresh serves the stale copy; Torob's calls
 //    are spaced out (TOROB_GAP_MS), and when it says "slow down" (490/429) we stop asking
 //    for half an hour;
-//  - restaurant phone numbers come from Balad, then Google Places when GOOGLE_PLACES_KEY is
-//    set (Snappfood only gives its own call centre), looked up by name where the store
-//    stands and cached for a month;
+//  - every store's phone number (restaurants, Torob walk-in shops, map places) comes from the
+//    map's own record, then Balad, then Google Places when GOOGLE_PLACES_KEY is set
+//    (Snappfood only gives its own call centre), looked up by name where the store stands
+//    and cached for a month; a card that came back without one asks again (?phone=1) and
+//    waits longer, and with none anywhere the card links a web search for the number;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
 import { Prisma } from "@prisma/client";
@@ -796,6 +798,7 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
     // The map's hours when they read as a week, else Snappfood's schedule.
     week: weekFromOsm(s.hours) ?? menu?.week ?? null,
     phone,
+    name: s.name,
   };
   return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links, about };
 }
@@ -872,11 +875,16 @@ async function realPhone(store: { name: string; lat: number; lng: number }) {
 
 /** How long a card waits for the phone lookup; a slower one finishes in the background (cached for next time). */
 const PHONE_WAIT_MS = 3000;
-/** The store's own number, or "" if it takes longer than PHONE_WAIT_MS — a card never waits on it. */
-export async function phoneFor(store: { name: string; lat: number; lng: number }): Promise<string> {
+/**
+ * How long the card's own "still looking for the number" request waits (GET /api/local?phone=1,
+ * asked only when the card came back without one): long enough for Balad and Google both.
+ */
+export const PHONE_LATE_MS = 12_000;
+/** The store's own number, or "" if it takes longer than `waitMs` — a card never waits on it. */
+export async function phoneFor(store: { name: string; lat: number; lng: number }, waitMs = PHONE_WAIT_MS): Promise<string> {
   const p = realPhone(store);
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const late = new Promise<string>((r) => (timer = setTimeout(() => r(""), PHONE_WAIT_MS)));
+  const late = new Promise<string>((r) => (timer = setTimeout(() => r(""), waitMs)));
   const phone = await Promise.race([p, late]);
   if (timer) clearTimeout(timer);
   keepAlive(p);

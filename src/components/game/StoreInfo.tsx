@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
-  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
+  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { Button } from "@/components/Button";
@@ -64,6 +64,51 @@ const clock = (min: number) => clockOf(min).replace(/\d/g, (d) => fmtNum(Number(
 const spanText = ([a, b]: [number, number]) => `${clock(a)}–${clock(b > 1440 ? b - 1440 : b)}`;
 const telOf = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 
+/** Which store a card is about (to look its number up). */
+type StoreRef = { name: string; lat: number; lng: number; city?: string };
+
+/**
+ * The store's phone: the one the card came with, else a second, longer lookup on the other
+ * maps (Balad, Google, OpenStreetMap). `looking` while that runs; "" when nobody knows it.
+ */
+function usePhone(store: StoreRef | null, known: string | undefined) {
+  const ask = !known && store?.name ? { phone: "1", name: store.name, lat: store.lat.toFixed(6), lng: store.lng.toFixed(6) } : null;
+  const { data, error } = useLocal<{ phone: string }>(ask);
+  const phone = known || data?.phone || "";
+  return { phone, looking: !!ask && !data && !error };
+}
+
+/** "Call" in the actions row: the number, a spinner while it's looked up, else where to find it. */
+function CallButton({ store, phone: known }: { store: StoreRef | null; phone?: string }) {
+  const { phone, looking } = usePhone(store, known);
+  if (phone) return <a className="btn small ghost ext-link ext-phone" href={telOf(phone)}>📞 {t("Call")}</a>;
+  if (looking) return <span className="btn small ghost ext-link ext-phone is-looking" aria-busy="true">📞 …</span>;
+  if (!store?.name) return null;
+  return <a className="btn small ghost ext-link ext-phone-find" href={phoneSearchLinks(store.name, store.city).balad} target="_blank" rel="noopener noreferrer">🔎 {t("Find the number")}</a>;
+}
+
+/** The phone line in Info: the number, else links to look it up (Balad, the web). */
+function PhoneRow({ store, phone: known }: { store: StoreRef | null; phone?: string }) {
+  const { phone, looking } = usePhone(store, known);
+  if (phone)
+    return (
+      <a className="info-row link" href={telOf(phone)}>
+        📞 <span dir="ltr">{phone}</span>
+      </a>
+    );
+  if (looking) return <div className="info-row muted">📞 {t("Looking up the phone number…")}</div>;
+  if (!store?.name) return null;
+  const l = phoneSearchLinks(store.name, store.city);
+  return (
+    <div className="info-row">
+      📞 <span className="muted">{t("No phone number listed.")}</span>{" "}
+      <a href={l.balad} target="_blank" rel="noopener noreferrer">{t("Search Balad")}</a>
+      {" · "}
+      <a href={l.web} target="_blank" rel="noopener noreferrer">{t("Search the web")}</a>
+    </div>
+  );
+}
+
 /** A picture that quietly goes away when it can't load (a dead link, a blocked CDN). */
 function Pic({ src, className }: { src: string; className?: string }) {
   const [bad, setBad] = useState(false);
@@ -109,10 +154,10 @@ function HoursTable({ week, at }: { week: Week; at: LatLng }) {
   );
 }
 
-type InfoProps = { at: LatLng; week?: Week | null; hours?: string; address?: string; area?: string; phone?: string; city?: string; minOrder?: number; deliveryFee?: number };
-/** Hours, address, phone, delivery terms: whatever is known, else a line saying so. */
-function InfoView({ at, week, hours, address, area, phone, city, minOrder, deliveryFee }: InfoProps) {
-  const empty = !week && !hours && !address && !phone;
+type InfoProps = { at: LatLng; store?: StoreRef | null; week?: Week | null; hours?: string; address?: string; area?: string; phone?: string; city?: string; minOrder?: number; deliveryFee?: number };
+/** Hours, address, phone (or where to find it), delivery terms: whatever is known, else a line saying so. */
+function InfoView({ at, store = null, week, hours, address, area, phone, city, minOrder, deliveryFee }: InfoProps) {
+  const empty = !week && !hours && !address && !phone && !store?.name;
   return (
     <div className="store-info">
       {week ? (
@@ -132,11 +177,7 @@ function InfoView({ at, week, hours, address, area, phone, city, minOrder, deliv
           🏠 <span dir="auto">{[address, area, city].filter(Boolean).join(" · ")}</span>
         </div>
       )}
-      {phone && (
-        <a className="info-row link" href={telOf(phone)}>
-          📞 <span dir="ltr">{phone}</span>
-        </a>
-      )}
+      <PhoneRow store={store} phone={phone} />
       {!!minOrder && <div className="info-row">🧾 {t("Minimum order: {price}", { price: toman(minOrder) })}</div>}
       {deliveryFee != null && <div className="info-row">🛵 {deliveryFee ? t("Delivery: {price}", { price: toman(deliveryFee) }) : t("Free delivery")}</div>}
       {empty && <p className="small muted">{t("No hours, address or phone known for this store yet.")}</p>}
@@ -410,6 +451,9 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
   if (!data) return <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>;
   const a = data.about;
   const where = at ?? (data.menu ? data.menu.vendor : { lat: 0, lng: 0 });
+  // Without a known spot there's nothing to look the number up by.
+  const store: StoreRef | null = a.name && (at || data.menu) ? { name: a.name, lat: where.lat, lng: where.lng } : null;
+  const hasCall = data.links.some((l) => l.kind === "phone");
   const week = a.week ?? weekFromOsm(a.hours);
   const tabs: Tab[] = [];
   if (data.menu) tabs.push({ key: "menu", label: data.menu.vendor.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={data.menu!} /> });
@@ -417,7 +461,7 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
   const onTorob = !!data.torobShop || data.torob.length > 0;
   if (onTorob) tabs.push({ key: "torob", label: `🏷️ ${t("Torob")}`, body: () => <TorobSearch initial={data.torob} shop={data.torobShop} /> });
   if (data.menu) tabs.push({ key: "reviews", label: `⭐ ${data.menu.reviews ? t("Reviews ({n})", { n: fmtNum(data.menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={data.menu!.vendor.code} total={data.menu!.reviews} stars={data.menu!.stars} /> });
-  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phone={a.phone} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
+  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} store={store} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phone={a.phone} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
   return (
     <div className="ext-store">
       {(a.photo || a.logo) && (
@@ -432,13 +476,14 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
           {data.menu && data.menu.vendor.rating > 0 && <span className="tag ext-rating">⭐ {fmtNum(data.menu.vendor.rating)}</span>}
         </div>
       )}
-      {!!data.links.length && (
+      {(!!data.links.length || (!hasCall && store)) && (
         <div className="store-actions ext-links">
           {data.links.map((l) => (
             <a key={l.url} className={`btn small ghost ext-link ext-${l.kind}`} href={l.url} target={l.kind === "phone" ? undefined : "_blank"} rel="noopener noreferrer" dir="auto">
               {LINK_ICON[l.kind]} {l.label}
             </a>
           ))}
+          {!hasCall && <CallButton store={store} />}
         </div>
       )}
       {!data.menu && !onTorob && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
@@ -506,7 +551,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
       <div className="store-actions">
         <a className="btn small ghost ext-link ext-snappfood" href={snappfoodMenuUrl(v.code)} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
-        {menu?.phone && <a className="btn small ghost ext-link ext-phone" href={telOf(menu.phone)}>📞 {t("Call")}</a>}
+        {menu && <CallButton store={{ name: v.title, lat: v.lat, lng: v.lng }} phone={menu.phone} />}
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>
       {error ? (
@@ -519,7 +564,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
           tabs={[
             { key: "menu", label: v.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={menu} /> },
             { key: "reviews", label: `⭐ ${menu.reviews ? t("Reviews ({n})", { n: fmtNum(menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={v.code} total={menu.reviews} stars={menu.stars} /> },
-            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} week={menu.week} address={menu.address} area={menu.area} phone={menu.phone} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} store={{ name: v.title, lat: v.lat, lng: v.lng }} week={menu.week} address={menu.address} area={menu.area} phone={menu.phone} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} /> },
           ]}
         />
       ) : (
@@ -545,7 +590,7 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
       {photo && <div className="ext-cover"><Pic src={photo} className="ext-cover-img" /></div>}
       <div className="store-actions">
         <a className="btn small ghost ext-link ext-torob" href={shop.url} target="_blank" rel="noopener noreferrer">🏷️ {t("Shop on Torob")}</a>
-        {info?.phone && <a className="btn small ghost ext-link ext-phone" href={telOf(info.phone)}>📞 {t("Call")}</a>}
+        {data && <CallButton store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} phone={info?.phone} />}
         <GoButtons to={p} name={p.name} dist={dist} />
       </div>
       {error ? (
@@ -572,7 +617,7 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
                 </>
               ),
             },
-            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={p} week={p.week} address={info?.address || p.address} city={p.city} phone={info?.phone} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={p} store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} week={p.week} address={info?.address || p.address} city={p.city} phone={info?.phone} /> },
           ]}
         />
       )}

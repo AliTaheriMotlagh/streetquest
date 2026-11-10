@@ -98,7 +98,7 @@ export type StoreData = {
   torobQuery: string;
   torobShop: TorobShop | null;
   links: StoreLink[];
-  about: { photo: string; logo: string; address: string; hours: string; week?: Week | null; phone?: string };
+  about: { photo: string; logo: string; address: string; hours: string; week?: Week | null; phone?: string; name?: string };
 };
 
 // ---------------------------------------------------------------- opening hours
@@ -367,6 +367,16 @@ export const isPlatformPhone = (phone: string | null | undefined) => {
 export function storePhone(phone: string | null | undefined) {
   const s = latinDigits((phone ?? "").trim()).replace(/^tel:\/*/i, "").trim();
   return /^[\d+\-\s()]{5,20}$/.test(s) && !isPlatformPhone(s) ? s : "";
+}
+
+/**
+ * No map knows the number: where to look it up by hand — a Balad search for the store and a
+ * web search for "<name> <city> تلفن" (Snappfood branch suffixes "(Area)" dropped).
+ */
+export function phoneSearchLinks(name: string, city = ""): { balad: string; web: string } {
+  const bare = name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim() || name.trim();
+  const q = [bare, city.trim(), "تلفن"].filter(Boolean).join(" ");
+  return { balad: `https://balad.ir/search?query=${encodeURIComponent(bare)}`, web: `https://www.google.com/search?q=${encodeURIComponent(q)}` };
 }
 
 /** Balad (balad.ir) search: POI tokens and, in the same order, their names and positions. */

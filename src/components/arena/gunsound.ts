@@ -4,6 +4,7 @@
 // shaped per gun (weapons.ts `sound`). Distant shots are quieter and duller, and panned to
 // where they came from. Hit markers, kill and headshot dings, reloads, the bomb's beep.
 import { audioOut, isMuted } from "../game/sfx";
+import { playSample, SampleLoop } from "../game/samples";
 
 let noise: AudioBuffer | null = null;
 function noiseOf(ctx: AudioContext) {
@@ -102,6 +103,8 @@ export function reloadSound(seconds: number) {
 }
 
 export function boomSound(dist: number) {
+  // A recorded explosion when there is one (lib/soundSlots.ts), else the synth.
+  if (playSample("explosion", { vol: 1 / (1 + dist / 40), rate: dist > 60 ? 0.85 : 1 })) return;
   const o = out(0);
   if (!o) return;
   const { ctx, dest, t } = o;
@@ -163,6 +166,7 @@ export const smokeSound = (dist: number) => hiss(2400, 3.2, 0.12 * near(dist), "
 /** Fire: a run of crackles over `seconds` (a molotov breaking, then burning). */
 export function fireSound(dist: number, seconds: number) {
   const v = near(dist, 18);
+  if (playSample("fire", { vol: 0.7 * v })) return;
   hiss(900, 0.5, 0.25 * v, "lowpass", 0.02);
   for (let i = 0; i < seconds * 6; i++) setTimeout(() => hiss(1800 + Math.random() * 2400, 0.05 + Math.random() * 0.08, (0.03 + Math.random() * 0.05) * v, "bandpass"), i * 160 + Math.random() * 120);
 }
@@ -180,6 +184,11 @@ export function flashSound(dist: number, blindS: number) {
 export function crashSound(k: number, dist: number, pan = 0) {
   const v = Math.min(1, 0.25 + k * 0.75) * near(dist, 30);
   if (v < 0.02) return;
+  // Recorded: a crunch (heavier the harder), glass on a bad one.
+  if (playSample(k > 0.4 ? "crashHeavy" : "crashLight", { vol: v, pan, rate: dist > 40 ? 0.9 : 1 })) {
+    if (k > 0.55) setTimeout(() => playSample("glass", { vol: v * 0.7, pan }), 60);
+    return;
+  }
   blip(70 + Math.random() * 25, 0.28, v * 0.7, "sine", 0.5);
   hiss(1300, 0.22 + k * 0.35, v * 0.5, "bandpass", 0.004, pan);
   if (k > 0.25) setTimeout(() => hiss(5200, 0.15 + k * 0.3, v * 0.22, "highpass", 0.004, pan), 40);
@@ -190,12 +199,16 @@ export function crashSound(k: number, dist: number, pan = 0) {
 export function hornSound(dist: number, pitch = 1, len = 0.32) {
   const v = 0.09 * near(dist, 28);
   if (v < 0.008) return;
+  if (playSample("horn", { vol: v * 5, rate: pitch })) return;
   blip(415 * pitch, len, v, "square", 1);
   blip(523 * pitch, len, v * 0.75, "square", 1);
 }
 
 /** Someone falling hard (hit by a car): a dull thud. */
-export const thudSound = (dist: number) => blip(95, 0.18, 0.35 * near(dist, 20), "sine", 0.6);
+export const thudSound = (dist: number) => playSample("thud", { vol: 0.6 * near(dist, 20) }) || blip(95, 0.18, 0.35 * near(dist, 20), "sine", 0.6);
+
+/** Tyres screeching (a hard brake or a slide at speed), `k` 0…1 how hard. */
+export const skidSound = (k: number, dist: number) => playSample("skid", { vol: 0.5 * k * near(dist, 25) }) || hiss(2600, 0.3 + k * 0.4, 0.05 * k * near(dist, 25), "bandpass", 0.05);
 
 /**
  * The police siren: one wailing voice for every patrol car together, louder the nearer the
@@ -203,7 +216,13 @@ export const thudSound = (dist: number) => blip(95, 0.18, 0.35 * near(dist, 20),
  */
 export class Siren {
   private node: { osc: OscillatorNode; lfo: OscillatorNode; lfoGain: GainNode; gain: GainNode; filter: BiquadFilterNode } | null = null;
+  /** A recorded siren when there is one (it takes over from the synth). */
+  private rec = new SampleLoop("siren", 0.5);
   level(v: number) {
+    if (this.rec.level(v)) {
+      if (this.node) this.stopSynth();
+      return;
+    }
     // Silent and not started: don't touch the audio (asking for it keeps it awake).
     if (!this.node && v <= 0) return;
     const o = audioOut();
@@ -231,6 +250,10 @@ export class Siren {
     this.node.gain.gain.setTargetAtTime(want, ctx.currentTime, 0.25);
   }
   stop() {
+    this.rec.stop();
+    this.stopSynth();
+  }
+  private stopSynth() {
     if (!this.node) return;
     try {
       this.node.osc.stop();

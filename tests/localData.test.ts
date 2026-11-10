@@ -173,3 +173,11 @@ it("Google Places: the phone of the place that is this store", async () => {
   assert.equal(googlePhoneOf({ places: [pl("پیتزا میلاد", 35.7285, 51.4072, "021 96612")] }, store), "", "a platform's number");
   assert.equal(googlePhoneOf(null, store), "");
 });
+
+it("store phones: with no number anywhere, the card links a search for it", async () => {
+  const { phoneSearchLinks } = await import("../src/lib/localData");
+  const l = phoneSearchLinks("پیتزا شیلا (پونک)", "تهران");
+  assert.equal(decodeURIComponent(l.balad.split("query=")[1]), "پیتزا شیلا");
+  assert.equal(decodeURIComponent(l.web.split("q=")[1]), "پیتزا شیلا تهران تلفن");
+  assert.equal(decodeURIComponent(phoneSearchLinks("Cafe X").web.split("q=")[1]), "Cafe X تلفن");
+});

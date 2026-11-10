@@ -1,7 +1,8 @@
 "use client";
 // What trouble on the street looks like (street.ts drives it): smoke pouring from a hurt
 // car's bonnet — grey, then black — flames when it burns, the fireball, smoke and
-// shockwave when it blows up (arena/vfx.ts), sparks where metal meets metal. All pooled
+// shockwave when it blows up (arena/vfx.ts), sparks where metal meets metal, and in a hard
+// crash glass and bits of bumper flying, bouncing and lying on the road a while. All pooled
 // sprites, nothing allocated per frame and no lights (a new light recompiles every shader
 // and stalls phones).
 import * as THREE from "three";
@@ -23,6 +24,9 @@ function soft(stops: [number, string][], size = 64) {
   return t;
 }
 
+/** A bit of glass or bumper flying off in a crash. */
+type Shard = { x: number; y: number; z: number; vx: number; vy: number; vz: number; rx: number; ry: number; rz: number; wx: number; wy: number; wz: number; size: number; age: number; life: number };
+
 export class StreetFx {
   /** Explosions, sparks, tracers and muzzle flashes (shared with the guns' look). */
   readonly vfx: Vfx;
@@ -34,10 +38,92 @@ export class StreetFx {
     fire: soft([[0, "rgba(255,250,210,1)"], [0.25, "rgba(255,180,60,.95)"], [0.6, "rgba(230,80,20,.55)"], [1, "rgba(80,20,10,0)"]], 96),
   };
   private acc = 0;
+  /** Crash debris: one instanced mesh of small shards (glass and plastic), pooled. */
+  private shards: THREE.InstancedMesh;
+  private bits: Shard[] = [];
+  private nextBit = 0;
+  private m4 = new THREE.Matrix4();
+  private q = new THREE.Quaternion();
+  private e = new THREE.Euler();
+  private v = new THREE.Vector3();
+  private one = new THREE.Vector3();
+  private col = new THREE.Color();
 
   constructor(private scene: THREE.Scene, lite: boolean) {
     this.vfx = new Vfx(scene);
     this.max = lite ? 60 : 150;
+    const n = lite ? 40 : 120;
+    this.shards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.02, 0.7), new THREE.MeshStandardMaterial({ roughness: 0.25, metalness: 0.2 }), n);
+    this.shards.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.shards.frustumCulled = false;
+    this.shards.count = 0;
+    for (let i = 0; i < n; i++) {
+      this.bits.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wx: 0, wy: 0, wz: 0, size: 0, age: 1, life: 0 });
+      this.shards.setColorAt(i, this.col.set("#000"));
+    }
+    scene.add(this.shards);
+  }
+
+  /**
+   * A hard crash at x, z (`k` 0…1 how hard; `nx, nz` the way the hit pushed): glass and
+   * bits of bumper fly out, bounce and lie on the road a while; dust kicks up.
+   */
+  debris(x: number, y: number, z: number, k: number, nx = 0, nz = 0) {
+    if (k < 0.15) return;
+    const count = Math.round(4 + k * 14);
+    for (let i = 0; i < count; i++) {
+      const b = this.bits[this.nextBit];
+      this.nextBit = (this.nextBit + 1) % this.bits.length;
+      const sp = 1.5 + Math.random() * 5 * k, a = Math.random() * Math.PI * 2;
+      Object.assign(b, {
+        x: x + (Math.random() - 0.5) * 0.6, y: y + Math.random() * 0.5, z: z + (Math.random() - 0.5) * 0.6,
+        vx: Math.cos(a) * sp + nx * 3 * k, vy: 1.5 + Math.random() * 3.5 * k, vz: Math.sin(a) * sp + nz * 3 * k,
+        rx: Math.random() * 6, ry: Math.random() * 6, rz: Math.random() * 6,
+        wx: (Math.random() - 0.5) * 20, wy: (Math.random() - 0.5) * 20, wz: (Math.random() - 0.5) * 20,
+        size: 0.05 + Math.random() * 0.12, age: 0, life: 6 + Math.random() * 6,
+      });
+      // Mostly glass (pale, a little blue), some black plastic and a tail-light red.
+      const r = Math.random();
+      this.shards.setColorAt(this.bits.indexOf(b), this.col.set(r < 0.6 ? "#cfe3ea" : r < 0.9 ? "#1c1c1e" : "#b3141c"));
+    }
+    if (this.shards.instanceColor) this.shards.instanceColor.needsUpdate = true;
+    // Dust and grit kicked up off the road.
+    for (let i = 0; i < 1 + Math.round(k * 2); i++) this.puff("grey", x + (Math.random() - 0.5) * 1.5, 0.3, z + (Math.random() - 0.5) * 1.5, 1 + k, 1.2, 1.2, 0.5, 0.35 * k);
+  }
+
+  private tickDebris(dt: number) {
+    let live = 0;
+    for (let i = 0; i < this.bits.length; i++) {
+      const b = this.bits[i];
+      if (b.age >= b.life) {
+        this.m4.makeScale(0, 0, 0);
+        this.shards.setMatrixAt(i, this.m4);
+        continue;
+      }
+      live++;
+      b.age += dt;
+      if (b.y > 0.01 || b.vy > 0) {
+        b.vy -= 9.8 * dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.z += b.vz * dt;
+        b.rx += b.wx * dt;
+        b.ry += b.wy * dt;
+        b.rz += b.wz * dt;
+        if (b.y <= 0.01) {
+          // Bounce a little, then lie flat where it lands.
+          b.y = 0.01;
+          if (Math.abs(b.vy) > 1.2) (b.vy = -b.vy * 0.3), (b.vx *= 0.5), (b.vz *= 0.5);
+          else (b.vy = 0), (b.vx = 0), (b.vz = 0), (b.rx = 0), (b.rz = 0);
+        }
+      }
+      const fade = Math.min(1, (b.life - b.age) / 1.5);
+      this.q.setFromEuler(this.e.set(b.rx, b.ry, b.rz));
+      this.m4.compose(this.v.set(b.x, b.y, b.z), this.q, this.one.setScalar(b.size * fade));
+      this.shards.setMatrixAt(i, this.m4);
+    }
+    this.shards.count = live ? this.bits.length : 0;
+    this.shards.instanceMatrix.needsUpdate = true;
   }
 
   private puff(kind: keyof StreetFx["tex"], x: number, y: number, z: number, size: number, life: number, grow: number, vy: number, alpha = 1) {
@@ -106,6 +192,7 @@ export class StreetFx {
 
   tick(dt: number) {
     this.vfx.tick(dt);
+    this.tickDebris(dt);
     for (const p of this.puffs) {
       if (p.age >= p.life) continue;
       p.age += dt;
@@ -122,6 +209,9 @@ export class StreetFx {
 
   dispose() {
     this.vfx.dispose();
+    this.shards.removeFromParent();
+    this.shards.geometry.dispose();
+    (this.shards.material as THREE.Material).dispose();
     for (const p of this.puffs) (p.s.removeFromParent(), p.m.dispose());
     for (const t of Object.values(this.tex)) t.dispose();
   }
