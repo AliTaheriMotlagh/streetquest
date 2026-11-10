@@ -203,45 +203,65 @@ export function withCabin(kit: THREE.BufferGeometry, glass: THREE.BufferGeometry
 
 // ---------------------------------------------------------------- the drivers
 const SHIRTS = ["#f1f1ee", "#1f2a44", "#3a3a3c", "#6b4f3a", "#2f5d50", "#7d1d2a", "#c9c2b0", "#24476b", "#111214", "#5c6470"];
+/** Women's manteaus: darker and plainer. */
+const MANTEAUS = ["#1c1c1e", "#2b2f3a", "#5a4a42", "#6b6f7a", "#3a2d2a", "#7a6a58", "#26323f", "#4a2f3a"];
+const SCARVES = ["#111111", "#1b1f2a", "#3b2a2a", "#6d5a4a", "#2c3e50", "#5b2333", "#8a7f72", "#3d4d3a", "#7a1f2b", "#c2b8a3", "#111111"];
+const HAIRS = ["#1b1410", "#2a1e17", "#3a2a1e", "#0f0f10", "#5c5a58"];
 const SKINS = ["#f0c9a5", "#e0b48f", "#c99670", "#a87652", "#8a5a3c"];
+/** About a third of drivers are women, in a headscarf (as on the pavements: people.ts). */
+export const WOMEN_SHARE = 0.35;
 
-/** A driver, the middle of the head at the origin, facing −z, hands on a wheel 0.42 m ahead. */
+/** A driver's look from their car's number: the same car, the same driver. */
+export function driverLook(seed: number, uniform = false) {
+  const f = (k: number) => (((seed * k) % 1) + 1) % 1;
+  const woman = !uniform && f(0.3819) < WOMEN_SHARE;
+  const pick = <T,>(l: T[], k: number) => l[Math.floor(f(k) * l.length) % l.length];
+  return { woman, top: woman ? pick(MANTEAUS, 0.7071) : pick(SHIRTS, 0.7071), skin: pick(SKINS, 0.5772), hair: woman ? pick(SCARVES, 0.1618) : pick(HAIRS, 0.1618) };
+}
+
+/**
+ * A driver, the middle of the head at the origin, facing −z, hands on a wheel 0.42 m ahead:
+ * the top (shirt or manteau, coloured per copy), the skin (face, neck, hands), a man's
+ * hair, and a woman's headscarf (a hood open at the face, wrapped under the chin and
+ * over the shoulders).
+ */
 function driverGeometry() {
   const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
   const W = "#ffffff";
-  const shirt: THREE.BufferGeometry[] = [box(0.4, 0.5, 0.22, 0, -0.46, 0.05, W), box(0.44, 0.1, 0.2, 0, -0.25, 0.04, W)];
+  const top: THREE.BufferGeometry[] = [box(0.4, 0.5, 0.22, 0, -0.46, 0.05, W), box(0.44, 0.1, 0.2, 0, -0.25, 0.04, W)];
   const skin: THREE.BufferGeometry[] = [paint(new THREE.SphereGeometry(0.1, 10, 8).scale(0.95, 1.15, 1.05), W), paint(new THREE.CylinderGeometry(0.045, 0.05, 0.1, 6).translate(0, -0.14, 0.01), W)];
-  // Hair: a cap over the top and back of the head.
-  skin.push(paint(new THREE.SphereGeometry(0.107, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(0.97, 1.12, 1.08).translate(0, 0.012, 0.012), "#2a1e17"));
   for (const side of [-1, 1]) {
     const sh = v(side * 0.2, -0.27, 0.04), el = v(side * 0.21, -0.48, -0.18), hand = v(side * 0.14, -0.31, -0.4);
-    shirt.push(limb(sh, el, 0.09, W), limb(el, hand, 0.075, W));
+    top.push(limb(sh, el, 0.09, W), limb(el, hand, 0.075, W));
     skin.push(paint(new THREE.SphereGeometry(0.042, 6, 5).translate(hand.x, hand.y, hand.z), W));
   }
-  return { shirt: mergeAll(shirt), skin: mergeAll(skin) };
+  // Hair: a cap over the top and back of the head.
+  const hair = paint(new THREE.SphereGeometry(0.107, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(0.97, 1.12, 1.08).translate(0, 0.012, 0.012), W);
+  // The scarf: round the head but open at the face (the front is −z: φ = 3π/2 in three's
+  // sphere), down past the chin; and a drape from under the chin over the shoulders.
+  const gap = 0.8;
+  const hood = new THREE.SphereGeometry(0.12, 14, 9, (3 * Math.PI) / 2 + gap, Math.PI * 2 - gap * 2, 0, Math.PI * 0.8).scale(0.97, 1.13, 1.08).translate(0, 0.004, 0.012);
+  const drape = new THREE.CylinderGeometry(0.095, 0.22, 0.26, 14, 1, true).translate(0, -0.2, 0.02);
+  const scarf = mergeAll([paint(hood, W), paint(drape, W)]);
+  return { top: mergeAll(top), skin: mergeAll(skin), hair: mergeAll([hair]), scarf };
 }
 
+type Part = "top" | "skin" | "hair" | "scarf";
+
 export class Crew {
-  private shirt: THREE.InstancedMesh;
-  private skin: THREE.InstancedMesh;
-  private n = 0;
+  private mesh: Record<Part, THREE.InstancedMesh>;
+  private count: Record<Part, number> = { top: 0, skin: 0, hair: 0, scarf: 0 };
   private m = new THREE.Matrix4();
   private t = new THREE.Matrix4();
   private c = new THREE.Color();
 
-  constructor(
-    private scene: THREE.Scene,
-    private cap = 48,
-  ) {
+  constructor(private scene: THREE.Scene, private cap = 48) {
     const g = driverGeometry();
-    const mat = new THREE.MeshStandardMaterial({
-      color: "#ffffff",
-      vertexColors: true,
-      roughness: 0.85,
-      metalness: 0,
-    });
-    this.shirt = this.inst(g.shirt, mat, cap);
-    this.skin = this.inst(g.skin, mat.clone(), cap);
+    const mat = () => new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.85, metalness: 0 });
+    // The scarf is a thin shell: seen from inside through the open face too.
+    const cloth = mat();
+    cloth.side = THREE.DoubleSide;
+    this.mesh = { top: this.inst(g.top, mat(), cap), skin: this.inst(g.skin, mat(), cap), hair: this.inst(g.hair, mat(), cap), scarf: this.inst(g.scarf, cloth, cap) };
   }
 
   private inst(geo: THREE.BufferGeometry, mat: THREE.Material, cap: number) {
@@ -256,45 +276,56 @@ export class Crew {
   }
 
   begin() {
-    this.n = 0;
+    for (const k of Object.keys(this.count) as Part[]) this.count[k] = 0;
   }
 
-  /** A driver in the car drawn with matrix `car`, at `seat`; `seed` picks their shirt and skin (the same for the same car); `shirt`: a uniform. */
+  /** How many drivers are drawn this frame. */
+  get n() {
+    return this.count.top;
+  }
+
+  private add(k: Part, color: THREE.ColorRepresentation) {
+    if (this.count[k] >= this.cap) this.grow();
+    const i = this.count[k]++;
+    this.mesh[k].setMatrixAt(i, this.m);
+    this.mesh[k].setColorAt(i, this.c.set(color));
+  }
+
+  /** A driver in the car drawn with matrix `car`, at `seat`; `seed` picks who (the same for the same car); `shirt`: a uniform. */
   put(car: THREE.Matrix4, seat: Seat, seed: number, shirt?: THREE.ColorRepresentation) {
-    if (this.n >= this.cap) this.grow();
-    const i = this.n++;
+    const look = driverLook(seed, shirt != null);
     // A little turn of the body, so a row of drivers isn't one pose.
     const turn = (((seed * 0.6180339) % 1) - 0.5) * 0.25;
     this.m.multiplyMatrices(car, this.t.makeRotationY(turn).setPosition(seat.x, seat.y, seat.z));
-    this.shirt.setMatrixAt(i, this.m);
-    this.skin.setMatrixAt(i, this.m);
-    this.shirt.setColorAt(i, this.c.set(shirt ?? SHIRTS[Math.floor(Math.abs(seed * 7)) % SHIRTS.length]));
-    this.skin.setColorAt(i, this.c.set(SKINS[Math.floor(Math.abs(seed * 3 + 1)) % SKINS.length]));
+    this.add("top", shirt ?? look.top);
+    this.add("skin", look.skin);
+    this.add(look.woman ? "scarf" : "hair", look.hair);
   }
 
   private grow() {
     const cap = this.cap * 2;
-    for (const k of ["shirt", "skin"] as const) {
-      const old = this[k], m = this.inst(old.geometry, old.material as THREE.Material, cap);
+    for (const k of Object.keys(this.mesh) as Part[]) {
+      const old = this.mesh[k], m = this.inst(old.geometry, old.material as THREE.Material, cap);
       m.instanceMatrix.array.set(old.instanceMatrix.array);
       m.instanceColor!.array.set(old.instanceColor!.array);
       this.scene.remove(old);
       old.dispose();
-      this[k] = m;
+      this.mesh[k] = m;
     }
     this.cap = cap;
   }
 
   end() {
-    for (const m of [this.shirt, this.skin]) {
-      m.count = this.n;
+    for (const k of Object.keys(this.mesh) as Part[]) {
+      const m = this.mesh[k];
+      m.count = this.count[k];
       m.instanceMatrix.needsUpdate = true;
       m.instanceColor!.needsUpdate = true;
     }
   }
 
   dispose() {
-    for (const m of [this.shirt, this.skin]) {
+    for (const m of Object.values(this.mesh)) {
       this.scene.remove(m);
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();

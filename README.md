@@ -90,8 +90,11 @@ mood scales XP; loot funds research; territory funds the army.
   check-in is at a real café, and food spawns sit on real restaurants instead of random street corners.
 - **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). From home or in
-  test mode the car *is* your commander: where you drive is where you are, jobs are beacons of light, loot is collected by
-  driving through it (money and beacons whose map spot is inside a building move to the nearest street, so they're never
+  test mode the car *is* your commander: where you drive is where you are, missions are beacons of light, loot is collected by
+  driving through it — the only things drawn as game markers. Stores look like stores: their own signs (a board on the
+  wall, or a lit sign on a pole at the kerb for the game's businesses — `markers.ts`, `lib/storefront.ts`), small
+  square blips on the minimap, and as you slow down or walk past one its card slides in under the street name
+  (name, trade, distance; tap it for the store's card) (money and beacons whose map spot is inside a building move to the nearest street, so they're never
   hidden by walls or out of the car's reach). Walking with GPS, the car follows you. Cells without map data yet are drawn
   as a fantasy village. In the realistic style every building wears a material — the map's `building:material` (or the
   colour OpenMapTiles gives that material), else a guess for its kind and region: Tehran's travertine stone and brick
@@ -127,8 +130,9 @@ mood scales XP; loot funds research; territory funds the army.
   street (`src/components/drive/fleet3d.ts`). Cars keep a bumper-to-bumper gap sized to what's ahead, stop at red
   lights and brake for you. Every car that's driving has someone at the wheel (on the left), seen through tinted
   glass with a dark cabin behind it — seats, dashboard, steering wheel — worked out from each model's own windows
-  (`crew.ts`; two instanced meshes draw every driver in the city, the cabin rides in the traffic copy of the trim, so
-  it costs no draw calls; parked cars are empty). Traffic never appears in front of you: a car joins the street
+  (`crew.ts`; four instanced meshes draw every driver in the city, the cabin rides in the traffic copy of the trim, so
+  it costs no draw calls; parked cars are empty). About a third of drivers are women in a headscarf and manteau;
+  patrol cars have an officer in uniform at the wheel. Traffic never appears in front of you: a car joins the street
   behind the camera, beyond 170 m or out of sight behind buildings, and the parked cars drawn favour the street you're
   looking down, so a row is there before you reach it. Posts, lights, bins and shop signs mapped on the asphalt stand
   on the pavement — at a junction on the corner, not in the cross street (`tileMesh.ts` `pavement`).
@@ -185,7 +189,10 @@ mood scales XP; loot funds research; territory funds the army.
     its lane and slides to a stop with its hazards flashing, damaged the same way — every street car and patrol car
     shows its dent where it was hit, scuffed to bare metal, and gets more battered all over as it loses health
     (`fleetDamage.ts`: one dent per instanced copy, folded in by the shader with the same shape as your car's;
-    `dentCar`/`localHit` in `damage.ts`); traffic behind honks and pulls round the wreck. A health bar shows while your car is hurt.
+    `dentCar`/`localHit` in `damage.ts`); bullets leave holes where they went in — a dark hole ringed with bare
+    metal on the paint, a star of cracks in the glass — drawn by the same shader on the real curved body (the last four
+    per car; on your own car they're decals laid on the model where the ray met it, `carDamage.ts`). A parked car you
+    hit or shoot sets off its alarm; traffic behind honks and pulls round the wreck. A health bar shows while your car is hurt.
   - *Pile-ups are physical*: every car is a box with a mass (from its size: a Pride ≈ 1 t, a bus ≈ 11 t) and a spin,
     and a car knocked loose crashes into whatever it slides into — driving cars, parked cars, wrecks, patrol cars and
     yours — passing its momentum on (`lib/street/carPhysics.ts`: separating-axis contact, impulse with restitution,
@@ -449,13 +456,15 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 Torob and Divar. Iranian sites often refuse servers abroad (Snappfood answers Vercel with 403) — run the relay in Iran
 (*Deploy → Snappfood from abroad*) and point `SNAPPFOOD_URL` (or `TOROB_URL` / `DIVAR_URL`) at it, or host in Iran.
 
-**Recorded sounds:** the game ships recorded street sounds built from free sources (CC0, public domain and CC BY —
-listed with their authors in `assets/sound-sources.json` and on `/credits`): `npm run assets:sounds -- --fetch`
-downloads them and mixes each take (a crash is several hits layered: metal, crumple, glass; a honk is cut from a
-longer recording). Tyre skids have no free source yet and stay synthesized. To use your own recordings instead,
-read on — every street sound is synthesized until it has a recording. The slots
+**Recorded sounds:** the game ships recorded street sounds built from free sources (CC0, public domain and CC BY,
+and [fara-download.ir](https://fara-download.ir)'s sound effects — no licence stated, the site allows copying with a
+link to the source, so each is credited with its page — all listed in `assets/sound-sources.json` and on `/credits`):
+`npm run assets:sounds -- --fetch` downloads them and mixes each take (a crash is several hits layered: metal,
+crumple, glass; a honk is cut from a longer recording; the engine starting is the starter cranking and then a rev).
+To use your own recordings instead, read on — every street sound is synthesized until it has a recording. The slots
 (`src/lib/soundSlots.ts`): `siren` (looped), `crashLight`, `crashHeavy`, `glass`, `horn`, `explosion`, `fire` (looped),
-`skid`, `thud` and `city` (street ambience, stereo loop). Put recordings you're licensed to ship — e.g. downloaded with
+`skid`, `thud`, `city` (street ambience, stereo loop), `carAlarm` (a parked car you hit or shoot), `carLock` (the
+remote's chirp as you walk away from your car), `doorOpen` / `doorClose` (getting in and out) and `engineStart`. Put recordings you're licensed to ship — e.g. downloaded with
 a [soundsnap.ir](https://soundsnap.ir) subscription (its free previews are watermarked; don't use those) — in
 `assets/sounds/<slot>/` (any of wav / mp3 / ogg / flac / aiff / m4a; several files = random variations) and run
 `npm run assets:sounds` (needs `ffmpeg`): it trims leading silence, cuts one-shots short, loudness-matches everything
@@ -465,6 +474,15 @@ without a file keeps its synth, so nothing goes silent.
 
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.
+
+**What people say (Persian voices):** the lines are in `src/lib/street/barks.ts` (Tehrani Persian with English
+subtitles: running from gunfire, the driver whose car you hit, a pedestrian you nearly ran over, a hello in passing, the
+police megaphone and orders). `npm run assets:voices -- --download` records each one with
+[Piper](https://github.com/rhasspy/piper) (offline; install it, or set `PIPER=/path/to/piper`) in Piper's Persian
+voices — amir (men), ganji pitched up (women: there's no Persian woman's voice yet), gyro through a megaphone (police)
+— into `public/sounds/voice/` plus its `manifest.json`; commit those. The models (60 MB each) are downloaded once into
+`assets/voices/` (ignored). Until there are recordings, people still talk — a speech bubble over their head — and a
+device with its own Persian voice (some Android phones) reads the line aloud.
 
 ## How it works
 

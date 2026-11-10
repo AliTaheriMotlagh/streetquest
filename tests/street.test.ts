@@ -2,7 +2,7 @@
 // up, and how the police heat builds up, gets lost and ends in an arrest.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { blastOnCar, blastOnPerson, BLAST_R, BURN_S, burnCar, CAR_HP, carLook, crashDamage, crumple, DENT_MAX, dentCar, dentDepth, enginePower, freshCar, hurtCar, localHit, SCRAPE_MS } from "@/lib/street/damage";
+import { blastOnCar, blastOnPerson, BLAST_R, BURN_S, burnCar, CAR_HP, carLook, crashDamage, crumple, DENT_MAX, dentCar, holeCar, HOLES_MAX, localShot, dentDepth, enginePower, freshCar, hurtCar, localHit, SCRAPE_MS } from "@/lib/street/damage";
 import { calm, CUFF_S, HEAT, loseAfter, MAX_STARS, report, response, starsFor, STAR_HEAT, tickWanted } from "@/lib/street/wanted";
 
 const kmh = (v: number) => v / 3.6;
@@ -161,5 +161,20 @@ describe("dents on the cars in traffic", () => {
     c.exploded = true;
     assert.equal(crumple(c), 1);
     assert.equal(dentCar(c, { x: 0, z: 0 }, 0.3), undefined, "a burnt-out shell isn't dented further");
+  });
+});
+
+describe("bullet holes", () => {
+  it("a shot lands on the car's outline at the height it hit (between the sills and the roof), the last few kept", () => {
+    const h = localShot(0, 0, 0, 3, 0.9, 0.2, 4.4, 1.75, 1.45);
+    assert.ok(Math.abs(h.x - 0.875) < 1e-9 && h.y === 0.9);
+    assert.equal(localShot(0, 0, 0, 3, 5, 0, 4.4, 1.75, 1.45).y, 1.4, "over the roof: on the roof line");
+    const c = freshCar();
+    for (let i = 0; i < HOLES_MAX + 3; i++) holeCar(c, { x: i, y: 1, z: 0 });
+    assert.equal(c.holes!.length, HOLES_MAX);
+    assert.equal(c.holes![0].x, 3, "the oldest went first");
+    c.exploded = true;
+    holeCar(c, { x: 99, y: 1, z: 0 });
+    assert.equal(c.holes!.length, HOLES_MAX, "a burnt-out shell takes no more");
   });
 });

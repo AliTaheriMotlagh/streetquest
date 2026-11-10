@@ -68,8 +68,14 @@ export function enginePower(hp: number) {
  */
 export type Dent = { x: number; z: number; depth: number };
 
-/** A car's health a step later: hit for `dmg`; burning cars count down to the blast. `dent`: where it was hit hardest (drawn). */
-export type CarHealth = { hp: number; burn: number; exploded: boolean; dent?: Dent };
+/** A bullet hole, in the car's own frame (as Dent, plus how high, m). */
+export type Hole = { x: number; y: number; z: number };
+
+/**
+ * A car's health a step later: hit for `dmg`; burning cars count down to the blast. `dent`:
+ * where it was hit hardest; `holes`: the last few bullets in it (both drawn).
+ */
+export type CarHealth = { hp: number; burn: number; exploded: boolean; dent?: Dent; holes?: Hole[] };
 export const freshCar = (): CarHealth => ({ hp: CAR_HP, burn: 0, exploded: false });
 
 /** Damage a car; returns true when this hit set it on fire. */
@@ -116,6 +122,26 @@ export function dentCar(c: CarHealth, at: { x: number; z: number }, depth: numbe
     d.depth = Math.min(DENT_MAX, d.depth + depth * 0.6);
   } else if (depth > d.depth) Object.assign(d, { x: at.x, z: at.z, depth: Math.min(DENT_MAX, depth) });
   return d;
+}
+
+/** Bullet holes kept per car (the oldest goes first): the shader draws this many. */
+export const HOLES_MAX = 4;
+
+/**
+ * A bullet that hit a car at (x, z) turned `yaw` at (hx, hy, hz): where it went in, in the
+ * car's frame — on its outline, between the sills and the roof.
+ */
+export function localShot(x: number, z: number, yaw: number, hx: number, hy: number, hz: number, len: number, wid: number, hgt: number): Hole {
+  const at = localHit(x, z, yaw, hx, hz, len, wid);
+  return { x: at.x, y: Math.max(0.3, Math.min(hgt - 0.05, hy)), z: at.z };
+}
+
+/** A bullet hole in a car (a burnt-out shell takes no more). */
+export function holeCar(c: CarHealth, h: Hole) {
+  if (c.exploded) return;
+  const l = (c.holes ??= []);
+  l.push(h);
+  if (l.length > HOLES_MAX) l.shift();
 }
 
 /** How battered the whole body looks, 0 (new) … 1 (a wreck): the panels' small crumples everywhere. */

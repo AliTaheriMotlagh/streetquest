@@ -15,7 +15,7 @@
 import * as THREE from "three";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import { VEHICLES } from "@/lib/vehicles";
-import { burnCar, carLook, dentCar, dentDepth, freshCar, hurtCar, localHit, type CarHealth } from "@/lib/street/damage";
+import { burnCar, carLook, dentCar, dentDepth, freshCar, holeCar, hurtCar, localHit, localShot, type CarHealth } from "@/lib/street/damage";
 import { rayPlayer, type Ray } from "@/lib/arena/geom";
 import type { Response } from "@/lib/street/wanted";
 import { Avatar, loadPolice, loadSoldier } from "../arena/avatar";
@@ -73,6 +73,8 @@ export type Unit = {
   push: { vx: number; vz: number; spin: number };
   /** Seconds without a clear view of you (one lost behind the buildings is sent round again). */
   blind: number;
+  /** When the officer at the wheel may use the megaphone again (ms, performance.now). */
+  talkAt: number;
 };
 
 /** What the police see of you each frame. */
@@ -83,7 +85,9 @@ export type PoliceEvent =
   | { kind: "shot"; at: Officer; hit: boolean; x: number; z: number; tx: number; ty: number; tz: number; onCar: boolean }
   | { kind: "fire"; x: number; z: number }
   | { kind: "boom"; x: number; z: number; yaw: number }
-  | { kind: "ram"; unit: Unit; into: number; x: number; z: number; nx: number; nz: number };
+  | { kind: "ram"; unit: Unit; into: number; x: number; z: number; nx: number; nz: number }
+  /** An officer shouting (the megaphone in a chase, orders when they get out): `where` follows them. */
+  | { kind: "talk"; say: "copStop" | "copHands"; where: () => { x: number; y: number; z: number } | null };
 
 let nextId = 1;
 
@@ -121,7 +125,7 @@ export class Police {
   /** A new patrol car at a street spot, facing `yaw`. */
   spawn(x: number, z: number, yaw: number) {
     const body: Body = { x, z, alt: 0, cruise: 0, yaw, vx: 0, vz: 0, vy: 0, speed: 0, steer: 0, roll: 0, pitch: 0, wheelSpin: 0 };
-    this.units.push({ id: nextId++, body, health: freshCar(), stuck: 0, reverse: 0, officers: [], leaving: 0, idle: 0, phase: this.rand() * 10, push: { vx: 0, vz: 0, spin: 0 }, blind: 0 });
+    this.units.push({ id: nextId++, body, health: freshCar(), stuck: 0, reverse: 0, officers: [], leaving: 0, idle: 0, phase: this.rand() * 10, push: { vx: 0, vz: 0, spin: 0 }, blind: 0, talkAt: 0 });
   }
 
   /** Units still in the chase (not leaving, not wrecked). */
@@ -184,6 +188,11 @@ export class Police {
         continue;
       }
       if (u.health.hp > 0) this.drive(u, dt, me, resp, d);
+      // The megaphone, now and then, while it's after you and close.
+      if (resp && !u.leaving && u.health.hp > 0 && !u.officers.length && d < 45 && performance.now() > u.talkAt) {
+        u.talkAt = performance.now() + 9000 + this.rand() * 6000;
+        this.events.push({ kind: "talk", say: "copStop", where: () => (this.units.includes(u) ? { x: u.body.x, y: FLEET[KEY].hgt + 0.5, z: u.body.z } : null) });
+      }
       else this.coast(u, dt);
       // Officers get out when the car pulls up near you.
       const alive = u.officers.filter((o) => !o.dead).length;
@@ -350,7 +359,8 @@ export class Police {
   }
 
   /** A bullet in a patrol car. */
-  shootCar(u: Unit, dmg: number) {
+  shootCar(u: Unit, dmg: number, at?: { x: number; y: number; z: number }) {
+    if (at) holeCar(u.health, localShot(u.body.x, u.body.z, u.body.yaw, at.x, at.y, at.z, FLEET[KEY].len, FLEET[KEY].wid, FLEET[KEY].hgt));
     if (hurtCar(u.health, dmg)) this.events.push({ kind: "fire", x: u.body.x, z: u.body.z });
   }
 
@@ -399,6 +409,9 @@ export class Police {
       }
       u.officers.push(o);
     }
+    // The first one out shouts the orders.
+    const first = u.officers.find((o) => !o.dead);
+    if (first) this.events.push({ kind: "talk", say: "copHands", where: () => (first.dead ? null : { x: first.x, y: 1.8, z: first.z }) });
   }
 
   private officer(o: Officer, dt: number, now: number, me: Suspect, resp: Response | null) {

@@ -7,7 +7,7 @@ import { before, describe, it, mock } from "node:test";
 import * as THREE from "three";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import { freshCar, dentCar } from "@/lib/street/damage";
-import { cabinGeometry, cabinShape, hull } from "@/components/drive/crew";
+import { cabinGeometry, cabinShape, driverLook, hull, WOMEN_SHARE } from "@/components/drive/crew";
 import { fleetParts, FleetInstances } from "@/components/drive/fleet3d";
 
 before(() => {
@@ -85,7 +85,7 @@ describe("the cabin", () => {
 describe("traffic drawn with drivers and dents", () => {
   type Pool = {
     n: number;
-    dents: THREE.InstancedBufferAttribute;
+    marks: { dents: THREE.InstancedBufferAttribute };
     seat: unknown;
     body: THREE.InstancedMesh[];
   };
@@ -108,10 +108,10 @@ describe("traffic drawn with drivers and dents", () => {
     const p = pools(f).find((q) => q.n === 2)!;
     assert.ok(p.seat, "the samand has a seat");
     assert.deepEqual(
-      Array.from(p.dents.array.slice(0, 8)).map((v) => +v.toFixed(3)),
+      Array.from(p.marks.dents.array.slice(0, 8) as Float32Array).map((v) => +v.toFixed(3)),
       [0.3, -2.2, 0.2, 0.4, 0, 0, 0, 1],
     );
-    for (const m of p.body) assert.equal(m.geometry.getAttribute("aDent"), p.dents, "paint, trim, lamps and glass all fold");
+    for (const m of p.body) assert.equal(m.geometry.getAttribute("aDent"), p.marks.dents, "paint, trim, lamps and glass all fold");
     f.dispose();
   });
 
@@ -124,6 +124,46 @@ describe("traffic drawn with drivers and dents", () => {
     const kit = pools(f)[0].body[1].geometry;
     assert.ok(kit.getAttribute("position").count > parts.kit.getAttribute("position").count);
     assert.notEqual(kit.getAttribute("position"), parts.kit.getAttribute("position"));
+    f.dispose();
+  });
+});
+
+describe("who's driving", () => {
+  it("about a third of drivers are women in a headscarf; the same car, the same driver; a uniform is always an officer", () => {
+    let women = 0;
+    for (let id = 1; id <= 1000; id++) if (driverLook(id).woman) women++;
+    assert.ok(Math.abs(women / 1000 - WOMEN_SHARE) < 0.08, `${women} women in 1000`);
+    assert.deepEqual(driverLook(42), driverLook(42));
+    for (let id = 1; id < 200; id++) assert.equal(driverLook(id, true).woman, false);
+  });
+
+  it("a woman driver is drawn with a scarf, a man with hair", () => {
+    const f = new FleetInstances(new THREE.Scene(), "real");
+    const woman = Array.from({ length: 50 }, (_, i) => i + 1).find((i) => driverLook(i).woman)!;
+    const man = Array.from({ length: 50 }, (_, i) => i + 1).find((i) => !driverLook(i).woman)!;
+    f.begin(0, 0);
+    f.put("pride", 0, 0, 0, new THREE.Color("#fff"), false, 0, 0, { driver: woman });
+    f.put("pride", 6, 0, 0, new THREE.Color("#fff"), false, 0, 0, { driver: man });
+    f.end();
+    const count = (f as unknown as { crew: { count: Record<string, number> } }).crew.count;
+    assert.deepEqual(count, { top: 2, skin: 2, hair: 1, scarf: 1 });
+    f.dispose();
+  });
+
+  it("bullet holes ride along with the copy: packed into its marks, none for a clean car", () => {
+    const f = new FleetInstances(new THREE.Scene(), "real");
+    const h = freshCar();
+    h.holes = [{ x: 0.8, y: 0.7, z: -0.5 }, { x: -0.8, y: 1.1, z: 0.2 }];
+    f.begin(0, 0);
+    f.put("samand", 0, 0, 0, new THREE.Color("#fff"), false, 0, 0, { health: h });
+    f.put("samand", 5, 0, 0, new THREE.Color("#fff"), false, 0);
+    f.end();
+    const all = [...(f as unknown as { pools: Map<unknown, { n: number; marks: { holes: THREE.InstancedBufferAttribute[] } }> }).pools.values()];
+    const p = all.find((q) => q.n === 2)!;
+    const a = p.marks.holes.map((x) => Array.from(x.array.slice(0, 4)).map((v) => +v.toFixed(2)));
+    assert.deepEqual(a, [[0.8, 10.7, -0.5, -0.8], [11.1, 0.2, 0, 0], [0, 0, 0, 0]]);
+    // The clean one: every hole's height reads −10 (none).
+    assert.deepEqual(p.marks.holes.map((x) => Array.from(x.array.slice(4, 8))), [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
     f.dispose();
   });
 });

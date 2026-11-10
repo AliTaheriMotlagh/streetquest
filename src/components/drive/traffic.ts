@@ -23,7 +23,7 @@ import { contact, felt, massOf, resolve, type Contact, type Rigid } from "@/lib/
 import { carToTake } from "@/lib/vehicles";
 import { hashStr, rng } from "@/lib/geo";
 import { Junctions, laneOffset, parkedRow, parkingSides, type Parked, type Sides, type Street } from "@/lib/parking";
-import { burnCar, carLook, crashDamage, dentCar, dentDepth, freshCar, hurtCar, localHit, type CarHealth, type CarLook } from "@/lib/street/damage";
+import { burnCar, carLook, crashDamage, dentCar, dentDepth, freshCar, holeCar, hurtCar, localHit, localShot, type CarHealth, type CarLook } from "@/lib/street/damage";
 import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { api } from "../game/client";
 import { FleetInstances } from "./fleet3d";
@@ -154,7 +154,7 @@ type Car = {
  * Something the street life layer draws or plays: a car catching fire, blowing up, a horn,
  * two cars meeting (`into`: how hard, m/s).
  */
-export type TrafficEvent = { kind: "fire" | "boom" | "honk" | "crash"; x: number; z: number; key: FleetKey; ref: CarRef; into?: number };
+export type TrafficEvent = { kind: "fire" | "boom" | "honk" | "crash" | "alarm"; x: number; z: number; key: FleetKey; ref: CarRef; into?: number };
 
 /** What a car-to-car hit did to something that isn't traffic (a patrol car, your car). */
 export type SolidHit = { dvx: number; dvz: number; spin: number; felt: number; x: number; z: number; nx: number; nz: number };
@@ -706,6 +706,8 @@ export class TrafficCars {
   /** A parked car knocked off its spot becomes a loose car (it won't be parked there again). */
   private unpark(p: Parked & { color: THREE.Color }): Car {
     const spot = spotOf(p.x, p.z);
+    // Hit or shot where it stood: its alarm goes off.
+    this.events.push({ kind: "alarm", x: p.x, z: p.z, key: p.key, ref: p });
     this.parked = this.parked.filter((q) => spotOf(q.x, q.z) !== spot);
     this.left = this.left.filter((q) => spotOf(q.x, q.z) !== spot);
     this.taken.add(spot);
@@ -782,17 +784,24 @@ export class TrafficCars {
     return best;
   }
 
-  /** A bullet in the bodywork. */
-  shoot(ref: CarRef, dmg: number) {
+  /** A bullet in the bodywork (`at`: where it hit — it leaves a hole there). */
+  shoot(ref: CarRef, dmg: number, at?: { x: number; y: number; z: number }) {
+    const hole = (c: Car) => {
+      if (!at) return;
+      const d = FLEET[c.kind];
+      holeCar(c.health, localShot(c.x, c.z, c.yaw, at.x, at.y - (c.loose?.y ?? 0), at.z, d.len, d.wid, d.hgt));
+    };
     const c = this.live(ref);
     if (!c) {
       // A parked car takes it standing (it only comes loose when it's hit hard).
       const p = this.shown.find((s) => s === ref);
       if (!p) return;
       const loose = this.unpark(p);
+      hole(loose);
       if (hurtCar(loose.health, dmg)) this.events.push({ kind: "fire", x: loose.x, z: loose.z, key: loose.kind, ref: loose });
       return;
     }
+    hole(c);
     c.upset = Math.max(c.upset, 4);
     c.panic = Math.max(c.panic, 6);
     if (hurtCar(c.health, dmg)) this.events.push({ kind: "fire", x: c.x, z: c.z, key: c.kind, ref: c });

@@ -7,7 +7,8 @@
 // public/sounds/manifest.json lists what's there. A slot without files is left to the synth.
 //
 // Sources are either yours (dropped in by hand — e.g. bought with a soundsnap.ir subscription)
-// or the free ones listed in assets/sound-sources.json (CC0 / public domain / CC BY), which
+// or the free ones listed in assets/sound-sources.json (CC0 / public domain / CC BY, and
+// fara-download.ir's, copied with a link to their page), which
 // --fetch downloads and mixes into takes (assets/sounds/<slot>/auto-<n>.wav: several short
 // hits layered into one crash, a honk cut out of a longer recording…). Sources stay out of
 // git (assets/sounds is gitignored); the converted files and the manifest — with the credits
@@ -17,7 +18,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SOUND_KEYS, SOUND_SLOTS, slotFile, type SoundCredit, type SoundKey, type SoundManifest } from "../src/lib/soundSlots";
+import { SHIP_LICENSE, SOUND_KEYS, SOUND_SLOTS, slotFile, type SoundCredit, type SoundKey, type SoundManifest } from "../src/lib/soundSlots";
 
 const SRC = "assets/sounds";
 const OUT = "public/sounds";
@@ -37,7 +38,7 @@ const list = JSON.parse(readFileSync(SOURCES, "utf8")) as { sources: Record<stri
 async function download() {
   mkdirSync(DL, { recursive: true });
   for (const [id, s] of Object.entries(list.sources)) {
-    if (!/^(CC0|Public domain|CC BY [0-9.]+)$/.test(s.license)) throw new Error(`${id}: ${s.license} isn't a licence the game can ship`);
+    if (!SHIP_LICENSE.test(s.license)) throw new Error(`${id}: ${s.license} isn't a licence the game can ship`);
     const file = join(DL, s.zip ? `${id}.zip` : `${id}${s.url.match(/\.(ogg|wav|mp3|flac|oga)$/i)?.[0] ?? ".audio"}`);
     if (!existsSync(file)) {
       process.stdout.write(`↓ ${id} … `);

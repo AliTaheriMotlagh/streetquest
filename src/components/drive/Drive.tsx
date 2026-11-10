@@ -41,7 +41,7 @@ import { Markers, markersOf } from "./markers";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
 import { Others } from "./others";
-import { StorePins, type Pin } from "./pins";
+import { nearStore, signSpot, type StoreSpot } from "@/lib/storefront";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
@@ -127,6 +127,8 @@ type Hud = {
   jobs: { id: string; emoji: string; label: string; dist: number; lat: number; lng: number }[];
   night: boolean;
   street: string | null;
+  /** The store you're passing (slow, or on foot): its card under the street name. */
+  store: { kind: "store" | "marker"; id: string; emoji: string; name: string; sub: string; color: string } | null;
   fps: number;
   serverNow: number;
 };
@@ -144,7 +146,7 @@ const CAM_KEY = "sq_drive_cam";
 const CTL_KEY = "sq_drive_ctl";
 const NAMES_KEY = "sq_drive_names";
 const FLY_HINT_KEY = "sq_fly_hint_off";
-const PIN_M = 650; // shop pins this far
+const SHOPS_M = 260; // shops on the minimap and for the store card this far
 const CORNER_M = 170; // street-name signs at corners this close
 
 const store = {
@@ -271,6 +273,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     ownCar: () => void;
     /** Put my car here (back in it first if I'm walking): going to the party's host. */
     teleport: (at: LatLng & { yaw: number }) => void;
+    /** The card for a store (or anything else tapped in the city). */
+    openPick: (pick: { kind: string; id: string }) => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -601,7 +605,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const corners = new Map<string, Board>();
     let boardNight = 0.15;
     const titles = new Map<string, ReturnType<typeof makeSign>>();
-    const pins = new StorePins(scene);
+    /** Shops near you (their boards, on the minimap, and for the store card). */
+    let shops: (StoreSpot & { color: string })[] = [];
     let labelsDirty = true;
     let jobs: Job[] = [];
     let navGoal: LatLng | null = live.current.goal;
@@ -634,7 +639,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     setStreet(street);
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
     let trafficSync = 0, lightsAt = 0;
-    const markers = new Markers(scene, frame, lite ? 30 : 60);
+    /** A store's pole sign: on the pavement in front of it, facing the nearest street (lib/storefront.ts). */
+    const placeSign = (x: number, z: number) => {
+      const lines: Float32Array[] = [], widths: number[] = [];
+      for (const s of tiles.values()) {
+        if (!s.mesh || s.dist > 1) continue;
+        s.mesh.roads.forEach((l, i) => {
+          if (s.mesh!.roadKinds[i] === "foot" || s.mesh!.roadKinds[i] === "rail") return;
+          lines.push(l);
+          widths.push(s.mesh!.roadWidths[i] ?? 8);
+        });
+      }
+      return signSpot(lines, widths, x, z) ?? { x, z, angle: 0 };
+    };
+    const markers = new Markers(scene, frame, lite ? 16 : 32, style, placeSign);
 
     const jobsFrom = (w: World | null): Job[] => {
       const out: Job[] = [];
@@ -772,23 +790,25 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
     };
 
-    /** A pin over every shop around (the nearest few hundred), boards or not. */
-    const syncPins = () => {
-      const want: (Pin & { d: number })[] = [];
+    /**
+     * The shops around (the nearest couple of hundred): blips on the minimap and the store
+     * card as you pass one. In the city itself a shop is only its sign — no floating pin
+     * (glowing markers are for missions and money).
+     */
+    const syncShops = () => {
+      const want: (StoreSpot & { color: string; d: number })[] = [];
       for (const s of tiles.values()) {
-        if (!s.mesh || s.dist > PIN_M) continue;
+        if (!s.mesh || s.dist > 1) continue;
         s.mesh.labels.forEach((l, i) => {
           if (l.kind !== "shop") return;
-          const id = `${s.key}:${i}`;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
-          // Right next to its board the pin adds nothing.
-          if (d > PIN_M || (d < 22 && boards.has(id))) return;
-          want.push({ id, x: l.x, y: Math.min(60, l.top ?? 4) + 3.4, z: l.z, cls: l.cls, d });
+          if (d > SHOPS_M) return;
+          const tr = tradeOf(l.cls);
+          want.push({ id: `${s.key}:${i}`, x: l.x, z: l.z, name: oneLine(l.text), cls: l.cls, emoji: tr.emoji, color: tr.bg[0], d });
         });
       }
       want.sort((a, b) => a.d - b.d);
-      const pxPerUnit = renderer.domElement.height / 2 / Math.tan((camera.fov * Math.PI) / 360);
-      pins.set(want.slice(0, lite ? 90 : 240), pxPerUnit, gfx.dpr);
+      shops = want.slice(0, lite ? 90 : 220);
     };
 
     /** The Places list (only while it's open): shops on the map, players' shops, businesses. */
@@ -1188,11 +1208,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const biz = live.current.world?.businesses.find((b) => b.id === lm.businessId);
         return setPicked({ emoji: lm.emoji, title: lm.name, sub: formatDistance(distanceM(here, lm)), lat: lm.lat, lng: lm.lng, sel: biz ? { type: "biz", data: biz } : null });
       }
-      const hit = small;
-      // Nothing solid under the finger: a shop's pin, maybe.
-      const pinId = hit ? null : pins.pick(camera, r, cx, cy);
-      const pick = (hit?.object.userData.pick as { kind: string; id: string } | undefined) ?? (pinId ? { kind: "store", id: pinId } : undefined);
+      const pick = small?.object.userData.pick as { kind: string; id: string } | undefined;
       if (!pick) return setPicked(null);
+      openPick(pick);
+    };
+    /** The card for something tapped in the city (or the store card under the street name). */
+    const openPick = (pick: { kind: string; id: string }) => {
       const here = frame.toLatLng(st.x, st.z);
       const L = live.current;
       if (pick.kind === "store") {
@@ -1230,6 +1251,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     api3d.current = {
       setGoal: (p) => ((navGoal = p), (wanted.current = null)),
+      openPick,
       cycleCam,
       horn,
       land,
@@ -1265,6 +1287,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- the loop
     let last = performance.now();
     let wasLow = true;
+    /** The store whose card is up (kept while it's still about as near as the best: no flicker). */
+    let lastStore: string | null = null;
     let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, fps = 60, lastWorld: World | null = null;
     let phase: Phase = "day";
     /** 0 by day … 1 at night (blended through dusk and dawn). */
@@ -1326,6 +1350,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       traffic.setNight(night);
       boardNight = 0.15 + night * 0.85;
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
+      markers.setNight(boardNight);
       dustMat.opacity = night > 0.6 ? 0.95 : 0.35;
       dustMat.color.set(night > 0.6 ? "#b8ff7a" : "#fff3b0");
       // Wet streets come and go over a few seconds; starting out in the rain they already are.
@@ -1589,13 +1614,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       dust.rotation.y = time * 0.03;
       // A match is on: the city's jobs, money and shop pins step aside.
       const matchOn = combat.inMatch;
-      markers.hidden = pins.hidden = matchOn;
+      markers.hidden = matchOn;
       for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time);
       for (const l of loot.values()) if (matchOn) l.group.visible = false;
       for (const l of loot.values()) l.tick(time);
       for (const g of gates) g.tick(time);
       for (const cn of coins) cn.tick(time);
-      markers.tick(time);
       others.tick(dt, serverNow, st.x, st.z);
       feed.update(frame.toLatLng(st.x, st.z));
       traffic.enabled = crowd.enabled = !matchOn;
@@ -1661,7 +1685,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (!engine) startEngine();
         ensureTiles();
         landmarks.update(st.x, st.z);
-        if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncPins());
+        if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncShops());
         if (menuTab.current === "places") syncPlaces();
         markers.sync(st.x, st.z);
         // More of the city was drawn: items near us may now stand inside a building.
@@ -1731,15 +1755,28 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         for (const s of tiles.values()) if (!s.real && s.dist < 1) village = true;
         const loading = vsource.loading + [...fallback].filter((k) => tiles.has(k)).length * (source.loading ? 1 : 0);
         const list = jobs.map((j) => ({ id: j.id, emoji: j.emoji, label: j.label, dist: distanceM(here, j), lat: j.lat, lng: j.lng })).sort((a, b) => a.dist - b.dist).slice(0, 30);
+        // The store you're passing — slowing down (under 30 km/h) or on foot, never in a match.
+        let store: Hud["store"] = null;
+        if (low && !D.flies && !combat.inMatch && (combat.onFoot || st.speed < 8.3)) {
+          camera.getWorldDirection(camFwd);
+          const fl = Math.hypot(camFwd.x, camFwd.z) || 1;
+          const ns = nearStore([...shops, ...markers.spots()], st.x, st.z, camFwd.x / fl, camFwd.z / fl, lastStore);
+          if (ns) {
+            const tr = tradeOf(ns.store.cls);
+            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0] };
+          }
+        }
+        lastStore = store?.id ?? null;
         const sig = [
           near?.id, near?.verb, navInfo && `${navInfo.label}|${Math.round(navInfo.dist / 5)}|${Math.round(navInfo.rel / 4)}`, loading, village, camMode, phase, streetName, D.flies, low,
           menuOpen.current ? list.map((j) => `${j.id}:${Math.round(j.dist / 10)}`).join(",") : list.length,
           menuOpen.current ? Math.round(fps) : 0,
           partyNow ? Math.floor(serverNow / 250) : 0,
+          store && `${store.id}|${store.sub}`,
         ].join("~");
         if (sig !== hudSig) {
           hudSig = sig;
-          setHud({ flying: D.flies, low, near, nav: navInfo, loading, village, cam: camMode, night: phase === "night", street: streetName, fps: Math.round(fps), serverNow, jobs: list });
+          setHud({ flying: D.flies, low, near, nav: navInfo, loading, village, cam: camMode, night: phase === "night", street: streetName, store, fps: Math.round(fps), serverNow, jobs: list });
         }
       }
 
@@ -1794,8 +1831,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             g.arc((x - st.x) * scale, (z - st.z) * scale, r, 0, Math.PI * 2);
             g.fill();
           };
-          for (const p of pins.dots()) if (Math.abs(p.x - st.x) < 250 && Math.abs(p.z - st.z) < 250) dot(p.x, p.z, p.color, 2.2);
-          for (const m of markers.dots()) dot(m.x, m.z, m.color, 3.2);
+          // Shops are small square blips (missions and money are the round ones).
+          const blip = (x: number, z: number, col: string, r: number) => {
+            const bx = (x - st.x) * scale, bz = (z - st.z) * scale;
+            g.fillStyle = "rgba(10,14,20,.75)";
+            g.fillRect(bx - r - 1, bz - r - 1, r * 2 + 2, r * 2 + 2);
+            g.fillStyle = col;
+            g.fillRect(bx - r, bz - r, r * 2, r * 2);
+          };
+          for (const p of shops) if (Math.abs(p.x - st.x) < 250 && Math.abs(p.z - st.z) < 250) blip(p.x, p.z, p.color, 1.8);
+          for (const m of markers.spots()) blip(m.x, m.z, m.color, 2.6);
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
           for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#f0c05a", 4);
           for (const cn of coins) if (cn.mesh.visible) dot(cn.mesh.position.x, cn.mesh.position.z, "#ffcf3a", 3);
@@ -1837,7 +1882,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, pins, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -1890,7 +1935,6 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const n of titles.values()) n.dispose();
       for (const b of boards.values()) b.dispose();
       for (const b of corners.values()) b.dispose();
-      pins.dispose();
       for (const g of gates) g.dispose();
       for (const cn of coins) cn.dispose();
       others.dispose();
@@ -2027,6 +2071,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </div>
         <div className="drive-mid">
           {hud?.street && <div className="drive-street" key={banner?.at ?? 0}>{hud.street}</div>}
+          {hud?.store && (
+            <button type="button" className="drive-store" key={hud.store.id} style={{ "--trade": hud.store.color } as React.CSSProperties} onClick={() => api3d.current?.openPick({ kind: hud.store!.kind, id: hud.store!.id })}>
+              <span className="ic">{hud.store.emoji}</span>
+              <span className="tx">
+                <b>{hud.store.name}</b>
+                <span>{hud.store.sub}</span>
+              </span>
+            </button>
+          )}
           {hud?.nav && (
             <div className="drive-nav">
               <span className="drive-nav-arrow" style={arrowStyle}><Icon name="nav" size={18} fill="currentColor" strokeWidth={1.5} /></span>

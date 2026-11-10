@@ -17,7 +17,7 @@ import { tumbleOrigin } from "@/lib/street/carPhysics";
 import { crumple, type CarHealth } from "@/lib/street/damage";
 import { carModel } from "./carModels";
 import { Crew, withCabin, type Seat } from "./crew";
-import { dentable, dentAttr, releaseDentable, withDents } from "./fleetDamage";
+import { copyMarks, dentable, marksChanged, marksFor, releaseDentable, setMarks, withDents, type Marks } from "./fleetDamage";
 import { policePaint } from "./livery";
 import { paint as tint, toon, type Style } from "./world3d";
 
@@ -645,8 +645,8 @@ const TURN = new THREE.Matrix4().makeRotationY(Math.PI);
 const NEAR_M = 30;
 /** A model nobody has drawn for this many frames gives its GPU memory back. */
 const IDLE_FRAMES = 600;
-/** `dents`: one per copy, shared by every part of the body (fleetDamage.ts); `seat`: where its driver sits (null: no cabin — a bike). */
-type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.InstancedMesh; tail: THREE.InstancedMesh; wheel: THREE.InstancedMesh; dents: THREE.InstancedBufferAttribute; seat: Seat | null; cap: number; n: number; idle: number };
+/** `marks`: dents and bullet holes, one set per copy, shared by every part of the body (fleetDamage.ts); `seat`: where its driver sits (null: no cabin — a bike). */
+type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.InstancedMesh; tail: THREE.InstancedMesh; wheel: THREE.InstancedMesh; marks: Marks; seat: Seat | null; cap: number; n: number; idle: number };
 
 /** What else to know to draw one vehicle (FleetInstances.put). */
 export type PutOpts = {
@@ -706,6 +706,7 @@ export class FleetInstances {
         real
           ? new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.7, roughness: 0.06, transparent: true, opacity: 0.45 })
           : toon({ color: "#1d3557", emissive: new THREE.Color("#2a4d7a"), emissiveIntensity: 0.35, transparent: true, opacity: 0.6 }),
+        true,
       ),
       head: withDents(new THREE.MeshBasicMaterial({ color: "#fff6d8" })),
       tail: withDents(new THREE.MeshBasicMaterial({ color: "#ffffff" })),
@@ -741,13 +742,13 @@ export class FleetInstances {
   }
 
   private make(parts: FleetParts, cap: number): Pool {
-    const dents = dentAttr(cap), cab = this.cabin(parts);
-    const d = (g: THREE.BufferGeometry) => dentable(g, dents);
+    const marks = marksFor(cap), cab = this.cabin(parts);
+    const d = (g: THREE.BufferGeometry) => dentable(g, marks);
     const paint = this.inst(d(parts.paint), this.liveryPaint.get(parts) ?? this.mats.paint, cap, true);
     const tail = this.inst(d(parts.tail), this.mats.tail, cap, true);
     const body = [paint, this.inst(d(cab.kit), this.mats.kit, cap), this.inst(d(parts.head), this.mats.head, cap), tail];
     if (parts.glass) body.push(this.inst(d(parts.glass), this.mats.glass, cap));
-    return { parts, body, paint, tail, wheel: this.inst(parts.wheel, this.mats.wheel, cap * parts.wheels.length), dents, seat: cab.seat, cap, n: 0, idle: 0 };
+    return { parts, body, paint, tail, wheel: this.inst(parts.wheel, this.mats.wheel, cap * parts.wheels.length), marks, seat: cab.seat, cap, n: 0, idle: 0 };
   }
 
   private drop(p: Pool) {
@@ -767,7 +768,7 @@ export class FleetInstances {
       if (from.instanceColor && to.instanceColor) to.instanceColor.array.set(from.instanceColor.array.subarray(0, n * 3));
     };
     p.body.forEach((m, i) => copy(m, big.body[i], p.n));
-    big.dents.array.set(p.dents.array.subarray(0, p.n * 4));
+    copyMarks(p.marks, big.marks, p.n);
     copy(p.wheel, big.wheel, p.n * p.parts.wheels.length);
     big.n = p.n;
     this.drop(p);
@@ -822,8 +823,7 @@ export class FleetInstances {
     for (const mesh of p.body) mesh.setMatrixAt(i, this.m);
     p.paint.setColorAt(i, color);
     p.tail.setColorAt(i, braking ? BRAKE_ON : BRAKE_OFF);
-    const dent = health?.dent;
-    p.dents.setXYZW(i, dent?.x ?? 0, dent?.z ?? 0, dent?.depth ?? 0, 1 - (health ? crumple(health) : 0));
+    setMarks(p.marks, i, health?.dent, health ? crumple(health) : 0, health?.holes);
     if (o.driver != null && p.seat) this.crew.put(this.m, p.seat, o.driver, o.uniform);
     const W = p.parts.wheels;
     for (let j = 0; j < W.length; j++) {
@@ -853,7 +853,7 @@ export class FleetInstances {
       }
       p.paint.instanceColor!.needsUpdate = true;
       p.tail.instanceColor!.needsUpdate = true;
-      p.dents.needsUpdate = true;
+      marksChanged(p.marks);
       p.wheel.count = p.n * p.parts.wheels.length;
       p.wheel.instanceMatrix.needsUpdate = true;
     }

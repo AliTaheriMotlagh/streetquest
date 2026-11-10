@@ -52,6 +52,9 @@
   .drive-banner, .drive-loading, .drive-hint { max-width: 100%; padding: 6px 10px; border-radius: 10px; font-size: 11px; line-height: 1.35; }
   .drive-banner { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; opacity: 0.92; }
   .drive-pick { padding: 8px 10px; gap: 8px; }
+  .drive-store { padding: 4px 10px 4px 4px; gap: 7px; }
+  .drive-store .ic { width: 28px; height: 28px; font-size: 16px; }
+  .drive-store .tx b { font-size: 13px; }
   .drive-pick .ic { font-size: 24px; }
   .drive-countdown { font-size: 96px; }
   .party-hud { zoom: 0.86; }

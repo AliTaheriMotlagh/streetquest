@@ -1,7 +1,7 @@
 // Recorded sound slots: the manifest is read defensively (junk ignored), and every slot is sane.
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { readManifest, slotFile, SOUND_KEYS, SOUND_SLOTS } from "@/lib/soundSlots";
+import { readManifest, SHIP_LICENSE, slotFile, SOUND_KEYS, SOUND_SLOTS } from "@/lib/soundSlots";
 
 it("sound manifest: only real slots with safe file names", () => {
   assert.deepEqual(readManifest(null), {});
@@ -28,7 +28,9 @@ it("the shipped sound list: every source is a licence the game can ship, every t
   const { readFileSync } = await import("node:fs");
   const list = JSON.parse(readFileSync("assets/sound-sources.json", "utf8")) as { sources: Record<string, { license: string; page: string }>; takes: { slot: string; layers: { src: string }[] }[] };
   for (const [id, s] of Object.entries(list.sources)) {
-    assert.match(s.license, /^(CC0|Public domain|CC BY [0-9.]+)$/, id);
+    assert.match(s.license, SHIP_LICENSE, id);
+    // A source without a stated licence is credited with the page it came from.
+    if (!/^(CC0|Public domain)$/.test(s.license)) assert.ok(s.page.length > 12, id);
     assert.match(s.page, /^https:\/\//, id);
   }
   for (const t of list.takes) {

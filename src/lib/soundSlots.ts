@@ -31,9 +31,21 @@ export const SOUND_SLOTS = {
   skid: { what: "Tyres screeching", search: "tire skid screech", maxS: 3 },
   thud: { what: "Someone hit by a car: a body thud", search: "body hit thud impact", maxS: 1.5 },
   city: { what: "City street ambience (traffic, distant horns, people)", search: "city traffic ambience street tehran", loop: true, maxS: 60, stereo: true },
+  carAlarm: { what: "A car alarm going off (a parked car hit or shot)", search: "car alarm siren", maxS: 8 },
+  carLock: { what: "Car locked: the remote's chirp", search: "car lock beep chirp", maxS: 1.2 },
+  doorOpen: { what: "A car door opening", search: "car door open", maxS: 1.5 },
+  doorClose: { what: "A car door shutting", search: "car door close slam", maxS: 1.5 },
+  engineStart: { what: "A car engine starting: the starter, then it catches", search: "car engine start ignition", maxS: 3.5 },
 } satisfies Record<string, SoundSlot>;
 
 export type SoundKey = keyof typeof SOUND_SLOTS;
+
+/**
+ * The licences a shipped recording may carry: CC0, public domain, CC BY (credited), and
+ * fara-download.ir's (no licence stated; the site lets its sounds be copied with a link to
+ * the source — which /credits gives).
+ */
+export const SHIP_LICENSE = /^(CC0|Public domain|CC BY [0-9.]+|Free, with a link to fara-download\.ir)$/;
 export const SOUND_KEYS = Object.keys(SOUND_SLOTS) as SoundKey[];
 
 /** Who made a recording the game ships (CC BY ones must be named on /credits). */

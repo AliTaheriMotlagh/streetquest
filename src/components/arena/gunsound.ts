@@ -204,6 +204,28 @@ export function hornSound(dist: number, pitch = 1, len = 0.32) {
   blip(523 * pitch, len, v * 0.75, "square", 1);
 }
 
+/** A car door opening or shutting, `dist` m away (silent with no recording: the synth has no door). */
+export const doorSound = (open: boolean, dist = 0) => playSample(open ? "doorOpen" : "doorClose", { vol: 0.75 * near(dist, 12) });
+
+/** The engine turning over and catching. */
+export const engineStartSound = () => playSample("engineStart", { vol: 0.7 });
+
+/** The remote locking a car: a chirp (two short beeps without a recording). */
+export function lockSound(dist = 0) {
+  const v = near(dist, 15);
+  if (playSample("carLock", { vol: 0.55 * v })) return;
+  blip(1850, 0.07, 0.05 * v, "square", 1);
+  setTimeout(() => blip(1850, 0.07, 0.05 * v, "square", 1), 140);
+}
+
+/** A parked car's alarm going off, `dist` m away (a wailing two-tone without a recording). */
+export function carAlarmSound(dist: number) {
+  const v = near(dist, 30);
+  if (v < 0.05) return;
+  if (playSample("carAlarm", { vol: 0.6 * v, rate: 0.95 + Math.random() * 0.1 })) return;
+  for (let i = 0; i < 8; i++) setTimeout(() => blip(i % 2 ? 1100 : 1500, 0.32, 0.05 * v, "square", 1), i * 380);
+}
+
 /** Someone falling hard (hit by a car): a dull thud. */
 export const thudSound = (dist: number) => playSample("thud", { vol: 0.6 * near(dist, 20) }) || blip(95, 0.18, 0.35 * near(dist, 20), "sine", 0.6);
 

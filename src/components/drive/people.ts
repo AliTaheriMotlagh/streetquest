@@ -475,6 +475,27 @@ export class Crowd {
     return true;
   }
 
+  /**
+   * Someone within `r` m of (x, z) who can say something — the nearest one awake (`calm`:
+   * only one strolling, not running or getting up): who, and whether it's a woman.
+   */
+  speaker(x: number, z: number, r: number, calm = false): { id: number; woman: boolean } | null {
+    let best: Walker | null = null, bd = r;
+    for (const w of this.walkers) {
+      if (w.dead || w.mode === "down" || w.mode === "flying" || (calm && w.mode !== "walk")) continue;
+      if (Math.abs(w.x - x) > bd || Math.abs(w.z - z) > bd) continue;
+      const d = Math.hypot(w.x - x, w.z - z);
+      if (d < bd) (bd = d), (best = w);
+    }
+    return best && { id: best.id, woman: best.look !== 0 };
+  }
+
+  /** Over person `id`'s head (their speech bubble), or null once they're gone. */
+  head(id: number) {
+    const w = this.walkers.find((x) => x.id === id);
+    return w && !w.dead ? { x: w.x, y: this.base + 1.75, z: w.z } : null;
+  }
+
   /** Where person `id` is (for the blood), or null. */
   where(id: number) {
     const w = this.walkers.find((x) => x.id === id);

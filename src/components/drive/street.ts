@@ -19,7 +19,7 @@ import { blastOnCar, blastOnPerson, bulletDamage, burnCar, crashDamage, dentDept
 import { calm, report, response, tickWanted, type Crime, type Witness } from "@/lib/street/wanted";
 import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { WEAPONS } from "@/lib/arena/weapons";
-import { boomSound, crashSound, fireSound, hornSound, shotSound, Siren, skidSound, thudSound } from "../arena/gunsound";
+import { boomSound, carAlarmSound, crashSound, fireSound, hornSound, shotSound, Siren, skidSound, thudSound } from "../arena/gunsound";
 import { SampleLoop, warmSamples } from "../game/samples";
 import { SOUND_KEYS } from "@/lib/soundSlots";
 import type { Combat, NpcTargets } from "../arena/combat";
@@ -29,6 +29,9 @@ import type { Crowd } from "./people";
 import { CollisionWorld, forward } from "./physics";
 import { Police, type PoliceEvent } from "./police";
 import { StreetFx } from "./streetFx";
+import { driverLook } from "./crew";
+import { Voices } from "./voices";
+import type { Situation } from "@/lib/street/barks";
 import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
 import { FLEET } from "@/lib/fleet";
 
@@ -84,6 +87,8 @@ export class StreetLife {
   /** Cars I hit or shot (and when): their explosions are my doing. */
   private byMe = new WeakMap<object, number>();
   private shotAt = 0;
+  /** When a parked car's alarm last went off. */
+  private alarmAt = 0;
   private dispatchAt = 0;
   private honkAt = 0;
   private dodgeAt = 0;
@@ -104,6 +109,11 @@ export class StreetLife {
   private listeners = new Set<() => void>();
   private hudAt = 0;
 
+  /** People talking: a line from whoever it's about, with a bubble over their head. */
+  private voices: Voices;
+  /** A street car, as the voices see it (who's driving, where it is now). */
+  private static carOf = (ref: unknown) => (ref && typeof ref === "object" && "id" in ref && "parked" in ref ? (ref as { id: number; parked: boolean; x: number; z: number }) : null);
+
   /** The city around you (a recorded loop, when there is one: lib/soundSlots.ts). */
   private city = new SampleLoop("city", 0.35);
 
@@ -111,6 +121,7 @@ export class StreetLife {
     warmSamples(SOUND_KEYS);
     this.police = new Police(h.scene, h.collision, h.obstacles, h.lite, h.shadows);
     this.fx = new StreetFx(h.scene, h.lite);
+    this.voices = new Voices(h.scene);
     h.traffic.world = h.collision;
     h.traffic.extra = (put) => this.police.draw(put);
     h.traffic.solids = () => this.solids();
@@ -229,6 +240,7 @@ export class StreetLife {
           hit: (dmg, dx, dz) => {
             const at = this.h.crowd.where(p.id);
             const killed = this.h.crowd.shoot(p.id, dmg, dx, dz);
+            if (!killed && this.me) this.voices.say("hurt", "m", () => this.h.crowd.head(p.id), this.me);
             if (at && this.victim(p.id, killed)) this.crime(killed ? "killPerson" : "hitPerson", at.x, at.z);
             return killed;
           },
@@ -242,6 +254,9 @@ export class StreetLife {
           hit: (dmg) => {
             const killed = this.police.hurtOfficer(o.o, dmg);
             if (this.victim(-o.o.id, killed)) this.crime(killed ? "killCop" : "hitCop", o.o.x, o.o.z, true);
+            // Another officer calls it in.
+            const other = o.o.unit.officers.find((x) => x !== o.o && !x.dead);
+            if (other && this.me) this.voices.say("copDown", "cop", () => (other.dead ? null : { x: other.x, y: 1.8, z: other.z }), this.me);
             return killed;
           },
         };
@@ -253,7 +268,7 @@ export class StreetLife {
           zone: "body",
           hit: (dmg) => {
             this.byMe.set(c.ref, performance.now());
-            this.h.traffic.shoot(c.ref, bulletDamage(dmg));
+            this.h.traffic.shoot(c.ref, bulletDamage(dmg), { x: r.ox + r.dx * c.t, y: r.oy + r.dy * c.t, z: r.oz + r.dz * c.t });
             return false;
           },
         };
@@ -266,7 +281,7 @@ export class StreetLife {
             body: false,
             zone: "body",
             hit: (dmg) => {
-              this.police.shootCar(u, bulletDamage(dmg));
+              this.police.shootCar(u, bulletDamage(dmg), { x: r.ox + r.dx * t, y: r.oy + r.dy * t, z: r.oz + r.dz * t });
               if (this.victim(-u.id - 1_000_000, false)) this.crime("hitCop", u.body.x, u.body.z, true);
               return false;
             },
@@ -284,6 +299,7 @@ export class StreetLife {
         this.shotAt = now;
         this.crime("shots", x, z);
       }
+      this.talk("flee", x, z, 30);
     },
     blast: (x, z, mine) => this.explode(x, z, mine, true),
     down: () => {
@@ -296,7 +312,26 @@ export class StreetLife {
   /** Into a street car I took: a carjacking if someone was driving it; its health is mine now. */
   tookCar(t: { driven: boolean; hp: number }, x: number, z: number) {
     this.car.reset(t.hp);
-    if (t.driven) this.crime("carjack", x, z);
+    if (!t.driven) return;
+    this.crime("carjack", x, z);
+    // The driver, left standing in the road, shouting after me.
+    const me = this.me;
+    if (me) this.voices.say("carjack", Math.random() < 0.35 ? "f" : "m", () => ({ x, y: 1.75, z }), me);
+  }
+
+  /** Someone near (x, z) — the nearest person within `r` m — says something about `s`. */
+  private talk(s: Situation, x: number, z: number, r: number, calm = false) {
+    const me = this.me;
+    if (!me || me.matchOn) return;
+    const p = this.h.crowd.speaker(x, z, r, calm);
+    if (p) this.voices.say(s, p.woman ? "f" : "m", () => this.h.crowd.head(p.id), me);
+  }
+
+  /** A street car's driver says something (from their window). */
+  private driverSays(s: Situation, ref: unknown) {
+    const me = this.me, c = StreetLife.carOf(ref);
+    if (!me || !c || c.parked) return;
+    this.voices.say(s, driverLook(c.id).woman ? "f" : "m", () => ({ x: c.x, y: 1.9, z: c.z }), me);
   }
 
   /** A different car from the garage: as good as new. */
@@ -325,6 +360,7 @@ export class StreetLife {
       // (a Pride shunts a Pride on; a bus hardly moves).
       const mine = myMass(me.carR, c.heavy), dv = (c.into * (1 + CAR_RESTITUTION) * mine) / (mine + other);
       this.h.traffic.bump(c.ref, -c.nx * dv, -c.nz * dv, crashDamage(felt(dv)), { x: c.x, z: c.z });
+      if (c.into > 3) setTimeout(() => this.driverSays("crashDriver", c.ref), 700);
       this.byMe.set(c.ref, performance.now());
     } else if (this.police.isUnit(c.ref)) {
       this.police.bump(c.ref, -c.nx * c.into, -c.nz * c.into, crashDamage(c.into), { x: c.x, z: c.z });
@@ -359,6 +395,7 @@ export class StreetLife {
       if (d < 20) navigator.vibrate?.(120);
     }
     const people = this.h.crowd.blast(x, z, blastOnPerson);
+    this.talk("flee", x, z, 40);
     this.h.traffic.blast(x, z, blastOnCar);
     this.police.blast(x, z, blastOnCar, blastOnPerson);
     // Me: on foot, hurt by it; in the car, the car takes it and is thrown.
@@ -408,6 +445,13 @@ export class StreetLife {
     }
     const now = performance.now();
     const crowd = this.h.crowd, traffic = this.h.traffic;
+    this.voices.tick(dt);
+    {
+      // A pedestrian I nearly ran down shouts after me; one I stroll past says hello.
+      const sp = Math.hypot(me.vx, me.vz);
+      if (me.inCar && !me.flying && sp > 9) this.talk("nearMiss", me.x, me.z, 4.5);
+      else if (me.onFoot && sp < 2.2 && Math.random() < dt * 0.4) this.talk("greet", me.x, me.z, 3.2, true);
+    }
 
     // People and the cars that hit them: mine (that's on me), traffic, the police.
     if (me.inCar && !me.flying) {
@@ -456,7 +500,7 @@ export class StreetLife {
       const cuffable = !combat?.streetDown && (me.onFoot ? speed < 2.6 && this.police.beside(me.x, me.z, 2.2, 0) : me.inCar && speed < 1.2 && this.police.beside(me.x, me.z, 5.5, 0));
       const out = tickWanted(this.wanted, dt, known, cuffable);
       if (out === "lost") this.say("lost");
-      if (out === "busted") this.say("busted");
+      if (out === "busted") (this.say("busted"), this.voices.say("copBusted", "cop", () => ({ x: me.x, y: 2, z: me.z }), me));
       if (out) this.police.standDown();
     } else {
       this.seen = false;
@@ -518,9 +562,14 @@ export class StreetLife {
       if (now - this.honkAt > 300 && d < 70) {
         this.honkAt = now;
         hornSound(d, 0.88 + ((e.x * 7.3 + e.z) % 1 + 1) % 1 * 0.25);
+        // Close by, the driver leans out and says what they think of it.
+        if (d < 22 && Math.random() < 0.35) this.driverSays("honk", e.ref);
       }
     } else if (e.kind === "fire") {
       if (d < 60) fireSound(d, 1);
+    } else if (e.kind === "alarm") {
+      // One alarm at a time (a blast sets off a whole row).
+      if (d < 70 && now - this.alarmAt > 2500) (this.alarmAt = now), carAlarmSound(d);
     } else if (e.kind === "crash") {
       // Two street cars met: metal, glass, sparks; people near look round and run.
       const k = Math.min(1, ((e.into ?? 0) - 2) / 16);
@@ -537,6 +586,10 @@ export class StreetLife {
   }
 
   private onPolice(e: PoliceEvent, me: StreetMe) {
+    if (e.kind === "talk") {
+      this.voices.say(e.say, "cop", e.where, me);
+      return;
+    }
     if (e.kind === "boom" || e.kind === "fire") {
       if (e.kind === "boom") this.explode(e.x, e.z, false, false, { yaw: e.yaw, paint: POLICE_WHITE });
       return;
@@ -562,6 +615,8 @@ export class StreetLife {
     if (!e.hit) return this.fx.vfx.impact(e.tx, Math.max(0.05, e.ty), e.tz, e.ty < 0.3 ? "ground" : "wall");
     if (e.onCar) {
       this.hurtMyCar(3.5);
+      // A hole where it went in (on the real body: carDamage raycasts it).
+      this.car.shot(m.x, m.y, m.z, e.tx, e.ty, e.tz);
       this.fx.sparks(e.tx, e.ty, e.tz, 0.1);
     } else this.h.combat()?.streetHurt(4 + this.wanted.stars * 1.6 + Math.random() * 4, { x: e.x, z: e.z });
   }
@@ -569,6 +624,7 @@ export class StreetLife {
   /** Nothing of this in a match, or when drive mode closes. */
   clear() {
     this.police.clear();
+    this.voices.clear();
     this.wanted = calm();
     this.siren.level(0);
     this.publish(true);
@@ -579,6 +635,7 @@ export class StreetLife {
     this.city.stop();
     this.police.dispose();
     this.fx.dispose();
+    this.voices.dispose();
     this.h.traffic.extra = null;
     this.listeners.clear();
   }

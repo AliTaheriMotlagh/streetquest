@@ -27,7 +27,7 @@ import type { Others } from "../drive/others";
 import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
-import { beepSound, boomSound, clinkSound, emptySound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
+import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
 import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
 import { Nades } from "./nades";
 import { medalFor, nextRun, NO_RUN, type KillRun } from "@/lib/arena/medals";
@@ -488,6 +488,10 @@ export class Combat {
     (x = c.x), (z = c.z);
     this.h.setFoot(true, { x, z, yaw: v.yaw });
     this.enterFoot(x, z, v.yaw);
+    // The door, shut behind me, and the car locked (not a helicopter: nothing to lock).
+    doorSound(true);
+    setTimeout(() => doorSound(false), 520);
+    if (!v.flies) setTimeout(() => lockSound(1.5), 1300);
   }
 
   /** Metres from me (on foot) to the middle of my parked car; Infinity without one. */
@@ -509,6 +513,10 @@ export class Combat {
     else if (this.h.carUsable?.() === false) return this.h.toast(t("Your car is a wreck — take another one off the street, or pick one in the garage"));
     this.leaveFoot();
     this.h.setFoot(false);
+    // In: the door, shut, and the engine turning over.
+    doorSound(true);
+    setTimeout(() => doorSound(false), 450);
+    if (!this.h.vehicle().flies) setTimeout(() => engineStartSound(), 800);
   }
 
   private partyIds: string[] = [];

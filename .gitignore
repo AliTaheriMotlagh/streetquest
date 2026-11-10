@@ -30,3 +30,5 @@ __pycache__/
 
 # Sound recordings you license (e.g. soundsnap.ir): npm run assets:sounds converts them to public/sounds
 /assets/sounds/
+# npm run assets:voices keeps its Piper voice models here (60 MB each)
+/assets/voices/

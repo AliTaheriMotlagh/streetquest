@@ -1,5 +1,5 @@
 {
-  "_about": "Where every recorded sound comes from (npm run assets:sounds -- --fetch downloads them and builds each take; then the converter makes public/sounds). Only CC0, public-domain or CC BY sources; CC BY ones are credited on /credits. A take is one or more layers mixed: `at` ms after the start, `gain` dB, `from`/`len` s cut from the source, `rate` playback speed.",
+  "_about": "Where every recorded sound comes from (npm run assets:sounds -- --fetch downloads them and builds each take; then the converter makes public/sounds). Only CC0, public-domain or CC BY sources; CC BY ones are credited on /credits. A take is one or more layers mixed: `at` ms after the start, `gain` dB, `from`/`len` s cut from the source, `rate` playback speed. fara-download.ir's sounds (no licence stated; the site allows copying with a link to the source) carry the licence \"Free, with a link to fara-download.ir\" and are credited with their page.",
   "sources": {
     "whelen": { "url": "https://upload.wikimedia.org/wikipedia/commons/b/b2/Whelen.ogg", "page": "https://commons.wikimedia.org/wiki/File:Whelen.ogg", "title": "Whelen siren", "author": "Heggyhomolit", "license": "CC0" },
     "glass1": { "url": "https://upload.wikimedia.org/wikipedia/commons/a/af/Glass_breaking_%28Gravity_Sound%29.wav", "page": "https://commons.wikimedia.org/wiki/File:Glass_breaking_(Gravity_Sound).wav", "title": "Glass breaking", "author": "Gravity Sound", "license": "CC BY 4.0" },
@@ -12,7 +12,37 @@
     "street": { "url": "https://upload.wikimedia.org/wikipedia/commons/5/5d/Sunday_in_the_city_street_noise1.ogg", "page": "https://commons.wikimedia.org/wiki/File:Sunday_in_the_city_street_noise1.ogg", "title": "Sunday in the city street noise 1", "author": "cori", "license": "Public domain" },
     "karlova": { "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Karlova_0001.ogg", "page": "https://commons.wikimedia.org/wiki/File:Karlova_0001.ogg", "title": "Karlova street", "author": "Juan de Vojníkov", "license": "Public domain" },
     "crash": { "url": "https://opengameart.org/sites/default/files/qubodup-crash.ogg", "page": "https://opengameart.org/content/crash-collision", "title": "Crash Collision", "author": "qubodup", "license": "CC0" },
-    "bfh": { "url": "https://opengameart.org/sites/default/files/sfx_breaking_and_falling.zip", "page": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx", "title": "75 CC0 breaking / falling / hit sfx", "author": "rubberduck", "license": "CC0", "zip": true }
+    "bfh": { "url": "https://opengameart.org/sites/default/files/sfx_breaking_and_falling.zip", "page": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx", "title": "75 CC0 breaking / falling / hit sfx", "author": "rubberduck", "license": "CC0", "zip": true },
+    "fdAlarm1": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/car_alram/car_alarm_1.mp3", "page": "https://fara-download.ir/car-alarm-sound/", "title": "Car alarm 1", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdAlarm2": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/car_alram/car_alarm_2.mp3", "page": "https://fara-download.ir/car-alarm-sound/", "title": "Car alarm 2", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdAlarm3": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/car_alram/car_alarm_3.mp3", "page": "https://fara-download.ir/car-alarm-sound/", "title": "Car alarm 3", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdLock": { "url": "https://dl4.fara-download.ir/audio/sound_effect/alarms/car/car%20alarm.mp3", "page": "https://fara-download.ir/%d8%b5%d8%af%d8%a7%db%8c-%d8%a2%da%98%db%8c%d8%b1-%d9%82%d9%81%d9%84-%d8%af%d8%b1-%d9%85%d8%a7%d8%b4%db%8c%d9%86-3/", "title": "Car lock beep", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdPolice1": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/police/audio_5fccff0f98662.mp3", "page": "https://fara-download.ir/%d8%b5%d8%af%d8%a7%db%8c-%d9%85%d8%a7%d8%b4%db%8c%d9%86-%d9%be%d9%84%db%8c%d8%b3/", "title": "Police car siren", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdPolice2": { "url": "https://dl4.fara-download.ir/audio/sound_effect/alarms/police/police_siren.mp3", "page": "https://fara-download.ir/police-siren-alarm/", "title": "Police siren", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdPolice3": { "url": "https://dl4.fara-download.ir/audio/sound_effect/alarms/police/police_siren2.mp3", "page": "https://fara-download.ir/police-siren-alarm/", "title": "Police car siren 2", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdBrake1": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/brakes/car_brake.mp3", "page": "https://fara-download.ir/car-brake-sfx/", "title": "Car brake", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdBrake3": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/brakes/3car_brak_sfx.mp3", "page": "https://fara-download.ir/car-brake-sfx/", "title": "Three car brakes", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdCrash1": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/crash/car_crash_sfx.mp3", "page": "https://fara-download.ir/%d8%af%d8%a7%d9%86%d9%84%d9%88%d8%af-%d8%b5%d8%af%d8%a7%db%8c-%d8%aa%d8%b5%d8%a7%d8%af%d9%81-%d9%85%d8%a7%d8%b4%db%8c%d9%86-%d8%a7%d9%86%d9%88%d8%a7%d8%b9-%d9%85%d8%ae%d8%aa%d9%84%d9%81/", "title": "Car crash and glass", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdCrash2": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/crash/two_car_crash.mp3", "page": "https://fara-download.ir/%d8%af%d8%a7%d9%86%d9%84%d9%88%d8%af-%d8%b5%d8%af%d8%a7%db%8c-%d8%aa%d8%b5%d8%a7%d8%af%d9%81-%d9%85%d8%a7%d8%b4%db%8c%d9%86-%d8%a7%d9%86%d9%88%d8%a7%d8%b9-%d9%85%d8%ae%d8%aa%d9%84%d9%81/", "title": "Rear-end crash", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdCrash3": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/crash/cars_crash.mp3", "page": "https://fara-download.ir/%d8%af%d8%a7%d9%86%d9%84%d9%88%d8%af-%d8%b5%d8%af%d8%a7%db%8c-%d8%aa%d8%b5%d8%a7%d8%af%d9%81-%d9%85%d8%a7%d8%b4%db%8c%d9%86-%d8%a7%d9%86%d9%88%d8%a7%d8%b9-%d9%85%d8%ae%d8%aa%d9%84%d9%81/", "title": "Crash and broken tail light", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdTraffic1": { "url": "https://dl4.fara-download.ir/2025/12/week-1/City_Traffic.mp3", "page": "https://fara-download.ir/cars-honking/", "title": "City traffic", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdTraffic2": { "url": "https://dl4.fara-download.ir/2025/12/week-1/City_Traffic_2.mp3", "page": "https://fara-download.ir/cars-honking/", "title": "City traffic 2", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdSidewalk": { "url": "https://dl4.fara-download.ir/2025/12/week-1/City_Atmosphere.mp3", "page": "https://fara-download.ir/city-ambience-sound/", "title": "City sidewalk and people", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdDoorOpen1": { "url": "https://dl4.fara-download.ir/2025/12/week-2/Car%20Door%20Open%20and%20Close.mp3", "page": "https://fara-download.ir/car-door-open-and-close-sound/", "title": "Car door open and close", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdDoorClose1": { "url": "https://dl4.fara-download.ir/2025/12/week-2/Car%20Door%20Close.mp3", "page": "https://fara-download.ir/car-door-open-and-close-sound/", "title": "Car door close", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdDoorOpen2": { "url": "https://dl4.fara-download.ir/2025/12/week-2/Car%20Door%20Open%201.mp3", "page": "https://fara-download.ir/car-door-open-and-close-sound/", "title": "Car door open", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdDoorClose2": { "url": "https://dl4.fara-download.ir/2025/12/week-2/Car%20Door%20Close%202.mp3", "page": "https://fara-download.ir/car-door-open-and-close-sound/", "title": "Car door close 2", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdCrank": { "url": "https://dl4.fara-download.ir/2025/11/week-4/car-engine-fail.mp3", "page": "https://fara-download.ir/car-engine-fail/", "title": "Starter cranking", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdCrank2": { "url": "https://dl4.fara-download.ir/2025/11/week-4/car-engine-ignition-fail-352768.mp3", "page": "https://fara-download.ir/car-engine-fail/", "title": "Ignition cranking", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdRev1": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/accelerate/car_engine.mp3", "page": "https://fara-download.ir/car-accelerate-sfx/", "title": "Car engine, pedal pressed", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdRev2": { "url": "https://dl4.fara-download.ir/audio/sound_effect/vechiles/accelerate/car_accelerate.mp3", "page": "https://fara-download.ir/car-accelerate-sfx/", "title": "Car engine revving", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdHorn1": { "url": "https://dl4.fara-download.ir/2025/12/week-1/Car_beep_1.mp3", "page": "https://fara-download.ir/car-beep-sound-effects/", "title": "Car horn", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdHorn2": { "url": "https://dl4.fara-download.ir/2025/12/week-1/Car_beep_2.mp3", "page": "https://fara-download.ir/car-beep-sound-effects/", "title": "Car horn 2", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdHorn3": { "url": "https://dl4.fara-download.ir/2025/12/week-1/Car_beep_3.mp3", "page": "https://fara-download.ir/car-beep-sound-effects/", "title": "Single horn beep", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdHorn4": { "url": "https://dl4.fara-download.ir/2025/12/week-1/Car_beep_double.mp3", "page": "https://fara-download.ir/car-beep-sound-effects/", "title": "Double car horn", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdHorn5": { "url": "https://dl4.fara-download.ir/2025/12/week-1/two-beeps.mp3", "page": "https://fara-download.ir/car-beep-sound-effects/", "title": "Car horn, two beeps", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdBoom1": { "url": "https://dl4.fara-download.ir/audio/sound_effect/scene/explosion/big_explosion_sfx_1.mp3", "page": "https://fara-download.ir/big-explosion-sfx/", "title": "Explosion", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" },
+    "fdBoom2": { "url": "https://dl4.fara-download.ir/audio/sound_effect/scene/explosion/big_explosion_sfx_2.mp3", "page": "https://fara-download.ir/big-explosion-sfx/", "title": "Bomb explosion", "author": "fara-download.ir", "license": "Free, with a link to fara-download.ir" }
   },
   "takes": [
     { "slot": "siren", "layers": [{ "src": "whelen" }] },
@@ -42,6 +72,48 @@
     { "slot": "thud", "layers": [{ "src": "bfh/bfh1_hit_07.ogg", "rate": 0.75 }, { "src": "thud", "at": 10, "gain": -4 }] },
 
     { "slot": "city", "layers": [{ "src": "street", "from": 20, "len": 90 }] },
-    { "slot": "city", "layers": [{ "src": "karlova", "from": 30, "len": 90, "gain": -3 }] }
+    { "slot": "city", "layers": [{ "src": "karlova", "from": 30, "len": 90, "gain": -3 }] },
+
+    { "slot": "siren", "layers": [{ "src": "fdPolice1", "len": 27 }] },
+    { "slot": "siren", "layers": [{ "src": "fdPolice2", "from": 1, "len": 25 }] },
+    { "slot": "siren", "layers": [{ "src": "fdPolice3", "from": 0.3, "len": 20.5 }] },
+
+    { "slot": "skid", "layers": [{ "src": "fdBrake1" }] },
+    { "slot": "skid", "layers": [{ "src": "fdBrake3", "from": 0.45, "len": 3 }] },
+    { "slot": "skid", "layers": [{ "src": "fdBrake3", "from": 4.26, "len": 1.7 }] },
+    { "slot": "skid", "layers": [{ "src": "fdBrake3", "from": 7.08, "len": 2.85 }] },
+
+    { "slot": "crashHeavy", "layers": [{ "src": "fdCrash1", "from": 0.5, "len": 4.7 }] },
+    { "slot": "crashHeavy", "layers": [{ "src": "fdCrash2", "from": 0.65, "len": 3.3 }] },
+    { "slot": "crashHeavy", "layers": [{ "src": "fdCrash3", "len": 3.3 }] },
+
+    { "slot": "horn", "layers": [{ "src": "fdHorn1" }] },
+    { "slot": "horn", "layers": [{ "src": "fdHorn3" }] },
+    { "slot": "horn", "layers": [{ "src": "fdHorn4" }] },
+    { "slot": "horn", "layers": [{ "src": "fdHorn5" }] },
+    { "slot": "horn", "layers": [{ "src": "fdHorn2" }] },
+
+    { "slot": "city", "layers": [{ "src": "fdTraffic1" }] },
+    { "slot": "city", "layers": [{ "src": "fdTraffic2" }] },
+    { "slot": "city", "layers": [{ "src": "fdSidewalk", "from": 10, "len": 60 }] },
+
+    { "slot": "explosion", "layers": [{ "src": "fdBoom1", "from": 0.6, "len": 5 }] },
+    { "slot": "explosion", "layers": [{ "src": "fdBoom2", "len": 5 }] },
+
+    { "slot": "carAlarm", "layers": [{ "src": "fdAlarm1", "len": 8 }] },
+    { "slot": "carAlarm", "layers": [{ "src": "fdAlarm2", "from": 0.3, "len": 8 }] },
+    { "slot": "carAlarm", "layers": [{ "src": "fdAlarm3", "len": 8 }] },
+
+    { "slot": "carLock", "layers": [{ "src": "fdLock" }] },
+
+    { "slot": "doorOpen", "layers": [{ "src": "fdDoorOpen2", "from": 0.2, "len": 0.8 }] },
+    { "slot": "doorOpen", "layers": [{ "src": "fdDoorOpen1", "len": 0.75 }] },
+
+    { "slot": "doorClose", "layers": [{ "src": "fdDoorClose1", "len": 1.05 }] },
+    { "slot": "doorClose", "layers": [{ "src": "fdDoorClose2" }] },
+    { "slot": "doorClose", "layers": [{ "src": "fdDoorOpen1", "from": 0.75, "len": 0.9 }] },
+
+    { "slot": "engineStart", "layers": [{ "src": "fdCrank2", "len": 1.6 }, { "src": "fdRev1", "at": 1300, "gain": -4, "from": 0.3, "len": 1.7 }] },
+    { "slot": "engineStart", "layers": [{ "src": "fdCrank", "len": 0.9 }, { "src": "fdRev2", "at": 800, "gain": -3, "len": 2.2 }] }
   ]
 }
