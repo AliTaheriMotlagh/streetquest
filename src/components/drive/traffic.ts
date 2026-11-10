@@ -925,6 +925,18 @@ export class TrafficCars {
     this.shownAt.x = Infinity;
   }
 
+  /**
+   * Cars near `eye` that could throw light at night: headlights on every moving car, a red
+   * glow behind every braking one (nightLights.ts hands real lights to the nearest few).
+   */
+  lampCandidates(out: { id: string; kind: "head" | "brake"; x: number; z: number; yaw: number }[], eye: { x: number; z: number }, maxDist: number) {
+    for (const c of this.cars) {
+      if (Math.hypot(c.x - eye.x, c.z - eye.z) > maxDist || c.health?.hp <= 0) continue;
+      if (c.v > 0.5) out.push({ id: `h${c.id}`, kind: "head", x: c.x, z: c.z, yaw: c.yaw });
+      if (c.v > c.want + 0.3 || c.v < 0.5) out.push({ id: `b${c.id}`, kind: "brake", x: c.x, z: c.z, yaw: c.yaw });
+    }
+  }
+
   /** Head and tail lamps glow at night (0 day … 1 night). */
   setNight(n: number) {
     this.fleet.setNight(n);

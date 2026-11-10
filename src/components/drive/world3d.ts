@@ -952,6 +952,8 @@ export type TileMeshes = {
   labels: Label[];
   /** Where the traffic lights stand, and whether their street runs north–south (cars in traffic.ts stop at them). */
   signals: { x: number; z: number; ns: boolean }[];
+  /** Where the street lamps stand (x, z pairs): at night the nearest ones get real lights (nightLights.ts). */
+  streetLamps: Float32Array;
   /** The lights' red, amber and green lamps (paintSignals colours them). */
   lamps: THREE.InstancedMesh[];
   real: boolean;
@@ -1029,9 +1031,12 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
   // A light faces across its street (+z of the head): facing east or west means the street runs north–south.
   const signals: { x: number; z: number; ns: boolean }[] = [];
   for (const p of a.props) if (p.kind === "signal") for (let i = 0; i < p.mats.length; i += 16) signals.push({ x: p.mats[i + 12], z: p.mats[i + 14], ns: Math.abs(p.mats[i + 8]) > Math.abs(p.mats[i + 10]) });
+  const streetLamps: number[] = [];
+  for (const p of a.props) if (p.kind === "lamp") for (let i = 0; i < p.mats.length; i += 16) streetLamps.push(p.mats[i + 12], p.mats[i + 14]);
   return {
     group,
     detail,
+    streetLamps: new Float32Array(streetLamps),
     signals,
     lamps,
     footprints: a.footprints,

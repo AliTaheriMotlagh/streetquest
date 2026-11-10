@@ -86,6 +86,12 @@ describe("profiles", () => {
     assert.equal(effective("ultra", 1).ao, false);
     assert.equal(effective("ultra", 1).cinematic, true);
     assert.deepEqual([PROFILES.ultra.ssr, PROFILES.high.ssr, PROFILES.medium.ssr, PROFILES.low.ssr], [2, 1, 0, 0], "full, half, then the environment map only");
+    assert.deepEqual([PROFILES.ultra.nightLights, PROFILES.high.nightLights, PROFILES.medium.nightLights, PROFILES.low.nightLights], [8, 4, 0, 0]);
+    assert.deepEqual([PROFILES.ultra.headlightShadow, PROFILES.high.headlightShadow], [true, false], "my headlights cast shadows on ultra only");
+    assert.equal(effective("ultra", 1).headlightShadow, false);
+    assert.equal(effective("ultra", 3).nightLights, 4);
+    assert.equal(effective("ultra", 4).nightLights, 0, "the pooled lights go with shadow detail, before shadows themselves");
+    assert.equal(effective("ultra", 4).shadows, true);
     assert.deepEqual([effective("ultra", 1).ssr, effective("ultra", 2).ssr, effective("high", 1).ssr], [1, 0, 1]);
     assert.equal(effective("ultra", 2).cinematic, false);
     assert.equal(effective("ultra", 2).bloom, true);

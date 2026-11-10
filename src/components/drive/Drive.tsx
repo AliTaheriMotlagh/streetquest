@@ -33,6 +33,8 @@ import { fovFor } from "@/lib/view";
 import { filmLook } from "@/lib/filmLook";
 import { parseCube } from "@/lib/lut";
 import { setFullscreen } from "./fullscreen";
+import { NightLights } from "./nightLights";
+import type { Candidate } from "@/lib/lightBudget";
 import { celebrate } from "../game/Play";
 import { isLite, isTouch } from "../perf";
 import { layCourse } from "./course";
@@ -1371,7 +1373,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       setNight(mats, style, night);
       landmarks.setNight(night);
       traffic.setNight(night);
-      boardNight = 0.15 + night * 0.85;
+      // Shop signs: past 1 under the HDR pipeline, so the bright ones bloom like neon.
+      boardNight = 0.15 + night * (gfx.hdr && style === "real" ? 2.4 : 0.85);
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
       markers.setNight(boardNight);
       cinemaBoards.setNight(night);
@@ -1403,12 +1406,27 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     gfx.onProfile((p) => {
       // The adaptive controller gave something back or took it away.
       prof = p;
+      nightLights.setMax(style === "real" ? p.nightLights : 0);
       shadows = p.shadows;
       gfx.shadeSun(sun);
       sky.cloudsOn(p.clouds);
       applySky(true);
     });
     const camFwd = new THREE.Vector3();
+    // Real lights at night (nightLights.ts): the pool the tier allows, the realistic city only.
+    const nightLights = new NightLights(scene, style === "real" ? prof.nightLights : 0);
+    const lampCands: Candidate[] = [];
+    const collectLights = (out: Candidate[]) => {
+      const R = 90;
+      for (const s of tiles.values()) {
+        const lamps = s.mesh?.streetLamps;
+        if (!lamps || s.dist > R) continue;
+        for (let i = 0; i < lamps.length; i += 2) if (Math.abs(lamps[i] - st.x) < R && Math.abs(lamps[i + 1] - st.z) < R) out.push({ id: `l${s.key}:${i}`, kind: "lamp", x: lamps[i], z: lamps[i + 1] });
+      }
+      lampCands.length = 0;
+      traffic.lampCandidates(lampCands as never, st, R);
+      out.push(...lampCands);
+    };
     let filmSpeed = 0, filmCam: CamMode = camMode, filmFoot = false;
     // An optional colour lookup table over the finished picture (a .cube file; README: 3D LUT).
     const lutUrl = process.env.NEXT_PUBLIC_DRIVE_LUT;
@@ -1559,7 +1577,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       model.head.color.copy(LAMP.head).multiplyScalar(1 + 2.5 * night);
       const dark = night > 0.3 || rainAmount > 0;
       if (model.beams) model.beams.visible = dark;
-      if (model.light) model.light.visible = night > 0.6 || (dark && rainAmount > 0);
+      if (model.light) {
+        model.light.visible = night > 0.6 || (dark && rainAmount > 0);
+        // Ultra: my headlights cast shadows (a lamp post throws its own across the road ahead).
+        const cast = prof.headlightShadow && shadows && model.light.visible;
+        if (model.light.castShadow !== cast) {
+          model.light.castShadow = cast;
+          if (cast) model.light.shadow.mapSize.set(1024, 1024), (model.light.shadow.bias = -0.0006), (model.light.shadow.camera.far = 70);
+        }
+      }
+      camera.getWorldDirection(camFwd);
+      const lfl = Math.hypot(camFwd.x, camFwd.z) || 1;
+      nightLights.update(dt, style === "real" ? night : 0, st, { x: camFwd.x / lfl, z: camFwd.z / lfl }, collectLights);
       model.cargo.visible = !!L.me?.activeRun;
 
       // -- camera (the soldier placed it already when on foot)
@@ -1958,6 +1987,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       street.dispose();
       setStreet(null);
       traffic.dispose();
+      nightLights.dispose();
       crowd.dispose();
       skyline.dispose();
       pool.dispose();

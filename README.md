@@ -129,6 +129,16 @@ mood scales XP; loot funds research; territory funds the army.
   nearly a mirror, lacquer, glass), a ray is marched along the reflection through the depth buffer, and what it hits
   is laid over the surface, stronger at a glancing angle. Where the ray finds nothing on screen, and on Medium and
   Low, the surface reflects the sky's environment map as before. Stripped by the adaptive controller with AO.
+- **Night lighting** (realistic style) — at night the city is lit by real lights, from one fixed pool handed to the
+  most useful candidates around the player (`src/lib/lightBudget.ts`, pure: nearest first, ahead of behind, a lit one
+  keeps its light so nothing flickers between two equals): street lamps that light the walls and pavement under
+  them, headlights down the road ahead of every moving car, a red glow behind every braking one. Lights fade in and out,
+  never pop. Ultra spends 8, High 4, Medium and Low none (the glow textures and light pools as before); the adaptive
+  controller halves the pool, then drops it, before it touches a shadow. Ultra's own headlights also cast shadows
+  (a lamp post throws its across the road). Shop signs run past white at night, so under the HDR pipeline they bloom
+  like neon, as the lit windows and lamp heads do. The pool is built whole at dusk and its lights never leave the
+  scene — three.js recompiles every material when the number of lights changes, which would stall the frame
+  (`src/components/drive/nightLights.ts`).
 - **Any screen shape** — the 3D city fills whatever screen it gets. Wide screens (landscape phones, 16:9, ultrawide)
   keep the camera's field of view and simply show more to the sides; a phone held upright used to see a 31° slit, so
   there the view opens up to what a 2:3 screen would show (`src/lib/view.ts`). Garage → **Wide view → Full screen**
