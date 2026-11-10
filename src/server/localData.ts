@@ -106,7 +106,7 @@ function keepAlive(p: Promise<unknown>) {
 let running = 0;
 const queue: (() => void)[] = [];
 /** `none`: what a 404 means (Balad answers "nothing found" that way); without it a 404 is a failure like any other. */
-async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<string, string>, none?: T): Promise<T | null> {
+export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<string, string>, none?: T): Promise<T | null> {
   const tr = torobBase(), torob = !!tr && url.startsWith(tr);
   if (torob) {
     if (torobCooling()) return null;
@@ -146,7 +146,7 @@ async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<str
 
 const inflight = new Map<string, Promise<unknown>>();
 /** The cached copy while it's fresh; otherwise fetch once (shared by concurrent callers), falling back to the stale copy. */
-async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>): Promise<T | null> {
+export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>): Promise<T | null> {
   const row = await prisma.extCache.findUnique({ where: { key } });
   if (row && Date.now() - row.fetchedAt.getTime() < ttlMs) return row.data as T;
   let p = inflight.get(key) as Promise<T | null> | undefined;

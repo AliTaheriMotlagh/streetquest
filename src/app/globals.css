@@ -1761,6 +1761,17 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .ext-dish-about { margin: 0; line-height: 1.7; white-space: pre-line; }
 .ext-source { margin: 8px 0 0; text-align: center; }
 .ext-loading { margin-top: 10px; }
+/* A cinema's films (CinemaCard): poster, title, and its sessions as chips. */
+.film-list { display: flex; flex-direction: column; gap: 10px; }
+.film { display: flex; gap: 10px; align-items: flex-start; }
+.film-poster { flex: none; width: 62px; height: 88px; border-radius: 8px; object-fit: cover; background: var(--panel-2, #222); box-shadow: 0 4px 10px rgba(0, 0, 0, .3); }
+.film-tx { min-width: 0; flex: 1; }
+.film-tx > b { display: block; margin-bottom: 6px; }
+.film-times { display: flex; flex-wrap: wrap; gap: 6px; }
+.film-time { display: inline-flex; flex-direction: column; align-items: center; padding: 4px 8px; border-radius: 10px; background: var(--panel-2, rgba(255, 255, 255, .06)); border: 1px solid var(--line, rgba(255, 255, 255, .12)); font-size: 11px; line-height: 1.35; }
+.film-time b { font-size: 14px; }
+.film-time span { opacity: .75; white-space: nowrap; }
+.film-time.vip { border-color: var(--gold, #f0c05a); }
 .ext-vendor img.place-ic { object-fit: cover; padding: 0; }
 .owner-links { border: 1px dashed var(--line); border-radius: 14px; padding: 8px 12px 10px; margin: 12px 0; }
 .owner-links legend { padding: 0 6px; }

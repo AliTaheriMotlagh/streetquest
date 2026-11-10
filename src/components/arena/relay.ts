@@ -33,8 +33,16 @@ export async function relayApi<T>(body: Record<string, unknown>, keepalive = fal
 type PeerRow = { userId: string; name?: string; avatar?: string; level?: number; color?: string; anchor?: LL; trail: unknown; seenAt?: number; joinedAt?: number };
 type Up = { at: number; m: ClientMsg };
 export type Push = (e: SnapEntity, t: number, delay: number) => void;
-/** One poll in flight at a time, starting at most this often (≈ 6–7 a second on a fast network). */
+/** A poll starts at most this often (≈ 6–7 a second)… */
 const POLL_MS = 150;
+/**
+ * …with up to this many in flight at once: on a phone far from the server (Iran ↔ the US is
+ * 250 ms and more, mobile networks jitter) one poll at a time means news only every round
+ * trip; two overlapping halve that. Replies can then arrive out of order: messages are
+ * numbered (one already handled is skipped), and an older reply never overwrites what a
+ * newer one brought (trails, who's here).
+ */
+const IN_FLIGHT = 2;
 
 // ---------------------------------------------------------------- drawing everyone
 export class Mixer {
@@ -98,7 +106,10 @@ export class RelayHost {
   private lastWorld = 0;
   private clock = new ClockSync();
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private busy = false;
+  /** Polls in flight, the last one started (its number), and the newest whose reply was used. */
+  private inFlight = 0;
+  private seq = 0;
+  private usedSeq = 0;
   private stopped = false;
   private fails = 0;
   private sweepAt = 0;
@@ -203,7 +214,8 @@ export class RelayHost {
 
   private async poll() {
     this.timer = null;
-    if (this.stopped || this.busy) return;
+    // Waiting for players (once a second): never two at once.
+    if (this.stopped || this.inFlight >= (this.guestCount || this.closingAt ? IN_FLIGHT : 1)) return;
     const m = this.match;
     // The match is over (disbanded): deliver everyone's goodbye (back to the city), then close the room.
     if (!m) {
@@ -216,8 +228,11 @@ export class RelayHost {
         return;
       }
     }
-    this.busy = true;
+    this.inFlight++;
+    const mySeq = ++this.seq;
     this.startedAt = Date.now();
+    // The next one may start before this one's back.
+    if (this.guestCount) this.schedule(POLL_MS);
     const out = [...this.guests.values()].filter((g) => g.out.length).map((g) => ({ to: g.userId, body: capShots(g.out.splice(0)) }));
     const now = Date.now();
     const sweep = now - this.sweepAt > 4000;
@@ -232,7 +247,10 @@ export class RelayHost {
       this.fails = 0;
       this.clock.sample(sentAt, Date.now(), r.now);
       this.me.rtt = Math.round(this.clock.rtt);
-      this.apply(r.msgs, r.peers);
+      // An older reply than one already used: its messages (the new ones) count, its view of who's here doesn't.
+      const newest = mySeq > this.usedSeq;
+      if (newest) this.usedSeq = mySeq;
+      this.apply(r.msgs, newest ? r.peers : null);
     } catch (e) {
       // Not delivered: send it again next time.
       for (const o of out) this.guests.get(o.to)?.out.unshift(...o.body);
@@ -240,21 +258,21 @@ export class RelayHost {
         this.stopped = true;
         this.opened = false;
         this.h.ended();
-        this.busy = false;
+        this.inFlight--;
         return;
       }
       this.fails = Math.min(4, this.fails + 1);
     } finally {
-      this.busy = false;
+      if (this.inFlight > 0 && !this.stopped) this.inFlight--;
     }
     this.schedule(this.gap());
   }
 
-  private apply(msgs: { id: number; from: string; body: Up[] }[], peers: PeerRow[]) {
+  private apply(msgs: { id: number; from: string; body: Up[] }[], peers: PeerRow[] | null) {
     const now = Date.now();
     const m = this.match;
     const here = new Set<string>();
-    for (const row of peers) {
+    for (const row of peers ?? []) {
       if (row.userId === this.me.userId) continue;
       here.add(row.userId);
       let g = this.guests.get(row.userId);
@@ -270,14 +288,17 @@ export class RelayHost {
       g.trail = unpackTrail(row.trail);
       this.h.trail(row.userId, g.trail, now);
     }
-    // Players who left (or were swept as gone).
+    // Players who left (or were swept as gone) — only by the newest view of the room.
+    if (peers)
     for (const [id, g] of this.guests)
       if (!here.has(id)) {
         if (g.p) this.hub.drop(g.p);
         this.guests.delete(id);
       }
     for (const row of msgs) {
-      this.ack = Math.max(this.ack, row.id);
+      // Already handled (an overlapping poll brought it first).
+      if (row.id <= this.ack) continue;
+      this.ack = row.id;
       const g = this.guests.get(row.from);
       if (g && Array.isArray(row.body)) g.pending.push(...row.body.filter((u) => u && typeof u.at === "number" && u.m && typeof u.m === "object"));
     }
@@ -348,7 +369,10 @@ export class RelayGuest {
   private hostClock = 0;
   private lastWorldT = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private busy = false;
+  /** Polls in flight, the last one started (its number), and the newest whose reply was used. */
+  private inFlight = 0;
+  private seq = 0;
+  private usedSeq = 0;
   private stopped = false;
   private fails = 0;
   private quietSince = 0;
@@ -380,7 +404,7 @@ export class RelayGuest {
     if (m.t === "ping") return;
     this.up.push({ at: this.matchNow(), m });
     // Actions go out with the next poll as soon as pacing allows (moves can wait).
-    if (!this.busy && this.timer) this.schedule(Math.max(0, POLL_MS - (Date.now() - this.startedAt)));
+    if (this.inFlight < IN_FLIGHT && this.timer) this.schedule(Math.max(0, POLL_MS - (Date.now() - this.startedAt)));
   }
 
   state(s: State) {
@@ -402,9 +426,12 @@ export class RelayGuest {
 
   private async poll() {
     this.timer = null;
-    if (this.stopped || this.busy) return;
-    this.busy = true;
+    if (this.stopped || this.inFlight >= IN_FLIGHT) return;
+    this.inFlight++;
+    const mySeq = ++this.seq;
     this.startedAt = Date.now();
+    // The next one may start before this one's back.
+    this.schedule(POLL_MS);
     // Now and then, my round trip for the scoreboard's ping column.
     if (this.clock.synced && this.startedAt - this.pingAt > 2000) {
       this.pingAt = this.startedAt;
@@ -420,7 +447,9 @@ export class RelayGuest {
       this.hostClock = r.clock;
       const now = this.matchNow();
       for (const row of r.msgs) {
-        this.ack = Math.max(this.ack, row.id);
+        // Already handled (an overlapping poll brought it first).
+        if (row.id <= this.ack) continue;
+        this.ack = row.id;
         if (Array.isArray(row.body)) for (const raw of row.body) if (!this.stopped && typeof raw === "string") this.h.msg(raw);
       }
       if (this.stopped) return;
@@ -429,12 +458,16 @@ export class RelayGuest {
         this.lastWorldT = s.t;
         this.h.world(s.t, s.list.map((e) => reframe(e, r.origin, this.frame)), this.h.delay());
       }
-      for (const p of r.peers) this.h.trail(p.userId, unpackTrail(p.trail), now);
+      // Everyone's trails from the newest reply only (an older one would pull them back).
+      if (mySeq > this.usedSeq) {
+        this.usedSeq = mySeq;
+        for (const p of r.peers) this.h.trail(p.userId, unpackTrail(p.trail), now);
+      }
     } catch (e) {
       this.up.unshift(...up);
       if (e instanceof RelayError && (e.status === 410 || e.status === 404 || e.status === 403 || e.status === 401)) {
         this.stopped = true;
-        this.busy = false;
+        this.inFlight--;
         this.h.ended(e.message);
         return;
       }
@@ -443,12 +476,12 @@ export class RelayGuest {
       // Can't reach the game for a while: the match carries on without me.
       if (Date.now() - this.quietSince > HOST_GONE_MS * 2) {
         this.stopped = true;
-        this.busy = false;
+        this.inFlight--;
         this.h.ended(null);
         return;
       }
     } finally {
-      this.busy = false;
+      if (this.inFlight > 0 && !this.stopped) this.inFlight--;
     }
     this.schedule(this.fails ? Math.min(4000, 300 * 2 ** this.fails) : Math.max(0, POLL_MS - (Date.now() - this.startedAt)));
   }

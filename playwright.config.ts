@@ -65,6 +65,12 @@ export default defineConfig({
           BALAD_POI_URL: `http://localhost:${STUB_PORT}/blp`,
           GOOGLE_PLACES_URL: `http://localhost:${STUB_PORT}/gp`,
           GOOGLE_PLACES_KEY: "test-google-key",
+          // Cinemas and sessions answer from e2e/api/cinema.spec.ts's stub.
+          CINEMATICKET_URL: `http://localhost:${STUB_PORT}/ct`,
+          // No speech service: /api/tts says so (e2e/api/cinema.spec.ts).
+          AZURE_SPEECH_KEY: "",
+          AZURE_SPEECH_REGION: "",
+          OPENAI_API_KEY: "",
           // The stub needs no spacing between Torob calls.
           TOROB_GAP_MS: "0",
           // No real push notifications or payments from tests.

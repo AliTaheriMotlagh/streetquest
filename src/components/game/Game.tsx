@@ -37,7 +37,8 @@ import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
-import { DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
+import { CinemaCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
+import type { Cinema } from "@/lib/cinema";
 import { OnlineChip, OnlineSheet } from "./Online";
 import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
@@ -65,7 +66,7 @@ const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "divar" | "traffic";
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "divar" | "traffic";
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -74,6 +75,7 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   ...VENDOR_KIND_KEYS.map((k) => ({ key: k, emoji: VENDOR_KINDS[k].emoji, label: VENDOR_KINDS[k].label, group: msg("Menus from Snappfood") })),
   { key: "places", emoji: "📍", label: msg("Real places"), group: msg("Around you") },
   { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)"), group: msg("Around you") },
+  { key: "cinema", emoji: "🎬", label: msg("Cinemas (Cinematicket)"), group: msg("Around you") },
   { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
 ];
@@ -88,6 +90,8 @@ const MAP_KINDS_KEY = "sq_map_kinds";
 /** Fetch Snappfood vendors / Divar ads again this far from the last fetch, or after this long. */
 const VENDOR_REFETCH_M = 500;
 const TOROB_REFETCH_M = 800;
+/** Cinemas are read for 20 km round: again after this far. */
+const CINEMA_REFETCH_M = 5000;
 const DIVAR_REFETCH_M = 800;
 const EXT_REFRESH_MS = 10 * 60_000;
 /** The world (money, jobs, players…) reloads this often while the app is on screen. */
@@ -217,6 +221,8 @@ export default function Game() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const vendorsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [torobShops, setTorobShops] = useState<TorobPlace[]>([]);
+  const [cinemas, setCinemas] = useState<Cinema[]>([]);
+  const cinemaAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [onlineOpen, setOnlineOpen] = useState(false);
   const torobAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [divar, setDivar] = useState<DivarArea[]>([]);
@@ -297,6 +303,19 @@ export default function Game() {
       })
       .catch(() => {});
   }, [torobOn, look, now]);
+  const cinemaOn = layers.includes("cinema");
+  useEffect(() => {
+    if (!cinemaOn || !look) return;
+    const last = cinemaAt.current;
+    if (last && distanceM(last.pos, look) < CINEMA_REFETCH_M && Date.now() - last.at < (last.ok ? 6 * 3_600_000 : 60_000)) return;
+    const tried = (cinemaAt.current = { pos: look, at: Date.now(), ok: false as boolean });
+    api<{ cinemas: Cinema[] }>(`/api/cinema?near=1&lat=${look.lat.toFixed(3)}&lng=${look.lng.toFixed(3)}`)
+      .then((r) => {
+        tried.ok = true;
+        setCinemas(r.cinemas);
+      })
+      .catch(() => {});
+  }, [cinemaOn, look, now]);
   const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
@@ -332,11 +351,12 @@ export default function Game() {
       biz: world?.businesses.length ?? 0,
       places: (world?.spots ?? []).length,
       torob: torobShops.length,
+      cinema: cinemas.length,
       divar: divar.length,
     };
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
     return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) }));
-  }, [world, vendors, torobShops, divar]);
+  }, [world, vendors, torobShops, cinemas, divar]);
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -993,6 +1013,7 @@ export default function Game() {
           spots={shownSpots}
           divar={divarOn ? divar : undefined}
           torob={torobOn ? torobShops : undefined}
+          cinemas={cinemaOn ? cinemas : undefined}
           traffic={layers.includes("traffic")}
           route={route}
           others={exploreOn ? (layers.includes("players") ? exploreData?.players ?? [] : []) : undefined}
@@ -1420,6 +1441,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   }
   if (sel.type === "divar") return <DivarCard area={sel.data} onClose={onClose} />;
   if (sel.type === "torob") return <TorobPlaceCard p={sel.data} onClose={onClose} />;
+  if (sel.type === "cinema") return <CinemaCard c={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
 
   if (sel.type === "money") {

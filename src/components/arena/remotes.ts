@@ -19,6 +19,8 @@ import { Avatar, loadSoldier } from "./avatar";
 export const RT_DELAY_MS = 110;
 export const HTTP_DELAY_MS = 450;
 const COAST_MS = 300;
+/** Drawn positions ease toward where the samples say at this rate (/s); further off than SNAP_M they jump. */
+const EASE = 12, SNAP_M = 4;
 const MAX_SNAPS = 20;
 
 type Snap = SnapEntity & { t: number };
@@ -31,6 +33,12 @@ type Ent = {
   snaps: Snap[];
   /** How far behind (ms) it's drawn. */
   delay: number;
+  /**
+   * Where it was drawn last frame: a late sample that moves it a little is eased in over
+   * ~100 ms instead of jumping (no rubber-banding on a jittery phone network); a big jump
+   * (a respawn, a long stall) is taken at once.
+   */
+  drawn?: { x: number; z: number };
   avatar: Avatar | null;
   tag: Sign | null;
   tagKey: string;
@@ -123,8 +131,16 @@ export class Remotes {
       }
       const p = e.pose;
       const coast = a === b ? Math.min(COAST_MS, Math.max(0, t - a.t)) / 1000 : 0;
-      p.x = a.x + (b.x - a.x) * k + a.vx * coast;
-      p.z = a.z + (b.z - a.z) * k + a.vz * coast;
+      const tx = a.x + (b.x - a.x) * k + a.vx * coast, tz = a.z + (b.z - a.z) * k + a.vz * coast;
+      const d = e.drawn;
+      if (!d || Math.hypot(tx - d.x, tz - d.z) > SNAP_M) e.drawn = { x: tx, z: tz };
+      else {
+        const f = Math.min(1, dt * EASE);
+        d.x += (tx - d.x) * f;
+        d.z += (tz - d.z) * f;
+      }
+      p.x = e.drawn!.x;
+      p.z = e.drawn!.z;
       p.y = a.y + (b.y - a.y) * k;
       p.yaw = lerpAngle(a.yaw, b.yaw, k);
       p.pitch = a.pitch + (b.pitch - a.pitch) * k;

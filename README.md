@@ -357,7 +357,11 @@ mood scales XP; loot funds research; territory funds the army.
 - **On the map** (the map's filter button, or ⋯ → 🗺️ *On the map*; everything on by default): the game's own 💵 money,
   📦 store jobs, 👥 players and 🏪 businesses, 📍 every real place within 1.2 km (restaurants,
   cafés, shops, parks — with or without a job; tap for its menu and contacts), Snappfood vendors by kind with their
-  logo up close (one sign per store: an OSM place that is a vendor shows as the vendor), 🏷️ Torob's walk-in stores, 📢 Divar — each nearby
+  logo up close (one sign per store: an OSM place that is a vendor shows as the vendor), 🏷️ Torob's walk-in stores, 🎬 cinemas from
+  [cinematicket.org](https://cinematicket.org) (each with its name; its card has every film today and tomorrow with its
+  poster and sessions — time, hall, price in toman, VIP halls marked — and buys the tickets there; `src/lib/cinema.ts`,
+  `src/server/cinema.ts`, `/api/cinema`, read from cinematicket's own JSON API, which answers from abroad: no relay;
+  the list cached a day, a cinema's sessions ten minutes; `CINEMATICKET_URL`), 📢 Divar — each nearby
   neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…), and 🚦 live
   traffic — each chip with how many there are around, and real places narrowed by kind (cafés, pharmacies, banks…).
   Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
@@ -429,7 +433,11 @@ npm run rt:sim -- bomb                              # a whole match of bots in s
 
 Without `NEXT_PUBLIC_RT_URL` everything still works over HTTP: other drivers and soldiers through `/api/drive`,
 fights in the open city through `/api/drive/arena`, and matches with other players hosted in a player's browser and
-relayed through `/api/arena` (slower than the realtime server's 20 Hz, but real multiplayer). `ARENA_PAID_MIN_S`
+relayed through `/api/arena` (slower than the realtime server's 20 Hz, but real multiplayer). On phones far from the
+server (Iran ↔ Vercel) each poll is one database round trip (a single SQL statement of CTEs), two polls overlap, and
+other players' late corrections are eased in rather than snapped. For the least lag, run the functions and the
+database in the region nearest your players: Frankfurt (Vercel `fra1`, Neon `aws-eu-central-1`) is about half the
+round trip of the US east coast from Iran. `ARENA_PAID_MIN_S`
 (default 60) is how long such a match must run before it pays. The soldier and gun models are generated in Blender from `assets/blender/arena.py`: `npm run assets:arena`
 rebuilds `public/models/arena/*.glb` (add `-- preview.png` to render a preview).
 
@@ -481,8 +489,16 @@ police megaphone and orders). `npm run assets:voices -- --download` records each
 [Piper](https://github.com/rhasspy/piper) (offline; install it, or set `PIPER=/path/to/piper`) in Piper's Persian
 voices — amir (men), ganji pitched up (women: there's no Persian woman's voice yet), gyro through a megaphone (police)
 — into `public/sounds/voice/` plus its `manifest.json`; commit those. The models (60 MB each) are downloaded once into
-`assets/voices/` (ignored). Until there are recordings, people still talk — a speech bubble over their head — and a
-device with its own Persian voice (some Android phones) reads the line aloud.
+`assets/voices/` (ignored). Without recordings, the server speaks the lines: set `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (Azure's Persian
+neural voices, Farid for men and the police, Dilara for women; the free tier covers every line many times) or
+`OPENAI_API_KEY` (gpt-4o-mini-tts told to speak Tehrani Persian). `/api/tts` speaks only the game's own lines, each at
+an address with its own hash, and answers with a year-long immutable cache header — Vercel's CDN and every phone keep
+it, so each line is made once per voice, ever (`src/server/tts.ts`). With neither, people still talk — a speech
+bubble over their head — and a device with its own Persian voice (some Android phones) reads the line aloud.
+**Street scenes:** every half a minute or so, when it's calm, something happens near you (`src/lib/street/scenes.ts`):
+two strangers argue over who was first, two friends meet and go for tea, someone talks on the phone, a vendor calls
+out (Hafez fortunes, cold water, ice cream), a shared taxi calls its route (Azadi! Vanak, one more!), a bag is
+snatched and its owner shouts after the thief — the people stop, turn to each other and say their lines.
 
 ## How it works
 
@@ -504,7 +520,7 @@ device with its own Persian voice (some Android phones) reads the line aloud.
 | Store menus, prices & ads: Snappfood (a cell's whole vendor list — every vendor delivering there, read 400 a page — per ~1 km cell, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h), Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h) and Divar (cities and neighbourhoods a week, each neighbourhood's latest ads per category 15 min) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. None has an official API — `SNAPPFOOD_URL` / `TOROB_URL` / `DIVAR_URL` (`off` disables), admin switch *Menus, prices and ads from Snappfood, Torob and Divar*; *Places on the map* range / most at once | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `/api/route`, `src/components/game/StoreInfo.tsx`, `GameMap.tsx` |
 | 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`). Traffic and pedestrians are instanced per model / body part (`fleet3d.ts`, `people.ts`) | `src/components/drive`, `src/lib/{fleet,vehicles}.ts` |
 | 3D graphics: `GraphicsEngine` owns the WebGL renderer — tier from `detectTier(caps)` (or the player's pick, `sq_gfx_quality`), dynamic resolution and effect stripping by `Adaptive` (median/p90 frame time per 60 frames, holds when steps don't help), context-loss recovery. High/Ultra render into a half-float 4× MSAA target, then SSAO from the resolved depth (normals rebuilt from depth, no second scene pass, bilateral blur), a 5-mip dual-filter bloom and one final pass (ACES as three.js does it, white balance, saturation, contrast, vignette, dither). Colours meant for the screen as-is (fog, night gradient sky, horizon mountains) go through the exact ACES inverse so both paths look alike. Materials are patched per tier (`patchShader`): façade relief/roughness/metal arrays, world-planar asphalt and slabs with wetness and puddles, wind, lamp pools; time of day from the solar position (`daylight.ts`), the sky's environment map re-rendered only when it visibly changes | `src/components/drive/graphics/{engine,quality,caps,post,shaders,surfaces,weather}.ts`, `src/lib/daylight.ts` |
-| Street Arena without the realtime server: the host's browser runs the hub; players poll `/api/arena` (one request in flight, ≤ ~6/s): their trail (last ~0.7 s of samples, lat/lng on the host's clock) is written to `ArenaPeer` and read by everyone, the referee's messages wait in `ArenaMsg` until acknowledged, the host's snapshots (bots, health, teams) sit on `ArenaRoom`. Party members see each other on the realtime server too (a pair counts when both list each other) | `src/lib/arena/relay.ts`, `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts` |
+| Street Arena without the realtime server: the host's browser runs the hub; players poll `/api/arena` (two requests in flight, a poll every 150 ms; each poll one SQL statement): their trail (last ~0.7 s of samples, lat/lng on the host's clock) is written to `ArenaPeer` and read by everyone, the referee's messages wait in `ArenaMsg` until acknowledged, the host's snapshots (bots, health, teams) sit on `ArenaRoom`. Party members see each other on the realtime server too (a pair counts when both list each other) | `src/lib/arena/relay.ts`, `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts` |
 | Street Arena: a separate Node WebSocket server (`realtime/`) holds everyone in memory — no database. The app signs a 10-min ticket (`/api/rt/ticket`: who you are, friends, virtual or real GPS); results come back HMAC-signed (`/api/rt/result`, paid once per match, daily cap). Binary state 20×/s each way, positions in each client's own local metres, interest management (600 m, same privacy rules as the HTTP presence). Hits: the client draws them at once, the server referees with lag compensation (targets rewound ≤ 350 ms), fire-rate/ammo/range checks and, in matches, line of sight through the real buildings (the host's client sends the arena's streets and footprints). Bots walk a street graph built from the same map | `realtime/`, `src/lib/arena`, `src/components/arena`, `/api/rt` |
 | Social: posts/follows/likes/comments; game-made posts store a translatable template so each reader sees their language; photos at `/post-img/<id>` | `src/server/social.ts`, `/api/social`, `src/components/game/Social.tsx` |
 | Businesses: claim on the spot (≤150 m), campaigns limited by plan, check-in ≤80 m, 6-char coupon codes redeemed once by the owner; plans paid through the same Stripe Checkout + webhook as gems (`biz:<plan>:<id>` purchases) | `src/lib/business.ts`, `src/server/business.ts`, `/api/business`, `src/components/game/Business.tsx` |

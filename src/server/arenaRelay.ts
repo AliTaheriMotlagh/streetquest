@@ -147,47 +147,80 @@ const peerOut = (p: { userId: string; name: string; avatar: string; level: numbe
 
 export type HostPoll = { id: string; ack: number; out: { to: string; body: string[] }[]; trail: unknown; snap?: string; phase: string; humans: number; bots: number; clock: number; sweep?: boolean };
 
+/** A JS time as the database stores DateTime (UTC, no zone). */
+const ts = (ms: number) => new Date(ms).toISOString();
+/** A DateTime read back through JSON (UTC without its zone) → ms. */
+const msOf = (v: unknown) => (typeof v === "string" ? Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(v) ? v : `${v}Z`) : NaN);
+
+// Each poll is ONE round trip to the database (a statement of data-modifying CTEs: write my
+// trail and messages, drop what's acknowledged, read what's new — they all see the same
+// snapshot, so the reads are exactly what separate queries before the writes would give).
+// On a phone far from the server every round trip counts: this was five in a row.
+
 export async function hostPoll(userId: string, b: HostPoll) {
   const now = Date.now();
   const phase = PHASES.includes(b.phase as Phase) ? b.phase : "lobby";
-  const n = await prisma.arenaRoom.updateMany({
-    where: { id: b.id, hostId: userId },
-    data: { hostAt: new Date(now), phase, humans: Math.max(1, Math.min(MAX_PLAYERS, Math.round(b.humans))), bots: Math.max(0, Math.min(16, Math.round(b.bots))), clock: Number.isFinite(b.clock) ? b.clock : 0, ...(b.snap != null ? { snap: b.snap.slice(0, 40_000) } : {}) },
-  });
-  if (!n.count) throw gone();
-  await prisma.arenaPeer.updateMany({ where: { roomId: b.id, userId }, data: { trail: trailJson(b.trail), seenAt: new Date(now) } });
   if (b.sweep) {
     const stale = await prisma.arenaPeer.findMany({ where: { roomId: b.id, userId: { not: userId }, seenAt: { lt: new Date(now - PEER_GONE_MS) } }, select: { userId: true } });
     for (const s of stale) await leaveRoom(s.userId, b.id);
   }
-  const out = b.out.filter((o) => o.to && o.body.length).slice(0, MAX_PLAYERS);
-  if (out.length) await prisma.arenaMsg.createMany({ data: out.map((o) => ({ roomId: b.id, to: o.to, from: userId, body: o.body.slice(-DOWN_MAX) })) });
-  if (b.ack > 0) await prisma.arenaMsg.deleteMany({ where: { roomId: b.id, to: "", id: { lte: b.ack } } });
-  const [msgs, peers] = await Promise.all([
-    prisma.arenaMsg.findMany({ where: { roomId: b.id, to: "", id: { gt: Math.max(0, b.ack) } }, orderBy: { id: "asc" }, take: 200, select: { id: true, from: true, body: true } }),
-    prisma.arenaPeer.findMany({ where: { roomId: b.id } }),
-  ]);
-  return { now: Date.now(), msgs, peers: peers.map(peerOut) };
+  const out = b.out.filter((o) => o.to && o.body.length).slice(0, MAX_PLAYERS).map((o) => ({ to: o.to, body: o.body.slice(-DOWN_MAX) }));
+  const humans = Math.max(1, Math.min(MAX_PLAYERS, Math.round(b.humans))), bots = Math.max(0, Math.min(16, Math.round(b.bots)));
+  const clock = Number.isFinite(b.clock) ? b.clock : 0, snap = b.snap != null ? b.snap.slice(0, 40_000) : null, ack = Math.max(0, Math.round(b.ack) || 0);
+  const [r] = await prisma.$queryRaw<{ ok: number; msgs: { id: number; from: string; body: unknown }[]; peers: Record<string, unknown>[] }[]>`
+    WITH room AS (
+      UPDATE "ArenaRoom" SET "hostAt" = (${ts(now)}::timestamptz AT TIME ZONE 'UTC'), phase = ${phase}, humans = ${humans}, bots = ${bots}, clock = ${clock}, snap = COALESCE(${snap}::text, snap)
+      WHERE id = ${b.id} AND "hostId" = ${userId} RETURNING id
+    ), me AS (
+      UPDATE "ArenaPeer" SET trail = ${JSON.stringify(trailJson(b.trail))}::jsonb, "seenAt" = (${ts(now)}::timestamptz AT TIME ZONE 'UTC')
+      WHERE "roomId" = ${b.id} AND "userId" = ${userId} AND EXISTS (SELECT 1 FROM room) RETURNING 1
+    ), ins AS (
+      INSERT INTO "ArenaMsg" ("roomId", "to", "from", body)
+      SELECT ${b.id}, o->>'to', ${userId}, o->'body' FROM jsonb_array_elements(${JSON.stringify(out)}::jsonb) o WHERE EXISTS (SELECT 1 FROM room) RETURNING 1
+    ), del AS (
+      DELETE FROM "ArenaMsg" WHERE "roomId" = ${b.id} AND "to" = '' AND id <= ${ack} AND ${ack} > 0 RETURNING 1
+    )
+    SELECT
+      (SELECT count(*) FROM room)::int AS ok,
+      (SELECT COALESCE(json_agg(json_build_object('id', m.id, 'from', m."from", 'body', m.body) ORDER BY m.id), '[]'::json)
+         FROM (SELECT id, "from", body FROM "ArenaMsg" WHERE "roomId" = ${b.id} AND "to" = '' AND id > ${ack} ORDER BY id LIMIT 200) m) AS msgs,
+      (SELECT COALESCE(json_agg(json_build_object('userId', p."userId", 'name', p.name, 'avatar', p.avatar, 'level', p.level, 'color', p.color,
+         'anchorLat', p."anchorLat", 'anchorLng', p."anchorLng", 'trail', p.trail, 'seenAt', p."seenAt", 'joinedAt', p."joinedAt")), '[]'::json)
+         FROM "ArenaPeer" p WHERE p."roomId" = ${b.id}) AS peers`;
+  if (!r?.ok) throw gone();
+  const peers = r.peers.map((p) => peerOut({ ...(p as Parameters<typeof peerOut>[0]), seenAt: new Date(msOf(p.seenAt)), joinedAt: new Date(msOf(p.joinedAt)) }));
+  return { now: Date.now(), msgs: r.msgs, peers };
 }
 
 export type GuestPoll = { id: string; ack: number; up: unknown[]; trail: unknown };
 
 export async function guestPoll(userId: string, b: GuestPoll) {
   const now = Date.now();
-  const n = await prisma.arenaPeer.updateMany({ where: { roomId: b.id, userId }, data: { trail: trailJson(b.trail), seenAt: new Date(now) } });
-  if (!n.count) throw gone();
-  if (b.up.length) await prisma.arenaMsg.create({ data: { roomId: b.id, to: "", from: userId, body: b.up.slice(0, UP_MAX) as Prisma.InputJsonValue } });
-  if (b.ack > 0) await prisma.arenaMsg.deleteMany({ where: { roomId: b.id, to: userId, id: { lte: b.ack } } });
-  const [room, msgs, peers] = await Promise.all([
-    prisma.arenaRoom.findUnique({ where: { id: b.id }, select: { hostAt: true, clock: true, snap: true, phase: true, lat: true, lng: true } }),
-    prisma.arenaMsg.findMany({ where: { roomId: b.id, to: userId, id: { gt: Math.max(0, b.ack) } }, orderBy: { id: "asc" }, take: 60, select: { id: true, body: true } }),
-    prisma.arenaPeer.findMany({ where: { roomId: b.id, userId: { not: userId } }, select: { userId: true, trail: true } }),
-  ]);
-  if (!room || !fresh(room.hostAt, now)) {
+  const ack = Math.max(0, Math.round(b.ack) || 0), up = b.up.slice(0, UP_MAX);
+  const [r] = await prisma.$queryRaw<{ ok: number; room: { hostAt: string; clock: number; snap: string | null; phase: string; lat: number; lng: number } | null; msgs: { id: number; body: unknown }[]; peers: { userId: string; trail: unknown }[] }[]>`
+    WITH me AS (
+      UPDATE "ArenaPeer" SET trail = ${JSON.stringify(trailJson(b.trail))}::jsonb, "seenAt" = (${ts(now)}::timestamptz AT TIME ZONE 'UTC')
+      WHERE "roomId" = ${b.id} AND "userId" = ${userId} RETURNING 1
+    ), ins AS (
+      INSERT INTO "ArenaMsg" ("roomId", "to", "from", body)
+      SELECT ${b.id}, '', ${userId}, ${JSON.stringify(up)}::jsonb WHERE ${up.length} > 0 AND EXISTS (SELECT 1 FROM me) RETURNING 1
+    ), del AS (
+      DELETE FROM "ArenaMsg" WHERE "roomId" = ${b.id} AND "to" = ${userId} AND id <= ${ack} AND ${ack} > 0 RETURNING 1
+    )
+    SELECT
+      (SELECT count(*) FROM me)::int AS ok,
+      (SELECT json_build_object('hostAt', "hostAt", 'clock', clock, 'snap', snap, 'phase', phase, 'lat', lat, 'lng', lng) FROM "ArenaRoom" WHERE id = ${b.id}) AS room,
+      (SELECT COALESCE(json_agg(json_build_object('id', m.id, 'body', m.body) ORDER BY m.id), '[]'::json)
+         FROM (SELECT id, body FROM "ArenaMsg" WHERE "roomId" = ${b.id} AND "to" = ${userId} AND id > ${ack} ORDER BY id LIMIT 60) m) AS msgs,
+      (SELECT COALESCE(json_agg(json_build_object('userId', p."userId", 'trail', p.trail)), '[]'::json)
+         FROM "ArenaPeer" p WHERE p."roomId" = ${b.id} AND p."userId" <> ${userId}) AS peers`;
+  if (!r?.ok) throw gone();
+  const room = r.room;
+  if (!room || !(now - msOf(room.hostAt) < HOST_GONE_MS)) {
     await prisma.arenaPeer.deleteMany({ where: { roomId: b.id, userId } });
     throw new HttpError(410, t("The host left — the match is over"));
   }
-  return { now: Date.now(), clock: room.clock, snap: room.snap, origin: { lat: room.lat, lng: room.lng }, msgs, peers };
+  return { now: Date.now(), clock: room.clock, snap: room.snap, origin: { lat: room.lat, lng: room.lng }, msgs: r.msgs, peers: r.peers };
 }
 
 /** The host's hub finished the match: pay everyone who really played in it (once). */

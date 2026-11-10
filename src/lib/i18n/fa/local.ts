@@ -131,6 +131,14 @@ const local: Record<string, string> = {
   "Places on the map: most at once": "مکان‌ها روی نقشه: حداکثر هم‌زمان",
   "The nearest this many real places are drawn; further out they group into bubbles as the map zooms out.":
     "این تعداد از نزدیک‌ترین مکان‌های واقعی کشیده می‌شن؛ وقتی نقشه دور می‌شه، به شکل حباب‌های گروهی درمیان.",
+  // ---- cinemas (cinematicket.org)
+  "Cinemas (Cinematicket)": "سینماها (سینماتیکت)",
+  Cinema: "سینما",
+  "Buy tickets on Cinematicket": "خرید بلیت در سینماتیکت",
+  Today: "امروز",
+  Tomorrow: "فردا",
+  "Looking up what's on…": "در حال پیدا کردن فیلم‌ها و سانس‌ها…",
+  "No sessions on this day": "این روز سانسی نداره",
 };
 
 export default local;

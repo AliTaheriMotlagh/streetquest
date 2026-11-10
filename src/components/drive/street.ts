@@ -31,7 +31,8 @@ import { Police, type PoliceEvent } from "./police";
 import { StreetFx } from "./streetFx";
 import { driverLook } from "./crew";
 import { Voices } from "./voices";
-import type { Situation } from "@/lib/street/barks";
+import type { Situation, VoiceKind } from "@/lib/street/barks";
+import { pickScene, SCENE_GAP_S, sceneLength, sceneScript } from "@/lib/street/scenes";
 import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
 import { FLEET } from "@/lib/fleet";
 
@@ -111,6 +112,9 @@ export class StreetLife {
 
   /** People talking: a line from whoever it's about, with a bubble over their head. */
   private voices: Voices;
+  /** The street scene playing near me (lib/street/scenes.ts), and when the next may start. */
+  private scene: { script: { who: 0 | 1; bark: string; at: number }[]; said: number; t: number; end: number; cast: [() => { x: number; y: number; z: number } | null, (() => { x: number; y: number; z: number } | null) | null]; voice: [VoiceKind, VoiceKind] } | null = null;
+  private sceneAt = performance.now() + 12_000;
   /** A street car, as the voices see it (who's driving, where it is now). */
   private static carOf = (ref: unknown) => (ref && typeof ref === "object" && "id" in ref && "parked" in ref ? (ref as { id: number; parked: boolean; x: number; z: number }) : null);
 
@@ -327,6 +331,52 @@ export class StreetLife {
     if (p) this.voices.say(s, p.woman ? "f" : "m", () => this.h.crowd.head(p.id), me);
   }
 
+  /**
+   * The street scenes: now and then (calm moments only — not in a chase, not at speed), a
+   * scene near me plays out; its lines come on cue while it lasts.
+   */
+  private tickScene(dt: number, me: StreetMe, now: number) {
+    const sc = this.scene;
+    if (sc) {
+      sc.t += dt;
+      while (sc.said < sc.script.length && sc.script[sc.said].at <= sc.t) {
+        const l = sc.script[sc.said++], where = sc.cast[l.who];
+        if (where) this.voices.line(l.bark, sc.voice[l.who], where, me);
+      }
+      if (sc.t > sc.end) this.scene = null;
+      return;
+    }
+    if (now < this.sceneAt) return;
+    this.sceneAt = now + (SCENE_GAP_S[0] + Math.random() * (SCENE_GAP_S[1] - SCENE_GAP_S[0])) * 1000;
+    if (me.matchOn || this.wanted.stars > 0 || Math.hypot(me.vx, me.vz) > 9) return;
+    const s = pickScene(Math.random);
+    if (!s) return;
+    const script = sceneScript(s, Math.random), end = sceneLength(script);
+    const crowd = this.h.crowd;
+    if (s.cast === "taxi") {
+      const c = this.h.traffic.slowCar("taxi", me.x, me.z, 8, 45);
+      if (!c) return;
+      this.scene = { script, said: 0, t: 0, end, cast: [() => ({ x: c.x, y: 1.9, z: c.z }), null], voice: ["m", "m"] };
+      return;
+    }
+    const cast = crowd.cast(me.x, me.z, 6, 30, s.cast === "two");
+    if (!cast) return;
+    const a = crowd.head(cast.a), b = cast.b != null ? crowd.head(cast.b) : null;
+    if (!a) return;
+    const va: VoiceKind = cast.woman[0] ? "f" : "m", vb: VoiceKind = cast.woman[1] ? "f" : "m";
+    if (s.runs && cast.b != null) {
+      // The thief is off; the one robbed stops and shouts after them.
+      crowd.runFrom(cast.b, a.x, a.z, 8);
+      crowd.stopFor(cast.a, end, b?.x ?? me.x, b?.z ?? me.z);
+    } else if (b && cast.b != null) {
+      // Turned to each other while they talk.
+      crowd.stopFor(cast.a, end, b.x, b.z);
+      crowd.stopFor(cast.b, end, a.x, a.z);
+    } else crowd.stopFor(cast.a, end, s.id === "vendor" ? me.x : a.x + 1, s.id === "vendor" ? me.z : a.z);
+    const ida = cast.a, idb = cast.b;
+    this.scene = { script, said: 0, t: 0, end, cast: [() => crowd.head(ida), idb != null ? () => crowd.head(idb) : null], voice: [s.id === "vendor" ? "m" : va, vb] };
+  }
+
   /** A street car's driver says something (from their window). */
   private driverSays(s: Situation, ref: unknown) {
     const me = this.me, c = StreetLife.carOf(ref);
@@ -446,6 +496,7 @@ export class StreetLife {
     const now = performance.now();
     const crowd = this.h.crowd, traffic = this.h.traffic;
     this.voices.tick(dt);
+    this.tickScene(dt, me, now);
     {
       // A pedestrian I nearly ran down shouts after me; one I stroll past says hello.
       const sp = Math.hypot(me.vx, me.vz);

@@ -743,6 +743,16 @@ export class TrafficCars {
     return k ? massOf(FLEET[k]) : null;
   }
 
+  /** A car of this kind in the traffic, going slowly, between `min` and `max` m from (x, z) — where it is, live (a street scene's taxi). */
+  slowCar(kind: FleetKey, x: number, z: number, min: number, max: number): { readonly x: number; readonly z: number; id: number } | null {
+    for (const c of this.cars) {
+      if (c.kind !== kind || c.loose || c.parked || c.v > 5) continue;
+      const d = Math.hypot(c.x - x, c.z - z);
+      if (d >= min && d <= max) return c;
+    }
+    return null;
+  }
+
   /** What kind of car a footprint is, if it's one of these. */
   kindOf(ref: CarRef): FleetKey | null {
     return this.live(ref)?.kind ?? this.shown.find((s) => s === ref)?.key ?? null;

@@ -38,6 +38,8 @@ import { MODES, type ModeKey } from "@/lib/arena/modes";
 import { PartyHud } from "./PartyHud";
 import { PlayTogether } from "./PlayTogether";
 import { Markers, markersOf } from "./markers";
+import { CinemaBoards } from "./cinemaBoards";
+import type { Cinema } from "@/lib/cinema";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
 import { Others } from "./others";
@@ -653,6 +655,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       return signSpot(lines, widths, x, z) ?? { x, z, angle: 0 };
     };
     const markers = new Markers(scene, frame, lite ? 16 : 32, style, placeSign);
+    // Cinemas' billboards (what's on, from cinematicket.org): the list is read again after 3 km.
+    const cinemaBoards = new CinemaBoards(scene, frame, placeSign);
+    let cinemasAt: { x: number; z: number } | null = null;
+    const syncCinemas = () => {
+      if (cinemasAt && Math.hypot(st.x - cinemasAt.x, st.z - cinemasAt.z) < 3000) return;
+      cinemasAt = { x: st.x, z: st.z };
+      const at = frame.toLatLng(st.x, st.z);
+      void api<{ cinemas: Cinema[] }>(`/api/cinema?near=1&lat=${at.lat.toFixed(3)}&lng=${at.lng.toFixed(3)}`)
+        .then((r) => cinemaBoards.set(r.cinemas))
+        .catch(() => (cinemasAt = null));
+    };
 
     const jobsFrom = (w: World | null): Job[] => {
       const out: Job[] = [];
@@ -1198,7 +1211,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
+      const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...cinemaBoards.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
       const small = ray.intersectObjects(targets, false)[0];
       // A store's own building (nested meshes); whatever is nearer the camera wins.
       const big = ray.intersectObjects(landmarks.pickables(), true)[0];
@@ -1227,6 +1240,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       } else if (pick.kind === "loot") {
         const s = L.world?.money.find((x) => x.id === pick.id);
         if (s) setPicked({ emoji: "💵", title: s.drop?.label ?? t("{n} toman", { n: s.amount }), sub: t("Drive through it to pick it up"), lat: s.lat, lng: s.lng, sel: { type: "money", data: s } });
+      } else if (pick.kind === "cinema") {
+        const c = cinemaBoards.get(pick.id);
+        if (c) setPicked({ emoji: "🎬", title: c.name, sub: `${t("Cinema")} · ${formatDistance(distanceM(here, c))}`, lat: c.lat, lng: c.lng, sel: { type: "cinema", data: c } });
       } else if (pick.kind === "marker") {
         const m = markers.get(pick.id);
         if (m) setPicked({ emoji: m.emoji, title: m.label, sub: formatDistance(distanceM(here, m)), lat: m.lat, lng: m.lng, sel: m.sel });
@@ -1351,6 +1367,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       boardNight = 0.15 + night * 0.85;
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
       markers.setNight(boardNight);
+      cinemaBoards.setNight(night);
       dustMat.opacity = night > 0.6 ? 0.95 : 0.35;
       dustMat.color.set(night > 0.6 ? "#b8ff7a" : "#fff3b0");
       // Wet streets come and go over a few seconds; starting out in the rain they already are.
@@ -1614,7 +1631,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       dust.rotation.y = time * 0.03;
       // A match is on: the city's jobs, money and shop pins step aside.
       const matchOn = combat.inMatch;
-      markers.hidden = matchOn;
+      markers.hidden = cinemaBoards.hidden = matchOn;
       for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time);
       for (const l of loot.values()) if (matchOn) l.group.visible = false;
       for (const l of loot.values()) l.tick(time);
@@ -1688,6 +1705,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncShops());
         if (menuTab.current === "places") syncPlaces();
         markers.sync(st.x, st.z);
+        syncCinemas();
+        cinemaBoards.sync(st.x, st.z);
         // More of the city was drawn: items near us may now stand inside a building.
         for (const it of [...beacons.values(), ...loot.values()]) if (it.settledAt !== cityDrawn && Math.hypot(it.raw.x - st.x, it.raw.z - st.z) < 600) settle(it);
         // Signs right next to the camera would fill the screen: hide them up close.
@@ -1882,7 +1901,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -1940,6 +1959,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       others.dispose();
       landmarks.dispose();
       markers.dispose();
+      cinemaBoards.dispose();
       model.dispose();
       cockpit.dispose();
       mats.dispose();

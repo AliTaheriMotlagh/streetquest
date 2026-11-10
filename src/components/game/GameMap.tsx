@@ -9,6 +9,7 @@ import { distanceM } from "@/lib/geo";
 import { EXPLORE_ZOOM } from "@/lib/explore";
 import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
 import { VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor } from "@/lib/localData";
+import type { Cinema } from "@/lib/cinema";
 import type { LiveRoute } from "@/server/traffic";
 import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
 import { esc, icon } from "./mapIcons";
@@ -64,6 +65,8 @@ type Props = {
   divar?: DivarArea[];
   /** Torob's walk-in stores around (tap for the store's own catalog). */
   torob?: TorobPlace[];
+  /** Cinemas (cinematicket.org): a few per district, each always on the map with its name. */
+  cinemas?: Cinema[];
   /** Live traffic on the roads, coloured by speed. */
   traffic?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
@@ -90,7 +93,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, torob, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, torob, cinemas, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -145,7 +148,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {explore && <ExploreView jump={explore.jump} onCenter={explore.onCenter} />}
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -301,7 +304,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
  * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
+function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, cinemas, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
   const players = others ?? world?.players;
   const map = useMap();
   const view = useMapView();
@@ -402,6 +405,16 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, other
 
   return (
     <>
+      {/* Cinemas: few, so each stands on its own with its name (its card shows what's on). */}
+      {(cinemas ?? []).map((c) => (
+        <Marker
+          key={`ct${c.id}`}
+          position={[c.lat, c.lng]}
+          zIndexOffset={320}
+          icon={icon(`<span class="ring" style="color:#f5c518"></span>🎬${lod === "far" ? "" : `<span class="nm">${esc(c.name)}</span>`}`, "place cinema", 36)}
+          eventHandlers={{ click: () => onSelect({ type: "cinema", data: c }) }}
+        />
+      ))}
       {/* Money (green bills, then blue, purple, red for bigger money levels, gold for admin
           drops; the amount at street level) and store jobs (the burger delivery starts at the
           real burger joint). */}

@@ -16,6 +16,7 @@ import {
   clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
+import { cinemaUrl, showTime, tehranDay, type Cinema, type CinemaShows, type Film } from "@/lib/cinema";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
@@ -710,5 +711,81 @@ export function OwnerLinkFields({ v, set }: { v: Links; set: (k: keyof Links, va
       <label>📢 {t("Divar ad link")}<input className="input" dir="ltr" inputMode="url" maxLength={300} placeholder="https://divar.ir/v/…" value={v.divar} onChange={(e) => set("divar", e.target.value)} /></label>
       {bad("divar") && <p className="small warn-text">{t("Paste a link to your ad on divar.ir")}</p>}
     </fieldset>
+  );
+}
+
+// ---------------------------------------------------------------- cinemas
+/**
+ * A cinema (from cinematicket.org): what's on today and tomorrow — each film with its poster
+ * and its sessions (time, hall, price; VIP halls marked) — and where to buy the tickets.
+ */
+export function CinemaCard({ c, onClose }: { c: Cinema; onClose: () => void }) {
+  const { pos } = useGame();
+  const dist = pos ? distanceM(pos, c) : Infinity;
+  const [state, setState] = useState<{ data: CinemaShows | null; error: string | null }>({ data: null, error: null });
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    let live = true;
+    api<CinemaShows>(`/api/cinema?id=${c.id}`)
+      .then((data) => live && setState({ data, error: null }))
+      .catch((e) => live && setState({ data: null, error: (e as Error).message }));
+    return () => {
+      live = false;
+    };
+  }, [c.id, tries]);
+  const today = tehranDay(), tomorrow = tehranDay(new Date(Date.now() + 86_400_000));
+  const sub = [t("Cinema"), Number.isFinite(dist) ? formatDistance(dist) : "", c.rates ? `⭐ ${fmtNum(c.rate)}` : ""].filter(Boolean).join(" · ");
+  const dayTab = (day: string) => () => <FilmList films={state.data?.films ?? []} day={day} />;
+  return (
+    <Sheet title={`🎬 ${c.name}`} onClose={onClose} tall>
+      <StoreHead logo={c.photo} emoji="🎬" name={c.name} sub={sub} at={c} />
+      {c.address && <p className="small muted store-about" dir="auto">📍 {c.address}</p>}
+      <div className="store-actions">
+        <a className="btn small yellow ext-link" href={cinemaUrl(c.id)} target="_blank" rel="noopener noreferrer">🎟️ {t("Buy tickets on Cinematicket")}</a>
+        <GoButtons to={c} name={c.name} dist={dist} />
+      </div>
+      {state.error ? (
+        <div className="ext-error">
+          <p className="small warn-text">{state.error}</p>
+          <Button className="btn small cyan" onClick={() => (setState({ data: null, error: null }), setTries((n) => n + 1))}>🔄 {t("Try again")}</Button>
+        </div>
+      ) : state.data ? (
+        <StoreTabs
+          tabs={[
+            { key: "today", label: `🎬 ${t("Today")}`, body: dayTab(today) },
+            { key: "tomorrow", label: `📅 ${t("Tomorrow")}`, body: dayTab(tomorrow) },
+          ]}
+        />
+      ) : (
+        <p className="small muted ext-loading">⏳ {t("Looking up what's on…")}</p>
+      )}
+    </Sheet>
+  );
+}
+
+/** The films showing on a day (Tehran's), each with its sessions. */
+function FilmList({ films, day }: { films: Film[]; day: string }) {
+  const on = films.map((f) => ({ ...f, showings: f.showings.filter((s) => tehranDay(new Date(s.at)) === day) })).filter((f) => f.showings.length);
+  if (!on.length) return <p className="small muted">{t("No sessions on this day")}</p>;
+  return (
+    <div className="film-list">
+      {on.map((f) => (
+        <div key={f.id} className="film">
+          <Pic src={f.poster} className="film-poster" />
+          <div className="film-tx">
+            <b dir="auto">{f.name}</b>
+            <div className="film-times">
+              {f.showings.map((s, i) => (
+                <span key={i} className={`film-time ${s.vip ? "vip" : ""}`} title={s.hall}>
+                  <b>{showTime(s.at)}</b>
+                  <span>{s.hall}</span>
+                  {s.toman > 0 && <span>{t("{n} toman", { n: fmtNum(s.toman) })}</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

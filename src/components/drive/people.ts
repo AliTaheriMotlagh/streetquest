@@ -28,7 +28,8 @@ type Look = 0 | 1 | 2;
  * walk on · flying: thrown by a car or a blast · down: on the ground (dead, or getting up
  * when `t` runs out).
  */
-type Mode = "walk" | "flee" | "back" | "flying" | "down";
+/** `stop`: standing still, turned toward (fromX, fromZ) — talking to someone (a street scene) — then walking on. */
+type Mode = "walk" | "flee" | "back" | "flying" | "down" | "stop";
 type Walker = {
   id: number;
   look: Look;
@@ -482,7 +483,7 @@ export class Crowd {
   speaker(x: number, z: number, r: number, calm = false): { id: number; woman: boolean } | null {
     let best: Walker | null = null, bd = r;
     for (const w of this.walkers) {
-      if (w.dead || w.mode === "down" || w.mode === "flying" || (calm && w.mode !== "walk")) continue;
+      if (w.dead || w.mode === "down" || w.mode === "flying" || (calm && w.mode !== "walk" && w.mode !== "stop")) continue;
       if (Math.abs(w.x - x) > bd || Math.abs(w.z - z) > bd) continue;
       const d = Math.hypot(w.x - x, w.z - z);
       if (d < bd) (bd = d), (best = w);
@@ -494,6 +495,47 @@ export class Crowd {
   head(id: number) {
     const w = this.walkers.find((x) => x.id === id);
     return w && !w.dead ? { x: w.x, y: this.base + 1.75, z: w.z } : null;
+  }
+
+  /**
+   * Two people for a street scene `near` (x, z): one strolling between `min` and `max` m away,
+   * and (`two`) the nearest other stroller within 7 m of them. Null: nobody suitable.
+   */
+  cast(x: number, z: number, min: number, max: number, two: boolean): { a: number; b: number | null; woman: [boolean, boolean] } | null {
+    const free = this.walkers.filter((w) => !w.dead && w.mode === "walk");
+    const opts = free.filter((w) => {
+      const d = Math.hypot(w.x - x, w.z - z);
+      return d >= min && d <= max;
+    });
+    for (let tries = 0; tries < 6 && opts.length; tries++) {
+      const a = opts[Math.floor(this.rand() * opts.length)];
+      if (!two) return { a: a.id, b: null, woman: [a.look !== 0, false] };
+      let b: Walker | null = null, bd = 7;
+      for (const w of free) {
+        if (w === a) continue;
+        const d = Math.hypot(w.x - a.x, w.z - a.z);
+        if (d < bd) (bd = d), (b = w);
+      }
+      if (b) return { a: a.id, b: b.id, woman: [a.look !== 0, b.look !== 0] };
+    }
+    return null;
+  }
+
+  /** Person `id` stops for `secs` s, turned toward (x, z) (someone they're talking to); then walks on. */
+  stopFor(id: number, secs: number, x: number, z: number) {
+    const w = this.walkers.find((v) => v.id === id);
+    if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop")) return false;
+    w.mode = "stop";
+    w.t = secs;
+    w.fromX = x;
+    w.fromZ = z;
+    return true;
+  }
+
+  /** Person `id` runs off (a thief making a getaway): away from (x, z) for `secs` s. */
+  runFrom(id: number, x: number, z: number, secs: number) {
+    const w = this.walkers.find((v) => v.id === id);
+    if (w && !w.dead && w.mode !== "down" && w.mode !== "flying") this.flee(w, x, z, secs);
   }
 
   /** Where person `id` is (for the blood), or null. */
@@ -522,6 +564,7 @@ export class Crowd {
       else if (w.mode === "flee") this.run(w, dt);
       else if (w.mode === "back") this.goBack(w, dt);
       else if (w.mode === "flying") this.fly(w, dt);
+      else if (w.mode === "stop") this.hold(w, dt);
       else this.lie(w, dt);
     }
     this.assign();
@@ -532,6 +575,13 @@ export class Crowd {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
+  }
+
+  /** Standing, talking: turned toward the other one; walking on when it's over. */
+  private hold(w: Walker, dt: number) {
+    this.face(w, Math.atan2(-(w.fromX - w.x), -(w.fromZ - w.z)), dt, 5);
+    w.t -= dt;
+    if (w.t <= 0) w.mode = "walk";
   }
 
   private walk(w: Walker, dt: number) {
