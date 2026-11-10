@@ -21,7 +21,26 @@ const AT: Record<LightKind, { y: number; along: number }> = { lamp: { y: 6.3, al
 const REPICK_S = 0.25;
 const FADE_PER_S = 4;
 
-type Slot = { light: THREE.PointLight; id: string | null; kind: LightKind; k: number; want: number };
+type Slot = { light: THREE.PointLight; cone: THREE.Mesh; id: string | null; kind: LightKind; k: number; want: number };
+
+// The lamp's light made visible: a soft cone of lit air from the head down to the road,
+// brightest in the middle and fading at its edge and towards the ground.
+const CONE_H = 6.3;
+const CONE_VERT = /* glsl */ `varying vec3 vN; varying vec3 vV; varying float vH;
+void main() {
+  vH = (position.y + ${(CONE_H / 2).toFixed(2)}) / ${CONE_H.toFixed(2)};
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vN = normalize(normalMatrix * normal);
+  vV = mv.xyz;
+  gl_Position = projectionMatrix * mv;
+}`;
+const CONE_FRAG = /* glsl */ `uniform float uOpacity; uniform vec3 uColor; varying vec3 vN; varying vec3 vV; varying float vH;
+void main() {
+  float rim = pow(abs(dot(normalize(vN), normalize(-vV))), 1.7);
+  float a = uOpacity * rim * (0.12 + 0.88 * vH * vH);
+  gl_FragColor = vec4(uColor * a, a);
+}`;
+let coneGeo: THREE.BufferGeometry | null = null;
 
 export class NightLights {
   private slots: Slot[] = [];
@@ -50,7 +69,7 @@ export class NightLights {
    * Every frame. `collect` adds the candidates around `eye` (lamps from the tiles, cars from
    * the traffic); it is only asked on a repick.
    */
-  update(dt: number, night: number, eye: { x: number; z: number }, fwd: { x: number; z: number }, collect: (out: Candidate[]) => void) {
+  update(dt: number, night: number, eye: { x: number; z: number }, fwd: { x: number; z: number }, collect: (out: Candidate[]) => void, airK = 1) {
     const budget = lightBudget(this.max, night);
     if (budget.total <= 0 && !this.slots.some((s) => s.k > 0.02)) {
       if (this.slots.length) this.clear();
@@ -71,6 +90,13 @@ export class NightLights {
       if (c) this.place(s, c);
       // Never toggled `visible`: a light count that changes recompiles every material in the city.
       s.light.intensity = LOOK[s.kind].intensity * s.k * s.k;
+      // Lit air under a lamp: more of it in rain and haze (`airK`); only lamps have one.
+      const cone = s.kind === "lamp" && s.k > 0.02;
+      s.cone.visible = cone;
+      if (cone) {
+        (s.cone.material as THREE.ShaderMaterial).uniforms.uOpacity.value = 0.2 * s.k * airK;
+        s.cone.position.set(s.light.position.x, CONE_H / 2, s.light.position.z);
+      }
       if (s.k <= 0.01 && s.want === 0) s.id = null;
     }
   }
@@ -106,14 +132,21 @@ export class NightLights {
     light.castShadow = false;
     light.position.set(0, -50, 0);
     this.scene.add(light);
-    const s: Slot = { light, id: null, kind: "lamp", k: 0, want: 0 };
+    coneGeo ??= new THREE.ConeGeometry(3.6, CONE_H, 24, 1, true);
+    const mat = new THREE.ShaderMaterial({ vertexShader: CONE_VERT, fragmentShader: CONE_FRAG, uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color("#ffbf70") } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false });
+    const cone = new THREE.Mesh(coneGeo, mat);
+    cone.visible = false;
+    cone.frustumCulled = false;
+    cone.renderOrder = 4;
+    this.scene.add(cone);
+    const s: Slot = { light, cone, id: null, kind: "lamp", k: 0, want: 0 };
     this.slots.push(s);
     return s;
   }
 
   /** Take every light out of the scene (day, or fewer allowed). */
   clear() {
-    for (const s of this.slots) (this.scene.remove(s.light), s.light.dispose());
+    for (const s of this.slots) (this.scene.remove(s.light, s.cone), s.light.dispose(), (s.cone.material as THREE.Material).dispose());
     this.slots = [];
     this.lit.clear();
     this.cands.length = 0;

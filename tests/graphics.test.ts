@@ -58,7 +58,7 @@ describe("profiles", () => {
   it("only tiers with the HDR pipeline ask for MSAA targets, bloom or AO", () => {
     for (const t of TIERS) {
       const p = PROFILES[t];
-      if (!p.post) assert.ok(!p.bloom && !p.ao && !p.cinematic && !p.fxaa && p.msaa === 0, t);
+      if (!p.post) assert.ok(!p.bloom && !p.ao && !p.cinematic && !p.fxaa && !p.haze && p.ssr === 0 && p.msaa === 0, t);
       // The film look reads the scene's depth through the MSAA target; FXAA is for the pipeline without one.
       if (p.cinematic) assert.ok(p.msaa > 0, t);
       if (p.fxaa) assert.equal(p.msaa, 0, t);
@@ -92,6 +92,8 @@ describe("profiles", () => {
     assert.equal(effective("ultra", 3).nightLights, 4);
     assert.equal(effective("ultra", 4).nightLights, 0, "the pooled lights go with shadow detail, before shadows themselves");
     assert.equal(effective("ultra", 4).shadows, true);
+    assert.deepEqual([PROFILES.ultra.haze, PROFILES.high.haze, PROFILES.medium.haze, PROFILES.low.haze], [true, true, false, false]);
+    assert.deepEqual([effective("ultra", 1).haze, effective("ultra", 2).haze], [true, false], "stripped with the film look");
     assert.deepEqual([effective("ultra", 1).ssr, effective("ultra", 2).ssr, effective("high", 1).ssr], [1, 0, 1]);
     assert.equal(effective("ultra", 2).cinematic, false);
     assert.equal(effective("ultra", 2).bloom, true);

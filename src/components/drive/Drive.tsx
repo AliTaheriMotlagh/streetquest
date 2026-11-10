@@ -31,6 +31,7 @@ import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { setEars } from "../game/spatial";
 import { fovFor } from "@/lib/view";
 import { filmLook } from "@/lib/filmLook";
+import { airFor } from "@/lib/atmosphere";
 import { parseCube } from "@/lib/lut";
 import { setFullscreen } from "./fullscreen";
 import { NightLights } from "./nightLights";
@@ -1399,6 +1400,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       G.tint.setRGB(1 + 0.05 * warm - 0.05 * Math.max(0, night - 0.6), 1, 1 - 0.06 * warm + 0.07 * Math.max(0, night - 0.6));
       // The film look's share of the sky (lib/filmLook.ts; speed and camera are added each frame).
       G.sunDir.copy(skyDir);
+      const air = airFor({ night, overcast: W.overcast, rain: W.rain, sunHeight: skyDir.y });
+      G.hazeDensity = air.density;
+      G.hazeScatter = air.scatter;
+      G.heat = style === "toon" ? 0 : air.heat;
+      G.hazeColor.copy(fogColor);
+      // Dust motes catch the low sun: more of them drifting in its light.
+      if (night <= 0.6) dustMat.opacity = 0.35 + 0.4 * Math.min(1, air.scatter);
       G.sunColor.set(L.sun).multiplyScalar(0.8 + 0.5 * warm);
       skyOvercast = W.overcast;
     };
@@ -1588,7 +1596,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
       camera.getWorldDirection(camFwd);
       const lfl = Math.hypot(camFwd.x, camFwd.z) || 1;
-      nightLights.update(dt, style === "real" ? night : 0, st, { x: camFwd.x / lfl, z: camFwd.z / lfl }, collectLights);
+      nightLights.update(dt, style === "real" ? night : 0, st, { x: camFwd.x / lfl, z: camFwd.z / lfl }, collectLights, 1 + 1.4 * rainAmount + 0.5 * skyOvercast);
       model.cargo.visible = !!L.me?.activeRun;
 
       // -- camera (the soldier placed it already when on foot)

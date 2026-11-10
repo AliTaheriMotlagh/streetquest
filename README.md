@@ -139,6 +139,12 @@ mood scales XP; loot funds research; territory funds the army.
   like neon, as the lit windows and lamp heads do. The pool is built whole at dusk and its lights never leave the
   scene — three.js recompiles every material when the number of lights changes, which would stall the frame
   (`src/components/drive/nightLights.ts`).
+- **Atmosphere** (High and Ultra) — height fog computed from each pixel's depth: thicker near the ground, clear above
+  the rooftops, glowing towards the sun (haze in line with a low sun lights up), thicker in rain and cloud
+  (`src/lib/atmosphere.ts`, pure; `graphics/post.ts` draws it). At a hot, clear, dry midday the far tarmac shimmers with
+  heat. Under each lit street lamp at night a soft cone of lit air (more of it in rain), dust motes drift brighter in the
+  low sun's light, a car that slides or stands on its brakes smokes from both rear tyres (and squeals), and a hard crash
+  throws up a cloud of tan dust. Stripped by the adaptive controller together with the film look.
 - **Any screen shape** — the 3D city fills whatever screen it gets. Wide screens (landscape phones, 16:9, ultrawide)
   keep the camera's field of view and simply show more to the sides; a phone held upright used to see a 31° slit, so
   there the view opens up to what a 2:3 screen would show (`src/lib/view.ts`). Garage → **Wide view → Full screen**

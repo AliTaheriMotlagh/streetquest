@@ -38,6 +38,7 @@ export class StreetFx {
   private max: number;
   private tex = {
     grey: soft([[0, "rgba(170,170,170,.75)"], [0.55, "rgba(140,140,140,.35)"], [1, "rgba(120,120,120,0)"]]),
+    dust: soft([[0, "rgba(176,152,118,.7)"], [0.55, "rgba(160,138,108,.32)"], [1, "rgba(150,130,100,0)"]]),
     black: soft([[0, "rgba(28,26,24,.85)"], [0.55, "rgba(22,20,18,.45)"], [1, "rgba(20,20,20,0)"]]),
     fire: soft([[0, "rgba(255,250,210,1)"], [0.25, "rgba(255,180,60,.95)"], [0.6, "rgba(230,80,20,.55)"], [1, "rgba(80,20,10,0)"]], 96),
   };
@@ -98,7 +99,22 @@ export class StreetFx {
     }
     if (this.shards.instanceColor) this.shards.instanceColor.needsUpdate = true;
     // Dust and grit kicked up off the road.
-    for (let i = 0; i < 1 + Math.round(k * 2); i++) this.puff("grey", x + (Math.random() - 0.5) * 1.5, 0.3, z + (Math.random() - 0.5) * 1.5, 1 + k, 1.2, 1.2, 0.5, 0.35 * k);
+    this.dust(x, z, k);
+  }
+
+  /**
+   * Smoke off a car's tyres as it slides or brakes hard: white-grey, low, spreading and
+   * fading quickly. `k` 0…1 how much; `x, z` the wheel's place.
+   */
+  tyres(x: number, z: number, k: number) {
+    if (k < 0.05) return;
+    this.puff("grey", x + (Math.random() - 0.5) * 0.3, 0.22, z + (Math.random() - 0.5) * 0.3, 0.7 + k * 0.9, 0.9 + k * 1.1, 1.4 + k, 0.35 + k * 0.4, 0.45 + 0.5 * k);
+  }
+
+  /** A cloud of dust and grit where something hard hit: tan, big, slow to settle (`k` 0…1 how hard). */
+  dust(x: number, z: number, k: number) {
+    if (k < 0.1) return;
+    for (let i = 0; i < 2 + Math.round(k * 5); i++) this.puff("dust", x + (Math.random() - 0.5) * 2.4, 0.3 + Math.random() * 0.5, z + (Math.random() - 0.5) * 2.4, 1.2 + k * 1.6, 1.8 + k * 2.2, 0.9 + k * 0.6, 0.25 + Math.random() * 0.5, 0.35 + 0.35 * k);
   }
 
   private tickDebris(dt: number) {

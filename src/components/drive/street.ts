@@ -19,6 +19,7 @@ import { blastOnCar, blastOnPerson, bulletDamage, burnCar, crashDamage, dentDept
 import { calm, report, response, tickWanted, type Crime, type Witness } from "@/lib/street/wanted";
 import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { WEAPONS } from "@/lib/arena/weapons";
+import { tyreSmoke } from "@/lib/atmosphere";
 import { boomSound, carAlarmSound, crashSound, fireSound, hornSound, shotSound, Siren, skidSound, thudSound } from "../arena/gunsound";
 import { SampleLoop, warmSamples } from "../game/samples";
 import { SOUND_KEYS } from "@/lib/soundSlots";
@@ -85,6 +86,9 @@ export class StreetLife {
   /** Patrol cars, solid for my car. */
   readonly solid = new CollisionWorld();
   private siren = new Siren();
+  private lastSpeed = 0;
+  private smokeAcc = 0;
+  private skidAt = 0;
   /** Cars I hit or shot (and when): their explosions are my doing. */
   private byMe = new WeakMap<object, number>();
   private shotAt = 0;
@@ -502,6 +506,19 @@ export class StreetLife {
       const sp = Math.hypot(me.vx, me.vz);
       if (me.inCar && !me.flying && sp > 9) this.talk("nearMiss", me.x, me.z, 4.5);
       else if (me.onFoot && sp < 2.2 && Math.random() < dt * 0.4) this.talk("greet", me.x, me.z, 3.2, true);
+    }
+
+    // Tyre smoke (and the squeal) while I slide or stand on the brakes (lib/atmosphere.ts).
+    {
+      const sp = Math.hypot(me.vx, me.vz), f = forward(me.yaw);
+      const k = me.inCar && !me.flying && dt > 0 ? tyreSmoke(sp, me.vx * -f.fz + me.vz * f.fx, (this.lastSpeed - sp) / dt) : 0;
+      this.lastSpeed = sp;
+      this.smokeAcc += dt;
+      if (k > 0.05 && this.smokeAcc > 0.045) {
+        this.smokeAcc = 0;
+        for (const side of [-0.8, 0.8]) this.fx.tyres(me.x - f.fx * 1.4 - f.fz * side, me.z - f.fz * 1.4 + f.fx * side, k);
+        if (now - this.skidAt > 700) (this.skidAt = now), skidSound(k);
+      }
     }
 
     // People and the cars that hit them: mine (that's on me), traffic, the police.

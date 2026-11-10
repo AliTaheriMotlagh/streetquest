@@ -13,6 +13,8 @@
 //    car paint); for those a ray is marched along the reflection through the depth buffer and
 //    what it hits is laid over the surface. A ray that leaves the screen or passes behind
 //    something leaves the surface as drawn: reflecting the sky's environment map;
+//  - haze (`haze`): height fog from each pixel's depth — thicker near the ground, glowing
+//    towards the sun — and a heat shimmer over the far tarmac at a hot midday;
 //  - a dual-filter bloom chain;
 //  - one last pass that adds them up, sharpens, fringes the corners (chromatic aberration),
 //    adds a lens flare while the sun is in view, tone-maps (three.js's ACES, so it matches
@@ -58,6 +60,15 @@ export type Grade = {
   split: number;
   shadowTint: THREE.Color;
   highTint: THREE.Color;
+  // -- haze (profile.haze)
+  /** Haze density at the ground (per metre; lib/atmosphere.ts). */
+  hazeDensity: number;
+  /** How strongly the haze glows towards the sun. */
+  hazeScatter: number;
+  /** Heat shimmer, 0 = none. */
+  heat: number;
+  /** The haze's colour (the fog's, in the pipeline's light units). */
+  hazeColor: THREE.Color;
   /** A 3D colour lookup table over the finished picture (engine.setLut), and how much of it. */
   lut: THREE.Data3DTexture | null;
   lutMix: number;
@@ -66,6 +77,7 @@ export const defaultGrade = (): Grade => ({
   bloom: 0.08, threshold: 1.2, ao: 0.7, saturation: 1.06, contrast: 1.05, tint: new THREE.Color(1, 1, 1), lift: 0.0, vignette: 0.24, sharpen: 0.15,
   motionBlur: 0, sharpNear: 12, rays: 0, flare: 0, sunDir: new THREE.Vector3(0.3, 0.8, 0.5).normalize(), sunColor: new THREE.Color(1, 0.95, 0.85),
   aberration: 0, grain: 0, split: 0, shadowTint: new THREE.Color(0.86, 1.0, 1.06), highTint: new THREE.Color(1.07, 1.0, 0.9), lut: null, lutMix: 1,
+  hazeDensity: 0.0006, hazeScatter: 0, heat: 0, hazeColor: new THREE.Color(0.6, 0.65, 0.7),
 });
 
 const VERT = /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
@@ -363,6 +375,38 @@ void main() {
   gl_FragColor = vec4(s.rgb * (1.0 - r.a) + r.rgb, 1.0);
 }`;
 
+// Haze: for every pixel of something (not the sky) how much air lies between it and the
+// camera — exponential height fog integrated along the ray, so low streets thicken and the
+// sky above stays clear — and the sun's glow in it: haze in line with the sun lights up.
+// The shimmer bends the picture of far, low-lying things.
+const HAZE_FRAG = /* glsl */ `
+uniform sampler2D tScene; uniform highp sampler2D tDepth; uniform mat4 uInvProj; uniform mat4 uCamWorld;
+uniform vec3 uFogColor, uSunDir, uSunColor; uniform float uDensity, uScatter, uHeat, uTime, uCamY;
+varying vec2 vUv;
+void main() {
+  float d = texture2D(tDepth, vUv).r;
+  vec4 p = uInvProj * vec4(vec3(vUv, d) * 2.0 - 1.0, 1.0);
+  vec3 P = p.xyz / p.w;
+  float dist = length(P);
+  vec3 rd = mat3(uCamWorld) * (P / max(dist, 1e-4));
+  bool sky = d >= 0.99999;
+  vec2 uv = vUv;
+  if (uHeat > 0.0 && !sky) {
+    float low = smoothstep(0.22, 0.0, abs(rd.y)), far = smoothstep(70.0, 260.0, dist);
+    uv += vec2(sin(vUv.y * 240.0 + uTime * 3.1) + sin(vUv.x * 95.0 - uTime * 2.3), cos(vUv.y * 180.0 - uTime * 2.7)) * 0.0007 * uHeat * low * far;
+  }
+  vec3 c = texture2D(tScene, uv).rgb;
+  if (!sky) {
+    const float K = 0.014;
+    float dy = rd.y * dist;
+    float path = abs(dy * K) < 1e-3 ? 1.0 : (1.0 - exp(-K * dy)) / (K * dy);
+    float f = 1.0 - exp(-uDensity * exp(-K * uCamY) * path * dist);
+    float glow = pow(max(dot(rd, uSunDir), 0.0), 5.0);
+    c = mix(c, uFogColor, f * 0.55) + uSunColor * glow * f * uScatter;
+  }
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
 // FXAA (Lottes' fast approximate anti-aliasing, the short form): find the edge from the
 // corners' brightness and blend along it. Works on the finished, display-space frame.
 const FXAA_FRAG = /* glsl */ `
@@ -389,7 +433,7 @@ const pass = (frag: string, uniforms: Record<string, THREE.IUniform>, defines: R
 
 const BLOOM_MIPS = 5;
 
-export type PostOptions = { msaa: number; bloom: boolean; ao: boolean; cinematic: boolean; fxaa: boolean; bloomDiv: number; ssr: 0 | 1 | 2 };
+export type PostOptions = { msaa: number; bloom: boolean; ao: boolean; cinematic: boolean; fxaa: boolean; bloomDiv: number; ssr: 0 | 1 | 2; haze: boolean };
 
 /** Further than this (m) is sky to the sun shafts (the city ends in fog well before). */
 const SKY_Z = 1500;
@@ -417,6 +461,8 @@ export class PostPipeline {
   private motionMat = pass(MOTION_FRAG, { tScene: { value: null }, tDepth: { value: null }, uReproject: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uAmount: { value: 0 }, uNear: { value: 10 }, uSeed: { value: 0 } }, { SAMPLES: 8 });
   private rayMaskMat = pass(RAY_MASK_FRAG, { tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uSkyZ: { value: SKY_Z } });
   private rayBlurMat = pass(RAY_BLUR_FRAG, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uReach: { value: 0.5 } }, { SAMPLES: 14 });
+  private hazeMat = pass(HAZE_FRAG, { tScene: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uFogColor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3() }, uSunColor: { value: new THREE.Color() }, uDensity: { value: 0 }, uScatter: { value: 0 }, uHeat: { value: 0 }, uTime: { value: 0 }, uCamY: { value: 0 } });
+  private foggy: THREE.WebGLRenderTarget | null = null;
   private ssrMat = pass(SSR_FRAG, { tScene: { value: null }, tDepth: { value: null }, uProj: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uSeed: { value: 0 } }, { STEPS: 22 });
   private ssrMixMat = pass(SSR_MIX_FRAG, { tScene: { value: null }, tRefl: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private fxaaMat = pass(FXAA_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
@@ -453,7 +499,7 @@ export class PostPipeline {
 
   /** Needs the scene's depth as a texture? */
   private get depth() {
-    return this.opts.ao || this.opts.cinematic || this.opts.ssr > 0;
+    return this.opts.ao || this.opts.cinematic || this.opts.ssr > 0 || this.opts.haze;
   }
   private makeHdr(w: number, h: number) {
     const t = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: this.opts.msaa, depthBuffer: true, stencilBuffer: false });
@@ -491,13 +537,13 @@ export class PostPipeline {
   }
 
   private get aux() {
-    return [this.aoA, this.aoB, this.motion, this.rayA, this.rayB, this.ldr, this.refl, this.lit, ...this.down, ...this.up];
+    return [this.aoA, this.aoB, this.motion, this.rayA, this.rayB, this.ldr, this.refl, this.lit, this.foggy, ...this.down, ...this.up];
   }
   private resizeAux() {
     const { x: w, y: h } = this.size;
     if (!w || !h) return;
     for (const t of this.aux) t?.dispose();
-    this.aoA = this.aoB = this.motion = this.rayA = this.rayB = this.ldr = this.refl = this.lit = null;
+    this.aoA = this.aoB = this.motion = this.rayA = this.rayB = this.ldr = this.refl = this.lit = this.foggy = null;
     this.down = [];
     this.up = [];
     const o = this.opts;
@@ -511,6 +557,7 @@ export class PostPipeline {
       this.rayB = this.target(w >> 2, h >> 2, THREE.UnsignedByteType);
     }
     if (o.fxaa) this.ldr = this.target(w, h, THREE.UnsignedByteType);
+    if (o.haze) this.foggy = this.target(w, h);
     if (o.ssr) {
       const half = o.ssr === 1 ? 1 : 0;
       this.refl = this.target(w >> half, h >> half);
@@ -579,6 +626,25 @@ export class PostPipeline {
       m.uTexel.value.set(1 / this.refl.width, 1 / this.refl.height);
       this.draw(this.ssrMixMat, this.lit);
       sceneTex = this.lit.texture;
+    }
+
+    // -- haze: the air between me and everything
+    if (o.haze && depth && this.foggy) {
+      const u = this.hazeMat.uniforms;
+      u.tScene.value = sceneTex;
+      u.tDepth.value = depth;
+      u.uInvProj.value.copy(camera.projectionMatrixInverse);
+      u.uCamWorld.value.copy(camera.matrixWorld);
+      u.uFogColor.value.copy(g.hazeColor);
+      u.uSunDir.value.copy(g.sunDir);
+      u.uSunColor.value.copy(g.sunColor);
+      u.uDensity.value = g.hazeDensity;
+      u.uScatter.value = g.hazeScatter;
+      u.uHeat.value = g.heat;
+      u.uTime.value = (now / 1000) % 1000;
+      u.uCamY.value = camera.position.y;
+      this.draw(this.hazeMat, this.foggy);
+      sceneTex = this.foggy.texture;
     }
 
     // -- the film look: motion blur, then the sun's shafts
@@ -711,7 +777,7 @@ export class PostPipeline {
     this.hdr.depthTexture?.dispose();
     this.hdr.dispose();
     for (const t of this.aux) t?.dispose();
-    for (const m of [this.final, this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat, this.motionMat, this.rayMaskMat, this.rayBlurMat, this.fxaaMat, this.ssrMat, this.ssrMixMat]) m.dispose();
+    for (const m of [this.final, this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat, this.motionMat, this.rayMaskMat, this.rayBlurMat, this.fxaaMat, this.ssrMat, this.ssrMixMat, this.hazeMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }

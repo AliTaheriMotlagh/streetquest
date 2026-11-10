@@ -74,13 +74,13 @@ export class GraphicsEngine {
 
   private make(level: number) {
     const p = withCaps(effective(this.tier, level), readCaps());
-    if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false), (p.fxaa = false), (p.cinematic = false), (p.ssr = 0);
+    if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false), (p.fxaa = false), (p.cinematic = false), (p.ssr = 0), (p.haze = false);
     return p;
   }
 
   private postOpts() {
     const p = this.profile;
-    return { msaa: p.msaa, bloom: p.bloom, ao: p.ao, cinematic: p.cinematic, fxaa: p.fxaa, bloomDiv: p.bloomDiv, ssr: p.ssr };
+    return { msaa: p.msaa, bloom: p.bloom, ao: p.ao, cinematic: p.cinematic, fxaa: p.fxaa, bloomDiv: p.bloomDiv, ssr: p.ssr, haze: p.haze };
   }
 
   /** Effects or distances changed (adaptive level): re-apply shadows, detail range… */
