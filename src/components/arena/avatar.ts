@@ -38,6 +38,29 @@ export function loadSoldier(): Promise<Template> {
   return soldier;
 }
 
+const POLICE_URL = "/models/arena/police.glb";
+let police: Promise<Template> | null = null;
+
+/**
+ * The street's police officer: a real character on the soldier's skeleton (same clips and
+ * guns — assets/blender/police.py), else the soldier itself when that model isn't there.
+ */
+export function loadPolice(): Promise<Template> {
+  police ??= (async () => {
+    const draco = new DRACOLoader();
+    draco.setDecoderPath("/draco/");
+    draco.setWorkerLimit(1);
+    const l = new GLTFLoader();
+    l.setDRACOLoader(draco);
+    const g = await l.loadAsync(POLICE_URL);
+    return { scene: g.scene, clips: g.animations };
+  })().catch(() => {
+    police = null;
+    return loadSoldier();
+  });
+  return police;
+}
+
 /** The guns on their own (first-person view), each with its muzzle point. */
 export function loadWeapons() {
   weapons ??= loadModel(WEAPONS_URL)

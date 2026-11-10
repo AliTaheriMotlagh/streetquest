@@ -3,6 +3,11 @@
 #                                    animations: Idle Walk Run Back StrafeL StrafeR Crouch
 #                                    CrouchWalk Jump Death
 #   public/models/arena/weapons.glb  the same weapons on their own, for the first-person view
+#   public/models/arena/police.glb   the street's police officer: a real character mesh on the
+#                                    soldier's skeleton, same animations and guns (police.py;
+#                                    only when assets/models/character/police.glb is there)
+#
+#   ARENA_ONLY=police npm run assets:arena   rebuild police.glb alone (soldier/weapons untouched)
 #
 #   npm run assets:arena            (or: Blender -b -P assets/blender/arena.py -- [preview.png])
 #
@@ -21,11 +26,14 @@ from mathutils import Euler, Matrix, Quaternion, Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
 from guns import import_gun  # noqa: E402
+from police import build_police  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "public", "models", "arena")
 argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 PREVIEW = argv[0] if argv else None
+ONLY_POLICE = os.environ.get("ARENA_ONLY") == "police"
+POLICE_SRC = os.path.join(ROOT, "assets", "models", "character", "police.glb")
 FPS = 30
 
 # ---------------------------------------------------------------- scene
@@ -450,10 +458,11 @@ for c in loose.values():
     c.select_set(True)
     for ch in c.children:
         ch.select_set(True)
-bpy.ops.export_scene.gltf(
-    filepath=os.path.join(OUT, "weapons.glb"), export_format="GLB", use_selection=True, export_apply=True,
-    export_animations=False, export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
-)
+if not ONLY_POLICE:
+    bpy.ops.export_scene.gltf(
+        filepath=os.path.join(OUT, "weapons.glb"), export_format="GLB", use_selection=True, export_apply=True,
+        export_animations=False, export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
+    )
 for c in loose.values():
     for ch in list(c.children):
         bpy.data.objects.remove(ch)
@@ -609,17 +618,33 @@ bpy.ops.object.select_all(action="DESELECT")
 rig.select_set(True)
 for o in rig.children_recursive:
     o.select_set(True)
-bpy.ops.export_scene.gltf(
-    filepath=os.path.join(OUT, "soldier.glb"), export_format="GLB", use_selection=True, export_apply=False,
+EXPORT = dict(
+    export_format="GLB", use_selection=True, export_apply=False,
     export_animations=True, export_animation_mode="NLA_TRACKS", export_force_sampling=True, export_frame_step=2,
     export_optimize_animation_size=True, export_def_bones=False, export_rest_position_armature=True, export_anim_single_armature=True,
     export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
 )
+if not ONLY_POLICE:
+    bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "soldier.glb"), **EXPORT)
+    tris = sum(len(p.vertices) - 2 for p in body.data.polygons)
+    print(f"[arena] soldier body ~{tris} tris; actions: {[a.name for a in actions]}")
+    for f in ("soldier.glb", "weapons.glb"):
+        print(f"[arena] {f}: {os.path.getsize(os.path.join(OUT, f)) // 1024} KB")
 
-tris = sum(len(p.vertices) - 2 for p in body.data.polygons)
-print(f"[arena] soldier body ~{tris} tris; actions: {[a.name for a in actions]}")
-for f in ("soldier.glb", "weapons.glb"):
-    print(f"[arena] {f}: {os.path.getsize(os.path.join(OUT, f)) // 1024} KB")
+# ---------------------------------------------------------------- the police officer (same rig)
+police = None
+if os.path.exists(POLICE_SRC):
+    police = build_police(POLICE_SRC, rig, J, BONES, UPPER, FORE)
+    body.hide_render = True
+    bpy.ops.object.select_all(action="DESELECT")
+    rig.select_set(True)
+    for o in rig.children_recursive:
+        o.select_set(o != body)
+    bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "police.glb"), **EXPORT)
+    ptris = sum(len(p.vertices) - 2 for p in police.data.polygons)
+    print(f"[arena] police body ~{ptris} tris; police.glb: {os.path.getsize(os.path.join(OUT, 'police.glb')) // 1024} KB")
+else:
+    print("[arena] no assets/models/character/police.glb: police.glb not built (officers use the soldier)")
 
 # ---------------------------------------------------------------- optional preview render
 if PREVIEW:

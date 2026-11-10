@@ -16,3 +16,23 @@ it("sound slots: every one has a search hint and a length; ambience and sirens l
   }
   assert.ok(SOUND_SLOTS.siren.loop && SOUND_SLOTS.city.loop && SOUND_SLOTS.city.stereo);
 });
+
+it("sound credits: only well-formed entries with https links", async () => {
+  const { soundCredits } = await import("@/lib/soundSlots");
+  const ok = { title: "Crash", author: "qubodup", url: "https://opengameart.org/content/crash-collision", license: "CC0" };
+  assert.deepEqual(soundCredits({ credits: [ok, { title: "x" }, { ...ok, url: "javascript:alert(1)" }] }), [ok]);
+  assert.deepEqual(soundCredits({}), []);
+});
+
+it("the shipped sound list: every source is a licence the game can ship, every take a real slot", async () => {
+  const { readFileSync } = await import("node:fs");
+  const list = JSON.parse(readFileSync("assets/sound-sources.json", "utf8")) as { sources: Record<string, { license: string; page: string }>; takes: { slot: string; layers: { src: string }[] }[] };
+  for (const [id, s] of Object.entries(list.sources)) {
+    assert.match(s.license, /^(CC0|Public domain|CC BY [0-9.]+)$/, id);
+    assert.match(s.page, /^https:\/\//, id);
+  }
+  for (const t of list.takes) {
+    assert.ok((SOUND_KEYS as string[]).includes(t.slot), t.slot);
+    for (const l of t.layers) assert.ok(list.sources[l.src.split("/")[0]], l.src);
+  }
+});

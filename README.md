@@ -193,7 +193,9 @@ mood scales XP; loot funds research; territory funds the army.
     someone, pulling a driver out of their car, blowing a car up, ramming or shooting the police (one crime per
     victim, a burst of fire is one report). The police send patrol cars — Samands in Iran's police green with a
     white band down each side, a flashing red-blue light bar and a siren — up the streets with a clear run at you; from 2 ★ they ram your car, officers get out
-    (the rigged soldier in police colours) and shoot at you on foot, from 3 ★ at your car too. Out of every
+    (a real officer model — green uniform and cap — on the arena soldier's skeleton, so it has
+    every soldier animation: `assets/blender/police.py` fits a downloaded T-pose mesh to it, re-skins it and recolours
+    the uniform; `ARENA_ONLY=police npm run assets:arena` rebuilds `public/models/arena/police.glb`) and shoot at you on foot, from 3 ★ at your car too. Out of every
     officer's sight long enough (6 s + 4 s per star), they lose you; stopped beside an officer (on foot, or in a
     stopped car with one at the door), you're arrested. Their shots hurt only in the open city and apart from the
     referee's health (`Combat.streetHurt`): at zero you're knocked out and up again 5 s later.
@@ -423,7 +425,11 @@ Older smoke scripts (need the dev server running, ideally with `GAME_SPEED=600`)
 Torob and Divar. Iranian sites often refuse servers abroad (Snappfood answers Vercel with 403) — run the relay in Iran
 (*Deploy → Snappfood from abroad*) and point `SNAPPFOOD_URL` (or `TOROB_URL` / `DIVAR_URL`) at it, or host in Iran.
 
-**Recorded sounds:** every street sound is synthesized until you give it a recording. The slots
+**Recorded sounds:** the game ships recorded street sounds built from free sources (CC0, public domain and CC BY —
+listed with their authors in `assets/sound-sources.json` and on `/credits`): `npm run assets:sounds -- --fetch`
+downloads them and mixes each take (a crash is several hits layered: metal, crumple, glass; a honk is cut from a
+longer recording). Tyre skids have no free source yet and stay synthesized. To use your own recordings instead,
+read on — every street sound is synthesized until it has a recording. The slots
 (`src/lib/soundSlots.ts`): `siren` (looped), `crashLight`, `crashHeavy`, `glass`, `horn`, `explosion`, `fire` (looped),
 `skid`, `thud` and `city` (street ambience, stereo loop). Put recordings you're licensed to ship — e.g. downloaded with
 a [soundsnap.ir](https://soundsnap.ir) subscription (its free previews are watermarked; don't use those) — in

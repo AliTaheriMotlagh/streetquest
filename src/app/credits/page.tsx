@@ -5,6 +5,8 @@ import downloaded from "../../../assets/credits.json";
 import { PROP_MODELS } from "@/lib/propModels";
 import { PEOPLE_MODELS } from "@/lib/peopleModels";
 import { getT } from "@/server/i18n";
+import { soundCredits } from "@/lib/soundSlots";
+import soundManifest from "../../../public/sounds/manifest.json";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -21,7 +23,11 @@ export default async function Credits() {
   const weapons = (downloaded as Credit[]).filter((c) => c.kind === "weapon");
   // Only the street furniture and people the game actually ships (the builds' own lists).
   const props = PROP_MODELS.credits;
-  const people = PEOPLE_MODELS.flatMap((p) => (p.credit ? [p.credit] : []));
+  // The pavement's people, and the police officer (on the arena soldier's skeleton).
+  const people = [...PEOPLE_MODELS.flatMap((p) => (p.credit ? [p.credit] : [])), ...(downloaded as Credit[]).filter((c) => c.kind === "character" && c.file.endsWith("/police.glb"))];
+  // The street's recorded sounds (npm run assets:sounds lists them with the manifest).
+  const sounds = soundCredits(soundManifest);
+  const licenseUrl = (l: string) => (/^CC BY ([\d.]+)$/.test(l) ? `https://creativecommons.org/licenses/by/${l.slice(6)}/` : /^CC0/.test(l) ? "https://creativecommons.org/publicdomain/zero/1.0/" : "https://creativecommons.org/publicdomain/mark/1.0/");
   return (
     <main className="page" style={{ display: "grid", placeItems: "center", padding: 16 }}>
       <div className="modal" style={{ maxWidth: 560 }}>
@@ -99,6 +105,25 @@ export default async function Credits() {
                   — {c.author} ·{" "}
                   <a href={c.license === "CC0-1.0" ? "https://creativecommons.org/publicdomain/zero/1.0/" : "https://creativecommons.org/licenses/by/4.0/"} target="_blank" rel="noreferrer">
                     {c.license === "CC0-1.0" ? "CC0" : "CC BY 4.0"}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {sounds.length > 0 && (
+          <>
+            <h3>{t("Sound effects")}</h3>
+            <p className="muted" style={{ lineHeight: 1.6 }}>{t("Cut, layered and evened out for the game.")}</p>
+            <ul style={{ lineHeight: 1.8, paddingInlineStart: 18 }}>
+              {sounds.map((c) => (
+                <li key={c.url} dir="ltr" style={{ textAlign: "start" }}>
+                  <a href={c.url} target="_blank" rel="noreferrer">
+                    {c.title}
+                  </a>{" "}
+                  — {c.author} ·{" "}
+                  <a href={licenseUrl(c.license)} target="_blank" rel="noreferrer">
+                    {c.license}
                   </a>
                 </li>
               ))}

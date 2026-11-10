@@ -38,6 +38,8 @@ const pages: Record<string, string> = {
   "3D weapons": "سلاح‌های سه‌بعدی",
   "3D street furniture and trees": "درخت‌ها و وسایل سه‌بعدی خیابان",
   "3D people": "آدم‌های سه‌بعدی",
+  "Sound effects": "جلوه‌های صوتی",
+  "Cut, layered and evened out for the game.": "برای بازی بریده، ترکیب و هم‌صدا شده‌اند.",
   "Made lighter for phones, recoloured and given new names in the game.": "برای گوشی سبک‌تر شده‌اند، رنگشان عوض شده و در بازی اسم تازه گرفته‌اند.",
   "Made lighter for phones and recoloured for the game.": "برای گوشی سبک‌تر شدن و برای بازی دوباره رنگ خوردن.",
 };

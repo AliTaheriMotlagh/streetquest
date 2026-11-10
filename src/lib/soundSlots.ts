@@ -30,14 +30,23 @@ export const SOUND_SLOTS = {
   fire: { what: "A car burning: crackling flames, looping", search: "fire burning crackle loop", loop: true, maxS: 20 },
   skid: { what: "Tyres screeching", search: "tire skid screech", maxS: 3 },
   thud: { what: "Someone hit by a car: a body thud", search: "body hit thud impact", maxS: 1.5 },
-  city: { what: "City street ambience (traffic, distant horns, people)", search: "city traffic ambience street tehran", loop: true, maxS: 90, stereo: true },
+  city: { what: "City street ambience (traffic, distant horns, people)", search: "city traffic ambience street tehran", loop: true, maxS: 60, stereo: true },
 } satisfies Record<string, SoundSlot>;
 
 export type SoundKey = keyof typeof SOUND_SLOTS;
 export const SOUND_KEYS = Object.keys(SOUND_SLOTS) as SoundKey[];
 
-/** What public/sounds/manifest.json holds: each slot's files (published paths under /sounds/). */
-export type SoundManifest = Partial<Record<SoundKey, string[]>>;
+/** Who made a recording the game ships (CC BY ones must be named on /credits). */
+export type SoundCredit = { title: string; author: string; url: string; license: string };
+/** What public/sounds/manifest.json holds: each slot's files (published paths under /sounds/), and the credits. */
+export type SoundManifest = Partial<Record<SoundKey, string[]>> & { credits?: SoundCredit[] };
+
+/** The manifest's credits, if any (well-formed entries only). */
+export function soundCredits(raw: unknown): SoundCredit[] {
+  const c = (raw as { credits?: unknown } | null)?.credits;
+  if (!Array.isArray(c)) return [];
+  return c.filter((x): x is SoundCredit => !!x && typeof x === "object" && ["title", "author", "url", "license"].every((k) => typeof (x as Record<string, unknown>)[k] === "string") && /^https:\/\//.test((x as SoundCredit).url));
+}
 
 /** Which files of the manifest are real slots with files (anything else in it is ignored). */
 export function readManifest(raw: unknown): SoundManifest {

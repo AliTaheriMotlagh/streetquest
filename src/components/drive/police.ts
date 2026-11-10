@@ -7,8 +7,8 @@
 //    from two stars they ram you;
 //  - officers who get out when a car pulls up near you: they run at you to arrest you, and
 //    from two stars they shoot (at you on foot; from three, at your car too), with real
-//    misses — further and faster is harder to hit. They're the arena's rigged soldier in
-//    police colours, and as mortal as anyone;
+//    misses — further and faster is harder to hit. They're a real officer model (green
+//    uniform and cap) on the arena soldier's skeleton, and as mortal as anyone;
 //  - patrol cars are solid (their footprints' `ref` is the unit), take crash and bullet
 //    damage like any car, and burn and blow up the same way.
 // When the stars go out they drive off and vanish out of sight.
@@ -18,7 +18,7 @@ import { VEHICLES } from "@/lib/vehicles";
 import { burnCar, carLook, freshCar, hurtCar, type CarHealth } from "@/lib/street/damage";
 import { rayPlayer, type Ray } from "@/lib/arena/geom";
 import type { Response } from "@/lib/street/wanted";
-import { Avatar, loadSoldier } from "../arena/avatar";
+import { Avatar, loadPolice, loadSoldier } from "../arena/avatar";
 import { forward, stepGround, type Body, type CollisionWorld } from "./physics";
 import { box, type Footprint } from "./tileMesh";
 import type { FleetInstances } from "./fleet3d";
@@ -117,7 +117,8 @@ export class Police {
     this.bands.frustumCulled = false;
     this.bands.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.bands);
-    loadSoldier()
+    // The officer model (green uniform, cap; on the soldier's skeleton), else the soldier.
+    loadPolice()
       .then((t) => (this.soldier = t))
       .catch(() => {});
   }

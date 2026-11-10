@@ -1,0 +1,47 @@
+{
+  "_about": "Where every recorded sound comes from (npm run assets:sounds -- --fetch downloads them and builds each take; then the converter makes public/sounds). Only CC0, public-domain or CC BY sources; CC BY ones are credited on /credits. A take is one or more layers mixed: `at` ms after the start, `gain` dB, `from`/`len` s cut from the source, `rate` playback speed.",
+  "sources": {
+    "whelen": { "url": "https://upload.wikimedia.org/wikipedia/commons/b/b2/Whelen.ogg", "page": "https://commons.wikimedia.org/wiki/File:Whelen.ogg", "title": "Whelen siren", "author": "Heggyhomolit", "license": "CC0" },
+    "glass1": { "url": "https://upload.wikimedia.org/wikipedia/commons/a/af/Glass_breaking_%28Gravity_Sound%29.wav", "page": "https://commons.wikimedia.org/wiki/File:Glass_breaking_(Gravity_Sound).wav", "title": "Glass breaking", "author": "Gravity Sound", "license": "CC BY 4.0" },
+    "glass3": { "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Glass_breaking_3_%28Gravity_Sound%29.wav", "page": "https://commons.wikimedia.org/wiki/File:Glass_breaking_3_(Gravity_Sound).wav", "title": "Glass breaking 3", "author": "Gravity Sound", "license": "CC BY 4.0" },
+    "horn": { "url": "https://upload.wikimedia.org/wikipedia/commons/8/8c/Car_Horn.wav", "page": "https://commons.wikimedia.org/wiki/File:Car_Horn.wav", "title": "Car Horn", "author": "15HPanska_Ruttner_Jan", "license": "CC0" },
+    "boomA": { "url": "https://upload.wikimedia.org/wikipedia/commons/b/b9/Explosion-LS100155.ogg", "page": "https://commons.wikimedia.org/wiki/File:Explosion-LS100155.ogg", "title": "Explosion-LS100155", "author": "Fg2", "license": "Public domain" },
+    "boomB": { "url": "https://upload.wikimedia.org/wikipedia/commons/3/37/Explosion_10.ogg", "page": "https://commons.wikimedia.org/wiki/File:Explosion_10.ogg", "title": "Explosion 10", "author": "tcpp", "license": "Public domain" },
+    "fire": { "url": "https://upload.wikimedia.org/wikipedia/commons/d/d8/Dry_grass_burning_in_open_fireplace.ogg", "page": "https://commons.wikimedia.org/wiki/File:Dry_grass_burning_in_open_fireplace.ogg", "title": "Dry grass burning in open fireplace", "author": "ezwa", "license": "Public domain" },
+    "thud": { "url": "https://upload.wikimedia.org/wikipedia/commons/5/5b/Dull_thud.ogg", "page": "https://commons.wikimedia.org/wiki/File:Dull_thud.ogg", "title": "Dull thud", "author": "gregoryweir", "license": "Public domain" },
+    "street": { "url": "https://upload.wikimedia.org/wikipedia/commons/5/5d/Sunday_in_the_city_street_noise1.ogg", "page": "https://commons.wikimedia.org/wiki/File:Sunday_in_the_city_street_noise1.ogg", "title": "Sunday in the city street noise 1", "author": "cori", "license": "Public domain" },
+    "karlova": { "url": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Karlova_0001.ogg", "page": "https://commons.wikimedia.org/wiki/File:Karlova_0001.ogg", "title": "Karlova street", "author": "Juan de Vojníkov", "license": "Public domain" },
+    "crash": { "url": "https://opengameart.org/sites/default/files/qubodup-crash.ogg", "page": "https://opengameart.org/content/crash-collision", "title": "Crash Collision", "author": "qubodup", "license": "CC0" },
+    "bfh": { "url": "https://opengameart.org/sites/default/files/sfx_breaking_and_falling.zip", "page": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx", "title": "75 CC0 breaking / falling / hit sfx", "author": "rubberduck", "license": "CC0", "zip": true }
+  },
+  "takes": [
+    { "slot": "siren", "layers": [{ "src": "whelen" }] },
+
+    { "slot": "crashLight", "layers": [{ "src": "bfh/bfh1_hit_04.ogg" }, { "src": "bfh/bfh1_metal_hit_02.ogg", "at": 25, "gain": -4 }] },
+    { "slot": "crashLight", "layers": [{ "src": "bfh/bfh1_hit_06.ogg" }, { "src": "bfh/bfh1_metal_hit_04.ogg", "at": 15, "gain": -5 }, { "src": "bfh/bfh1_breaking_03.ogg", "at": 60, "gain": -8 }] },
+    { "slot": "crashLight", "layers": [{ "src": "bfh/bfh1_hit_12.ogg" }, { "src": "bfh/bfh1_metal_hit_06.ogg", "at": 30, "gain": -5 }] },
+
+    { "slot": "crashHeavy", "layers": [{ "src": "crash" }, { "src": "bfh/bfh1_breaking_01.ogg", "at": 20, "gain": -3 }, { "src": "bfh/bfh1_metal_falling_01.ogg", "at": 160, "gain": -4 }, { "src": "bfh/bfh1_glass_breaking_04.ogg", "at": 90, "gain": -6 }] },
+    { "slot": "crashHeavy", "layers": [{ "src": "bfh/bfh1_metal_hit_02.ogg" }, { "src": "bfh/bfh1_hit_01.ogg", "at": 10 }, { "src": "bfh/bfh1_breaking_02.ogg", "at": 50, "gain": -3 }, { "src": "bfh/bfh1_metal_falling_02.ogg", "at": 220, "gain": -5 }, { "src": "bfh/bfh1_glass_breaking_06.ogg", "at": 140, "gain": -7 }] },
+    { "slot": "crashHeavy", "layers": [{ "src": "crash", "rate": 0.85 }, { "src": "bfh/bfh1_metal_hit_03.ogg", "at": 30, "gain": -2 }, { "src": "bfh/bfh1_metal_falling_04.ogg", "at": 260, "gain": -6 }, { "src": "bfh/bfh1_rock_falling_02.ogg", "at": 320, "gain": -12 }] },
+
+    { "slot": "glass", "layers": [{ "src": "glass1" }] },
+    { "slot": "glass", "layers": [{ "src": "glass3" }] },
+    { "slot": "glass", "layers": [{ "src": "bfh/bfh1_glass_breaking_03.ogg" }, { "src": "bfh/bfh1_glass_falling_02.ogg", "at": 200, "gain": -6 }] },
+
+    { "slot": "horn", "layers": [{ "src": "horn", "from": 0.45, "len": 0.55 }] },
+    { "slot": "horn", "layers": [{ "src": "horn", "from": 1.95, "len": 0.65 }] },
+
+    { "slot": "explosion", "layers": [{ "src": "boomB" }, { "src": "boomA", "at": 0, "gain": -6, "rate": 0.8 }, { "src": "bfh/bfh1_metal_falling_01.ogg", "at": 700, "gain": -10 }, { "src": "bfh/bfh1_glass_falling_01.ogg", "at": 900, "gain": -12 }] },
+    { "slot": "explosion", "layers": [{ "src": "boomA" }, { "src": "boomB", "at": 40, "gain": -5, "rate": 0.75 }, { "src": "bfh/bfh1_rock_falling_01.ogg", "at": 800, "gain": -12 }] },
+
+    { "slot": "fire", "layers": [{ "src": "fire", "from": 2, "len": 18 }] },
+
+    { "slot": "thud", "layers": [{ "src": "thud" }] },
+    { "slot": "thud", "layers": [{ "src": "bfh/bfh1_hit_02.ogg", "rate": 0.8 }] },
+    { "slot": "thud", "layers": [{ "src": "bfh/bfh1_hit_07.ogg", "rate": 0.75 }, { "src": "thud", "at": 10, "gain": -4 }] },
+
+    { "slot": "city", "layers": [{ "src": "street", "from": 20, "len": 90 }] },
+    { "slot": "city", "layers": [{ "src": "karlova", "from": 30, "len": 90, "gain": -3 }] }
+  ]
+}

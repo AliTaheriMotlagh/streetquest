@@ -33,6 +33,17 @@
     "at": "2026-11-09"
   },
   {
+    "uid": "5fb800ec587046f68a5f281d50b57150",
+    "title": "Low Poly Police Officer",
+    "author": "GrandFor_0",
+    "url": "https://sketchfab.com/3d-models/low-poly-police-officer-5fb800ec587046f68a5f281d50b57150",
+    "license": "CC-BY-4.0",
+    "kind": "character",
+    "file": "assets/models/character/police.glb",
+    "faces": 10000,
+    "at": "2026-11-10"
+  },
+  {
     "uid": "e53ad46c604c44e59a98bad27041cb19",
     "title": "Wooden Park Bench",
     "author": "TheMadraver",

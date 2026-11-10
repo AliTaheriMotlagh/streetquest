@@ -1,1 +1,114 @@
-{}
+{
+  "siren": [
+    "siren-1.mp3"
+  ],
+  "crashLight": [
+    "crashLight-1.mp3",
+    "crashLight-2.mp3",
+    "crashLight-3.mp3"
+  ],
+  "crashHeavy": [
+    "crashHeavy-1.mp3",
+    "crashHeavy-2.mp3",
+    "crashHeavy-3.mp3"
+  ],
+  "glass": [
+    "glass-1.mp3",
+    "glass-2.mp3",
+    "glass-3.mp3"
+  ],
+  "horn": [
+    "horn-1.mp3",
+    "horn-2.mp3"
+  ],
+  "explosion": [
+    "explosion-1.mp3",
+    "explosion-2.mp3"
+  ],
+  "fire": [
+    "fire-1.mp3"
+  ],
+  "thud": [
+    "thud-1.mp3",
+    "thud-2.mp3",
+    "thud-3.mp3"
+  ],
+  "city": [
+    "city-1.mp3",
+    "city-2.mp3"
+  ],
+  "credits": [
+    {
+      "title": "Whelen siren",
+      "author": "Heggyhomolit",
+      "url": "https://commons.wikimedia.org/wiki/File:Whelen.ogg",
+      "license": "CC0"
+    },
+    {
+      "title": "75 CC0 breaking / falling / hit sfx",
+      "author": "rubberduck",
+      "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+      "license": "CC0"
+    },
+    {
+      "title": "Crash Collision",
+      "author": "qubodup",
+      "url": "https://opengameart.org/content/crash-collision",
+      "license": "CC0"
+    },
+    {
+      "title": "Glass breaking",
+      "author": "Gravity Sound",
+      "url": "https://commons.wikimedia.org/wiki/File:Glass_breaking_(Gravity_Sound).wav",
+      "license": "CC BY 4.0"
+    },
+    {
+      "title": "Glass breaking 3",
+      "author": "Gravity Sound",
+      "url": "https://commons.wikimedia.org/wiki/File:Glass_breaking_3_(Gravity_Sound).wav",
+      "license": "CC BY 4.0"
+    },
+    {
+      "title": "Car Horn",
+      "author": "15HPanska_Ruttner_Jan",
+      "url": "https://commons.wikimedia.org/wiki/File:Car_Horn.wav",
+      "license": "CC0"
+    },
+    {
+      "title": "Explosion 10",
+      "author": "tcpp",
+      "url": "https://commons.wikimedia.org/wiki/File:Explosion_10.ogg",
+      "license": "Public domain"
+    },
+    {
+      "title": "Explosion-LS100155",
+      "author": "Fg2",
+      "url": "https://commons.wikimedia.org/wiki/File:Explosion-LS100155.ogg",
+      "license": "Public domain"
+    },
+    {
+      "title": "Dry grass burning in open fireplace",
+      "author": "ezwa",
+      "url": "https://commons.wikimedia.org/wiki/File:Dry_grass_burning_in_open_fireplace.ogg",
+      "license": "Public domain"
+    },
+    {
+      "title": "Dull thud",
+      "author": "gregoryweir",
+      "url": "https://commons.wikimedia.org/wiki/File:Dull_thud.ogg",
+      "license": "Public domain"
+    },
+    {
+      "title": "Sunday in the city street noise 1",
+      "author": "cori",
+      "url": "https://commons.wikimedia.org/wiki/File:Sunday_in_the_city_street_noise1.ogg",
+      "license": "Public domain"
+    },
+    {
+      "title": "Karlova street",
+      "author": "Juan de Vojníkov",
+      "url": "https://commons.wikimedia.org/wiki/File:Karlova_0001.ogg",
+      "license": "Public domain"
+    }
+  ]
+}
