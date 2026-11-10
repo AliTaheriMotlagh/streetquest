@@ -9,6 +9,7 @@ import { demote, demoted, qualityPick, tierFor } from "./caps";
 import { defaultGrade, PostPipeline, type Grade } from "./post";
 import { Adaptive, effective, MAX_LEVEL, type Profile, type QualityPick, type Tier } from "./quality";
 import { acesInverse, DISPLAY } from "./shaders";
+import { sharpenFor } from "@/lib/view";
 
 export type GfxStats = { tier: Tier; pick: QualityPick; level: number; dpr: number; fps: number; frameMs: number; calls: number; triangles: number; textures: number; geometries: number; targetsMB: number; lost: boolean };
 
@@ -64,6 +65,7 @@ export class GraphicsEngine {
     r.shadowMap.type = p.tier === "medium" ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     r.info.autoReset = false;
     if (p.post) this.post = new PostPipeline(r, this.postOpts());
+    this.grade.sharpen = sharpenFor(this.adaptive.dpr, window.devicePixelRatio || 1);
     r.domElement.addEventListener("webglcontextlost", this.onLost);
     r.domElement.addEventListener("webglcontextrestored", this.onRestored);
     el.appendChild(r.domElement);
@@ -162,7 +164,7 @@ export class GraphicsEngine {
       this.fpsAt = now;
     }
     const ch = this.adaptive.sample(ms, now);
-    if (ch?.kind === "dpr") this.renderer.setPixelRatio(ch.dpr);
+    if (ch?.kind === "dpr") (this.renderer.setPixelRatio(ch.dpr), (this.grade.sharpen = sharpenFor(ch.dpr, window.devicePixelRatio || 1)));
     else if (ch?.kind === "level") {
       this.profile = this.make(ch.level);
       this.post?.configure(this.postOpts());

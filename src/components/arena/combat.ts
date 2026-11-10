@@ -27,6 +27,7 @@ import type { Others } from "../drive/others";
 import { makeSign } from "../drive/world3d";
 import { Avatar, loadSoldier } from "./avatar";
 import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
+import { fovFor } from "@/lib/view";
 import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
 import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
 import { Nades } from "./nades";
@@ -491,7 +492,7 @@ export class Combat {
     // The door, shut behind me, and the car locked (not a helicopter: nothing to lock).
     doorSound(true);
     setTimeout(() => doorSound(false), 520);
-    if (!v.flies) setTimeout(() => lockSound(1.5), 1300);
+    if (!v.flies) setTimeout(() => lockSound(), 1300);
   }
 
   /** Metres from me (on foot) to the middle of my parked car; Infinity without one. */
@@ -704,7 +705,7 @@ export class Combat {
     const dx = x - cam.position.x, dy = y + 0.2 - cam.position.y, dz = z - cam.position.z;
     const dist = Math.hypot(dx, dy, dz) || 0.01;
     if (k === "frag" || k === "c4") {
-      boomSound(dist * (k === "frag" ? 1.5 : 1));
+      boomSound({ x, y: y + 0.2, z }, k === "frag" ? 0.7 : 1);
       this.shake = Math.max(this.shake, Math.min(1, (k === "c4" ? 16 : 10) / (dist + 2)));
       if (dist < 15) navigator.vibrate?.(k === "c4" ? 160 : 90);
       // In the open city it throws people and cars about too.
@@ -716,10 +717,10 @@ export class Combat {
       const ray = { ox: cam.position.x, oy: cam.position.y, oz: cam.position.z, dx: dx / dist, dy: dy / dist, dz: dz / dist };
       const clear = H.collision.raycast(ray, dist) >= dist - 0.3 && !smokeBlocks(this.nades.smokes(), cam.position.x, cam.position.y, cam.position.z, x, y + 0.2, z);
       const s = this.dead ? 0 : flashSeconds(dist, facing, clear);
-      flashSound(dist, s);
+      flashSound({ x, y: y + 0.2, z }, s);
       if (s > 0) this.flashFx = { id: ++this.feedId, s, at: performance.now() };
-    } else if (k === "smoke") smokeSound(dist);
-    else if (k === "molotov") fireSound(dist, THROWABLES.molotov.lastsS);
+    } else if (k === "smoke") smokeSound({ x, y: y + 0.2, z });
+    else if (k === "molotov") fireSound({ x, y: y + 0.2, z }, THROWABLES.molotov.lastsS);
     this.publish(true);
   }
 
@@ -833,10 +834,7 @@ export class Combat {
     const len = Math.min(W.range, 60);
     this.vfx.flash(from.x, from.y, from.z);
     this.vfx.tracer(from.x, from.y, from.z, from.x + d.dx * len, from.y + d.dy * len, from.z + d.dz * len);
-    const cam = this.h.camera;
-    cam.getWorldDirection(camFwd);
-    const dx = from.x - cam.position.x, dz = from.z - cam.position.z, dist = Math.hypot(dx, dz) || 1;
-    shotSound(W.sound, dist, (dx * -camFwd.z + dz * camFwd.x) / dist);
+    shotSound(W.sound, from);
   }
 
   private pushFeed(killer: string, victim: string, w: string, head: boolean, mine: boolean, me: boolean) {
@@ -1049,11 +1047,7 @@ export class Combat {
         const ex = m.x + ux * end, ey = m.y + uy * end, ez = m.z + uz * end;
         this.vfx.tracer(from.x, from.y, from.z, ex, ey, ez);
         if (Number.isFinite(wall) || body) this.impact(ex, ey, ez, ux, uy, uz, body, W.key === "sniper", W.pellets > 1 ? 0.6 : 1);
-        const cam = H.camera;
-        cam.getWorldDirection(camFwd);
-        const dx = m.x - cam.position.x, dz = m.z - cam.position.z, d = Math.hypot(dx, dz) || 1;
-        const pan = (dx * -camFwd.z + dz * camFwd.x) / d;
-        shotSound(WEAPONS[m.w]?.sound ?? WEAPONS.rifle.sound, d, pan);
+        shotSound(WEAPONS[m.w]?.sound ?? WEAPONS.rifle.sound, from);
         break;
       }
       case "nade":
@@ -1102,7 +1096,7 @@ export class Combat {
         if (b?.state === "exploded" && this.lastBomb !== "exploded") {
           const p = H.frame.toXZ(b.lat, b.lng);
           this.vfx.explosion(p.x, 0, p.z);
-          boomSound(this.me ? Math.hypot(p.x - this.me.x, p.z - this.me.z) : 50);
+          boomSound({ x: p.x, y: 0.5, z: p.z });
         }
         this.lastBomb = b?.state ?? null;
         this.syncArena();
@@ -1421,7 +1415,7 @@ export class Combat {
     this.remotes.tick(dt, sNow, H.camera.position);
     this.vfx.tick(dt);
     this.decals.tick(dt);
-    this.nades.tick(dt, (x, z) => clinkSound(Math.hypot(x - H.camera.position.x, z - H.camera.position.z)));
+    this.nades.tick(dt, (x, z) => clinkSound({ x, y: 0.1, z }));
     this.shake *= Math.exp(-dt * 4);
     if (!me) this.nades.preview(null);
     this.hurt = this.hurt.filter((x) => now - x.at < 1200);
@@ -1563,7 +1557,7 @@ export class Combat {
     this.recoilP += kp * 0.55;
     me.yaw += (Math.random() - 0.5) * W.wobble * 2 * ads;
     this.vm.fire(W.kick);
-    shotSound(W.sound, 0, 0);
+    shotSound(W.sound);
     this.publish(true);
   }
 
@@ -1608,9 +1602,9 @@ export class Combat {
       this.camPos.copy(cam.position);
     } else {
       // Over the right shoulder; pulled in when aiming, orbiting the body when dead.
-      // A narrow (portrait) screen sees less to the sides: shoulder in, camera back a little.
+      // A narrow (portrait) screen sees less to the sides: shoulder in (the view itself opens up there — lib/view.ts).
       const narrow = Math.min(1, cam.aspect / 1.3);
-      const back = (this.down ? 5 : aiming ? 1.7 : 3) * (1 + (1 - narrow) * 0.35);
+      const back = (this.down ? 5 : aiming ? 1.7 : 3) * (1 + (1 - narrow) * 0.12);
       const side = (this.down ? 0 : aiming ? 0.72 : 0.7) * (0.35 + 0.65 * narrow);
       const rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
       const px = me.x, py = me.y + (me.crouch ? 1.2 : 1.6), pz = me.z;
@@ -1631,7 +1625,7 @@ export class Combat {
       cam.rotateY((Math.random() - 0.5) * k);
       cam.rotateZ((Math.random() - 0.5) * k * 0.6);
     }
-    const fov = aiming ? (fps ? W.adsFov : Math.max(40, W.adsFov + 12)) : fps ? 72 : 66;
+    const fov = fovFor(aiming ? (fps ? W.adsFov : Math.max(40, W.adsFov + 12)) : fps ? 72 : 66, cam.aspect);
     const near = fps ? 0.05 : 0.15;
     const f = cam.fov + (fov - cam.fov) * Math.min(1, dt * 14);
     if (Math.abs(cam.fov - f) > 0.01 || cam.near !== near) {

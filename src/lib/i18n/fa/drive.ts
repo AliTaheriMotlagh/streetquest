@@ -189,6 +189,10 @@ const drive: Record<string, string> = {
   "Cinema & culture": "سینما و فرهنگ",
   // Graphics: picture quality, time of day, weather
   "Picture quality": "کیفیت تصویر",
+  "Wide view": "نمای عریض",
+  "Full screen": "تمام‌صفحه",
+  "Leave full screen": "خروج از تمام‌صفحه",
+  "Turn the phone on its side for the wide view, like a console game — the city fills whatever shape the screen has.": "برای نمای عریض، مثل بازی‌های کنسول، گوشی را افقی بگیر — شهر هر شکل صفحه‌ای را پر می‌کند.",
   Ultra: "فوق‌العاده",
   High: "بالا",
   Low: "پایین",

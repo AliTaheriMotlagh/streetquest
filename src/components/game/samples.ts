@@ -5,14 +5,13 @@
 // same mute, same ducking). Until a slot's file is decoded — or when it has none — the
 // callers fall back to their Web Audio synth, so a missing file is never silence.
 import { readManifest, SOUND_SLOTS, type SoundKey, type SoundManifest } from "@/lib/soundSlots";
+import type { SoundKind, Vec } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "./sfx";
+import { Emitter, place } from "./spatial";
 
 let manifest: Promise<SoundManifest> | null = null;
 const decoded = new Map<SoundKey, AudioBuffer[]>();
 const loading = new Set<SoundKey>();
-let live = 0;
-/** Recorded one-shots at once (phones crackle past this). */
-const MAX_VOICES = 12;
 
 function getManifest() {
   // Asked again each visit (a cheap 304 when nothing changed): a list kept forever would
@@ -63,32 +62,28 @@ function take(key: SoundKey): AudioBuffer | null {
 }
 
 /**
- * Play a slot once: `vol` 0…1, `pan` −1…1, `rate` (pitch and speed; a little random
- * variation keeps repeats from sounding canned). False when it has no file (yet) — play
- * the synth instead.
+ * Play a slot once: `vol` 0…1 at the source, `at` where in the city (nothing: in the
+ * player's own hands) — distance, direction and the time it takes to arrive are
+ * spatial.ts's — `rate` (pitch and speed; a little random variation keeps repeats from
+ * sounding canned), `after` seconds from now. False when it has no file (yet) — play the
+ * synth instead.
  */
-export function playSample(key: SoundKey, o: { vol: number; pan?: number; rate?: number }): boolean {
+export function playSample(key: SoundKey, o: { vol: number; at?: Vec | null; kind?: SoundKind; rate?: number; after?: number }): boolean {
   const buf = take(key);
   if (!buf) return false;
-  const out = audioOut();
-  // Muted or asleep: "played" (the synth would be silent too).
-  if (!out || isMuted() || out.ctx.state !== "running" || o.vol < 0.005) return true;
-  if (live >= MAX_VOICES) return true;
-  const { ctx } = out;
-  const src = ctx.createBufferSource();
+  if (o.vol < 0.005) return true;
+  const rate = (o.rate ?? 1) * (0.94 + Math.random() * 0.12);
+  // Muted, asleep or out of earshot: "played" (the synth would be silent too).
+  const p = place(o.at, o.kind ?? "small", buf.duration / rate + (o.after ?? 0));
+  if (!p) return true;
+  const src = p.ctx.createBufferSource();
   src.buffer = buf;
-  src.playbackRate.value = (o.rate ?? 1) * (0.94 + Math.random() * 0.12);
-  const g = ctx.createGain();
+  src.playbackRate.value = rate;
+  const g = p.ctx.createGain();
   g.gain.value = Math.min(1, o.vol);
-  const p = ctx.createStereoPanner();
-  p.pan.value = Math.max(-1, Math.min(1, o.pan ?? 0));
-  src.connect(g).connect(p).connect(out.out);
-  live++;
-  src.onended = () => {
-    live--;
-    p.disconnect();
-  };
-  src.start();
+  src.connect(g).connect(p.dest);
+  src.onended = () => g.disconnect();
+  src.start(p.t + (o.after ?? 0));
   return true;
 }
 
@@ -97,18 +92,24 @@ export const hasSample = (key: SoundKey) => !!take(key);
 
 /**
  * A recorded loop (a siren, a fire, the city around you): `level(v)` every frame, 0 = off;
- * fades rather than clicks. `level` returns false while the slot has no file — keep the synth.
+ * fades rather than clicks. `level` returns false while the slot has no file — keep the
+ * synth. With a `kind` it has a place: pass where it is each frame (`level(v, at)`) and it
+ * is heard from there, its pitch bending as it comes and goes.
  */
 export class SampleLoop {
-  private node: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
-  constructor(private key: SoundKey, private max = 0.6) {}
-  level(v: number): boolean {
+  private node: { src: AudioBufferSourceNode; gain: GainNode; into: AudioNode } | null = null;
+  private emitter: Emitter | null;
+  constructor(private key: SoundKey, private max = 0.6, kind?: SoundKind) {
+    this.emitter = kind ? new Emitter(kind) : null;
+  }
+  level(v: number, at?: Vec | null): boolean {
     if (!this.node && v <= 0) return decoded.has(this.key);
     const buf = take(this.key);
     if (!buf) return false;
     const out = audioOut();
     if (!out) return true;
     const want = isMuted() ? 0 : Math.max(0, Math.min(1, v)) * this.max;
+    const e = this.emitter && at ? this.emitter.at(at, 1) : null;
     if (!this.node) {
       if (want <= 0) return true;
       const src = out.ctx.createBufferSource();
@@ -116,12 +117,15 @@ export class SampleLoop {
       src.loop = true;
       const gain = out.ctx.createGain();
       gain.gain.value = 0;
-      src.connect(gain).connect(out.out);
+      src.connect(gain).connect(e ? e.input : out.out);
       // Somewhere into the loop, so two of them don't start in step.
       src.start(0, Math.random() * buf.duration);
-      this.node = { src, gain };
+      this.node = { src, gain, into: e ? e.input : out.out };
     }
+    // The emitter rebuilt its place in the mix (the player changed the sound output): follow it.
+    if (e && e.input !== this.node.into) (this.node.gain.disconnect(), this.node.gain.connect(e.input), (this.node.into = e.input));
     this.node.gain.gain.setTargetAtTime(want, out.ctx.currentTime, 0.3);
+    if (e) this.node.src.playbackRate.setTargetAtTime(e.rate, out.ctx.currentTime, 0.15);
     return true;
   }
   stop() {
@@ -131,5 +135,6 @@ export class SampleLoop {
     } catch {}
     this.node.gain.disconnect();
     this.node = null;
+    this.emitter?.stop();
   }
 }

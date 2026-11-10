@@ -523,6 +523,16 @@ export class Police {
     return best;
   }
 
+  /** Where the nearest patrol car is (the siren is heard from there), null without one. */
+  nearestAt(x: number, z: number): { x: number; y: number; z: number } | null {
+    let best = Infinity, at: Unit | null = null;
+    for (const u of this.units) {
+      const d = Math.hypot(u.body.x - x, u.body.z - z);
+      if (!u.leaving && u.health.hp > 0 && d < best) (best = d), (at = u);
+    }
+    return at ? { x: at.body.x, y: 1.6, z: at.body.z } : null;
+  }
+
   private remove(u: Unit) {
     for (const o of u.officers) o.avatar?.dispose();
     this.units.splice(this.units.indexOf(u), 1);

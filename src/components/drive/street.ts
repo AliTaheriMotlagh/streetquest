@@ -172,7 +172,7 @@ export class StreetLife {
     if (h.felt > 2) {
       this.fx.sparks(h.x, 0.5, h.z, k);
       this.fx.debris(h.x, 0.6, h.z, k, h.nx, h.nz);
-      crashSound(k, Math.hypot(h.x - me.x, h.z - me.z));
+      crashSound(k, { x: h.x, y: 0.6, z: h.z });
       if (me.inCar) {
         this.h.shake(Math.min(0.8, 0.15 + k));
         navigator.vibrate?.(Math.round(20 + 80 * k));
@@ -423,7 +423,7 @@ export class StreetLife {
     }
     this.fx.sparks(c.x, 0.5, c.z, k);
     this.fx.debris(c.x, 0.6, c.z, k, -c.nx, -c.nz);
-    crashSound(k, 0);
+    crashSound(k);
     this.h.shake(Math.min(0.8, 0.15 + k));
     navigator.vibrate?.(Math.round(20 + 80 * k));
     if (c.into > 6) this.h.crowd.alarm(c.x, c.z, 15 + 25 * k);
@@ -440,7 +440,7 @@ export class StreetLife {
     if (!grenade) {
       this.fx.explosion(x, 0.6, z, car?.yaw, car?.paint);
       const cam = this.h.camera.position, d = Math.hypot(cam.x - x, cam.z - z);
-      boomSound(d);
+      boomSound({ x, y: 0.6, z });
       this.h.shake(Math.min(1, 14 / (d + 2)));
       if (d < 20) navigator.vibrate?.(120);
     }
@@ -514,7 +514,7 @@ export class StreetLife {
           (killed += r.killed), (hurt += r.hurt);
         }
         if (killed || hurt) {
-          thudSound(0);
+          thudSound();
           this.h.shake(0.25);
           this.crime(killed ? "killPerson" : "hitPerson", me.x, me.z);
         }
@@ -572,9 +572,9 @@ export class StreetLife {
     this.fx.smoke(smoking, dt);
     this.fx.tick(dt);
 
-    // The siren, louder the nearer the nearest patrol car.
-    const near = this.police.nearest(me.x, me.z);
-    this.siren.level(this.police.chasing.length ? Math.max(0, 1 - near / 220) : 0);
+    // The siren, heard from the nearest patrol car (how loud at that distance: lib/audio/spatial.ts).
+    const car = this.police.chasing.length ? this.police.nearestAt(me.x, me.z) : null;
+    this.siren.level(car ? 1 : 0, car);
     this.publish();
   }
 
@@ -608,24 +608,24 @@ export class StreetLife {
 
   private onTraffic(e: TrafficEvent, now: number) {
     const me = this.me!;
-    const d = Math.hypot(e.x - me.x, e.z - me.z);
+    const d = Math.hypot(e.x - me.x, e.z - me.z), at = { x: e.x, y: 0.8, z: e.z };
     if (e.kind === "honk") {
       if (now - this.honkAt > 300 && d < 70) {
         this.honkAt = now;
-        hornSound(d, 0.88 + ((e.x * 7.3 + e.z) % 1 + 1) % 1 * 0.25);
+        hornSound(at, 0.88 + ((e.x * 7.3 + e.z) % 1 + 1) % 1 * 0.25);
         // Close by, the driver leans out and says what they think of it.
         if (d < 22 && Math.random() < 0.35) this.driverSays("honk", e.ref);
       }
     } else if (e.kind === "fire") {
-      if (d < 60) fireSound(d, 1);
+      if (d < 60) fireSound(at, 1);
     } else if (e.kind === "alarm") {
       // One alarm at a time (a blast sets off a whole row).
-      if (d < 70 && now - this.alarmAt > 2500) (this.alarmAt = now), carAlarmSound(d);
+      if (d < 70 && now - this.alarmAt > 2500) (this.alarmAt = now), carAlarmSound(at);
     } else if (e.kind === "crash") {
       // Two street cars met: metal, glass, sparks; people near look round and run.
       const k = Math.min(1, ((e.into ?? 0) - 2) / 16);
-      if (d < 90) crashSound(k, d);
-      if (k > 0.3 && d < 60) setTimeout(() => skidSound(k, d), 80);
+      crashSound(k, at);
+      if (k > 0.3 && d < 60) skidSound(k, at, 0.08);
       this.fx.sparks(e.x, 0.5, e.z, k);
       this.fx.debris(e.x, 0.6, e.z, k);
       if (d < 25) this.h.shake(Math.min(0.4, k * 0.5 * (1 - d / 25)));
@@ -653,7 +653,7 @@ export class StreetLife {
       this.car.dent(e.x - e.nx * me.carR, 0.55, e.z - e.nz * me.carR, dentDepth(e.into) * 0.8);
       this.fx.sparks(e.x - e.nx * me.carR, 0.5, e.z - e.nz * me.carR, k);
       this.fx.debris(e.x - e.nx * me.carR, 0.6, e.z - e.nz * me.carR, k, e.nx, e.nz);
-      crashSound(k, 0);
+      crashSound(k);
       this.h.shake(Math.min(0.7, 0.15 + k));
       return;
     }
@@ -662,7 +662,7 @@ export class StreetLife {
     const d = Math.hypot(e.x - me.x, e.z - me.z);
     this.fx.vfx.tracer(m.x, m.y, m.z, e.tx, e.ty, e.tz);
     this.fx.vfx.flash(m.x, m.y, m.z);
-    shotSound(WEAPONS.pistol.sound, d, 0);
+    shotSound(WEAPONS.pistol.sound, m);
     if (!e.hit) return this.fx.vfx.impact(e.tx, Math.max(0.05, e.ty), e.tz, e.ty < 0.3 ? "ground" : "wall");
     if (e.onCar) {
       this.hurtMyCar(3.5);

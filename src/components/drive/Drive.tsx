@@ -28,6 +28,9 @@ import { Art } from "@/components/art/Art";
 import { api, type Selected, type World, type WorldPlayer } from "../game/client";
 import { useGame } from "../game/ui";
 import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
+import { setEars } from "../game/spatial";
+import { fovFor } from "@/lib/view";
+import { setFullscreen } from "./fullscreen";
 import { celebrate } from "../game/Play";
 import { isLite, isTouch } from "../perf";
 import { layCourse } from "./course";
@@ -311,6 +314,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(62, el.clientWidth / el.clientHeight, 0.5, 2400);
+    const earAt = new THREE.Vector3(), earFwd = new THREE.Vector3(), earUp = new THREE.Vector3();
     // Shared procedural detail (graphics/surfaces.ts) for the realistic sky's cloud layer.
     const skyNoise = style === "real" && prof.clouds ? surfaces(prof.anisotropy) : null;
     const sky = makeSkySystem(renderer, scene, style, { noise: skyNoise?.noise });
@@ -1600,8 +1604,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.position.z += (Math.random() - 0.5) * a;
       }
       shakeK *= Math.exp(-dt * 7);
-      const fov = (fp ? 70 : 62) + speedK * (fp ? 12 : 10), near = fp ? 0.06 : 0.5;
+      // Opened up on a phone held upright (lib/view.ts), so the next lane is on screen there too.
+      const fov = fovFor((fp ? 70 : 62) + speedK * (fp ? 12 : 10), camera.aspect), near = fp ? 0.06 : 0.5;
       if (!onFoot && (Math.abs(camera.fov - fov) > 0.1 || camera.near !== near)) (camera.fov = fov), (camera.near = near), camera.updateProjectionMatrix();
+      // -- ears (game/spatial.ts): distance is measured from me, direction from where the camera looks
+      camera.getWorldDirection(earFwd);
+      earUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      setEars(earAt.set(st.x, onFoot || fp ? camera.position.y : st.alt + 1.4, st.z), earFwd, earUp);
 
       // -- lights & sky follow the vehicle
       if (now - lastSky > 15_000 || live.current.timeOfDay !== skyPick || live.current.weather !== skyWeather) {
@@ -2010,6 +2019,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     setStyle(s);
     store.set(STYLE_KEY, s);
   };
+  // Full screen (the garage's wide view) is the 3D city's: back on the map, the phone is upright again.
+  useEffect(() => () => void setFullscreen(false), []);
   const pickQuality = (q: QualityPick) => {
     // Choosing "auto" again forgets what it learned on a bad day (it starts from the hardware).
     if (q === "auto") forgetDemotion();

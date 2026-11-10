@@ -14,6 +14,7 @@ only the section you need.
 | Driving mode, items in 3D | `src/components/drive/Drive.tsx` (beacons, loot, `settle()`), `markers.ts`, `pins.ts` |
 | Street Arena | `src/lib/arena/{weapons,modes,medals,protocol}.ts`, `src/components/arena/*`, `realtime/*`; without the realtime server matches are relayed: `src/lib/arena/relay.ts` (pure), `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts`, `/api/arena` |
 | Street life: crashes, car damage, people reacting, wanted level, police | `src/components/drive/{street,police,streetFx,carDamage,people,peopleModels}.ts`, `StreetHud.tsx`; pure rules `src/lib/street/{damage,wanted}.ts`; people models `scripts/people.ts` → `src/lib/peopleModels.ts` |
+| 3D sound (distance, direction, output modes) / screen shape (FOV, sharpening, full screen) | `src/lib/audio/spatial.ts` (pure rules), `src/components/game/{spatial,sfx,samples}.ts`, `src/components/arena/gunsound.ts` (sounds take a world position `at`) / `src/lib/view.ts`, `src/components/drive/fullscreen.ts` |
 | Small-phone HUD sizes | `src/app/compact.css` (loaded last) |
 | Play together (party + games tab in the 3D city) | `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts` (parties, gather, invites), `/api/party` |
 | Who's online / presence | `src/server/presence.ts`, `src/app/api/online/route.ts`, `src/components/game/Online.tsx` |

@@ -1,4 +1,5 @@
 "use client";
+import { panningFor, readOutput, type AudioOutput, type Panning } from "@/lib/audio/spatial";
 // Game sound effects, synthesized with the Web Audio API: no audio files to host,
 // license or download. Browsers only allow audio after a user gesture, so the context
 // is unlocked on the first tap. Mute is remembered per device.
@@ -14,6 +15,9 @@
 //  - repeated sounds (shots, hits, taps) vary pitch and level a little on every play,
 //    so a burst doesn't sound like a machine gun of identical samples
 //  - big moments (explosions, level up, win/lose, incoming call) duck the music under them
+//  - sounds with a place in the 3D city go through spatial.ts (distance, air, direction)
+//    into the same chain; where they come out is the player's choice (Settings → Sound):
+//    headphones (3D, HRTF), speakers (stereo), or 5.1 when the audio device has six channels
 //
 // Android, where most players are:
 //  - audio may only start inside a real user activation — for touch that's the finger
@@ -32,6 +36,7 @@ export type Sfx =
   | "levelup" | "error" | "beep" | "go" | "cut" | "reload" | "capture" | "alarm" | "whoosh" | "win" | "lose" | "photo" | "ring";
 
 const KEY = "sq_muted";
+const OUT_KEY = "sq_audio_out";
 /** Asleep after this long without a sound (when nothing holds audio awake). */
 const IDLE_MS = 20_000;
 let ctx: AudioContext | null = null;
@@ -40,6 +45,10 @@ const awake = new Set<string>();
 let sfxBus: GainNode | null = null; // dry sfx
 let verb: GainNode | null = null; // send into the room reverb
 let musicBus: GainNode | null = null; // background music (ducked under big sounds)
+let master: AudioNode | null = null; // the end of the stereo chain
+let rearBus: GainNode | null = null; // 5.1: what's behind the player
+let matrix: AudioNode[] = []; // 5.1: the nodes that spread the mix over six channels
+let output: AudioOutput = "auto";
 let white: AudioBuffer | null = null;
 let pink: AudioBuffer | null = null;
 let brown: AudioBuffer | null = null;
@@ -49,6 +58,7 @@ const listeners = new Set<(m: boolean) => void>();
 if (typeof window !== "undefined") {
   try {
     muted = localStorage.getItem(KEY) === "1";
+    output = readOutput(localStorage.getItem(OUT_KEY));
   } catch {}
   // The events that count as a user activation (pointerdown only does for a mouse).
   const unlock = () => {
@@ -177,7 +187,11 @@ function build(a: BaseAudioContext, cheap: boolean) {
     glue.release.value = 0.18;
     const ceiling = a.createGain();
     ceiling.gain.value = 0.9;
-    mix.connect(hp).connect(glue).connect(softClip(a, cheap)).connect(ceiling).connect(a.destination);
+    mix.connect(hp).connect(glue).connect(softClip(a, cheap)).connect(ceiling);
+    master = ceiling;
+    rearBus = a.createGain();
+    rearBus.gain.value = 0.8;
+    wire(a);
 
     sfxBus = a.createGain();
     sfxBus.gain.value = 0.7;
@@ -217,6 +231,71 @@ function build(a: BaseAudioContext, cheap: boolean) {
   }
 }
 
+/**
+ * The last hop to the device. Stereo: straight out. 5.1 (L R C LFE SL SR): the stereo mix
+ * is the front pair, its lows also feed the subwoofer, and what's behind the player
+ * (spatial.ts sends it to `rearBus`) comes out of the rear pair through its own limiter.
+ * The centre stays free — a phantom centre between L and R is what the mix was made for.
+ */
+function wire(a: BaseAudioContext) {
+  if (!master || !rearBus) return;
+  const dest = a.destination;
+  master.disconnect();
+  rearBus.disconnect();
+  matrix.forEach((n) => n.disconnect());
+  matrix = [];
+  try {
+    if (panning() === "surround") {
+      dest.channelCount = 6;
+      dest.channelCountMode = "explicit";
+      dest.channelInterpretation = "discrete";
+      const merge = a.createChannelMerger(6), front = a.createChannelSplitter(2), rear = a.createChannelSplitter(2);
+      const sub = a.createBiquadFilter(), subGain = a.createGain(), limit = a.createDynamicsCompressor();
+      master.connect(front);
+      front.connect(merge, 0, 0);
+      front.connect(merge, 1, 1);
+      sub.type = "lowpass";
+      sub.frequency.value = 110;
+      subGain.gain.value = 0.9;
+      master.connect(sub).connect(subGain).connect(merge, 0, 3);
+      limit.threshold.value = -14;
+      limit.ratio.value = 6;
+      limit.attack.value = 0.004;
+      limit.release.value = 0.18;
+      rearBus.connect(limit).connect(rear);
+      rear.connect(merge, 0, 4);
+      rear.connect(merge, 1, 5);
+      merge.connect(dest);
+      matrix = [merge, front, rear, sub, subGain, limit];
+      return;
+    }
+    if (dest.channelCount !== 2) {
+      dest.channelCount = 2;
+      dest.channelInterpretation = "speakers";
+    }
+  } catch {}
+  master.connect(dest);
+}
+
+/** Android, or a phone the game already runs lite: the cheap mix, and no HRTF unless asked. */
+export const isWeakAudio = () => weakAudio();
+/** The player's choice of output (Settings → Sound). */
+export const audioOutput = () => output;
+/** Has the audio device the six channels 5.1 needs? (False until audio has started.) */
+export const surroundAvailable = () => (ctx?.destination.maxChannelCount ?? 2) >= 6;
+/** How positioned sounds are panned right now (lib/audio/spatial.ts). */
+export const panning = (): Panning => panningFor(output, { weak: weakAudio(), channels: ctx?.destination.maxChannelCount ?? 2 });
+export function setAudioOutput(v: AudioOutput) {
+  output = v;
+  try {
+    localStorage.setItem(OUT_KEY, v);
+  } catch {}
+  if (ctx) wire(ctx);
+  listeners.forEach((l) => l(muted));
+}
+/** The audio context if it exists — without waking it (audioOut does). */
+export const audioPeek = () => ctx;
+
 export const isMuted = () => muted;
 /**
  * Shared audio graph for sounds made outside this file — music, guns, the drive engine and
@@ -228,7 +307,7 @@ export function audioOut() {
   if (!a || !musicBus) return null;
   lastSound = performance.now();
   if (a.state === "suspended" && !document.hidden && (!muted || awake.size)) void a.resume().catch(() => {});
-  return { ctx: a, out: musicBus as AudioNode };
+  return { ctx: a, out: musicBus as AudioNode, verb: verb as AudioNode, rear: rearBus as AudioNode };
 }
 export function setMuted(m: boolean) {
   muted = m;
@@ -634,13 +713,13 @@ const stats = { played: 0, dropped: 0 };
  */
 async function renderTest(name: Sfx, cheap: boolean) {
   const off = new OfflineAudioContext(2, 48000 * 3, 48000);
-  const saved = { ctx, sfxBus, verb, musicBus, white, pink, brown };
+  const saved = { ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix };
   ctx = off as unknown as AudioContext;
   build(off, cheap);
   try {
     SOUNDS[name]();
   } finally {
-    ({ ctx, sfxBus, verb, musicBus, white, pink, brown } = saved);
+    ({ ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix } = saved);
   }
   const buf = await off.startRendering();
   let peak = 0, tail = 0, bad = 0;
@@ -655,8 +734,32 @@ async function renderTest(name: Sfx, cheap: boolean) {
   }
   return { peak, tail, bad };
 }
+/**
+ * Tests only: the 5.1 wiring, offline. A 1 kHz tone in the front mix, a 60 Hz rumble with
+ * it, and a 500 Hz tone behind the player — the level each of the six channels ends up with.
+ */
+async function renderSurround() {
+  const off = new OfflineAudioContext(6, 24000, 48000);
+  const saved = { ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix, output };
+  ctx = off as unknown as AudioContext;
+  output = "surround";
+  try {
+    build(off, false);
+    for (const [hz, to] of [[1000, musicBus!], [60, musicBus!], [500, rearBus!]] as const) {
+      const o = off.createOscillator(), g = off.createGain();
+      o.frequency.value = hz;
+      g.gain.value = 0.3;
+      o.connect(g).connect(to);
+      o.start();
+    }
+  } finally {
+    ({ ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix, output } = saved);
+  }
+  const buf = await off.startRendering();
+  return Array.from({ length: buf.numberOfChannels }, (_, ch) => Math.sqrt(buf.getChannelData(ch).reduce((s, v) => s + v * v, 0) / buf.length));
+}
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production")
-  (window as unknown as { __sfx?: unknown }).__sfx = { stats, state: () => ctx?.state ?? "none", latency: () => ctx?.baseLatency ?? null, render: renderTest, names: () => Object.keys(SOUNDS), awake: () => [...awake], cheap: weakAudio, play: sfx,
+  (window as unknown as { __sfx?: unknown }).__sfx = { stats, renderSurround, state: () => ctx?.state ?? "none", latency: () => ctx?.baseLatency ?? null, render: renderTest, names: () => Object.keys(SOUNDS), awake: () => [...awake], cheap: weakAudio, play: sfx,
     /** Hold audio locked (as before the first tap on a phone) until the returned release is called. */
     lock: async () => {
       const a = ctx!, real = a.resume.bind(a);

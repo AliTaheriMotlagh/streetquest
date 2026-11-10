@@ -1,7 +1,7 @@
 "use client";
 // People in the open city talking (the lines: lib/street/barks.ts): a short line from the
 // person it's about — the pedestrian you nearly hit, the driver whose car you shunted, the
-// officer at the megaphone — heard from where they are (quieter further off, panned) with a
+// officer at the megaphone — heard from where they are (game/spatial.ts) with a
 // speech bubble over their head that follows them (in Persian, or the English subtitle).
 //  - The voice is, first, the recorded line (npm run assets:voices → /sounds/voice/, fetched
 //    and decoded once in the background); else the server's spoken copy (/api/tts — Azure's
@@ -13,7 +13,9 @@
 import * as THREE from "three";
 import { barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, textOf, type Bark, type Situation, type VoiceKind } from "@/lib/street/barks";
 import { getLocale } from "@/lib/i18n";
+import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
+import { place } from "../game/spatial";
 
 type Where = () => { x: number; y: number; z: number } | null;
 type Bubble = { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; tex: THREE.CanvasTexture; c: HTMLCanvasElement; where: Where | null; t: number };
@@ -138,18 +140,15 @@ export class Voices {
   }
 
   /** Into the game's audio: quieter further off, panned to where it is; the police through a megaphone. */
-  private play(buf: AudioBuffer, vol: number, at: { x: number; z: number }, me: { x: number; z: number; yaw?: number }, megaphone: boolean) {
-    const o = audioOut();
-    if (!o || o.ctx.state !== "running" || isMuted()) return;
+  private play(buf: AudioBuffer, at: { x: number; z: number }, megaphone: boolean) {
+    // Heard from where they stand (game/spatial.ts): how loud, from which side, how muffled.
+    const o = place({ x: at.x, y: 1.6, z: at.z }, "voice", buf.duration + 0.2);
+    if (!o) return;
     const src = o.ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = 0.97 + Math.random() * 0.06;
     const g = o.ctx.createGain();
-    g.gain.value = Math.min(1, vol * 1.1);
-    const p = o.ctx.createStereoPanner();
-    // Left or right of where I'm facing (forward is −z turned by yaw).
-    const yaw = me.yaw ?? 0, dx = at.x - me.x, dz = at.z - me.z, l = Math.hypot(dx, dz) || 1;
-    p.pan.value = Math.max(-0.8, Math.min(0.8, ((dx * Math.cos(yaw) - dz * Math.sin(yaw)) / l) * 0.8));
+    g.gain.value = 0.85;
     let head: AudioNode = src;
     if (megaphone) {
       // A horn speaker's narrow band, driven a little hard.
@@ -162,27 +161,28 @@ export class Voices {
       for (let i = 0; i < 256; i++) curve[i] = Math.tanh(((i / 255) * 2 - 1) * 2.2);
       drive.curve = curve;
       head = head.connect(band).connect(drive);
-      g.gain.value = Math.min(1, vol * 1.6);
+      g.gain.value = 1;
     }
-    head.connect(g).connect(p).connect(o.out);
-    src.onended = () => p.disconnect();
-    src.start();
+    head.connect(g).connect(o.dest);
+    src.onended = () => g.disconnect();
+    src.start(o.t);
   }
 
   private speak(b: Bark, v: VoiceKind, d: number, at: { x: number; z: number }, me: { x: number; z: number; yaw?: number }) {
     if (isMuted()) return;
-    const vol = 1 / (1 + d / 12);
+    // The phone's own speech has no place in the mix: just its volume at that distance.
+    const vol = gainAt(d, "voice");
     const buf = bufs.get(barkFile(b, v));
     // A recording (already filtered for the police).
-    if (buf) return this.play(buf, vol, at, me, false);
+    if (buf) return this.play(buf, at, false);
     // The server's spoken copy: now if it's here, else as soon as it arrives (if that's soon).
     const spoken = ttsLine(b, v);
-    if (spoken instanceof AudioBuffer) return this.play(spoken, vol, at, me, v === "cop");
+    if (spoken instanceof AudioBuffer) return this.play(spoken, at, v === "cop");
     if (spoken) {
       const asked = performance.now();
       void spoken.then((s) => {
         if (s) {
-          if (performance.now() - asked < 2500) this.play(s, vol, at, me, v === "cop");
+          if (performance.now() - asked < 2500) this.play(s, at, v === "cop");
         } else this.device(b, v, vol);
       });
       return;

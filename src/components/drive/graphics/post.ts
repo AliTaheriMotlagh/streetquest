@@ -21,8 +21,10 @@ export type Grade = {
   /** Raised blacks (display space). */
   lift: number;
   vignette: number;
+  /** Sharpening of the finished frame, 0 = none (lib/view.ts `sharpenFor`: more when drawn below the screen's resolution). */
+  sharpen: number;
 };
-export const defaultGrade = (): Grade => ({ bloom: 0.08, threshold: 1.2, ao: 0.7, saturation: 1.06, contrast: 1.05, tint: new THREE.Color(1, 1, 1), lift: 0.0, vignette: 0.24 });
+export const defaultGrade = (): Grade => ({ bloom: 0.08, threshold: 1.2, ao: 0.7, saturation: 1.06, contrast: 1.05, tint: new THREE.Color(1, 1, 1), lift: 0.0, vignette: 0.24, sharpen: 0.15 });
 
 const VERT = /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
@@ -113,12 +115,24 @@ void main() {
 
 const FINAL_FRAG = /* glsl */ `
 uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tAO;
-uniform float uExposure, uBloom, uAO, uSat, uContrast, uLift, uVignette, uSeed;
-uniform vec3 uTint;
+uniform float uExposure, uBloom, uAO, uSat, uContrast, uLift, uVignette, uSeed, uSharpen;
+uniform vec3 uTint; uniform vec2 uTexel;
 varying vec2 vUv;
 ${TONE_GLSL}
+// HDR → 0…1 and back, so a bright lamp next to a dark wall doesn't decide everything.
+vec3 squash(vec3 c) { return c / (1.0 + max(c.r, max(c.g, c.b))); }
+vec3 unsquash(vec3 c) { return c / max(1.0 - max(c.r, max(c.g, c.b)), 1e-3); }
 void main() {
   vec3 c = texture2D(tScene, vUv).rgb;
+  if (uSharpen > 0.0) {
+    // Sharpen: push each pixel away from its four neighbours' average, but never past the
+    // brightest or darkest of them — edges get crisper with no halo around them.
+    vec3 m = squash(c);
+    vec3 n = squash(texture2D(tScene, vUv + vec2(0.0, uTexel.y)).rgb), s = squash(texture2D(tScene, vUv - vec2(0.0, uTexel.y)).rgb);
+    vec3 e = squash(texture2D(tScene, vUv + vec2(uTexel.x, 0.0)).rgb), w = squash(texture2D(tScene, vUv - vec2(uTexel.x, 0.0)).rgb);
+    vec3 lo = min(m, min(min(n, s), min(e, w))), hi = max(m, max(max(n, s), max(e, w)));
+    c = unsquash(clamp(m + (m * 4.0 - n - s - e - w) * uSharpen, lo, hi));
+  }
 #ifdef USE_AO
   c *= mix(1.0, texture2D(tAO, vUv).r, uAO);
 #endif
@@ -173,7 +187,7 @@ export class PostPipeline {
     this.aoMat = pass(AO_FRAG, { tDepth: { value: null }, uProj: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: 1.4 }, uFadeFar: { value: 220 } }, { SAMPLES: 12 });
     this.final = pass(FINAL_FRAG, {
       tScene: { value: null }, tBloom: { value: null }, tAO: { value: null },
-      uExposure: { value: 1 }, uBloom: { value: 0 }, uAO: { value: 0 }, uSat: { value: 1 }, uContrast: { value: 1 }, uLift: { value: 0 }, uVignette: { value: 0 }, uSeed: { value: 0 }, uTint: { value: new THREE.Color(1, 1, 1) },
+      uExposure: { value: 1 }, uBloom: { value: 0 }, uAO: { value: 0 }, uSat: { value: 1 }, uContrast: { value: 1 }, uLift: { value: 0 }, uVignette: { value: 0 }, uSeed: { value: 0 }, uSharpen: { value: 0 }, uTexel: { value: new THREE.Vector2() }, uTint: { value: new THREE.Color(1, 1, 1) },
     });
     this.configure(opts);
   }
@@ -288,6 +302,8 @@ export class PostPipeline {
     u.uContrast.value = g.contrast;
     u.uLift.value = g.lift;
     u.uVignette.value = g.vignette;
+    u.uSharpen.value = g.sharpen;
+    u.uTexel.value.set(1 / this.hdr.width, 1 / this.hdr.height);
     u.uTint.value.copy(g.tint);
     u.uSeed.value = (u.uSeed.value + 17.13) % 1000;
     this.draw(this.final, null);

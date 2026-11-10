@@ -1,7 +1,7 @@
 "use client";
 // The garage: pick what you drive (or fly) and its paint, how the city looks (style,
 // picture quality, time of day, weather), and which names its streets and shops show.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { GARAGE_KEYS, PAINTS, unlocked, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { PARTY_GAMES, type PartyGame } from "@/lib/party";
@@ -10,6 +10,7 @@ import type { TimePick, Weather } from "@/lib/daylight";
 import type { QualityPick, Tier } from "./graphics/quality";
 import type { Style } from "./tileMesh";
 import type { NameMode } from "./vectorTile";
+import { canFullscreen, isFullscreen, onFullscreenChange, setFullscreen } from "./fullscreen";
 import { askTilt, type SteerMode } from "./DrivePad";
 import { Icon, type IconName } from "./icons";
 
@@ -79,6 +80,11 @@ type Props = {
 export function DriveGarage({ level, vehicle, paint, style, names, quality, autoTier, timeOfDay, weather, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onQuality, onTime, onWeather, onCtl, onClose, embedded }: Props) {
   const groundOnly = !!locked && PARTY_GAMES[locked].groundOnly;
   const [tiltError, setTiltError] = useState(false);
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    setFull(isFullscreen());
+    return onFullscreenChange(() => setFull(isFullscreen()));
+  }, []);
   const pickCtl = async (m: SteerMode) => {
     // Tilt needs motion access, which iOS only grants from a tap like this one.
     if (m === "tilt" && !(await askTilt())) return setTiltError(true);
@@ -146,6 +152,13 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
         ))}
       </div>
       {quality === "auto" && <p className="small muted">{t("Auto chose {tier} for this device, and steps down by itself if the frame rate drops.", { tier: t(TIER_LABEL[autoTier]) })}</p>}
+      <b className="small">{t("Wide view")}</b>
+      {canFullscreen() && (
+        <div className="seg">
+          <Button className={`btn small ${full ? "yellow" : "ghost"}`} aria-pressed={full} onClick={() => void setFullscreen(!full)}>⛶ {t(full ? "Leave full screen" : "Full screen")}</Button>
+        </div>
+      )}
+      <p className="small muted" style={{ margin: 0 }}>{t("Turn the phone on its side for the wide view, like a console game — the city fills whatever shape the screen has.")}</p>
       <b className="small">{t("Time of day")}</b>
       <div className="seg seg4 seg-fill" role="radiogroup" aria-label={t("Time of day")}>
         {TIMES.map((o) => (

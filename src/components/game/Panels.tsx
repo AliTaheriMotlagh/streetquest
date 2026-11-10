@@ -11,7 +11,8 @@ import { MoveIcon, Sheet, Tabs, useGame } from "./ui";
 import { QuestsTab } from "./Hero";
 import { askConfirm } from "@/components/Dialogs";
 import { resizePhoto } from "./photo";
-import { isMuted, onMuteChange, setMuted, sfx } from "./sfx";
+import type { AudioOutput } from "@/lib/audio/spatial";
+import { audioOutput, isMuted, onMuteChange, panning, setAudioOutput, setMuted, sfx, surroundAvailable } from "./sfx";
 import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
 import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalone, onPwaChange, promptInstall, pushSupported } from "@/components/pwaClient";
 import { Button } from "@/components/Button";
@@ -1259,6 +1260,12 @@ function BagTab() {
 }
 
 // ---------------------------------------------------------------- sound & music
+const AUDIO_OUTS: [AudioOutput, string][] = [
+  ["auto", msg("Auto")],
+  ["headphones", msg("Headphones (3D)")],
+  ["speakers", msg("Speakers")],
+  ["surround", msg("5.1")],
+];
 function SoundSettings() {
   const [, force] = useState(0);
   useEffect(() => {
@@ -1285,6 +1292,20 @@ function SoundSettings() {
           <span className="small muted" style={{ width: 70 }}>{t("Volume")}</span>
           <input type="range" min={0} max={1} step={0.05} value={musicVolume()} disabled={isMuted() || !musicOn()} onChange={(e) => setMusicVolume(Number(e.target.value))} className="grow" aria-label={t("Music volume")} />
         </div>
+        <div className="row">
+          <span className="grow">🎧 {t("Sound output")}</span>
+          <div className="tabs" style={{ margin: 0 }}>
+            {AUDIO_OUTS.filter(([m]) => m !== "surround" || surroundAvailable() || audioOutput() === "surround").map(([m, label]) => (
+              <button key={m} className={audioOutput() === m ? "on" : ""} onClick={() => setAudioOutput(m)}>
+                {t(label)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="small muted" style={{ margin: 0 }}>
+          {t("Headphones: 3D sound — you hear where a shot, a siren or a voice is, also behind and above you. Speakers: plain left and right. 5.1 shows up when a surround system is connected.")}
+          {audioOutput() === "auto" && ` ${t("This device is using {mode}.", { mode: t(panning() === "hrtf" ? "Headphones (3D)" : "Speakers") })}`}
+        </p>
       </div>
     </>
   );
