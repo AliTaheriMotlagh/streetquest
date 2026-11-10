@@ -14,7 +14,11 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import { tumbleOrigin } from "@/lib/street/carPhysics";
+import { crumple, type CarHealth } from "@/lib/street/damage";
 import { carModel } from "./carModels";
+import { Crew, withCabin, type Seat } from "./crew";
+import { dentable, dentAttr, releaseDentable, withDents } from "./fleetDamage";
+import { policePaint } from "./livery";
 import { paint as tint, toon, type Style } from "./world3d";
 
 /** One model, split by material. Shared by every copy: never disposed with a car. */
@@ -641,7 +645,22 @@ const TURN = new THREE.Matrix4().makeRotationY(Math.PI);
 const NEAR_M = 30;
 /** A model nobody has drawn for this many frames gives its GPU memory back. */
 const IDLE_FRAMES = 600;
-type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.InstancedMesh; tail: THREE.InstancedMesh; wheel: THREE.InstancedMesh; cap: number; n: number; idle: number };
+/** `dents`: one per copy, shared by every part of the body (fleetDamage.ts); `seat`: where its driver sits (null: no cabin — a bike). */
+type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.InstancedMesh; tail: THREE.InstancedMesh; wheel: THREE.InstancedMesh; dents: THREE.InstancedBufferAttribute; seat: Seat | null; cap: number; n: number; idle: number };
+
+/** What else to know to draw one vehicle (FleetInstances.put). */
+export type PutOpts = {
+  /** Lifted and tipped (a car thrown by a blast or knocked onto its side). */
+  pose?: { y: number; roll: number; pitch: number };
+  /** A patrol car's paint job over the model's own. */
+  livery?: "police";
+  /** Its damage: the dent drawn, and how battered the whole body is. */
+  health?: CarHealth;
+  /** Someone at the wheel (the number picks their look, the same for the same car). */
+  driver?: number;
+  /** The driver's shirt, when it's a uniform. */
+  uniform?: THREE.ColorRepresentation;
+};
 
 /**
  * Every vehicle in traffic, drawn per model with one instanced mesh per part (paint in
@@ -651,6 +670,13 @@ type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.Insta
 export class FleetInstances {
   /** By the geometry drawn: a model and its light version are separate pools, and so is a drawn one replaced by a real one. */
   private pools = new Map<FleetParts, Pool>();
+  /** A model in a livery is a pool of its own (its paint is another material): the stand-in key for it, and the paint. */
+  private liveried = new Map<FleetParts, FleetParts>();
+  private liveryPaint = new Map<FleetParts, THREE.Material>();
+  /** Each model's trim with its cabin added (traffic only — your own car keeps its cockpit), and its driver's seat. */
+  private cabins = new Map<THREE.BufferGeometry, { kit: THREE.BufferGeometry; seat: Seat | null }>();
+  /** Drivers at the wheel of the cars that are driving. */
+  private crew: Crew;
   private eye = { x: 0, z: 0 };
   private mats: { paint: THREE.Material; kit: THREE.Material; glass: THREE.Material; head: THREE.Material; tail: THREE.Material; wheel: THREE.Material; blob: THREE.Material };
   private blob: THREE.InstancedMesh;
@@ -667,20 +693,28 @@ export class FleetInstances {
   constructor(private scene: THREE.Scene, style: Style, private lite = false, look: { clearcoat?: boolean } = {}) {
     const real = style === "real";
     this.mats = {
-      paint: !real
-        ? toon({ color: "#ffffff" })
-        : look.clearcoat
-          ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
-          : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
-      kit: kitMaterial(style),
-      glass: real ? new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.9, roughness: 0.06 }) : toon({ color: "#1d3557", emissive: new THREE.Color("#2a4d7a"), emissiveIntensity: 0.35 }),
-      head: new THREE.MeshBasicMaterial({ color: "#fff6d8" }),
-      tail: new THREE.MeshBasicMaterial({ color: "#ffffff" }),
+      paint: withDents(
+        !real
+          ? toon({ color: "#ffffff" })
+          : look.clearcoat
+            ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
+            : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
+      ),
+      kit: withDents(kitMaterial(style)),
+      // Tinted, not blacked out: the driver and the cabin show through.
+      glass: withDents(
+        real
+          ? new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.7, roughness: 0.06, transparent: true, opacity: 0.45 })
+          : toon({ color: "#1d3557", emissive: new THREE.Color("#2a4d7a"), emissiveIntensity: 0.35, transparent: true, opacity: 0.6 }),
+      ),
+      head: withDents(new THREE.MeshBasicMaterial({ color: "#fff6d8" })),
+      tail: withDents(new THREE.MeshBasicMaterial({ color: "#ffffff" })),
       wheel: wheelMaterial(style),
       blob: new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false }),
     };
     // Traffic and the parked cars near you.
     this.blob = this.inst(BLOB, this.mats.blob, 160);
+    this.crew = new Crew(scene, lite ? 24 : 48);
   }
 
   /** Headlamps and tail lamps glow at night (0 day … 1 night). */
@@ -699,12 +733,21 @@ export class FleetInstances {
     return m;
   }
 
+  /** The model's trim with its cabin, made once per model. */
+  private cabin(parts: FleetParts) {
+    let c = this.cabins.get(parts.kit);
+    if (!c) this.cabins.set(parts.kit, (c = FLEET[parts.key]?.bike ? { kit: parts.kit, seat: null } : withCabin(parts.kit, parts.glass, parts.hgt)));
+    return c;
+  }
+
   private make(parts: FleetParts, cap: number): Pool {
-    const paint = this.inst(parts.paint, this.mats.paint, cap, true);
-    const tail = this.inst(parts.tail, this.mats.tail, cap, true);
-    const body = [paint, this.inst(parts.kit, this.mats.kit, cap), this.inst(parts.head, this.mats.head, cap), tail];
-    if (parts.glass) body.push(this.inst(parts.glass, this.mats.glass, cap));
-    return { parts, body, paint, tail, wheel: this.inst(parts.wheel, this.mats.wheel, cap * parts.wheels.length), cap, n: 0, idle: 0 };
+    const dents = dentAttr(cap), cab = this.cabin(parts);
+    const d = (g: THREE.BufferGeometry) => dentable(g, dents);
+    const paint = this.inst(d(parts.paint), this.liveryPaint.get(parts) ?? this.mats.paint, cap, true);
+    const tail = this.inst(d(parts.tail), this.mats.tail, cap, true);
+    const body = [paint, this.inst(d(cab.kit), this.mats.kit, cap), this.inst(d(parts.head), this.mats.head, cap), tail];
+    if (parts.glass) body.push(this.inst(d(parts.glass), this.mats.glass, cap));
+    return { parts, body, paint, tail, wheel: this.inst(parts.wheel, this.mats.wheel, cap * parts.wheels.length), dents, seat: cab.seat, cap, n: 0, idle: 0 };
   }
 
   private drop(p: Pool) {
@@ -712,6 +755,8 @@ export class FleetInstances {
       this.scene.remove(m);
       m.dispose();
     }
+    // The pool's own geometry (its dents), not the model's buffers it shares.
+    for (const m of p.body) releaseDentable(m.geometry);
   }
 
   /** Room for twice as many of this model, keeping what this frame has put so far. */
@@ -722,6 +767,7 @@ export class FleetInstances {
       if (from.instanceColor && to.instanceColor) to.instanceColor.array.set(from.instanceColor.array.subarray(0, n * 3));
     };
     p.body.forEach((m, i) => copy(m, big.body[i], p.n));
+    big.dents.array.set(p.dents.array.subarray(0, p.n * 4));
     copy(p.wheel, big.wheel, p.n * p.parts.wheels.length);
     big.n = p.n;
     this.drop(p);
@@ -733,19 +779,29 @@ export class FleetInstances {
   begin(x = this.eye.x, z = this.eye.z) {
     for (const p of this.pools.values()) p.n = 0;
     this.blobN = 0;
+    this.crew.begin();
     this.eye.x = x;
     this.eye.z = z;
   }
 
   /**
    * One vehicle this frame: where, which way, its paint, whether it's braking, how far its
-   * wheels have turned, how far it leans; `pose` lifts and tips one (a car thrown by a blast
-   * or knocked onto its side).
+   * wheels have turned, how far it leans; and (PutOpts) how it's tipped, its livery, its
+   * dents, and whether someone's driving it.
    */
-  put(key: FleetKey, x: number, z: number, yaw: number, color: THREE.Color, braking: boolean, spin: number, lean = 0, pose?: { y: number; roll: number; pitch: number }) {
+  put(key: FleetKey, x: number, z: number, yaw: number, color: THREE.Color, braking: boolean, spin: number, lean = 0, o: PutOpts = {}) {
+    const { pose, livery, health } = o;
     const model = fleetParts(key);
     const far = model.far && (this.lite || (x - this.eye.x) ** 2 + (z - this.eye.z) ** 2 > NEAR_M * NEAR_M);
-    const parts = far ? model.far! : model;
+    let parts = far ? model.far! : model;
+    if (livery) {
+      let own = this.liveried.get(parts);
+      if (!own) {
+        this.liveried.set(parts, (own = { ...parts }));
+        this.liveryPaint.set(own, withDents(policePaint(this.mats.paint, FLEET[key])));
+      }
+      parts = own;
+    }
     let p = this.pools.get(parts);
     if (!p) this.pools.set(parts, (p = this.make(parts, 8)));
     if (p.n >= p.cap) p = this.grow(p);
@@ -766,6 +822,9 @@ export class FleetInstances {
     for (const mesh of p.body) mesh.setMatrixAt(i, this.m);
     p.paint.setColorAt(i, color);
     p.tail.setColorAt(i, braking ? BRAKE_ON : BRAKE_OFF);
+    const dent = health?.dent;
+    p.dents.setXYZW(i, dent?.x ?? 0, dent?.z ?? 0, dent?.depth ?? 0, 1 - (health ? crumple(health) : 0));
+    if (o.driver != null && p.seat) this.crew.put(this.m, p.seat, o.driver, o.uniform);
     const W = p.parts.wheels;
     for (let j = 0; j < W.length; j++) {
       this.w.makeRotationX(-spin);
@@ -784,6 +843,7 @@ export class FleetInstances {
       if (p.n === 0 && ++p.idle > IDLE_FRAMES) {
         this.drop(p);
         this.pools.delete(p.parts);
+        this.forget(p.parts);
         continue;
       }
       if (p.n) p.idle = 0;
@@ -793,18 +853,35 @@ export class FleetInstances {
       }
       p.paint.instanceColor!.needsUpdate = true;
       p.tail.instanceColor!.needsUpdate = true;
+      p.dents.needsUpdate = true;
       p.wheel.count = p.n * p.parts.wheels.length;
       p.wheel.instanceMatrix.needsUpdate = true;
     }
     this.blob.count = this.blobN;
     this.blob.instanceMatrix.needsUpdate = true;
+    this.crew.end();
+  }
+
+  /** A liveried pool that's gone: its paint and its stand-in key go with it. */
+  private forget(parts: FleetParts) {
+    const paint = this.liveryPaint.get(parts);
+    if (!paint) return;
+    paint.dispose();
+    this.liveryPaint.delete(parts);
+    for (const [k, v] of this.liveried) if (v === parts) this.liveried.delete(k);
   }
 
   dispose() {
     for (const p of this.pools.values()) this.drop(p);
+    for (const m of this.liveryPaint.values()) m.dispose();
+    this.liveryPaint.clear();
+    this.liveried.clear();
     this.pools.clear();
     this.scene.remove(this.blob);
     this.blob.dispose();
+    for (const [kit, c] of this.cabins) if (c.kit !== kit) c.kit.dispose();
+    this.cabins.clear();
+    this.crew.dispose();
     for (const m of Object.values(this.mats)) m.dispose();
   }
 }

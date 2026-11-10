@@ -13,15 +13,16 @@ type Loose = { parked: boolean; x: number; z: number; kind: string };
 const carsOf = (t: TrafficCars) => (t as unknown as { cars: Loose[] }).cars;
 const offKerb = (t: TrafficCars) => carsOf(t).filter((c) => c.parked);
 
-/** One straight side street, 300 m long, with a row of parked cars; nobody driving on it. */
-function street() {
+/** One straight side street, 300 m long, with a row of parked cars; nobody driving on it (unless `driven`: then it has a point every 20 m for traffic to join at). */
+function street(driven = false) {
   const frame = { toLatLng: (x: number, z: number) => ({ lat: 35.7 - z * 1e-5, lng: 51.5 + x * 1e-5 }) } as unknown as Frame;
   const feed = { empty: true, speedAt: () => null } as unknown as TrafficFeed;
   const t = new TrafficCars(new THREE.Scene(), frame, feed, "real", false);
-  const tile = () => ({ signals: [], roads: [new Float32Array([0, 0, 0, 300])], roadKinds: ["minor"], roadWidths: [8], roadDrawn: [true] }) as unknown as TileMeshes;
+  const line = driven ? Array.from({ length: 16 }, (_, i) => [0, i * 20]).flat() : [0, 0, 0, 300];
+  const tile = () => ({ signals: [], roads: [new Float32Array(line)], roadKinds: ["minor"], roadWidths: [8], roadDrawn: [true] }) as unknown as TileMeshes;
   t.sync([tile()]);
   // No traffic: only what comes off the kerb moves.
-  (t as unknown as { spawn: () => void }).spawn = () => {};
+  if (!driven) (t as unknown as { spawn: () => void }).spawn = () => {};
   const tick = (n = 1) => {
     let f: ReturnType<TrafficCars["tick"]> = [];
     for (let i = 0; i < n; i++) f = t.tick(1 / 60, 0, 150);
@@ -89,5 +90,40 @@ describe("a parked car knocked off the kerb", () => {
     t.blast(q.x, q.z, (d) => ({ damage: 10, push: Math.max(0, 9 - d) }));
     tick(90);
     assert.equal(offKerb(t).length, rows - parked().length);
+  });
+});
+
+describe("nothing appears in front of you", () => {
+  it("traffic joins the street behind the camera or far off, never in view close by", () => {
+    const { t } = street(true);
+    // Standing in the middle of the street, looking up it (+z).
+    const view = { x: 0, z: 150, dx: 0, dz: 1 };
+    const seen = new Set<Loose>(), joined: { ahead: number; d: number }[] = [];
+    for (let i = 0; i < 600; i++) {
+      t.tick(1 / 60, 0, 150, view);
+      for (const c of carsOf(t)) {
+        if (seen.has(c)) continue;
+        seen.add(c);
+        joined.push({ ahead: c.z - 150, d: Math.hypot(c.x, c.z - 150) });
+      }
+    }
+    // One street: the traffic target is two cars (near × 2), refilled as they drive off.
+    assert.ok(joined.length >= 2, `${joined.length} cars joined`);
+    for (const j of joined) assert.ok(j.ahead < 0 || j.d > 165, `a car appeared ${j.d.toFixed(0)} m ahead`);
+    assert.ok(joined.some((j) => j.ahead < 0), "some from behind");
+  });
+
+  it("the parked cars drawn favour the way you look, keep everything close by, and keep their handles", () => {
+    const { t, tick } = street();
+    const drawn = (view: { x: number; z: number; dx: number; dz: number }) => t.tick(1 / 60, 0, 150, view).map((f) => f.ref as unknown as Kerb).filter((r) => r && "key" in r);
+    const up = drawn({ x: 0, z: 150, dx: 0, dz: 1 });
+    const reach = (l: Kerb[], sign: number) => Math.max(...l.map((p) => (p.z - 150) * sign));
+    const all = tick().length;
+    // (This one street has fewer cars than the cap: every one in reach is drawn either way.)
+    assert.equal(up.length, all);
+    assert.ok(reach(up, 1) > 100 && reach(up, -1) > 40);
+    const down = drawn({ x: 0, z: 150, dx: 0, dz: -1 });
+    // Turning round re-picks, and a car drawn both times is the same object (its footprint's ref).
+    assert.ok(down.every((p) => up.includes(p)), "same handles after the re-pick");
   });
 });

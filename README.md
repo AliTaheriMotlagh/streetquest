@@ -125,7 +125,13 @@ mood scales XP; loot funds research; territory funds the army.
   model is built once from its side profile (wheel arches cut in) with its own lamps, grille, bumpers, mirrors and the
   Iranian number plate, and traffic draws every copy of a model instanced — a handful of draw calls for the whole
   street (`src/components/drive/fleet3d.ts`). Cars keep a bumper-to-bumper gap sized to what's ahead, stop at red
-  lights and brake for you.
+  lights and brake for you. Every car that's driving has someone at the wheel (on the left), seen through tinted
+  glass with a dark cabin behind it — seats, dashboard, steering wheel — worked out from each model's own windows
+  (`crew.ts`; two instanced meshes draw every driver in the city, the cabin rides in the traffic copy of the trim, so
+  it costs no draw calls; parked cars are empty). Traffic never appears in front of you: a car joins the street
+  behind the camera, beyond 170 m or out of sight behind buildings, and the parked cars drawn favour the street you're
+  looking down, so a row is there before you reach it. Posts, lights, bins and shop signs mapped on the asphalt stand
+  on the pavement — at a junction on the corner, not in the cross street (`tileMesh.ts` `pavement`).
 - **Real 3D car models** — the Pars (Peugeot 405), Samand (and the Samand taxi), Shahin, Tondar 90 (Dacia Logan),
   Xantia, the Zamyad pickup and the crossover are real models, built from CC BY 4.0 Sketchfab models
   by `npm run assets:cars` (`scripts/cars.ts`; the sources are big and not in git — put them in `assets/models/`).
@@ -176,8 +182,10 @@ mood scales XP; loot funds research; territory funds the army.
     wreck at 90), dents where it hit (`carDamage.ts` folds the body in; the shared model is copied first), loses pull,
     smokes grey then black, catches fire at zero and explodes ~6 s later — inside it you're thrown out hurt and it's a
     charred shell (take another car off the street with F, or pick one in the garage). The car you hit is shoved off
-    its lane and slides to a stop with its hazards flashing, damaged the same way; traffic behind honks and pulls round
-    the wreck. A health bar shows while your car is hurt.
+    its lane and slides to a stop with its hazards flashing, damaged the same way — every street car and patrol car
+    shows its dent where it was hit, scuffed to bare metal, and gets more battered all over as it loses health
+    (`fleetDamage.ts`: one dent per instanced copy, folded in by the shader with the same shape as your car's;
+    `dentCar`/`localHit` in `damage.ts`); traffic behind honks and pulls round the wreck. A health bar shows while your car is hurt.
   - *Pile-ups are physical*: every car is a box with a mass (from its size: a Pride ≈ 1 t, a bus ≈ 11 t) and a spin,
     and a car knocked loose crashes into whatever it slides into — driving cars, parked cars, wrecks, patrol cars and
     yours — passing its momentum on (`lib/street/carPhysics.ts`: separating-axis contact, impulse with restitution,
@@ -187,16 +195,22 @@ mood scales XP; loot funds research; territory funds the army.
     at once and becomes exactly one loose car, whoever hits it and through whichever of the frame's footprints
     (`traffic.ts` `unpark`/`offKerb`, held by `tests/trafficCars.test.ts`), and a row keeps its cars where they were
     when a crossing street loads later (`parkedRow` rolls the same dice for a spot whether or not it's free).
-  - *Explosions* throw cars (some onto their roofs) and people, and set the cars beside them burning — chain
-    reactions; your grenades do the same in the open city. A thrown car turns about the middle of its body and is
+  - *Explosions* are 3D (`blast3d.ts`, plan in `lib/street/blast.ts`): a boiling fireball that cools from white-hot
+    through orange and red into a column of black smoke, the car's bonnet, boot lid, doors, bumper and a wheel
+    thrown up in its own paint, trailing smoke, bouncing and lying on the road, burning fuel round the wreck, a
+    scorch mark and a flash on the ground; burning cars and wrecks carry 3D flames. They throw cars (some onto their
+    roofs) and people, and set the cars beside them burning — chain reactions; your grenades do the same in the open
+    city. A thrown car turns about the middle of its body and is
     held up by its lowest corner (`tumbleOrigin`), so a burnt-out wreck on its roof lies on the road where it landed.
   - *People react*: gunfire, crashes and blasts send everyone near running (off the pavement if need be, back to it
     when they calm down); a speeding car makes them dive aside; a car hits them hard enough and they're thrown (fast,
     they don't get up); bullets hit them; drivers near trouble floor it through red lights.
   - *Crime and the wanted level* (1–5 ★): what a passer-by or an officer sees raises it — shooting, hitting or killing
     someone, pulling a driver out of their car, blowing a car up, ramming or shooting the police (one crime per
-    victim, a burst of fire is one report). The police send patrol cars — Samands in Iran's police green with a
-    white band down each side, a flashing red-blue light bar and a siren — up the streets with a clear run at you; from 2 ★ they ram your car, officers get out
+    victim, a burst of fire is one report). The police send patrol cars — white Samands in the Iranian police livery
+    (a green band sweeping up from behind the front wheel to the boot, «پلیس» on it, a gold roundel on the front door,
+    POLICE across the bonnet: `livery.ts` draws it in the shader), a roof light bar whose red lenses flash in a
+    chase, an officer at the wheel, and a siren — up the streets with a clear run at you; from 2 ★ they ram your car, officers get out
     (a real officer model — green uniform and cap — on the arena soldier's skeleton, so it has
     every soldier animation: `assets/blender/police.py` fits a downloaded T-pose mesh to it, re-skins it and recolours
     the uniform; `ARENA_ONLY=police npm run assets:arena` rebuilds `public/models/arena/police.glb`) and shoot at you on foot, from 3 ★ at your car too. Out of every

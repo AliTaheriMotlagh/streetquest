@@ -1605,7 +1605,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         traffic.sync(real);
         crowd.sync(real);
       }
-      obstacles.add("traffic", traffic.tick(dt, st.x, st.z));
+      // The camera, so no car appears in front of it (traffic joins out of sight).
+      camera.getWorldDirection(camFwd);
+      const flat = Math.hypot(camFwd.x, camFwd.z);
+      obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
       crowd.tick(dt, st.x, st.z);
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
       if (now - lightsAt > 500) {

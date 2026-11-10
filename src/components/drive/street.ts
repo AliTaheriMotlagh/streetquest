@@ -24,6 +24,7 @@ import { SampleLoop, warmSamples } from "../game/samples";
 import { SOUND_KEYS } from "@/lib/soundSlots";
 import type { Combat, NpcTargets } from "../arena/combat";
 import { CarDamage } from "./carDamage";
+import { POLICE_WHITE } from "./livery";
 import type { Crowd } from "./people";
 import { CollisionWorld, forward } from "./physics";
 import { Police, type PoliceEvent } from "./police";
@@ -126,7 +127,7 @@ export class StreetLife {
     const out: Solid[] = this.police.units.map((u) => ({
       x: u.body.x, z: u.body.z, yaw: u.body.yaw, vx: u.body.vx, vz: u.body.vz, len: pd.len, wid: pd.wid, mass: pm,
       moving: Math.hypot(u.body.vx, u.body.vz) > 2,
-      hit: (h) => this.police.shove(u, h.dvx, h.dvz, h.spin, crashDamage(h.felt)),
+      hit: (h) => this.police.shove(u, h.dvx, h.dvz, h.spin, crashDamage(h.felt), { x: h.x, z: h.z, depth: dentDepth(h.felt) }),
     }));
     if (!me.flying) {
       const len = Math.max(2, me.carR * 3.2), wid = Math.max(0.8, me.carR * 1.4);
@@ -323,10 +324,10 @@ export class StreetLife {
       // Momentum: the struck car takes the speed it's handed in proportion to the masses
       // (a Pride shunts a Pride on; a bus hardly moves).
       const mine = myMass(me.carR, c.heavy), dv = (c.into * (1 + CAR_RESTITUTION) * mine) / (mine + other);
-      this.h.traffic.bump(c.ref, -c.nx * dv, -c.nz * dv, crashDamage(felt(dv)));
+      this.h.traffic.bump(c.ref, -c.nx * dv, -c.nz * dv, crashDamage(felt(dv)), { x: c.x, z: c.z });
       this.byMe.set(c.ref, performance.now());
     } else if (this.police.isUnit(c.ref)) {
-      this.police.bump(c.ref, -c.nx * c.into, -c.nz * c.into, crashDamage(c.into));
+      this.police.bump(c.ref, -c.nx * c.into, -c.nz * c.into, crashDamage(c.into), { x: c.x, z: c.z });
       if (c.into > 4) this.crime("rammedCop", c.x, c.z, true);
     }
     const dmg = crashDamage(c.into, c.heavy ? 0.45 : 1);
@@ -347,11 +348,11 @@ export class StreetLife {
   }
 
   /** A blast at x, z (a car blowing up, a grenade): everything near is hurt and thrown; everyone runs. */
-  private explode(x: number, z: number, byMe: boolean, grenade = false) {
+  private explode(x: number, z: number, byMe: boolean, grenade = false, car?: { yaw?: number; paint?: string }) {
     const me = this.me;
     if (!me || me.matchOn) return;
     if (!grenade) {
-      this.fx.explosion(x, 0.6, z);
+      this.fx.explosion(x, 0.6, z, car?.yaw, car?.paint);
       const cam = this.h.camera.position, d = Math.hypot(cam.x - x, cam.z - z);
       boomSound(d);
       this.h.shake(Math.min(1, 14 / (d + 2)));
@@ -388,7 +389,7 @@ export class StreetLife {
     }
     // (I'm out of the car now, so the blast doesn't hit me twice.)
     this.me = { ...me, onFoot: false, inCar: false };
-    this.explode(me.carX, me.carZ, false);
+    this.explode(me.carX, me.carZ, false, false, { yaw: me.carYaw });
     this.me = me;
   }
 
@@ -531,13 +532,13 @@ export class StreetLife {
       if ((e.into ?? 0) > 6) this.h.crowd.alarm(e.x, e.z, 10 + 20 * k);
     } else {
       const when = this.byMe.get(e.ref);
-      this.explode(e.x, e.z, when != null && now - when < 90_000);
+      this.explode(e.x, e.z, when != null && now - when < 90_000, false, e.ref as { yaw?: number; paint?: string });
     }
   }
 
   private onPolice(e: PoliceEvent, me: StreetMe) {
     if (e.kind === "boom" || e.kind === "fire") {
-      if (e.kind === "boom") this.explode(e.x, e.z, false);
+      if (e.kind === "boom") this.explode(e.x, e.z, false, false, { yaw: e.yaw, paint: POLICE_WHITE });
       return;
     }
     if (e.kind === "ram") {

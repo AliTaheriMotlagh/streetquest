@@ -62,8 +62,14 @@ export function enginePower(hp: number) {
   return 0.6 + 0.4 * Math.min(1, hp / 50);
 }
 
-/** A car's health a step later: hit for `dmg`; burning cars count down to the blast. */
-export type CarHealth = { hp: number; burn: number; exploded: boolean };
+/**
+ * The worst dent in a car, in its own frame (`x` across, `z` along with the nose at −len/2,
+ * on the outline where it was hit, m) and how deep the bodywork folds there (m).
+ */
+export type Dent = { x: number; z: number; depth: number };
+
+/** A car's health a step later: hit for `dmg`; burning cars count down to the blast. `dent`: where it was hit hardest (drawn). */
+export type CarHealth = { hp: number; burn: number; exploded: boolean; dent?: Dent };
 export const freshCar = (): CarHealth => ({ hp: CAR_HP, burn: 0, exploded: false });
 
 /** Damage a car; returns true when this hit set it on fire. */
@@ -77,6 +83,43 @@ export function hurtCar(c: CarHealth, dmg: number) {
   }
   return false;
 }
+
+/** Deepest a dent goes (m), however many times the same spot is hit. */
+export const DENT_MAX = 0.42;
+
+/**
+ * Where a hit at (hx, hz) lands on a car at (x, z) turned `yaw` (forward is −z in its own
+ * frame, as the models are built): in the car's frame, pushed out to the body's outline.
+ * A hit at its very middle (a blast right under it) counts as the nose.
+ */
+export function localHit(x: number, z: number, yaw: number, hx: number, hz: number, len: number, wid: number) {
+  const dx = hx - x, dz = hz - z, c = Math.cos(yaw), s = Math.sin(yaw);
+  const lx = dx * c - dz * s, lz = dx * s + dz * c;
+  const k = Math.max(Math.abs(lx) / (wid / 2), Math.abs(lz) / (len / 2));
+  if (!(k > 0.05)) return { x: 0, z: -len / 2 };
+  return { x: lx / k, z: lz / k };
+}
+
+/**
+ * A dent `depth` m deep at `at` (localHit): the same spot hit again folds in further, a
+ * harder hit elsewhere becomes the dent that's drawn. Returns the car's dent.
+ */
+export function dentCar(c: CarHealth, at: { x: number; z: number }, depth: number): Dent | undefined {
+  if (c.exploded || !(depth > 0.005)) return c.dent;
+  const d = c.dent;
+  if (!d) return (c.dent = { x: at.x, z: at.z, depth: Math.min(DENT_MAX, depth) });
+  if (Math.hypot(at.x - d.x, at.z - d.z) < 1.2) {
+    // Deeper, and the middle of it drifts toward the new hit.
+    const w = depth / (d.depth + depth);
+    d.x += (at.x - d.x) * w;
+    d.z += (at.z - d.z) * w;
+    d.depth = Math.min(DENT_MAX, d.depth + depth * 0.6);
+  } else if (depth > d.depth) Object.assign(d, { x: at.x, z: at.z, depth: Math.min(DENT_MAX, depth) });
+  return d;
+}
+
+/** How battered the whole body looks, 0 (new) … 1 (a wreck): the panels' small crumples everywhere. */
+export const crumple = (c: CarHealth) => (c.exploded ? 1 : Math.max(0, Math.min(1, 1 - c.hp / CAR_HP)));
 
 /** Run a burning car's clock; true the moment it explodes. */
 export function burnCar(c: CarHealth, dt: number) {

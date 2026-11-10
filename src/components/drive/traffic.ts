@@ -23,7 +23,7 @@ import { contact, felt, massOf, resolve, type Contact, type Rigid } from "@/lib/
 import { carToTake } from "@/lib/vehicles";
 import { hashStr, rng } from "@/lib/geo";
 import { Junctions, laneOffset, parkedRow, parkingSides, type Parked, type Sides, type Street } from "@/lib/parking";
-import { burnCar, carLook, crashDamage, freshCar, hurtCar, type CarHealth, type CarLook } from "@/lib/street/damage";
+import { burnCar, carLook, crashDamage, dentCar, dentDepth, freshCar, hurtCar, localHit, type CarHealth, type CarLook } from "@/lib/street/damage";
 import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { api } from "../game/client";
 import { FleetInstances } from "./fleet3d";
@@ -183,7 +183,25 @@ const KEEP_M = 2.5;
 /** You, as the cars around see you: about a car's length. */
 const YOU_LEN = 4.4;
 /** Parked cars are drawn this close to you, the nearest first (and as many at most). */
-const PARKED_M = 140, PARKED_MAX = 60, PARKED_LITE_M = 80, PARKED_LITE_MAX = 20;
+const PARKED_M = 190, PARKED_MAX = 96, PARKED_LITE_M = 110, PARKED_LITE_MAX = 32;
+/**
+ * What's ahead of the camera counts as this much nearer when the parked cars to draw are
+ * picked: the row down the street you're looking along is there long before you reach it
+ * (nothing appears in front of you), paid for with the ones behind your back. Everything
+ * within PARKED_NEAR_M is drawn (and solid) whichever way you look.
+ */
+const PARKED_AHEAD = 0.5, PARKED_NEAR_M = 45;
+/**
+ * Traffic never joins where you'd see it happen: a spot in front of the camera and nearer
+ * than this (m) is only used when buildings hide it. Behind you, or further off, a car
+ * that appears is one that drove up.
+ */
+const SPAWN_SEEN_M = 170;
+/** How wide "in front of the camera" is: the cosine of the angle off its line of sight. */
+const VIEW_COS = 0.35;
+
+/** Where the camera is and which way it looks along the ground (a unit vector). */
+export type TrafficView = { x: number; z: number; dx: number; dz: number };
 /** How much of the kerb parked cars take: an avenue's slow lane is mostly kept moving. */
 const PARK_FILL = { major: 0.3, minor: 0.55 };
 /** Cars you got out of and left at the kerb (the oldest drive off after this many). */
@@ -211,7 +229,9 @@ export class TrafficCars {
   /** Every parked car on the streets loaded, and the ones near you that are drawn. */
   private parked: (Parked & { color: THREE.Color })[] = [];
   private shown: (Parked & { color: THREE.Color; box: Footprint })[] = [];
-  private shownAt = { x: Infinity, z: Infinity };
+  private shownAt = { x: Infinity, z: Infinity, dx: 0, dz: 0 };
+  /** The camera this frame (null: unknown — everything counts as in sight). */
+  private view: TrafficView | null = null;
   /** Parked cars you drove off in (they stay gone when the streets are re-read), and the ones you left. */
   private taken = new Set<string>();
   private left: (Parked & { color: THREE.Color })[] = [];
@@ -296,25 +316,45 @@ export class TrafficCars {
     // Cars on streets that were dropped go too (loose ones aren't on a street any more).
     const alive = new Set(this.roads.map((r) => r.line));
     this.cars = this.cars.filter((c) => c.loose || alive.has(c.road.line));
-    this.shownAt = { x: Infinity, z: Infinity };
+    this.shownAt.x = Infinity;
   }
 
   /** The parked cars near you (the nearest, up to a cap), picked again every few metres. */
   private nearParked(px: number, pz: number) {
-    if (Math.hypot(px - this.shownAt.x, pz - this.shownAt.z) < 8) return this.shown;
-    this.shownAt = { x: px, z: pz };
+    const v = this.view, at = this.shownAt;
+    // Picked again every few metres, and when the camera has turned a good way round.
+    if (Math.hypot(px - at.x, pz - at.z) < 8 && (!v || v.dx * at.dx + v.dz * at.dz > 0.9)) return this.shown;
+    this.shownAt = { x: px, z: pz, dx: v?.dx ?? 0, dz: v?.dz ?? 0 };
     const reach = this.lite ? PARKED_LITE_M : PARKED_M, max = this.lite ? PARKED_LITE_MAX : PARKED_MAX;
+    // The cars already drawn keep their handle (footprints and crashes under way point at it).
+    const had = new Map(this.shown.map((s) => [spotOf(s.x, s.z), s]));
     this.shown = this.parked
-      .map((p) => ({ p, d: Math.hypot(p.x - px, p.z - pz) }))
+      .map((p) => {
+        const d = Math.hypot(p.x - px, p.z - pz);
+        const ahead = !!v && d > PARKED_NEAR_M && ((p.x - v.x) * v.dx + (p.z - v.z) * v.dz) / (Math.hypot(p.x - v.x, p.z - v.z) || 1) > VIEW_COS;
+        return { p, d, rank: ahead ? d * PARKED_AHEAD : d };
+      })
       .filter((o) => o.d < reach)
-      .sort((a, b) => a.d - b.d)
+      .sort((a, b) => a.rank - b.rank)
       .slice(0, max)
       .map(({ p }) => {
+        const old = had.get(spotOf(p.x, p.z));
+        if (old && old.key === p.key) return old;
         const s = { ...p, box: box(p.x, p.z, FLEET[p.key].wid / 2 + 0.05, FLEET[p.key].len / 2, p.yaw, FLEET[p.key].hgt) };
         s.box.ref = s;
         return s;
       });
     return this.shown;
+  }
+
+  /** Would a car appearing at (x, z) be seen to? In front of the camera, near, and no building in the way. */
+  private inSight(x: number, z: number) {
+    const v = this.view;
+    if (!v) return false;
+    const dx = x - v.x, dz = z - v.z, d = Math.hypot(dx, dz) || 1;
+    if (d > SPAWN_SEEN_M || (dx * v.dx + dz * v.dz) / d < VIEW_COS) return false;
+    // A head-high line from the camera to the spot: walls in the way hide it.
+    return !this.world || this.world.raycast({ ox: v.x, oy: 1.6, oz: v.z, dx: dx / d, dy: 0, dz: dz / d }, d) >= d - 3;
   }
 
   /** How many cars around here: more where the readings say it's jammed. */
@@ -345,7 +385,7 @@ export class TrafficCars {
       if (!road) return;
       const n = road.line.length / 2 - 1, seg = Math.floor(this.rand() * n);
       const x = road.line[seg * 2], z = road.line[seg * 2 + 1], d = Math.hypot(x - px, z - pz);
-      if (d < SPAWN_MIN || d > SPAWN_MAX) continue;
+      if (d < SPAWN_MIN || d > SPAWN_MAX || this.inSight(x, z)) continue;
       const kind = pickFleet(this.rand, road.kind === "major");
       const c = this.make(kind, pickPaint(kind, this.rand), road, x, z, 0);
       c.seg = seg;
@@ -370,9 +410,13 @@ export class TrafficCars {
     return opts.length ? opts[Math.floor(this.rand() * opts.length)] : null;
   }
 
-  /** Move everyone; returns their footprints (solid while you drive). */
-  tick(dt: number, px: number, pz: number): Footprint[] {
+  /**
+   * Move everyone; returns their footprints (solid while you drive). `view`: the camera,
+   * so nothing joins the street or the kerb in front of it.
+   */
+  tick(dt: number, px: number, pz: number, view: TrafficView | null = null): Footprint[] {
     this.boxes = [];
+    this.view = view;
     if (!this.enabled) {
       this.cars = [];
       this.fleet.begin();
@@ -408,7 +452,8 @@ export class TrafficCars {
       if (c.loose) {
         this.slide(c, dt);
         const burnt = c.health.exploded;
-        this.fleet.put(c.kind, c.x, c.z, c.yaw, burnt ? BURNT : c.color, !burnt && c.health.hp > 0 && blink, c.spin, 0, c.loose);
+        // Still at the wheel while it slides (a parked car knocked loose has nobody in it).
+        this.fleet.put(c.kind, c.x, c.z, c.yaw, burnt ? BURNT : c.color, !burnt && c.health.hp > 0 && blink, c.spin, 0, { pose: c.loose, health: c.health, driver: !c.parked && c.health.hp > 0 ? c.id : undefined });
         const f = box(c.x, c.z, def.wid / 2 + 0.05, def.len / 2, c.yaw, def.hgt + c.loose.y);
         f.ref = c;
         out.push(f);
@@ -420,7 +465,7 @@ export class TrafficCars {
         continue;
       }
       const braking = c.v > c.want + 0.3 || c.v < 0.5;
-      this.fleet.put(c.kind, c.x, c.z, c.yaw, c.color, c.upset > 0 ? blink : braking, c.spin, c.lean);
+      this.fleet.put(c.kind, c.x, c.z, c.yaw, c.color, c.upset > 0 ? blink : braking, c.spin, c.lean, { health: c.health, driver: c.id });
       const f = box(c.x, c.z, def.wid / 2 + 0.05, def.len / 2, c.yaw, def.hgt);
       f.ref = c;
       out.push(f);
@@ -568,6 +613,7 @@ export class TrafficCars {
           L.vz -= into * hit.hit.nz * 1.4;
           L.spin += into * 0.15 * (this.rand() < 0.5 ? 1 : -1);
           if (hurtCar(c.health, crashDamage(-into, heavy(c.kind) ? 0.4 : 1))) this.events.push({ kind: "fire", x: c.x, z: c.z, key: c.kind, ref: c });
+          this.dent(c, c.x - hit.hit.nx * 3, c.z - hit.hit.nz * 3, dentDepth(-into));
         }
         (nx = hit.x), (nz = hit.z);
       }
@@ -649,6 +695,7 @@ export class TrafficCars {
       p.car = car;
       p.parked = undefined;
       if (hurtCar(car.health, crashDamage(hard, heavy(car.kind) ? 0.4 : 1))) this.events.push({ kind: "fire", x: car.x, z: car.z, key: car.kind, ref: car });
+      this.dent(car, c.px, c.pz, dentDepth(hard));
     });
     if (h.closing > CRASH_FX_MS) {
       const key = a.car?.kind ?? b.car?.kind ?? a.parked?.key ?? b.parked?.key ?? "samand";
@@ -665,7 +712,7 @@ export class TrafficCars {
     // Off the kerb now, not at the next re-pick: a parked copy left standing would be hit by
     // the very car it became, and come loose a second time.
     this.shown = this.shown.filter((s) => s !== p);
-    this.shownAt = { x: Infinity, z: Infinity };
+    this.shownAt.x = Infinity;
     const c = this.make(p.key, p.paint, this.roads[0] ?? { line: new Float32Array(4), w: 6, kind: "minor", park: [false, false] }, p.x, p.z, p.yaw);
     c.parked = true;
     this.loosen(c);
@@ -699,11 +746,18 @@ export class TrafficCars {
     return this.live(ref)?.kind ?? this.shown.find((s) => s === ref)?.key ?? null;
   }
 
+  /** Fold a car's bodywork in where (hx, hz) hit it, `depth` m. */
+  private dent(c: Car, hx: number, hz: number, depth: number) {
+    const d = FLEET[c.kind];
+    dentCar(c.health, localHit(c.x, c.z, c.yaw, hx, hz, d.len, d.wid), depth);
+  }
+
   /**
    * Something hit this car: a push (m/s, added to how it's moving) and damage. It leaves its
-   * lane and slides; its driver puts the hazards on and leans on the horn.
+   * lane and slides; its driver puts the hazards on and leans on the horn. `at`: where it was
+   * struck (the dent; else on the side the push came from).
    */
-  bump(ref: CarRef, vx: number, vz: number, dmg: number) {
+  bump(ref: CarRef, vx: number, vz: number, dmg: number, at?: { x: number; z: number }) {
     const c = this.car(ref);
     if (!c) return;
     const L = c.loose ?? this.loosen(c);
@@ -714,6 +768,8 @@ export class TrafficCars {
     L.spin += (this.rand() - 0.5) * Math.hypot(vx, vz) * 0.25 * heavyK;
     c.upset = 8;
     if (hurtCar(c.health, dmg * (heavy(c.kind) ? 0.4 : 1))) this.events.push({ kind: "fire", x: c.x, z: c.z, key: c.kind, ref: c });
+    const sp = Math.hypot(vx, vz) || 1;
+    this.dent(c, at?.x ?? c.x - (vx / sp) * 3, at?.z ?? c.z - (vz / sp) * 3, dentDepth(sp));
   }
 
   /** The nearest car a bullet meets within `maxT` m (its footprint's ref and where along the ray). */
@@ -762,6 +818,8 @@ export class TrafficCars {
       L.spin += (this.rand() - 0.5) * h.push * 0.3;
       c.upset = 8;
       if (hurtCar(c.health, h.damage)) this.events.push({ kind: "fire", x: c.x, z: c.z, key: c.kind, ref: c });
+      // Caved in on the side that faced it.
+      this.dent(c, x, z, Math.min(0.36, h.damage * 0.004));
     }
   }
 
@@ -831,7 +889,7 @@ export class TrafficCars {
       this.left = this.left.filter((p) => spotOf(p.x, p.z) !== spot);
       if (this.left.length === before) this.taken.add(spot);
       this.shown = this.shown.filter((p) => spotOf(p.x, p.z) !== spot);
-      this.shownAt = { x: Infinity, z: Infinity };
+      this.shownAt.x = Infinity;
     }
     return { key: hit.key, paint: hit.paint, x: hit.x, z: hit.z, yaw: hit.yaw, hp, driven };
   }
@@ -845,7 +903,7 @@ export class TrafficCars {
       const gone = this.left.shift();
       this.parked = this.parked.filter((q) => q !== gone);
     }
-    this.shownAt = { x: Infinity, z: Infinity };
+    this.shownAt.x = Infinity;
   }
 
   /** Head and tail lamps glow at night (0 day … 1 night). */

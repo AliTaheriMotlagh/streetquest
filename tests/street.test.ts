@@ -2,7 +2,7 @@
 // up, and how the police heat builds up, gets lost and ends in an arrest.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { blastOnCar, blastOnPerson, BLAST_R, BURN_S, burnCar, CAR_HP, carLook, crashDamage, dentDepth, enginePower, freshCar, hurtCar, SCRAPE_MS } from "@/lib/street/damage";
+import { blastOnCar, blastOnPerson, BLAST_R, BURN_S, burnCar, CAR_HP, carLook, crashDamage, crumple, DENT_MAX, dentCar, dentDepth, enginePower, freshCar, hurtCar, localHit, SCRAPE_MS } from "@/lib/street/damage";
 import { calm, CUFF_S, HEAT, loseAfter, MAX_STARS, report, response, starsFor, STAR_HEAT, tickWanted } from "@/lib/street/wanted";
 
 const kmh = (v: number) => v / 3.6;
@@ -116,5 +116,50 @@ describe("wanted level", () => {
     assert.equal(response(1).ram, false);
     assert.ok(response(2).ram && response(2).shoot && !response(2).shootCars);
     assert.ok(response(5).cars > response(3).cars && response(3).shootCars);
+  });
+});
+
+describe("dents on the cars in traffic", () => {
+  const len = 4.4, wid = 1.75;
+  it("a hit lands on the car's outline, in its own frame (the nose at −z)", () => {
+    // Facing north (yaw 0: forward is −z), hit from in front: the middle of the nose.
+    const front = localHit(0, 0, 0, 0, -10, len, wid);
+    assert.ok(Math.abs(front.x) < 1e-9 && Math.abs(front.z + len / 2) < 1e-9);
+    // Turned to face west (yaw π/2: forward is −x), hit from the west: still its nose.
+    const west = localHit(5, 5, Math.PI / 2, -5, 5, len, wid);
+    assert.ok(Math.abs(west.x) < 1e-6 && Math.abs(west.z + len / 2) < 1e-6, JSON.stringify(west));
+    // A side hit lands on the side, not past it.
+    const side = localHit(0, 0, 0, 3, 0.4, len, wid);
+    assert.ok(Math.abs(side.x - wid / 2) < 1e-9 && Math.abs(side.z) < len / 2);
+    // Right on top of the car: the nose (somewhere to fold).
+    assert.deepEqual(localHit(1, 1, 0.3, 1, 1, len, wid), { x: 0, z: -len / 2 });
+  });
+
+  it("the same spot hit again goes deeper (never past the most), a harder hit elsewhere moves it", () => {
+    const c = freshCar();
+    assert.equal(dentCar(c, { x: 0, z: -2.2 }, 0.001), undefined, "a tap leaves nothing");
+    dentCar(c, { x: 0, z: -2.2 }, 0.15);
+    assert.equal(c.dent?.depth, 0.15);
+    dentCar(c, { x: 0.3, z: -2.2 }, 0.15);
+    assert.ok(c.dent!.depth > 0.15 && c.dent!.x > 0 && c.dent!.x < 0.3);
+    for (let i = 0; i < 20; i++) dentCar(c, { x: 0, z: -2.2 }, 0.3);
+    assert.equal(c.dent!.depth, DENT_MAX);
+    // A lighter hit on the other end doesn't move it; a deeper one would, but none is deeper now.
+    dentCar(c, { x: 0, z: 2.2 }, 0.1);
+    assert.equal(c.dent!.z < 0, true);
+    const d = freshCar();
+    dentCar(d, { x: 0, z: 2.2 }, 0.05);
+    dentCar(d, { x: 0.87, z: 0 }, 0.2);
+    assert.deepEqual([d.dent!.x, d.dent!.z], [0.87, 0]);
+  });
+
+  it("the whole body looks more battered the less health it has", () => {
+    const c = freshCar();
+    assert.equal(crumple(c), 0);
+    hurtCar(c, CAR_HP / 2);
+    assert.equal(crumple(c), 0.5);
+    c.exploded = true;
+    assert.equal(crumple(c), 1);
+    assert.equal(dentCar(c, { x: 0, z: 0 }, 0.3), undefined, "a burnt-out shell isn't dented further");
   });
 });

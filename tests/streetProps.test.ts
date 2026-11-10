@@ -3,7 +3,7 @@
 // puts along its streets.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TILE_DEG, type CityTile } from "@/lib/city";
+import { PROP, TILE_DEG, type CityTile } from "@/lib/city";
 import { PROP_MODELS } from "@/lib/propModels";
 import { treeVariant } from "@/lib/streetProps";
 import { buildTileArrays } from "@/components/drive/tileMesh";
@@ -64,5 +64,49 @@ describe("dumpsters", () => {
 
   it("aren't drawn on lite phones", () => {
     assert.equal(buildTileArrays(tile, origin, "real", true).props.find((p) => p.kind === "dumpster"), undefined);
+  });
+});
+
+describe("posts and signs mapped on the street", () => {
+  const cx = Math.floor(51.53 / TILE_DEG), cy = Math.floor(35.73 / TILE_DEG);
+  const origin = { lat: cy * TILE_DEG + TILE_DEG / 2, lng: cx * TILE_DEG + TILE_DEG / 2 };
+  /** Two streets crossing in the middle of the tile; a traffic light mapped right on the crossing, a bus stop and a lamp on a centreline, and shops mapped on the asphalt (no buildings near). */
+  const tile = {
+    v: 2, key: `${cx}_${cy}`, cx, cy, real: true, b: [], a: [], p: [],
+    r: [{ l: [100, 5000, 9900, 5000], w: 12, k: "major", n: "Main St" }, { l: [5000, 100, 5000, 9900], w: 9, k: "minor", n: "Cross St" }],
+    o: [5000, 5000, PROP.signal, 5010, 4990, PROP.signal, 3000, 5000, PROP.bus, 5000, 7000, PROP.lamp, 5003, 5004, PROP.bin],
+    s: [{ x: 5000, y: 5000, n: "Corner Shop", c: "shop" }, { x: 2000, y: 5001, n: "Road Shop", c: "shop" }, { x: 5001, y: 2500, n: "Lane Shop", c: "shop" }],
+  } as unknown as CityTile;
+
+  /** How far inside the asphalt of any street a point is (m; ≤ 0: off every street). */
+  function onStreet(a: ReturnType<typeof buildTileArrays>, x: number, z: number) {
+    let worst = -Infinity;
+    a.roads.forEach((p, ri) => {
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const dx = p[i + 2] - p[i], dz = p[i + 3] - p[i + 1], l2 = dx * dx + dz * dz || 1;
+        const k = Math.max(0, Math.min(1, ((x - p[i]) * dx + (z - p[i + 1]) * dz) / l2));
+        worst = Math.max(worst, a.roadWidths[ri] / 2 - Math.hypot(p[i] + dx * k - x, p[i + 1] + dz * k - z));
+      }
+    });
+    return worst;
+  }
+
+  it("stand on the pavement — at a junction on the corner, not in the cross street", () => {
+    const a = buildTileArrays(tile, origin, "real", false);
+    for (const kind of ["signal", "bus", "lamp", "bin"] as const) {
+      const p = a.props.find((q) => q.kind === kind);
+      assert.ok(p && p.mats.length >= 16, `a ${kind}`);
+      for (let i = 0; i < p.mats.length; i += 16) assert.ok(onStreet(a, p.mats[i + 12], p.mats[i + 14]) < -0.3, `${kind} on the asphalt by ${onStreet(a, p.mats[i + 12], p.mats[i + 14]).toFixed(2)} m`);
+    }
+  });
+
+  it("a shop's sign on a pole is never in the road", () => {
+    const a = buildTileArrays(tile, origin, "real", false);
+    const shops = a.labels.filter((l) => l.kind === "shop");
+    assert.equal(shops.length, 3, "every shop keeps its label");
+    const poles = shops.filter((l) => l.pole);
+    assert.ok(poles.length >= 2, "poles where there's pavement");
+    for (const l of poles) assert.ok(onStreet(a, l.x, l.z) < -0.5, `${l.text} pole on the asphalt`);
+    for (const l of shops.filter((q) => !q.pole)) assert.ok(l.noBoard, "no pavement: no board");
   });
 });

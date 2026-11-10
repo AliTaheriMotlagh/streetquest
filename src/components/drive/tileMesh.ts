@@ -475,6 +475,29 @@ function roadIndex(lines: Float32Array[], widths: number[], kinds: RoadKind[], d
       if (q.d >= q.w / 2 + out * 0.6) return { x, z, yaw }; // already on the pavement
       return { x: q.px + nx * side * (q.w / 2 + out), z: q.pz + nz * side * (q.w / 2 + out), yaw };
     },
+    /**
+     * `kerb`, and then off every other street too. A light or a sign mapped at the middle
+     * of a junction clears the nearest street's kerb only to stand in the middle of the
+     * street crossing it: it's walked out of each street it's still on, which ends on the
+     * corner. Null when no pavement turns up within a few steps (it isn't put up at all).
+     */
+    pavement(x: number, z: number, out: number) {
+      const first = this.kerb(x, z, out);
+      if (!first) return null;
+      let px = first.x, pz = first.z;
+      for (let step = 0; step < 5; step++) {
+        let on: ReturnType<typeof project> | null = null;
+        for (const sg of grid.get(`${Math.floor(px / RG)}_${Math.floor(pz / RG)}`) ?? []) {
+          const q = project(sg, px, pz);
+          if (q.d < q.w / 2 + out * 0.6 - 0.01 && (!on || q.d - q.w / 2 < on.d - on.w / 2)) on = q;
+        }
+        if (!on) return { x: px, z: pz, yaw: first.yaw };
+        const nx = -on.dz, nz = on.dx, side = Math.sign((px - on.px) * nx + (pz - on.pz) * nz) || 1;
+        px = on.px + nx * side * (on.w / 2 + out);
+        pz = on.pz + nz * side * (on.w / 2 + out);
+      }
+      return null;
+    },
   };
 }
 
@@ -1077,6 +1100,11 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     const q = road.nearest(x, z, 60);
     return q ? Math.atan2(q.px - x, q.pz - z) : rand() * Math.PI * 2;
   };
+  /**
+   * Where something mapped at (x, z) stands: on the pavement, `out` m past the kerb, off
+   * every street (null: there's no pavement for it here) — or where it is, far from any street.
+   */
+  const stand = (x: number, z: number, out: number) => (road.nearest(x, z, 40) ? road.pavement(x, z, out) : { x, z, yaw: faceRoad(x, z) });
   /** Not a second traffic light (or shelter) on the same corner. */
   const near = (list: { x: number; z: number }[], x: number, z: number, m: number) => list.some((p) => Math.hypot(p.x - x, p.z - z) < m);
   const o = tile.o ?? [];
@@ -1099,13 +1127,13 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     if ((kind === PROP.lamp || kind === PROP.bus || SMALL[kind]) && lite) continue;
     if (SMALL[kind]) {
       // Benches, bins, hydrants and fountains stand on the pavement, never in the street.
-      const k = road.on(x, z, 0.3) ? road.kerb(x, z, 1.2) : { x, z, yaw: faceRoad(x, z) };
+      const k = road.on(x, z, 0.3) ? road.pavement(x, z, 1.2) : { x, z, yaw: faceRoad(x, z) };
       if (k && !blocked(k.x, k.z, 0.1)) small[SMALL[kind]].push(k);
       continue;
     }
-    // Posts mapped on the road itself go to the kerb, facing the street.
-    const k = road.kerb(x, z, kind === PROP.bus ? 2.1 : kind === PROP.signal ? 1.1 : 1.2) ?? { x, z, yaw: faceRoad(x, z) };
-    if (blocked(k.x, k.z, 0.2)) continue;
+    // Posts mapped on the road itself go to the kerb, clear of the cross street too, facing the street.
+    const k = stand(x, z, kind === PROP.bus ? 2.1 : kind === PROP.signal ? 1.1 : 1.2);
+    if (!k || blocked(k.x, k.z, 0.2)) continue;
     if (kind === PROP.lamp) (lamps.push(k), osmLamps++);
     else if (kind === PROP.signal && !near(signals, k.x, k.z, 5)) signals.push(k);
     else if (kind === PROP.bus && !near(buses, k.x, k.z, 8)) buses.push({ ...k, yaw: k.yaw + Math.PI });
@@ -1226,7 +1254,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
 
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
-  placeSigns(tile as VtCell, frame, footprints, labels, obstacles, faceRoad);
+  placeSigns(tile as VtCell, frame, footprints, labels, obstacles, stand);
   // The store's model carries its own sign and number.
   if (cuts.length) for (let i = labels.length - 1; i >= 0; i--) if ((labels[i].kind === "shop" || labels[i].kind === "num" || labels[i].kind === "building") && inCut(labels[i].x, labels[i].z, 4)) labels.splice(i, 1);
   return { key: tile.key, real: tile.real, layers, props, footprints, obstacles, roads: roadLines, roadWidths, roadKinds, roadNames, roadDrawn, labels };
@@ -1300,7 +1328,7 @@ function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typ
  * (pin and Places list) without a board. No wall within reach: a sign on a pole.
  * Server (Overpass) tiles carry places instead of storefronts: they're shops here too.
  */
-function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprints: Footprint[], labels: Label[], obstacles: Footprint[], faceRoad: (x: number, z: number) => number) {
+function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprints: Footprint[], labels: Label[], obstacles: Footprint[], stand: (x: number, z: number, out: number) => { x: number; z: number; yaw: number } | null) {
   const placed: { x: number; z: number; y: number; w: number }[] = [];
   const nearestWall = (x: number, z: number, reach: number) => {
     let best = reach, hit: { x: number; z: number; nx: number; nz: number; len: number; f: Footprint } | null = null;
@@ -1337,8 +1365,11 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
     const w = Math.max(2.6, Math.min(7.5, long.length * 0.36 + 1.6));
     const wall = nearestWall(x, z, 22);
     if (!wall) {
-      labels.push({ text: s.n, x, z, angle: faceRoad(x, z), w: Math.min(w, 4), y: 2.6, kind: "shop", cls: s.c, pole: true, top: 3.2 });
-      obstacles.push(post(x, z, 0.1, 3.2));
+      // A shop mapped on the street itself (or by it): its pole stands on the pavement, never
+      // in the road — and where there's no pavement for it, the shop keeps its pin, no board.
+      const k = stand(x, z, 1.3);
+      if (k) (labels.push({ text: s.n, x: k.x, z: k.z, angle: k.yaw, w: Math.min(w, 4), y: 2.6, kind: "shop", cls: s.c, pole: true, top: 3.2 }), obstacles.push(post(k.x, k.z, 0.1, 3.2)));
+      else labels.push({ text: s.n, x, z, angle: 0, w: Math.min(w, 4), y: 2.6, kind: "shop", cls: s.c, top: 3.2, noBoard: true });
       continue;
     }
     const sw = Math.min(w, wall.len * 0.92);
