@@ -30,6 +30,8 @@ import { useGame } from "../game/ui";
 import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { setEars } from "../game/spatial";
 import { fovFor } from "@/lib/view";
+import { filmLook } from "@/lib/filmLook";
+import { parseCube } from "@/lib/lut";
 import { setFullscreen } from "./fullscreen";
 import { celebrate } from "../game/Play";
 import { isLite, isTouch } from "../perf";
@@ -1323,6 +1325,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let skyKey = "", lastSky = 0, wet = -1, wetTarget = 0, rainAmount = 0;
     let skyPick = live.current.timeOfDay, skyWeather = live.current.weather;
     const rainTint = new THREE.Color();
+    let skyOvercast = 0;
     const applySky = (force = false) => {
       const { timeOfDay: pick, weather: w } = live.current;
       const here = frame.toLatLng(st.x, st.z);
@@ -1391,6 +1394,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       G.ao = 0.7;
       const warm = !toonish && night > 0.2 && night < 0.6 ? 1 - Math.abs(night - 0.45) / 0.25 : 0;
       G.tint.setRGB(1 + 0.05 * warm - 0.05 * Math.max(0, night - 0.6), 1, 1 - 0.06 * warm + 0.07 * Math.max(0, night - 0.6));
+      // The film look's share of the sky (lib/filmLook.ts; speed and camera are added each frame).
+      G.sunDir.copy(skyDir);
+      G.sunColor.set(L.sun).multiplyScalar(0.8 + 0.5 * warm);
+      skyOvercast = W.overcast;
     };
     applySky(true);
     gfx.onProfile((p) => {
@@ -1402,6 +1409,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       applySky(true);
     });
     const camFwd = new THREE.Vector3();
+    let filmSpeed = 0, filmCam: CamMode = camMode, filmFoot = false;
+    // An optional colour lookup table over the finished picture (a .cube file; README: 3D LUT).
+    const lutUrl = process.env.NEXT_PUBLIC_DRIVE_LUT;
+    if (lutUrl && gfx.hdr)
+      void fetch(lutUrl)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => !disposed && gfx.setLut(parseCube(txt)))
+        .catch(() => {});
 
     const tick = () => {
       if (disposed) return;
@@ -1518,6 +1533,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       model.group.position.set(parked?.x ?? st.x, parked?.alt ?? st.alt, parked?.z ?? st.z);
       model.group.rotation.y = parked?.yaw ?? st.yaw;
       const speedK = Math.min(1, st.speed / maxV());
+      filmSpeed = speedK;
       const lean = D.bike ? 0.45 : D.flies ? 0.28 : 0.12;
       st.roll += ((D.bike || D.flies ? 1 : -1) * st.steer * Math.min(1, st.speed / 10) * lean - st.roll) * Math.min(1, dt * 6);
       st.pitch += ((D.flies ? -(c.gas - c.brake) * 0.12 : (c.gas - c.brake) * 0.035) * Math.min(1, st.speed / 4 + 0.3) - st.pitch) * Math.min(1, dt * 5);
@@ -1905,6 +1921,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
 
       skyline.update(camera, st.x, st.z);
+      // -- the film look for this frame (lib/filmLook.ts): more blur and fringing the faster, less behind the wheel
+      const film = filmLook({ speedK: filmSpeed, camera: onFoot ? "foot" : camMode, night, overcast: skyOvercast, sunHeight: skyDir.y, toon: style === "toon" });
+      const G = gfx.grade;
+      (G.motionBlur = film.motionBlur), (G.rays = film.rays), (G.flare = film.flare), (G.aberration = film.aberration), (G.grain = film.grain), (G.split = film.split);
+      // Nothing nearer than the car is smeared: from the chase camera that's the car itself, behind the wheel the dashboard.
+      G.sharpNear = onFoot ? 3.5 : camMode === "cockpit" ? 2.4 : Math.hypot(camera.position.x - st.x, camera.position.y - st.alt, camera.position.z - st.z) + 3.2;
+      if (camMode !== filmCam || onFoot !== filmFoot) (filmCam = camMode), (filmFoot = onFoot), gfx.cut();
       gfx.render(scene, camera);
       combat.renderOverlay();
     };

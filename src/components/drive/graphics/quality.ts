@@ -19,6 +19,12 @@ export type Profile = {
   /** MSAA samples in the HDR target (post) — otherwise the canvas's own antialiasing. */
   msaa: number;
   bloom: boolean;
+  /** Bloom starts at this fraction of the picture: 2 = half size, 4 = a quarter (the light pipeline). */
+  bloomDiv: number;
+  /** FXAA on the finished frame — the light pipeline's anti-aliasing (it has no MSAA target). */
+  fxaa: boolean;
+  /** The film look: motion blur, sun shafts and lens flare, chromatic aberration, grain, split-tone grade. */
+  cinematic: boolean;
   /** Screen-space ambient occlusion (contact shadows at kerbs, walls, under cars). */
   ao: boolean;
   shadows: boolean;
@@ -45,10 +51,10 @@ export type Profile = {
 };
 
 export const PROFILES: Record<Tier, Profile> = {
-  low: { tier: "low", maxDpr: 1, minDpr: 0.6, post: false, msaa: 0, bloom: false, ao: false, shadows: false, shadowMap: 1024, shadowRange: 60, detailM: 190, fogFar: 650, surfaces: false, clouds: false, clearcoat: false, lampPools: false, wind: false, anisotropy: 1, rainDrops: 700 },
-  medium: { tier: "medium", maxDpr: 1.5, minDpr: 0.7, post: false, msaa: 0, bloom: false, ao: false, shadows: true, shadowMap: 1024, shadowRange: 70, detailM: 260, fogFar: 900, surfaces: true, clouds: false, clearcoat: false, lampPools: true, wind: true, anisotropy: 4, rainDrops: 1600 },
-  high: { tier: "high", maxDpr: 1.75, minDpr: 0.8, post: true, msaa: 4, bloom: true, ao: false, shadows: true, shadowMap: 2048, shadowRange: 90, detailM: 320, fogFar: 1100, surfaces: true, clouds: true, clearcoat: true, lampPools: true, wind: true, anisotropy: 8, rainDrops: 3200 },
-  ultra: { tier: "ultra", maxDpr: 2, minDpr: 0.9, post: true, msaa: 4, bloom: true, ao: true, shadows: true, shadowMap: 4096, shadowRange: 120, detailM: 400, fogFar: 1300, surfaces: true, clouds: true, clearcoat: true, lampPools: true, wind: true, anisotropy: 16, rainDrops: 5200 },
+  low: { tier: "low", maxDpr: 1, minDpr: 0.6, post: false, msaa: 0, bloom: false, ao: false, shadows: false, shadowMap: 1024, shadowRange: 60, detailM: 190, fogFar: 650, surfaces: false, clouds: false, clearcoat: false, lampPools: false, wind: false, anisotropy: 1, rainDrops: 700, bloomDiv: 4, fxaa: false, cinematic: false },
+  medium: { tier: "medium", maxDpr: 1.5, minDpr: 0.7, post: true, msaa: 0, bloom: true, ao: false, shadows: true, shadowMap: 1024, shadowRange: 70, detailM: 260, fogFar: 900, surfaces: true, clouds: false, clearcoat: false, lampPools: true, wind: true, anisotropy: 4, rainDrops: 1600, bloomDiv: 4, fxaa: true, cinematic: false },
+  high: { tier: "high", maxDpr: 1.75, minDpr: 0.8, post: true, msaa: 4, bloom: true, ao: false, shadows: true, shadowMap: 2048, shadowRange: 90, detailM: 320, fogFar: 1100, surfaces: true, clouds: true, clearcoat: true, lampPools: true, wind: true, anisotropy: 8, rainDrops: 3200, bloomDiv: 2, fxaa: false, cinematic: true },
+  ultra: { tier: "ultra", maxDpr: 2, minDpr: 0.9, post: true, msaa: 4, bloom: true, ao: true, shadows: true, shadowMap: 4096, shadowRange: 120, detailM: 400, fogFar: 1300, surfaces: true, clouds: true, clearcoat: true, lampPools: true, wind: true, anisotropy: 16, rainDrops: 5200, bloomDiv: 2, fxaa: false, cinematic: true },
 };
 
 /** What the GPU and browser report (graphics/caps.ts reads it). */
@@ -106,14 +112,24 @@ export function detectTier(c: Caps, demoted = 0): Tier {
 /** The profile in force: the tier's, with effects stripped by the adaptive `level` (0 = none stripped). */
 export function effective(tier: Tier, level: number): Profile {
   const p = { ...PROFILES[tier] };
-  // Each level gives back one thing, cheapest-to-lose first.
+  // Each level gives back one thing, cheapest-to-lose first: the film look and every
+  // screen-space extra go before a single shadow does.
   if (level >= 1) p.ao = false;
-  if (level >= 2) (p.bloom = false), (p.clouds = false);
-  if (level >= 3) (p.shadowMap = Math.min(p.shadowMap, 1024)), (p.shadowRange = Math.min(p.shadowRange, 70)), (p.detailM = Math.min(p.detailM, 260));
-  if (level >= 4) (p.shadows = false), (p.clearcoat = false), (p.detailM = Math.min(p.detailM, 200)), (p.wind = false);
+  if (level >= 2) p.cinematic = false;
+  if (level >= 3) (p.bloom = false), (p.clouds = false);
+  if (level >= 4) (p.shadowMap = Math.min(p.shadowMap, 1024)), (p.shadowRange = Math.min(p.shadowRange, 70)), (p.detailM = Math.min(p.detailM, 260));
+  if (level >= 5) (p.shadows = false), (p.clearcoat = false), (p.detailM = Math.min(p.detailM, 200)), (p.wind = false), (p.fxaa = false);
   return p;
 }
-export const MAX_LEVEL = 4;
+export const MAX_LEVEL = 5;
+
+/**
+ * What this device can't do, taken out of a profile: without half-float render targets
+ * there is no HDR pipeline at all (the picture goes straight to the screen, as on low).
+ */
+export function withCaps(p: Profile, c: Pick<Caps, "floatTargets">): Profile {
+  return c.floatTargets ? p : { ...p, post: false, msaa: 0, bloom: false, ao: false, fxaa: false, cinematic: false };
+}
 
 export type Change = { kind: "dpr"; dpr: number } | { kind: "level"; level: number };
 

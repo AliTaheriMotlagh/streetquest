@@ -5,9 +5,9 @@
 // dynamic resolution and — on "auto" — by stripping effects, keeps the sun's shadow map
 // stable and aimed where the camera looks, and survives a lost GPU context.
 import * as THREE from "three";
-import { demote, demoted, qualityPick, tierFor } from "./caps";
+import { demote, demoted, qualityPick, readCaps, tierFor } from "./caps";
 import { defaultGrade, PostPipeline, type Grade } from "./post";
-import { Adaptive, effective, MAX_LEVEL, type Profile, type QualityPick, type Tier } from "./quality";
+import { Adaptive, effective, MAX_LEVEL, withCaps, type Profile, type QualityPick, type Tier } from "./quality";
 import { acesInverse, DISPLAY } from "./shaders";
 import { sharpenFor } from "@/lib/view";
 
@@ -73,13 +73,14 @@ export class GraphicsEngine {
   }
 
   private make(level: number) {
-    const p = effective(this.tier, level);
-    if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false);
+    const p = withCaps(effective(this.tier, level), readCaps());
+    if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false), (p.fxaa = false), (p.cinematic = false);
     return p;
   }
 
   private postOpts() {
-    return { msaa: this.profile.msaa, bloom: this.profile.bloom, ao: this.profile.ao };
+    const p = this.profile;
+    return { msaa: p.msaa, bloom: p.bloom, ao: p.ao, cinematic: p.cinematic, fxaa: p.fxaa, bloomDiv: p.bloomDiv };
   }
 
   /** Effects or distances changed (adaptive level): re-apply shadows, detail range… */
@@ -97,6 +98,31 @@ export class GraphicsEngine {
   }
   get hdr() {
     return !!this.post;
+  }
+  /** The camera jumped (a new view, a respawn): no motion blur across the cut. */
+  cut() {
+    this.post?.cut();
+  }
+  /**
+   * A 3D colour lookup table over the finished picture (`size`³ RGB values 0…1, red fastest
+   * — a .cube file's order; lib/lut.ts reads one), or null for none.
+   */
+  setLut(lut: { size: number; data: Float32Array } | null) {
+    this.grade.lut?.dispose();
+    this.grade.lut = null;
+    if (!lut) return;
+    const n = lut.size, px = new Uint8Array(n * n * n * 4);
+    for (let i = 0; i < n * n * n; i++) {
+      for (let c = 0; c < 3; c++) px[i * 4 + c] = Math.round(Math.min(1, Math.max(0, lut.data[i * 3 + c])) * 255);
+      px[i * 4 + 3] = 255;
+    }
+    const t = new THREE.Data3DTexture(px, n, n, n);
+    t.format = THREE.RGBAFormat;
+    t.minFilter = t.magFilter = THREE.LinearFilter;
+    t.wrapS = t.wrapT = t.wrapR = THREE.ClampToEdgeWrapping;
+    t.unpackAlignment = 1;
+    t.needsUpdate = true;
+    this.grade.lut = t;
   }
 
   /**
@@ -204,6 +230,7 @@ export class GraphicsEngine {
 
   dispose() {
     this.listeners.clear();
+    this.grade.lut?.dispose();
     this.post?.dispose();
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onLost);
     this.renderer.domElement.removeEventListener("webglcontextrestored", this.onRestored);

@@ -3,7 +3,7 @@
 // HDR pipeline relies on, and the procedural surface textures.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { Adaptive, detectTier, effective, MAX_LEVEL, PROFILES, TIERS, type Caps } from "@/components/drive/graphics/quality";
+import { Adaptive, detectTier, effective, MAX_LEVEL, PROFILES, TIERS, withCaps, type Caps } from "@/components/drive/graphics/quality";
 import { aces, acesInverse } from "@/components/drive/graphics/shaders";
 import { asphaltData, fbm, heightToNormal, noiseData, pavingData, prng } from "@/components/drive/graphics/surfaces";
 import { mixHex, mixRecord, skyAt, skyFor, sunPosition, sunVector, WEATHER_LOOK } from "@/lib/daylight";
@@ -51,25 +51,49 @@ describe("profiles", () => {
     for (let i = 1; i < TIERS.length; i++) {
       const lo = PROFILES[TIERS[i - 1]], hi = PROFILES[TIERS[i]];
       for (const k of ["maxDpr", "shadowMap", "shadowRange", "detailM", "fogFar", "rainDrops", "anisotropy"] as const) assert.ok(hi[k] >= lo[k], `${TIERS[i]}.${k}`);
-      for (const k of ["post", "bloom", "ao", "shadows", "surfaces", "clouds", "clearcoat", "lampPools", "wind"] as const) assert.ok(!lo[k] || hi[k], `${TIERS[i]}.${k}`);
+      for (const k of ["post", "bloom", "ao", "cinematic", "shadows", "surfaces", "clouds", "clearcoat", "lampPools", "wind"] as const) assert.ok(!lo[k] || hi[k], `${TIERS[i]}.${k}`);
     }
   });
 
   it("only tiers with the HDR pipeline ask for MSAA targets, bloom or AO", () => {
     for (const t of TIERS) {
       const p = PROFILES[t];
-      if (!p.post) assert.ok(!p.bloom && !p.ao && p.msaa === 0, t);
+      if (!p.post) assert.ok(!p.bloom && !p.ao && !p.cinematic && !p.fxaa && p.msaa === 0, t);
+      // The film look reads the scene's depth through the MSAA target; FXAA is for the pipeline without one.
+      if (p.cinematic) assert.ok(p.msaa > 0, t);
+      if (p.fxaa) assert.equal(p.msaa, 0, t);
     }
   });
 
-  it("adaptive levels strip AO, then bloom and clouds, then shadow detail, then shadows", () => {
+  it("medium gets the light pipeline: no MSAA target, FXAA, bloom from a quarter size; low stays straight to the screen", () => {
+    const m = PROFILES.medium;
+    assert.deepEqual([m.post, m.msaa, m.fxaa, m.bloom, m.bloomDiv, m.ao, m.cinematic], [true, 0, true, true, 4, false, false]);
+    assert.equal(PROFILES.low.post, false);
+    assert.equal(PROFILES.high.bloomDiv, 2);
+  });
+
+  it("a device without float render targets gets no pipeline at all, whatever the tier", () => {
+    for (const t of TIERS) {
+      const p = withCaps(PROFILES[t], { floatTargets: false });
+      assert.deepEqual([p.post, p.bloom, p.ao, p.cinematic, p.fxaa, p.msaa], [false, false, false, false, false, 0], t);
+      assert.equal(p.shadows, PROFILES[t].shadows);
+      assert.deepEqual(withCaps(PROFILES[t], { floatTargets: true }), PROFILES[t]);
+    }
+  });
+
+  it("adaptive levels strip AO, then the film look, then bloom and clouds, then shadow detail, then shadows", () => {
     assert.deepEqual(effective("ultra", 0), PROFILES.ultra);
     assert.equal(effective("ultra", 1).ao, false);
-    assert.equal(effective("ultra", 1).bloom, true);
-    assert.equal(effective("ultra", 2).bloom, false);
-    assert.equal(effective("ultra", 2).clouds, false);
-    assert.ok(effective("ultra", 3).shadowMap <= 1024);
-    assert.equal(effective("ultra", 3).shadows, true);
+    assert.equal(effective("ultra", 1).cinematic, true);
+    assert.equal(effective("ultra", 2).cinematic, false);
+    assert.equal(effective("ultra", 2).bloom, true);
+    assert.equal(effective("ultra", 3).bloom, false);
+    assert.equal(effective("ultra", 3).clouds, false);
+    assert.equal(effective("ultra", 3).shadowMap, PROFILES.ultra.shadowMap, "every screen-space extra goes before any shadow does");
+    assert.ok(effective("ultra", 4).shadowMap <= 1024);
+    assert.equal(effective("ultra", 4).shadows, true);
+    assert.equal(effective("medium", MAX_LEVEL - 1).fxaa, true);
+    assert.equal(effective("medium", MAX_LEVEL).fxaa, false);
     assert.equal(effective("ultra", MAX_LEVEL).shadows, false);
     assert.equal(effective("ultra", MAX_LEVEL).post, true, "the pipeline itself stays (the renderer was made for it)");
   });

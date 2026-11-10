@@ -1,14 +1,24 @@
 "use client";
-// The HDR pipeline for the high and ultra tiers. The city renders once into a half-float
-// MSAA target (with a depth texture when AO is on); then, all at reduced resolution:
-// screen-space ambient occlusion from that depth (normals rebuilt from it, so no second
-// scene pass) with a depth-aware blur, and a dual-filter bloom chain; and one last pass to
-// the screen that adds them up, tone-maps (three.js's ACES, so it matches the direct path),
-// grades, vignettes and dithers. About ten cheap full-screen passes, most at ¼ size or less.
+// The HDR pipeline. The city renders once into a half-float target (4× MSAA on high and
+// ultra, with a depth texture when something needs it); then, mostly at reduced resolution:
+//  - screen-space ambient occlusion from that depth (normals rebuilt from it, so no second
+//    scene pass) with a depth-aware blur;
+//  - the film look (high and ultra, `cinematic`): camera motion blur — every pixel is put
+//    back where it was a frame ago from its depth and the two cameras, and smeared along
+//    the way, except what's nearer than the player's car — and the sun's shafts: the sky
+//    around the sun, smeared outwards from it at ¼ size, so they pour through the gaps in
+//    the skyline;
+//  - a dual-filter bloom chain;
+//  - one last pass that adds them up, sharpens, fringes the corners (chromatic aberration),
+//    adds a lens flare while the sun is in view, tone-maps (three.js's ACES, so it matches
+//    the direct path), grades (white balance, split toning, an optional 3D LUT), vignettes
+//    and grains;
+//  - on the light pipeline (medium: no MSAA, bloom from ¼ size) FXAA on the finished frame.
+// About ten cheap full-screen passes, most at ¼ size or less.
 import * as THREE from "three";
 import { TONE_GLSL } from "./shaders";
 
-/** Look of the final image; the environment updates it with the time of day and weather. */
+/** Look of the final image; the environment updates it with the time of day and weather, the drive with speed and camera. */
 export type Grade = {
   bloom: number;
   /** Bloom starts at this scene brightness (linear, before exposure). */
@@ -23,8 +33,35 @@ export type Grade = {
   vignette: number;
   /** Sharpening of the finished frame, 0 = none (lib/view.ts `sharpenFor`: more when drawn below the screen's resolution). */
   sharpen: number;
+  // -- the film look (profile.cinematic)
+  /** Camera motion blur: the shutter, 0 = none … 1 = open for 1/30 s. */
+  motionBlur: number;
+  /** Nothing nearer than this (m from the camera) is blurred: the player's car stays sharp. */
+  sharpNear: number;
+  /** Sun shafts, 0 = none. */
+  rays: number;
+  /** Lens flare while the sun is on screen and not hidden, 0 = none. */
+  flare: number;
+  /** Towards the sun (world, unit) and its light's colour. */
+  sunDir: THREE.Vector3;
+  sunColor: THREE.Color;
+  /** Colour fringes towards the corners (0 = none; rises with speed). */
+  aberration: number;
+  /** Film grain (display space; ~0.03 is fine film, 0 leaves only the anti-banding dither). */
+  grain: number;
+  /** Split toning, 0 = none … 1: shadows lean to `shadowTint`, highlights to `highTint`. */
+  split: number;
+  shadowTint: THREE.Color;
+  highTint: THREE.Color;
+  /** A 3D colour lookup table over the finished picture (engine.setLut), and how much of it. */
+  lut: THREE.Data3DTexture | null;
+  lutMix: number;
 };
-export const defaultGrade = (): Grade => ({ bloom: 0.08, threshold: 1.2, ao: 0.7, saturation: 1.06, contrast: 1.05, tint: new THREE.Color(1, 1, 1), lift: 0.0, vignette: 0.24, sharpen: 0.15 });
+export const defaultGrade = (): Grade => ({
+  bloom: 0.08, threshold: 1.2, ao: 0.7, saturation: 1.06, contrast: 1.05, tint: new THREE.Color(1, 1, 1), lift: 0.0, vignette: 0.24, sharpen: 0.15,
+  motionBlur: 0, sharpNear: 12, rays: 0, flare: 0, sunDir: new THREE.Vector3(0.3, 0.8, 0.5).normalize(), sunColor: new THREE.Color(1, 0.95, 0.85),
+  aberration: 0, grain: 0, split: 0, shadowTint: new THREE.Color(0.86, 1.0, 1.06), highTint: new THREE.Color(1.07, 1.0, 0.9), lut: null, lutMix: 1,
+});
 
 const VERT = /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
@@ -113,10 +150,67 @@ void main() {
   gl_FragColor = vec4(c / 12.0 + texture2D(tCur, vUv).rgb, 1.0);
 }`;
 
+/** View-space distance (m, positive) of a depth-buffer value. */
+const VIEW_Z = /* glsl */ `float viewZ(float d) { vec4 p = uInvProj * vec4(0.0, 0.0, d * 2.0 - 1.0, 1.0); return -p.z / p.w; }`;
+
+// Camera motion blur. uReproject takes this frame's clip space to last frame's: where the
+// pixel was is where it's smeared from. Samples that land on something near (the player's
+// car) don't count, so it neither smears nor bleeds into the street behind it.
+const MOTION_FRAG = /* glsl */ `
+uniform sampler2D tScene; uniform highp sampler2D tDepth; uniform mat4 uReproject; uniform mat4 uInvProj;
+uniform float uAmount, uNear, uSeed;
+varying vec2 vUv;
+${VIEW_Z}
+void main() {
+  float d = texture2D(tDepth, vUv).r;
+  vec3 c = texture2D(tScene, vUv).rgb;
+  float k = smoothstep(uNear, uNear * 1.5, viewZ(d));
+  vec4 prev = uReproject * vec4(vec3(vUv, d) * 2.0 - 1.0, 1.0);
+  vec2 vel = prev.w > 0.0 ? (vUv - (prev.xy / prev.w * 0.5 + 0.5)) * uAmount * k : vec2(0.0);
+  float len = length(vel);
+  if (len < 0.0007) { gl_FragColor = vec4(c, 1.0); return; }
+  vel *= min(1.0, 0.045 / len);
+  float jitter = fract(sin(dot(gl_FragCoord.xy + uSeed, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+  float w = 1.0;
+  for (int i = 0; i < SAMPLES; i++) {
+    vec2 uv = vUv + vel * ((float(i) + 0.5 + jitter) / float(SAMPLES) - 0.5);
+    float sw = smoothstep(uNear, uNear * 1.5, viewZ(texture2D(tDepth, uv).r));
+    c += texture2D(tScene, uv).rgb * sw;
+    w += sw;
+  }
+  gl_FragColor = vec4(c / w, 1.0);
+}`;
+
+// Sun shafts, step one: the open sky near the sun (everything else is black).
+const RAY_MASK_FRAG = /* glsl */ `
+uniform highp sampler2D tDepth; uniform mat4 uInvProj; uniform vec2 uSun; uniform float uAspect, uSkyZ;
+varying vec2 vUv;
+${VIEW_Z}
+void main() {
+  float sky = step(uSkyZ, viewZ(texture2D(tDepth, vUv).r));
+  float f = max(0.0, 1.0 - length((vUv - uSun) * vec2(uAspect, 1.0)) * 1.25);
+  gl_FragColor = vec4(vec3(sky * f * f * f), 1.0);
+}`;
+// …step two (twice): smeared away from the sun.
+const RAY_BLUR_FRAG = /* glsl */ `
+uniform sampler2D tSrc; uniform vec2 uSun; uniform float uReach;
+varying vec2 vUv;
+void main() {
+  vec2 stp = (uSun - vUv) * uReach / float(SAMPLES);
+  vec2 uv = vUv;
+  float acc = 0.0, w = 1.0, tot = 0.0;
+  for (int i = 0; i < SAMPLES; i++) { acc += texture2D(tSrc, uv).r * w; tot += w; w *= 0.93; uv += stp; }
+  gl_FragColor = vec4(vec3(acc / tot), 1.0);
+}`;
+
 const FINAL_FRAG = /* glsl */ `
-uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tAO;
+uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tAO; uniform sampler2D tRays;
 uniform float uExposure, uBloom, uAO, uSat, uContrast, uLift, uVignette, uSeed, uSharpen;
-uniform vec3 uTint; uniform vec2 uTexel;
+uniform float uRays, uFlare, uAspect, uAberration, uGrain, uSplit, uLutMix, uLutSize;
+uniform vec3 uTint, uSunColor, uShadowTint, uHighTint; uniform vec2 uTexel, uSun;
+#ifdef USE_LUT
+uniform highp sampler3D tLut;
+#endif
 varying vec2 vUv;
 ${TONE_GLSL}
 // HDR → 0…1 and back, so a bright lamp next to a dark wall doesn't decide everything.
@@ -124,6 +218,8 @@ vec3 squash(vec3 c) { return c / (1.0 + max(c.r, max(c.g, c.b))); }
 vec3 unsquash(vec3 c) { return c / max(1.0 - max(c.r, max(c.g, c.b)), 1e-3); }
 void main() {
   vec3 c = texture2D(tScene, vUv).rgb;
+  vec2 d = vUv - 0.5;
+  float edge = dot(d, d) * 2.0;
   if (uSharpen > 0.0) {
     // Sharpen: push each pixel away from its four neighbours' average, but never past the
     // brightest or darkest of them — edges get crisper with no halo around them.
@@ -133,11 +229,36 @@ void main() {
     vec3 lo = min(m, min(min(n, s), min(e, w))), hi = max(m, max(max(n, s), max(e, w)));
     c = unsquash(clamp(m + (m * 4.0 - n - s - e - w) * uSharpen, lo, hi));
   }
+#ifdef USE_CINEMATIC
+  if (uAberration > 0.0) {
+    // A lens bends red and blue differently, more towards the corners; the middle stays clean.
+    vec2 off = d * edge * uAberration * 0.005;
+    float k = smoothstep(0.08, 0.5, edge);
+    c.r = mix(c.r, texture2D(tScene, vUv - off).r, k);
+    c.b = mix(c.b, texture2D(tScene, vUv + off).b, k);
+  }
+#endif
 #ifdef USE_AO
   c *= mix(1.0, texture2D(tAO, vUv).r, uAO);
 #endif
 #ifdef USE_BLOOM
   c += texture2D(tBloom, vUv).rgb * uBloom;
+#endif
+#ifdef USE_CINEMATIC
+  if (uRays > 0.0) c += uSunColor * texture2D(tRays, vUv).r * uRays * 0.7;
+  if (uFlare > 0.0) {
+    // How much open sky is round the sun (the shafts' texture, read where the sun is): hidden
+    // behind a tower there's no flare. Then a glow at the sun and three ghosts on the line
+    // through the middle of the picture.
+    float seen = texture2D(tRays, clamp(uSun, 0.02, 0.98)).r;
+    vec2 a = vec2(uAspect, 1.0), axis = vec2(0.5) - uSun;
+    float glow = exp(-dot((vUv - uSun) * a, (vUv - uSun) * a) * 45.0);
+    vec3 f = uSunColor * glow * 0.4;
+    f += vec3(0.5, 0.8, 1.0) * smoothstep(0.075, 0.03, length((vUv - (uSun + axis * 0.62)) * a)) * 0.12;
+    f += vec3(1.0, 0.7, 0.4) * smoothstep(0.13, 0.09, length((vUv - (uSun + axis * 1.35)) * a)) * 0.07;
+    f += vec3(0.6, 1.0, 0.7) * smoothstep(0.045, 0.01, length((vUv - (uSun + axis * 1.75)) * a)) * 0.14;
+    c += f * uFlare * seen * seen;
+  }
 #endif
   c *= uTint;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -145,11 +266,43 @@ void main() {
   vec3 s = sqToSRGB(sqACES(c, uExposure));
   s = clamp((s - 0.5) * uContrast + 0.5, 0.0, 1.0);
   s = s + uLift * (1.0 - s);
-  vec2 d = vUv - 0.5;
-  s *= 1.0 - uVignette * smoothstep(0.1, 0.55, dot(d, d) * 2.0);
-  // Dither: no banding in the sky's long gradients.
-  s += (fract(sin(dot(gl_FragCoord.xy + uSeed, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+#ifdef USE_CINEMATIC
+  if (uSplit > 0.0) {
+    // Split toning: the dark end leans one way, the bright end the other, the middle is left alone.
+    float y = dot(s, vec3(0.2126, 0.7152, 0.0722));
+    float lo = (1.0 - y) * (1.0 - y), hi = y * y;
+    s = clamp(s * mix(vec3(1.0), uShadowTint, lo * uSplit) * mix(vec3(1.0), uHighTint, hi * uSplit), 0.0, 1.0);
+  }
+#endif
+#ifdef USE_LUT
+  s = mix(s, texture(tLut, s * ((uLutSize - 1.0) / uLutSize) + 0.5 / uLutSize).rgb, uLutMix);
+#endif
+  s *= 1.0 - uVignette * smoothstep(0.1, 0.55, edge);
+  // Grain (and with none, a dither): no banding in the sky's long gradients; less on the bright end, as on film.
+  float noise = fract(sin(dot(gl_FragCoord.xy + uSeed, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+  s += noise * (1.0 / 255.0 + uGrain * (1.0 - 0.6 * dot(s, vec3(0.3333))));
   gl_FragColor = vec4(s, 1.0);
+}`;
+
+// FXAA (Lottes' fast approximate anti-aliasing, the short form): find the edge from the
+// corners' brightness and blend along it. Works on the finished, display-space frame.
+const FXAA_FRAG = /* glsl */ `
+uniform sampler2D tSrc; uniform vec2 uTexel; varying vec2 vUv;
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main() {
+  vec3 m = texture2D(tSrc, vUv).rgb;
+  float lM = luma(m);
+  float lNW = luma(texture2D(tSrc, vUv + vec2(-1.0, -1.0) * uTexel).rgb), lNE = luma(texture2D(tSrc, vUv + vec2(1.0, -1.0) * uTexel).rgb);
+  float lSW = luma(texture2D(tSrc, vUv + vec2(-1.0, 1.0) * uTexel).rgb), lSE = luma(texture2D(tSrc, vUv + vec2(1.0, 1.0) * uTexel).rgb);
+  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+  if (lMax - lMin < max(0.0312, lMax * 0.125)) { gl_FragColor = vec4(m, 1.0); return; }
+  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+  float reduce = max((lNW + lNE + lSW + lSE) * 0.03125, 0.0078125);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), -8.0, 8.0) * uTexel;
+  vec3 a = 0.5 * (texture2D(tSrc, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(tSrc, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);
+  vec3 b = a * 0.5 + 0.25 * (texture2D(tSrc, vUv - dir * 0.5).rgb + texture2D(tSrc, vUv + dir * 0.5).rgb);
+  float lB = luma(b);
+  gl_FragColor = vec4(lB < lMin || lB > lMax ? a : b, 1.0);
 }`;
 
 const pass = (frag: string, uniforms: Record<string, THREE.IUniform>, defines: Record<string, string | number> = {}) =>
@@ -157,7 +310,10 @@ const pass = (frag: string, uniforms: Record<string, THREE.IUniform>, defines: R
 
 const BLOOM_MIPS = 5;
 
-export type PostOptions = { msaa: number; bloom: boolean; ao: boolean };
+export type PostOptions = { msaa: number; bloom: boolean; ao: boolean; cinematic: boolean; fxaa: boolean; bloomDiv: number };
+
+/** Further than this (m) is sky to the sun shafts (the city ends in fog well before). */
+const SKY_Z = 1500;
 
 export class PostPipeline {
   private quad: THREE.Mesh;
@@ -165,6 +321,10 @@ export class PostPipeline {
   private hdr: THREE.WebGLRenderTarget;
   private aoA: THREE.WebGLRenderTarget | null = null;
   private aoB: THREE.WebGLRenderTarget | null = null;
+  private motion: THREE.WebGLRenderTarget | null = null;
+  private rayA: THREE.WebGLRenderTarget | null = null;
+  private rayB: THREE.WebGLRenderTarget | null = null;
+  private ldr: THREE.WebGLRenderTarget | null = null;
   private down: THREE.WebGLRenderTarget[] = [];
   private up: THREE.WebGLRenderTarget[] = [];
   private final: THREE.ShaderMaterial;
@@ -173,8 +333,22 @@ export class PostPipeline {
   private preMat = pass(PREFILTER_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 1 } });
   private downMat = pass(DOWN_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private upMat = pass(UP_FRAG, { tSrc: { value: null }, tCur: { value: null }, uTexel: { value: new THREE.Vector2() } });
+  private motionMat = pass(MOTION_FRAG, { tScene: { value: null }, tDepth: { value: null }, uReproject: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uAmount: { value: 0 }, uNear: { value: 10 }, uSeed: { value: 0 } }, { SAMPLES: 8 });
+  private rayMaskMat = pass(RAY_MASK_FRAG, { tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uSkyZ: { value: SKY_Z } });
+  private rayBlurMat = pass(RAY_BLUR_FRAG, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uReach: { value: 0.5 } }, { SAMPLES: 14 });
+  private fxaaMat = pass(FXAA_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private size = new THREE.Vector2();
   private opts: PostOptions;
+  // Last frame's camera, for motion blur (and to tell a cut from a move).
+  private viewProj = new THREE.Matrix4();
+  private prevViewProj = new THREE.Matrix4();
+  private prevPos = new THREE.Vector3();
+  private prevFwd = new THREE.Vector3();
+  private fwd = new THREE.Vector3();
+  private sunClip = new THREE.Vector4();
+  private lastAt = 0;
+  private fresh = true;
+  private lut = false;
 
   constructor(private renderer: THREE.WebGLRenderer, opts: PostOptions) {
     this.opts = { ...opts };
@@ -186,32 +360,43 @@ export class PostPipeline {
     this.hdr = this.makeHdr(1, 1);
     this.aoMat = pass(AO_FRAG, { tDepth: { value: null }, uProj: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: 1.4 }, uFadeFar: { value: 220 } }, { SAMPLES: 12 });
     this.final = pass(FINAL_FRAG, {
-      tScene: { value: null }, tBloom: { value: null }, tAO: { value: null },
-      uExposure: { value: 1 }, uBloom: { value: 0 }, uAO: { value: 0 }, uSat: { value: 1 }, uContrast: { value: 1 }, uLift: { value: 0 }, uVignette: { value: 0 }, uSeed: { value: 0 }, uSharpen: { value: 0 }, uTexel: { value: new THREE.Vector2() }, uTint: { value: new THREE.Color(1, 1, 1) },
+      tScene: { value: null }, tBloom: { value: null }, tAO: { value: null }, tRays: { value: null }, tLut: { value: null },
+      uExposure: { value: 1 }, uBloom: { value: 0 }, uAO: { value: 0 }, uSat: { value: 1 }, uContrast: { value: 1 }, uLift: { value: 0 }, uVignette: { value: 0 }, uSeed: { value: 0 }, uSharpen: { value: 0 },
+      uRays: { value: 0 }, uFlare: { value: 0 }, uAspect: { value: 1 }, uAberration: { value: 0 }, uGrain: { value: 0 }, uSplit: { value: 0 }, uLutMix: { value: 1 }, uLutSize: { value: 16 },
+      uTexel: { value: new THREE.Vector2() }, uSun: { value: new THREE.Vector2(0.5, 0.5) }, uTint: { value: new THREE.Color(1, 1, 1) }, uSunColor: { value: new THREE.Color(1, 1, 1) }, uShadowTint: { value: new THREE.Color(1, 1, 1) }, uHighTint: { value: new THREE.Color(1, 1, 1) },
     });
     this.configure(opts);
   }
 
+  /** Needs the scene's depth as a texture? */
+  private get depth() {
+    return this.opts.ao || this.opts.cinematic;
+  }
   private makeHdr(w: number, h: number) {
     const t = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: this.opts.msaa, depthBuffer: true, stencilBuffer: false });
-    if (this.opts.ao) t.depthTexture = new THREE.DepthTexture(w, h);
+    if (this.depth) t.depthTexture = new THREE.DepthTexture(w, h);
     return t;
   }
-  private target(w: number, h: number) {
-    return new THREE.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), { type: THREE.HalfFloatType, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  private target(w: number, h: number, type: THREE.TextureDataType = THREE.HalfFloatType) {
+    return new THREE.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), { type, depthBuffer: false, stencilBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  }
+  private defines() {
+    const o = this.opts;
+    this.final.defines = { ...(o.bloom ? { USE_BLOOM: "" } : {}), ...(o.ao ? { USE_AO: "" } : {}), ...(o.cinematic ? { USE_CINEMATIC: "" } : {}), ...(this.lut ? { USE_LUT: "" } : {}) };
+    this.final.needsUpdate = true;
   }
 
-  /** Turn effects on or off (the adaptive controller strips AO, then bloom). */
+  /** Turn effects on or off (the adaptive controller strips AO, then the film look, then bloom). */
   configure(opts: PostOptions) {
-    const rebuild = opts.ao !== this.opts.ao || opts.msaa !== this.opts.msaa;
+    const was = this.depth, msaa = this.opts.msaa;
     this.opts = { ...opts };
-    this.final.defines = { ...(opts.bloom ? { USE_BLOOM: "" } : {}), ...(opts.ao ? { USE_AO: "" } : {}) };
-    this.final.needsUpdate = true;
-    if (rebuild) {
+    this.defines();
+    if (was !== this.depth || msaa !== opts.msaa) {
       this.hdr.depthTexture?.dispose();
       this.hdr.dispose();
       this.hdr = this.makeHdr(this.size.x || 1, this.size.y || 1);
     }
+    this.fresh = true;
     this.resizeAux();
   }
 
@@ -222,25 +407,35 @@ export class PostPipeline {
     this.resizeAux();
   }
 
+  private get aux() {
+    return [this.aoA, this.aoB, this.motion, this.rayA, this.rayB, this.ldr, ...this.down, ...this.up];
+  }
   private resizeAux() {
     const { x: w, y: h } = this.size;
     if (!w || !h) return;
-    const free = (t: THREE.WebGLRenderTarget | null) => t?.dispose();
-    free(this.aoA);
-    free(this.aoB);
-    this.aoA = this.aoB = null;
-    if (this.opts.ao) {
+    for (const t of this.aux) t?.dispose();
+    this.aoA = this.aoB = this.motion = this.rayA = this.rayB = this.ldr = null;
+    this.down = [];
+    this.up = [];
+    const o = this.opts;
+    if (o.ao) {
       this.aoA = this.target(w >> 1, h >> 1);
       this.aoB = this.target(w >> 1, h >> 1);
     }
-    for (const t of [...this.down, ...this.up]) t.dispose();
-    this.down = [];
-    this.up = [];
-    if (this.opts.bloom)
-      for (let i = 0; i < BLOOM_MIPS; i++) {
-        this.down.push(this.target(w >> (i + 1), h >> (i + 1)));
-        if (i < BLOOM_MIPS - 1) this.up.push(this.target(w >> (i + 1), h >> (i + 1)));
+    if (o.cinematic) {
+      this.motion = this.target(w, h);
+      this.rayA = this.target(w >> 2, h >> 2, THREE.UnsignedByteType);
+      this.rayB = this.target(w >> 2, h >> 2, THREE.UnsignedByteType);
+    }
+    if (o.fxaa) this.ldr = this.target(w, h, THREE.UnsignedByteType);
+    if (o.bloom) {
+      // From half size (five steps down) or, on the light pipeline, from a quarter (four).
+      const first = o.bloomDiv >= 4 ? 2 : 1, mips = BLOOM_MIPS - (first - 1);
+      for (let i = 0; i < mips; i++) {
+        this.down.push(this.target(w >> (i + first), h >> (i + first)));
+        if (i < mips - 1) this.up.push(this.target(w >> (i + first), h >> (i + first)));
       }
+    }
   }
 
   private draw(mat: THREE.Material, target: THREE.WebGLRenderTarget | null) {
@@ -249,16 +444,25 @@ export class PostPipeline {
     this.renderer.render(this.quad, this.cam);
   }
 
+  /** The camera jumped (a new view, a respawn): the next frame has no "where it was" to blur from. */
+  cut() {
+    this.fresh = true;
+  }
+
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, g: Grade) {
-    const r = this.renderer;
+    const r = this.renderer, o = this.opts;
     r.getDrawingBufferSize(this.tmp);
     this.setSize(this.tmp.x, this.tmp.y);
     r.setRenderTarget(this.hdr);
     r.render(scene, camera);
+    const depth = this.hdr.depthTexture;
+    let sceneTex = this.hdr.texture;
+    const now = performance.now(), dt = Math.min(0.1, Math.max(0.004, (now - this.lastAt) / 1000));
+    this.lastAt = now;
 
-    if (this.opts.ao && this.aoA && this.aoB && this.hdr.depthTexture) {
+    if (o.ao && this.aoA && this.aoB && depth) {
       const u = this.aoMat.uniforms;
-      u.tDepth.value = this.hdr.depthTexture;
+      u.tDepth.value = depth;
       u.uProj.value.copy(camera.projectionMatrix);
       u.uInvProj.value.copy(camera.projectionMatrixInverse);
       u.uTexel.value.set(1 / this.aoA.width, 1 / this.aoA.height);
@@ -271,10 +475,71 @@ export class PostPipeline {
       this.draw(this.blurMat, this.aoA);
     }
 
-    if (this.opts.bloom && this.down.length) {
+    // -- the film look: motion blur, then the sun's shafts
+    let rays = 0, flare = 0;
+    if (o.cinematic && depth) {
+      this.viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      camera.getWorldDirection(this.fwd);
+      // A cut, not a move: the camera jumped further or swung wider than driving ever does in a frame.
+      const moved = camera.position.distanceTo(this.prevPos);
+      if (moved > Math.max(4, 150 * dt) || this.fwd.dot(this.prevFwd) < 0.9) this.fresh = true;
+      if (!this.fresh && g.motionBlur > 0.01 && this.motion) {
+        const u = this.motionMat.uniforms;
+        u.tScene.value = sceneTex;
+        u.tDepth.value = depth;
+        (u.uReproject.value as THREE.Matrix4).copy(this.viewProj).invert().premultiply(this.prevViewProj);
+        u.uInvProj.value.copy(camera.projectionMatrixInverse);
+        // The same streak whatever the frame rate: it's the shutter that's fixed (1 = 1/30 s), not the frame.
+        u.uAmount.value = g.motionBlur * Math.min(3, 1 / 30 / dt);
+        u.uNear.value = g.sharpNear;
+        u.uSeed.value = (u.uSeed.value + 7.31) % 1000;
+        this.draw(this.motionMat, this.motion);
+        sceneTex = this.motion.texture;
+      }
+      this.prevViewProj.copy(this.viewProj);
+      this.prevPos.copy(camera.position);
+      this.prevFwd.copy(this.fwd);
+      this.fresh = false;
+
+      if ((g.rays > 0.005 || g.flare > 0.005) && this.rayA && this.rayB) {
+        // Where the sun is on screen; behind the camera there's nothing to draw, and it fades out past the edges.
+        const s = this.sunClip.set(camera.position.x + g.sunDir.x * 1e4, camera.position.y + g.sunDir.y * 1e4, camera.position.z + g.sunDir.z * 1e4, 1).applyMatrix4(this.viewProj);
+        if (s.w > 0) {
+          const sx = s.x / s.w, sy = s.y / s.w, out = Math.max(Math.abs(sx), Math.abs(sy));
+          const fade = 1 - THREE.MathUtils.smoothstep(out, 1, 1.7);
+          if (fade > 0) {
+            const sun = this.rayMaskMat.uniforms.uSun.value as THREE.Vector2;
+            sun.set(sx * 0.5 + 0.5, sy * 0.5 + 0.5);
+            const aspect = this.size.x / this.size.y;
+            this.rayMaskMat.uniforms.tDepth.value = depth;
+            this.rayMaskMat.uniforms.uInvProj.value.copy(camera.projectionMatrixInverse);
+            this.rayMaskMat.uniforms.uAspect.value = aspect;
+            this.draw(this.rayMaskMat, this.rayA);
+            const b = this.rayBlurMat.uniforms;
+            (b.uSun.value as THREE.Vector2).copy(sun);
+            b.tSrc.value = this.rayA.texture;
+            b.uReach.value = 0.35;
+            this.draw(this.rayBlurMat, this.rayB);
+            b.tSrc.value = this.rayB.texture;
+            b.uReach.value = 0.6;
+            this.draw(this.rayBlurMat, this.rayA);
+            rays = g.rays * fade;
+            flare = g.flare * fade * (1 - THREE.MathUtils.smoothstep(out, 0.85, 1.15));
+            const f = this.final.uniforms;
+            (f.uSun.value as THREE.Vector2).copy(sun);
+            f.uAspect.value = aspect;
+            f.tRays.value = this.rayA.texture;
+          }
+        }
+      }
+    }
+
+    if (o.bloom && this.down.length) {
       const d = this.down, up = this.up;
-      this.preMat.uniforms.tSrc.value = this.hdr.texture;
-      this.preMat.uniforms.uTexel.value.set(1 / this.size.x, 1 / this.size.y);
+      this.preMat.uniforms.tSrc.value = sceneTex;
+      // Four taps a texel apart cover a half-size step; two apart, a quarter-size one.
+      const spread = o.bloomDiv >= 4 ? 2 : 1;
+      this.preMat.uniforms.uTexel.value.set(spread / this.size.x, spread / this.size.y);
       this.preMat.uniforms.uThreshold.value = g.threshold;
       this.draw(this.preMat, d[0]);
       for (let i = 1; i < d.length; i++) {
@@ -291,8 +556,9 @@ export class PostPipeline {
       }
     }
 
+    if (!!g.lut !== this.lut) (this.lut = !!g.lut), this.defines();
     const u = this.final.uniforms;
-    u.tScene.value = this.hdr.texture;
+    u.tScene.value = sceneTex;
     u.tBloom.value = this.up[0]?.texture ?? null;
     u.tAO.value = this.aoA?.texture ?? null;
     u.uExposure.value = r.toneMappingExposure;
@@ -302,27 +568,44 @@ export class PostPipeline {
     u.uContrast.value = g.contrast;
     u.uLift.value = g.lift;
     u.uVignette.value = g.vignette;
-    u.uSharpen.value = g.sharpen;
+    // FXAA softens what it smooths: it gets a touch more to work against.
+    u.uSharpen.value = g.sharpen * (o.fxaa ? 1.3 : 1);
     u.uTexel.value.set(1 / this.hdr.width, 1 / this.hdr.height);
     u.uTint.value.copy(g.tint);
+    u.uRays.value = rays;
+    u.uFlare.value = flare;
+    u.uSunColor.value.copy(g.sunColor);
+    u.uAberration.value = g.aberration;
+    u.uGrain.value = o.cinematic ? g.grain : 0;
+    u.uSplit.value = g.split;
+    u.uShadowTint.value.copy(g.shadowTint);
+    u.uHighTint.value.copy(g.highTint);
+    u.tLut.value = g.lut;
+    u.uLutMix.value = g.lutMix;
+    u.uLutSize.value = g.lut?.image.width ?? 16;
     u.uSeed.value = (u.uSeed.value + 17.13) % 1000;
-    this.draw(this.final, null);
+    if (o.fxaa && this.ldr) {
+      this.draw(this.final, this.ldr);
+      this.fxaaMat.uniforms.tSrc.value = this.ldr.texture;
+      this.fxaaMat.uniforms.uTexel.value.set(1 / this.ldr.width, 1 / this.ldr.height);
+      this.draw(this.fxaaMat, null);
+    } else this.draw(this.final, null);
   }
   private tmp = new THREE.Vector2();
 
   /** GPU memory the pipeline's targets hold (bytes, roughly). */
   bytes() {
     const px = (t: THREE.WebGLRenderTarget | null) => (t ? t.width * t.height : 0);
-    let n = px(this.hdr) * 8 * Math.max(1, this.opts.msaa) + px(this.hdr) * 8 + (this.opts.ao ? px(this.hdr) * 4 : 0);
-    for (const t of [this.aoA, this.aoB, ...this.down, ...this.up]) n += px(t) * 8;
+    let n = px(this.hdr) * 8 * Math.max(1, this.opts.msaa) + px(this.hdr) * 8 + (this.depth ? px(this.hdr) * 4 : 0);
+    for (const t of this.aux) n += px(t) * (t?.texture.type === THREE.UnsignedByteType ? 4 : 8);
     return n;
   }
 
   dispose() {
     this.hdr.depthTexture?.dispose();
     this.hdr.dispose();
-    for (const t of [this.aoA, this.aoB, ...this.down, ...this.up]) t?.dispose();
-    for (const m of [this.final, this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat]) m.dispose();
+    for (const t of this.aux) t?.dispose();
+    for (const m of [this.final, this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat, this.motionMat, this.rayMaskMat, this.rayBlurMat, this.fxaaMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }
