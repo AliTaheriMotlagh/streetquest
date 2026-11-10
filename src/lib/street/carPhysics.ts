@@ -156,3 +156,20 @@ function apply(b: Rigid, jx: number, jz: number, rx: number, rz: number, im: num
  * a Pride hit by a bus feels nearly twice it, the bus hardly anything).
  */
 export const felt = (dv: number) => dv * 2 / (1 + CAR_RESTITUTION);
+
+/**
+ * Where to draw a car that's been tipped over — thrown by a blast, lying on its roof. Its
+ * model's origin is the road under its middle, so turning it there would swing the body
+ * underground (a wreck on its roof would be buried, out of sight). The body turns about
+ * its own middle instead, and is held up by whatever of it is lowest, so it rolls along
+ * the road and comes to rest on it. `y`: how high the thrown car is (m), `roll` about its
+ * length and `pitch` about its width (applied yaw · pitch · roll). Returns the origin in
+ * the car's own frame before yaw: [across, up from the road, along].
+ */
+export function tumbleOrigin(d: { len: number; wid: number; hgt: number }, y: number, roll: number, pitch: number): [number, number, number] {
+  const h = d.hgt / 2, cr = Math.cos(roll), sr = Math.sin(roll), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // Half the tipped box's height, corner to corner: its middle can't be nearer the road than this.
+  const half = (d.wid / 2) * Math.abs(sr * cp) + h * Math.abs(cr * cp) + (d.len / 2) * Math.abs(sp);
+  const mid = Math.max(y + h, half);
+  return [h * sr, mid - h * cr * cp, -h * cr * sp];
+}

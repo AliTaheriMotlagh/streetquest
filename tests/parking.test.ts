@@ -79,6 +79,14 @@ describe("a row of parked cars", () => {
     assert.deepEqual(row(5), row(5));
     assert.notDeepEqual(row(5), row(6));
   });
+
+  it("keeps every other car where it was when a spot stops being free (a crossing street loads later)", () => {
+    const all = row(5), gone = all[2];
+    const taken = (x: number) => Math.abs(x - gone.x) > FLEET[gone.key].len / 2 + 0.01;
+    // Same cars, same paint, same places — only the ones on the spot are missing.
+    assert.deepEqual(row(5, taken), all.filter((c) => [c.x - FLEET[c.key].len / 2, c.x, c.x + FLEET[c.key].len / 2].every(taken)));
+    assert.ok(row(5, taken).length < all.length);
+  });
 });
 
 describe("junctions, roundabouts and bends", () => {

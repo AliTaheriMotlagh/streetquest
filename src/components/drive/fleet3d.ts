@@ -13,6 +13,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLEET, type FleetKey } from "@/lib/fleet";
+import { tumbleOrigin } from "@/lib/street/carPhysics";
 import { carModel } from "./carModels";
 import { paint as tint, toon, type Style } from "./world3d";
 
@@ -753,7 +754,15 @@ export class FleetInstances {
     if (lean) this.q.multiply(this.qr.setFromAxisAngle(ZA, lean));
     if (pose?.pitch) this.q.multiply(this.qr.setFromAxisAngle(XA, pose.pitch));
     if (pose?.roll) this.q.multiply(this.qr.setFromAxisAngle(ZA, pose.roll));
-    this.m.compose(this.p.set(x, pose?.y ?? 0, z), this.q, this.one);
+    let ox = x, oy = pose?.y ?? 0, oz = z;
+    if (pose && (pose.roll || pose.pitch)) {
+      // Tipped over: about the middle of the body and resting on the road, not swung under it.
+      const [tx, ty, tz] = tumbleOrigin(FLEET[key], pose.y, pose.roll, pose.pitch), c = Math.cos(yaw), s = Math.sin(yaw);
+      ox += tx * c + tz * s;
+      oz += tz * c - tx * s;
+      oy = ty;
+    }
+    this.m.compose(this.p.set(ox, oy, oz), this.q, this.one);
     for (const mesh of p.body) mesh.setMatrixAt(i, this.m);
     p.paint.setColorAt(i, color);
     p.tail.setColorAt(i, braking ? BRAKE_ON : BRAKE_OFF);

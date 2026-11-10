@@ -83,10 +83,13 @@ export function parkedRow(line: ArrayLike<number>, w: number, side: 1 | -1, rand
       }
       const key = parker(rand), L = FLEET[key].len, W = FLEET[key].wid;
       if (at + L > end) break;
+      // Its paint is drawn whether or not the spot is free: the row's dice roll the same way
+      // when a crossing street loads later and takes a spot, so the other cars stay put.
+      const paint = pickPaint(key, rand);
       const off = side * (w / 2 - KERB_GAP - W / 2), mid = at + L / 2;
       const x = ax + ux * mid + nx * off, z = az + uz * mid + nz * off;
       const ends = [x + (ux * L) / 2, z + (uz * L) / 2, x - (ux * L) / 2, z - (uz * L) / 2];
-      if (free(x, z) && free(ends[0], ends[1]) && free(ends[2], ends[3])) out.push({ key, paint: pickPaint(key, rand), x, z, yaw });
+      if (free(x, z) && free(ends[0], ends[1]) && free(ends[2], ends[3])) out.push({ key, paint, x, z, yaw });
       at += L + 0.5 + rand() * 1.1;
     }
   }

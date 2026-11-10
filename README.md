@@ -183,9 +183,13 @@ mood scales XP; loot funds research; territory funds the army.
     yours — passing its momentum on (`lib/street/carPhysics.ts`: separating-axis contact, impulse with restitution,
     friction and spin from where the hit lands). Hit hard enough, that car comes loose too and hits the next one, so a
     crash runs down the line; a bus hardly notices a Pride. Hard hits throw glass and bits of bumper that bounce and
-    lie on the road, kick up dust, spark, shake the camera and screech.
+    lie on the road, kick up dust, spark, shake the camera and screech. A parked car knocked off the kerb leaves it
+    at once and becomes exactly one loose car, whoever hits it and through whichever of the frame's footprints
+    (`traffic.ts` `unpark`/`offKerb`, held by `tests/trafficCars.test.ts`), and a row keeps its cars where they were
+    when a crossing street loads later (`parkedRow` rolls the same dice for a spot whether or not it's free).
   - *Explosions* throw cars (some onto their roofs) and people, and set the cars beside them burning — chain
-    reactions; your grenades do the same in the open city.
+    reactions; your grenades do the same in the open city. A thrown car turns about the middle of its body and is
+    held up by its lowest corner (`tumbleOrigin`), so a burnt-out wreck on its roof lies on the road where it landed.
   - *People react*: gunfire, crashes and blasts send everyone near running (off the pavement if need be, back to it
     when they calm down); a speeding car makes them dive aside; a car hits them hard enough and they're thrown (fast,
     they don't get up); bullets hit them; drivers near trouble floor it through red lights.

@@ -2,7 +2,7 @@
 // of cars, heavy vs light, and spin from an off-centre hit.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { contact, felt, massOf, resolve, type Rigid } from "@/lib/street/carPhysics";
+import { contact, felt, massOf, resolve, tumbleOrigin, type Rigid } from "@/lib/street/carPhysics";
 
 /** A Pride-sized car at (x, z) facing along −z (yaw 0) unless turned. */
 const car = (x: number, z: number, o: Partial<Rigid> = {}): Rigid => ({ x, z, yaw: 0, vx: 0, vz: 0, spin: 0, mass: 1000, len: 4, wid: 1.6, ...o });
@@ -82,5 +82,45 @@ describe("car collisions", () => {
     const h = resolve(a, b, contact(a, b)!);
     assert.equal(h.impulse, 0);
     assert.equal(a.vz, 3);
+  });
+});
+
+describe("a car tipped over", () => {
+  const pride = { len: 3.9, wid: 1.6, hgt: 1.45 };
+  /** The height of the lowest and highest of the body's eight corners, drawn from that origin. */
+  function span(y: number, roll: number, pitch: number) {
+    const [, oy] = tumbleOrigin(pride, y, roll, pitch);
+    const ys: number[] = [];
+    for (const u of [-pride.wid / 2, pride.wid / 2])
+      for (const v of [0, pride.hgt])
+        for (const w of [-pride.len / 2, pride.len / 2]) {
+          // yaw · pitch(X) · roll(Z), as fleet3d draws it: only the height matters here.
+          const yr = u * Math.sin(roll) + v * Math.cos(roll);
+          ys.push(oy + yr * Math.cos(pitch) - w * Math.sin(pitch));
+        }
+    return { low: Math.min(...ys), high: Math.max(...ys) };
+  }
+
+  it("stands where it is the right way up", () => {
+    const same = (got: number[], want: number[]) => assert.ok(got.every((v, i) => Math.abs(v - want[i]) < 1e-9), `${got}`);
+    same(tumbleOrigin(pride, 0, 0, 0), [0, 0, 0]);
+    same(tumbleOrigin(pride, 2.5, 0, 0), [0, 2.5, 0]);
+  });
+
+  it("lies on the road on its roof, not under it", () => {
+    const [x, y, z] = tumbleOrigin(pride, 0, Math.PI, 0);
+    assert.ok(Math.abs(x) < 1e-9 && Math.abs(z) < 1e-9, "over the same spot");
+    assert.ok(Math.abs(y - pride.hgt) < 1e-9, "its wheels are a car's height up");
+    const s = span(0, Math.PI, 0);
+    assert.ok(Math.abs(s.low) < 1e-9 && Math.abs(s.high - pride.hgt) < 1e-9);
+  });
+
+  it("never dips under the road however it tumbles, and isn't lifted when it's clear of it", () => {
+    for (let roll = -Math.PI; roll <= Math.PI; roll += 0.37)
+      for (let pitch = -1.5; pitch <= 1.5; pitch += 0.5)
+        for (const y of [0, 0.3, 4]) assert.ok(span(y, roll, pitch).low > -1e-9, `roll ${roll} pitch ${pitch} y ${y}`);
+    // High in the air it turns about its middle, which is where the throw put it.
+    const [, oy] = tumbleOrigin(pride, 6, Math.PI / 2, 0);
+    assert.ok(Math.abs(oy - (6 + pride.hgt / 2)) < 1e-9);
   });
 });

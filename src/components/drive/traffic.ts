@@ -215,6 +215,12 @@ export class TrafficCars {
   /** Parked cars you drove off in (they stay gone when the streets are re-read), and the ones you left. */
   private taken = new Set<string>();
   private left: (Parked & { color: THREE.Color })[] = [];
+  /**
+   * Parked cars knocked off the kerb, by the handle (footprint ref) each had while parked:
+   * whoever still holds that handle — this frame's footprints, a crash already under way —
+   * gets the one loose car it became, never a second one.
+   */
+  private offKerb = new WeakMap<object, Car>();
   /** This frame's outlines, with what each one is (for bullets). */
   private boxes: { f: Footprint; ref: CarRef }[] = [];
   enabled = true;
@@ -656,17 +662,28 @@ export class TrafficCars {
     this.parked = this.parked.filter((q) => spotOf(q.x, q.z) !== spot);
     this.left = this.left.filter((q) => spotOf(q.x, q.z) !== spot);
     this.taken.add(spot);
+    // Off the kerb now, not at the next re-pick: a parked copy left standing would be hit by
+    // the very car it became, and come loose a second time.
+    this.shown = this.shown.filter((s) => s !== p);
     this.shownAt = { x: Infinity, z: Infinity };
     const c = this.make(p.key, p.paint, this.roads[0] ?? { line: new Float32Array(4), w: 6, kind: "minor", park: [false, false] }, p.x, p.z, p.yaw);
     c.parked = true;
     this.loosen(c);
     this.cars.push(c);
+    this.offKerb.set(p, c);
     return c;
+  }
+
+  /** The driving or loose car a handle stands for (a parked car's old handle: the loose car it became). */
+  private live(ref: CarRef): Car | null {
+    const c = (this.cars as object[]).includes(ref) ? (ref as Car) : this.offKerb.get(ref);
+    return c && this.cars.includes(c) ? c : null;
   }
 
   /** The car a footprint stands for, made loose (a parked one comes off the kerb). */
   private car(ref: CarRef): Car | null {
-    if ((this.cars as object[]).includes(ref)) return ref as Car;
+    const c = this.live(ref);
+    if (c) return c;
     const p = this.shown.find((s) => s === ref);
     return p ? this.unpark(p) : null;
   }
@@ -679,8 +696,7 @@ export class TrafficCars {
 
   /** What kind of car a footprint is, if it's one of these. */
   kindOf(ref: CarRef): FleetKey | null {
-    if ((this.cars as object[]).includes(ref)) return (ref as Car).kind;
-    return this.shown.find((s) => s === ref)?.key ?? null;
+    return this.live(ref)?.kind ?? this.shown.find((s) => s === ref)?.key ?? null;
   }
 
   /**
@@ -712,7 +728,7 @@ export class TrafficCars {
 
   /** A bullet in the bodywork. */
   shoot(ref: CarRef, dmg: number) {
-    const c = (this.cars as object[]).includes(ref) ? (ref as Car) : null;
+    const c = this.live(ref);
     if (!c) {
       // A parked car takes it standing (it only comes loose when it's hit hard).
       const p = this.shown.find((s) => s === ref);
@@ -814,6 +830,7 @@ export class TrafficCars {
       const before = this.left.length;
       this.left = this.left.filter((p) => spotOf(p.x, p.z) !== spot);
       if (this.left.length === before) this.taken.add(spot);
+      this.shown = this.shown.filter((p) => spotOf(p.x, p.z) !== spot);
       this.shownAt = { x: Infinity, z: Infinity };
     }
     return { key: hit.key, paint: hit.paint, x: hit.x, z: hit.z, yaw: hit.yaw, hp, driven };
