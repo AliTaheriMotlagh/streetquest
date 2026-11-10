@@ -25,7 +25,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  baladPhoneOf, googlePhoneOf, type GoogleSearch, DIVAR_CATS, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -105,7 +105,8 @@ function keepAlive(p: Promise<unknown>) {
 
 let running = 0;
 const queue: (() => void)[] = [];
-async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<string, string>): Promise<T | null> {
+/** `none`: what a 404 means (Balad answers "nothing found" that way); without it a 404 is a failure like any other. */
+async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<string, string>, none?: T): Promise<T | null> {
   const tr = torobBase(), torob = !!tr && url.startsWith(tr);
   if (torob) {
     if (torobCooling()) return null;
@@ -129,6 +130,7 @@ async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<str
         const res = await fetch(url, { ...init, signal: ctl.signal });
         if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
         if (!torob && attempt < RETRIES && [502, 503, 504].includes(res.status)) continue;
+        if (res.status === 404 && none !== undefined) return none;
         return res.ok ? ((await res.json().catch(() => null)) as T | null) : null;
       } catch {
         if (torob || attempt >= RETRIES) return null;
@@ -438,7 +440,8 @@ async function torobShopById(id: number): Promise<TorobShop | null> {
 
 /** A walk-in Torob shop's own page: full address, phone, logo and photos of the store. */
 export async function torobPlaceInfo(id: number): Promise<TorobPlaceInfo | null> {
-  const out = await cached<{ info: TorobPlaceInfo | null }>(`tr:info:${id}`, TOROB_TTL, async () => {
+  // "info2": pages cached before the shop's second number was kept are read afresh.
+  const out = await cached<{ info: TorobPlaceInfo | null }>(`tr:info2:${id}`, TOROB_TTL, async () => {
     const root = torobBase();
     if (!root) return null;
     const r = await getJson<RawShopDetails>(`${root}/v4/internet-shop/details/?id=${id}`);
@@ -452,6 +455,7 @@ export async function torobPlaceInfo(id: number): Promise<TorobPlaceInfo | null>
         photos: (r.shop_images ?? []).filter((u) => /^https:\/\//.test(u)).slice(0, 6),
         address: (r.address ?? "").trim(),
         phone: phoneOf(r.phone) || phoneOf(r.second_phone),
+        phones: phonesFrom("torob", r.phone, r.second_phone),
         city: (r.city ?? "").trim(),
         url: `https://torob.com/shop/${r.id}/`,
       },
@@ -786,8 +790,10 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });
   if (s.website && /^https?:\/\//i.test(s.website)) links.push({ kind: "website", url: s.website, label: t("Website") });
   if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
-  // The map's own record, else Balad's (looked up where the store stands), else the menu's.
-  const phone = storePhone(s.phone) || (await phoneFor(s)) || menu?.phone || "";
+  // Every number anyone has: the map's own record, the other maps' (looked up where the
+  // store stands), the menu's. The first is the card's Call button; Info lists them all.
+  const phones = mergePhones(phonesFrom("map", s.phone), await phonesFor(s), menu?.phones ?? phonesFrom("snappfood", menu?.phone));
+  const phone = phones[0]?.number ?? "";
   if (phone) links.push({ kind: "phone", url: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone });
   const about = {
     photo: menu?.cover || s.photo || shop?.logo || "",
@@ -798,6 +804,7 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
     // The map's hours when they read as a week, else Snappfood's schedule.
     week: weekFromOsm(s.hours) ?? menu?.week ?? null,
     phone,
+    phones,
     name: s.name,
   };
   return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links, about };
@@ -805,36 +812,38 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
 
 // ---------------------------------------------------------------- Balad phone numbers
 /**
- * A store's real phone number from Balad: search its name where it stands, take the place
- * that is this store (pickBaladPoi), and read the number off its page. "" when Balad
- * doesn't know it — cached either way, so each store costs Balad two requests a month.
+ * A store's real phone numbers from Balad: search its name where it stands (baladQueries:
+ * the bare name, then the name without "Restaurant"/"Pizza" — Balad reads those as a
+ * category), take the place that is this store (pickBaladPoi), and read every number off
+ * its page. [] when Balad doesn't know it — cached either way, so each store costs Balad
+ * two or three requests a month.
  */
-export async function baladPhone(store: { name: string; lat: number; lng: number }): Promise<string> {
+export async function baladPhones(store: { name: string; lat: number; lng: number }): Promise<string[]> {
   const root = baladBase(), poi = baladPoiBase();
   const name = store.name.trim();
-  if (!root || !poi || !name || !Number.isFinite(store.lat) || !Number.isFinite(store.lng)) return "";
-  const key = `balad:phone:${normName(name).slice(0, 60)}:${store.lat.toFixed(4)},${store.lng.toFixed(4)}`;
+  if (!root || !poi || !name || !Number.isFinite(store.lat) || !Number.isFinite(store.lng)) return [];
+  // "phones": every number of the place, found with the wider search (misses cached before it are asked again).
+  const key = `balad:phones:${normName(name).slice(0, 60)}:${store.lat.toFixed(4)},${store.lng.toFixed(4)}`;
   const row = await prisma.extCache.findUnique({ where: { key } });
   if (row) {
-    const hit = (row.data as { phone?: string }).phone ?? "";
-    if (Date.now() - row.fetchedAt.getTime() < (hit ? BALAD_TTL : BALAD_MISS_TTL)) return hit;
+    const hit = (row.data as { phones?: string[] }).phones ?? [];
+    if (Date.now() - row.fetchedAt.getTime() < (hit.length ? BALAD_TTL : BALAD_MISS_TTL)) return hit;
   }
-  const r = await cached<{ phone: string }>(key, 0, async () => {
-    // Snappfood names a branch "Name (Area)"; Balad finds the bare name far more often.
-    const bare = name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const r = await cached<{ phones: string[] }>(key, 0, async () => {
     let token: string | null = null;
-    for (const text of [...new Set([bare, name])].filter(Boolean)) {
+    for (const text of baladQueries(name)) {
       const q = new URLSearchParams({ text, camera: `${store.lng.toFixed(6)},${store.lat.toFixed(6)}`, zoom: "16" });
-      const found = await getJson<BaladSearch>(`${root}/v6/bundle-search/?${q}`);
+      // Balad says "nothing by that name" with a 404: a miss, not an outage.
+      const found = await getJson<BaladSearch>(`${root}/v6/bundle-search/?${q}`, undefined, undefined, {});
       if (!found) return null; // Balad unreachable: try again next time, don't cache a miss
       token = pickBaladPoi(found, store);
       if (token) break;
     }
-    if (!token) return { phone: "" };
+    if (!token) return { phones: [] };
     const page = await getJson<unknown>(`${poi}/web/v4/${encodeURIComponent(token)}`);
-    return page ? { phone: baladPhoneOf(page) } : null;
+    return page ? { phones: baladPhonesOf(page) } : null;
   });
-  return r?.phone ?? "";
+  return r?.phones ?? [];
 }
 
 /**
@@ -868,9 +877,11 @@ export async function googlePhone(store: { name: string; lat: number; lng: numbe
   return r?.phone ?? "";
 }
 
-/** The store's own number from the other maps: Balad first (free), then Google (paid, if set up). */
-async function realPhone(store: { name: string; lat: number; lng: number }) {
-  return (await baladPhone(store).catch(() => "")) || (await googlePhone(store).catch(() => ""));
+/** The store's own numbers from the other maps: all of Balad's (free), else Google's (paid, if set up). */
+async function realPhones(store: { name: string; lat: number; lng: number }): Promise<StorePhone[]> {
+  const balad = await baladPhones(store).catch(() => []);
+  if (balad.length) return phonesFrom("balad", ...balad);
+  return phonesFrom("google", await googlePhone(store).catch(() => ""));
 }
 
 /** How long a card waits for the phone lookup; a slower one finishes in the background (cached for next time). */
@@ -880,15 +891,15 @@ const PHONE_WAIT_MS = 3000;
  * asked only when the card came back without one): long enough for Balad and Google both.
  */
 export const PHONE_LATE_MS = 12_000;
-/** The store's own number, or "" if it takes longer than `waitMs` — a card never waits on it. */
-export async function phoneFor(store: { name: string; lat: number; lng: number }, waitMs = PHONE_WAIT_MS): Promise<string> {
-  const p = realPhone(store);
+/** The store's own numbers from the other maps, or [] if it takes longer than `waitMs` — a card never waits on it. */
+export async function phonesFor(store: { name: string; lat: number; lng: number }, waitMs = PHONE_WAIT_MS): Promise<StorePhone[]> {
+  const p = realPhones(store);
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const late = new Promise<string>((r) => (timer = setTimeout(() => r(""), waitMs)));
-  const phone = await Promise.race([p, late]);
+  const late = new Promise<StorePhone[]>((r) => (timer = setTimeout(() => r([]), waitMs)));
+  const phones = await Promise.race([p, late]);
   if (timer) clearTimeout(timer);
   keepAlive(p);
-  return phone;
+  return phones;
 }
 
 // ---------------------------------------------------------------- reachability

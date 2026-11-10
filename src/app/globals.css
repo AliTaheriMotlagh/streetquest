@@ -1813,6 +1813,15 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .store-info h4 { margin: 0 0 6px; font-size: 14px; }
 .info-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: inherit; text-decoration: none; line-height: 1.5; overflow-wrap: anywhere; }
 .info-row.link { border-color: rgba(91,211,140,.45); }
+.store-phones { display: grid; gap: 6px; }
+.phone-row { align-items: center; }
+.phone-row .phone-num { flex: 1; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .02em; text-align: start; }
+.phone-row .phone-src { flex: none; font-size: 11px; opacity: .8; }
+.call-menu { position: relative; display: flex; }
+.call-menu > summary { flex: 1; list-style: none; cursor: pointer; justify-content: center; }
+.call-menu > summary::-webkit-details-marker { display: none; }
+.call-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-inline-start: 4px; border-radius: 9px; background: rgba(91,211,140,.25); font-size: 11px; }
+.call-list { position: absolute; z-index: 6; top: calc(100% + 6px); inset-inline-start: 0; width: max-content; min-width: 100%; max-width: min(320px, 86vw); display: grid; gap: 6px; padding: 8px; border-radius: 14px; background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 12px 30px rgba(0,0,0,.45); }
 .hours-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .hours-table th, .hours-table td { padding: 7px 10px; text-align: start; border-bottom: 1px solid var(--line); }
 .hours-table th { font-weight: 600; color: var(--muted); white-space: nowrap; }

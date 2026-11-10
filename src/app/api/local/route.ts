@@ -16,13 +16,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
 import { t } from "@/lib/i18n";
-import { DIVAR_CAT_KEYS, sameStore, storePhone, type Menu, type StoreData } from "@/lib/localData";
+import { DIVAR_CAT_KEYS, mergePhones, phonesFrom, sameStore, type Menu, type StoreData, type StorePhone } from "@/lib/localData";
 import { distanceM } from "@/lib/geo";
 import { requireUser } from "@/server/auth";
 import { findPlace, placesNear } from "@/server/city";
 import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
-import { divarAround, divarPosts, PHONE_LATE_MS, phoneFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
+import { divarAround, divarPosts, PHONE_LATE_MS, phonesFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
 
 const num = z.coerce.number().finite();
 const Query = z.union([
@@ -41,26 +41,24 @@ const Query = z.union([
     .refine((q) => q.shop || q.torob.length >= 2, { path: ["torob"], message: "Too short" }),
 ]);
 
-const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [], about: { photo: "", logo: "", address: "", hours: "", week: null, phone: "" } };
+const empty: StoreData = { menu: null, torob: [], torobQuery: "", torobShop: null, links: [], about: { photo: "", logo: "", address: "", hours: "", week: null, phone: "", phones: [] } };
 
 /**
- * A store's own number from anywhere we know: Balad / Google (cached a month; at most
- * `waitMs` the first time), else the map's own record of the same place nearby
- * (OpenStreetMap's phone tag). "" when nobody knows it.
+ * Every number anyone has for a store, each once: the ones its own listing gave (`known`),
+ * the map's own record of the same place nearby (OpenStreetMap's phone tag), and Balad's /
+ * Google's (cached a month; at most `waitMs` the first time). [] when nobody knows one.
  */
-async function anyPhone(store: { name: string; lat: number; lng: number }, waitMs?: number): Promise<string> {
-  const own = await phoneFor(store, waitMs);
-  if (own) return own;
-  const around = await placesNear(store, 200, 40).catch(() => []);
+async function anyPhones(store: { name: string; lat: number; lng: number }, known: StorePhone[] = [], waitMs?: number): Promise<StorePhone[]> {
+  const [found, around] = await Promise.all([phonesFor(store, waitMs), placesNear(store, 200, 40).catch(() => [])]);
   const same = around.find((p) => p.info?.phone && sameStore(p, { title: store.name, lat: store.lat, lng: store.lng }, distanceM(p, store)));
-  return storePhone(same?.info?.phone);
+  return mergePhones(known, phonesFrom("map", same?.info?.phone), found);
 }
+/** `phones` and, for the Call button, the first of them as `phone`. */
+const withPhones = <T extends { phone?: string }>(x: T, phones: StorePhone[]) => ({ ...x, phone: phones[0]?.number ?? "", phones });
 
-/** The restaurant's own number (Snappfood only gives its call centre). */
+/** The restaurant's own numbers (Snappfood only gives its call centre). */
 async function withMapPhone(menu: Menu): Promise<Menu> {
-  if (menu.phone) return menu;
-  const phone = await anyPhone({ name: menu.vendor.title, lat: menu.vendor.lat, lng: menu.vendor.lng });
-  return phone ? { ...menu, phone } : menu;
+  return withPhones(menu, await anyPhones({ name: menu.vendor.title, lat: menu.vendor.lat, lng: menu.vendor.lng }, menu.phones ?? phonesFrom("snappfood", menu.phone)));
 }
 
 export const GET = route(async (req) => {
@@ -71,7 +69,7 @@ export const GET = route(async (req) => {
     if ("torobNear" in q) return { shops: [], pending: false };
     if ("reviews" in q) return { reviews: { count: 0, reviews: [] } };
     if ("torobPlace" in q) return { info: null, items: [], stock: [] };
-    if ("phone" in q) return { phone: "" };
+    if ("phone" in q) return { phone: "", phones: [] };
     return "divar" in q ? (q.divar === "1" ? { areas: [] } : { posts: [] }) : "menu" in q ? { menu: null } : "torob" in q ? { items: [] } : empty;
   }
 
@@ -85,11 +83,12 @@ export const GET = route(async (req) => {
   if ("torobPlace" in q) {
     const at = q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : null;
     const [info, items, near] = await Promise.all([torobPlaceInfo(q.torobPlace), torobSearch("", q.torobPlace), at ? torobPlacesAround(at, 400) : null]);
-    // Torob's page often has no number: the other maps may (the card asks again later if not).
-    const phone = info && !info.phone && at ? await anyPhone({ name: info.name, ...at }) : "";
-    return { info: phone && info ? { ...info, phone } : info, items, stock: near?.shops.find((s) => s.id === q.torobPlace)?.stock ?? [] };
+    // Torob's own numbers first, then the other maps' (its page often has none; the card asks again later if nobody answers in time).
+    const own = info ? (info.phones ?? phonesFrom("torob", info.phone)) : [];
+    const phones = info && at ? await anyPhones({ name: info.name, ...at }, own) : own;
+    return { info: info ? withPhones(info, phones) : info, items, stock: near?.shops.find((s) => s.id === q.torobPlace)?.stock ?? [] };
   }
-  if ("phone" in q) return { phone: await anyPhone(q, PHONE_LATE_MS) };
+  if ("phone" in q) return withPhones({}, await anyPhones(q, [], PHONE_LATE_MS));
   if ("divar" in q) return "lat" in q ? { areas: await divarAround(q) } : { posts: await divarPosts(Number(q.city), Number(q.divar), q.cat) };
   if ("menu" in q) {
     const menu = await vendorMenu(q.menu, q.lat != null && q.lng != null ? { lat: q.lat, lng: q.lng } : undefined);

@@ -298,15 +298,21 @@ mood scales XP; loot funds research; territory funds the army.
   (Snappfood, Torob, or the store website's icon), the address and opening hours, and links to call, its website and
   Instagram — contacts come from the map (OSM `phone`, `website`, `contact:instagram`, `opening_hours`, `addr:*`,
   `image` / `wikimedia_commons`, stored with each place by the city pack). **Phone numbers are the store's own:**
-  Snappfood answers every vendor with its own call centre (021-96612), which is never shown; the number comes from the
-  map, else from **Balad** (searched by name where the store stands — a Snappfood "Name (Area)" without the area —
-  matched by name and distance, read off the place's page, cached a month, a miss retried after a week; `BALAD_URL` /
-  `BALAD_POI_URL`, `off` disables), else from **Google Places** (the official Text Search API, only when
-  `GOOGLE_PLACES_KEY` is set: same name-and-distance match, at most `GOOGLE_PLACES_PER_DAY` paid lookups a day, default
-  300, cached a month), else from the same restaurant on the map near a Snappfood vendor. Torob's walk-in shops get the same
-  lookup when their Torob page has no number. A card that came back without one asks again on its own
-  (`/api/local?phone=1`, waiting up to 12 s for Balad and Google), and with no number anywhere it offers **Find the
-  number** — a Balad search and a web search for the store — so every store has a way to call. Neshan's API has no phone numbers. Owners can paste their Snappfood / Torob /
+  Snappfood answers every vendor with its own call centre (021-96612), which is never shown. **Every card shows all
+  the numbers anyone has**, each once (`+98 21…` and `021…` are one number) with where it was read — the map, the
+  store's own Torob page (both its numbers), Snappfood, **Balad**, Google: one number is a **Call** button, several
+  open a list to pick from, and Info lists them all (at most 6). Balad is asked by name where the store stands — the
+  name without Snappfood's "(Area)", then without "Restaurant" / "Pizza"… (Balad answers those with the whole category,
+  so "پیتزا پرپروک" is asked again as "پرپروک") — and the place is matched by name and distance: 120 m for a similar
+  name, 300 m for the same one, 700 m word for word, one name however it is spaced ("برگرلند" / "برگر لند"), never
+  another kind of place ("بیمه ایران" is not "ایران برگر"). Every number on its page is kept, cached a month; a miss
+  (Balad's 404 too) is retried after a week (`BALAD_URL` / `BALAD_POI_URL`, `off` disables). Only when Balad has none:
+  **Google Places** (the official Text Search API, only when `GOOGLE_PLACES_KEY` is set: same match, at most
+  `GOOGLE_PLACES_PER_DAY` paid lookups a day, default 300, cached a month). Balad lists about half of Snappfood's
+  vendors with a number (delivery-only kitchens are often not on any map), so a card that came back without one asks
+  again on its own (`/api/local?phone=1`, waiting up to 12 s for Balad and Google), and with no number anywhere it
+  offers **Find the number** — a Balad search and a web search for the store — so every store has a way to call.
+  Neshan's API has no phone numbers. Owners can paste their Snappfood / Torob /
   Divar links in the Business center or their Market shop, which beat the automatic match. Names match however Persian
   words are spaced ("چلوکباب" / "چلو کباب"). The card is built for phones: a compact head with the rating and 🟢 open
   now / 🔴 closed (in the store's own time zone), the actions in one row, and tabs that stick while you scroll — Menu,

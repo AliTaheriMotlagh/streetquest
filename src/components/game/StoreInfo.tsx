@@ -13,8 +13,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
-  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
-  type DivarArea, type DivarCat, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
+  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
+  type DivarArea, type DivarCat, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
@@ -68,33 +68,60 @@ const telOf = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 type StoreRef = { name: string; lat: number; lng: number; city?: string };
 
 /**
- * The store's phone: the one the card came with, else a second, longer lookup on the other
- * maps (Balad, Google, OpenStreetMap). `looking` while that runs; "" when nobody knows it.
+ * The store's phones: the ones the card came with (every source's, each once), else a second,
+ * longer lookup on the other maps (Balad, Google, OpenStreetMap). `looking` while that runs;
+ * [] when nobody knows one.
  */
-function usePhone(store: StoreRef | null, known: string | undefined) {
-  const ask = !known && store?.name ? { phone: "1", name: store.name, lat: store.lat.toFixed(6), lng: store.lng.toFixed(6) } : null;
-  const { data, error } = useLocal<{ phone: string }>(ask);
-  const phone = known || data?.phone || "";
-  return { phone, looking: !!ask && !data && !error };
+function usePhones(store: StoreRef | null, known: StorePhone[] | undefined) {
+  const ask = !known?.length && store?.name ? { phone: "1", name: store.name, lat: store.lat.toFixed(6), lng: store.lng.toFixed(6) } : null;
+  const { data, error } = useLocal<{ phone: string; phones?: StorePhone[] }>(ask);
+  const phones = known?.length ? known : (data?.phones ?? []);
+  return { phones, looking: !!ask && !data && !error };
+}
+/** Who had the number. */
+const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "google" ? t("Google") : t("Map"));
+/** One number to tap: a mobile or a landline, and where it was read. */
+function PhoneLink({ p }: { p: StorePhone }) {
+  return (
+    <a className="info-row link phone-row" href={telOf(p.number)}>
+      {phoneKey(p.number).startsWith("9") ? "📱" : "📞"} <span dir="ltr" className="phone-num">{p.number}</span>
+      <span className="tag phone-src">{sourceName(p.source)}</span>
+    </a>
+  );
 }
 
-/** "Call" in the actions row: the number, a spinner while it's looked up, else where to find it. */
-function CallButton({ store, phone: known }: { store: StoreRef | null; phone?: string }) {
-  const { phone, looking } = usePhone(store, known);
-  if (phone) return <a className="btn small ghost ext-link ext-phone" href={telOf(phone)}>📞 {t("Call")}</a>;
+/**
+ * "Call" in the actions row: the number (several open a list to pick from), a spinner while
+ * it's looked up, else where to find it.
+ */
+function CallButton({ store, phones: known }: { store: StoreRef | null; phones?: StorePhone[] }) {
+  const { phones, looking } = usePhones(store, known);
+  if (phones.length === 1) return <a className="btn small ghost ext-link ext-phone" href={telOf(phones[0].number)}>📞 {t("Call")}</a>;
+  if (phones.length)
+    return (
+      <details className="call-menu">
+        <summary className="btn small ghost ext-link ext-phone">
+          📞 {t("Call")} <span className="call-count">{fmtNum(phones.length)}</span>
+        </summary>
+        <div className="call-list">
+          {phones.map((p) => <PhoneLink key={p.number} p={p} />)}
+        </div>
+      </details>
+    );
   if (looking) return <span className="btn small ghost ext-link ext-phone is-looking" aria-busy="true">📞 …</span>;
   if (!store?.name) return null;
   return <a className="btn small ghost ext-link ext-phone-find" href={phoneSearchLinks(store.name, store.city).balad} target="_blank" rel="noopener noreferrer">🔎 {t("Find the number")}</a>;
 }
 
-/** The phone line in Info: the number, else links to look it up (Balad, the web). */
-function PhoneRow({ store, phone: known }: { store: StoreRef | null; phone?: string }) {
-  const { phone, looking } = usePhone(store, known);
-  if (phone)
+/** The phones in Info: every number with its source, else links to look one up (Balad, the web). */
+function PhoneRows({ store, phones: known }: { store: StoreRef | null; phones?: StorePhone[] }) {
+  const { phones, looking } = usePhones(store, known);
+  if (phones.length)
     return (
-      <a className="info-row link" href={telOf(phone)}>
-        📞 <span dir="ltr">{phone}</span>
-      </a>
+      <section className="store-phones">
+        {phones.length > 1 && <h4>📞 {t("Phone numbers ({n})", { n: fmtNum(phones.length) })}</h4>}
+        {phones.map((p) => <PhoneLink key={p.number} p={p} />)}
+      </section>
     );
   if (looking) return <div className="info-row muted">📞 {t("Looking up the phone number…")}</div>;
   if (!store?.name) return null;
@@ -154,10 +181,10 @@ function HoursTable({ week, at }: { week: Week; at: LatLng }) {
   );
 }
 
-type InfoProps = { at: LatLng; store?: StoreRef | null; week?: Week | null; hours?: string; address?: string; area?: string; phone?: string; city?: string; minOrder?: number; deliveryFee?: number };
+type InfoProps = { at: LatLng; store?: StoreRef | null; week?: Week | null; hours?: string; address?: string; area?: string; phones?: StorePhone[]; city?: string; minOrder?: number; deliveryFee?: number };
 /** Hours, address, phone (or where to find it), delivery terms: whatever is known, else a line saying so. */
-function InfoView({ at, store = null, week, hours, address, area, phone, city, minOrder, deliveryFee }: InfoProps) {
-  const empty = !week && !hours && !address && !phone && !store?.name;
+function InfoView({ at, store = null, week, hours, address, area, phones, city, minOrder, deliveryFee }: InfoProps) {
+  const empty = !week && !hours && !address && !phones?.length && !store?.name;
   return (
     <div className="store-info">
       {week ? (
@@ -177,7 +204,7 @@ function InfoView({ at, store = null, week, hours, address, area, phone, city, m
           🏠 <span dir="auto">{[address, area, city].filter(Boolean).join(" · ")}</span>
         </div>
       )}
-      <PhoneRow store={store} phone={phone} />
+      <PhoneRows store={store} phones={phones} />
       {!!minOrder && <div className="info-row">🧾 {t("Minimum order: {price}", { price: toman(minOrder) })}</div>}
       {deliveryFee != null && <div className="info-row">🛵 {deliveryFee ? t("Delivery: {price}", { price: toman(deliveryFee) }) : t("Free delivery")}</div>}
       {empty && <p className="small muted">{t("No hours, address or phone known for this store yet.")}</p>}
@@ -453,7 +480,9 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
   const where = at ?? (data.menu ? data.menu.vendor : { lat: 0, lng: 0 });
   // Without a known spot there's nothing to look the number up by.
   const store: StoreRef | null = a.name && (at || data.menu) ? { name: a.name, lat: where.lat, lng: where.lng } : null;
-  const hasCall = data.links.some((l) => l.kind === "phone");
+  // The numbers have their own button (all of them), not a link each.
+  const links = data.links.filter((l) => l.kind !== "phone");
+  const phones = a.phones ?? [];
   const week = a.week ?? weekFromOsm(a.hours);
   const tabs: Tab[] = [];
   if (data.menu) tabs.push({ key: "menu", label: data.menu.vendor.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={data.menu!} /> });
@@ -461,7 +490,7 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
   const onTorob = !!data.torobShop || data.torob.length > 0;
   if (onTorob) tabs.push({ key: "torob", label: `🏷️ ${t("Torob")}`, body: () => <TorobSearch initial={data.torob} shop={data.torobShop} /> });
   if (data.menu) tabs.push({ key: "reviews", label: `⭐ ${data.menu.reviews ? t("Reviews ({n})", { n: fmtNum(data.menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={data.menu!.vendor.code} total={data.menu!.reviews} stars={data.menu!.stars} /> });
-  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} store={store} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phone={a.phone} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
+  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} store={store} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phones={phones} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
   return (
     <div className="ext-store">
       {(a.photo || a.logo) && (
@@ -476,14 +505,14 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
           {data.menu && data.menu.vendor.rating > 0 && <span className="tag ext-rating">⭐ {fmtNum(data.menu.vendor.rating)}</span>}
         </div>
       )}
-      {(!!data.links.length || (!hasCall && store)) && (
+      {(!!links.length || !!phones.length || store) && (
         <div className="store-actions ext-links">
-          {data.links.map((l) => (
-            <a key={l.url} className={`btn small ghost ext-link ext-${l.kind}`} href={l.url} target={l.kind === "phone" ? undefined : "_blank"} rel="noopener noreferrer" dir="auto">
+          {links.map((l) => (
+            <a key={l.url} className={`btn small ghost ext-link ext-${l.kind}`} href={l.url} target="_blank" rel="noopener noreferrer" dir="auto">
               {LINK_ICON[l.kind]} {l.label}
             </a>
           ))}
-          {!hasCall && <CallButton store={store} />}
+          <CallButton store={store} phones={phones} />
         </div>
       )}
       {!data.menu && !onTorob && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
@@ -551,7 +580,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
       <div className="store-actions">
         <a className="btn small ghost ext-link ext-snappfood" href={snappfoodMenuUrl(v.code)} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
-        {menu && <CallButton store={{ name: v.title, lat: v.lat, lng: v.lng }} phone={menu.phone} />}
+        {menu && <CallButton store={{ name: v.title, lat: v.lat, lng: v.lng }} phones={menu.phones} />}
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>
       {error ? (
@@ -564,7 +593,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
           tabs={[
             { key: "menu", label: v.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={menu} /> },
             { key: "reviews", label: `⭐ ${menu.reviews ? t("Reviews ({n})", { n: fmtNum(menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={v.code} total={menu.reviews} stars={menu.stars} /> },
-            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} store={{ name: v.title, lat: v.lat, lng: v.lng }} week={menu.week} address={menu.address} area={menu.area} phone={menu.phone} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} store={{ name: v.title, lat: v.lat, lng: v.lng }} week={menu.week} address={menu.address} area={menu.area} phones={menu.phones} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} /> },
           ]}
         />
       ) : (
@@ -590,7 +619,7 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
       {photo && <div className="ext-cover"><Pic src={photo} className="ext-cover-img" /></div>}
       <div className="store-actions">
         <a className="btn small ghost ext-link ext-torob" href={shop.url} target="_blank" rel="noopener noreferrer">🏷️ {t("Shop on Torob")}</a>
-        {data && <CallButton store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} phone={info?.phone} />}
+        {data && <CallButton store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} phones={info?.phones} />}
         <GoButtons to={p} name={p.name} dist={dist} />
       </div>
       {error ? (
@@ -617,7 +646,7 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
                 </>
               ),
             },
-            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={p} store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} week={p.week} address={info?.address || p.address} city={p.city} phone={info?.phone} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={p} store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} week={p.week} address={info?.address || p.address} city={p.city} phones={info?.phones} /> },
           ]}
         />
       )}

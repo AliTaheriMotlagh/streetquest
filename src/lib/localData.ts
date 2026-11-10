@@ -34,6 +34,8 @@ export type Menu = {
   fetchedAt: string;
   week?: Week | null;
   phone?: string;
+  /** Every number known for the store, with where each came from (`phone` is the first). */
+  phones?: StorePhone[];
   area?: string;
   reviews?: number;
   stars?: number[];
@@ -84,7 +86,7 @@ export function mergeTorobPlace(a: TorobPlace, b: TorobPlace): TorobPlace {
   return { ...a, address: a.address || b.address, photo: a.photo || b.photo, week: a.week ?? b.week, sells: [...a.sells, ...b.sells.filter((x) => !a.sells.includes(x))], stock };
 }
 /** The rest of a walk-in Torob shop's page: full address, phone, logo and photos. */
-export type TorobPlaceInfo = { id: number; name: string; logo: string; photos: string[]; address: string; phone: string; city: string; url: string };
+export type TorobPlaceInfo = { id: number; name: string; logo: string; photos: string[]; address: string; phone: string; phones?: StorePhone[]; city: string; url: string };
 export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone" | "instagram"; url: string; label: string };
 /**
  * `torob`: the store's own Torob shop catalog when `torobShop` is set, else listings only it sells.
@@ -98,7 +100,7 @@ export type StoreData = {
   torobQuery: string;
   torobShop: TorobShop | null;
   links: StoreLink[];
-  about: { photo: string; logo: string; address: string; hours: string; week?: Week | null; phone?: string; name?: string };
+  about: { photo: string; logo: string; address: string; hours: string; week?: Week | null; phone?: string; phones?: StorePhone[]; name?: string };
 };
 
 // ---------------------------------------------------------------- opening hours
@@ -327,6 +329,8 @@ export function normName(s: string) {
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
+/** A name's letters and digits alone (no spaces, no "(Area)"). */
+const lettersOf = (s: string) => normName(s).replace(/ /g, "");
 const words = (s: string) => normName(s).split(" ").filter((w) => w.length > 1 && !FILLER.has(w));
 /**
  * The same letters, however the words are spaced: Persian names come both ways
@@ -339,6 +343,9 @@ const sameLetters = (x: string[], y: string[]) => {
 };
 /** 0…1: how much two store names share once the "Restaurant"/"Café" words are gone. */
 export function nameScore(a: string, b: string) {
+  // "برگرلند" / "برگر لند": one name, though "برگر" alone is a filler word.
+  const la = lettersOf(a);
+  if (la.length >= 4 && la === lettersOf(b)) return 1;
   const x = words(a), y = words(b);
   if (!x.length || !y.length) return 0;
   if (sameLetters(x, y)) return 1;
@@ -368,6 +375,36 @@ export function storePhone(phone: string | null | undefined) {
   const s = latinDigits((phone ?? "").trim()).replace(/^tel:\/*/i, "").trim();
   return /^[\d+\-\s()]{5,20}$/.test(s) && !isPlatformPhone(s) ? s : "";
 }
+/** Every number in a field that may hold several ("021… ; 0912…", "021… - 021…", "021… و 0912…"). */
+export function storePhones(raw: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(/[;,،\/|\n]|\s[-–—]\s|\sو\s/)) {
+    const p = storePhone(part);
+    if (p) out.push(p);
+  }
+  return out;
+}
+/** Where a number was read: the map (OpenStreetMap), the store's own Snappfood / Torob page, Balad, Google. */
+export type PhoneSource = "map" | "snappfood" | "torob" | "balad" | "google";
+export type StorePhone = { number: string; source: PhoneSource };
+/** A card shows at most this many numbers. */
+export const MAX_PHONES = 6;
+/** One number however it is written: "+98 21 8802 3649", "0098218802…" and "021-8802 3649" are the same. */
+export const phoneKey = (phone: string) => digitsOf(phone).replace(/^(?:0098|98(?=\d{9,}$)|0)/, "");
+/** The numbers of some fields of one source. */
+export const phonesFrom = (source: PhoneSource, ...raw: (string | null | undefined)[]): StorePhone[] =>
+  mergePhones(raw.flatMap((r) => storePhones(r).map((number) => ({ number, source }))));
+/** Several sources' numbers as one list: each number once (the first source to have it), in the order given. */
+export function mergePhones(...lists: (StorePhone[] | null | undefined)[]): StorePhone[] {
+  const seen = new Set<string>(), out: StorePhone[] = [];
+  for (const p of lists.flatMap((l) => l ?? [])) {
+    const number = storePhone(p?.number), key = phoneKey(number);
+    if (!number || seen.has(key) || out.length >= MAX_PHONES) continue;
+    seen.add(key);
+    out.push({ number, source: p.source });
+  }
+  return out;
+}
 
 /**
  * No map knows the number: where to look it up by hand — a Balad search for the store and a
@@ -384,6 +421,44 @@ export type BaladSearch = { "poi-tokens"?: string[]; geojson?: { features?: { ge
 /** A Balad place and this store are the same this close with a similar name, or this far with the same name. */
 export const BALAD_MATCH_M = 120;
 export const BALAD_SAME_NAME_M = 300;
+/** …or this far when the two names are word for word the same (Snappfood's pin is often streets off). */
+export const BALAD_EXACT_NAME_M = 700;
+/**
+ * What to ask Balad for a store, most telling first: its name without Snappfood's "(Area)",
+ * then the name without the words that say what it is — Balad answers "پیتزا پرپروک" with every
+ * pizza place around (a category search) but "پرپروک" with the store.
+ */
+export function baladQueries(name: string): string[] {
+  const bare = name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const core = words(name).join(" ");
+  return [...new Set([bare, core.length >= 3 ? core : ""])].filter(Boolean);
+}
+const allWords = (s: string) => normName(s).split(" ").filter((w) => w.length > 1);
+/**
+ * A name that is one word once "what it is" is dropped ("ایران برگر" → "ایران") also sits in the
+ * names of other kinds of places ("بیمه ایران"): a candidate with words of its own and none of
+ * the store's "what it is" words is somewhere else.
+ */
+function otherKind(cand: string, store: string) {
+  const sc = words(store);
+  if (sc.length !== 1 || !words(cand).some((w) => !sc.includes(w))) return false;
+  const kind = allWords(store).filter((w) => FILLER.has(w)), have = new Set(allWords(cand));
+  return kind.length > 0 && !kind.some((w) => have.has(w));
+}
+/**
+ * How well a place another map found (its name, where it is) is this store: null when it
+ * isn't — too far for how alike the names are, or another kind of place. Higher is better:
+ * the name first, then every shared word, then the distance.
+ */
+export function placeMatch(cand: { name: string; lat: number; lng: number }, store: { name: string; lat: number; lng: number }): number | null {
+  const d = distanceM(store, cand);
+  const ns = nameScore(cand.name, store.name);
+  const exact = normName(cand.name) === normName(store.name);
+  const ok = (d <= BALAD_MATCH_M && ns >= 0.5) || (d <= BALAD_SAME_NAME_M && ns >= 1) || (d <= BALAD_EXACT_NAME_M && exact);
+  if (!ok || (!exact && otherKind(cand.name, store.name))) return null;
+  const mine = new Set(allWords(store.name));
+  return ns * 1000 + allWords(cand.name).filter((w) => mine.has(w)).length * 100 - d;
+}
 /** The token of the Balad place that is this store, if the search found it. */
 export function pickBaladPoi(r: BaladSearch | null, store: { name: string; lat: number; lng: number }): string | null {
   const tokens = r?.["poi-tokens"] ?? [];
@@ -392,24 +467,23 @@ export function pickBaladPoi(r: BaladSearch | null, store: { name: string; lat: 
   feats.forEach((f, i) => {
     const c = f.geometry?.coordinates, name = f.properties?.name ?? "", token = tokens[i];
     if (!token || !c || c.length < 2 || !name) return;
-    const d = distanceM(store, { lat: c[1], lng: c[0] });
-    const ns = nameScore(name, store.name);
-    const ok = (d <= BALAD_MATCH_M && ns >= 0.5) || (d <= BALAD_SAME_NAME_M && ns >= 1);
-    // Closer and better-named wins.
-    const score = ns * 1000 - d;
-    if (ok && (!best || score > best.score)) best = { token, score };
+    const score = placeMatch({ name, lat: c[1], lng: c[0] }, store);
+    if (score != null && (!best || score > best.score)) best = { token, score };
   });
   return (best as { token: string } | null)?.token ?? null;
 }
-/** A Balad place page's phone (its schema.org "telephone", else the call link). */
-export function baladPhoneOf(r: unknown): string {
-  const x = r as { phone_link?: string; seo_details?: { schemas?: { telephone?: string }[] } } | null;
-  for (const s of x?.seo_details?.schemas ?? []) {
-    const p = storePhone(s?.telephone);
-    if (p) return p;
-  }
-  return storePhone(x?.phone_link);
+/** Every number on a Balad place page: its phone rows, its schema.org "telephone", its call link. */
+export function baladPhonesOf(r: unknown): string[] {
+  const x = r as { phone_link?: string; fields?: { icon?: string; text?: string; value?: string }[]; seo_details?: { schemas?: { telephone?: string }[] } } | null;
+  const raw = [
+    ...(Array.isArray(x?.fields) ? x.fields : []).filter((f) => f?.icon === "phone").map((f) => f.text ?? f.value),
+    ...(x?.seo_details?.schemas ?? []).map((sc) => sc?.telephone),
+    x?.phone_link,
+  ];
+  return phonesFrom("balad", ...raw).map((p) => p.number);
 }
+/** A Balad place page's first phone, or "". */
+export const baladPhoneOf = (r: unknown): string => baladPhonesOf(r)[0] ?? "";
 
 /** Google Places (New) Text Search: the fields we ask for (X-Goog-FieldMask). */
 export type GoogleSearch = { places?: { displayName?: { text?: string }; location?: { latitude?: number; longitude?: number }; nationalPhoneNumber?: string; internationalPhoneNumber?: string }[] };
@@ -420,11 +494,8 @@ export function googlePhoneOf(r: GoogleSearch | null, store: { name: string; lat
     const name = p.displayName?.text ?? "", lat = p.location?.latitude, lng = p.location?.longitude;
     const phone = storePhone(p.nationalPhoneNumber) || storePhone(p.internationalPhoneNumber);
     if (!name || lat == null || lng == null || !phone) continue;
-    const d = distanceM(store, { lat, lng });
-    const ns = nameScore(name, store.name);
-    if (!((d <= BALAD_MATCH_M && ns >= 0.5) || (d <= BALAD_SAME_NAME_M && ns >= 1))) continue;
-    const score = ns * 1000 - d;
-    if (!best || score > best.score) best = { phone, score };
+    const score = placeMatch({ name, lat, lng }, store);
+    if (score != null && (!best || score > best.score)) best = { phone, score };
   }
   return best?.phone ?? "";
 }

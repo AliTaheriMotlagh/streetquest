@@ -9,9 +9,9 @@ import { adminPlayer, expectOk, fund, offset, Player, randomSpot, uploadPlaces, 
 
 /** `unlisted`: missing from the area's vendor list, so only Snappfood's search finds it. */
 /** `phone`: what Snappfood says ("customerPhone"); `balad`: the number Balad has for the same place. */
-type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; phone?: string; balad?: string; google?: string; items: { title: string; price: number; discount?: number }[] };
+type StubVendor = { code: string; title: string; lat: number; lon: number; type: string; unlisted?: boolean; phone?: string; balad?: string; balad2?: string; google?: string; items: { title: string; price: number; discount?: number }[] };
 const vendors: StubVendor[] = [];
-type StubShop = { id: number; name: string; products: string[]; address?: string; phone?: string };
+type StubShop = { id: number; name: string; products: string[]; address?: string; phone?: string; phone2?: string };
 const shops: StubShop[] = [];
 /**
  * Torob's walk-in stores, on its map of sellers: two in Stubtown (500 m apart) and one
@@ -20,7 +20,7 @@ const shops: StubShop[] = [];
  */
 const STUBTOWN = { lat: -60, lng: 100 };
 const walkIns = [
-  { id: 900001, name: "Stub Mobile", ...STUBTOWN, address: "Stub street 9, by the park", phone: "02155550001", products: ["Phone X", "Phone Y case"] },
+  { id: 900001, name: "Stub Mobile", ...STUBTOWN, address: "Stub street 9, by the park", phone: "02155550001", phone2: "0912 555 0001", products: ["Phone X", "Phone Y case"] },
   { id: 900002, name: "Stub Shoes", ...offset(STUBTOWN, 0, 500), address: "Stub square 2", phone: "02155550002", products: ["Running shoe"] },
   { id: 900003, name: "Far Away Shop", lat: -60, lng: 101, address: "Elsewhere 1", phone: "", products: ["Thing"] },
 ];
@@ -88,12 +88,14 @@ test.beforeAll(async () => {
     if (u.pathname === "/bl/v6/bundle-search/") {
       const [lng, lat] = (u.searchParams.get("camera") ?? "").split(",").map(Number);
       const hits = vendors.filter((v) => v.balad && near({ lat, lng }, v));
+      // Like the real one: "nothing by that name" is a 404.
+      if (!hits.length) return (res.statusCode = 404), res.end();
       return send({ "poi-tokens": hits.map((v) => `tok${v.code}`), geojson: { type: "FeatureCollection", features: hits.map((v) => ({ type: "Feature", geometry: { type: "Point", coordinates: [v.lon, v.lat] }, properties: { name: v.title } })) } });
     }
     if (u.pathname.startsWith("/blp/web/v4/tok")) {
       const v = vendors.find((x) => `/blp/web/v4/tok${x.code}` === u.pathname);
       if (!v) return (res.statusCode = 404), res.end();
-      return send({ token: `tok${v.code}`, name: v.title, seo_details: { schemas: [{ "@type": "Restaurant", telephone: v.balad }] }, phone_link: `tel://${v.balad}` });
+      return send({ token: `tok${v.code}`, name: v.title, fields: [{ icon: "gps", text: "Stub street 1" }, { icon: "phone", text: v.balad }, ...(v.balad2 ? [{ icon: "phone", text: v.balad2 }] : [])], seo_details: { schemas: [{ "@type": "Restaurant", telephone: v.balad }] }, phone_link: `tel://${v.balad}` });
     }
     // Google Places Text Search (POST, the key in a header): places with that name near the bias circle.
     if (u.pathname === "/gp/v1/places:searchText" && req.method === "POST") {
@@ -127,7 +129,7 @@ test.beforeAll(async () => {
     if (u.pathname === "/tr/v4/internet-shop/details/") {
       const s = shops.find((x) => x.id === Number(u.searchParams.get("id")));
       if (!s) return (res.statusCode = 404), res.end();
-      return send({ id: s.id, name: s.name, logo_512: "", address: s.address ?? "", phone: s.phone ?? "", city: "Stubtown", shop_images: s.address ? [`https://example.com/${s.id}.jpg`] : [] });
+      return send({ id: s.id, name: s.name, logo_512: "", address: s.address ?? "", phone: s.phone ?? "", second_phone: s.phone2 ?? "", city: "Stubtown", shop_images: s.address ? [`https://example.com/${s.id}.jpg`] : [] });
     }
     if (u.pathname === "/tr/v4/base-product/map/sellers/") {
       // Every walk-in seller of a product, wherever they are: listing "b" only has the first.
@@ -184,19 +186,24 @@ test.describe("store hours, reviews and walk-in stores", () => {
 
   test("a restaurant's phone is its own (from Balad), never Snappfood's call centre", async ({ baseURL }) => {
     const spot = randomSpot();
-    const known = { code: code(), title: "Balad Known Pizza", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", phone: "02196612", balad: "02188023649", items: [{ title: "Pizza", price: 3_000_000 }] };
+    const known = { code: code(), title: "Balad Known Pizza", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", phone: "02196612", balad: "02188023649", balad2: "0912 000 1122", items: [{ title: "Pizza", price: 3_000_000 }] };
     const unknown = { code: code(), title: "Nobody Knows Kebab", ...{ lat: spot.lat + 0.002, lon: spot.lng }, type: "RESTAURANT", phone: "021-96612", items: [{ title: "Kebab", price: 2_000_000 }] };
     vendors.push(known, unknown);
     const p = await Player.create(baseURL!);
-    const a = expectOk(await p.get<{ menu: { phone: string } }>(`/api/local?menu=${known.code}`)).data.menu;
+    const a = expectOk(await p.get<{ menu: { phone: string; phones: { number: string; source: string }[] } }>(`/api/local?menu=${known.code}`)).data.menu;
     expect(a.phone).toBe("02188023649");
+    // Every number Balad's page has, each saying where it came from.
+    expect(a.phones).toEqual([{ number: "02188023649", source: "balad" }, { number: "0912 000 1122", source: "balad" }]);
     // Neither Balad nor Google knows it, and Snappfood's own number is no phone for the restaurant.
-    const b = expectOk(await p.get<{ menu: { phone?: string } }>(`/api/local?menu=${unknown.code}`)).data.menu;
+    const b = expectOk(await p.get<{ menu: { phone?: string; phones: unknown[] } }>(`/api/local?menu=${unknown.code}`)).data.menu;
     expect(b.phone ?? "").toBe("");
+    expect(b.phones).toEqual([]);
     // Not on Balad, but on Google.
     const onGoogle = { code: code(), title: "Google Only Grill", lat: spot.lat - 0.002, lon: spot.lng, type: "RESTAURANT", phone: "02196612", google: "021 2222 3333", items: [{ title: "Grill", price: 2_500_000 }] };
     vendors.push(onGoogle);
-    expect(expectOk(await p.get<{ menu: { phone: string } }>(`/api/local?menu=${onGoogle.code}`)).data.menu.phone).toBe("021 2222 3333");
+    const g = expectOk(await p.get<{ menu: { phone: string; phones: unknown[] } }>(`/api/local?menu=${onGoogle.code}`)).data.menu;
+    expect(g.phone).toBe("021 2222 3333");
+    expect(g.phones).toEqual([{ number: "021 2222 3333", source: "google" }]);
     await p.dispose();
   });
 
@@ -207,7 +214,7 @@ test.describe("store hours, reviews and walk-in stores", () => {
     vendors.push(known);
     const p = await Player.create(baseURL!);
     const q = (name: string, lat: number, lng: number) => `/api/local?phone=1&name=${encodeURIComponent(name)}&lat=${lat}&lng=${lng}`;
-    expect(expectOk(await p.get<{ phone: string }>(q(known.title, known.lat, known.lon))).data.phone).toBe("021 4444 1212");
+    expect(expectOk(await p.get<{ phone: string; phones: unknown[] }>(q(known.title, known.lat, known.lon))).data).toEqual({ phone: "021 4444 1212", phones: [{ number: "021 4444 1212", source: "balad" }] });
     // Nobody has a number for this one: "" (the card then links a Balad / web search).
     expect(expectOk(await p.get<{ phone: string }>(q("Nobody Has This Shop", spot.lat + 0.003, spot.lng))).data.phone).toBe("");
     expect((await p.get(`/api/local?phone=1&name=&lat=1&lng=1`)).status).toBe(400);
@@ -223,12 +230,14 @@ test.describe("store hours, reviews and walk-in stores", () => {
     const v = { code: code(), title: `چلو کباب جوان${tag}`, ...((q) => ({ lat: q.lat, lon: q.lng }))(offset(place, 60)), type: "RESTAURANT", items: [{ title: "Chelo kebab", price: 1_500_000 }] };
     vendors.push(v);
     const p = await Player.create(baseURL!);
-    const d = expectOk(await p.get<{ menu: { vendor: { code: string } } | null; about: { week: number[][][] | null; phone: string }; links: { kind: string }[] }>(`/api/local?store=place&id=${place.id}&name=${encodeURIComponent(place.name)}&lat=${place.lat}&lng=${place.lng}&cat=restaurant`)).data;
+    const d = expectOk(await p.get<{ menu: { vendor: { code: string } } | null; about: { week: number[][][] | null; phone: string; phones: unknown[] }; links: { kind: string }[] }>(`/api/local?store=place&id=${place.id}&name=${encodeURIComponent(place.name)}&lat=${place.lat}&lng=${place.lng}&cat=restaurant`)).data;
     expect(d.menu?.vendor.code).toBe(v.code);
     // The map's own hours win over Snappfood's, read as a week.
     expect(d.about.week?.[0]).toEqual([[660, 1380]]);
     expect(d.about.week?.[6]).toEqual([]);
     expect(d.about.phone).toBe("021 5555 0101");
+    // The map's number first, then the one its Snappfood page gives (the stub's is the store's own).
+    expect(d.about.phones).toEqual([{ number: "021 5555 0101", source: "map" }, { number: "02112345678", source: "snappfood" }]);
     expect(d.links.map((l) => l.kind)).toEqual(expect.arrayContaining(["snappfood", "phone"]));
     await Promise.all([admin.dispose(), p.dispose()]);
   });
@@ -251,13 +260,15 @@ test.describe("store hours, reviews and walk-in stores", () => {
     // Its card: the full address and phone from its page, what it was seen selling at its own
     // price (not Torob's lowest anywhere) — only it — and its own catalog.
     type Stock = { title: string; price: number; note: string; when: string; url: string };
-    const card = expectOk(await p.get<{ info: { address: string; phone: string; photos: string[]; url: string }; items: { title: string }[]; stock: Stock[] }>(`/api/local?torobPlace=900001&lat=${STUBTOWN.lat}&lng=${STUBTOWN.lng}`)).data;
+    const card = expectOk(await p.get<{ info: { address: string; phone: string; phones: unknown[]; photos: string[]; url: string }; items: { title: string }[]; stock: Stock[] }>(`/api/local?torobPlace=900001&lat=${STUBTOWN.lat}&lng=${STUBTOWN.lng}`)).data;
     // (Listing "a" is found both by the daily map and by the search round here; "b" only by the map,
     // which an earlier run may have built before stock was kept.)
     expect(card.stock.find((s) => s.url === "https://torob.com/p/walkin-a/x/")).toMatchObject({ price: 1_001_000, note: "18-month warranty", when: "۲ روز پیش" });
     const shoes = expectOk(await p.get<{ stock: Stock[] }>(`/api/local?torobPlace=900002&lat=${walkIns[1].lat}&lng=${walkIns[1].lng}`)).data;
     expect(shoes.stock.map((s) => s.url)).toEqual(["https://torob.com/p/walkin-a/x/"]);
     expect(card.info).toMatchObject({ address: "Stub street 9, by the park", phone: "02155550001", url: "https://torob.com/shop/900001/" });
+    // Both of the shop's own numbers (Torob's "phone" and "second_phone").
+    expect(card.info.phones).toEqual([{ number: "02155550001", source: "torob" }, { number: "0912 555 0001", source: "torob" }]);
     expect(card.info.photos).toEqual(["https://example.com/900001.jpg"]);
     expect(card.items.map((i) => i.title)).toEqual(["Phone X", "Phone Y case"]);
     expect((await p.get(`/api/local?torobPlace=-3`)).status).toBe(400);
@@ -431,7 +442,7 @@ test.describe("the map's own data", () => {
     const { data } = expectOk(await p.get<D>(`/api/local?store=place&id=${shop.id}&name=${encodeURIComponent(shop.name)}&lat=${shop.lat}&lng=${shop.lng}&cat=grocery`));
     // The map's hours also come as a week, Saturday first: 09:00–22:00 but Friday.
     const open = [[540, 1320]];
-    expect(data.about).toEqual({ photo: info.img, logo: "https://shop.example/favicon.ico", address: info.addr, hours: info.hours, week: [open, open, open, open, open, open, []], phone: info.phone, name: shop.name });
+    expect(data.about).toEqual({ photo: info.img, logo: "https://shop.example/favicon.ico", address: info.addr, hours: info.hours, week: [open, open, open, open, open, open, []], phone: info.phone, phones: [{ number: info.phone, source: "map" }], name: shop.name });
     expect(data.links.map((l) => [l.kind, l.url])).toEqual([["website", info.web], ["instagram", "https://instagram.com/test.shop"], ["phone", "tel:+982177000000"]]);
     // The map itself carries every place, without the contacts (the card asks for them).
     const w = expectOk(await p.get<{ spots: { id: string; info?: unknown }[] }>(`/api/world?lat=${shop.lat}&lng=${shop.lng}`)).data;

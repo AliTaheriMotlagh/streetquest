@@ -181,3 +181,67 @@ it("store phones: with no number anywhere, the card links a search for it", asyn
   assert.equal(decodeURIComponent(l.web.split("q=")[1]), "پیتزا شیلا تهران تلفن");
   assert.equal(decodeURIComponent(phoneSearchLinks("Cafe X").web.split("q=")[1]), "Cafe X تلفن");
 });
+
+describe("every phone number of a store", () => {
+  it("reads all of a field's numbers and merges sources, each number once", async () => {
+    const { storePhones, phonesFrom, mergePhones, phoneKey, MAX_PHONES } = await import("../src/lib/localData");
+    assert.deepEqual(storePhones("021 8802 3649; 0912 345 6789"), ["021 8802 3649", "0912 345 6789"]);
+    assert.deepEqual(storePhones("۰۲۱۸۸۰۲۳۶۴۹ - ۰۲۱۸۸۰۲۳۶۵۰"), ["02188023649", "02188023650"]);
+    assert.deepEqual(storePhones("021-8802-3649"), ["021-8802-3649"], "dashes inside one number");
+    assert.deepEqual(storePhones("02196612, call us"), [], "a platform's number and junk");
+    assert.equal(phoneKey("+98 21 8802 3649"), phoneKey("021-88023649"));
+    assert.equal(phoneKey("0098 912 345 6789"), phoneKey("09123456789"));
+    const all = mergePhones(phonesFrom("torob", "02188023649", "09123456789"), phonesFrom("map", "+98 21 8802 3649"), phonesFrom("balad", "02188023650", "0912 345 6789"));
+    assert.deepEqual(all, [
+      { number: "02188023649", source: "torob" },
+      { number: "09123456789", source: "torob" },
+      { number: "02188023650", source: "balad" },
+    ]);
+    assert.deepEqual(mergePhones(null, undefined, []), []);
+    const many = phonesFrom("balad", ...Array.from({ length: 10 }, (_, i) => `0218802360${i}`));
+    assert.equal(many.length, MAX_PHONES);
+  });
+
+  it("takes every number on a Balad page: its phone rows, schema and call link", async () => {
+    const { baladPhonesOf, baladPhoneOf } = await import("../src/lib/localData");
+    const page = {
+      phone_link: "tel://02188825583",
+      fields: [{ icon: "gps", text: "تهران" }, { icon: "phone", text: "02188825583" }, { icon: "phone", text: "۰۲۱۸۸۳۰۸۳۸۵" }, { icon: "instagram", text: "pizza" }],
+      seo_details: { schemas: [{ telephone: "02188825583" }] },
+    };
+    assert.deepEqual(baladPhonesOf(page), ["02188825583", "02188308385"]);
+    assert.equal(baladPhoneOf(page), "02188825583");
+    assert.deepEqual(baladPhonesOf({ fields: "?" }), []);
+    assert.deepEqual(baladPhonesOf(null), []);
+  });
+
+  it("asks Balad for the name, then for the name without what-it-is words", async () => {
+    const { baladQueries } = await import("../src/lib/localData");
+    assert.deepEqual(baladQueries("پیتزا پرپروک (تهرانپارس)"), ["پیتزا پرپروک", "پرپروک"]);
+    assert.deepEqual(baladQueries("هریک"), ["هریک"]);
+    assert.deepEqual(baladQueries("کافه برگر"), ["کافه برگر"], "nothing left to ask without the kind");
+  });
+
+  it("matches a store on another map by name and distance, never another kind of place", async () => {
+    const { placeMatch, pickBaladPoi, nameScore } = await import("../src/lib/localData");
+    const at = { lat: 35.7285, lng: 51.4072 };
+    const feat = (name: string, lat: number, lng: number) => ({ geometry: { coordinates: [lng, lat] }, properties: { name } });
+    // One name written two ways, though "برگر" alone only says what the place is.
+    assert.equal(nameScore("برگر لند", "برگرلند (تهرانپارس)"), 1);
+    // "ایران برگر" is "ایران" without the kind: the insurance office next door is not it.
+    const burger = { name: "ایران برگر (تهرانپارس)", ...at };
+    assert.equal(placeMatch({ name: "بیمه ایران", lat: at.lat, lng: at.lng }, burger), null);
+    assert.equal(
+      pickBaladPoi({ "poi-tokens": ["ins", "me"], geojson: { features: [feat("بیمه ایران", at.lat, at.lng), feat("ایران برگر تهرانپارس", at.lat + 0.0003, at.lng)] } }, burger),
+      "me",
+    );
+    // A name of its own with no kind word still matches a longer name.
+    assert.ok(placeMatch({ name: "ساندویچی موبیدیک", ...at }, { name: "موبیدیک (شعبه تهرانپارس)", ...at }) != null);
+    assert.ok(placeMatch({ name: "فست فود شیلا", ...at }, { name: "پیتزا شیلا (هفت تیر)", ...at }) != null);
+    // Word for word the same name is the store even 600 m off (Snappfood's pin wanders); 2 km is another branch.
+    const far = (m: number) => ({ name: "کترینگ ابوالفضل", lat: at.lat + m / 111_320, lng: at.lng });
+    assert.ok(placeMatch(far(600), { name: "کترینگ ابوالفضل", ...at }) != null);
+    assert.equal(placeMatch(far(2000), { name: "کترینگ ابوالفضل", ...at }), null);
+    assert.equal(placeMatch({ name: "رستوران ابوالفضل", lat: far(600).lat, lng: at.lng }, { name: "کترینگ ابوالفضل", ...at }), null);
+  });
+});
