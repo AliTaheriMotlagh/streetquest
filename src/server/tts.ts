@@ -9,7 +9,7 @@
 //    (a woman). The free tier (0.5 M characters a month) covers every line many times over.
 //  - OpenAI (OPENAI_API_KEY): gpt-4o-mini-tts, told to speak colloquial Tehrani Persian.
 // With neither, null (the game shows the speech bubble and stays quiet, or uses recordings).
-import type { Bark, VoiceKind } from "../lib/street/barks";
+import { textOf, type Bark, type VoiceKind } from "../lib/street/barks";
 
 const TIMEOUT_MS = 15_000;
 const esc = (s: string) => s.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]!);
@@ -37,8 +37,9 @@ function azure(b: Bark, v: VoiceKind) {
   if (!key || !region) return Promise.resolve(null);
   const voice = v === "f" ? "fa-IR-DilaraNeural" : "fa-IR-FaridNeural";
   // A shout a touch faster; the police firmer and lower.
-  const rate = b.fa.includes("!") ? "+8%" : "+0%", pitch = v === "cop" ? "-6%" : "+0%";
-  const ssml = `<speak version="1.0" xml:lang="fa-IR"><voice name="${voice}"><prosody rate="${rate}" pitch="${pitch}">${esc(b.fa)}</prosody></voice></speak>`;
+  const text = textOf(b, v).fa;
+  const rate = text.includes("!") ? "+8%" : "+0%", pitch = v === "cop" ? "-6%" : "+0%";
+  const ssml = `<speak version="1.0" xml:lang="fa-IR"><voice name="${voice}"><prosody rate="${rate}" pitch="${pitch}">${esc(text)}</prosody></voice></speak>`;
   return post(
     `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,
     { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/ssml+xml", "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3", "User-Agent": "StreetQuest" },
@@ -56,7 +57,7 @@ function openai(b: Bark, v: VoiceKind) {
     JSON.stringify({
       model: "gpt-4o-mini-tts",
       voice: v === "f" ? "nova" : "onyx",
-      input: b.fa,
+      input: textOf(b, v).fa,
       instructions: `Speak in natural, colloquial Tehrani Persian (Farsi), as ${who} on the street. Short and expressive, not like a newsreader.`,
       response_format: "mp3",
     }),

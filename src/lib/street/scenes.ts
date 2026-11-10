@@ -5,7 +5,7 @@
 // A scene is its cast (one or two people off the pavement, or a taxi in the traffic) and its
 // lines in order, each a line of lib/street/barks.ts said by one of the cast `after` s after
 // the one before; drive/street.ts finds the cast, stops them facing each other, and plays it.
-import { barkById, type Situation } from "./barks";
+import { barkById, textOf, type Situation } from "./barks";
 
 export type SceneLine = { who: 0 | 1; bark: string; after: number };
 export type Scene = {
@@ -56,5 +56,5 @@ export function sceneScript(s: Scene, rand: () => number): { who: 0 | 1; bark: s
 export function sceneLength(script: { at: number; bark: string }[]) {
   const last = script[script.length - 1];
   const b = last && barkById(last.bark);
-  return (last?.at ?? 0) + (b ? Math.max(1.8, b.fa.length * 0.075) : 2) + 1.5;
+  return (last?.at ?? 0) + (b ? Math.max(1.8, Math.max(textOf(b, "m").fa.length, textOf(b, "f").fa.length) * 0.075) : 2) + 1.5;
 }

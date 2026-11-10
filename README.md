@@ -484,10 +484,16 @@ without a file keeps its synth, so nothing goes silent.
 `https://….trycloudflare.com` link it prints.
 
 **What people say (Persian voices):** the lines are in `src/lib/street/barks.ts` (Tehrani Persian with English
-subtitles: running from gunfire, the driver whose car you hit, a pedestrian you nearly ran over, a hello in passing, the
-police megaphone and orders). `npm run assets:voices -- --download` records each one with
-[Piper](https://github.com/rhasspy/piper) (offline; install it, or set `PIPER=/path/to/piper`) in Piper's Persian
-voices — amir (men), ganji pitched up (women: there's no Persian woman's voice yet), gyro through a megaphone (police)
+subtitles; women have their own wording of most lines — «وا! یعنی چی؟ نوبت منه!», «سلام عزیزم!»: running from gunfire, the driver whose car you hit, a pedestrian you nearly ran over, a hello in passing, the
+police megaphone and orders). They're recorded once, free, and shipped as small files (players download nothing extra). The easy way: with
+`npm run dev` running, open `/dev/voices` and press *Make all the voices* — [Piper](https://github.com/rhasspy/piper)
+runs in your browser as WebAssembly and saves each line into `assets/voices/raw/` (its runtime and the Persian
+models, ~150 MB, come from the dev server — it downloads them once into `assets/voices/lib/`, since the CDNs often cut a
+big download off from Iran); then `npm run assets:voices -- --from=assets/voices/raw`. Or record them yourself (or with any
+TTS): `assets/voice-lines.tsv` lists every line with its file name, and `npm run assets:voices -- --import=<folder>`
+takes those files. Or with the Piper command line: `npm run assets:voices -- --download` (`PIPER=/path/to/piper`), in Piper's Persian
+voices — amir (men) and gyro through a megaphone (police) — and, for women, Mycroft Mimic 3's Persian woman's voice
+«haaniye» (CC0; Piper has none), run on the same engine at `/dev/voices` (`src/app/dev/voices/haaniye.ts`)
 — into `public/sounds/voice/` plus its `manifest.json`; commit those. The models (60 MB each) are downloaded once into
 `assets/voices/` (ignored). Without recordings, the server speaks the lines: set `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (Azure's Persian
 neural voices, Farid for men and the police, Dilara for women; the free tier covers every line many times) or

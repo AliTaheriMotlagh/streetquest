@@ -4,7 +4,7 @@
 // asks (warmSamples), and played through the game's shared audio graph (sfx.ts audioOut —
 // same mute, same ducking). Until a slot's file is decoded — or when it has none — the
 // callers fall back to their Web Audio synth, so a missing file is never silence.
-import { readManifest, type SoundKey, type SoundManifest } from "@/lib/soundSlots";
+import { readManifest, SOUND_SLOTS, type SoundKey, type SoundManifest } from "@/lib/soundSlots";
 import { audioOut, isMuted } from "./sfx";
 
 let manifest: Promise<SoundManifest> | null = null;
@@ -15,7 +15,9 @@ let live = 0;
 const MAX_VOICES = 12;
 
 function getManifest() {
-  manifest ??= fetch("/sounds/manifest.json", { cache: "force-cache" })
+  // Asked again each visit (a cheap 304 when nothing changed): a list kept forever would
+  // leave a phone on the old sounds — or none — after new recordings ship.
+  manifest ??= fetch("/sounds/manifest.json", { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : {}))
     .then(readManifest)
     .catch(() => ({}));
@@ -25,10 +27,13 @@ function getManifest() {
 /** Fetch and decode a slot's files (once). */
 async function load(key: SoundKey) {
   if (decoded.has(key) || loading.has(key)) return;
-  const files = (await getManifest())[key];
-  const o = audioOut();
-  if (!files?.length || !o) return;
+  // Taken before the wait: two callers at once mustn't both download the slot.
   loading.add(key);
+  const all = (await getManifest())[key];
+  const o = audioOut();
+  if (!all?.length || !o) return void loading.delete(key);
+  // Not every take on a phone's data: a loop needs one, a one-shot a few to vary (picked at random each visit).
+  const files = [...all].sort(() => Math.random() - 0.5).slice(0, "loop" in SOUND_SLOTS[key] && SOUND_SLOTS[key].loop ? 1 : 3);
   const bufs = await Promise.all(
     files.map((f) =>
       fetch(`/sounds/${f}`)

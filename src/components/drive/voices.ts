@@ -11,7 +11,7 @@
 //  - Nobody talks over anybody: one line at a time near you, and each situation has its
 //    quiet spell (QUIET_S) so a crowd running from a blast isn't a chorus.
 import * as THREE from "three";
-import { barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, type Bark, type Situation, type VoiceKind } from "@/lib/street/barks";
+import { barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, textOf, type Bark, type Situation, type VoiceKind } from "@/lib/street/barks";
 import { getLocale } from "@/lib/i18n";
 import { audioOut, isMuted } from "../game/sfx";
 
@@ -25,7 +25,7 @@ let manifest: Promise<Set<string>> | null = null;
 const bufs = new Map<string, AudioBuffer | null>();
 
 function files() {
-  manifest ??= fetch("/sounds/voice/manifest.json", { cache: "force-cache" })
+  manifest ??= fetch("/sounds/voice/manifest.json", { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : { files: [] }))
     .then((m: { files?: unknown }) => new Set(Array.isArray(m.files) ? m.files.filter((f): f is string => typeof f === "string" && /^[\w-]+\.mp3$/.test(f)) : []))
     .catch(() => new Set<string>());
@@ -116,9 +116,9 @@ export class Voices {
     if (!b) return false;
     this.recent = [b.id, ...this.recent].slice(0, 6);
     this.quietUntil.set(s, now + QUIET_S[s] * 1000);
-    this.busyUntil = now + sayFor(b) * 600;
+    this.busyUntil = now + sayFor(b, v) * 600;
     if (d < HEAR_M) this.speak(b, v, d, at, me);
-    this.bubble(b, where);
+    this.bubble(b, v, where);
     return true;
   }
 
@@ -131,9 +131,9 @@ export class Voices {
     if (!b || !at) return false;
     const d = Math.hypot(at.x - me.x, at.z - me.z);
     if (d > SEE_M) return false;
-    this.busyUntil = Math.max(this.busyUntil, now + sayFor(b) * 600);
+    this.busyUntil = Math.max(this.busyUntil, now + sayFor(b, v) * 600);
     if (d < HEAR_M) this.speak(b, v, d, at, me);
-    this.bubble(b, where);
+    this.bubble(b, v, where);
     return true;
   }
 
@@ -194,20 +194,21 @@ export class Voices {
   private device(b: Bark, v: VoiceKind, vol: number) {
     const fa = persianVoice();
     if (!fa) return;
-    const u = new SpeechSynthesisUtterance(b.fa);
+    const say = textOf(b, v).fa;
+    const u = new SpeechSynthesisUtterance(say);
     u.voice = fa;
     u.lang = fa.lang;
     u.volume = Math.min(1, vol * 1.2);
-    u.rate = b.fa.includes("!") ? 1.15 : 1;
+    u.rate = say.includes("!") ? 1.15 : 1;
     u.pitch = v === "f" ? 1.45 : v === "cop" ? 0.85 : 1;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
   }
 
   /** The line in a bubble over the speaker's head. */
-  private bubble(b: Bark, where: Where) {
+  private bubble(b: Bark, v: VoiceKind, where: Where) {
     const bub = this.bubbles.reduce((a, x) => (x.t < a.t ? x : a));
-    const fa = getLocale() === "fa", text = fa ? b.fa : b.en;
+    const fa = getLocale() === "fa", words = textOf(b, v), text = fa ? words.fa : words.en;
     const g = bub.c.getContext("2d")!;
     const W = bub.c.width, H = bub.c.height;
     g.clearRect(0, 0, W, H);
@@ -248,7 +249,7 @@ export class Voices {
     else lines.forEach((l, i) => g.fillText(l, W / 2, 61 + (i ? 1 : -1) * size * 0.58));
     bub.tex.needsUpdate = true;
     bub.where = where;
-    bub.t = sayFor(b);
+    bub.t = sayFor(b, v);
     bub.sprite.visible = true;
   }
 

@@ -3,13 +3,14 @@
 // line they just said.
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { BARKS, barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, type Situation } from "@/lib/street/barks";
+import { BARKS, barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, textOf, type Situation } from "@/lib/street/barks";
 import { pickScene, SCENES, sceneLength, sceneScript } from "@/lib/street/scenes";
 
 it("every line is Persian with an English subtitle, and a unique recording", () => {
   const files = new Set<string>();
   for (const b of BARKS) {
     assert.match(b.fa, /[؀-ۿ]/, b.id);
+    if (b.faF) assert.match(b.faF, /[\u0600-\u06FF]/, b.id);
     assert.ok(b.en.length > 2, b.id);
     for (const v of b.voices) {
       const f = barkFile(b, v);
@@ -79,4 +80,22 @@ it("scenes are picked by weight, only among the casts that can be found", () => 
   assert.ok(n.friends > n.snatch * 2, JSON.stringify(n));
   for (let i = 0; i < 50; i++) assert.equal(pickScene(Math.random, ["taxi"])!.cast, "taxi");
   assert.equal(pickScene(Math.random, []), null);
+});
+
+it("the list to record from (assets/voice-lines.tsv) has every line the game says, by its file name", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rows = readFileSync("assets/voice-lines.tsv", "utf8").trim().split("\n").slice(1).map((r) => r.split("\t"));
+  const want = BARKS.flatMap((b) => b.voices.map((v) => `${barkFile(b, v).replace(/\.mp3$/, ".wav")}\t${textOf(b, v).fa}`));
+  assert.deepEqual(rows.map((r) => `${r[2]}\t${r[3]}`), want, "out of date: npm run assets:voices -- --list");
+});
+
+it("women say it their own way: a woman's words where there are some, a man's otherwise", () => {
+  const mixed = BARKS.filter((b) => b.voices.includes("m") && b.voices.includes("f"));
+  assert.ok(mixed.length > 20);
+  for (const b of mixed) assert.ok(b.faF && b.faF !== b.fa, `${b.id}: the same words for both`);
+  const greet = barkById("greet-2")!;
+  assert.match(textOf(greet, "f").fa, /عزیزم/);
+  assert.equal(textOf(greet, "m").fa, greet.fa);
+  assert.equal(textOf(greet, "cop").fa, greet.fa);
+  assert.notEqual(barkKey(greet, "m"), barkKey(greet, "f"));
 });
