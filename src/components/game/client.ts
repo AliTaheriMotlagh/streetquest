@@ -1,4 +1,5 @@
 "use client";
+import type { SiktirSpot } from "@/lib/siktir";
 import { fmtWhen, t } from "@/lib/i18n";
 import type { ItemDef } from "@/lib/catalog";
 import type { QuestDef } from "@/lib/quests";
@@ -218,6 +219,7 @@ export type Selected =
   | { type: "torob"; data: TorobPlace }
   | { type: "cinema"; data: Cinema }
   | { type: "deal"; data: Deal }
+  | { type: "siktir"; data: SiktirSpot }
   | { type: "player"; data: WorldPlayer };
 
 /** A timestamp in the player's language and calendar (Solar Hijri in Persian). */

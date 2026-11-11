@@ -1411,6 +1411,10 @@ model DriveParty {
   arenaKind String? // relay | ws
   arenaMode String?
   arenaAt   DateTime?
+  // Vasatyab: the meeting point the party agreed on (server/midpoint.ts), with a name when it is a place.
+  meetLat   Float?
+  meetLng   Float?
+  meetName  String?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   members   DrivePartyMember[]
@@ -1581,4 +1585,27 @@ model VisitorSeen {
   signedIn Boolean  @default(false)
 
   @@id([day, hash])
+}
+
+// Siktir: a player's "never again" mark on a place, with a reason (lib/siktir.ts, /api/siktir).
+// One per player per place (`key`: the store id, or the spot rounded to ~11 m). Players only ever
+// see counts and reasons; an admin can hide a mark (spam, abuse) or delete it.
+model PlaceDislike {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  lat       Float
+  lng       Float
+  placeKey  String?
+  placeName String   @default("")
+  reason    String
+  note      String   @default("")
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([lat, lng])
+  @@index([placeKey])
+  @@index([userId, createdAt])
 }

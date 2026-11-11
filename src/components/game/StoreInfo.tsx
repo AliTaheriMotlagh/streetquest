@@ -23,6 +23,7 @@ import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
 import { Icon } from "../drive/icons";
+import { SiktirBar } from "./Siktir";
 
 /**
  * GET /api/local with these params; null while loading, and the error if it failed. A
@@ -665,6 +666,7 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
           <CallButton store={store} phones={phones} />
         </div>
       )}
+      {at && query.id && <SiktirBar placeKey={query.store === "place" ? String(query.id) : `${query.store}:${query.id}`} name={a.name || String(query.name ?? "")} at={at} />}
       {!data.menu && !onTorob && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
       <StoreTabs tabs={tabs} />
     </div>
@@ -729,6 +731,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
         {menu && <CallButton store={{ name: v.title, lat: v.lat, lng: v.lng }} phones={menu.phones} />}
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>
+      <SiktirBar placeKey={v.code} name={v.title} at={v} />
       {error ? (
         <div className="ext-error">
           <p className="small warn-text">{error}</p>
@@ -768,6 +771,7 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
         {data && <CallButton store={{ name: p.name, lat: p.lat, lng: p.lng, city: p.city }} phones={info?.phones} />}
         <GoButtons to={p} name={p.name} dist={dist} />
       </div>
+      <SiktirBar placeKey={`torob:${p.id}`} name={p.name} at={p} />
       {error ? (
         <p className="small warn-text">{error}</p>
       ) : !data ? (

@@ -20,6 +20,10 @@ import { declutter, labelPx, type Mark } from "./declutter";
 import { nearby } from "./location/nearby";
 import { getLocation } from "./useLocation";
 import { isLite, isTouch, probeFrameRate } from "../perf";
+import { LongPress, SiktirLayer } from "./SiktirLayer";
+import { VasatyabLayer } from "./Vasatyab";
+import type { SiktirSpot } from "@/lib/siktir";
+import type { MidView } from "@/server/midpoint";
 import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
@@ -77,6 +81,11 @@ type Props = {
   route?: (LiveRoute & { to: LatLng }) | null;
   /** Other players to draw instead of the world's (explore mode: those around the explored spot). */
   others?: WorldPlayer[];
+  /** Siktir: spots players marked as disliked (the layer), and a long press anywhere to mark one. */
+  siktir?: SiktirSpot[];
+  onLongPress?: (p: LatLng) => void;
+  /** Vasatyab: the party's middle, its members and gather point. */
+  vasatyab?: MidView | null;
   /** Explore mode: the map moves freely; `jump` flies it somewhere, `onCenter` reports where it ends up. */
   explore?: { jump: { at: LatLng; n: number } | null; onCenter: (c: LatLng) => void } | null;
 };
@@ -98,7 +107,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -154,6 +163,9 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {explore && <ExploreView jump={explore.jump} onCenter={explore.onCenter} />}
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
+        {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
+        {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
+        {vasatyab && <VasatyabLayer view={vasatyab} />}
         <Layers world={world} me={me} game={game} travelTo={travelTo} travelPath={onStreets ? travelPath : null} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} deals={deals} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (

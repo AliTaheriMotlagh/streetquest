@@ -9,6 +9,7 @@ import { fmtNum, t, msg } from "@/lib/i18n";
 
 const AdminVisits = dynamic(() => import("./AdminVisits"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminCars = dynamic(() => import("./AdminCars"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminSiktir = dynamic(() => import("./AdminSiktir"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminDropMap = dynamic(() => import("./AdminDropMap"), { ssr: false, loading: () => <div className="admin-map" /> });
 
@@ -33,7 +34,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type Tab = "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "siktir" | "deliveries";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -62,6 +63,7 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { id: "users", icon: "👥", label: msg("Players"), desc: msg("Search players, gift coins or gems, make admins, ban cheaters.") },
       { id: "moderation", icon: "🛡️", label: msg("Moderation"), desc: msg("Hide location posts and delete chat messages.") },
+      { id: "siktir", icon: "👎", label: msg("Siktir"), desc: msg("The never-again marks players put on places, with their reasons. Hide or delete spam and abuse.") },
       { id: "deliveries", icon: "📦", label: msg("Jobs"), desc: msg("Package deliveries and car rides between players, plus lotteries. Cancel a job to refund whoever paid; cancel a lottery to refund every ticket.") },
     ],
   },
@@ -214,6 +216,7 @@ export function AdminPanel() {
         {tab === "stores3d" && <AdminLandmarks onError={setNotice} />}
         {tab === "visits" && <AdminVisits />}
         {tab === "cars" && <AdminCars />}
+        {tab === "siktir" && <AdminSiktir onError={setNotice} />}
         {tab === "settings" && <SettingsTab key={JSON.stringify(data.config.overrides)} config={data.config} post={post} />}
         {tab === "data" && <GameDataTab key={JSON.stringify(data.config.overrides.catalog ?? {})} config={data.config} post={post} />}
         {tab === "revenue" && <RevenueTab rev={data.revenue} config={data.config} />}

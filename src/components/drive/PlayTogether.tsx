@@ -7,6 +7,7 @@
 //    position stream) or Street Arena matches (deathmatch … hardpoint, bots optional);
 //    the host starts it for the whole party, and the members are pulled in (Drive.tsx);
 //    without a party a match is open to anyone nearby;
+//  - Vasatyab: the point in the middle of the party, places to meet there, set as the gather point;
 //  - matches nearby, and fighting in the open city (passive mode).
 import { useCallback, useEffect, useState } from "react";
 import { formatDistance, type LatLng } from "@/lib/geo";
@@ -16,6 +17,7 @@ import { MODE_KEYS, MODES, type ModeKey } from "@/lib/arena/modes";
 import { VEHICLES, isVehicle } from "@/lib/vehicles";
 import { Button } from "@/components/Button";
 import { api } from "../game/client";
+import { useVasatyab, VasatyabPanel } from "../game/Vasatyab";
 import { useGame } from "../game/ui";
 import { sfx } from "../game/sfx";
 import { ArenaSetup, ARENA_DEFAULTS, FightToggle, GunPicker, MatchPanel, NearbyMatches, type ArenaSettings } from "../arena/ArenaMenu";
@@ -85,6 +87,7 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
   // The live stream (/api/drive) is fresher than this panel's own poll.
   const party = live ?? data?.party ?? null;
   const hasParty = !!party;
+  const vasa = useVasatyab(hasParty);
   // Players online around me (not friends): they can be invited too.
   useEffect(() => {
     if (!hasParty) return;
@@ -269,6 +272,14 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
           </>
         )}
       </section>
+
+      {/* ---- Vasatyab: where to meet */}
+      {party && (
+        <section className="play-sec">
+          <h4>📍 {t("Vasatyab")}</h4>
+          <VasatyabPanel view={vasa.view} method={vasa.method} setMethod={vasa.setMethod} reload={vasa.reload} onTeleport={onTeleport} onGo={onGo} sim={sim} canDrive={canDrive} />
+        </section>
+      )}
 
       {/* ---- the game */}
       <section className="play-sec">
