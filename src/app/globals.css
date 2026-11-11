@@ -1952,6 +1952,10 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .pp-go:active { filter: brightness(.9); }
 .pp-foot p { margin: 8px 0 0; text-align: center; font-size: 11px; color: var(--muted); }
 /* Takhfifan card */
+.deal-gallery { display: flex; gap: 6px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 4px 0 10px; }
+.deal-gallery::-webkit-scrollbar { display: none; }
+.deal-gallery img { flex: 0 0 78%; height: 150px; object-fit: cover; border-radius: 14px; scroll-snap-align: start; background: rgba(255,255,255,.06); }
+.deal-gallery.one img { flex-basis: 100%; }
 .deal-head { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .deal-big { padding: 5px 10px; border-radius: 6px; background: rgba(226, 38, 77, .14); color: #ff6f8c; font-size: 13px; font-weight: 700; }
 .deal-big.back { background: rgba(19, 163, 107, .14); color: #43d79a; }

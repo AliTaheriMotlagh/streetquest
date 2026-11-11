@@ -25,7 +25,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealOf, dealsNear, type Deal, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealInfoOf, dealOf, dealOfPoi, dealReviewsOf, dealsNear, nearbyBox, type Deal, type DealInfo, type DealReviewPage, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -34,7 +34,7 @@ const base = (env: string | undefined, fallback: string) => (env === "off" ? nul
 const snappBase = () => base(process.env.SNAPPFOOD_URL, "https://snappfood.ir");
 const torobBase = () => base(process.env.TOROB_URL, "https://api.torob.com");
 const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
-// Takhfifan (takhfifan.com): deals and cashback at stores, found by the neighbourhood's name.
+// Takhfifan (takhfifan.com): deals and cashback at stores (its /nearby map by position; a neighbourhood-name search as a fallback), a store's page and comments.
 const takhfifanBase = () => base(process.env.TAKHFIFAN_URL, "https://takhfifan.com");
 // Balad (balad.ir) — the map Iranians use most — knows each place's real phone number.
 const baladBase = () => base(process.env.BALAD_URL, "https://search.raah.ir");
@@ -62,6 +62,8 @@ const DIVAR_POSTS_TTL = 15 * 60_000;
 const DIVAR_POST_TTL = 30 * 60_000;
 /** Takhfifan's deals in one neighbourhood: they change by the day. */
 const DEALS_TTL = 6 * HOUR;
+/** One store's page and comments on Takhfifan, and how many of its deals the card lists. */
+const DEAL_INFO_TTL = 2 * HOUR, DEAL_ITEMS_MAX = 20;
 /** Deals this far round (m), and the neighbourhoods asked about (their names are the search). */
 const DEALS_NEAR_M = 2500, DEALS_AREAS = 5;
 /** Vendor lists are cached per cell of this many degrees (~1 km). */
@@ -751,13 +753,26 @@ export async function divarAround(here: LatLng): Promise<DivarArea[]> {
 
 // ---------------------------------------------------------------- Takhfifan
 /**
- * Stores with a deal or cashback on Takhfifan near a point. Its search has no "near here",
- * but every store carries its spot and neighbourhood: so the nearest few neighbourhoods'
- * names (Divar's list) are searched, and only what is really near is kept.
+ * Stores with a deal or cashback on Takhfifan near a point: the same list its /nearby map
+ * shows (one call with the box round the point, ~1 km cells so players share the cache).
+ * If that fails, its search has no "near here" but every store carries its neighbourhood:
+ * so the nearest few neighbourhoods' names (Divar's list) are searched instead.
  */
 export async function dealsAround(here: LatLng): Promise<Deal[]> {
   const root = takhfifanBase();
   if (!root) return [];
+  const cell = { lat: Math.round(here.lat * 100) / 100, lng: Math.round(here.lng * 100) / 100 };
+  const box = new URLSearchParams({ ...nearbyBox(cell, DEALS_NEAR_M + 1200), zoom: "15", path: "/nearby", sort_order: "desc", offset: "0", limit: "10" });
+  const onMap = await cached<Deal[]>(`tk:near:${cell.lat},${cell.lng}`, DEALS_TTL, async () => {
+    const r = await getJson<{ data?: { pois?: Parameters<typeof dealOfPoi>[0][] } }>(`${root}/v6/api/taxonomy/collections/nearby/vendors/nearby?${box}`);
+    return r?.data?.pois ? r.data.pois.map(dealOfPoi).filter((d): d is Deal => !!d) : null;
+  }).catch(() => null);
+  if (onMap?.length) return dealsNear(onMap, here, DEALS_NEAR_M);
+  return dealsBySearch(here, root);
+}
+
+/** The fallback: Takhfifan's search by the neighbourhoods' names. */
+async function dealsBySearch(here: LatLng, root: string): Promise<Deal[]> {
   const cities = (await divarCities()) ?? [];
   const city = cities.map((c) => ({ c, d: distanceM(here, c) })).filter((x) => x.d <= Math.max(x.c.r, 5000) + DIVAR_TOWN_SLACK_M).sort((a, b) => a.d - b.d)[0]?.c;
   if (!city) return [];
@@ -772,6 +787,29 @@ export async function dealsAround(here: LatLng): Promise<Deal[]> {
     ),
   );
   return dealsNear(found.flatMap((x) => x ?? []), here, DEALS_NEAR_M);
+}
+
+/** Takhfifan's vendor page for the card: the store, its photos, hours, contacts and every deal. */
+export async function dealInfo(id: number): Promise<DealInfo | null> {
+  const root = takhfifanBase();
+  if (!root) return null;
+  return cached<DealInfo>(`tk:vendor:${id}`, DEAL_INFO_TTL, async () => {
+    const [vendor, products] = await Promise.all([
+      getJson<Parameters<typeof dealInfoOf>[0]>(`${root}/v5/api/magento/vendors/${id}`),
+      getJson<Parameters<typeof dealInfoOf>[1]>(`${root}/v5/api/magento/vendors/${id}/products?limit=${DEAL_ITEMS_MAX}`).catch(() => null),
+    ]);
+    return dealInfoOf(vendor, products);
+  });
+}
+
+/** A page (ten) of a store's comments on Takhfifan, newest first. */
+export async function dealReviews(id: number, page: number): Promise<DealReviewPage | null> {
+  const root = takhfifanBase();
+  if (!root) return null;
+  return cached<DealReviewPage>(`tk:reviews:${id}:${page}`, DEAL_INFO_TTL, async () => {
+    const r = await getJson<Parameters<typeof dealReviewsOf>[0]>(`${root}/v4/api/commentify/entities/core/vendor/${id}/comments?limit=10&offset=${page * 10}`);
+    return r ? dealReviewsOf(r) : null;
+  });
 }
 
 // ---------------------------------------------------------------- one store

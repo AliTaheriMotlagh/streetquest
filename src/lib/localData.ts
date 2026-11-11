@@ -327,6 +327,134 @@ export function dealsNear(list: Deal[], here: { lat: number; lng: number }, radi
     .map(({ d }) => d);
 }
 
+// ---- the nearby map (takhfifan.com/nearby): stores by position, then one store in full
+/** A bigger picture from Takhfifan's CDN (the map lists thumbnails: `&width=100`). */
+const bigPic = (u: string | undefined, w = 640) => (u?.startsWith("https://") ? (/[?&]width=\d+/.test(u) ? u.replace(/([?&]width=)\d+/, `$1${w}`) : u) : "");
+type RawPoi = {
+  id?: number; name?: string; catalog_category_name?: string; coordinates?: { lat?: number; lon?: number }; image?: string; images?: string[]; location?: string | null; city?: string;
+  rate?: string | number; rate_count?: number; comment_count?: number; discount?: number; max_cashback_percent?: number;
+};
+/** A store from the nearby map's list → a deal on the map (its deals come when the card opens); null without a real spot or nothing off. */
+export function dealOfPoi(p: RawPoi): Deal | null {
+  const lat = p.coordinates?.lat, lng = p.coordinates?.lon;
+  if (!p.id || !p.name?.trim() || typeof lat !== "number" || typeof lng !== "number" || Math.abs(lat) < 1 || Math.abs(lng) < 1) return null;
+  const off = Math.round(p.discount ?? 0), cashback = Math.round((p.max_cashback_percent ?? 0) * 10) / 10;
+  if (off <= 0 && cashback <= 0) return null;
+  const photos = [...new Set([p.image, ...(p.images ?? [])].map((u) => bigPic(u)).filter(Boolean))].slice(0, 8);
+  return {
+    id: p.id, name: p.name.trim(), lat, lng, district: (typeof p.location === "string" ? p.location : "").trim(), category: p.catalog_category_name?.trim() ?? "",
+    rating: Math.round(Number(p.rate ?? 0) * 10) / 10 || 0, reviews: p.rate_count ?? 0, off, cashback, photos, items: [], url: `https://takhfifan.com/vendor/${p.id}`,
+  };
+}
+/** The box on the map (Takhfifan wants its two corners) round a point, `halfM` metres each way. */
+export function nearbyBox(at: { lat: number; lng: number }, halfM: number) {
+  const dLat = halfM / 111_320, dLng = halfM / (111_320 * Math.cos((at.lat * Math.PI) / 180));
+  const r = (n: number) => n.toFixed(4);
+  return { top_left_lat: r(at.lat + dLat), top_left_lng: r(at.lng - dLng), bottom_right_lat: r(at.lat - dLat), bottom_right_lng: r(at.lng + dLng) };
+}
+
+/** HTML from Takhfifan's editors as plain lines (paragraphs, list items and breaks kept as line breaks). */
+export function htmlText(s: string | null | undefined): string {
+  return (s ?? "")
+    .replace(/<\s*(?:br|\/p|\/h\d|\/li|\/div|\/tr)\b[^>]*>/gi, "\n")
+    .replace(/<\s*li\b[^>]*>/gi, "• ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+    .split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+}
+/** Takhfifan's "2026-11-21 00:00:00" (Tehran time) as an ISO moment. */
+const tehranIso = (s: string | null | undefined) => (s && /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d/.test(s) ? `${s.slice(0, 10)}T${s.slice(11, 19).padEnd(8, ":00")}+03:30` : "");
+const DAY_NAMES = ["شنبه", "یکشنبه", "دوشنبه", "سهشنبه", "چهارشنبه", "پنجشنبه", "جمعه"];
+/** A store's week from Takhfifan's `business_timing` (a JSON string: [{day: "شنبه", service_time: "8:30-10:45"}]); null if no day says anything. */
+export function weekFromTakhfifan(raw: string | null | undefined): Week | null {
+  let rows: { day?: string; service_time?: string }[];
+  try {
+    rows = JSON.parse(raw ?? "");
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows)) return null;
+  const week = emptyWeek();
+  for (const r of rows) {
+    const d = DAY_NAMES.indexOf((r.day ?? "").replace(/[\s\u200c]/g, ""));
+    if (d < 0) continue;
+    const s = latinDigits(r.service_time ?? "");
+    if (/24\s*ساعت/.test(s)) week[d] = [[0, 1440]];
+    else
+      for (const m of s.matchAll(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g)) {
+        const a = minutes(m[1]), b = minutes(m[2]);
+        if (a != null && b != null) week[d].push(spanOf(a, b));
+      }
+  }
+  return done(week);
+}
+
+/** A store's deal in full: what you get (`about`), the conditions (`terms`) and how many were sold. */
+export type DealProduct = DealItem & { about: string; terms: string; sold: number };
+export type DealInfo = {
+  id: number; name: string; logo: string; photos: string[]; address: string; city: string; district: string; lat: number; lng: number;
+  phones: StorePhone[]; week: Week | null; hours: string; rating: number; reviews: number; sold: number; off: number; cashback: number; payDiscount: number;
+  /** Banks whose cards earn the cashback, with its %. */
+  banks: { name: string; cashback: number }[];
+  categories: string[]; features: { label: string; value: string }[]; website: string; url: string;
+  /** The first page of its deals, and how many it has in all. */
+  items: DealProduct[]; itemsTotal: number;
+};
+type RawVendor = {
+  data?: { attributes?: Record<string, unknown> };
+  rating?: { rate?: string | number; rate_count?: number };
+  categories?: { attributes?: { name?: string }; children?: { attributes?: { name?: string } }[] }[];
+};
+type RawProducts = {
+  data?: { attributes?: { name?: string; image?: string; product_id?: number; price_regular?: number; price_deal?: number; deal_discount?: number; deal_qty_sold?: number; deal_date_to?: string; deal_fine_print?: string; description?: string } }[];
+  meta?: { total?: { value?: number } };
+};
+const numOf = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
+/** Takhfifan's vendor page data (+ its deals) → one store's card; null if it has no name. `now` drops deals that have ended. */
+export function dealInfoOf(vendor: RawVendor | null | undefined, products?: RawProducts | null, now = Date.now()): DealInfo | null {
+  const a = vendor?.data?.attributes;
+  if (!a || !str(a.name)) return null;
+  const id = numOf(a.vendor_id);
+  const items: DealProduct[] = (products?.data ?? [])
+    .map((x) => x.attributes)
+    .filter((p): p is NonNullable<typeof p> => !!p?.product_id && !!p.name?.trim() && (p.price_deal ?? 0) > 0 && !(tehranIso(p.deal_date_to) && Date.parse(tehranIso(p.deal_date_to)) < now))
+    .map((p) => ({
+      id: p.product_id!, name: p.name!.trim(), price: toToman(p.price_deal), retail: toToman(p.price_regular), off: Math.round(p.deal_discount ?? 0), photo: bigPic(p.image), ends: tehranIso(p.deal_date_to),
+      about: htmlText(p.description), terms: htmlText(p.deal_fine_print), sold: p.deal_qty_sold ?? 0,
+    }));
+  const extra = (a.offline_cashback_extra ?? {}) as { payment_types?: { bank_title?: string; max_cashback_percent?: number }[] };
+  const banks = (extra.payment_types ?? []).filter((b) => str(b.bank_title) && (b.max_cashback_percent ?? 0) > 0).map((b) => ({ name: str(b.bank_title), cashback: Math.round((b.max_cashback_percent ?? 0) * 10) / 10 }));
+  const gallery = (Array.isArray(a.image_gallery) ? (a.image_gallery as { url?: string }[]) : []).map((g) => bigPic(g.url, 720));
+  const cats = (vendor?.categories ?? []).flatMap((c) => [str(c.attributes?.name), ...(c.children ?? []).map((k) => str(k.attributes?.name))]).filter(Boolean);
+  return {
+    id, name: str(a.name), logo: bigPic(str(a.image), 160), photos: [...new Set(gallery.filter(Boolean))].slice(0, 12),
+    address: str(a.address), city: str(a.city), district: str(a.district) || str(a.area), lat: numOf(a.latitude), lng: numOf(a.longitude),
+    phones: phonesFrom("takhfifan", str(a.phone_v2)), week: weekFromTakhfifan(str(a.business_timing)),
+    hours: [str(a.business_days)].filter((x) => x && x !== "-,").join(" · "),
+    rating: Math.round(numOf(vendor?.rating?.rate) * 10) / 10, reviews: vendor?.rating?.rate_count ?? 0, sold: numOf(a.sale_count),
+    off: Math.round(Math.max(numOf(a.max_discount_percentage), numOf(a.offline_max_discount_percentage), ...items.map((i) => i.off))),
+    cashback: Math.round(numOf(a.offline_max_cashback_percent) * 10) / 10, payDiscount: Math.round(numOf(a.takhfifan_pay_discount_percentage) * 10) / 10, banks,
+    categories: [...new Set(cats)].slice(0, 6),
+    features: (Array.isArray(a.features) ? (a.features as { label?: string; value?: string }[]) : []).filter((f) => str(f.label) && str(f.value)).map((f) => ({ label: str(f.label), value: str(f.value) })).slice(0, 12),
+    website: /^https?:\/\//.test(str(a.website)) ? str(a.website) : "", url: `https://takhfifan.com/vendor/${id}`,
+    items, itemsTotal: Math.max(products?.meta?.total?.value ?? 0, items.length),
+  };
+}
+
+/** A customer's comment on Takhfifan: 1–5 stars, when (ISO), what they wrote, the store's reply. */
+export type DealReview = { id: number; rate: number; date: string; text: string; reply: string; buyer: boolean };
+export type DealReviewPage = { count: number; avg: number; reviews: DealReview[] };
+type RawComments = {
+  meta?: { total?: number; rate_average?: number };
+  data?: { id?: number; body?: string; rate?: number; created_at?: string; is_buyer?: boolean; status?: string; replies?: { body?: string }[] }[];
+};
+export function dealReviewsOf(r: RawComments | null | undefined): DealReviewPage {
+  const reviews = (r?.data ?? [])
+    .filter((c) => c.id && (c.status ?? "published") === "published" && (c.body?.trim() || (c.rate ?? 0) > 0))
+    .map((c) => ({ id: c.id!, rate: Math.min(5, Math.max(0, Math.round(c.rate ?? 0))), date: c.created_at ?? "", text: (c.body ?? "").trim(), reply: (c.replies?.[0]?.body ?? "").trim(), buyer: !!c.is_buyer }));
+  return { count: r?.meta?.total ?? reviews.length, avg: Math.round((r?.meta?.rate_average ?? 0) * 10) / 10, reviews };
+}
+
 /** A Divar neighbourhood near the player (or a small town with none: `id` 0): pinned on its centre, with its latest ads. */
 export type DivarArea = { city: number; citySlug: string; id: number; name: string; lat: number; lng: number; distanceM: number; posts: DivarPost[] };
 /** The ad categories the Divar card can filter by (Divar's own category slugs). */
@@ -484,7 +612,7 @@ export function storePhones(raw: string | null | undefined): string[] {
   return out;
 }
 /** Where a number was read: the map (OpenStreetMap), the store's own Snappfood / Torob page, Balad, Google. */
-export type PhoneSource = "map" | "snappfood" | "torob" | "balad" | "google";
+export type PhoneSource = "map" | "snappfood" | "torob" | "balad" | "google" | "takhfifan";
 export type StorePhone = { number: string; source: PhoneSource };
 /** A card shows at most this many numbers. */
 export const MAX_PHONES = 6;
