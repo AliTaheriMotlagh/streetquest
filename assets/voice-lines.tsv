@@ -1,90 +1,90 @@
-id	voice	file	Persian	English
-flee-1	man	flee-1-m.wav	وای! فرار کنید!	Oh no! Run!
-flee-1	woman	flee-1-f.wav	وای خدا! بدویید!	Oh God! Run!
-flee-2	man	flee-2-m.wav	یا خدا!	Oh my God!
-flee-2	woman	flee-2-f.wav	ای وای، خدایا!	Oh no, God!
-flee-3	man	flee-3-m.wav	تیراندازی شد! بخوابید!	Shots! Get down!
-flee-3	woman	flee-3-f.wav	تیراندازی شده! سرتونو بدزدید!	They're shooting! Keep your heads down!
-flee-4	man	flee-4-m.wav	کمک! یکی کمک کنه!	Help! Somebody help!
-flee-4	woman	flee-4-f.wav	کمک! تو رو خدا یکی کمک کنه!	Help! For God's sake, somebody help!
-flee-5	man	flee-5-m.wav	بدو، بدو!	Run, run!
-flee-5	woman	flee-5-f.wav	بچه‌ها بدویید!	Everyone, run!
-flee-6	man	flee-6-m.wav	این دیوونه شده!	He's gone mad!
-nearMiss-1	man	nearMiss-1-m.wav	هوی! حواست کجاست؟	Hey! Watch where you're going!
-nearMiss-1	woman	nearMiss-1-f.wav	آقا حواستون کجاست؟!	Sir, where's your head at?!
-nearMiss-2	man	nearMiss-2-m.wav	مگه کوری؟!	Are you blind?!
-nearMiss-2	woman	nearMiss-2-f.wav	مگه نمی‌بینی؟!	Can't you see?!
-nearMiss-3	man	nearMiss-3-m.wav	یواش‌تر برو!	Slow down!
-nearMiss-3	woman	nearMiss-3-f.wav	یواش‌تر، تو رو خدا!	Slower, for God's sake!
-nearMiss-4	man	nearMiss-4-m.wav	داشتی منو می‌کشتی!	You nearly killed me!
-nearMiss-4	woman	nearMiss-4-f.wav	نزدیک بود منو زیر کنی!	You nearly ran me over!
-crashDriver-1	man	crashDriver-1-m.wav	چیکار کردی؟!	What have you done?!
-crashDriver-1	woman	crashDriver-1-f.wav	وای! چیکار کردین؟!	Oh no! What have you done?!
-crashDriver-2	man	crashDriver-2-m.wav	ماشینمو داغون کردی!	You wrecked my car!
-crashDriver-2	woman	crashDriver-2-f.wav	ماشینم! ببین چیکارش کردی!	My car! Look what you did to it!
-crashDriver-3	man	crashDriver-3-m.wav	وایسا ببینم! کجا در میری؟	Hold it! Where do you think you're going?
-crashDriver-3	woman	crashDriver-3-f.wav	کجا می‌ری؟ وایسا!	Where are you going? Stop!
-crashDriver-4	man	crashDriver-4-m.wav	بیمه داری اصلاً؟	Have you even got insurance?
-honk-1	man	honk-1-m.wav	برو دیگه!	Go already!
-honk-2	man	honk-2-m.wav	چرا وسط خیابون وایسادی؟	Why are you stopped in the middle of the street?
-honk-2	woman	honk-2-f.wav	آقا، برید دیگه! دیرم شده!	Come on, move! I'm late!
-honk-3	man	honk-3-m.wav	راه بده آقا!	Make way, mister!
-carjack-1	man	carjack-1-m.wav	ماشینم! دزد! دزد!	My car! Thief! Thief!
-carjack-1	woman	carjack-1-f.wav	ماشینمو بردن! دزد!	They took my car! Thief!
-carjack-2	man	carjack-2-m.wav	آهای! وایسا! ماشینمو بردن!	Hey! Stop! They took my car!
-carjack-2	woman	carjack-2-f.wav	آهای! کجا؟! ماشینم!	Hey! Where are you going?! My car!
-carjack-3	man	carjack-3-m.wav	پلیس! یکی زنگ بزنه پلیس!	Police! Someone call the police!
-carjack-3	woman	carjack-3-f.wav	یکی زنگ بزنه صد و ده!	Someone call 110!
-greet-1	man	greet-1-m.wav	سلام، خسته نباشی.	Hi there.
-greet-1	woman	greet-1-f.wav	سلام، خسته نباشید.	Hello there.
-greet-2	man	greet-2-m.wav	سلام! روز بخیر.	Hello! Good day.
-greet-2	woman	greet-2-f.wav	سلام عزیزم، روزت بخیر.	Hi dear, have a nice day.
-greet-3	man	greet-3-m.wav	چه هوای خوبیه امروز.	Lovely weather today.
-greet-3	woman	greet-3-f.wav	هوا چه خوبه امروز، نه؟	Lovely day today, isn't it?
-greet-4	man	greet-4-m.wav	مراقب خودت باش.	Take care.
-greet-4	woman	greet-4-f.wav	مواظب خودت باش عزیزم.	Take care of yourself, dear.
-greet-5	man	greet-5-m.wav	داداش، ماشینت خیلی خوشگله!	Bro, nice car!
-hurt-1	man	hurt-1-m.wav	آخ!	Ow!
-hurt-1	woman	hurt-1-f.wav	آی!	Ouch!
-hurt-2	man	hurt-2-m.wav	آی! پام!	Ow! My leg!
-hurt-2	woman	hurt-2-f.wav	وای! دستم!	Oh! My arm!
-copStop-1	police	copStop-1-cop.wav	ایست! پلیس!	Halt! Police!
-copStop-2	police	copStop-2-cop.wav	راننده، بزن کنار!	Driver, pull over!
-copStop-3	police	copStop-3-cop.wav	ماشین رو نگه دار! همین الان!	Stop the car! Right now!
-copHands-1	police	copHands-1-cop.wav	دستا بالا!	Hands up!
-copHands-2	police	copHands-2-cop.wav	تکون نخور!	Don't move!
-copHands-3	police	copHands-3-cop.wav	بخواب رو زمین!	Get on the ground!
-copHands-4	police	copHands-4-cop.wav	اسلحه‌تو بنداز!	Drop your weapon!
-copDown-1	police	copDown-1-cop.wav	افسر زخمی شد! نیروی کمکی بفرستید!	Officer down! Send backup!
-copDown-2	police	copDown-2-cop.wav	تیراندازی! پناه بگیرید!	Shots fired! Take cover!
-copBusted-1	police	copBusted-1-cop.wav	بازداشتی! راه بیفت!	You're under arrest! Move!
-argue-1	man	argue-1-m.wav	ببخشید، من زودتر اومده بودم!	Excuse me, I was here first!
-argue-1	woman	argue-1-f.wav	ببخشیدا، من زودتر اومدم!	Excuse me, I came first!
-argue-2	man	argue-2-m.wav	نخیر، من از اول اینجا بودم!	No, I've been here all along!
-argue-2	woman	argue-2-f.wav	نه عزیزم، من از اول اینجا بودم!	No dear, I've been here all along!
-argue-3	man	argue-3-m.wav	یعنی چی؟ نوبت منه!	What do you mean? It's my turn!
-argue-3	woman	argue-3-f.wav	وا! یعنی چی؟ نوبت منه!	Huh! What do you mean? It's my turn!
-argue-4	man	argue-4-m.wav	برو بابا، حوصله داری‌ها!	Oh come off it, you've got some nerve!
-argue-4	woman	argue-4-f.wav	اِ! چه آدمی هستیا!	Well! What a person you are!
-friends-1	man	friends-1-m.wav	سلام! کجایی تو؟ خیلی وقته ندیدمت!	Hi! Where have you been? Haven't seen you in ages!
-friends-1	woman	friends-1-f.wav	وای سلام! کجایی تو؟ دلم برات تنگ شده بود!	Oh hi! Where have you been? I've missed you!
-friends-2	man	friends-2-m.wav	سلام داداش! چطوری؟ چه خبرا؟	Hey bro! How are you? What's new?
-friends-2	woman	friends-2-f.wav	سلام عزیزم! خوبی؟ چه خبرا؟	Hi dear! How are you? What's new?
-friends-3	man	friends-3-m.wav	هیچی، سلامتی. بریم یه چایی بخوریم؟	Nothing much. Shall we get a tea?
-friends-3	woman	friends-3-f.wav	هیچی، سلامتی. بریم یه کافه بشینیم؟	Nothing much. Shall we sit in a café?
-friends-4	man	friends-4-m.wav	بریم! من مهمون تو.	Let's go! Your treat.
-friends-4	woman	friends-4-f.wav	بریم! ولی این دفعه مهمون من.	Let's go! But this time it's on me.
-phone-1	man	phone-1-m.wav	الو؟ آره، دارم میام.	Hello? Yes, I'm on my way.
-phone-1	woman	phone-1-f.wav	الو مامان؟ آره، دارم میام.	Hello, Mum? Yes, I'm on my way.
-phone-2	man	phone-2-m.wav	نه بابا، ترافیکه. پنج دقیقه دیگه می‌رسم.	No, it's the traffic. I'll be there in five minutes.
-phone-2	woman	phone-2-f.wav	نه عزیزم، ترافیکه. یه ربع دیگه می‌رسم.	No dear, it's the traffic. I'll be there in a quarter of an hour.
-phone-3	man	phone-3-m.wav	باشه، باشه. خداحافظ.	Okay, okay. Bye.
-phone-3	woman	phone-3-f.wav	باشه قربونت برم، فعلاً.	Okay, love you, bye for now.
-vendor-1	man	vendor-1-m.wav	فال حافظ! فال! بیا فال بگیر!	Hafez fortunes! Get your fortune told!
-vendor-2	man	vendor-2-m.wav	آب معدنی خنک! آب خنک!	Cold water! Cold mineral water!
-vendor-3	man	vendor-3-m.wav	بستنی! بستنی خنک داریم!	Ice cream! Cold ice cream!
-taxi-1	man	taxi-1-m.wav	آزادی! آزادی!	Azadi! Azadi!
-taxi-2	man	taxi-2-m.wav	ونک، یه نفر!	Vanak, one more!
-taxi-3	man	taxi-3-m.wav	تجریش دربست؟	Tajrish, private hire?
-snatch-1	man	snatch-1-m.wav	دزد! کیفمو زد! بگیریدش!	Thief! He took my bag! Stop him!
-snatch-1	woman	snatch-1-f.wav	وای کیفم! دزد! بگیریدش!	Oh, my bag! Thief! Stop him!
+id	voice	file	Persian	English	English file
+flee-1	man	flee-1-m.wav	وای! فرار کنید!	Oh no! Run!	en/flee-1-m.wav
+flee-1	woman	flee-1-f.wav	وای خدا! بدویید!	Oh God! Run!	en/flee-1-f.wav
+flee-2	man	flee-2-m.wav	یا خدا!	Oh my God!	en/flee-2-m.wav
+flee-2	woman	flee-2-f.wav	ای وای، خدایا!	Oh no, God!	en/flee-2-f.wav
+flee-3	man	flee-3-m.wav	تیراندازی شد! بخوابید!	Shots! Get down!	en/flee-3-m.wav
+flee-3	woman	flee-3-f.wav	تیراندازی شده! سرتونو بدزدید!	They're shooting! Keep your heads down!	en/flee-3-f.wav
+flee-4	man	flee-4-m.wav	کمک! یکی کمک کنه!	Help! Somebody help!	en/flee-4-m.wav
+flee-4	woman	flee-4-f.wav	کمک! تو رو خدا یکی کمک کنه!	Help! For God's sake, somebody help!	en/flee-4-f.wav
+flee-5	man	flee-5-m.wav	بدو، بدو!	Run, run!	en/flee-5-m.wav
+flee-5	woman	flee-5-f.wav	بچه‌ها بدویید!	Everyone, run!	en/flee-5-f.wav
+flee-6	man	flee-6-m.wav	این دیوونه شده!	He's gone mad!	en/flee-6-m.wav
+nearMiss-1	man	nearMiss-1-m.wav	هوی! حواست کجاست؟	Hey! Watch where you're going!	en/nearMiss-1-m.wav
+nearMiss-1	woman	nearMiss-1-f.wav	آقا حواستون کجاست؟!	Sir, where's your head at?!	en/nearMiss-1-f.wav
+nearMiss-2	man	nearMiss-2-m.wav	مگه کوری؟!	Are you blind?!	en/nearMiss-2-m.wav
+nearMiss-2	woman	nearMiss-2-f.wav	مگه نمی‌بینی؟!	Can't you see?!	en/nearMiss-2-f.wav
+nearMiss-3	man	nearMiss-3-m.wav	یواش‌تر برو!	Slow down!	en/nearMiss-3-m.wav
+nearMiss-3	woman	nearMiss-3-f.wav	یواش‌تر، تو رو خدا!	Slower, for God's sake!	en/nearMiss-3-f.wav
+nearMiss-4	man	nearMiss-4-m.wav	داشتی منو می‌کشتی!	You nearly killed me!	en/nearMiss-4-m.wav
+nearMiss-4	woman	nearMiss-4-f.wav	نزدیک بود منو زیر کنی!	You nearly ran me over!	en/nearMiss-4-f.wav
+crashDriver-1	man	crashDriver-1-m.wav	چیکار کردی؟!	What have you done?!	en/crashDriver-1-m.wav
+crashDriver-1	woman	crashDriver-1-f.wav	وای! چیکار کردین؟!	Oh no! What have you done?!	en/crashDriver-1-f.wav
+crashDriver-2	man	crashDriver-2-m.wav	ماشینمو داغون کردی!	You wrecked my car!	en/crashDriver-2-m.wav
+crashDriver-2	woman	crashDriver-2-f.wav	ماشینم! ببین چیکارش کردی!	My car! Look what you did to it!	en/crashDriver-2-f.wav
+crashDriver-3	man	crashDriver-3-m.wav	وایسا ببینم! کجا در میری؟	Hold it! Where do you think you're going?	en/crashDriver-3-m.wav
+crashDriver-3	woman	crashDriver-3-f.wav	کجا می‌ری؟ وایسا!	Where are you going? Stop!	en/crashDriver-3-f.wav
+crashDriver-4	man	crashDriver-4-m.wav	بیمه داری اصلاً؟	Have you even got insurance?	en/crashDriver-4-m.wav
+honk-1	man	honk-1-m.wav	برو دیگه!	Go already!	en/honk-1-m.wav
+honk-2	man	honk-2-m.wav	چرا وسط خیابون وایسادی؟	Why are you stopped in the middle of the street?	en/honk-2-m.wav
+honk-2	woman	honk-2-f.wav	آقا، برید دیگه! دیرم شده!	Come on, move! I'm late!	en/honk-2-f.wav
+honk-3	man	honk-3-m.wav	راه بده آقا!	Make way, mister!	en/honk-3-m.wav
+carjack-1	man	carjack-1-m.wav	ماشینم! دزد! دزد!	My car! Thief! Thief!	en/carjack-1-m.wav
+carjack-1	woman	carjack-1-f.wav	ماشینمو بردن! دزد!	They took my car! Thief!	en/carjack-1-f.wav
+carjack-2	man	carjack-2-m.wav	آهای! وایسا! ماشینمو بردن!	Hey! Stop! They took my car!	en/carjack-2-m.wav
+carjack-2	woman	carjack-2-f.wav	آهای! کجا؟! ماشینم!	Hey! Where are you going?! My car!	en/carjack-2-f.wav
+carjack-3	man	carjack-3-m.wav	پلیس! یکی زنگ بزنه پلیس!	Police! Someone call the police!	en/carjack-3-m.wav
+carjack-3	woman	carjack-3-f.wav	یکی زنگ بزنه صد و ده!	Someone call 110!	en/carjack-3-f.wav
+greet-1	man	greet-1-m.wav	سلام، خسته نباشی.	Hi there.	en/greet-1-m.wav
+greet-1	woman	greet-1-f.wav	سلام، خسته نباشید.	Hello there.	en/greet-1-f.wav
+greet-2	man	greet-2-m.wav	سلام! روز بخیر.	Hello! Good day.	en/greet-2-m.wav
+greet-2	woman	greet-2-f.wav	سلام عزیزم، روزت بخیر.	Hi dear, have a nice day.	en/greet-2-f.wav
+greet-3	man	greet-3-m.wav	چه هوای خوبیه امروز.	Lovely weather today.	en/greet-3-m.wav
+greet-3	woman	greet-3-f.wav	هوا چه خوبه امروز، نه؟	Lovely day today, isn't it?	en/greet-3-f.wav
+greet-4	man	greet-4-m.wav	مراقب خودت باش.	Take care.	en/greet-4-m.wav
+greet-4	woman	greet-4-f.wav	مواظب خودت باش عزیزم.	Take care of yourself, dear.	en/greet-4-f.wav
+greet-5	man	greet-5-m.wav	داداش، ماشینت خیلی خوشگله!	Bro, nice car!	en/greet-5-m.wav
+hurt-1	man	hurt-1-m.wav	آخ!	Ow!	en/hurt-1-m.wav
+hurt-1	woman	hurt-1-f.wav	آی!	Ouch!	en/hurt-1-f.wav
+hurt-2	man	hurt-2-m.wav	آی! پام!	Ow! My leg!	en/hurt-2-m.wav
+hurt-2	woman	hurt-2-f.wav	وای! دستم!	Oh! My arm!	en/hurt-2-f.wav
+copStop-1	police	copStop-1-cop.wav	ایست! پلیس!	Halt! Police!	en/copStop-1-cop.wav
+copStop-2	police	copStop-2-cop.wav	راننده، بزن کنار!	Driver, pull over!	en/copStop-2-cop.wav
+copStop-3	police	copStop-3-cop.wav	ماشین رو نگه دار! همین الان!	Stop the car! Right now!	en/copStop-3-cop.wav
+copHands-1	police	copHands-1-cop.wav	دستا بالا!	Hands up!	en/copHands-1-cop.wav
+copHands-2	police	copHands-2-cop.wav	تکون نخور!	Don't move!	en/copHands-2-cop.wav
+copHands-3	police	copHands-3-cop.wav	بخواب رو زمین!	Get on the ground!	en/copHands-3-cop.wav
+copHands-4	police	copHands-4-cop.wav	اسلحه‌تو بنداز!	Drop your weapon!	en/copHands-4-cop.wav
+copDown-1	police	copDown-1-cop.wav	افسر زخمی شد! نیروی کمکی بفرستید!	Officer down! Send backup!	en/copDown-1-cop.wav
+copDown-2	police	copDown-2-cop.wav	تیراندازی! پناه بگیرید!	Shots fired! Take cover!	en/copDown-2-cop.wav
+copBusted-1	police	copBusted-1-cop.wav	بازداشتی! راه بیفت!	You're under arrest! Move!	en/copBusted-1-cop.wav
+argue-1	man	argue-1-m.wav	ببخشید، من زودتر اومده بودم!	Excuse me, I was here first!	en/argue-1-m.wav
+argue-1	woman	argue-1-f.wav	ببخشیدا، من زودتر اومدم!	Excuse me, I came first!	en/argue-1-f.wav
+argue-2	man	argue-2-m.wav	نخیر، من از اول اینجا بودم!	No, I've been here all along!	en/argue-2-m.wav
+argue-2	woman	argue-2-f.wav	نه عزیزم، من از اول اینجا بودم!	No dear, I've been here all along!	en/argue-2-f.wav
+argue-3	man	argue-3-m.wav	یعنی چی؟ نوبت منه!	What do you mean? It's my turn!	en/argue-3-m.wav
+argue-3	woman	argue-3-f.wav	وا! یعنی چی؟ نوبت منه!	Huh! What do you mean? It's my turn!	en/argue-3-f.wav
+argue-4	man	argue-4-m.wav	برو بابا، حوصله داری‌ها!	Oh come off it, you've got some nerve!	en/argue-4-m.wav
+argue-4	woman	argue-4-f.wav	اِ! چه آدمی هستیا!	Well! What a person you are!	en/argue-4-f.wav
+friends-1	man	friends-1-m.wav	سلام! کجایی تو؟ خیلی وقته ندیدمت!	Hi! Where have you been? Haven't seen you in ages!	en/friends-1-m.wav
+friends-1	woman	friends-1-f.wav	وای سلام! کجایی تو؟ دلم برات تنگ شده بود!	Oh hi! Where have you been? I've missed you!	en/friends-1-f.wav
+friends-2	man	friends-2-m.wav	سلام داداش! چطوری؟ چه خبرا؟	Hey bro! How are you? What's new?	en/friends-2-m.wav
+friends-2	woman	friends-2-f.wav	سلام عزیزم! خوبی؟ چه خبرا؟	Hi dear! How are you? What's new?	en/friends-2-f.wav
+friends-3	man	friends-3-m.wav	هیچی، سلامتی. بریم یه چایی بخوریم؟	Nothing much. Shall we get a tea?	en/friends-3-m.wav
+friends-3	woman	friends-3-f.wav	هیچی، سلامتی. بریم یه کافه بشینیم؟	Nothing much. Shall we sit in a café?	en/friends-3-f.wav
+friends-4	man	friends-4-m.wav	بریم! من مهمون تو.	Let's go! Your treat.	en/friends-4-m.wav
+friends-4	woman	friends-4-f.wav	بریم! ولی این دفعه مهمون من.	Let's go! But this time it's on me.	en/friends-4-f.wav
+phone-1	man	phone-1-m.wav	الو؟ آره، دارم میام.	Hello? Yes, I'm on my way.	en/phone-1-m.wav
+phone-1	woman	phone-1-f.wav	الو مامان؟ آره، دارم میام.	Hello, Mum? Yes, I'm on my way.	en/phone-1-f.wav
+phone-2	man	phone-2-m.wav	نه بابا، ترافیکه. پنج دقیقه دیگه می‌رسم.	No, it's the traffic. I'll be there in five minutes.	en/phone-2-m.wav
+phone-2	woman	phone-2-f.wav	نه عزیزم، ترافیکه. یه ربع دیگه می‌رسم.	No dear, it's the traffic. I'll be there in a quarter of an hour.	en/phone-2-f.wav
+phone-3	man	phone-3-m.wav	باشه، باشه. خداحافظ.	Okay, okay. Bye.	en/phone-3-m.wav
+phone-3	woman	phone-3-f.wav	باشه قربونت برم، فعلاً.	Okay, love you, bye for now.	en/phone-3-f.wav
+vendor-1	man	vendor-1-m.wav	فال حافظ! فال! بیا فال بگیر!	Hafez fortunes! Get your fortune told!	en/vendor-1-m.wav
+vendor-2	man	vendor-2-m.wav	آب معدنی خنک! آب خنک!	Cold water! Cold mineral water!	en/vendor-2-m.wav
+vendor-3	man	vendor-3-m.wav	بستنی! بستنی خنک داریم!	Ice cream! Cold ice cream!	en/vendor-3-m.wav
+taxi-1	man	taxi-1-m.wav	آزادی! آزادی!	Azadi! Azadi!	en/taxi-1-m.wav
+taxi-2	man	taxi-2-m.wav	ونک، یه نفر!	Vanak, one more!	en/taxi-2-m.wav
+taxi-3	man	taxi-3-m.wav	تجریش دربست؟	Tajrish, private hire?	en/taxi-3-m.wav
+snatch-1	man	snatch-1-m.wav	دزد! کیفمو زد! بگیریدش!	Thief! He took my bag! Stop him!	en/snatch-1-m.wav
+snatch-1	woman	snatch-1-f.wav	وای کیفم! دزد! بگیریدش!	Oh, my bag! Thief! Stop him!	en/snatch-1-f.wav

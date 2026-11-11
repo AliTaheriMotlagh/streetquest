@@ -589,7 +589,7 @@ without a file keeps its synth, so nothing goes silent.
 **On your phone:** GPS only works on `https://` or `localhost`. Run `npm run tunnel` and open the
 `https://….trycloudflare.com` link it prints.
 
-**What people say (Persian voices):** the lines are in `src/lib/street/barks.ts` (Tehrani Persian with English
+**What people say (Persian and English voices):** the lines are in `src/lib/street/barks.ts` (Tehrani Persian with English
 subtitles; women have their own wording of most lines — «وا! یعنی چی؟ نوبت منه!», «سلام عزیزم!»: running from gunfire, the driver whose car you hit, a pedestrian you nearly ran over, a hello in passing, the
 police megaphone and orders). They're recorded once, free, and shipped as small files (players download nothing extra). The easy way: with
 `npm run dev` running, open `/dev/voices` and press *Make all the voices* — [Piper](https://github.com/rhasspy/piper)
@@ -607,6 +607,20 @@ neural voices, Farid for men and the police, Dilara for women; the free tier cov
 an address with its own hash, and answers with a year-long immutable cache header — Vercel's CDN and every phone keep
 it, so each line is made once per voice, ever (`src/server/tts.ts`). With neither, people still talk — a speech
 bubble over their head — and a device with its own Persian voice (some Android phones) reads the line aloud.
+**English voices** (for players not in Persian; `src/lib/street/voiceLang.ts`): the same lines in their English wording, recorded into
+`public/sounds/voice/en/<id>-<voice>.mp3` (the manifest lists both languages; `voices.ts` picks by the player's locale; else the device's English
+voice — a woman's for a woman, a man's for men and police, where its name tells —; else the bubble). Persian is unchanged. Exact steps for you
+(Claude can't run Piper; you press the button):
+1. `npm run assets:voices -- --models` — downloads the models (~60 MB each) and Piper's runtime into `assets/voices/lib/` (ignored), so the dev
+   server serves them locally. Optional: the page fetches anything missing itself on first use.
+2. `npm run dev`, open `http://localhost:3000/dev/voices`, choose the **English · en** tab, press **Generate all missing** (a progress bar shows;
+   ⟳ redoes one line, ▶ plays the raw take, ▶▶ the shipped file to compare). Takes are saved in `assets/voices/raw/en/`.
+3. `npm run assets:voices -- --from=assets/voices/raw --lang=en` (needs `ffmpeg`) — trims, levels and, for the police, puts a radio's band on them;
+   it rewrites `public/sounds/voice/manifest.json`. Commit `public/sounds/voice/`.
+
+Voices (every MODEL_CARD checked: public domain, CC0 or CC BY only, no NC): men *John* and *Norman* (public domain, LibriVox), women *LJ Speech*
+(public domain) and *Alba* (CC BY 4.0, CSTR, University of Edinburgh — credit written into the manifest), police *Bryce* (public domain) through a
+radio filter; each line's voice is fixed by its id. Piper itself is MIT. `assets/voice-lines.tsv` also lists the English file names.
 **Street scenes:** every half a minute or so, when it's calm, something happens near you (`src/lib/street/scenes.ts`):
 two strangers argue over who was first, two friends meet and go for tea, someone talks on the phone, a vendor calls
 out (Hafez fortunes, cold water, ice cream), a shared taxi calls its route (Azadi! Vanak, one more!), a bag is
