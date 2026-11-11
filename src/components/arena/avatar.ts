@@ -13,6 +13,7 @@ import { WEAPON_KEYS, type WeaponKey } from "@/lib/arena/weapons";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { loadModel } from "../drive/gltf";
+import { modelUrl } from "../drive/modelOverride";
 
 const SOLDIER_URL = "/models/arena/soldier.glb";
 const WEAPONS_URL = "/models/arena/weapons.glb";
@@ -29,7 +30,7 @@ export function loadSoldier(): Promise<Template> {
     draco.setWorkerLimit(1);
     const l = new GLTFLoader();
     l.setDRACOLoader(draco);
-    const g = await l.loadAsync(SOLDIER_URL);
+    const g = await l.loadAsync(await modelUrl(SOLDIER_URL));
     return { scene: g.scene, clips: g.animations };
   })().catch((e) => {
     soldier = null;
@@ -52,7 +53,7 @@ export function loadPolice(): Promise<Template> {
     draco.setWorkerLimit(1);
     const l = new GLTFLoader();
     l.setDRACOLoader(draco);
-    const g = await l.loadAsync(POLICE_URL);
+    const g = await l.loadAsync(await modelUrl(POLICE_URL));
     return { scene: g.scene, clips: g.animations };
   })().catch(() => {
     police = null;

@@ -165,7 +165,7 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
   const [draft, setDraft] = useState<Record<string, unknown>>(() => clone(config.values));
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState(false);
-  const defs = config.defs.filter((d) => d.key !== "catalog");
+  const defs = config.defs.filter((d) => d.key !== "catalog" && d.key !== "gfx");
   const groups = [...new Set(defs.map((d) => d.group))];
   const [group, setGroup] = useState(groups[0]);
   const dirty = defs.filter((d) => !same(draft[d.key], config.values[d.key])).length;
@@ -177,7 +177,7 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
     // Store only what differs from the defaults, so future default changes still apply.
     const data: Record<string, unknown> = {};
     for (const d of config.defs) {
-      const v = d.key === "catalog" ? config.values.catalog : draft[d.key];
+      const v = d.key === "catalog" || d.key === "gfx" ? config.values[d.key] : draft[d.key];
       if (!same(v, d.def)) data[d.key] = v;
     }
     await post({ action: "saveSettings", data });

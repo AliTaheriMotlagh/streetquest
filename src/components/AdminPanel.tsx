@@ -9,6 +9,9 @@ import { fmtNum, t, msg } from "@/lib/i18n";
 
 const AdminCars = dynamic(() => import("./AdminCars"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminObjects = dynamic(() => import("./AdminObjects"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminModels = dynamic(() => import("./AdminModels"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminGraphics = dynamic(() => import("./AdminGraphics"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminDropMap = dynamic(() => import("./AdminDropMap"), { ssr: false, loading: () => <div className="admin-map" /> });
 
 type Drop = { batch: string; label: string; sponsor: string | null; points: { lat: number; lng: number }[]; amount: number; maxClaims: number | null; claims: number; paid: number; activeFrom: string; activeTo: string };
@@ -32,7 +35,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "stores3d" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type Tab = "objects" | "models" | "graphics" | "stores3d" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -42,6 +45,9 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { id: "settings", icon: "⚙️", label: msg("Game settings"), desc: msg("Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds.") },
       { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every item. Change a number to override it; clear it to go back to the original.") },
+      { id: "objects", icon: "🧩", label: msg("Objects"), desc: msg("Every object in the game: cars, people, police, guns, street props, loot, markers, store kinds and 3D stores — with file, size, triangles, licence and where it is used. Search, filter and turn any model round.") },
+      { id: "models", icon: "🔄", label: msg("Model update"), desc: msg("Replace a built-in 3D model without a deploy: upload a .glb, see it next to the current one, publish, and roll back to any earlier version.") },
+      { id: "graphics", icon: "🎨", label: msg("Graphics"), desc: msg("Every graphics setting of the 3D city for each quality tier — resolution, shadows, lights, post-processing, film look and haze — as server defaults. Players keep their own quality choice.") },
       { id: "cars", icon: "🚗", label: msg("Car lab"), desc: msg("Every vehicle exactly as players see it: turn it round, try paint, dirt, rain and night, check it for problems and save a screenshot.") },
     ],
   },
@@ -101,6 +107,7 @@ export function AdminPanel() {
     const q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("tab") : null;
     return q && ADMIN_NAV.some((g) => g.items.some((i) => i.id === q)) ? (q as Tab) : "money";
   });
+  const [modelSlot, setModelSlot] = useState<string | undefined>();
   const [data, setData] = useState<Data | null>(null);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
@@ -209,6 +216,9 @@ export function AdminPanel() {
 
         {tab === "stores3d" && <AdminLandmarks onError={setNotice} />}
         {tab === "cars" && <AdminCars />}
+        {tab === "objects" && <AdminObjects onReplace={(slot) => (setModelSlot(slot), setTab("models"))} />}
+        {tab === "models" && <AdminModels slot={modelSlot} />}
+        {tab === "graphics" && <AdminGraphics key={JSON.stringify(data.config.values.gfx ?? {})} config={data.config} post={post} />}
         {tab === "settings" && <SettingsTab key={JSON.stringify(data.config.overrides)} config={data.config} post={post} />}
         {tab === "data" && <GameDataTab key={JSON.stringify(data.config.overrides.catalog ?? {})} config={data.config} post={post} />}
         {tab === "revenue" && <RevenueTab rev={data.revenue} config={data.config} />}

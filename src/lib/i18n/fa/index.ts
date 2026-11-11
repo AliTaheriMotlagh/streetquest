@@ -35,9 +35,11 @@ import money from "./money";
 import landmarks from "./landmarks";
 import arena from "./arena";
 import local from "./local";
+import adminobjects from "./adminobjects";
 
 const fa: Messages = {
   ...arena,
+  ...adminobjects,
   ...common,
   ...game,
   ...market,
