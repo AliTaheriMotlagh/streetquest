@@ -21,7 +21,7 @@ import { Icon } from "./icons";
 export type SteerMode = "wheel" | "buttons" | "tilt";
 export const STEER_MODES: SteerMode[] = ["wheel", "buttons", "tilt"];
 
-type Input = { current: Controls };
+type Input = { current: Controls & { focus?: boolean; nitro?: boolean } };
 type Props = {
   input: Input;
   /** What the left thumb holds: a steering wheel, handlebars or a drone stick. */
@@ -92,7 +92,7 @@ export async function askTilt(): Promise<boolean> {
 export const DrivePad = memo(function DrivePad({ input, kind, mode, onHorn, onLand }: Props) {
   // Let go of everything when the controls change or go away.
   useEffect(() => {
-    const release = () => Object.assign(input.current, { gas: 0, brake: 0, steer: 0, lift: 0, hand: false });
+    const release = () => Object.assign(input.current, { gas: 0, brake: 0, steer: 0, lift: 0, hand: false, focus: false, nitro: false });
     window.addEventListener("blur", release);
     return () => {
       window.removeEventListener("blur", release);
@@ -123,6 +123,19 @@ export const DrivePad = memo(function DrivePad({ input, kind, mode, onHorn, onLa
             </>
           )}
         </div>
+        {!air && (
+          // Hold: slow motion (focus) and nitro. Their meters are in the HUD (AbilityHud).
+          <div className="dpad-tools ab">
+            <Hold className="dpad-tool wide focus" set={(on) => (input.current.focus = on)} label={t("Focus (hold for slow motion)")}>
+              <Icon name="focus" size={20} />
+              <span>{t("FOCUS")}</span>
+            </Hold>
+            <Hold className="dpad-tool wide nitro" set={(on) => (input.current.nitro = on)} label={t("Nitro (hold)")}>
+              <Icon name="nitro" size={20} />
+              <span>{t("NITRO")}</span>
+            </Hold>
+          </div>
+        )}
         {air ? <Stick input={input} axes="pitch" /> : <Pedals input={input} />}
       </div>
     </div>

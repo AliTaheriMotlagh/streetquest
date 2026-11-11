@@ -31,6 +31,7 @@ import { fovFor } from "@/lib/view";
 import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
 import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
 import { Nades } from "./nades";
+import { rumble } from "../drive/gamepad";
 import { medalFor, nextRun, NO_RUN, type KillRun } from "@/lib/arena/medals";
 import { sfx } from "../game/sfx";
 import { errorText } from "../game/client";
@@ -258,6 +259,11 @@ export class Combat {
   private hudSig = "";
   private listeners = new Set<() => void>();
   private snapshot: CombatHud;
+  /** A game controller is in use: it owns the move / fire / aim input, the keyboard block steps aside. */
+  padOn = false;
+  get canRespawn() {
+    return this.snapshot.canRespawn;
+  }
   private autoFire = store.get(AUTO_FIRE_KEY) !== "0";
   /** The main gun I take into matches (everyone also carries the pistol). */
   primary: WeaponKey = ((p) => (p && PRIMARIES.includes(p as WeaponKey) ? (p as WeaponKey) : "rifle"))(store.get(PRIMARY_KEY));
@@ -345,6 +351,7 @@ export class Combat {
     hurtSound();
     this.bleed = { id: ++this.feedId, k: Math.min(1, 0.3 + dmg / 70), at: performance.now() };
     navigator.vibrate?.(30);
+    rumble(0.5, 0.3, 120);
     if (from) {
       const a = Math.atan2(-(from.x - me.x), -(from.z - me.z));
       this.hurt = [...this.hurt.filter((x) => performance.now() - x.at < 1200).slice(-3), { id: ++this.feedId, angle: a, at: performance.now() }];
@@ -812,6 +819,7 @@ export class Combat {
         this.hp = e.hp;
         hurtSound();
         navigator.vibrate?.(e.kill ? 120 : 25);
+        rumble(e.kill ? 0.8 : 0.4, 0.3, e.kill ? 220 : 90);
         if (this.me) {
           const q = H.frame.toXZ(e.lat, e.lng);
           this.hurt = [...this.hurt.filter((x) => performance.now() - x.at < 1200).slice(-3), { id: ++this.feedId, angle: Math.atan2(-(q.x - this.me.x), -(q.z - this.me.z)), at: performance.now() }];
@@ -1286,7 +1294,7 @@ export class Combat {
     const W = WEAPONS[this.weapon];
 
     // Keyboard into the shared input (touch writes it directly).
-    if (!H.touch && me) {
+    if (!H.touch && me && !this.padOn) {
       const k = this.keys;
       inp.mz = (k.has("w") || k.has("arrowup") ? 1 : 0) - (k.has("s") || k.has("arrowdown") ? 1 : 0);
       inp.mx = (k.has("d") || k.has("arrowright") ? 1 : 0) - (k.has("a") || k.has("arrowleft") ? 1 : 0);
@@ -1557,6 +1565,7 @@ export class Combat {
     this.recoilP += kp * 0.55;
     me.yaw += (Math.random() - 0.5) * W.wobble * 2 * ads;
     this.vm.fire(W.kick);
+    rumble(Math.min(1, W.kick * 6), 0.35, 50);
     shotSound(W.sound);
     this.publish(true);
   }

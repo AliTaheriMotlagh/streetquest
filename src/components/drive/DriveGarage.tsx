@@ -13,6 +13,7 @@ import type { NameMode } from "./vectorTile";
 import { canFullscreen, isFullscreen, onFullscreenChange, setFullscreen } from "./fullscreen";
 import { askTilt, type SteerMode } from "./DrivePad";
 import { Icon, type IconName } from "./icons";
+import { saveTouchPrefs, useTouchPrefs } from "./touchPrefs";
 
 const CTL: { key: SteerMode; icon: IconName; label: string }[] = [
   { key: "wheel", icon: "wheel", label: msg("Wheel") },
@@ -136,6 +137,7 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
           </div>
           {tiltError && <p className="small" style={{ color: "var(--red)", margin: 0 }}>{t("This phone didn't allow motion access, so tilt steering can't work here.")}</p>}
           {VEHICLES[vehicle].flies && <p className="small muted" style={{ margin: 0 }}>{t("Flying uses the stick: left and right to turn, up and down to climb and descend.")}</p>}
+          <TouchPrefsCard />
         </>
       )}
       <b className="small">{t("Graphics")}</b>
@@ -185,6 +187,26 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
         ))}
       </div>
       {fps > 0 && <p className="small muted">{t("{n} frames a second — the picture sharpens or softens on its own to keep it smooth.", { n: fps })}</p>}
+    </div>
+  );
+}
+
+/** Look sensitivity and the left-handed layout for the on-foot touch controls (components/drive/touchPrefs.ts). */
+function TouchPrefsCard() {
+  const p = useTouchPrefs();
+  return (
+    <div className="tp-card">
+      <b className="small">{t("Touch controls")}</b>
+      <div className="tp-row">
+        <span className="small">{t("Look sensitivity")}</span>
+        <input type="range" min={0.5} max={2} step={0.1} value={p.look} onChange={(e) => saveTouchPrefs({ look: Number(e.target.value) })} aria-label={t("Look sensitivity")} />
+      </div>
+      <div className="tp-row">
+        <label className="small">
+          <input type="checkbox" checked={p.left} onChange={(e) => saveTouchPrefs({ left: e.target.checked })} />
+          {t("Left-handed layout")}
+        </label>
+      </div>
     </div>
   );
 }

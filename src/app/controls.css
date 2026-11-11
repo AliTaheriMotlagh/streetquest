@@ -1,0 +1,83 @@
+/* ---- touch controls: on foot (components/arena/CombatPad.tsx), driving extras (DrivePad.tsx),
+   the ability meters (AbilityHud.tsx) and the left-handed layout.
+   Deliberately plain: every colour and size is a variable so the HUD can be restyled in one place. */
+:root {
+  --cp-ink: #fff;
+  --cp-bg: rgba(10, 12, 18, .5);
+  --cp-line: rgba(255, 255, 255, .35);
+  --cp-accent: #ffb020;
+  --cp-fire: rgba(229, 72, 77, .55);
+  --cp-btn: 52px; /* every touch target is 48px or more */
+  --cp-fire-size: 88px;
+  --cp-k: 1; /* the action arc's scale on small phones */
+  --ab-focus: #5ab8ff;
+  --ab-nitro: #ff7a2f;
+}
+
+/* ---- the two halves (insets keep the thumbs clear of the notch / home bar) */
+.cpad-move { position: absolute; left: 0; top: 0; bottom: 0; width: 46%; }
+.cpad-look { position: absolute; right: 0; top: 0; bottom: 0; width: 54%; }
+.cpad.lh .cpad-move { left: auto; right: 0; }
+.cpad.lh .cpad-look { right: auto; left: 0; }
+
+/* The stick appears under the thumb; a faint ring marks where it will be when idle. */
+.cpad-stick { --sx: 110px; --sy: calc(100% - 120px); position: absolute; left: var(--sx); top: var(--sy); width: 0; height: 0; opacity: .35; transition: opacity .15s; pointer-events: none; }
+.cpad-move:not(:has(.cpad-stick.on)) .cpad-stick { left: calc(110px + var(--safe-l)); top: calc(100% - 118px - var(--safe-b)); }
+.cpad.lh .cpad-move:not(:has(.cpad-stick.on)) .cpad-stick { left: auto; right: calc(110px + var(--safe-r)); }
+.cpad-stick::before { content: ""; position: absolute; width: 128px; height: 128px; left: -64px; top: -64px; border-radius: 50%; border: 2px solid var(--cp-line); background: rgba(10, 12, 18, .22); }
+.cpad-stick.on { opacity: 1; }
+.cpad-stick.sprint::before { border-color: var(--cp-accent); box-shadow: 0 0 0 4px rgba(255, 176, 32, .25); }
+.cpad-knob { position: absolute; width: 56px; height: 56px; left: -28px; top: -28px; border-radius: 50%; background: rgba(255, 255, 255, .85); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
+
+/* ---- the action arc: its origin is the fire button's centre, buttons sit at --ax / --ay from it */
+.cp-arc { position: absolute; right: calc(74px + var(--safe-r)); bottom: calc(80px + var(--safe-b)); width: 0; height: 0; transform: scale(var(--cp-k)); transform-origin: 0 0; pointer-events: none; }
+.cpad.lh .cp-arc { right: auto; left: calc(74px + var(--safe-l)); }
+.cp-arc > * { pointer-events: auto; }
+.cp-fire, .cp-btn { position: absolute; display: grid; place-items: center; border-radius: 50%; color: var(--cp-ink); border: 2px solid var(--cp-line); background: var(--cp-bg); box-shadow: 0 4px 14px rgba(0, 0, 0, .35); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; padding: 0; }
+.cp-fire { left: calc(var(--cp-fire-size) / -2); top: calc(var(--cp-fire-size) / -2); width: var(--cp-fire-size); height: var(--cp-fire-size); background: var(--cp-fire); border-color: rgba(255, 200, 200, .7); }
+.cp-btn { left: var(--ax); top: var(--ay); width: var(--cp-btn); height: var(--cp-btn); margin: calc(var(--cp-btn) / -2) 0 0 calc(var(--cp-btn) / -2); }
+.cp-fire.on, .cp-btn.on { background: var(--cp-accent); color: #1a1200; border-color: transparent; transform: scale(.95); }
+/* Dead-eye sits up and outward of the fire button, outside the arc (mirrored for left hands). */
+.cp-btn.focus { --ax: 46px; --ay: -84px; border-color: var(--ab-focus); }
+.cpad.lh .cp-btn.focus { --ax: -46px; }
+.cp-btn.focus.on { background: var(--ab-focus); color: #04131f; }
+/* The car button only exists next to a car; it stands out a little. */
+.cp-btn.car { border-color: var(--cp-accent); animation: cpPop .22s ease-out; }
+@keyframes cpPop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cp-btn.car { animation: none; } }
+
+@media (max-width: 380px), (orientation: portrait) and (max-height: 680px) { :root { --cp-k: .86; --cp-fire-size: 80px; } .cpad-stick::before { width: 112px; height: 112px; left: -56px; top: -56px; } }
+@media (orientation: landscape) and (max-height: 500px) { :root { --cp-k: .84; } }
+@media (orientation: landscape) and (max-height: 420px) { :root { --cp-k: .78; } }
+
+/* ---- left-handed: the things the HUD parks on the right move over too */
+.drive.lefty .cpad-throw { right: auto; left: calc(24px + var(--safe-l)); }
+
+/* ---- driving: tools are 48px tall at least, and the new focus / nitro pair sits under horn + drift */
+.dpad .dpad-tool { min-height: 48px; min-width: 48px; }
+.dpad .dpad-tools.ab .dpad-tool { height: 48px; }
+.dpad .dpad-tool.focus.on { background: var(--ab-focus); color: #04131f; }
+.dpad .dpad-tool.nitro.on { background: var(--ab-nitro); color: #1a0a00; }
+.drive.lefty .dpad { flex-direction: row-reverse; }
+
+/* ---- ability meters (focus = slow motion, nitro): thin bars above the speedometer's side, only while used or refilling */
+.ab-hud { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(150px + var(--safe-b)); z-index: 3; display: flex; gap: 10px; pointer-events: none; }
+.ab-hud[hidden] { display: none; }
+.ab-meter { position: relative; width: 96px; height: 10px; border-radius: 6px; background: rgba(10, 12, 18, .55); border: 1px solid rgba(255, 255, 255, .18); overflow: hidden; }
+.ab-meter i { position: absolute; inset: 0; transform-origin: 0 50%; }
+.ab-meter.focus i { background: var(--ab-focus); transform: scaleX(var(--f, 1)); }
+.ab-meter.nitro i { background: var(--ab-nitro); transform: scaleX(var(--n, 1)); }
+.ab-meter span { position: absolute; inset: 0; display: grid; place-items: center; font: 800 8px/1 var(--body); letter-spacing: .1em; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
+html[lang="fa"] .ab-meter span { letter-spacing: 0; }
+.ab-meter.lock { opacity: .55; }
+.ab-meter.active { box-shadow: 0 0 8px currentColor; }
+.ab-meter.focus.active { color: var(--ab-focus); }
+.ab-meter.nitro.active { color: var(--ab-nitro); }
+.drive.has-pad .ab-hud { bottom: calc(210px + var(--safe-b)); }
+.drive.on-foot .ab-hud { bottom: calc(92px + var(--safe-b)); }
+
+/* ---- touch preferences card (garage / settings) */
+.tp-card { display: grid; gap: 10px; }
+.tp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tp-row input[type="range"] { flex: 1; min-height: 44px; }
+.tp-row label { display: flex; align-items: center; gap: 8px; min-height: 44px; }

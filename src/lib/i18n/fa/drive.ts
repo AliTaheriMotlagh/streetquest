@@ -233,6 +233,18 @@ const drive: Record<string, string> = {
   "You just did one of these — give it a few minutes": "همین الان یکی از این‌ها را انجام دادی — چند دقیقه صبر کن",
   "Wanted level {n} of 5": "سطح تعقیب {n} از ۵",
   "Car health {n}%": "سلامت ماشین {n}٪",
+  // ---- controllers, slow motion and touch controls (lib/input, lib/abilities, components/drive/gamepad.ts)
+  "🎮 {name} controller connected — {jump} jump · {car} car": "🎮 دسته {name} وصل شد — {jump} پرش · {car} ماشین",
+  "🎮 Controller connected — {jump} jump · {car} car": "🎮 دسته بازی وصل شد — {jump} پرش · {car} ماشین",
+  "🎮 Controller disconnected": "🎮 دسته بازی قطع شد",
+  FOCUS: "تمرکز",
+  NITRO: "نیترو",
+  "Focus (hold for slow motion)": "تمرکز (نگه دار تا زمان کند بشه)",
+  "Nitro (hold)": "نیترو (نگه دار)",
+  "Dead-eye (slow motion while aiming)": "تمرکز تیراندازی (حین نشونه‌گیری زمان کند می‌شه)",
+  "Touch controls": "کنترل‌های لمسی",
+  "Look sensitivity": "حساسیت دید",
+  "Left-handed layout": "چینش چپ‌دست",
 };
 
 export default drive;
