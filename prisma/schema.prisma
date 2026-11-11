@@ -93,6 +93,7 @@ model User {
   inventory       InventoryItem[]
   claims          Claim[]
   runs            MissionRun[]
+  scenarioRuns    ScenarioRun[]
   achievements    UserAchievement[]
   sentFriends     Friendship[]       @relation("requester")
   recvFriends     Friendship[]       @relation("addressee")
@@ -221,6 +222,41 @@ model MissionRun {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
+}
+
+// Story scenarios in the 3D city (lib/scenarios): the ones an admin made or changed (the six starters live in
+// code; a row with a starter's id replaces it). `data` is the validated Scenario JSON.
+model ScenarioDef {
+  id        String   @id
+  data      Json
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One play of a scenario: started with the places the client resolved, finished with the time and distance.
+// `window` is set when the reward was paid; (user, scenario, window) is unique, so one reward per window.
+model ScenarioRun {
+  id         String    @id @default(cuid())
+  userId     String
+  scenarioId String
+  status     String    @default("ACTIVE") // ACTIVE | WON | FAILED | ABANDONED
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  startLat   Float
+  startLng   Float
+  claim      Json // { giver, places } as resolved by the client
+  elapsedS   Int?
+  travelledM Int?
+  reason     String?
+  window     String?
+  coins      Int       @default(0)
+  xp         Int       @default(0)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scenarioId, window])
+  @@index([userId, status])
+  @@index([scenarioId, startedAt])
 }
 
 model UserAchievement {

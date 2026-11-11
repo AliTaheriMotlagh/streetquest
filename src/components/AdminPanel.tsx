@@ -8,6 +8,7 @@ import { Button } from "./Button";
 import { fmtNum, t, msg } from "@/lib/i18n";
 
 const AdminCars = dynamic(() => import("./AdminCars"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminScenarios = dynamic(() => import("./AdminScenarios"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminDropMap = dynamic(() => import("./AdminDropMap"), { ssr: false, loading: () => <div className="admin-map" /> });
 
@@ -32,7 +33,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "stores3d" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
+type Tab = "scenarios" | "stores3d" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "deliveries";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -41,6 +42,7 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     group: msg("Game"),
     items: [
       { id: "settings", icon: "⚙️", label: msg("Game settings"), desc: msg("Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds.") },
+      { id: "scenarios", icon: "🎬", label: msg("Scenarios"), desc: msg("Story missions in the 3D city: givers on the street, steps like steal a car, chase, lose the police or take a photo, with dialogue and a reward. Create, edit, switch on and off, and test each one.") },
       { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every item. Change a number to override it; clear it to go back to the original.") },
       { id: "cars", icon: "🚗", label: msg("Car lab"), desc: msg("Every vehicle exactly as players see it: turn it round, try paint, dirt, rain and night, check it for problems and save a screenshot.") },
     ],
@@ -209,6 +211,7 @@ export function AdminPanel() {
 
         {tab === "stores3d" && <AdminLandmarks onError={setNotice} />}
         {tab === "cars" && <AdminCars />}
+        {tab === "scenarios" && <AdminScenarios onError={setNotice} />}
         {tab === "settings" && <SettingsTab key={JSON.stringify(data.config.overrides)} config={data.config} post={post} />}
         {tab === "data" && <GameDataTab key={JSON.stringify(data.config.overrides.catalog ?? {})} config={data.config} post={post} />}
         {tab === "revenue" && <RevenueTab rev={data.revenue} config={data.config} />}

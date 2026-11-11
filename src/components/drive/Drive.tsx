@@ -59,6 +59,8 @@ import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import { Crowd } from "./people";
 import { StreetLife } from "./street";
 import { StreetHud } from "./StreetHud";
+import { ScenarioHud } from "./ScenarioHud";
+import { Scenarios } from "./scenarios";
 import { signalPhase } from "@/lib/traffic";
 import { Skyline } from "./skyline";
 import { GraphicsEngine } from "./graphics/engine";
@@ -190,6 +192,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [busy, setBusy] = useState(false);
   const [combat, setCombat] = useState<Combat | null>(null);
   const [street, setStreet] = useState<StreetLife | null>(null);
+  const [scenarios, setScenarios] = useState<Scenarios | null>(null);
   const fight = useCombat(combat);
   const onFoot = !!fight?.onFoot;
   const [footKeys, setFootKeys] = useState(false);
@@ -684,6 +687,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         })
         .catch(() => {});
     };
+    // Story scenarios (scenarios.ts): givers on the streets, the run's objectives, a chase car, the police.
+    const scenarios = new Scenarios({
+      scene, frame, street, traffic, lite, sim: !!live.current.sim,
+      tiles: () => [...tiles.values()].flatMap((s) => (s.mesh ? [s.mesh] : [])),
+      snap: (x, z, d) => nearestStreet(x, z, d),
+      rewarded: (r, title) => {
+        live.current.toast({ kind: "reward", title, body: t("+{xp} XP · +{coins} coins", { xp: fmtNum(r.xp), coins: fmtNum(r.coins) }) });
+        live.current.refresh();
+      },
+      toast: (title) => live.current.toast({ title }),
+    });
+    scenarios.setDown(() => !!combat.streetDown);
+    setScenarios(scenarios);
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
     let trafficSync = 0, lightsAt = 0, syncCrowd = false;
     /** A store's pole sign: on the pavement in front of it, facing the nearest street (lib/storefront.ts). */
@@ -1148,6 +1164,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         // Its health is mine now — and pulling a driver out of it is a crime. (Built afresh:
         // the same model and paint as a wreck I left must not keep its charred shell.)
         street.tookCar(c, c.x, c.z);
+        scenarios.tookCar(c.key);
         modelKey = "";
         // It isn't in my way any more: the street's cars as solid things, without it, before I'm placed in it.
         obstacles.add("traffic", traffic.tick(0, c.x, c.z));
@@ -1826,6 +1843,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
       crowd.tick(dt, st.x, st.z);
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
+      scenarios.tick(dt, time, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, carKey: streetCar?.key ?? currentKey(), matchOn, flying: D.flies && st.alt > 0.5 });
       if (now - lightsAt > 500) {
         lightsAt = now;
         const sec = Date.now() / 1000;
@@ -1834,7 +1852,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
       // -- nav arrow: the party round, then a chosen destination, then the delivery
       const rg = roundGoal();
-      const goalLL = rg?.at ?? navGoal ?? (L.me?.activeRun ? { lat: L.me.activeRun.targetLat, lng: L.me.activeRun.targetLng } : null);
+      const goalLL = rg?.at ?? scenarios.waypoint() ?? navGoal ?? (L.me?.activeRun ? { lat: L.me.activeRun.targetLat, lng: L.me.activeRun.targetLng } : null);
       if (goalLL) {
         const g = frame.toXZ(goalLL.lat, goalLL.lng);
         const d = Math.hypot(g.x - st.x, g.z - st.z);
@@ -2035,6 +2053,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           for (const p of shops) if (Math.abs(p.x - st.x) < 250 && Math.abs(p.z - st.z) < 250) blip(p.x, p.z, p.color, 1.8);
           for (const m of markers.spots()) blip(m.x, m.z, m.color, 2.6);
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
+          for (const d of scenarios.dots()) dot(d.x, d.z, d.color, 5);
           for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#f0c05a", 4);
           for (const cn of coins) if (cn.mesh.visible) dot(cn.mesh.position.x, cn.mesh.position.z, "#ffcf3a", 3);
           for (const o of [...others.positions(), ...combat.dots()]) {
@@ -2105,6 +2124,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       vsource.dispose();
       details.dispose();
       offCarModel();
+      scenarios.dispose();
+      setScenarios(null);
       street.dispose();
       setStreet(null);
       traffic.dispose();
@@ -2475,6 +2496,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       )}
 
       {street && !fight?.inMatch && <StreetHud street={street} />}
+      {scenarios && !fight?.inMatch && <ScenarioHud scenarios={scenarios} />}
       {combat && <CombatHud combat={combat} touch={touch} />}
       {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} />}
       {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.bike ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}

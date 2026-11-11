@@ -16,7 +16,7 @@
 import * as THREE from "three";
 import { CAR_RESTITUTION, felt, massOf } from "@/lib/street/carPhysics";
 import { blastOnCar, blastOnPerson, bulletDamage, burnCar, crashDamage, dentDepth, hurtCar } from "@/lib/street/damage";
-import { calm, report, response, tickWanted, type Crime, type Witness } from "@/lib/street/wanted";
+import { calm, report, response, STAR_HEAT, tickWanted, type Crime, type Witness } from "@/lib/street/wanted";
 import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { WEAPONS } from "@/lib/arena/weapons";
 import { tyreSmoke } from "@/lib/atmosphere";
@@ -32,7 +32,7 @@ import { Police, type PoliceEvent } from "./police";
 import { StreetFx } from "./streetFx";
 import { driverLook } from "./crew";
 import { Voices } from "./voices";
-import type { Situation, VoiceKind } from "@/lib/street/barks";
+import { barkById, type Situation, type VoiceKind } from "@/lib/street/barks";
 import { pickScene, SCENE_GAP_S, sceneLength, sceneScript } from "@/lib/street/scenes";
 import { GETAWAY_MIN_STARS, secsLeft, startThief, THIEF_NOTICE_M, THIEF_REFLEE_S, tickThief, type StreetJob, type StreetJobKind } from "@/lib/street/jobs";
 import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
@@ -118,6 +118,9 @@ export class StreetLife {
   private refleeAt = 0;
   /** A street job done: Drive claims its reward (POST /api/drive/street). */
   onJob: ((kind: StreetJobKind, stars: number) => void) | null = null;
+  /** Running totals a scenario reads (scenarios.ts): officers I have killed, times I've been arrested. */
+  kills = 0;
+  busts = 0;
   private sig = "";
   private listeners = new Set<() => void>();
   private hudAt = 0;
@@ -270,6 +273,7 @@ export class StreetLife {
           zone: o.zone,
           hit: (dmg) => {
             const killed = this.police.hurtOfficer(o.o, dmg);
+            if (killed) this.kills++;
             if (this.victim(-o.o.id, killed)) this.crime(killed ? "killCop" : "hitCop", o.o.x, o.o.z, true);
             // Another officer calls it in.
             const other = o.o.unit.officers.find((x) => x !== o.o && !x.dead);
@@ -325,6 +329,27 @@ export class StreetLife {
       this.police.standDown();
     },
   };
+
+  /** A scenario step asks for the police at once: at least this many stars (they're dispatched by it, and know where I am). */
+  forceStars(n: number) {
+    const s = Math.max(0, Math.min(5, Math.round(n)));
+    this.wanted.heat = Math.max(this.wanted.heat, STAR_HEAT[s]);
+    this.wanted.stars = Math.max(this.wanted.stars, s);
+    this.wanted.unseen = 0;
+    this.crimeAt = performance.now();
+    this.publish(true);
+  }
+
+  /** A scenario's recorded line (lib/street/barks.ts) by its id, said by the voice it was made for; nothing if it has no clip. */
+  bark(id: string, where: () => { x: number; y: number; z: number } | null) {
+    const b = barkById(id), me = this.me;
+    if (b && me) this.voices.line(id, b.voices[0], where, me);
+  }
+
+  /** My car is burnt out or blown up. */
+  get carWrecked() {
+    return this.car.health.hp <= 0;
+  }
 
   /** Into a street car I took: a carjacking if someone was driving it; its health is mine now. */
   tookCar(t: { driven: boolean; hp: number }, x: number, z: number) {
@@ -602,7 +627,7 @@ export class StreetLife {
       if (out === "lost") this.say("lost");
       // A real chase shaken off: a getaway, paid by how big it was.
       if (out === "lost" && was >= GETAWAY_MIN_STARS) this.onJob?.("getaway", was);
-      if (out === "busted") (this.say("busted"), this.voices.say("copBusted", "cop", () => ({ x: me.x, y: 2, z: me.z }), me));
+      if (out === "busted") (this.busts++, this.say("busted"), this.voices.say("copBusted", "cop", () => ({ x: me.x, y: 2, z: me.z }), me));
       if (out) this.police.standDown();
     } else {
       this.seen = false;

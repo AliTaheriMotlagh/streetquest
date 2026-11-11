@@ -243,6 +243,8 @@ export class TrafficCars {
   private offKerb = new WeakMap<object, Car>();
   /** This frame's outlines, with what each one is (for bullets). */
   private boxes: { f: Footprint; ref: CarRef }[] = [];
+  /** A scenario's chase cars (scenarios.ts): never dropped for being far, and they drive scared. */
+  private pins = new Set<Car>();
   enabled = true;
   /** The buildings, for cars knocked loose to slide into. */
   world: CollisionWorld | null = null;
@@ -426,7 +428,7 @@ export class TrafficCars {
     this.cars = this.cars.filter((c) => {
       const d = Math.hypot(c.x - px, c.z - pz);
       // A wreck nobody's looking at is towed away after a while.
-      return d <= DROP && !(c.loose && c.idle > WRECK_S && d > 90);
+      return this.pins.has(c) || (d <= DROP && !(c.loose && c.idle > WRECK_S && d > 90));
     });
     if (this.cars.reduce((n, c) => n + (c.loose ? 0 : 1), 0) < this.target(px, pz) && this.roads.length) this.spawn(px, pz);
     this.crashes();
@@ -446,6 +448,7 @@ export class TrafficCars {
       }
       c.upset = Math.max(0, c.upset - dt);
       c.panic = Math.max(0, c.panic - dt);
+      if (this.pins.has(c) && !c.loose) c.panic = Math.max(c.panic, 5);
       // On fire, the driver stops and runs: it rolls to a halt where it is.
       if (c.health.hp <= 0 && !c.loose) this.loosen(c);
       if (c.upset > 0 && this.rand() < dt * 0.6 && !c.health.exploded && c.health.hp > 0) this.events.push({ kind: "honk", x: c.x, z: c.z, key: c.kind, ref: c });
@@ -751,6 +754,32 @@ export class TrafficCars {
       if (d >= min && d <= max) return c;
     }
     return null;
+  }
+
+  /**
+   * A scenario's car to chase: a moving car about `ahead` m in front of (x, z) (looking along fx, fz), of one of
+   * these models (none listed: any but a bus or bike). It's kept in the world and drives off scared.
+   */
+  pin(x: number, z: number, fx: number, fz: number, ahead: number, keys: readonly string[]): CarRef | null {
+    let best: Car | null = null, bs = Infinity;
+    for (const c of this.cars) {
+      if (c.loose || c.parked || this.pins.has(c) || c.health.hp < 60 || (keys.length ? !keys.includes(c.kind) : heavy(c.kind) || FLEET[c.kind].bike)) continue;
+      const dx = c.x - x, dz = c.z - z, d = Math.hypot(dx, dz) || 1;
+      const score = Math.abs(d - ahead) - ((dx * fx + dz * fz) / d) * 40;
+      if (d < ahead * 3 && score < bs) (best = c), (bs = score);
+    }
+    if (best) (this.pins.add(best), (best.panic = 8));
+    return best;
+  }
+
+  /** Where a pinned car is and how it is: wrecked (smoking or worse), or gone (driven off the map, or taken). */
+  pinState(ref: CarRef): { x: number; z: number; wrecked: boolean; gone: boolean } {
+    const c = ref as Car;
+    return { x: c.x, z: c.z, wrecked: c.health.hp < 30 || c.health.exploded, gone: !this.cars.includes(c) };
+  }
+
+  unpin(ref: CarRef) {
+    this.pins.delete(ref as Car);
   }
 
   /** What kind of car a footprint is, if it's one of these. */
