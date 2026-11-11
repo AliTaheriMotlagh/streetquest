@@ -174,6 +174,17 @@ mood scales XP; loot funds research; territory funds the army.
   angle. Chrome bumpers and grilles are polished mirrors, black trim satin plastic; tyres have a tread (grooves and
   sipes) and a sidewall with a rim lip and raised lettering, and the drawn wheels are five-spoke alloys with the brake
   disc behind (`src/components/drive/carLook.ts`).
+- **A calmer HUD and pause menu** — the 3D city's screen UI is flat, dark and quiet (one accent, 11/13/15/20 type,
+  1.75 px line icons from `src/lib/iconPaths.ts`, no gradients, glows or emoji; `src/app/hud.css`). Camera / get out /
+  menu are one tool rail with active and disabled states and tooltips on a mouse; the bottom prompt is a key glyph plus
+  the verb (Enter on a keyboard, a touch glyph on a phone). **Menu** opens a pause menu (`DriveMenu.tsx`): full screen
+  on a phone, a column at the start edge on a desktop, with a tab rail — Map, Missions, Garage, Party, Settings
+  (Garage is the cars and paint; Settings is steering, graphics, time, weather, names). Arrow keys / D-pad change tab,
+  Esc / B go back. Markers share the HUD's icon language: ONE canvas icon atlas (`markerKit.ts`), ground-projected
+  pulsing rings and a soft light pillar that fade with distance and thin when you are close (`src/lib/hudMarkers.ts`),
+  pickups that bob and turn with a common / rare / epic rim and a burst when taken, and HUD waypoints
+  (`waypoints.ts`) — the destination and the nearest jobs show an icon with their distance, or a screen-edge arrow
+  when off screen. The lite tier drops the light pillar and the second ring and shows fewer waypoints.
 - **Any screen shape** — the 3D city fills whatever screen it gets. Wide screens (landscape phones, 16:9, ultrawide)
   keep the camera's field of view and simply show more to the sides; a phone held upright used to see a 31° slit, so
   there the view opens up to what a 2:3 screen would show (`src/lib/view.ts`). Garage → **Wide view → Full screen**

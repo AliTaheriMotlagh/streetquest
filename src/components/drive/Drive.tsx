@@ -78,8 +78,12 @@ import { F_FOOT, type ArenaGeo } from "@/lib/arena/protocol";
 import { makeCockpit, makeVehicle, type Cockpit, type VehicleModel } from "./vehicles3d";
 import { onCarModel, preloadCarModels } from "./carModels";
 import { drawnParts } from "./fleet3d";
+import { makeBeacon, makeLoot } from "./markerKit";
+import { DriveMenu } from "./DriveMenu";
+import { Waypoints } from "./waypoints";
+import { iconForEmoji, MARKER_COLORS, rarityOf } from "@/lib/hudMarkers";
 import {
-  LIGHT, makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, adoptModels, paintSignals, setNight, tileMeshes, WORLD,
+  LIGHT, makeClouds, makeCoin, makeCornerSign, makeGate, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, adoptModels, paintSignals, setNight, tileMeshes, WORLD,
   type Board, type Light, type Phase, type TileMeshes,
   POOLS,
 } from "./world3d";
@@ -123,7 +127,7 @@ type Job = {
 };
 
 type CamMode = "cockpit" | "chase" | "far" | "top";
-type MenuTab = "jobs" | "places" | "garage" | "play";
+type MenuTab = "jobs" | "places" | "garage" | "settings" | "play";
 /** A line in the Places list: a real shop from the map, a player's shop or a business. */
 type PlaceRow = { id: string; emoji: string; name: string; sub: string; dist: number; lat: number; lng: number; sel: Selected | null };
 const CAM_LABEL: Record<CamMode, string> = { cockpit: "1P", chase: "3P", far: "FAR", top: "TOP" };
@@ -180,6 +184,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const { me, world, act, refresh, toast } = useGame();
   const mount = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
+  const wpRoot = useRef<HTMLDivElement>(null);
   const [hud, setHud] = useState<Hud | null>(null);
   const [menu, setMenu] = useState<MenuTab | null>(null);
   const [showKeys, setShowKeys] = useState(true);
@@ -634,6 +639,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const beacons = new Map<string, Beacon>();
     type Loot = ReturnType<typeof makeLoot> & { id: string; taken: boolean } & Placed;
     const loot = new Map<string, Loot>();
+    // Waypoint chips (HUD): the destination and the nearest jobs, with distance or an edge arrow.
+    const wp = new Waypoints(wpRoot.current ?? el, lite ? 3 : 4, (m) => formatDistance(m));
+    const wpPick: Beacon[] = [];
     const labels = new Map<string, ReturnType<typeof makeStreetLabel> & { x: number; z: number; angle: number }>();
     const boards = new Map<string, Board>();
     const corners = new Map<string, Board>();
@@ -644,6 +652,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let labelsDirty = true;
     let jobs: Job[] = [];
     let navGoal: LatLng | null = live.current.goal;
+    let wpNav: { x: number; z: number; label: string } | null = null;
     const others = new Others(scene, frame, style, lite);
     // Live traffic: street speeds for the minimap and the cars on the streets.
     const feed = new TrafficFeed();
@@ -754,14 +763,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const run = m?.activeRun;
       if (run)
         out.push({
-          id: `run:${run.id}`, kind: "deliver", lat: run.targetLat, lng: run.targetLng, emoji: "🎯", color: "#ee7fae", label: t(run.title), verb: t("Deliver"), where: t(run.title), icon: "flag", reach: INTERACT_RADIUS_M, sel: null,
+          id: `run:${run.id}`, kind: "deliver", lat: run.targetLat, lng: run.targetLng, emoji: "🎯", color: MARKER_COLORS.deliver, label: t(run.title), verb: t("Deliver"), where: t(run.title), icon: "flag", reach: INTERACT_RADIUS_M, sel: null,
           run: () => live.current.act(() => api("/api/runs", { body: { runId: run.id, action: "complete" } })).then((ok) => (ok && celebrate({ title: t("DELIVERED!"), art: "box", body: t(run.title) }), ok)),
         });
       for (const p of w?.places ?? []) {
         if (p.done || (run && p.kind === "deliver")) continue;
         const cat = PLACE_CATS[p.place.cat] ?? PLACE_CATS.shop;
         out.push({
-          id: p.id, kind: p.kind === "deliver" ? "pickup" : "visit", lat: p.place.lat, lng: p.place.lng, emoji: p.emoji, color: p.kind === "deliver" ? "#f0c05a" : "#5bd38c",
+          id: p.id, kind: p.kind === "deliver" ? "pickup" : "visit", lat: p.place.lat, lng: p.place.lng, emoji: p.emoji, color: p.kind === "deliver" ? MARKER_COLORS.job : MARKER_COLORS.visit,
           label: `${t(p.title)} · ${p.place.name}`, verb: p.kind === "deliver" ? t("Pick up") : t("Check in"), where: p.place.name, icon: p.kind === "deliver" ? "box" : "check", reach: INTERACT_RADIUS_M,
           sel: { type: "place", data: p },
           run: () => live.current.act(() => api("/api/places", { body: { id: p.id } })).then((ok) => {
@@ -774,7 +783,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         for (const c of b.campaigns) {
           if (c.visited || b.mine) continue;
           out.push({
-            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: b.featured ? "#ff7ad9" : "#63b3f2", label: `${c.title} · ${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
+            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: MARKER_COLORS.biz, label: `${c.title} · ${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
             sel: { type: "biz", data: b },
             run: () => live.current.act(() => api<{ message: string; code: string | null }>("/api/business", { body: { action: "checkin", campaignId: c.id } }).then((r) => {
               celebrate({ title: t("CHECKED IN!"), body: r.code ? t("Coupon code: {code}", { code: r.code }) : b.name, emoji: b.emoji });
@@ -803,7 +812,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           have.job = j;
           continue;
         }
-        const b = Object.assign(makeBeacon(j.emoji, j.color, j.label), { job: j, raw: p, settledAt: -1 });
+        const b = Object.assign(makeBeacon(iconForEmoji(j.emoji), j.color, j.label, { lite }), { job: j, raw: p, settledAt: -1 });
         b.icon.userData = { pick: { kind: "job", id: j.id } };
         settle(b);
         scene.add(b.group);
@@ -816,7 +825,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const s of wantLoot) {
         if (loot.has(s.id)) continue;
         const p = frame.toXZ(s.lat, s.lng);
-        const l = Object.assign(makeLoot("💵", s.drop ? "#f0c05a" : "#5bd38c"), { id: s.id, taken: false, raw: p, settledAt: -1 });
+        const l = Object.assign(makeLoot("coin", rarityOf(s)), { id: s.id, taken: false, raw: p, settledAt: -1 });
         l.icon.userData = { pick: { kind: "loot", id: s.id } };
         settle(l);
         scene.add(l.group);
@@ -1798,9 +1807,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // A match is on: the city's jobs, money and shop pins step aside.
       const matchOn = combat.inMatch;
       markers.hidden = cinemaBoards.hidden = matchOn;
-      for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time);
+      for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time, Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z));
       for (const l of loot.values()) if (matchOn) l.group.visible = false;
-      for (const l of loot.values()) l.tick(time);
+      for (const l of loot.values()) l.tick(time, Math.hypot(l.group.position.x - st.x, l.group.position.z - st.z));
       for (const g of gates) g.tick(time);
       for (const cn of coins) cn.tick(time);
       others.tick(dt, serverNow, st.x, st.z);
@@ -1839,10 +1848,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const g = frame.toXZ(goalLL.lat, goalLL.lng);
         const d = Math.hypot(g.x - st.x, g.z - st.z);
         arrow.visible = d > (rg ? CHECKPOINT_M : 25) && !fp;
+        wpNav = d > 25 ? { x: g.x, z: g.z, label: rg?.label ?? "" } : null;
         arrow.position.set(st.x, st.alt + model.height + 2 + Math.sin(time * 3) * 0.15, st.z);
         arrow.rotation.y = Math.atan2(-(g.x - st.x), -(g.z - st.z));
         if (!rg && navGoal && d < 30) navGoal = null; // arrived
-      } else arrow.visible = false;
+      } else (arrow.visible = false), (wpNav = null);
+      wp.hidden = matchOn;
+      wp.begin();
+      if (wpNav) wp.add(wpNav.x, st.alt + 6, wpNav.z, "flag", MARKER_COLORS.deliver, wpNav.label);
+      for (const b of wpPick) wp.add(b.group.position.x, b.group.position.y + 8, b.group.position.z, b.badgeIcon, b.job.color, b.job.label);
+      wp.end();
+      wp.frame(camera, el.clientWidth, el.clientHeight, st.x, st.z);
 
       // -- gearbox (sound and dial): five gears, revs climb and drop at each shift
       const gearStep = maxV() / 5;
@@ -1884,12 +1900,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         // More of the city was drawn: items near us may now stand inside a building.
         for (const it of [...beacons.values(), ...loot.values()]) if (it.settledAt !== cityDrawn && Math.hypot(it.raw.x - st.x, it.raw.z - st.z) < 600) settle(it);
         // Signs right next to the camera would fill the screen: hide them up close.
+        // The three nearest jobs beyond the sign range get a HUD waypoint (the rest are the city's own beacons).
+        wpPick.length = 0;
+        for (const b of beacons.values()) {
+          const d = Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z);
+          if (d < 30) continue;
+          wpPick.push(b);
+        }
+        wpPick.sort((a, b) => Math.hypot(a.group.position.x - st.x, a.group.position.z - st.z) - Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z)).length = Math.min(wpPick.length, lite ? 2 : 3);
         for (const b of beacons.values()) b.sign.visible = Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z) > 30;
         for (const l of loot.values()) {
           if (l.taken || !low) continue;
           if (Math.hypot(l.group.position.x - st.x, l.group.position.z - st.z) < LOOT_PICKUP_M) {
             l.taken = true;
-            l.group.visible = false;
+            l.collect();
             void Promise.resolve(L.onCollect(l.id));
           }
         }
@@ -2133,6 +2157,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const r of ready) r.mesh.dispose();
       for (const b of beacons.values()) b.dispose();
       for (const l of loot.values()) l.dispose();
+      wp.dispose();
       for (const l of labels.values()) l.dispose();
       for (const n of titles.values()) n.dispose();
       for (const b of boards.values()) b.dispose();
@@ -2180,6 +2205,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       setBusy(false);
     }
   };
+  // Enter does what the prompt chip says (desktop; the menu and inputs keep their own Enter).
+  const runRef = useRef(runNear);
+  runRef.current = runNear;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.repeat || (e.target as HTMLElement | null)?.closest?.("input, textarea, button, [role=dialog]")) return;
+      void runRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const pickVehicle = (k: VehicleKey) => {
     setVehicle(k);
     store.set(VEHICLE_KEY, k);
@@ -2244,17 +2280,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     else if (countdown <= 0 && was > 0 && was <= 3) sfx("go");
   }, [countdown]);
 
-  const tabs: { key: MenuTab; icon: IconName; label: string; badge?: number }[] = [
-    { key: "jobs", icon: "list", label: t("Jobs nearby"), badge: hud?.jobs.length },
-    { key: "places", icon: "store", label: t("Places") },
+  const tabs: { key: MenuTab; icon: IconName; label: string; title?: string; badge?: number }[] = [
+    { key: "places", icon: "map", label: t("Map"), title: t("Places") },
+    { key: "jobs", icon: "list", label: t("Missions"), title: t("Jobs nearby"), badge: hud?.jobs.length },
     { key: "garage", icon: "garage", label: t("Garage") },
-    { key: "play", icon: "people", label: t("Play together"), badge: party?.members.length || fight?.lobbies.length || undefined },
+    { key: "play", icon: "people", label: t("Party"), title: t("Play together"), badge: party?.members.length || fight?.lobbies.length || undefined },
+    { key: "settings", icon: "sliders", label: t("Settings") },
   ];
   const cam = hud?.cam ?? "chase";
 
   return (
     <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""}`} role="application" aria-label={t("3D city")}>
       <div className="drive-canvas" ref={mount} />
+      <div className="drive-wp" ref={wpRoot} aria-hidden />
 
       {/* Top: me · the street I'm on · map, instruments and the two buttons */}
       <div className="drive-top">
@@ -2265,12 +2303,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           {me && (
             <button className="drive-me" onClick={onProfile} title={t("Profile")} aria-label={t("Profile")}>
               <span className="drive-me-av">
-                {me.avatar}
+                {[...me.username][0]?.toUpperCase()}
                 <i>{fmtNum(me.level)}</i>
               </span>
               <span className="drive-me-tx">
                 <b>{me.username}</b>
-                <span>💵 {fmtNum(me.toman)}</span>
+                <span><Icon name="coin" size={13} />{fmtNum(me.toman)}</span>
               </span>
             </button>
           )}
@@ -2279,7 +2317,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           {hud?.street && <div className="drive-street" key={banner?.at ?? 0}>{hud.street}</div>}
           {hud?.store && (
             <button type="button" className="drive-store" key={hud.store.id} style={{ "--trade": hud.store.color } as React.CSSProperties} onClick={() => api3d.current?.openPick({ kind: hud.store!.kind, id: hud.store!.id })}>
-              <span className="ic">{hud.store.emoji}</span>
+              <span className="ic"><Icon name={iconForEmoji(hud.store.emoji)} size={18} /></span>
               <span className="tx">
                 <b>{hud.store.name}</b>
                 <span>{hud.store.sub}</span>
@@ -2316,24 +2354,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             <span className="dg-unit">{t("km/h")}</span>
             <i className="dg-gear" />
           </div>
-          <div className="drive-side">
-            <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} title={t("Camera")}>
-              <Icon name="camera" size={20} />
+          <div className="drive-side" role="toolbar" aria-label={t("Tools")}>
+            <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} data-tip={t("Camera")}>
+              <Icon name="camera" size={22} />
               <small>{onFoot ? (fight?.cam === "fps" ? "1P" : "3P") : CAM_LABEL[cam]}</small>
             </Button>
             {canDrive && combat && !fight?.inMatch && (onFoot ? (
-              fight?.nearCar && (
-                <Button className="drive-round on" onClick={() => combat.getIn()} aria-label={t("Get in the car")} title={t("Get in the car (F)")}>
-                  <Icon name="car" size={20} />
-                </Button>
-              )
+              <Button className={`drive-round ${fight?.nearCar ? "on" : ""}`} disabled={!fight?.nearCar} onClick={() => combat.getIn()} aria-label={t("Get in the car")} data-tip={fight?.nearCar ? t("Get in the car (F)") : t("No car close by")}>
+                <Icon name="car" size={22} />
+              </Button>
             ) : (
-              <Button className="drive-round" onClick={() => combat.getOut()} aria-label={t("Get out and walk")} title={t("Get out and walk (F)")}>
-                <Icon name="walk" size={20} />
+              <Button className="drive-round" onClick={() => combat.getOut()} aria-label={t("Get out and walk")} data-tip={t("Get out and walk (F)")}>
+                <Icon name="walk" size={22} />
               </Button>
             ))}
-            <Button className={`drive-round ${menu ? "on" : ""}`} onClick={() => setMenu(menu ? null : "jobs")} aria-label={t("Menu")} title={t("Menu")} aria-expanded={!!menu}>
-              <Icon name="menu" />
+            <Button className={`drive-round ${menu ? "on" : ""}`} onClick={() => setMenu(menu ? null : "jobs")} aria-label={t("Menu")} data-tip={t("Menu")} aria-expanded={!!menu}>
+              <Icon name="menu" size={22} />
               {(hud?.jobs.length ?? 0) > 0 && <span className="badge">{fmtNum(hud?.jobs.length ?? 0)}</span>}
             </Button>
           </div>
@@ -2343,7 +2379,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       <a className="drive-credit" href="/credits" target="_blank" rel="noreferrer">© OpenStreetMap · {t("3D cars")}</a>
       {/* Stacked, so two never sit on top of each other. */}
       <div className="drive-notes">
-        {!canDrive && <div className={`drive-banner ${gpsNoteSmall ? "small" : ""}`}>🚶 {gpsNoteSmall ? t("Real GPS") : t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
+        {!canDrive && <div className={`drive-banner ${gpsNoteSmall ? "small" : ""}`}><Icon name="walk" size={16} />{gpsNoteSmall ? t("Real GPS") : t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
         {hud?.village && hud.loading > 0 && (
           <div className="drive-loading">
             <i className="drive-spinner" aria-hidden />
@@ -2354,7 +2390,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {hud?.flying && !hud.low && hud.near === null && !flyHintOff && (
         <div className="drive-hint small closable">
           <span>{t("Fly low (under {m} m) to pick things up and check in", { m: LAND_ALT_M })}</span>
-          <button className="dh-x" onClick={() => (setFlyHintOff(true), store.set(FLY_HINT_KEY, "1"))} aria-label={t("Dismiss")} title={t("Dismiss")}>✕</button>
+          <button className="dh-x" onClick={() => (setFlyHintOff(true), store.set(FLY_HINT_KEY, "1"))} aria-label={t("Dismiss")} title={t("Dismiss")}><Icon name="close" size={16} /></button>
         </div>
       )}
 
@@ -2362,101 +2398,124 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {countdown > 0 && countdown <= 5 && <div className="drive-countdown" key={countdown}>{fmtNum(countdown)}</div>}
 
       {menu && (
-        <div className="drive-sheet drive-menu" role="dialog" aria-label={t("Menu")}>
-          <div className="drive-tabs" role="tablist">
-            {tabs.map((tb) => (
-              <button key={tb.key} role="tab" aria-selected={menu === tb.key} className={menu === tb.key ? "on" : ""} onClick={() => setMenu(tb.key)}>
-                <Icon name={tb.icon} size={18} />
-                <span className="lb">{tb.label}</span>
-                {!!tb.badge && <span className="badge">{fmtNum(tb.badge)}</span>}
+        <DriveMenu tabs={tabs} active={menu} onTab={setMenu} onClose={() => setMenu(null)}>
+        {menu === "jobs" && hud && (
+          <div className="drive-tab">
+            {hud.jobs.length === 0 && <p className="small muted">{t("No jobs around here yet — drive on, or check back in a few minutes.")}</p>}
+            {hud.jobs.map((j) => (
+              <button key={j.id} className="drive-job" onClick={() => goTo(j, j.label)}>
+                <span className="ic"><Icon name={iconForEmoji(j.emoji)} size={20} /></span>
+                <span className="grow">{j.label}</span>
+                <span className="small muted">{formatDistance(j.dist)}</span>
               </button>
             ))}
-            <button className="close" onClick={() => setMenu(null)} aria-label={t("Close")}>✕</button>
           </div>
-          {menu === "jobs" && hud && (
-            <div className="drive-tab">
-              {hud.jobs.length === 0 && <p className="small muted">{t("No jobs around here yet — drive on, or check back in a few minutes.")}</p>}
-              {hud.jobs.map((j) => (
-                <button key={j.id} className="drive-job" onClick={() => goTo(j, j.label)}>
-                  <span className="ic">{j.emoji}</span>
-                  <span className="grow">{j.label}</span>
-                  <span className="small muted">{formatDistance(j.dist)}</span>
+        )}
+        {menu === "places" && (
+          <div className="drive-tab">
+            <button className="pm-row" onClick={onExit}>
+              <Icon name="map" size={20} />
+              <span className="grow">{t("Open the map")}</span>
+              <Icon name="external" size={16} />
+            </button>
+            <input className="drive-search" type="search" value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t("Search shops, banks, cafés…")} aria-label={t("Search places")} />
+            {places.length === 0 && <p className="small muted">{query.trim() ? t("Nothing called “{q}” around here.", { q: query.trim() }) : t("No places found around here yet — drive on and the map fills in.")}</p>}
+            {places.map((p) => (
+              <div key={p.id} className="drive-job drive-place">
+                <button className="drive-place-go" onClick={() => goTo(p, p.name)}>
+                  <span className="ic"><Icon name={iconForEmoji(p.emoji)} size={20} /></span>
+                  <span className="grow">
+                    <b>{p.name}</b>
+                    <span className="small muted">{p.sub}</span>
+                  </span>
+                  <span className="small muted">{formatDistance(p.dist)}</span>
                 </button>
-              ))}
-            </div>
-          )}
-          {menu === "places" && (
-            <div className="drive-tab">
-              <input className="drive-search" type="search" value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t("Search shops, banks, cafés…")} aria-label={t("Search places")} />
-              {places.length === 0 && <p className="small muted">{query.trim() ? t("Nothing called “{q}” around here.", { q: query.trim() }) : t("No places found around here yet — drive on and the map fills in.")}</p>}
-              {places.map((p) => (
-                <div key={p.id} className="drive-job drive-place">
-                  <button className="drive-place-go" onClick={() => goTo(p, p.name)}>
-                    <span className="ic">{p.emoji}</span>
-                    <span className="grow">
-                      <b>{p.name}</b>
-                      <span className="small muted">{p.sub}</span>
-                    </span>
-                    <span className="small muted">{formatDistance(p.dist)}</span>
-                  </button>
-                  {p.sel && <Button className="btn small yellow" onClick={() => onSelect(p.sel!)}>{t("Open")}</Button>}
-                </div>
-              ))}
-            </div>
-          )}
-          {menu === "garage" && (
-            <DriveGarage
-              embedded
-              level={me?.level ?? 1}
-              vehicle={vehicle}
-              paint={paint}
-              style={style}
-              names={names}
-              quality={quality}
-              autoTier={autoTier()}
-              timeOfDay={timeOfDay}
-              weather={weather}
-              fps={hud?.fps ?? 0}
-              locked={live2 ? party?.game ?? null : null}
-              ctl={touch && canDrive ? ctl : null}
-              onVehicle={pickVehicle}
-              onPaint={pickPaint}
-              onStyle={pickStyle}
-              onNames={pickNames}
-              onQuality={pickQuality}
-              onTime={pickTime}
-              onWeather={pickWeather}
-              onCtl={pickCtl}
-              onClose={() => setMenu(null)}
-            />
-          )}
-          {menu === "play" && (
-            <PlayTogether
-              party={party}
-              meId={me?.id ?? ""}
-              canDrive={canDrive}
-              sim={!!sim}
-              combat={combat}
-              course={(g) => api3d.current?.course(g) ?? null}
-              onChange={() => api3d.current?.kick()}
-              onTeleport={(at) => api3d.current?.teleport(at)}
-              onGo={goTo}
-              onClose={() => setMenu(null)}
-            />
-          )}
-        </div>
+                {p.sel && <Button className="btn small yellow" onClick={() => onSelect(p.sel!)}>{t("Open")}</Button>}
+              </div>
+            ))}
+          </div>
+        )}
+        {menu === "garage" && (
+          <DriveGarage
+            embedded
+            section="garage"
+            level={me?.level ?? 1}
+            vehicle={vehicle}
+            paint={paint}
+            style={style}
+            names={names}
+            quality={quality}
+            autoTier={autoTier()}
+            timeOfDay={timeOfDay}
+            weather={weather}
+            fps={hud?.fps ?? 0}
+            locked={live2 ? party?.game ?? null : null}
+            ctl={touch && canDrive ? ctl : null}
+            onVehicle={pickVehicle}
+            onPaint={pickPaint}
+            onStyle={pickStyle}
+            onNames={pickNames}
+            onQuality={pickQuality}
+            onTime={pickTime}
+            onWeather={pickWeather}
+            onCtl={pickCtl}
+            onClose={() => setMenu(null)}
+          />
+        )}
+        {menu === "settings" && (
+          <DriveGarage
+            embedded
+            section="settings"
+            level={me?.level ?? 1}
+            vehicle={vehicle}
+            paint={paint}
+            style={style}
+            names={names}
+            quality={quality}
+            autoTier={autoTier()}
+            timeOfDay={timeOfDay}
+            weather={weather}
+            fps={hud?.fps ?? 0}
+            locked={live2 ? party?.game ?? null : null}
+            ctl={touch && canDrive ? ctl : null}
+            onVehicle={pickVehicle}
+            onPaint={pickPaint}
+            onStyle={pickStyle}
+            onNames={pickNames}
+            onQuality={pickQuality}
+            onTime={pickTime}
+            onWeather={pickWeather}
+            onCtl={pickCtl}
+            onClose={() => setMenu(null)}
+          />
+        )}
+        {menu === "play" && (
+          <PlayTogether
+            party={party}
+            meId={me?.id ?? ""}
+            canDrive={canDrive}
+            sim={!!sim}
+            combat={combat}
+            course={(g) => api3d.current?.course(g) ?? null}
+            onChange={() => api3d.current?.kick()}
+            onTeleport={(at) => api3d.current?.teleport(at)}
+            onGo={goTo}
+            onClose={() => setMenu(null)}
+          />
+        )}
+        </DriveMenu>
       )}
 
       {picked && (
         <div className="drive-pick">
-          <span className="ic">{picked.emoji}</span>
+          <span className="ic"><Icon name={iconForEmoji(picked.emoji)} size={26} /></span>
           <div className="grow">
             <b>{picked.title}</b>
             <span className="small muted">{picked.sub}</span>
           </div>
           <Button className="btn small" onClick={() => (api3d.current?.setGoal({ lat: picked.lat, lng: picked.lng }), toast({ title: t("🧭 Heading to {place}", { place: picked.title }) }), setPicked(null))}>{t("Go")}</Button>
           {picked.sel && <Button className="btn small yellow" onClick={() => onSelect(picked.sel!)}>{t("Open")}</Button>}
-          <button className="close" onClick={() => setPicked(null)} aria-label={t("Close")}>✕</button>
+          <button className="close" onClick={() => setPicked(null)} aria-label={t("Close")}><Icon name="close" size={18} /></button>
         </div>
       )}
 
@@ -2464,13 +2523,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {hud?.near && (
         <div key={hud.near.id} className={`drive-action ${busy ? "busy" : ""}`} style={{ "--job": hud.near.color } as React.CSSProperties}>
           <button className="da-main" disabled={busy} onClick={runNear} aria-busy={busy || undefined}>
-            <span className="da-ic">{busy ? <i className="drive-spinner" aria-hidden /> : <Icon name={hud.near.icon} size={22} strokeWidth={2.2} />}</span>
+            <span className="da-key" aria-hidden>{busy ? <i className="drive-spinner" /> : touch ? <Icon name="touch" size={20} /> : <kbd>Enter</kbd>}</span>
             <span className="da-tx">
               <b>{busy ? t("Working…") : hud.near.verb}</b>
               <span>{hud.near.where}</span>
             </span>
           </button>
-          <button className="da-x" onClick={() => dismiss(hud.near!.id)} aria-label={t("Dismiss")} title={t("Dismiss")} disabled={busy}>✕</button>
+          <button className="da-x" onClick={() => dismiss(hud.near!.id)} aria-label={t("Dismiss")} title={t("Dismiss")} disabled={busy}><Icon name="close" size={18} /></button>
         </div>
       )}
 

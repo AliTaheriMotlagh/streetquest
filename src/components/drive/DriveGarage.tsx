@@ -35,17 +35,17 @@ const QUALITY: { key: QualityPick; label: string }[] = [
 ];
 const TIER_LABEL: Record<Tier, string> = { ultra: msg("Ultra"), high: msg("High"), medium: msg("Medium"), low: msg("Low") };
 
-const TIMES: { key: TimePick; icon: string; label: string }[] = [
-  { key: "day", icon: "☀️", label: msg("Day") },
-  { key: "live", icon: "🕒", label: msg("Real time") },
-  { key: "sunset", icon: "🌇", label: msg("Sunset") },
-  { key: "night", icon: "🌙", label: msg("Night") },
+const TIMES: { key: TimePick; icon: IconName; label: string }[] = [
+  { key: "day", icon: "sun", label: msg("Day") },
+  { key: "live", icon: "clock", label: msg("Real time") },
+  { key: "sunset", icon: "sunset", label: msg("Sunset") },
+  { key: "night", icon: "moon", label: msg("Night") },
 ];
 
-const WEATHERS: { key: Weather; icon: string; label: string }[] = [
-  { key: "clear", icon: "🌤️", label: msg("Clear sky") },
-  { key: "cloudy", icon: "☁️", label: msg("Cloudy") },
-  { key: "rain", icon: "🌧️", label: msg("Rain") },
+const WEATHERS: { key: Weather; icon: IconName; label: string }[] = [
+  { key: "clear", icon: "sun", label: msg("Clear sky") },
+  { key: "cloudy", icon: "cloud", label: msg("Cloudy") },
+  { key: "rain", icon: "rain", label: msg("Rain") },
 ];
 
 type Props = {
@@ -75,9 +75,11 @@ type Props = {
   onClose: () => void;
   /** Inside the drive menu: no window of its own. */
   embedded?: boolean;
+  /** The pause menu splits this in two tabs: the vehicles, and everything about how it looks and handles. */
+  section?: "garage" | "settings";
 };
 
-export function DriveGarage({ level, vehicle, paint, style, names, quality, autoTier, timeOfDay, weather, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onQuality, onTime, onWeather, onCtl, onClose, embedded }: Props) {
+export function DriveGarage({ level, vehicle, paint, style, names, quality, autoTier, timeOfDay, weather, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onQuality, onTime, onWeather, onCtl, onClose, section, embedded }: Props) {
   const groundOnly = !!locked && PARTY_GAMES[locked].groundOnly;
   const [tiltError, setTiltError] = useState(false);
   const [full, setFull] = useState(false);
@@ -91,14 +93,17 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
     setTiltError(false);
     onCtl(m);
   };
+  const showGarage = !section || section === "garage", showSettings = !section || section === "settings";
   return (
     <div className={embedded ? "drive-tab" : "drive-sheet"} role={embedded ? undefined : "dialog"} aria-label={t("Garage")}>
       {!embedded && (
         <div className="row">
-          <b className="grow">🏁 {t("Garage")}</b>
-          <button className="close" onClick={onClose} aria-label={t("Close")}>✕</button>
+          <b className="grow">{t("Garage")}</b>
+          <button className="close" onClick={onClose} aria-label={t("Close")}><Icon name="close" size={18} /></button>
         </div>
       )}
+      {showGarage && (
+        <>
       {groundOnly && <p className="small muted">{t("This round is on wheels only — flyers are parked until it ends.")}</p>}
       <div className="garage-grid">
         {GARAGE_KEYS.map((k) => {
@@ -107,11 +112,11 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
           const parked = groundOnly && v.flies;
           return (
             <button key={k} className={`garage-car ${vehicle === k ? "on" : ""}`} disabled={!open || parked} onClick={() => onVehicle(k)} aria-pressed={vehicle === k}>
-              <span className="ic">{open ? v.emoji : "🔒"}</span>
+              <span className="ic"><Icon name={!open ? "lock" : v.flies ? "plane" : v.bike ? "bike" : "car"} size={26} /></span>
               <b>{t(v.name)}</b>
               <span className="small muted">{open ? t(v.blurb) : t("Unlocks at level {n}", { n: v.level })}</span>
               <span className="garage-stats small">
-                ⚡ {fmtNum(Math.round(v.speed * 100))}%{v.flies ? ` · ✈️ ${t("flies")}` : ""}
+                <Icon name="bolt" size={13} />{fmtNum(Math.round(v.speed * 100))}%{v.flies ? <><span aria-hidden>·</span><Icon name="plane" size={13} />{t("flies")}</> : null}
               </span>
             </button>
           );
@@ -123,6 +128,10 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
           <button key={c} className={`swatch ${paint === c ? "on" : ""}`} style={{ background: c }} onClick={() => onPaint(c)} aria-label={c} aria-pressed={paint === c} />
         ))}
       </div>
+        </>
+      )}
+      {showSettings && (
+        <>
       {ctl && (
         <>
           <b className="small">{t("Steering")}</b>
@@ -140,8 +149,8 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
       )}
       <b className="small">{t("Graphics")}</b>
       <div className="seg">
-        <Button className={`btn small ${style === "real" ? "yellow" : "ghost"}`} onClick={() => onStyle("real")}>🏙️ {t("Realistic")}</Button>
-        <Button className={`btn small ${style === "toon" ? "yellow" : "ghost"}`} onClick={() => onStyle("toon")}>🧸 {t("Cartoon")}</Button>
+        <Button className={`btn small ${style === "real" ? "yellow" : "ghost"}`} onClick={() => onStyle("real")}>{t("Realistic")}</Button>
+        <Button className={`btn small ${style === "toon" ? "yellow" : "ghost"}`} onClick={() => onStyle("toon")}>{t("Cartoon")}</Button>
       </div>
       <b className="small">{t("Picture quality")}</b>
       <div className="seg seg5 seg-fill" role="radiogroup" aria-label={t("Picture quality")}>
@@ -155,7 +164,7 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
       <b className="small">{t("Wide view")}</b>
       {canFullscreen() && (
         <div className="seg">
-          <Button className={`btn small ${full ? "yellow" : "ghost"}`} aria-pressed={full} onClick={() => void setFullscreen(!full)}>⛶ {t(full ? "Leave full screen" : "Full screen")}</Button>
+          <Button className={`btn small ${full ? "yellow" : "ghost"}`} aria-pressed={full} onClick={() => void setFullscreen(!full)}><Icon name="expand" size={16} /> {t(full ? "Leave full screen" : "Full screen")}</Button>
         </div>
       )}
       <p className="small muted" style={{ margin: 0 }}>{t("Turn the phone on its side for the wide view, like a console game — the city fills whatever shape the screen has.")}</p>
@@ -163,7 +172,7 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
       <div className="seg seg4 seg-fill" role="radiogroup" aria-label={t("Time of day")}>
         {TIMES.map((o) => (
           <Button key={o.key} role="radio" aria-checked={timeOfDay === o.key} className={`btn small ${timeOfDay === o.key ? "yellow" : "ghost"}`} onClick={() => onTime(o.key)}>
-            {o.icon} {t(o.label)}
+            <Icon name={o.icon} size={16} /> {t(o.label)}
           </Button>
         ))}
       </div>
@@ -172,7 +181,7 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
       <div className="seg seg3 seg-fill" role="radiogroup" aria-label={t("Weather")}>
         {WEATHERS.map((o) => (
           <Button key={o.key} role="radio" aria-checked={weather === o.key} className={`btn small ${weather === o.key ? "yellow" : "ghost"}`} onClick={() => onWeather(o.key)}>
-            {o.icon} {t(o.label)}
+            <Icon name={o.icon} size={16} /> {t(o.label)}
           </Button>
         ))}
       </div>
@@ -185,6 +194,8 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
         ))}
       </div>
       {fps > 0 && <p className="small muted">{t("{n} frames a second — the picture sharpens or softens on its own to keep it smooth.", { n: fps })}</p>}
+        </>
+      )}
     </div>
   );
 }
