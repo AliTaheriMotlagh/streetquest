@@ -1,0 +1,28 @@
+/* Siktir (never-again marks on places) and Vasatyab (the party's meeting point). Logical properties only: RTL-safe. */
+
+/* ---- Siktir */
+.siktir-bar { display: flex; flex-direction: column; gap: 8px; margin-block: 8px; padding: 8px 10px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+.siktir-bar:has(.siktir-sum) { border-color: rgba(239,100,97,.4); }
+.siktir-sum { margin: 0; font-size: 13px; }
+.siktir-btn { display: inline-flex; align-items: center; gap: 6px; }
+.siktir-btn[aria-expanded="true"] { color: #ef6461; border-color: rgba(239,100,97,.6); }
+.siktir-form { display: flex; flex-direction: column; gap: 8px; margin-block-start: 4px; }
+.siktir-form .filter-chip.on { background: rgba(239,100,97,.16); border-color: rgba(239,100,97,.6); }
+.siktir-form .filter-chip.on .n { background: rgba(239,100,97,.28); color: #ff9b97; }
+.siktir-note { width: 100%; box-sizing: border-box; resize: none; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--text); font: inherit; }
+.siktir-go { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #ef6461; color: #fff; }
+.siktir-go:disabled { opacity: .5; }
+.siktir-warn { color: #ef6461; }
+/* The marked spots on the map: a red disc with the thumbs-down. */
+.mk.place.siktir { color: #fff; }
+.mk.place.siktir .sk-ic { display: block; margin: auto; padding: 5px; box-sizing: content-box; width: 18px; height: 18px; border-radius: 50%; background: #d94b48; box-shadow: 0 2px 8px rgba(0,0,0,.45); transform: translateY(-1px); }
+
+/* ---- Vasatyab */
+.vasa { display: flex; flex-direction: column; gap: 8px; }
+.vasa-methods { display: flex; flex-wrap: wrap; gap: 6px; }
+.vasa-meet { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 14px; border: 1px solid rgba(91,211,140,.45); background: rgba(91,211,140,.08); }
+.vasa-sum { margin: 0; font-weight: 700; }
+.vasa-member .small, .vasa-place .small { white-space: nowrap; }
+.vasa-panel { max-height: min(70vh, 560px); overflow-y: auto; }
+.vasa-fab.on { outline: 2px solid var(--yellow); }
+.mk.vasa-member .nm { max-width: 160px; }

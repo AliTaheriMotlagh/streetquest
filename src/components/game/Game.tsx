@@ -38,6 +38,10 @@ import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
+import { SiktirSheet, type SiktirTarget } from "./Siktir";
+import { useSiktirSpots } from "./SiktirLayer";
+import { VasatyabDock } from "./Vasatyab";
+import type { MidView } from "@/server/midpoint";
 import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
 import type { Cinema } from "@/lib/cinema";
 import { OnlineChip, OnlineSheet } from "./Online";
@@ -67,7 +71,7 @@ const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "deals" | "divar" | "traffic";
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "deals" | "divar" | "traffic" | "siktir";
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -80,6 +84,8 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   { key: "deals", emoji: "🏷️", label: msg("Deals (Takhfifan)"), group: msg("Around you") },
   { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
+  // A plain glyph (not an emoji): the thumbs-down drawn in SiktirIcon is for the buttons and the map.
+  { key: "siktir", emoji: "⊘", label: msg("Siktir spots"), group: msg("Around you") },
 ];
 const ALL_LAYERS = MAP_LAYERS.map((l) => l.key);
 const LAYER_GROUPS = [...new Set(MAP_LAYERS.map((l) => l.group))];
@@ -322,6 +328,10 @@ export default function Game() {
       .catch(() => {});
   }, [dealsOn, look, now]);
   const cinemaOn = layers.includes("cinema");
+  const siktirOn = layers.includes("siktir");
+  const siktirSpots = useSiktirSpots(siktirOn, look ?? null);
+  const [siktirAt, setSiktirAt] = useState<SiktirTarget | null>(null);
+  const [vasa, setVasa] = useState<MidView | null>(null);
   useEffect(() => {
     if (!cinemaOn || !look) return;
     const last = cinemaAt.current;
@@ -372,10 +382,11 @@ export default function Game() {
       cinema: cinemas.length,
       deals: deals.length,
       divar: divar.length,
+      siktir: siktirSpots.length,
     };
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
     return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) }));
-  }, [world, vendors, torobShops, cinemas, deals, divar]);
+  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots]);
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -1060,10 +1071,14 @@ export default function Game() {
           cinemas={cinemaOn ? cinemas : undefined}
           deals={dealsOn ? deals : undefined}
           traffic={layers.includes("traffic")}
+          siktir={siktirOn ? siktirSpots : undefined}
+          onLongPress={picker ? undefined : setSiktirAt}
+          vasatyab={vasa}
           route={route}
           others={exploreOn ? (layers.includes("players") ? exploreData?.players ?? [] : []) : undefined}
           explore={exploreProp}
         />
+        {siktirAt && <SiktirSheet target={siktirAt} onClose={() => setSiktirAt(null)} />}
         {exploreOn && <ExploreBar hasMe={!!pos} onJump={(at) => startExplore(at)} onExit={stopExplore} />}
 
         {/* HUD: who I am on one side, my wallet and status on the other — one tidy row. */}
@@ -1202,6 +1217,7 @@ export default function Game() {
 
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
+          <VasatyabDock onView={setVasa} />
           <Button className={`fab map-filter-fab ${filterOpen ? "on" : ""}`} title={t("Filter the map")} aria-label={t("Filter the map")} aria-expanded={filterOpen} onClick={() => (setFilterOpen(!filterOpen), setMoreOpen(false))}>
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 5h16l-6.2 7.4V18l-3.6 1.8v-7.4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
             {hiddenCount > 0 && <span className="badge">{fmtNum(hiddenCount)}</span>}
@@ -1499,6 +1515,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   }
   if (sel.type === "divar") return <DivarCard area={sel.data} onClose={onClose} />;
   if (sel.type === "torob") return <TorobPlaceCard p={sel.data} onClose={onClose} />;
+  if (sel.type === "siktir") return <SiktirSheet target={{ lat: sel.data.lat, lng: sel.data.lng, placeKey: sel.data.placeKey, name: sel.data.name }} onClose={onClose} />;
   if (sel.type === "cinema") return <CinemaCard c={sel.data} onClose={onClose} />;
   if (sel.type === "deal") return <DealCard d={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;

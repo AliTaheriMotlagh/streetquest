@@ -35,6 +35,7 @@ import money from "./money";
 import landmarks from "./landmarks";
 import arena from "./arena";
 import local from "./local";
+import social from "./social";
 
 const fa: Messages = {
   ...arena,
@@ -60,6 +61,7 @@ const fa: Messages = {
   ...money,
   ...landmarks,
   ...local,
+  ...social,
 };
 
 export default fa;

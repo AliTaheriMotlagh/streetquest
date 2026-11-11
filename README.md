@@ -350,6 +350,31 @@ mood scales XP; loot funds research; territory funds the army.
   played from home (players on real GPS can watch, and switch with one tap). Members see how far each other is, and
   a deliberate jump of the car (start line, going to the host) is announced to the referee so it isn't taken for a
   speed hack (`warp`). `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts`, `src/app/api/party`.
+- **Vasatyab (وسط‌یاب) — where should the party meet?** A group finds the point in the middle of all its members,
+  from where each was last seen (the 3D city position while driving, else the last GPS report; positions older than
+  10 minutes are marked stale, older than 6 hours ignored). Three ways to pick it: **Balanced** (the geometric median,
+  the default — least travel for everyone put together; robust to one far-away friend), **Fairest** (the minimax point —
+  the farthest friend travels the least) and **Plain centre** (the average on the globe). It shows each member's distance,
+  up to six places to meet near it (cafés, restaurants, bakeries, parks… from the real-places data and Snappfood's
+  cached vendors, ranked by the farthest member's trip; places with 3+ Siktir marks are left out), **Set as gather
+  point** (the party remembers it and everyone is notified; in the 3D city 🚀 *Gather here* puts your car there) and
+  **Share** (a maps link). In the 3D city it is a section of the Play together tab; on the 2D map a party button
+  (only while you're in a party) opens the panel and draws the middle, each member and a dashed line to the middle. It
+  refreshes as members move (4 s while open). Not done: snapping the point to the nearest street (there is no cheap
+  server-side street helper), and drawing the point as a 3D beacon. Maths `src/lib/midpoint.ts` (tests
+  `tests/midpoint.test.ts`), server `src/server/midpoint.ts`, `GET/POST /api/party/midpoint` (`?method=`, `?lite=1`),
+  UI `src/components/game/Vasatyab.tsx`, `DriveParty.meetLat/meetLng/meetName`.
+- **Siktir (سیکتیر) — "never again" for a place** — mark a place you didn't like, with a reason (dirty, rude staff,
+  overpriced, unsafe, scam, too noisy, bad quality, something else) and an optional note of up to 280 characters.
+  Every store card (Snappfood vendor, Torob store, real place, business, Market shop) has a **Siktir** button and
+  shows "N people said Siktir — top reasons"; a **long press anywhere on the 2D map** (right-click on a desktop) opens
+  the reason sheet for that spot, and the **Siktir spots** map layer (⋯ → On the map → Around you) shows the marked
+  places (tap one for the reasons). One mark per player per place (the store id, or the spot rounded to ~11 m);
+  marking again changes it, "Take it back" removes it; 8 new marks an hour and 25 a day. Players only ever see counts
+  and reasons, never who. Admin → Community → **Siktir** lists every mark with the player, hides one (it stops
+  counting and the author can't bring it back by editing) or deletes it. Rules and counts `src/lib/siktir.ts`
+  (tests `tests/siktir.test.ts`), server `src/server/siktir.ts`, `GET/POST/DELETE /api/siktir` (box or `placeKey`),
+  `/api/admin/siktir`, UI `src/components/game/{Siktir,SiktirLayer}.tsx`, `src/components/AdminSiktir.tsx`, model `PlaceDislike`.
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
   nearby shows up live (20 updates a second over WebSockets, or a few a second over HTTP without the realtime
   server). Press **F** / 🚶 to get out of the car and walk as a 3D
