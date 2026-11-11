@@ -8,11 +8,15 @@
 //    or OpenAI's Persian voices, a man's or a woman's, made once and cached for good by the
 //    CDN and the phone; the police's through a megaphone filter); else the device's own
 //    Persian voice if it has one (speechSynthesis — some Android phones); else only the bubble.
+//  - Players not in Persian hear English: the recordings in /sounds/voice/en/ (lib/street/
+//    voiceLang.ts), else the device's English voice (a woman's for a woman, where its name
+//    tells), else only the bubble. (/api/tts speaks Persian only.)
 //  - Nobody talks over anybody: one line at a time near you, and each situation has its
 //    quiet spell (QUIET_S) so a crowd running from a blast isn't a chorus.
 import * as THREE from "three";
-import { barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, textOf, type Bark, type Situation, type VoiceKind } from "@/lib/street/barks";
+import { barkById, barkKey, pickBark, QUIET_S, sayFor, textOf, type Bark, type Situation, type VoiceKind } from "@/lib/street/barks";
 import { getLocale } from "@/lib/i18n";
+import { lineFile, manifestPaths, pickDeviceVoice, voiceLangOf, type VoiceLang } from "@/lib/street/voiceLang";
 import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
@@ -29,7 +33,7 @@ const bufs = new Map<string, AudioBuffer | null>();
 function files() {
   manifest ??= fetch("/sounds/voice/manifest.json", { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : { files: [] }))
-    .then((m: { files?: unknown }) => new Set(Array.isArray(m.files) ? m.files.filter((f): f is string => typeof f === "string" && /^[\w-]+\.mp3$/.test(f)) : []))
+    .then((m: { files?: unknown; en?: unknown }) => new Set(manifestPaths(m)))
     .catch(() => new Set<string>());
   return manifest;
 }
@@ -72,10 +76,10 @@ function ttsLine(b: Bark, v: VoiceKind): AudioBuffer | Promise<AudioBuffer | nul
   return p;
 }
 
-/** The device's Persian voice, if it has one. */
-function persianVoice() {
+/** The device's own voice for the language and speaker, if it has one. */
+function deviceVoice(lang: VoiceLang, v: VoiceKind) {
   if (typeof speechSynthesis === "undefined") return null;
-  return speechSynthesis.getVoices().find((v) => /^fa(-|_|$)/i.test(v.lang)) ?? null;
+  return pickDeviceVoice(speechSynthesis.getVoices(), lang, v);
 }
 
 export class Voices {
@@ -100,8 +104,9 @@ export class Voices {
       scene.add(sprite);
       this.bubbles.push({ sprite, mat, tex, c, where: null, t: 0 });
     }
-    // The recordings, in the background (they're small).
-    void files().then((s) => s.forEach((f) => void load(f)));
+    // The recordings of the player's language, in the background (they're small).
+    const en = voiceLangOf(getLocale()) === "en";
+    void files().then((s) => s.forEach((f) => f.startsWith("en/") === en && void load(f)));
   }
 
   /**
@@ -172,9 +177,12 @@ export class Voices {
     if (isMuted()) return;
     // The phone's own speech has no place in the mix: just its volume at that distance.
     const vol = gainAt(d, "voice");
-    const buf = bufs.get(barkFile(b, v));
+    const lang = voiceLangOf(getLocale());
+    const buf = bufs.get(lineFile(b, v, lang));
     // A recording (already filtered for the police).
     if (buf) return this.play(buf, at, false);
+    // English has no speech service: the device's voice, else the bubble.
+    if (lang === "en") return this.device(b, v, vol, lang);
     // The server's spoken copy: now if it's here, else as soon as it arrives (if that's soon).
     const spoken = ttsLine(b, v);
     if (spoken instanceof AudioBuffer) return this.play(spoken, at, v === "cop");
@@ -183,24 +191,25 @@ export class Voices {
       void spoken.then((s) => {
         if (s) {
           if (performance.now() - asked < 2500) this.play(s, at, v === "cop");
-        } else this.device(b, v, vol);
+        } else this.device(b, v, vol, lang);
       });
       return;
     }
-    this.device(b, v, vol);
+    this.device(b, v, vol, lang);
   }
 
-  /** The device's own Persian voice, if it has one. */
-  private device(b: Bark, v: VoiceKind, vol: number) {
-    const fa = persianVoice();
-    if (!fa) return;
-    const say = textOf(b, v).fa;
+  /** The device's own voice in the player's language, if it has one. */
+  private device(b: Bark, v: VoiceKind, vol: number, lang: VoiceLang) {
+    const dv = deviceVoice(lang, v);
+    if (!dv) return;
+    const say = textOf(b, v)[lang];
     const u = new SpeechSynthesisUtterance(say);
-    u.voice = fa;
-    u.lang = fa.lang;
+    u.voice = dv;
+    u.lang = dv.lang;
     u.volume = Math.min(1, vol * 1.2);
     u.rate = say.includes("!") ? 1.15 : 1;
-    u.pitch = v === "f" ? 1.45 : v === "cop" ? 0.85 : 1;
+    // (English: the voice is picked by gender where its name tells, so only a nudge.)
+    u.pitch = lang === "en" ? (v === "f" ? 1.15 : v === "cop" ? 0.9 : 1) : v === "f" ? 1.45 : v === "cop" ? 0.85 : 1;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
   }

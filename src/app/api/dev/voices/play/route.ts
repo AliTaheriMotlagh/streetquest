@@ -1,9 +1,9 @@
 // Development only: a saved raw line, to listen to on /dev/voices (?file=<id>-<voice>.wav).
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BARKS, barkFile } from "@/lib/street/barks";
+import { jobsFor, VOICE_LANGS } from "@/lib/street/voiceLang";
 
-const NAMES = new Set(BARKS.flatMap((b) => b.voices.map((v) => barkFile(b, v).replace(/\.mp3$/, ".wav"))));
+const NAMES = new Set(VOICE_LANGS.flatMap((l) => jobsFor(l).map((j) => j.raw)));
 
 export async function GET(req: Request) {
   const file = new URL(req.url).searchParams.get("file") ?? "";

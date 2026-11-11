@@ -5,11 +5,12 @@
 // from disk. Only these files:
 //   ort/<version>/ort-wasm-simd-threaded.{mjs,wasm}   the ONNX runtime (onnxruntime-web)
 //   piper/piper_phonemize.{wasm,data}                  Piper's phonemizer (espeak-ng)
-//   model/fa_IR-{amir,gyro}-medium.onnx[.json]         Piper's Persian voices (men)
+//   model/<voice>.onnx[.json]                          Piper's voices in voiceLang.ts (Persian men; English men, women, police)
 //   model/fa-haaniye-low.onnx[.json]                   Mimic 3's Persian woman's voice
 import { createReadStream, existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
+import { MODELS } from "@/lib/street/voiceLang";
 
 const DIR = join(process.cwd(), "assets/voices/lib");
 const TYPES: Record<string, string> = { mjs: "text/javascript", wasm: "application/wasm", json: "application/json" };
@@ -19,8 +20,10 @@ function sourceOf(parts: string[]): string | null {
   const [kind, a, b] = parts;
   if (kind === "ort" && /^\d+\.\d+\.\d+$/.test(a ?? "") && /^ort-wasm-simd-threaded\.(mjs|wasm)$/.test(b ?? "")) return `https://cdn.jsdelivr.net/npm/onnxruntime-web@${a}/dist/${b}`;
   if (kind === "piper" && parts.length === 2 && /^piper_phonemize\.(wasm|data)$/.test(a ?? "")) return `https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/${a}`;
-  const m = kind === "model" && parts.length === 2 ? (a ?? "").match(/^fa_IR-(amir|gyro)-medium\.onnx(\.json)?$/) : null;
-  if (m) return `https://huggingface.co/diffusionstudio/piper-voices/resolve/main/fa/fa_IR/${m[1]}/medium/${a}`;
+  // Piper's voices (voiceLang.ts MODELS: Persian men, English men/women/police), each .onnx and .onnx.json.
+  const m = kind === "model" && parts.length === 2 ? (a ?? "").match(/^(.+)\.onnx(\.json)?$/) : null;
+  const piper = m ? MODELS.find((x) => x.id === m[1] && x.hf) : null;
+  if (piper) return `https://huggingface.co/diffusionstudio/piper-voices/resolve/main/${piper.hf}/${a}`;
   // A woman's voice (Piper has none in Persian): Mycroft Mimic 3's «haaniye», CC0.
   const w = kind === "model" && parts.length === 2 ? (a ?? "").match(/^fa-haaniye-low\.onnx(\.json)?$/) : null;
   // (The model is in Git LFS: github.com/…/raw/ gives the file, raw.githubusercontent only a pointer.)
