@@ -37,6 +37,7 @@ import arena from "./arena";
 import local from "./local";
 import social from "./social";
 import adminobjects from "./adminobjects";
+import scenarios from "./scenarios";
 
 const fa: Messages = {
   ...arena,
@@ -64,6 +65,7 @@ const fa: Messages = {
   ...landmarks,
   ...local,
   ...social,
+  ...scenarios,
 };
 
 export default fa;

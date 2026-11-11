@@ -10,6 +10,7 @@ import { fmtNum, t, msg } from "@/lib/i18n";
 const AdminVisits = dynamic(() => import("./AdminVisits"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminCars = dynamic(() => import("./AdminCars"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminSiktir = dynamic(() => import("./AdminSiktir"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminScenarios = dynamic(() => import("./AdminScenarios"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminObjects = dynamic(() => import("./AdminObjects"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminModels = dynamic(() => import("./AdminModels"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
@@ -37,7 +38,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "siktir" | "deliveries";
+type Tab = "scenarios" | "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "siktir" | "deliveries";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -49,6 +50,7 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     group: msg("Game"),
     items: [
       { id: "settings", icon: "⚙️", label: msg("Game settings"), desc: msg("Every rule in the game: rewards, ranges, timers, play from home, goals, store and ads. Pick a category, change values, then Save — players get it within ~15 seconds.") },
+      { id: "scenarios", icon: "🎬", label: msg("Scenarios"), desc: msg("Story missions in the 3D city: givers on the street, steps like steal a car, chase, lose the police or take a photo, with dialogue and a reward. Create, edit, switch on and off, and test each one.") },
       { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every item. Change a number to override it; clear it to go back to the original.") },
       { id: "objects", icon: "🧩", label: msg("Objects"), desc: msg("Every object in the game: cars, people, police, guns, street props, loot, markers, store kinds and 3D stores — with file, size, triangles, licence and where it is used. Search, filter and turn any model round.") },
       { id: "models", icon: "🔄", label: msg("Model update"), desc: msg("Replace a built-in 3D model without a deploy: upload a .glb, see it next to the current one, publish, and roll back to any earlier version.") },
@@ -227,6 +229,7 @@ export function AdminPanel() {
         {tab === "objects" && <AdminObjects onReplace={(slot) => (setModelSlot(slot), setTab("models"))} />}
         {tab === "models" && <AdminModels slot={modelSlot} />}
         {tab === "graphics" && <AdminGraphics key={JSON.stringify(data.config.values.gfx ?? {})} config={data.config} post={post} />}
+        {tab === "scenarios" && <AdminScenarios onError={setNotice} />}
         {tab === "settings" && <SettingsTab key={JSON.stringify(data.config.overrides)} config={data.config} post={post} />}
         {tab === "data" && <GameDataTab key={JSON.stringify(data.config.overrides.catalog ?? {})} config={data.config} post={post} />}
         {tab === "revenue" && <RevenueTab rev={data.revenue} config={data.config} />}

@@ -340,6 +340,37 @@ mood scales XP; loot funds research; territory funds the army.
     more and it's a **Clean getaway**, paid by the stars. The server pays both (`POST /api/drive/street`, XP and
     coins with the admin's multipliers, less from home) but can't see the chase, so it limits them: one of a kind
     per 3 minutes (a unique `Claim` per window) and 12 a day.
+  - *Story scenarios* (`src/lib/scenarios/*`, `src/components/drive/{scenarios.ts,ScenarioHud.tsx}`), GTA-style missions
+    described as data. **Mission givers** stand on the streets around you as amber beacons (the same beacons jobs
+    use; they are put again when you drive 1.8 km away); drive or walk into one for the briefing card, **Accept**, and
+    the steps play in order. A step is one of: *go to a place* (radius, optional clock), *get a car* (any, or given
+    models — taking one off the street, **F**), *pick up a person / package* and *deliver*, *chase and ram* (a moving
+    car ahead flees, kept in the traffic by `TrafficCars.pin`; wrecked wins, 220 m away or gone fails), *lose the
+    police* (raises the wanted level — they come by themselves — and wins when they give up), *survive* N seconds,
+    *take out N gunmen* (the armed officers `Police` sends at 3 ★; counted by `StreetLife.kills`), *photograph a
+    landmark* (close, facing it, still for 1.2 s — a flash) and *drift* N metres (a held slide; there is no slow-mo
+    in the game, so the drift is the distance slid sideways above 7 m/s). Steps can carry a checkpoint (a retry
+    resumes after it, with the clock it had), their own objective text, a clock and dialogue (subtitles in the
+    player's language, plus a recorded street line by id when one exists, `voices.ts`). Fail rules: the whole clock,
+    a step clock, car wrecked, knocked out or arrested, target escaped. The HUD shows the objective, clock, distance,
+    progress, a waypoint arrow, a pass / fail card with retry; nothing runs during an arena match (a run in progress
+    is called off). Places are **anchors** (`fixed` lat/lng, `start`, nearest `junction`, `store` of a kind,
+    `landmark`, a point `along` the roads — each within a ring, measured from the start or the previous place), resolved
+    when you accept, so every scenario plays in any city. The pure state machine (`machine.ts`) is unit-tested
+    (`tests/scenarios.test.ts`); the six starters (`starters.ts`: *Midnight Getaway*, *Bazaar Run*, *Davoud's Debt*,
+    *Cold Trail*, *City Postcard*, *Hold the Tea House*) are data like any other. Server (`/api/scenarios`,
+    `src/server/scenarios.ts`, models `ScenarioDef` / `ScenarioRun`): `start` takes the places the client resolved and
+    refuses ones that don't fit the scenario or where you are; `finish` can't see the chase, so it checks the run could
+    have happened (`plausibility.ts`: the claimed time ≤ the real clock and ≥ the legs at the fastest vehicle's speed
+    + the other steps' minimums; the distance driven ≥ the legs and ≤ speed × time; for a run that ends at a place,
+    the last position `/api/loc` accepted is there), then pays the reward through `grant` (the admin's multipliers) —
+    **one reward per scenario per 6 h window** (a unique `(user, scenario, window)`), at most 12 paid a day; replays
+    pay nothing. Runs are kept (`ScenarioRun`: status, time, distance, reason). **Admin → Scenarios**
+    (`AdminScenarios.tsx`, `/api/admin/scenarios`): list with on/off switches and won/failed counts, create,
+    duplicate, edit (a starter is edited by saving over it; *Reset* deletes the row), a form per step type, anchor
+    pickers with a map pin picker (`AdminDropMap`), dialogue editor, and the validator's problems shown beside each
+    field. **Test it** opens `/play?drive=1&scenario=<id>` — the 3D city with that briefing open, even if the scenario
+    is switched off (admins only). E2E: `e2e/api/scenarios.spec.ts`.
   - All of it is local to your phone, like the traffic: nobody else sees your wanted level, and it never touches a
     match (a match is a clean shooter: no traffic, no people, no police).
 - **Small phones** — on screens ≤ 380 px wide or ≤ 680 px tall (iPhone SE, 360×640 Androids) the HUD is a size

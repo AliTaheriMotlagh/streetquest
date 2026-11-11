@@ -35,6 +35,7 @@ import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
 import { Icon } from "../drive/icons";
+import { queueScenario } from "../drive/scenarioLink";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
@@ -747,6 +748,7 @@ export default function Game() {
   useEffect(() => {
     if (!wantDrive.current || !me || !canStart) return;
     wantDrive.current = false;
+    queueScenario(new URLSearchParams(location.search).get("scenario"));
     history.replaceState(null, "", "/play");
     setDriveOn({ goal: null });
   }, [me?.id, canStart]); // eslint-disable-line react-hooks/exhaustive-deps
