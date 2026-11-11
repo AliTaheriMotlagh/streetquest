@@ -1,0 +1,27 @@
+/* The store card in the 3D city (drive/StoreCard.tsx): the chip under the street name and the sheet's photo carousel and deals. */
+.drive-store.rich { align-items: flex-start; max-width: min(340px, 100%); transform-origin: top center; animation: storeIn .32s cubic-bezier(.2, .9, .25, 1.15); }
+.drive-store.rich .tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.drive-store.rich .tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-chip-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 1px; }
+.store-chip-meta .tag { font-size: 11px; padding: 1px 6px; letter-spacing: 0; }
+.store-chip-meta .deal-tag { background: #ffd23f; color: #3a2600; }
+.store-chip-item { font-size: 12px; color: #9ff0c0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: storeFade .4s ease-out; }
+@keyframes storeIn { from { opacity: 0; transform: translateY(-8px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes storeFade { from { opacity: 0; } to { opacity: 1; } }
+
+.store-sheet { display: flex; flex-direction: column; gap: 10px; animation: storeFade .3s ease-out; }
+.store-carousel { position: relative; margin-inline: -16px; margin-top: -4px; }
+.store-slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; background: #0b0d12; }
+.store-slides::-webkit-scrollbar { display: none; }
+.store-slides img { flex: 0 0 100%; width: 100%; height: 190px; object-fit: cover; scroll-snap-align: center; }
+.store-dots { position: absolute; inset-inline: 0; bottom: 8px; display: flex; justify-content: center; gap: 5px; pointer-events: none; }
+.store-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .45); transition: transform .2s, background .2s; }
+.store-dots i.on { background: #fff; transform: scale(1.35); }
+.store-deals { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 10px; border-radius: 12px; background: linear-gradient(135deg, rgba(255, 210, 63, .18), rgba(255, 120, 40, .12)); border: 1px solid rgba(255, 210, 63, .35); }
+.store-deals .deal-item { font-size: 12px; }
+.store-deals .deal-item s { margin-inline-start: 6px; opacity: .55; }
+
+@media (prefers-reduced-motion: reduce) {
+  .drive-store.rich, .store-chip-item, .store-sheet { animation: none; }
+  .store-slides { scroll-behavior: auto; }
+}

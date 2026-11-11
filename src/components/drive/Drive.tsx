@@ -52,6 +52,8 @@ import { PartyHud } from "./PartyHud";
 import { PlayTogether } from "./PlayTogether";
 import { Markers, markersOf } from "./markers";
 import { CinemaBoards } from "./cinemaBoards";
+import { Storefronts, type StorePanel } from "./storefronts";
+import { StoreChip, StoreSheet, type StoreTarget } from "./StoreCard";
 import type { Cinema } from "@/lib/cinema";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
@@ -144,7 +146,7 @@ type Hud = {
   night: boolean;
   street: string | null;
   /** The store you're passing (slow, or on foot): its card under the street name. */
-  store: { kind: "store" | "marker"; id: string; emoji: string; name: string; sub: string; color: string } | null;
+  store: { kind: "store" | "marker"; id: string; emoji: string; name: string; sub: string; color: string; cls?: string; lat?: number; lng?: number } | null;
   fps: number;
   serverNow: number;
 };
@@ -248,6 +250,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     combat.join(partyArena.id, partyArena.kind);
   }, [partyArena?.id, combat, canDrive, amHost, rtOn, inMatch]); // eslint-disable-line react-hooks/exhaustive-deps
   const [picked, setPicked] = useState<Picked | null>(null);
+  /** A store tapped (its sign, or its chip): the full card with photos, deals and the menu. */
+  const [storeSheet, setStoreSheet] = useState<StoreTarget | null>(null);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
   // "Fly low to pick things up": once waved away, gone for good on this device.
   const [flyHintOff, setFlyHintOff] = useState(() => store.get(FLY_HINT_KEY) === "1");
@@ -298,6 +302,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     teleport: (at: LatLng & { yaw: number }) => void;
     /** The card for a store (or anything else tapped in the city). */
     openPick: (pick: { kind: string; id: string }) => void;
+    /** What a store's card read (logo, hours, menu, deal): its sign and the in-world panel use it. */
+    storeInfo: (id: string, info: StorePanel) => void;
+    /** The in-world panel by this store (null: away). */
+    showPanel: (id: string | null) => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -749,6 +757,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const markers = new Markers(scene, frame, lite ? 16 : 32, style, placeSign);
     // Cinemas' billboards (what's on, from cinematicket.org): the list is read again after 3 km.
     const cinemaBoards = new CinemaBoards(scene, frame, placeSign);
+    // Every store: one lit sign each (an atlas), dressed fronts, and the panel by the one you pass (storefronts.ts).
+    const storefronts = new Storefronts(scene, lite ? "lite" : prof.tier, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
     let cinemasAt: { x: number; z: number } | null = null;
     const syncCinemas = () => {
       if (cinemasAt && Math.hypot(st.x - cinemasAt.x, st.z - cinemasAt.z) < 3000) return;
@@ -857,7 +868,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         });
       }
       want.sort((a, b) => a.d - b.d);
-      const pick = [...want.filter((w) => w.l.kind === "shop").slice(0, lite ? 18 : 44), ...want.filter((w) => w.l.kind === "num").slice(0, lite ? 8 : 24)];
+      storefronts.sync(want.filter((w) => w.l.kind === "shop").map((w) => ({ id: w.id, text: w.l.text, cls: w.l.cls, x: w.l.x, y: w.l.y, z: w.l.z, angle: w.l.angle, w: w.l.w, pole: w.l.pole, d: w.d })));
+      const pick = want.filter((w) => w.l.kind === "num").slice(0, lite ? 8 : 24);
       const keep = new Set(pick.map((w) => w.id));
       for (const [id, b] of boards) if (!keep.has(id)) (scene.remove(b.group), b.dispose(), boards.delete(id));
       for (const { id, l } of pick) {
@@ -1329,6 +1341,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       ray.setFromCamera(ndc, camera);
       const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...cinemaBoards.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
       const small = ray.intersectObjects(targets, false)[0];
+      // A store's sign (one instanced draw): the nearer of it and the rest wins.
+      const sf = storefronts.pick(ray);
+      if (sf && (!small || sf.distance < small.distance)) return openPick({ kind: "store", id: sf.id });
       // A store's own building (nested meshes); whatever is nearer the camera wins.
       const big = ray.intersectObjects(landmarks.pickables(), true)[0];
       const lm = big && (!small || big.distance < small.distance) ? landmarks.of(big.object) : null;
@@ -1349,7 +1364,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const l = shopById(pick.id);
         if (!l) return setPicked(null);
         const tr = tradeOf(l.cls), at = frame.toLatLng(l.x, l.z);
-        setPicked({ emoji: tr.emoji, title: oneLine(l.text), sub: `${t(tr.label)} · ${formatDistance(distanceM(here, at))}`, lat: at.lat, lng: at.lng, sel: null });
+        setPicked(null);
+        setStoreSheet({ id: pick.id, name: oneLine(l.text), cls: l.cls, lat: at.lat, lng: at.lng, emoji: tr.emoji, color: tr.bg[0], sub: `${t(tr.label)} · ${formatDistance(distanceM(here, at))}` });
       } else if (pick.kind === "job") {
         const j = beacons.get(pick.id)?.job;
         if (j) setPicked({ emoji: j.emoji, title: j.label, sub: formatDistance(distanceM(here, j)), lat: j.lat, lng: j.lng, sel: j.sel });
@@ -1358,7 +1374,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (s) setPicked({ emoji: "💵", title: s.drop?.label ?? t("{n} toman", { n: s.amount }), sub: t("Drive through it to pick it up"), lat: s.lat, lng: s.lng, sel: { type: "money", data: s } });
       } else if (pick.kind === "cinema") {
         const c = cinemaBoards.get(pick.id);
-        if (c) setPicked({ emoji: "🎬", title: c.name, sub: `${t("Cinema")} · ${formatDistance(distanceM(here, c))}`, lat: c.lat, lng: c.lng, sel: { type: "cinema", data: c } });
+        // Straight to the sessions and the ticket link.
+        if (c) (setPicked(null), L.onSelect({ type: "cinema", data: c }));
       } else if (pick.kind === "marker") {
         const m = markers.get(pick.id);
         if (m) setPicked({ emoji: m.emoji, title: m.label, sub: formatDistance(distanceM(here, m)), lat: m.lat, lng: m.lng, sel: m.sel });
@@ -1384,6 +1401,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     api3d.current = {
       setGoal: (p) => ((navGoal = p), (wanted.current = null)),
       openPick,
+      storeInfo: (id, info) => storefronts.setInfo(id, info),
+      showPanel: (id) => storefronts.showPanel(id),
       cycleCam,
       horn,
       land,
@@ -1487,6 +1506,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
       markers.setNight(boardNight);
       cinemaBoards.setNight(night);
+      storefronts.setNight(night);
       dustMat.opacity = night > 0.6 ? 0.95 : 0.35;
       dustMat.color.set(night > 0.6 ? "#b8ff7a" : "#fff3b0");
       // Wet streets come and go over a few seconds; starting out in the rain they already are.
@@ -1835,6 +1855,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       wet += Math.sign(wetTarget - wet) * Math.min(Math.abs(wetTarget - wet), dt / 12);
       WORLD.wet.value = wet;
       WORLD.time.value = time;
+      storefronts.update(time, dt, camera);
+      cinemaBoards.update(time);
       rain.update(camera.position, time, rainAmount, rainTint);
       if (clouds)
         for (const cl of clouds.group.children) {
@@ -1848,7 +1870,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       dust.rotation.y = time * 0.03;
       // A match is on: the city's jobs, money and shop pins step aside.
       const matchOn = combat.inMatch;
-      markers.hidden = cinemaBoards.hidden = matchOn;
+      markers.hidden = cinemaBoards.hidden = storefronts.hidden = matchOn;
       for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time);
       for (const l of loot.values()) if (matchOn) l.group.visible = false;
       for (const l of loot.values()) l.tick(time);
@@ -2007,7 +2029,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           const ns = nearStore([...shops, ...markers.spots()], st.x, st.z, camFwd.x / fl, camFwd.z / fl, lastStore);
           if (ns) {
             const tr = tradeOf(ns.store.cls);
-            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0] };
+            const ll = frame.toLatLng(ns.store.x, ns.store.z);
+            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng };
           }
         }
         lastStore = store?.id ?? null;
@@ -2140,7 +2163,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt, model: () => model };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt, model: () => model };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -2202,6 +2225,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       landmarks.dispose();
       markers.dispose();
       cinemaBoards.dispose();
+      storefronts.dispose();
       if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose());
       model.dispose();
       cockpit.dispose();
@@ -2338,7 +2362,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </div>
         <div className="drive-mid">
           {hud?.street && <div className="drive-street" key={banner?.at ?? 0}>{hud.street}</div>}
-          {hud?.store && (
+          {hud?.store?.kind === "store" && hud.store.lat != null && hud.store.lng != null && (
+            <StoreChip
+              key={hud.store.id}
+              s={{ id: hud.store.id, name: hud.store.name, cls: hud.store.cls, lat: hud.store.lat, lng: hud.store.lng, emoji: hud.store.emoji, color: hud.store.color, sub: hud.store.sub }}
+              onOpen={() => api3d.current?.openPick({ kind: "store", id: hud.store!.id })}
+              onInfo={(id, info) => api3d.current?.storeInfo(id, info)}
+              onShow={(id) => api3d.current?.showPanel(id)}
+            />
+          )}
+          {hud?.store && hud.store.kind !== "store" && (
             <button type="button" className="drive-store" key={hud.store.id} style={{ "--trade": hud.store.color } as React.CSSProperties} onClick={() => api3d.current?.openPick({ kind: hud.store!.kind, id: hud.store!.id })}>
               <span className="ic">{hud.store.emoji}</span>
               <span className="tx">
@@ -2507,6 +2540,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           )}
         </div>
       )}
+
+      {storeSheet && <StoreSheet s={storeSheet} onClose={() => setStoreSheet(null)} onGo={() => (api3d.current?.setGoal({ lat: storeSheet.lat, lng: storeSheet.lng }), toast({ title: t("🧭 Heading to {place}", { place: storeSheet.name }) }), setStoreSheet(null))} />}
 
       {picked && (
         <div className="drive-pick">

@@ -245,6 +245,13 @@ const drive: Record<string, string> = {
   "Touch controls": "کنترل‌های لمسی",
   "Look sensitivity": "حساسیت دید",
   "Left-handed layout": "چینش چپ‌دست",
+  "Photos of {name}": "عکس‌های {name}",
+  "Next sessions": "سانس‌های بعدی",
+  "No more sessions today": "امروز سانس دیگری نیست",
+  "Tap for tickets": "برای خرید بلیت لمس کنید",
+  "No menu listed here": "منویی برای این‌جا ثبت نشده",
+  "Looking it up…": "در حال جستجو…",
+  "Tap for the full card": "برای دیدن همه‌چیز لمس کنید",
 };
 
 export default drive;
