@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Game from "@/components/game/Game";
 import { getT } from "@/server/i18n";
+import { VisitPing } from "@/components/VisitPing";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -10,5 +11,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = { maximumScale: 1, userScalable: false };
 
 export default function PlayPage() {
-  return <Game />;
+  return (
+    <>
+      <VisitPing />
+      <Game />
+    </>
+  );
 }

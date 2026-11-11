@@ -55,7 +55,7 @@ export default async function Home() {
     prisma.announcement.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 2 }).catch(() => []),
     prisma.user.count().catch(() => 0),
     prisma.event.count({ where: { endsAt: { gt: new Date() }, isPublic: true } }).catch(() => 0),
-    visitTotals().catch(() => ({ total: 0, today: 0 })),
+    visitTotals().catch(() => ({ total: 0, today: 0, unique: 0 })),
   ]);
 
   const jsonLd = [
@@ -125,7 +125,7 @@ export default async function Home() {
                 <dt>{t("Live & upcoming events")}</dt>
                 <dd>{fmtNum(events, locale)}</dd>
               </div>
-              <VisitCount total={visits.total} today={visits.today} />
+              <VisitCount total={visits.total} today={visits.today} unique={visits.unique} />
               <div>
                 <dt>{t("Works in your browser")}</dt>
                 <dd>{t("Free")}</dd>

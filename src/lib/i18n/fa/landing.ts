@@ -35,6 +35,7 @@ const landing: Record<string, string> = {
   "Live & upcoming events": "رویداد زنده و در پیش",
   Visits: "بازدید",
   "{n} today": "{n} امروز",
+  "{n} unique today": "{n} بازدیدکننده‌ی یکتا",
   New: "جدید",
   "Drive your real streets in 3D": "توی خیابون‌های واقعی‌ت سه‌بعدی رانندگی کن",
   "Everything in the game": "همه‌چیز توی بازی",

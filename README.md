@@ -474,6 +474,12 @@ mood scales XP; loot funds research; territory funds the army.
   that moves only after a 250 m walk, so they don't reshuffle on every refresh.
 - **Visits** — the home page counts its visits (once per browser session, once per network per half hour) and shows
   the total and today's next to the player count (`src/server/visits.ts`, `/api/visits`).
+- **Visit analytics** — Admin → *Visits* shows, per Iran-time (Asia/Tehran) day, page visits (home + `/play` game opens),
+  unique visitors, unique signed-in players and new players: today's cards, a 30/90/365-day bars-and-lines chart and a
+  day-by-day table (`src/components/AdminVisits.tsx`, admin-only `GET /api/admin/visits?days=30|90|365`). Unique visitors
+  are rows in `VisitorSeen`, keyed by (day, HMAC of the signed-in user id or of the first-party `sq_vid` cookie under a
+  server secret) — no IPs or raw ids are stored and the hash changes daily; rows and counters older than 400 days are
+  pruned. `POST /api/visits` takes an optional `{ "path": "home" | "play" }`. Pure rules: `src/lib/visits.ts`.
 - **Who's online** — the HUD's 🟢 chip counts everyone online right now; tap it for your online friends (anywhere,
   with their distance) and players within 5 km (`/api/online`). Strangers' distances are measured to their fuzzed spot
   and rounded to 250 m, so moving around can't pin anyone down; no position is ever sent in the list. Each online

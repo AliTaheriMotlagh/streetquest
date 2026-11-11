@@ -1566,6 +1566,19 @@ model ExtCache {
 // Visits to the home page, one row per (UTC) day: each browser counts once per session
 // (server/visits.ts), and the page shows the total and today's.
 model SiteVisit {
-  day   DateTime @id @db.Date
-  count Int      @default(0)
+  day      DateTime @id @db.Date // the Asia/Tehran calendar day (stored as that date)
+  count    Int      @default(0) // home-page visits
+  playOpens Int     @default(0) // /play game opens
+  visitors Int      @default(0) // distinct visitors (signed-in or anonymous) that day
+  players  Int      @default(0) // distinct signed-in players that day
+}
+
+// One row per (day, daily-salted visitor hash): the unique index is what makes "unique visitors"
+// cheap. Never an IP or an id, only a hash that changes every day. Pruned after 400 days.
+model VisitorSeen {
+  day      DateTime @db.Date
+  hash     String
+  signedIn Boolean  @default(false)
+
+  @@id([day, hash])
 }
