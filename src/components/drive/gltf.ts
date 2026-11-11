@@ -13,6 +13,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { convexHull, simplifyHull, type ModelStats } from "@/lib/landmarks";
+import { modelUrl } from "./modelOverride";
 
 let loader: GLTFLoader | null = null;
 function gltfLoader() {
@@ -85,10 +86,10 @@ export function fixWinding(g: THREE.BufferGeometry): boolean {
   return true;
 }
 
-/** Parse a .glb (an address or its bytes) into a scene, reference objects removed. */
+/** Parse a .glb (an address or its bytes) into a scene, reference objects removed. A built-in model's address is swapped for the admin's published replacement, if any (modelOverride.ts). */
 export async function loadModel(src: string | ArrayBuffer): Promise<THREE.Group> {
   const l = gltfLoader();
-  const gltf = typeof src === "string" ? await l.loadAsync(src) : await l.parseAsync(src, "");
+  const gltf = typeof src === "string" ? await l.loadAsync(await modelUrl(src)) : await l.parseAsync(src, "");
   const root = gltf.scene;
   const drop: THREE.Object3D[] = [];
   root.traverse((o) => isReference(o) && drop.push(o));
@@ -98,7 +99,7 @@ export async function loadModel(src: string | ArrayBuffer): Promise<THREE.Group>
 
 /** Parse a .glb with its animations (rigged people). */
 export async function loadAnimated(src: string): Promise<{ scene: THREE.Group; clips: THREE.AnimationClip[] }> {
-  const gltf = await gltfLoader().loadAsync(src);
+  const gltf = await gltfLoader().loadAsync(await modelUrl(src));
   return { scene: gltf.scene, clips: gltf.animations };
 }
 

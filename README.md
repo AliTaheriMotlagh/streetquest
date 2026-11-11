@@ -87,6 +87,36 @@ Three games stacked on one real-world map:
   (`drive/carCheck.ts`) flags parts exported inside out (drawn see-through — the game turns them round on load),
   the cabin poking out of the glass, floating or sunk wheels and too many triangles. Scripts drive it through
   `window.__carLab` (`pick`, `set`, `view`, `lineup`, `shot` → PNG, `check`, `real`; `e2e/ui/carlab.spec.ts`).
+- **Admin → Objects** — a searchable, filterable grid of every object in the game: cars, people, the soldier and
+  police, guns, street props, loot, markers, store kinds and stores' own 3D buildings, each with its file, size,
+  triangles, licence/credit and where it is used, and a lazy turntable (`drive/turntable.ts`: one shared WebGL
+  renderer for all cards, models freed when scrolled out). The catalog is generated from the game's own registries
+  (`lib/objectCatalog.ts` reads `fleet`/`carModels`/`peopleModels`/`propModels`/`arena/weapons`/`catalog`/`places`
+  and the landmarks table — no second list). File sizes, triangles, bones and bounds of the shipped `.glb` files come
+  from `npm run assets:catalog` (`scripts/object-catalog.ts` → `src/lib/objectCatalog.generated.json`; run it after
+  `assets:cars`/`assets:people`/`assets:props`/`assets:arena`).
+- **Admin → Model update** — replace a built-in model without a deploy. Upload a `.glb` for a slot (`car:<key>`,
+  `person:<key>`, `arena:soldier`, `arena:police`, `arena:weapons`, `props:street`); `lib/modelCheck.ts` checks it in
+  the browser and again on the server (4 MB, triangle budget per kind, the parts/bones/clips the game looks up —
+  a car's `paint`/`kit`/`head`/`tail`/`wheel` (+`_far`) and wheel positions in the scene extras, a rig with `spine` and
+  the `Idle`/`Walk`/`Run`/`Death` clips for soldiers, `fp_<gun>` nodes for guns — and a believable scale). The new
+  model is shown next to the live one; **Publish now** (or **Save as draft**, then Publish) makes it the slot's
+  active `ModelOverride` version; **Roll back to this** activates any earlier version, **Use the built-in model**
+  drops the override; every version keeps who uploaded and published it, and when. Players get it from the cached
+  public manifest `GET /api/models` (30 s server cache, ~1 min at the CDN): the loaders (`drive/gltf.ts`,
+  `arena/avatar.ts`) ask `drive/modelOverride.ts` for a built-in file's replacement first and fall back to the
+  built-in file on any failure. Storage: Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set, otherwise
+  `public/uploads/models/` (development only — a production server needs the token). Props: the per-kind `top`
+  heights in `propModels.ts` stay the built-in ones.
+- **Admin → Graphics** — every parameter of the 3D city's quality tiers (`graphics/quality.ts` `Profile`: resolution,
+  MSAA, bloom, AO, SSR, shadows, night lights, draw distance, surfaces, clouds, rain…) plus exposure and
+  multipliers on the film look and haze (motion blur, shafts, flare, fringing, grain, split toning, haze, heat
+  shimmer, saturation, contrast, vignette, sharpening, LUT strength), for all tiers or one tier, with per-field reset.
+  Stored in the `gfx` setting (`lib/gfxConfig.ts`, validated in `sanitizeSettings`) so it reaches players with
+  `/api/me` like every other setting; merged as built-in tier ← admin `all` ← admin per-tier ← the player's own pin.
+  The player's own quality pick (Auto/Ultra/High/Medium/Low) still chooses the tier and "auto" still adapts: the
+  adaptive controller strips effects from the admin's profile. Applied when the 3D city starts; to preview, save and
+  open the city in another tab or on a phone.
 
 Every layer feeds the others: hero bonuses change battle maths, build times, income and FPS stats;
 mood scales XP; loot funds research; territory funds the army.

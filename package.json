@@ -20,6 +20,7 @@
     "assets:arena": "/Applications/Blender.app/Contents/MacOS/Blender -b -P assets/blender/arena.py",
     "assets:cars": "tsx scripts/cars.ts",
     "assets:props": "tsx scripts/props.ts",
+    "assets:catalog": "tsx scripts/object-catalog.ts",
     "assets:find": "tsx scripts/sketchfab.ts find",
     "assets:get": "tsx --env-file-if-exists=.env scripts/sketchfab.ts get",
     "typecheck": "tsc --noEmit",
@@ -37,6 +38,7 @@
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
     "@prisma/client": "^6.19.3",
+    "@vercel/blob": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "jose": "^5.10.0",
     "leaflet": "1.9",

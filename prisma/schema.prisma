@@ -880,6 +880,28 @@ model GameConfig {
   updatedBy String?
 }
 
+// A replacement for one built-in 3D model (Admin → Objects → Replace model). `slot` names the file
+// (car:pars, person:casual, arena:soldier, props:street…). A new upload is a draft (active false);
+// publishing makes it the slot's one active version, rolling back activates an earlier one.
+// The active rows are the manifest /api/models serves, so players get a publish without a deploy.
+model ModelOverride {
+  id          String    @id @default(cuid())
+  slot        String
+  url         String
+  bytes       Int
+  tris        Int
+  version     Int
+  active      Boolean   @default(false)
+  note        String    @default("")
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  publishedBy String?
+  publishedAt DateTime?
+
+  @@unique([slot, version])
+  @@index([slot, active])
+}
+
 // Goal progress counters. scope: user | faction | world; period: "all" or a week key like "2026-W41".
 model GoalCounter {
   id      String @id @default(cuid())

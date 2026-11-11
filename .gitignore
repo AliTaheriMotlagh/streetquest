@@ -32,3 +32,6 @@ __pycache__/
 /assets/sounds/
 # npm run assets:voices keeps its Piper voice models here (60 MB each)
 /assets/voices/
+
+# Models replaced from Admin → Model update when no BLOB_READ_WRITE_TOKEN is set (development)
+/public/uploads/

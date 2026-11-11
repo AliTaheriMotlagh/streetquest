@@ -3,6 +3,7 @@
 // receives them with /api/me; both call applySettings(), which mutates `S` in place,
 // so game code just reads `S.someKey` at call time. Pure.
 import { msg } from "./i18n";
+import { sanitizeGfx, type GfxConfig } from "./gfxConfig";
 
 export type GoalReward = { xp?: number; coins?: number; gems?: number };
 /** A goal counts one metric (see GOAL_METRICS) up to a target. */
@@ -16,6 +17,8 @@ export type GemOffer = { key: string; gems: number; coins: number; label: string
 export type MoneyTier = { amount: number; price: number; perCell: number };
 
 const DEFAULTS = {
+  // ---- graphics: admin overrides on the 3D city's quality tiers (lib/gfxConfig.ts; edited in Admin → Graphics)
+  gfx: {} as GfxConfig,
   // ---- money on the map (toman)
   moneyGps: 10_000,
   moneyHome: 1_000,
@@ -261,6 +264,7 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "shopMaxPhotos", group: msg("Player shops"), label: msg("Photos per product"), help: "", min: 1, max: 10 },
   { key: "shopMaxPrice", group: msg("Player shops"), label: msg("Highest price (coins)"), help: "", min: 10, max: 100000000 },
   { key: "shopOrderDays", group: msg("Player shops"), label: msg("Days to hand an order over"), help: msg("Orders not handed over in time are refunded to the buyer automatically."), min: 1, max: 60 },
+  { key: "gfx", group: msg("Graphics"), label: msg("Graphics overrides"), help: msg("Edited in the Graphics tab.") },
   { key: "catalog", group: msg("Game data"), label: msg("Stat overrides"), help: msg("Edited in the Game data tab.") },
 ];
 
@@ -281,6 +285,10 @@ export function sanitizeSettings(over: unknown): Partial<Settings> {
   for (const def of SETTING_DEFS) {
     const v = (over as Record<string, unknown>)[def.key];
     if (v === undefined) continue;
+    if (def.key === "gfx") {
+      out.gfx = sanitizeGfx(v);
+      continue;
+    }
     const t = settingType(def.key);
     if (t === "number") {
       const n = Number(v);

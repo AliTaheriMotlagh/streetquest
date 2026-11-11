@@ -36,9 +36,11 @@ import landmarks from "./landmarks";
 import arena from "./arena";
 import local from "./local";
 import social from "./social";
+import adminobjects from "./adminobjects";
 
 const fa: Messages = {
   ...arena,
+  ...adminobjects,
   ...common,
   ...game,
   ...market,

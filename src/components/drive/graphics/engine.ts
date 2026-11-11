@@ -10,15 +10,27 @@ import { defaultGrade, PostPipeline, type Grade } from "./post";
 import { Adaptive, effective, MAX_LEVEL, withCaps, type Profile, type QualityPick, type Tier } from "./quality";
 import { acesInverse, DISPLAY } from "./shaders";
 import { sharpenFor } from "@/lib/view";
+import { resolveLook, resolveProfile, type Look } from "@/lib/gfxConfig";
+import { S } from "@/lib/settings";
 import { ShaderGate } from "./warmup";
 
 export type GfxStats = { tier: Tier; pick: QualityPick; level: number; dpr: number; fps: number; frameMs: number; calls: number; triangles: number; textures: number; geometries: number; targetsMB: number; lost: boolean };
+
+/** Grade fields the admin's film-look multipliers scale (Admin → Graphics; lib/gfxConfig.ts). */
+const LOOK_FIELDS: [keyof Grade, keyof Look][] = [
+  ["bloom", "bloomMult"], ["ao", "aoMult"], ["saturation", "saturationMult"], ["contrast", "contrastMult"], ["vignette", "vignetteMult"], ["sharpen", "sharpenMult"],
+  ["motionBlur", "motionBlurMult"], ["rays", "raysMult"], ["flare", "flareMult"], ["aberration", "aberrationMult"], ["grain", "grainMult"], ["split", "splitMult"],
+  ["hazeDensity", "hazeMult"], ["hazeScatter", "hazeScatterMult"], ["heat", "heatMult"], ["lutMix", "lutMix"],
+];
 
 export class GraphicsEngine {
   readonly renderer: THREE.WebGLRenderer;
   readonly pick: QualityPick;
   readonly tier: Tier;
   profile: Profile;
+  /** The admin's film-look scaling, applied to the grade for each frame in render(). */
+  private look: Look;
+  private lookSave = new Float32Array(LOOK_FIELDS.length);
   readonly grade: Grade = defaultGrade();
   /** New materials' shaders are built in the background, never in the middle of a frame (warmup.ts). */
   readonly gate: ShaderGate;
@@ -52,6 +64,7 @@ export class GraphicsEngine {
     this.pick = opts.lite ? "low" : qualityPick();
     this.tier = this.pick === "low" ? "low" : tierFor(this.pick);
     this.direct = !!opts.direct;
+    this.look = resolveLook(this.tier, S.gfx);
     this.profile = this.make(0);
     const p = this.profile;
     this.renderer = new THREE.WebGLRenderer({ antialias: !p.post && p.tier !== "low", powerPreference: "high-performance", stencil: false });
@@ -65,6 +78,7 @@ export class GraphicsEngine {
     r.setSize(el.clientWidth, el.clientHeight);
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMappingExposure = this.look.exposure;
     r.shadowMap.enabled = p.shadows;
     r.shadowMap.type = p.tier === "medium" ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     r.info.autoReset = false;
@@ -77,7 +91,7 @@ export class GraphicsEngine {
   }
 
   private make(level: number) {
-    const p = withCaps(effective(this.tier, level), readCaps());
+    const p = withCaps(effective(this.tier, level, resolveProfile(this.tier, S.gfx)), readCaps());
     if (this.direct) (p.post = false), (p.bloom = false), (p.ao = false), (p.fxaa = false), (p.cinematic = false), (p.ssr = 0), (p.haze = false);
     return p;
   }
@@ -182,6 +196,16 @@ export class GraphicsEngine {
     sun.shadow.normalBias = Math.min(1, Math.max(0.4, texel * 7.5));
   }
 
+  /** The admin's multipliers on the look, for this frame only: scaled before the post pass, put back after (callers set the grade their own way each frame). */
+  private scaleGrade(on: boolean) {
+    const o = this.grade as unknown as Record<string, number>, l = this.look as unknown as Record<string, number>, s = this.lookSave;
+    for (let i = 0; i < LOOK_FIELDS.length; i++) {
+      const k = LOOK_FIELDS[i][0] as string;
+      if (on) (s[i] = o[k]), (o[k] = s[i] * l[LOOK_FIELDS[i][1]]);
+      else o[k] = s[i];
+    }
+  }
+
   /** Call once per frame before rendering: feeds the frame-rate controller. */
   frame(now: number) {
     const ms = now - this.lastFrame;
@@ -213,8 +237,11 @@ export class GraphicsEngine {
     DISPLAY.post.value = this.post ? 1 : 0;
     DISPLAY.exposure.value = this.renderer.toneMappingExposure;
     DISPLAY.mirror.value = this.post && this.profile.ssr ? 1 : 0;
-    if (this.post) this.post.render(scene, camera, this.grade, this.gate);
-    else {
+    if (this.post) {
+      this.scaleGrade(true);
+      this.post.render(scene, camera, this.grade, this.gate);
+      this.scaleGrade(false);
+    } else {
       this.renderer.setRenderTarget(null);
       this.gate.check(scene, camera);
       this.renderer.render(scene, camera);

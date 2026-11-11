@@ -118,8 +118,8 @@ export function detectTier(c: Caps, demoted = 0): Tier {
 }
 
 /** The profile in force: the tier's, with effects stripped by the adaptive `level` (0 = none stripped). */
-export function effective(tier: Tier, level: number): Profile {
-  const p = { ...PROFILES[tier] };
+export function effective(tier: Tier, level: number, base: Profile = PROFILES[tier]): Profile {
+  const p = { ...base };
   // Each level gives back one thing, cheapest-to-lose first: the film look and every
   // screen-space extra go before a single shadow does.
   if (level >= 1) (p.ao = false), (p.ssr = Math.min(p.ssr, 1) as 0 | 1), (p.headlightShadow = false);
