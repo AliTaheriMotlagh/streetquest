@@ -233,6 +233,13 @@ const drive: Record<string, string> = {
   "You just did one of these — give it a few minutes": "همین الان یکی از این‌ها را انجام دادی — چند دقیقه صبر کن",
   "Wanted level {n} of 5": "سطح تعقیب {n} از ۵",
   "Car health {n}%": "سلامت ماشین {n}٪",
+  "Photos of {name}": "عکس‌های {name}",
+  "Next sessions": "سانس‌های بعدی",
+  "No more sessions today": "امروز سانس دیگری نیست",
+  "Tap for tickets": "برای خرید بلیت لمس کنید",
+  "No menu listed here": "منویی برای این‌جا ثبت نشده",
+  "Looking it up…": "در حال جستجو…",
+  "Tap for the full card": "برای دیدن همه‌چیز لمس کنید",
 };
 
 export default drive;

@@ -29,7 +29,7 @@ import { Icon } from "../drive/icons";
  * failure is retried once by itself after a moment (the store sites behind the Iran relay
  * drop out for a few seconds now and then); `retry` asks again on demand.
  */
-function useLocal<T>(params: Record<string, string | number | undefined> | null) {
+export function useLocal<T>(params: Record<string, string | number | undefined> | null) {
   const qs = params ? new URLSearchParams(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])).toString() : null;
   const [state, setState] = useState<{ qs: string | null; data: T | null; error: string | null }>({ qs: null, data: null, error: null });
   const [tries, setTries] = useState(0);
@@ -37,9 +37,11 @@ function useLocal<T>(params: Record<string, string | number | undefined> | null)
     if (!qs) return;
     let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // The 3D city's store chip and its sheet ask for the same store: one request between them.
+    const hit = tries === 0 ? LOCAL_CACHE.get(qs) : undefined;
     const load = (again: boolean) =>
-      api<T>(`/api/local?${qs}`)
-        .then((data) => live && setState({ qs, data, error: null }))
+      (hit && Date.now() - hit.at < LOCAL_CACHE_MS ? Promise.resolve(hit.data as T) : api<T>(`/api/local?${qs}`))
+        .then((data) => (LOCAL_CACHE.set(qs, { at: Date.now(), data }), live && setState({ qs, data, error: null })))
         .catch((e) => {
           if (!live) return;
           if (again) timer = setTimeout(() => void load(false), AUTO_RETRY_MS);
@@ -57,6 +59,8 @@ function useLocal<T>(params: Record<string, string | number | undefined> | null)
   };
   return { ...(state.qs === qs ? state : { qs, data: null, error: null }), retry };
 }
+const LOCAL_CACHE = new Map<string, { at: number; data: unknown }>();
+const LOCAL_CACHE_MS = 60_000;
 /** A failed store lookup asks once more by itself after this long. */
 const AUTO_RETRY_MS = 1500;
 
@@ -622,7 +626,7 @@ function TorobSearch({ initial, shop, title }: { initial?: TorobItem[]; shop?: T
  * Everything other sites know about a store, inside a place / business / Market shop
  * card: its links, then tabs — the menu or catalog, Torob, reviews, and its info.
  */
-export function StoreExtras({ query, at }: { query: Record<string, string | number | undefined>; at?: LatLng }) {
+export function StoreExtras({ query, at, bare }: { query: Record<string, string | number | undefined>; at?: LatLng; /** No cover picture (the 3D city's sheet has its own carousel). */ bare?: boolean }) {
   const { data, error } = useLocal<StoreData>(query);
   if (error) return <p className="small muted">{error}</p>;
   if (!data) return <p className="small muted ext-loading">⏳ {t("Looking up the menu and prices…")}</p>;
@@ -643,7 +647,7 @@ export function StoreExtras({ query, at }: { query: Record<string, string | numb
   tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} store={store} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phones={phones} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
   return (
     <div className="ext-store">
-      {(a.photo || a.logo) && (
+      {!bare && (a.photo || a.logo) && (
         <div className="ext-cover">
           <Pic src={a.photo || a.logo} className="ext-cover-img" />
           {a.logo && a.photo && <Pic src={a.logo} className="ext-cover-logo" />}

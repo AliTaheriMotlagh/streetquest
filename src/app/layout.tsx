@@ -13,6 +13,7 @@ import "./globals.css";
 import "./world.css";
 import "./arena.css";
 import "./theme.css";
+import "./storefront.css";
 import "./compact.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.
