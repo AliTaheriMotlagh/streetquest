@@ -536,6 +536,39 @@ mood scales XP; loot funds research; territory funds the army.
 Plus the original layer: Pokémon-GO-style spawns, GTA-style timed runs, real package deliveries,
 location messages, friends/chat/events, an admin panel and SEO/marketing tooling.
 
+## Controls
+
+The 3D city plays with a keyboard (and mouse on foot), a game controller or touch. A controller works on foot, driving
+and in arena matches; it writes into the same input state the keyboard and touch controls use (`src/components/drive/gamepad.ts`,
+mapping rules in `src/lib/input/gamepad.ts`: radial deadzones, response curves, Xbox / PlayStation / Switch labels
+from the pad's id). Plug it in or pair it and press a button; a toast names it and its buttons. It rumbles on crashes,
+shots and hits where the browser supports it (Chrome / Edge; Safari has no rumble).
+
+| | Keyboard | Controller | Touch |
+|---|---|---|---|
+| **Drive** | W/↑ gas · S/↓ brake · A D steer · Space handbrake | left stick steer · R2 gas (analog) · L2 brake / reverse · B/○ handbrake | wheel, buttons or tilt on the left, analog pedals on the right |
+| Horn / camera | H · C | D-pad up (hold) · Y/△ or D-pad left/right | horn and camera buttons |
+| Get out / in | F | A/✕ out · Y/△ in (near a car) | HUD button, or the car button in the action arc |
+| Menu | on-screen ☰ | Start | on-screen ☰ |
+| **Focus** (slow motion) | hold Z, or Q + E together | hold L2 + R2 | FOCUS button (hold) |
+| **Nitro** | hold Shift | hold R1 | NITRO button (hold) |
+| **On foot** | WASD move · mouse look · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · G throw | left stick move · right stick look · R2 fire · L2 aim · A/✕ jump · X/□ reload · B/○ crouch · L3 sprint · L1 dead-eye · R1 throw · D-pad left switch gun, right switch throwable, up view, down plant/defuse | floating stick (under your thumb, push to the edge to sprint) · drag the right half to look · fire and an arc of aim / jump / crouch / reload / switch gun (and "car" only near one) |
+| **Dead-eye** (aim in slow motion) | hold Z while aiming | hold L1 while aiming | dead-eye button while aiming |
+
+**Slow motion and nitro** (`src/lib/abilities.ts`): focus eases the world's clock to 0.3x (0.35x for dead-eye) for as
+long as its meter lasts (about 6 s, recharging over about 25 s once you let go; an empty meter stays off until it has
+recovered a quarter). Steering stays in real time and the tyres grip harder while it's on, the engine pitch drops and
+the picture desaturates and vignettes. Nitro has its own meter (4 s, refills in 14 s): more thrust and a 22 % higher top
+speed, well inside what the server's position check allows. Positions sent to the server are always real; slow motion
+only makes you move less. Both are **off in arena matches and live party games**, where everyone's clock has to agree.
+
+**Touch layout.** The on-foot sticks are tracked by pointer id, so three fingers (stick, look, a button) never steal
+each other's events. Drag-to-look speeds up with the flick (up to about 2.2x); with the sights up a quick tap on the
+look area fires a shot; holding **Aim** aims while held and a quick tap locks it on. Phones with vibration buzz on
+sprint, jump and shots. In the garage (☰ → garage, touch only) there's a **Look sensitivity** slider and a
+**Left-handed layout** switch that mirrors the stick, look area and action arc. Colours and sizes of all of it are CSS
+variables at the top of `src/app/controls.css` (`--cp-*`, `--ab-*`).
+
 ## Run locally
 
 ```bash

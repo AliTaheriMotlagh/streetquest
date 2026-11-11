@@ -21,6 +21,7 @@ import { rayFootprint, type Ray } from "@/lib/arena/geom";
 import { WEAPONS } from "@/lib/arena/weapons";
 import { tyreSmoke } from "@/lib/atmosphere";
 import { boomSound, carAlarmSound, crashSound, fireSound, hornSound, shotSound, Siren, skidSound, thudSound } from "../arena/gunsound";
+import { rumble } from "./gamepad";
 import { SampleLoop, warmSamples } from "../game/samples";
 import { SOUND_KEYS } from "@/lib/soundSlots";
 import type { Combat, NpcTargets } from "../arena/combat";
@@ -438,6 +439,7 @@ export class StreetLife {
     if (!me || me.matchOn || c.into < 2) return;
     this.crashAt = performance.now();
     const k = Math.min(1, (c.into - 2) / 16);
+    rumble(0.3 + 0.7 * k, 0.5, 260);
     const other = c.ref ? this.h.traffic.massOfRef(c.ref) : null;
     if (c.ref && other) {
       // Momentum: the struck car takes the speed it's handed in proportion to the masses

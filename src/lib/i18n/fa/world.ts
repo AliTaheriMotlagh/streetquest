@@ -132,7 +132,7 @@ const world: Record<string, string> = {
   "🧭 Heading to {place}": "🧭 به سمت {place}",
   "Brake / reverse": "ترمز / دنده‌عقب",
   Gas: "گاز",
-  "W/↑ gas · S/↓ brake · A D/← → steer · Space drift · H horn · C camera": "W/↑ گاز · S/↓ ترمز · A D/← → فرمون · Space دریفت · H بوق · C دوربین",
+  "W/↑ gas · S/↓ brake · A D/← → steer · Space drift · Z focus · Shift nitro · H horn · C camera": "W/↑ گاز · S/↓ ترمز · A D/← → فرمون · Space دریفت · Z تمرکز · Shift نیترو · H بوق · C دوربین",
   DRIFT: "دریفت",
   "Drive the 3D city": "توی شهر سه‌بعدی رانندگی کن",
   "See your street in 3D": "خیابونت رو سه‌بعدی ببین",

@@ -7,6 +7,7 @@
 import type { VehicleDef } from "@/lib/vehicles";
 import { rayFootprint, type Normal, type Ray } from "@/lib/arena/geom";
 import type { Footprint } from "./tileMesh";
+import { NITRO_THRUST, NITRO_TOP, steerCompensation } from "@/lib/abilities";
 
 const HASH = 30;
 const cellOf = (x: number, z: number) => `${Math.floor(x / HASH)}_${Math.floor(z / HASH)}`;
@@ -139,21 +140,34 @@ export type Body = {
   wheelSpin: number;
 };
 
-export type Controls = { gas: number; brake: number; steer: number; hand: boolean; lift: number };
+export type Controls = {
+  gas: number;
+  brake: number;
+  steer: number;
+  hand: boolean;
+  lift: number;
+  /** World clock now (0.3 in slow motion, default 1): steering keeps its real-time response and the tyres grip harder. */
+  timeScale?: number;
+  /** Nitro is burning (lib/abilities.ts). */
+  boost?: boolean;
+};
 
 export const forward = (yaw: number) => ({ fx: -Math.sin(yaw), fz: -Math.cos(yaw) });
 
 /** Wheels: throttle, brake-then-reverse, grip with handbrake drifts, bicycle-model steering. */
 export function stepGround(b: Body, def: VehicleDef, c: Controls, dt: number, V: number) {
+  const ts = c.timeScale ?? 1;
+  if (c.boost) V *= NITRO_TOP;
   const { fx, fz } = forward(b.yaw);
   const rx = -fz, rz = fx;
   let vF = b.vx * fx + b.vz * fz, vR = b.vx * rx + b.vz * rz;
-  if (c.gas) vF += (vF < 0 ? 16 : def.accel * (1 - Math.max(0, vF) / V)) * c.gas * dt;
+  if (c.gas) vF += (vF < 0 ? 16 : def.accel * (c.boost ? NITRO_THRUST : 1) * (1 - Math.max(0, vF) / V)) * c.gas * dt;
   if (c.brake) vF -= (vF > 0.5 ? 18 : 6 * (1 + vF / 7)) * c.brake * dt;
   if (!c.gas && !c.brake) vF -= Math.sign(vF) * Math.min(Math.abs(vF), (1.4 + Math.abs(vF) * 0.12) * dt);
   vF = Math.max(-7, Math.min(V, vF));
-  vR *= Math.exp(-(c.hand ? 1.6 : def.grip) * dt);
-  b.steer += (c.steer * (0.62 - 0.4 * Math.min(1, Math.abs(vF) / V)) - b.steer) * Math.min(1, dt * 8);
+  // In slow motion the tyres grip harder (a slide would take 3x as long to settle) and the wheel answers in real time.
+  vR *= Math.exp(-(c.hand ? 1.6 : def.grip) * dt * (ts < 1 ? 1 / Math.max(0.2, ts) : 1));
+  b.steer += (c.steer * (0.62 - 0.4 * Math.min(1, Math.abs(vF) / V)) - b.steer) * Math.min(1, dt * 8 * steerCompensation(ts));
   b.yaw += (vF / def.wheelbase) * Math.tan(b.steer) * dt * (c.hand ? 1.35 : 1);
   const n = forward(b.yaw);
   b.vx = n.fx * vF + -n.fz * vR;

@@ -42,6 +42,10 @@ import { isLite, isTouch } from "../perf";
 import { layCourse } from "./course";
 import { DriveGarage } from "./DriveGarage";
 import { DrivePad, STEER_MODES, type SteerMode } from "./DrivePad";
+import { PadPoller } from "./gamepad";
+import { AbilityHud, paintAbilities } from "./AbilityHud";
+import { focusDepth, newAbilities, stepAbilities } from "@/lib/abilities";
+import { loadTouchPrefs, useTouchPrefs } from "./touchPrefs";
 import { Icon, type IconName } from "./icons";
 import { MODES, type ModeKey } from "@/lib/arena/modes";
 import { PartyHud } from "./PartyHud";
@@ -255,7 +259,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const id = setTimeout(() => setGpsNoteSmall(true), 7000);
     return () => clearTimeout(id);
   }, [canDrive]);
-  const input = useRef({ gas: 0, brake: 0, steer: 0, lift: 0, hand: false, keys: new Set<string>() });
+  const input = useRef({ gas: 0, brake: 0, steer: 0, lift: 0, hand: false, focus: false, nitro: false, keys: new Set<string>() });
+  const abilityEl = useRef<HTMLDivElement>(null);
   const [ctl, setCtl] = useState<SteerMode>(() => {
     const c = store.get(CTL_KEY) as SteerMode | null;
     return c && STEER_MODES.includes(c) ? c : "wheel";
@@ -265,6 +270,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   menuOpen.current = !!menu;
   const menuTab = useRef<MenuTab | null>(null);
   menuTab.current = menu;
+  // The pad's Start button (components/drive/gamepad.ts) opens and closes the menu.
+  useEffect(() => {
+    const f = () => setMenu((m) => (m ? null : "jobs"));
+    window.addEventListener("sq:menu", f);
+    return () => window.removeEventListener("sq:menu", f);
+  }, []);
   /** Jobs waved away with ✕. The loop skips them, so the next job at the same spot shows,
    * and forgets each one once you're out of its reach, so it's back when you return. */
   const dismissed = useRef(new Set<string>());
@@ -1272,9 +1283,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
 
     // ---- input
+    let zHeld = false;
     const keyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement | null)?.closest?.("input, textarea")) return;
       const k = e.key.toLowerCase();
+      if (k === "z") zHeld = true; // focus / dead-eye (also on foot, where the soldier owns the other keys)
       if (combat.onFoot) return;
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
       input.current.keys.add(k);
@@ -1284,13 +1297,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       startEngine();
     };
     const keyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "z") zHeld = false;
       input.current.keys.delete(e.key.toLowerCase());
       if (e.key.toLowerCase() === "h") horn(false);
       // A Mac sends no keyup for keys let go while ⌘ is held: start over when it goes.
       if (e.key === "Meta") input.current.keys.clear();
     };
     // Switching away (alt-tab, another window) swallows the keyups: let go of every key.
-    const keysOff = () => (input.current.keys.clear(), horn(false));
+    const keysOff = () => (input.current.keys.clear(), (zHeld = false), horn(false));
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
     window.addEventListener("blur", keysOff);
@@ -1541,12 +1555,47 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         .then((txt) => !disposed && gfx.setLut(parseCube(txt)))
         .catch(() => {});
 
+    // ---- game controller (components/drive/gamepad.ts): writes the same inputs as the keyboard and the touch pad
+    const pad = new PadPoller();
+    const padCtx = {
+      input: input.current,
+      combat,
+      get flies() {
+        return def().flies;
+      },
+      menuOpen: () => menuOpen.current,
+      onMenu: () => window.dispatchEvent(new Event("sq:menu")),
+      cycleCam: () => cycleCam(),
+      horn: (on: boolean) => horn(on),
+      land: () => land(),
+      toast: (text: string) => live.current.toast({ title: text }),
+      sens: () => loadTouchPrefs().look,
+    };
+    pad.start();
+    const abil = newAbilities();
+    let bSat = 1, bVig = 0.2, aSat = -1, aVig = -1;
     const tick = () => {
       if (disposed) return;
       raf = requestAnimationFrame(tick);
       const now = performance.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const rdt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      // ---- game pad, then abilities: the world's clock (dt) is the real frame time scaled by slow motion
+      // (never in a match or a party game: everyone's clock must agree; positions sent stay real, a slowed car only moves less).
+      pad.poll(padCtx, rdt);
+      const abOn = !combat.inMatch && !(partyNow && partyNow.status === "LIVE");
+      const cin = input.current;
+      const flyingNow = def().flies;
+      stepAbilities(abil, {
+        dt: rdt,
+        enabled: abOn && live.current.canDrive,
+        mode: combat.onFoot ? "foot" : flyingNow ? "air" : "car",
+        focusHold: cin.focus || zHeld || (!flyingNow && cin.keys.has("q") && cin.keys.has("e")),
+        nitroHold: cin.nitro || cin.keys.has("shift"),
+        aiming: combat.input.aim,
+        moving: st.speed > 1,
+      });
+      const dt = rdt * abil.scale;
       const time = now / 1000;
       const serverNow = Date.now() + serverOffset;
       const L = live.current;
@@ -1568,11 +1617,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // Frozen on the start grid until the countdown ends.
       const frozen = onFoot || (!!partyNow?.startsAt && partyNow.status === "LIVE" && serverNow < partyNow.startsAt);
       const c = {
-        gas: frozen ? 0 : Math.max(keys.has("w") || keys.has("arrowup") ? 1 : 0, input.current.gas),
+        gas: frozen ? 0 : abil.nitroOn ? 1 : Math.max(keys.has("w") || keys.has("arrowup") ? 1 : 0, input.current.gas),
         brake: Math.max(keys.has("s") || keys.has("arrowdown") ? 1 : 0, input.current.brake),
         steer: (keys.has("a") || keys.has("arrowleft") ? 1 : 0) - (keys.has("d") || keys.has("arrowright") ? 1 : 0) || input.current.steer,
         hand: keys.has(" ") || input.current.hand,
         lift: (keys.has("r") || keys.has("e") || keys.has("pageup") ? 1 : 0) - (keys.has("f") || keys.has("q") || keys.has("pagedown") ? 1 : 0) || input.current.lift,
+        timeScale: abil.scale,
+        boost: abil.nitroOn,
       };
       let vF = 0;
       // A hurt engine pulls less; a burnt-out wreck doesn't go at all.
@@ -1734,7 +1785,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const dist = camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
         const height = camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
         const want = camMode === "top" ? new THREE.Vector3(st.x + nfx * 6, st.alt + height, st.z + nfz * 6 + 0.01) : new THREE.Vector3(st.x - nfx * dist, st.alt + height, st.z - nfz * dist);
-        camPos.lerp(want, 1 - Math.exp(-dt * (camMode === "top" ? 6 : 4.5)));
+        camPos.lerp(want, 1 - Math.exp(-rdt * (camMode === "top" ? 6 : 4.5)));
         // Don't let the camera end up inside a building: pull it in toward the vehicle.
         // (Pushing it out sideways can strand it behind the building: walk out from the
         // vehicle instead and stop at the last clear spot on the way.)
@@ -1803,7 +1854,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const l of loot.values()) l.tick(time);
       for (const g of gates) g.tick(time);
       for (const cn of coins) cn.tick(time);
-      others.tick(dt, serverNow, st.x, st.z);
+      others.tick(rdt, serverNow, st.x, st.z);
       feed.update(frame.toLatLng(st.x, st.z));
       traffic.enabled = crowd.enabled = !matchOn;
       // The streets traffic and people use, re-read when tiles came or went: not while a batch of
@@ -1854,7 +1905,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const out = audioOut();
         if (out) {
           const tt = out.ctx.currentTime;
-          const rpm = 0.2 + gearbox.rpm * 0.8 + c.gas * 0.08;
+          const rpm = (0.2 + gearbox.rpm * 0.8 + c.gas * 0.08) * (0.55 + 0.45 * abil.scale); // slow motion drops the pitch
           const air = D.flies;
           engine.osc.frequency.setTargetAtTime((air ? 30 : 38) + rpm * (air ? 30 : 70), tt, 0.08);
           engine.osc2.frequency.setTargetAtTime((air ? 15 : 19) + rpm * (air ? 15 : 35), tt, 0.08);
@@ -2073,6 +2124,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // -- the film look for this frame (lib/filmLook.ts): more blur and fringing the faster, less behind the wheel
       const film = filmLook({ speedK: filmSpeed, camera: onFoot ? "foot" : camMode, night, overcast: skyOvercast, sunHeight: skyDir.y, toon: style === "toon" });
       const G = gfx.grade;
+      // Slow motion: colours drain a little and the edges darken (the grade's base values are set in the slower sky block).
+      const fd = focusDepth(abil.scale);
+      if (G.saturation !== aSat) bSat = G.saturation;
+      if (G.vignette !== aVig) bVig = G.vignette;
+      G.saturation = aSat = bSat * (1 - 0.4 * fd);
+      G.vignette = aVig = bVig + 0.3 * fd;
+      paintAbilities(abilityEl.current, abil, abOn && live.current.canDrive);
       (G.motionBlur = film.motionBlur), (G.rays = film.rays), (G.flare = film.flare), (G.aberration = film.aberration), (G.grain = film.grain), (G.split = film.split);
       // Nothing nearer than the car is smeared: from the chase camera that's the car itself, behind the wheel the dashboard.
       G.sharpNear = onFoot ? 3.5 : camMode === "cockpit" ? 2.4 : Math.hypot(camera.position.x - st.x, camera.position.y - st.alt, camera.position.z - st.z) + 3.2;
@@ -2096,6 +2154,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     return () => {
       disposed = true;
+      pad.stop();
       horn(false);
       cancelAnimationFrame(raf);
       net.stop();
@@ -2230,6 +2289,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   // Stable, so the memoised touch controls never re-render while driving.
   const onHorn = useCallback((on: boolean) => api3d.current?.horn(on), []);
   const onLand = useCallback(() => api3d.current?.land(), []);
+  const onFocus = useCallback((on: boolean) => void (input.current.focus = on), []);
+  const touchPrefs = useTouchPrefs();
   // The arrow points up; 0° relative bearing is straight ahead.
   const arrowStyle = hud?.nav ? { transform: `rotate(${hud.nav.rel}deg)` } : undefined;
   const v = VEHICLES[vehicle];
@@ -2253,7 +2314,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const cam = hud?.cam ?? "chase";
 
   return (
-    <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""}`} role="application" aria-label={t("3D city")}>
+    <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""} ${touchPrefs.left ? "lefty" : ""}`} role="application" aria-label={t("3D city")}>
       <div className="drive-canvas" ref={mount} />
 
       {/* Top: me · the street I'm on · map, instruments and the two buttons */}
@@ -2475,15 +2536,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       )}
 
       {street && !fight?.inMatch && <StreetHud street={street} />}
+      {canDrive && !fight?.inMatch && <AbilityHud el={abilityEl} />}
       {combat && <CombatHud combat={combat} touch={touch} />}
-      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} />}
+      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} onCar={() => combat.getIn()} onFocus={onFocus} nearCar={!!fight?.nearCar} inMatch={inMatch} />}
       {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.bike ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
       {canDrive && !touch && onFoot && footKeys && (
-        <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Tab scores · F car")}</div>
+        <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Z dead-eye · Tab scores · F car")}</div>
       )}
       {canDrive && !touch && showKeys && !onFoot && (
         <div className="drive-keys small">
-          {v.flies ? t("W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera") : t("W/↑ gas · S/↓ brake · A D/← → steer · Space drift · H horn · C camera")}
+          {v.flies ? t("W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera") : t("W/↑ gas · S/↓ brake · A D/← → steer · Space drift · Z focus · Shift nitro · H horn · C camera")}
         </div>
       )}
     </div>

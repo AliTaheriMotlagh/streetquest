@@ -143,26 +143,6 @@
 
 /* ---- touch controls on foot */
 .cpad { position: absolute; inset: calc(120px + var(--safe-t)) 0 0 0; z-index: 2; touch-action: none; user-select: none; -webkit-user-select: none; }
-.cpad-move { position: absolute; left: 0; top: 0; bottom: 0; width: 44%; }
-.cpad-look { position: absolute; right: 0; top: 0; bottom: 0; width: 56%; }
-.cpad-stick { --sx: 110px; --sy: calc(100% - 120px); position: absolute; left: var(--sx); top: var(--sy); width: 0; height: 0; opacity: .55; transition: opacity .15s; }
-.cpad-move:not(:has(.cpad-stick.on)) .cpad-stick { left: calc(110px + var(--safe-l)); top: calc(100% - 110px - var(--safe-b)); }
-.cpad-stick::before { content: ""; position: absolute; width: 128px; height: 128px; left: -64px; top: -64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .45); background: rgba(10, 12, 18, .25); }
-.cpad-stick.on { opacity: 1; }
-.cpad-stick.sprint::before { border-color: #ffb020; box-shadow: 0 0 0 4px rgba(255, 176, 32, .25); }
-.cpad-knob { position: absolute; width: 56px; height: 56px; left: -28px; top: -28px; border-radius: 50%; background: rgba(255, 255, 255, .85); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
-.cpad-right { position: absolute; right: calc(14px + var(--safe-r)); bottom: calc(14px + var(--safe-b)); width: 210px; height: 210px; pointer-events: none; }
-.cpad-right > * { pointer-events: auto; }
-.cpad :is(.cpad-fire, .cpad-btn) { position: absolute; display: grid; place-items: center; border-radius: 50%; color: #fff; border: 2px solid rgba(255, 255, 255, .35); background: rgba(10, 12, 18, .5); box-shadow: 0 4px 14px rgba(0, 0, 0, .35); touch-action: none; -webkit-tap-highlight-color: transparent; }
-.cpad-fire { right: 0; bottom: 0; width: 86px; height: 86px; background: rgba(229, 72, 77, .55); border-color: rgba(255, 200, 200, .7); }
-.cpad-fire.on, .cpad-btn.on { background: #ffb020; color: #1a1200; border-color: transparent; transform: scale(.95); }
-.cpad-fire.small { position: absolute; right: auto; left: calc(40px + var(--safe-l)); bottom: auto; top: 6%; width: 62px; height: 62px; }
-.cpad-btn { width: 52px; height: 52px; }
-.cpad-btn.aim { right: 98px; bottom: 6px; width: 60px; height: 60px; }
-.cpad-btn.jump { right: 8px; bottom: 100px; }
-.cpad-btn.crouch { right: 82px; bottom: 82px; }
-.cpad-btn.reload { right: 150px; bottom: 76px; width: 46px; height: 46px; }
-.cpad-btn.swap { right: 64px; bottom: 150px; width: 46px; height: 46px; }
 /* hold to plant / defuse (rendered by the HUD, above the controls) */
 .cpad-act { --p: 0; position: absolute; left: 50%; bottom: calc(110px + var(--safe-b)); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 14px 22px; border: none; border-radius: 16px; background: rgba(255, 176, 32, .94); color: #1a1200; font: 900 15px/1 var(--body); overflow: hidden; touch-action: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .4); }
 .cpad-act i { position: absolute; left: 0; bottom: 0; height: 5px; width: calc(var(--p) * 100%); background: #1a1200; }
@@ -220,13 +200,10 @@
   .chud.touch .chud-stats { left: calc(14px + var(--safe-l)); transform: none; bottom: calc(196px + var(--safe-b)); flex-direction: column; align-items: flex-start; gap: 2px; }
   .chud.touch .chud-hp { width: 110px; }
   .cpad { inset: calc(150px + var(--safe-t)) 0 0 0; }
-  .cpad-fire.small { top: auto; bottom: calc(272px + var(--safe-b)); left: calc(24px + var(--safe-l)); }
-  .cpad-right { transform: scale(.88); transform-origin: bottom right; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   .chud.touch .chud-feed { top: calc(64px + var(--safe-t)); }
   .cpad { inset: calc(96px + var(--safe-t)) 0 0 0; }
-  .cpad-right { transform: scale(.86); transform-origin: bottom right; }
   .chud-match { top: calc(6px + var(--safe-t)); }
 }
 html[dir="rtl"] .chud :is(.chud-feed, .chud-board, .chud-dead, .chud-banner, .chud-tip) { direction: rtl; }
