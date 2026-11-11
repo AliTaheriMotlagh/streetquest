@@ -17,7 +17,7 @@ import { ICONS } from "../art/icons";
 import { materialDefs, render } from "../art/kit";
 import { after, DISPLAY, displayReferred, mirrored, patchShader, swap } from "./graphics/shaders";
 import { heightToNormal, surfaces } from "./graphics/surfaces";
-import { FACADES, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
+import { FACADES, FLOOR_M, WINDOW_M, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
 import { treeVariant } from "@/lib/streetProps";
 import { nameLines, oneLine, tradeOf } from "./trades";
 
@@ -328,8 +328,10 @@ function wearFacades(mat: THREE.MeshStandardMaterial, noise: THREE.Texture | nul
     mat.normalMap = mat.map; // only so three.js builds the tangent frame; the array is sampled
     mat.roughness = 1;
     mat.metalness = 1;
+    // The window glass mirrors the street (screen-space reflections, where on).
+    mirrored(mat, "sqGlass * 0.3");
   }
-  return patchShader(mat, surf ? "facade-surf-1" : "facade-layers-1", (sh) => {
+  return patchShader(mat, surf ? "facade-surf-2" : "facade-layers-1", (sh) => {
     sh.uniforms.facadeMap = { value: base.tex };
     sh.uniforms.facadeLit = { value: lit.tex };
     sh.vertexShader = after(sh.vertexShader, "common", "attribute float fac;\nvarying float vFac;\nvarying vec3 vSqW;");
@@ -355,10 +357,65 @@ diffuseColor.rgb *= 1.0 - sqWall * (sqGrime + 0.2 * sqWet);`,
       f = swap(f, "roughnessmap_fragment", "float roughnessFactor = mix(facadeS.b, 0.35, sqWet * sqWall * 0.6);");
       f = swap(f, "metalnessmap_fragment", "float metalnessFactor = facadeS.a;");
       f = swap(f, "normal_fragment_maps", "vec3 mapN = vec3(facadeS.xy * 2.0 - 1.0, 0.0);\nmapN.z = sqrt(max(1e-4, 1.0 - dot(mapN.xy, mapN.xy)));\nnormal = normalize(tbn * mapN);");
+      // A room behind every window (interior mapping): see INTERIOR.
+      sh.vertexShader = after(sh.vertexShader, "common", "varying vec3 vSqWN;");
+      sh.vertexShader = after(sh.vertexShader, "project_vertex", "vSqWN = normalize(mat3(modelMatrix) * objectNormal);");
+      f = after(f, "common", "varying vec3 vSqWN;");
+      // Before main(): it reads varyings and uniforms declared after <common>.
+      f = f.replace("void main() {", `${INTERIOR}\nvoid main() {`);
+      f = f.replace("float sqWall = facadeTexel.a;", "float sqWall = facadeTexel.a;\nfloat sqGlass = 0.0; float sqRoomGlow = 1.0;\ndiffuseColor.rgb = sqInterior(diffuseColor.rgb, facadeS, facadeTexel.rgb, sqGlass, sqRoomGlow);");
+      f = f.replace(/totalEmissiveRadiance \*= texture\(facadeLit[^;]*;/, (m) => `${m}\ntotalEmissiveRadiance *= sqRoomGlow;`);
     }
     sh.fragmentShader = f;
   });
 }
+
+/**
+ * The room behind a window, without any geometry (interior mapping, after van Dongen): the
+ * view ray goes on through the glass into a box one bay wide, a storey high and ~4 m deep,
+ * and whichever of its back wall, side walls, floor or ceiling it meets is what shows —
+ * so rooms have depth and shift with the camera. Each room has its own paint, a wood or
+ * stone floor, something dark along the back wall, often curtains drawn to the sides;
+ * further in is darker. Lit at night (the façade's lit layer), the ceiling glows most.
+ * Blinds and frames stay as painted.
+ */
+/** How deep the rooms behind the windows are (m). */
+const ROOM_D = 4;
+const INTERIOR = /* glsl */ `
+vec3 sqInterior(vec3 base, vec4 surf, vec3 texel, out float glass, out float glow) {
+  glass = (1.0 - smoothstep(0.05, 0.12, surf.b)) * (1.0 - smoothstep(0.4, 0.55, dot(texel, vec3(0.3333))));
+  glow = 1.0;
+  if (glass < 0.01) return base;
+  vec3 N = normalize(vSqWN), T = vec3(-N.z, 0.0, N.x);
+  vec2 bay = vMapUv * 4.0, cell = floor(bay);
+  vec3 p = vec3(bay - cell, 0.0);
+  vec3 V = normalize(vSqW - cameraPosition);
+  // The ray in room units: the box is 1 × 1 × 1 (${WINDOW_M} m × ${FLOOR_M} m × ${ROOM_D} m).
+  vec3 d = vec3(dot(V, T) / ${WINDOW_M.toFixed(2)}, V.y / ${FLOOR_M.toFixed(2)}, max(dot(V, -N), 0.04) / ${ROOM_D.toFixed(2)});
+  vec3 tt = vec3(d.x > 0.0 ? (1.0 - p.x) / d.x : p.x / max(-d.x, 1e-5), d.y > 0.0 ? (1.0 - p.y) / d.y : p.y / max(-d.y, 1e-5), 1.0 / d.z);
+  float t = min(tt.z, min(tt.x, tt.y));
+  vec3 h = p + d * t;
+  float r1 = fract(sin(dot(cell + N.xz * 7.13, vec2(12.9898, 78.233))) * 43758.5453), r2 = fract(r1 * 17.31 + 0.13), r3 = fract(r1 * 41.7 + 0.71);
+  vec3 paint = mix(vec3(0.64, 0.56, 0.45), vec3(0.5, 0.56, 0.6), r1) * (0.72 + 0.38 * r2);
+  vec3 c;
+  if (t == tt.z) {
+    c = paint;
+    // Something along the back wall: a sofa, a cupboard, a desk.
+    float w = 0.18 + 0.2 * r3, at = 0.25 + 0.5 * r2;
+    if (abs(h.x - at) < w && h.y < 0.22 + 0.35 * step(0.7, r3)) c = mix(vec3(0.16, 0.12, 0.1), vec3(0.3, 0.33, 0.38), r1) ;
+  } else if (t == tt.x) c = paint * 0.8;
+  else if (d.y < 0.0) c = mix(vec3(0.26, 0.16, 0.09), vec3(0.45, 0.43, 0.4), step(0.55, r2));
+  else { c = vec3(0.82, 0.8, 0.77); glow = 1.35; }
+  // Curtains, drawn to the sides of the window just inside it.
+  vec3 q = p + d * (0.05 / d.z);
+  float edge = min(q.x - 0.234, 0.766 - q.x);
+  if (r3 > 0.35 && edge < 0.04 + 0.1 * r2 && q.y > 0.18 && q.y < 0.82) c = mix(vec3(0.55, 0.42, 0.3), vec3(0.62, 0.6, 0.55), r1) * (0.8 + 0.2 * sin(q.x * 160.0));
+  float dim = 1.0 - 0.55 * clamp(h.z, 0.0, 1.0);
+  // Lit at night, each surface glows by how pale it is: bright walls and ceiling, a darker
+  // floor, furniture and curtains in silhouette against them.
+  glow = mix(1.0, glow * dim * (0.3 + 1.15 * dot(c, vec3(0.3333))), glass);
+  return mix(base, c * dim * 0.42, glass);
+}`;
 
 /**
  * Leaves within a few metres of the camera aren't drawn (thinning out over the next metre),
@@ -399,22 +456,37 @@ transformed += 0.012 * sqH * sqWind * sin(sqTime * 6.0 + transformed.yzx * 3.0 +
 /**
  * Large-scale tone variation (so a park or a roof isn't one flat colour) and the rain: wet
  * surfaces darken and turn glossy. `macro`: world-space frequency of the variation (0: none).
+ * `wear` (road paint, with `noise`): the light paint is worn through to the asphalt in
+ * patches and where the tyres run, up to this much.
  */
-function weathered<T extends THREE.MeshStandardMaterial>(mat: T, noise: THREE.Texture | null, o: { macro?: number; darken: number; rough: number; mirror?: number }) {
-  const macro = noise && o.macro ? o.macro : 0;
+function weathered<T extends THREE.MeshStandardMaterial>(mat: T, noise: THREE.Texture | null, o: { macro?: number; darken: number; rough: number; mirror?: number; wear?: number }) {
+  const macro = noise && o.macro ? o.macro : 0, wear = noise && o.wear ? o.wear : 0;
   // Wet, it mirrors the street a little (screen-space reflections).
   if (o.mirror) mirrored(mat, `sqWet * ${o.mirror.toFixed(3)}`);
-  return patchShader(mat, `weather-${macro}-${o.darken}-${o.rough}`, (sh) => {
+  return patchShader(mat, `weather-${macro}-${o.darken}-${o.rough}-${wear}`, (sh) => {
     sh.uniforms.sqWet = WORLD.wet;
     let v = sh.vertexShader, f = sh.fragmentShader;
     f = after(f, "common", "uniform float sqWet;");
-    if (macro) {
+    if (macro || wear) {
       sh.uniforms.sqNoise = { value: noise };
       v = after(v, "common", "varying vec3 vSqW;");
       v = after(v, "project_vertex", "vec4 sqW4 = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nsqW4 = instanceMatrix * sqW4;\n#endif\nvSqW = (modelMatrix * sqW4).xyz;");
       f = after(f, "common", "uniform sampler2D sqNoise;\nvarying vec3 vSqW;");
-      f = after(f, "color_fragment", `diffuseColor.rgb *= 0.84 + 0.32 * texture2D(sqNoise, vSqW.xz * ${macro.toFixed(4)}).r;`);
     }
+    if (macro) f = after(f, "color_fragment", `diffuseColor.rgb *= 0.84 + 0.32 * texture2D(sqNoise, vSqW.xz * ${macro.toFixed(4)}).r;`);
+    if (wear)
+      f = after(
+        f,
+        "color_fragment",
+        `{
+  // Only the paint wears (white and yellow; the iron of a manhole cover doesn't): broad
+  // scuffed patches, and a fine crazing where the paint has flaked off.
+  float sqPaint = smoothstep(0.2, 0.45, max(diffuseColor.r, diffuseColor.g));
+  float sqBroad = texture2D(sqNoise, vSqW.xz * 0.09).g, sqFine = texture2D(sqNoise, vSqW.xz * 1.3 + 0.37).b;
+  float sqWorn = clamp(smoothstep(0.5, 0.72, sqBroad) * 0.8 + smoothstep(0.55, 0.75, sqFine) * 0.55, 0.0, 1.0) * ${wear.toFixed(3)} * sqPaint;
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.05, 0.055), sqWorn);
+}`,
+      );
     f = after(f, "color_fragment", `diffuseColor.rgb *= 1.0 - sqWet * ${o.darken.toFixed(3)};`);
     f = after(f, "roughnessmap_fragment", `roughnessFactor = mix(roughnessFactor, ${o.rough.toFixed(3)}, sqWet);`);
     sh.vertexShader = v;
@@ -459,6 +531,45 @@ normal = normalize(mix(normal, sqP, smoothstep(0.8, 0.95, dot(normal, sqUp)) * (
 }
 /** How mirror-like the street is, wet: a sheen everywhere (less on paving slabs), a near mirror in the puddles. */
 const STREET_MIRROR = "sqWet * 0.42 * (1.0 - 0.5 * sqPaved) + sqPud * 0.5";
+
+/**
+ * Stains on the asphalt (tileMesh's decals layer: oil, tyre rubber, patched trenches): the
+ * vertex colour, at the opacity each vertex carries in `fac`, laid over the street without
+ * touching the alpha channel — that holds how mirror-like the wet street under it is
+ * (screen-space reflections). Oil is a little glossy; in the rain it all darkens with the road.
+ */
+function decalMaterial(mat: THREE.MeshStandardMaterial) {
+  mat.blending = THREE.CustomBlending;
+  mat.blendSrc = THREE.SrcAlphaFactor;
+  mat.blendDst = THREE.OneMinusSrcAlphaFactor;
+  mat.blendSrcAlpha = THREE.ZeroFactor;
+  mat.blendDstAlpha = THREE.OneFactor;
+  patchShader(mat, "decal-alpha", (sh) => {
+    sh.vertexShader = after(sh.vertexShader, "common", "attribute float fac;\nvarying float vSqA;");
+    sh.vertexShader = after(sh.vertexShader, "begin_vertex", "vSqA = fac;");
+    sh.fragmentShader = after(sh.fragmentShader, "common", "varying float vSqA;");
+    sh.fragmentShader = after(sh.fragmentShader, "color_fragment", "diffuseColor.a *= vSqA;");
+  });
+  return weathered(mat, null, { darken: 0.3, rough: 0.12 });
+}
+
+/**
+ * The painted glow under the lamps, against the real lights (nightLights.ts): `near` how
+ * much of it goes within the real lights' reach of the camera (they light that ground
+ * themselves — both would double it), `far` the fog's far end, where it fades out with
+ * everything else (an additive glow can't take the fog's colour, so it fades instead).
+ */
+export const POOLS = { near: { value: 0 }, far: { value: 900 } };
+function poolFade<T extends THREE.Material>(mat: T) {
+  return patchShader(mat, "pool-fade", (sh) => {
+    sh.uniforms.sqPoolNear = POOLS.near;
+    sh.uniforms.sqPoolFar = POOLS.far;
+    sh.vertexShader = after(sh.vertexShader, "common", "varying vec3 vSqPW;");
+    sh.vertexShader = after(sh.vertexShader, "project_vertex", "vec4 sqPW = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nsqPW = instanceMatrix * sqPW;\n#endif\nvSqPW = (modelMatrix * sqPW).xyz;");
+    sh.fragmentShader = after(sh.fragmentShader, "common", "uniform float sqPoolNear;\nuniform float sqPoolFar;\nvarying vec3 vSqPW;");
+    sh.fragmentShader = after(sh.fragmentShader, "dithering_fragment", "{ float d = distance(vSqPW, cameraPosition); gl_FragColor.a *= mix(1.0 - sqPoolNear, 1.0, smoothstep(45.0, 95.0, d)) * (1.0 - smoothstep(sqPoolFar * 0.45, sqPoolFar, d)); }");
+  });
+}
 
 /** A soft round glow for the light under a street lamp at night. */
 function poolTexture() {
@@ -522,7 +633,7 @@ export type Materials = ReturnType<typeof makeMaterials>;
 export function makeMaterials(style: Style, opts: MaterialOpts = PLAIN) {
   const off = (f: number) => ({ polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f });
   // The glow under each street lamp at night (both styles); invisible by day.
-  const pool = new THREE.MeshBasicMaterial({ map: poolTexture(), color: "#ffc27a", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, ...off(-4) });
+  const pool = poolFade(new THREE.MeshBasicMaterial({ map: poolTexture(), color: "#ffc27a", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, ...off(-4) }));
   if (style === "toon") {
     const trees = clearNearCamera(toon({ vertexColors: true }));
     const m = {
@@ -537,6 +648,8 @@ export function makeMaterials(style: Style, opts: MaterialOpts = PLAIN) {
       props: toon({ vertexColors: true }),
       glow: new THREE.MeshBasicMaterial({ color: "#fff2c0" }),
       pool,
+      // (The storybook city has no stains on its streets; the layer is never built for it.)
+      decals: new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false }),
     };
     return withDispose(m, { pools: opts.lampPools, release: () => {} });
   }
@@ -546,18 +659,20 @@ export function makeMaterials(style: Style, opts: MaterialOpts = PLAIN) {
   const trees = weathered(clearNearCamera(std({ vertexColors: true, roughness: 0.92, flatShading: true })), null, { darken: 0.18, rough: 0.55 });
   const m = {
     walls: wearFacades(std({ map: facade("real", false), vertexColors: true, roughness: 0.86, metalness: 0, emissiveMap: facade("real", true), emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 0 }), noise),
-    glass: weathered(std({ map: curtain(false), vertexColors: true, roughness: s ? 0.06 : 0.12, metalness: s ? 0.6 : 0.75, emissiveMap: curtain(true), emissive: new THREE.Color("#ffe6b8"), emissiveIntensity: 0, envMapIntensity: s ? 1.35 : 1.2 }), null, { darken: 0.05, rough: 0.04 }),
+    // Curtain walls mirror the city around them (screen-space reflections, where on).
+    glass: mirrored(weathered(std({ map: curtain(false), vertexColors: true, roughness: s ? 0.06 : 0.12, metalness: s ? 0.6 : 0.75, emissiveMap: curtain(true), emissive: new THREE.Color("#ffe6b8"), emissiveIntensity: 0, envMapIntensity: s ? 1.35 : 1.2 }), null, { darken: 0.05, rough: 0.04 }), "0.42"),
     roofs: weathered(std({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }), noise, { macro: 0.03, darken: 0.3, rough: 0.4 }),
     roads: s
       ? mirrored(streetSurface(std({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, ...off(-2) }), s), STREET_MIRROR)
       : std({ vertexColors: true, map: grain(0.8, 0.06, 21), roughness: 0.93, side: THREE.DoubleSide, ...off(-2) }),
-    marks: weathered(std({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }), null, { darken: 0.25, rough: 0.22, mirror: 0.22 }),
+    marks: weathered(std({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide, ...off(-3) }), noise, { darken: 0.25, rough: 0.22, mirror: 0.22, wear: 0.75 }),
     ground: weathered(std({ vertexColors: true, map: grain(0.78, 0.02, 33), roughness: 1, side: THREE.DoubleSide, ...off(-1) }), noise, { macro: 0.012, darken: 0.32, rough: 0.6 }),
     water: std({ color: "#2f5f7c", roughness: 0.06, metalness: 0.35, side: THREE.DoubleSide, transparent: true, opacity: 0.94, ...off(-1) }),
     trees: opts.wind ? windy(trees) : trees,
     props: weathered(std({ vertexColors: true, roughness: 0.55, metalness: 0.35 }), null, { darken: 0.15, rough: 0.25 }),
     glow: new THREE.MeshBasicMaterial({ color: "#6b6150" }),
     pool,
+    decals: decalMaterial(std({ vertexColors: true, roughness: 0.38, metalness: 0, transparent: true, depthWrite: false, ...off(-2.5) })),
   };
   return withDispose(m, { pools: opts.lampPools, release: () => s?.release() });
 }
@@ -993,7 +1108,7 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     geoms.push(g);
     // Balconies and rooftop kit are drawn like roofs, kerbs and pavements like the street,
     // and only up close (with the other detail).
-    const trim = l.name === "trim" || l.name === "kerbs";
+    const trim = l.name === "trim" || l.name === "kerbs" || l.name === "decals";
     const mesh = new THREE.Mesh(g, l.name === "trim" ? mats.roofs : l.name === "kerbs" ? mats.roads : mats[l.name]);
     const solid = l.name === "walls" || l.name === "glass" || l.name === "roofs";
     mesh.castShadow = opts.shadows && solid;

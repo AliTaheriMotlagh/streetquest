@@ -12,6 +12,7 @@
 // phones) in the model's light version.
 import * as THREE from "three";
 import { mirrored, PAINT_MIRROR } from "./graphics/shaders";
+import { carGlass, carPaint, carTrim, carWheel, tyreAttr } from "./carLook";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import { tumbleOrigin } from "@/lib/street/carPhysics";
@@ -165,7 +166,7 @@ function wheelGeo(r: number, w: number, bike: boolean) {
         tint(new THREE.CylinderGeometry(r * 0.62, r * 0.62, w + 0.02, 12).rotateZ(Math.PI / 2), RIM),
         tint(new THREE.CylinderGeometry(r * 0.2, r * 0.2, w + 0.04, 8).rotateZ(Math.PI / 2), "#6f737a"),
       ];
-  return mergeGeometries(parts)!;
+  return tyreAttr(mergeGeometries(parts)!, { spokes: !bike });
 }
 
 type Wheels = { r: number; w: number; axles: number[]; track: number };
@@ -616,9 +617,9 @@ export function fleetParts(key: FleetKey): FleetParts {
 }
 
 // ---------------------------------------------------------------- materials
-/** Trim, chrome, plates and riders: one material, coloured per vertex. */
-export const kitMaterial = (style: Style) => (style === "toon" ? toon({ color: "#ffffff", vertexColors: true }) : new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, metalness: 0.25, roughness: 0.55 }));
-export const wheelMaterial = (style: Style) => (style === "toon" ? toon({ color: "#ffffff", vertexColors: true }) : new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, metalness: 0.3, roughness: 0.75 }));
+/** Trim, chrome, plates and riders: one material, coloured per vertex (chrome polished, black plastic satin: carLook.ts); wheels: alloy rims, treaded tyres. */
+export const kitMaterial = (style: Style) => (style === "toon" ? toon({ color: "#ffffff", vertexColors: true }) : carTrim(new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, metalness: 0.25, roughness: 0.55 })));
+export const wheelMaterial = (style: Style) => (style === "toon" ? toon({ color: "#ffffff", vertexColors: true }) : carWheel(new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, metalness: 0.3, roughness: 0.75 })));
 
 let blobTex: THREE.CanvasTexture | null = null;
 /** The soft round shadow under a vehicle (phones without shadow maps still see it grounded). */
@@ -698,9 +699,11 @@ export class FleetInstances {
         !real
           ? toon({ color: "#ffffff" })
           : mirrored(
-              look.clearcoat
-                ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
-                : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
+              carPaint(
+                look.clearcoat
+                  ? new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 })
+                  : new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.5, roughness: 0.32 }),
+              ),
               PAINT_MIRROR,
             ),
       ),
@@ -708,7 +711,7 @@ export class FleetInstances {
       // Tinted, not blacked out: the driver and the cabin show through.
       glass: withDents(
         real
-          ? new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.7, roughness: 0.06, transparent: true, opacity: 0.45 })
+          ? carGlass(new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.7, roughness: 0.06, transparent: true, opacity: 0.42 }))
           : toon({ color: "#1d3557", emissive: new THREE.Color("#2a4d7a"), emissiveIntensity: 0.35, transparent: true, opacity: 0.6 }),
         true,
       ),

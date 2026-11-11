@@ -13,6 +13,7 @@
 // paint and trim, a star of cracks on glass — so it sits on the real, curved body.
 import * as THREE from "three";
 import type { Hole } from "@/lib/street/damage";
+import { SCRATCH_GLSL } from "./carLook";
 
 /** The per-copy dent attribute. Missing, WebGL reads (0, 0, 0, 1): no dent, not battered — so w is 1 − crumple. */
 export const DENT_ATTR = "aDent";
@@ -23,6 +24,7 @@ const MARKS: readonly string[] = [DENT_ATTR, ...HOLE_ATTRS];
 const VERT_COMMON = /* glsl */ `
 attribute vec4 aDent;
 varying float vDentK;
+varying float vDentBat;
 float dentK(vec3 p) {
   float R = 0.75 + aDent.z * 2.2;
   float k = max(0.0, 1.0 - distance(p, vec3(aDent.x, 0.55, aDent.y)) / R);
@@ -95,6 +97,7 @@ export function withDents<M extends THREE.Material>(mat: M, glass = false): M {
           transformed.y -= aDent.z * dk * 0.25;
           transformed += dentWobble(position * 1.3) * bat * 0.016 * (0.35 + dk);
           vDentK = dk;
+          vDentBat = bat;
           vHoleP = transformed;
           vHoleN = normal;
           vH0 = aHoleA;
@@ -102,10 +105,11 @@ export function withDents<M extends THREE.Material>(mat: M, glass = false): M {
           vH2 = aHoleC;
         }`,
       );
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>\nvarying float vDentK;\n${FRAG_HOLES}`).replace(
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>\nvarying float vDentK;\nvarying float vDentBat;\n${FRAG_HOLES}\n${SCRATCH_GLSL}`).replace(
       "#include <color_fragment>",
       /* glsl */ `#include <color_fragment>
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.3, 0.31), smoothstep(0.12, 0.55, vDentK) * 0.6);
+      ${glass ? "" : "// Scraped to bare metal over the dent, and here and there on a battered body.\n      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.61, 0.63), sqScratch(vHoleP, smoothstep(0.06, 0.45, vDentK) + vDentBat * 0.4));"}
       {
         vec3 hs[4];
         hs[0] = holeAt(vec3(vH0.x, vH0.y - 10.0, vH0.z));

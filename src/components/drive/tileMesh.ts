@@ -15,7 +15,8 @@ import type { VtCell } from "./vectorTile";
 
 export type Style = "real" | "toon";
 /** `trim`: balconies and rooftop kit (coolers, water tanks) — drawn like roofs, only up close. */
-export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim" | "kerbs";
+/** `decals`: soft stains on the asphalt (oil, tyre rubber, patches), each vertex's opacity in `fac`. */
+export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim" | "kerbs" | "decals";
 /** `fac`: the façade each wall vertex wears (an index into FACADES), when any isn't plaster. */
 export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
 export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk" | "dumpster";
@@ -255,6 +256,15 @@ const DOMES = ["#2f8f9d", "#2c6fb0", "#3a9bb0", "#1f7a8c", "#c9a227"];
 /** Balcony railings: dark steel, white, grey, blue-grey glass. */
 const RAILS = ["#3b3f45", "#e9e7e2", "#5b6168", "#8fa3b0"];
 const COOLER = color("#c9cbcd"), TANK_WHITE = color("#e8eaec"), TANK_BLUE = color("#3f78b5"), GOLD = color("#d4af37");
+/** Split air-conditioners on the walls: white, now and then yellowed by the sun. */
+const AC_UNITS = ["#e6e7e3", "#dcdcd4", "#e9e4d6", "#cfd1cf"];
+/** Dishes (mostly white), aerials (galvanised), the dark bits (grilles, receivers). */
+const DISH = color("#dfe0de"), AERIAL = color("#9a9fa4"), DARK_KIT = color("#3e4246");
+/** Awning canvas, striped with off-white. */
+const AWNINGS = ["#a8322c", "#2d6f48", "#2b5690", "#c26d22", "#6e2433", "#1f6f78"];
+const CANVAS_WHITE = color("#ece5d6");
+/** Manhole covers (cast iron) and their rims; oil and rubber on the asphalt; a fresh patch of tarmac. */
+const IRON = color("#2c2b29"), IRON_RIM = color("#4a4743"), OIL = color("#0b0a09"), RUBBER_MARK = color("#101010"), PATCH = color("#17181a");
 
 function signedArea(p: Float32Array) {
   let a = 0;
@@ -344,24 +354,37 @@ export function clearRuns(pts: Float32Array, ok: (x: number, z: number) => boole
   return runs;
 }
 
-/** A raised strip along a polyline, `w` wide with its top at y1, and upright faces (at ±w/2, down to their own y0) where asked. */
-function strip(b: Builder, pts: Float32Array, w: number, y1: number, c: THREE.Color, uv: number, faces: { off: number; y0: number }[]) {
-  ribbon(b, pts, w, y1, c, uv);
+/** A raised strip along a polyline, `w` wide with its top at y1, and upright faces (at ±w/2, from their own y0 up to y1, or their own top) where asked. */
+function strip(b: Builder, pts: Float32Array, w: number, y1: number, c: THREE.Color, uv: number, faces: { off: number; y0: number; y1?: number }[]) {
+  if (w > 0) ribbon(b, pts, w, y1, c, uv);
   for (const f of faces) {
-    const e = offsetLine(pts, f.off);
+    const e = offsetLine(pts, f.off), top = f.y1 ?? y1;
     for (let i = 0; i + 3 < e.length; i += 2) {
       // Facing away from the middle of the strip.
-      const inside: V3 = [(pts[i] + pts[i + 2]) / 2, (f.y0 + y1) / 2, (pts[i + 1] + pts[i + 3]) / 2];
-      const a: V3 = [e[i], f.y0, e[i + 1]], bb: V3 = [e[i + 2], f.y0, e[i + 3]], cc: V3 = [e[i + 2], y1, e[i + 3]], d: V3 = [e[i], y1, e[i + 1]];
+      const inside: V3 = [(pts[i] + pts[i + 2]) / 2, (f.y0 + top) / 2 - 0.05, (pts[i + 1] + pts[i + 3]) / 2];
+      const a: V3 = [e[i], f.y0, e[i + 1]], bb: V3 = [e[i + 2], f.y0, e[i + 3]], cc: V3 = [e[i + 2], top, e[i + 3]], d: V3 = [e[i], top, e[i + 1]];
       b.tri(a, bb, cc, c, inside);
       b.tri(a, cc, d, c, inside);
     }
   }
 }
 
+/** A 45° chamfer along a strip's edge: from `off` at `y0` in to `offIn` at `y1` (a kerb's rounded-off lip catches the light). */
+function chamfer(b: Builder, pts: Float32Array, off: number, offIn: number, y0: number, y1: number, c: THREE.Color) {
+  const lo = offsetLine(pts, off), hi = offsetLine(pts, offIn);
+  for (let i = 0; i + 3 < lo.length; i += 2) {
+    const inside: V3 = [(hi[i] + hi[i + 2]) / 2 + (hi[i] - lo[i]) * 3, y0 - 0.06, (hi[i + 1] + hi[i + 3]) / 2 + (hi[i + 1] - lo[i + 1]) * 3];
+    const a: V3 = [lo[i], y0, lo[i + 1]], bb: V3 = [lo[i + 2], y0, lo[i + 3]], cc: V3 = [hi[i + 2], y1, hi[i + 3]], d: V3 = [hi[i], y1, hi[i + 1]];
+    b.tri(a, bb, cc, c, inside);
+    b.tri(a, cc, d, c, inside);
+  }
+}
+
 /** How high kerbs and pavements stand above the street (m). */
 export const KERB_H = 0.13;
 const KERB_W = 0.2;
+/** The kerbstone's bevelled street-side lip (m). */
+const KERB_BEVEL = 0.035;
 /** Pavement each side of a street, kerb included: wider in Iran, where the jube runs along it. */
 const PAVE_M = { me: 3.0, world: 2.3 };
 /** Tehran's jube: the open gutter between kerb and pavement (wider on the main roads). */
@@ -375,7 +398,10 @@ const KERB = color("#bcb8ad"), JUBE = color("#45433d");
 function streetSide(b: Builder, pts: Float32Array, w: number, y: number, side: 1 | -1, jube: number, pave: number, walk: THREE.Color, uv: number, ok: (x: number, z: number) => boolean) {
   const top = y + KERB_H, low = y - 0.012;
   for (const run of clearRuns(offsetLine(pts, side * (w / 2 + KERB_W / 2)), ok)) {
-    strip(b, run, KERB_W, top, KERB, uv, [{ off: -side * (KERB_W / 2), y0: y - 0.03 }, ...(jube ? [{ off: side * (KERB_W / 2), y0: low }] : [])]);
+    // The kerbstone: its top, the face down to the street ending in a bevelled lip.
+    ribbon(b, offsetLine(run, side * (KERB_BEVEL / 2)), KERB_W - KERB_BEVEL, top, KERB, uv);
+    strip(b, run, 0, top, KERB, uv, [{ off: -side * (KERB_W / 2), y0: y - 0.03, y1: top - KERB_BEVEL }, ...(jube ? [{ off: side * (KERB_W / 2), y0: low }] : [])]);
+    chamfer(b, run, -side * (KERB_W / 2), -side * (KERB_W / 2 - KERB_BEVEL), top - KERB_BEVEL, top, KERB);
     if (jube) ribbon(b, offsetLine(run, side * (KERB_W / 2 + jube / 2)), jube, low, JUBE);
     const sw = pave - KERB_W - jube, at = side * (KERB_W / 2 + jube + sw / 2);
     strip(b, offsetLine(run, at), sw, top, walk, uv, [...(jube ? [{ off: -side * (sw / 2), y0: low }] : []), { off: side * (sw / 2), y0: 0 }]);
@@ -528,8 +554,8 @@ export function box(x: number, z: number, hw: number, hd: number, yaw: number, h
 }
 
 // ---------------------------------------------------------------- the tile
-const FLOOR_M = 3.3;
-const WINDOW_M = 4.2;
+export const FLOOR_M = 3.3;
+export const WINDOW_M = 4.2;
 /** A ground floor of shops is this tall. */
 const SHOP_FLOOR_M = 3.9;
 /** How far a balcony sticks out, and the parapet round a flat roof. */
@@ -538,6 +564,13 @@ const PARAPET_M = 0.85;
 /** Per tile, so a dense block stays cheap: balconies, and rooftop coolers and tanks. */
 const MAX_BALCONIES = 360;
 const MAX_KIT = 220;
+/** Per tile: awnings, wall air-conditioners, dishes and aerials, stains and streaks on the asphalt. */
+const MAX_AWNINGS = 160;
+const MAX_AC = 520;
+const MAX_DISHES = 260;
+const MAX_DECALS = 700;
+/** Buildings people live and work in get air-conditioners on their walls. */
+const AC_KINDS: BuildingKind[] = ["apartments", "house", "office", "shop", "civic"];
 const DRIVABLE: RoadKind[] = ["major", "minor", "path"];
 
 /** Zebra stripes across a street `w` wide at (x, z); (fx, fz) runs along the street. */
@@ -628,6 +661,127 @@ function cuboid(b: Builder, x: number, z: number, hx: number, hz: number, y0: nu
   for (const [i0, j0, i1, j1] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) q(P(i0, j0, y0), P(i1, j1, y0), P(i1, j1, y1), P(i0, j0, y1));
 }
 
+// ---------------------------------------------------------------- street-level and façade detail
+/** A thin box from `a` to `bb`, `t` across (a mast, an antenna's elements, a dish's arm). */
+function beam(b: Builder, a: V3, bb: V3, t: number, c: THREE.Color) {
+  const dx = bb[0] - a[0], dy = bb[1] - a[1], dz = bb[2] - a[2], l = Math.hypot(dx, dy, dz) || 1;
+  const d: V3 = [dx / l, dy / l, dz / l];
+  // Two directions square to the beam: from "up" unless it is upright, then from "east".
+  const ref: V3 = Math.abs(d[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  let p: V3 = [d[1] * ref[2] - d[2] * ref[1], d[2] * ref[0] - d[0] * ref[2], d[0] * ref[1] - d[1] * ref[0]];
+  const pl = Math.hypot(...p) || 1;
+  p = [(p[0] / pl) * t, (p[1] / pl) * t, (p[2] / pl) * t];
+  const q: V3 = [d[1] * p[2] - d[2] * p[1], d[2] * p[0] - d[0] * p[2], d[0] * p[1] - d[1] * p[0]];
+  const at = (o: V3, i: number, j: number): V3 => [o[0] + p[0] * i + q[0] * j, o[1] + p[1] * i + q[1] * j, o[2] + p[2] * i + q[2] * j];
+  const mid: V3 = [(a[0] + bb[0]) / 2, (a[1] + bb[1]) / 2, (a[2] + bb[2]) / 2];
+  for (const [i0, j0, i1, j1] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) {
+    b.tri(at(a, i0, j0), at(a, i1, j1), at(bb, i1, j1), c, mid);
+    b.tri(at(a, i0, j0), at(bb, i1, j1), at(bb, i0, j0), c, mid);
+  }
+}
+
+/** A satellite dish on a short post, its bowl `r` across turned to `yaw` (0 = +z, south) and tipped up by `tilt`, with the arm that holds its receiver. */
+function dish(b: Builder, x: number, z: number, y0: number, r: number, yaw: number, tilt: number, c: THREE.Color) {
+  const post = 0.75;
+  beam(b, [x, y0, z], [x, y0 + post, z], 0.025, c);
+  const f: V3 = [Math.sin(yaw) * Math.cos(tilt), Math.sin(tilt), Math.cos(yaw) * Math.cos(tilt)];
+  // Across the bowl: sideways (level) and "up" in the bowl's own plane.
+  const s: V3 = [Math.cos(yaw), 0, -Math.sin(yaw)];
+  const u: V3 = [f[1] * s[2] - f[2] * s[1], f[2] * s[0] - f[0] * s[2], f[0] * s[1] - f[1] * s[0]];
+  const C: V3 = [x, y0 + post + r * 0.55, z];
+  const back: V3 = [C[0] - f[0] * r * 0.32, C[1] - f[1] * r * 0.32, C[2] - f[2] * r * 0.32];
+  const behind: V3 = [C[0] - f[0] * r, C[1] - f[1] * r, C[2] - f[2] * r];
+  const seg = 10, ring = (k: number): V3 => {
+    const a = (k / seg) * Math.PI * 2, ca = Math.cos(a) * r, sa = Math.sin(a) * r * 1.08; // a touch oval, as offset dishes are
+    return [C[0] + s[0] * ca + u[0] * sa, C[1] + s[1] * ca + u[1] * sa, C[2] + s[2] * ca + u[2] * sa];
+  };
+  for (let k = 0; k < seg; k++) b.tri(back, ring(k), ring(k + 1), c, behind);
+  // The arm from under the bowl out to the receiver at its focus, and the receiver.
+  const low = ring(Math.round(seg * 0.75));
+  const focus: V3 = [C[0] + f[0] * r * 0.75 - u[0] * r * 0.25, C[1] + f[1] * r * 0.75 - u[1] * r * 0.25, C[2] + f[2] * r * 0.75 - u[2] * r * 0.25];
+  beam(b, low, focus, 0.012, c);
+  beam(b, focus, [focus[0] - f[0] * 0.12, focus[1] - f[1] * 0.12, focus[2] - f[2] * 0.12], 0.04, DARK_KIT);
+}
+
+/** A rooftop TV aerial: a mast, a boom on top pointing along `yaw`, and its elements across it. */
+function aerial(b: Builder, x: number, z: number, y0: number, tall: number, yaw: number, c: THREE.Color) {
+  const top = y0 + tall, fx = Math.sin(yaw), fz = Math.cos(yaw);
+  beam(b, [x, y0, z], [x, top + 0.1, z], 0.022, c);
+  beam(b, [x - fx * 0.75, top, z - fz * 0.75], [x + fx * 0.75, top, z + fz * 0.75], 0.014, c);
+  for (let i = 0; i < 4; i++) {
+    const t = -0.6 + i * 0.4, w = 0.5 - i * 0.07, cx = x + fx * t, cz = z + fz * t;
+    beam(b, [cx - fz * w, top, cz + fx * w], [cx + fz * w, top, cz - fx * w], 0.009, c);
+  }
+}
+
+/** A split air-conditioner's outdoor unit on a wall (its back on the wall at (x, z), facing out along n; +x of the box runs along (ux, uz)): a white box and its fan grille. */
+function acUnit(b: Builder, x: number, z: number, y0: number, ux: number, uz: number, nx: number, nz: number, c: THREE.Color) {
+  const W = 0.4, D = 0.15, H = 0.55;
+  cuboid(b, x + nx * D, z + nz * D, W, D, y0, y0 + H, ux, uz, c);
+  // The grille: a dark round-ish square, off to one side, just proud of the front.
+  const fx = x + nx * (2 * D + 0.004), fz = z + nz * (2 * D + 0.004), gx = -0.08, gh = 0.19;
+  const v = (i: number, j: number) => b.vert(fx + ux * (gx + i * gh), y0 + H / 2 + j * gh, fz + uz * (gx + i * gh), nx, 0, nz, DARK_KIT);
+  const p0 = v(-1, -1), p1 = v(1, -1), p2 = v(1, 1), p3 = v(-1, 1);
+  b.idx.push(p0, p1, p2, p0, p2, p3);
+}
+
+/**
+ * A striped canvas awning over a shop window: from the wall at `y` out `out` metres,
+ * sloping down by `drop`, with a valance hanging off its front and closed sides. (x0, z0)
+ * → (x1, z1) along the wall; (nx, nz) out of it.
+ */
+function awning(b: Builder, x0: number, z0: number, x1: number, z1: number, nx: number, nz: number, y: number, out: number, drop: number, c: THREE.Color, white: THREE.Color) {
+  const stripes = 6, val = 0.24;
+  const inside: V3 = [(x0 + x1) / 2 - nx * 0.6, y - 1.4, (z0 + z1) / 2 - nz * 0.6];
+  const yf = y - drop;
+  const P = (t: number, o: number, yy: number): V3 => [x0 + (x1 - x0) * t + nx * o, yy, z0 + (z1 - z0) * t + nz * o];
+  for (let i = 0; i < stripes; i++) {
+    const t0 = i / stripes, t1 = (i + 1) / stripes, col = i % 2 ? white : c;
+    b.tri(P(t0, 0, y), P(t1, 0, y), P(t1, out, yf), col, inside);
+    b.tri(P(t0, 0, y), P(t1, out, yf), P(t0, out, yf), col, inside);
+    b.tri(P(t0, out, yf), P(t1, out, yf), P(t1, out, yf - val), col, inside);
+    b.tri(P(t0, out, yf), P(t1, out, yf - val), P(t0, out, yf - val), col, inside);
+  }
+  for (const t of [0, 1]) b.tri(P(t, 0, y), P(t, out, yf), P(t, out, yf - val), c, [inside[0] + (t ? -1 : 1) * (x1 - x0), inside[1], inside[2] + (t ? -1 : 1) * (z1 - z0)]);
+}
+
+/**
+ * A soft stain on the street (oil, a fresh patch): opaque-ish in the middle, fading to
+ * nothing at its ragged edge. The decals layer carries each vertex's opacity in `fac`
+ * (world3d's decal material reads it); `stretch` draws it out along `yaw`.
+ */
+function blot(b: Builder, x: number, z: number, r: number, y: number, c: THREE.Color, a: number, yaw: number, stretch: number, rnd: () => number) {
+  b.facade = a;
+  const centre = b.vert(x, y, z, 0, 1, 0, c);
+  b.facade = 0;
+  const seg = 9, sx = Math.sin(yaw), sz = Math.cos(yaw);
+  const first = b.pos.length / 3;
+  for (let k = 0; k < seg; k++) {
+    const t = (k / seg) * Math.PI * 2, rr = r * (0.7 + rnd() * 0.45);
+    const along = Math.cos(t) * rr * stretch, across = Math.sin(t) * rr;
+    b.vert(x + sx * along + sz * across, y, z + sz * along - sx * across, 0, 1, 0, c);
+  }
+  for (let k = 0; k < seg; k++) up(b, centre, first + k, first + ((k + 1) % seg));
+}
+
+/** A streak along a path of (x, z) points, `w` wide — tyre rubber — darkest in the middle of its length, fading out at both ends. */
+function streak(b: Builder, pts: number[], w: number, y: number, c: THREE.Color, a: number) {
+  const n = pts.length / 2;
+  let prev = -1;
+  for (let i = 0; i < n; i++) {
+    const j = Math.min(n - 1, i + 1), h = Math.max(0, i - 1);
+    let dx = pts[j * 2] - pts[h * 2], dz = pts[j * 2 + 1] - pts[h * 2 + 1];
+    const l = Math.hypot(dx, dz) || 1;
+    (dx /= l), (dz /= l);
+    b.facade = a * Math.sqrt(Math.sin((Math.PI * i) / (n - 1)));
+    const x = pts[i * 2], z = pts[i * 2 + 1];
+    const L = b.vert(x - dz * w * 0.5, y, z + dx * w * 0.5, 0, 1, 0, c), R = b.vert(x + dz * w * 0.5, y, z - dx * w * 0.5, 0, 1, 0, c);
+    if (prev >= 0) (up(b, prev, prev + 1, L), up(b, prev + 1, R, L));
+    prev = L;
+  }
+  b.facade = 0;
+}
+
 const SURFACE: Record<CityPitch["s"], [string, string]> = {
   // [real, toon]: grass for football, hard courts for the rest.
   soccer: ["#4f9a48", "#6fcf6a"], basketball: ["#b0653f", "#ff9f6b"], tennis: ["#3f7a9e", "#6bb8ff"], volleyball: ["#c49a5c", "#ffd08a"], other: ["#5f8f55", "#8fd67a"],
@@ -715,7 +869,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   const frame = makeFrame(origin);
   const pal = PALETTES[style];
   const realStyle = style === "real";
-  const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder(), trim = new Builder(), kerbs = new Builder();
+  const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder(), trim = new Builder(), kerbs = new Builder(), decals = new Builder();
   const footprints: Footprint[] = [];
   const labels: Label[] = [];
   const rand = rng(hashStr(`props|${tile.key}`));
@@ -740,8 +894,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   const region = middleEast(sw.lat, sw.lng) ? "me" : "world";
   /** Balconies, parapets and rooftop kit: the real style, on phones that can afford them. */
   const detailed = realStyle && !lite;
-  const kitRand = rng(hashStr(`kit|${tile.key}`));
-  let balconies = 0, kit = 0;
+  const kitRand = rng(hashStr(`kit|${tile.key}`)), acRand = rng(hashStr(`ac|${tile.key}`)), skyRand = rng(hashStr(`dish|${tile.key}`));
+  let balconies = 0, kit = 0, awningN = 0, acN = 0, dishN = 0;
   for (let bi = 0; bi < tile.b.length; bi++) {
     const b = tile.b[bi];
     let pts = frame.unpack(tile.cx, tile.cy, b.r);
@@ -798,6 +952,10 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     const balconyEvery = 1 + ((seed >>> 4) % 2);
     const rail = color(RAILS[(seed >>> 6) % RAILS.length]);
     const slab = wall.clone().multiplyScalar(0.86);
+    // Awnings on two shops in five; air-conditioners on homes and offices, some blocks bristling with them.
+    const awnings = detailed && shopsBelow && (seed >>> 11) % 5 < 2;
+    const awningCol = color(AWNINGS[(seed >>> 13) % AWNINGS.length]);
+    const acDensity = detailed && !isGlass && !mosque && floors >= 2 && AC_KINDS.includes(b.k) ? [0, 0.06, 0.13, 0.22][(seed >>> 9) % 4] : 0;
     let u = 0;
     for (let i = 0; i < pts.length; i += 2) {
       const j = (i + 2) % pts.length;
@@ -841,6 +999,32 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
             const r2 = trim.vert(fx + ux * half, y + 1, fz + uz * half, nx, 0, nz, rail), r3 = trim.vert(fx - ux * half, y + 1, fz - uz * half, nx, 0, nz, rail);
             trim.idx.push(r0, r1, r2, r0, r2, r3);
             balconies++;
+          }
+        }
+      }
+      // Striped awnings over the shop windows, one per bay, on some streets' shops.
+      if (awnings && split > mh + 1 && len >= 3.5) {
+        const ux = (x1 - x0) / len, uz = (z1 - z0) / len;
+        for (let k = Math.ceil(u / WINDOW_M); (k + 1) * WINDOW_M <= u + len + 0.01 && awningN < MAX_AWNINGS; k++) {
+          const a0 = k * WINDOW_M - u + 0.22, a1 = (k + 1) * WINDOW_M - u - 0.22;
+          if (a0 < 0.15 || a1 > len - 0.15) continue;
+          const y = Math.min(split - 0.35, 2.75);
+          awning(trim, x0 + ux * a0 + nx * 0.02, z0 + uz * a0 + nz * 0.02, x0 + ux * a1 + nx * 0.02, z0 + uz * a1 + nz * 0.02, nx, nz, y, 1.15, 0.42, awningCol, CANVAS_WHITE);
+          awningN++;
+        }
+      }
+      // Split air-conditioners hung beside the windows, from the first floor up (not on the balcony bays).
+      if (acDensity > 0 && len >= 3) {
+        const ux = (x1 - x0) / len, uz = (z1 - z0) / len;
+        const balconyHere = withBalconies && facesStreet && len >= 5;
+        for (let k = Math.ceil((u + 0.6) / WINDOW_M - 0.5); (k + 0.5) * WINDOW_M < u + len - 0.6 && acN < MAX_AC; k++) {
+          if (balconyHere && k % balconyEvery === 0) continue;
+          for (let f = 1; f < floors && (f + 1) * FLOOR_M <= h + 0.2 && acN < MAX_AC; f++) {
+            if (acRand() > acDensity) continue;
+            const along = (k + 0.5) * WINDOW_M - u + (acRand() < 0.5 ? -1.62 : 1.62);
+            if (along < 0.5 || along > len - 0.5) continue;
+            acUnit(trim, x0 + ux * along, z0 + uz * along, f * FLOOR_M + 0.95, ux, uz, nx, nz, color(AC_UNITS[(acN + bi) % AC_UNITS.length]));
+            acN++;
           }
         }
       }
@@ -957,6 +1141,18 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
           kit++;
         }
       }
+      // Satellite dishes turned to the southern sky, and the odd old TV aerial.
+      if (detailed && !isGlass && !mosque && area >= 40 && h >= 5 && dishN < MAX_DISHES) {
+        const want = (region === "me" ? 1 : 0) + Math.floor(skyRand() * (1.6 + Math.min(2, area / 300)));
+        for (let k = 0, tries = 0; k < want && tries < want * 6 && dishN < MAX_DISHES; tries++) {
+          const x = minX + skyRand() * (maxX - minX), z = minZ + skyRand() * (maxZ - minZ);
+          if (!insidePacked(pts, x, z) || edgeDist(pts, x, z) < 0.9) continue;
+          if (skyRand() < 0.8) dish(trim, x, z, h, 0.36 + skyRand() * 0.22, (skyRand() - 0.5) * 0.7, 0.62 + skyRand() * 0.25, DISH);
+          else aerial(trim, x, z, h, 1.6 + skyRand() * 0.8, skyRand() * Math.PI, AERIAL);
+          k++;
+          dishN++;
+        }
+      }
     }
     // Landmarks: spires on churches (not mosques: they have their minarets), antennas on towers.
     if ((b.k === "church" && !mosque) || (b.k === "tower" && h > 60)) {
@@ -994,6 +1190,73 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   // Where the map has its crossings, those are drawn (below) instead of guessing at junctions.
   let mapped = 0;
   for (let i = 2; i < (tile.o?.length ?? 0); i += 3) if (tile.o![i] === PROP.crossing) mapped++;
+  const wearRand = rng(hashStr(`wear|${tile.key}`));
+  let decalN = 0;
+  /** A lane's middle `side` of the line (two-way: one lane each way; one-way: any lane). */
+  const laneOff = (w: number, oneWay: boolean) => {
+    const lanes = Math.max(1, Math.round(w / 3.4));
+    if (oneWay) return -w / 2 + (w / lanes) * (Math.floor(wearRand() * lanes) + 0.5);
+    return (wearRand() < 0.5 ? -1 : 1) * Math.max(1.2, w / 4);
+  };
+  const streetWear = (pts: Float32Array, w: number, y: number, oneWay: boolean, key: typeof vk, deg: Map<string, number>) => {
+    const dy = y + 0.006;
+    // Along the street: every so often a manhole, oil in the lanes, a patched trench.
+    let nextHole = 15 + wearRand() * 40, nextOil = 4 + wearRand() * 12, nextPatch = 30 + wearRand() * 90, s = 0;
+    for (let i = 0; i + 3 < pts.length && decalN < MAX_DECALS; i += 2) {
+      const x0 = pts[i], z0 = pts[i + 1], dx = pts[i + 2] - x0, dz = pts[i + 3] - z0, len = Math.hypot(dx, dz);
+      if (len < 0.01) continue;
+      const fx = dx / len, fz = dz / len, yaw = Math.atan2(fx, fz);
+      const at = (t: number, off: number): [number, number] => [x0 + fx * t - fz * off, z0 + fz * t + fx * off];
+      for (; nextHole < s + len; nextHole += 35 + wearRand() * 45) {
+        const [x, z] = at(nextHole - s, laneOff(w, oneWay) * 0.6);
+        disc(marks, x, z, 0.4, y + 0.005, IRON_RIM);
+        disc(marks, x, z, 0.33, y + 0.0095, IRON);
+      }
+      for (; nextOil < s + len && decalN < MAX_DECALS; nextOil += 6 + wearRand() * 16) {
+        const [x, z] = at(nextOil - s, laneOff(w, oneWay) + (wearRand() - 0.5) * 0.6);
+        blot(decals, x, z, 0.22 + wearRand() * 0.4, dy, OIL, 0.16 + wearRand() * 0.26, yaw, 1.3 + wearRand(), wearRand);
+        decalN++;
+      }
+      for (; nextPatch < s + len && decalN < MAX_DECALS; nextPatch += 60 + wearRand() * 120) {
+        // A trench dug across part of the street and filled with fresh, darker tarmac.
+        const t = nextPatch - s, across = w * (0.35 + wearRand() * 0.5), start = (wearRand() < 0.5 ? -1 : 1) * (w / 2 - across / 2 - 0.1);
+        const [ax, az] = at(t, start - across / 2), [bx, bz] = at(t, start + across / 2);
+        decals.facade = 0.22 + wearRand() * 0.16;
+        ribbon(decals, new Float32Array([ax, az, bx, bz]), 0.7 + wearRand() * 0.9, dy + 0.001, PATCH);
+        decals.facade = 0;
+        decalN++;
+      }
+      s += len;
+    }
+    // At each end that meets a junction: oil where cars wait, rubber where they brake and turn.
+    const n = pts.length / 2;
+    for (const end of [0, n - 1]) {
+      if ((deg.get(key(pts[end * 2], pts[end * 2 + 1])) ?? 0) < 3 || decalN >= MAX_DECALS) continue;
+      const nb = end === 0 ? 1 : n - 2;
+      const jx = pts[end * 2], jz = pts[end * 2 + 1], ddx = pts[nb * 2] - jx, ddz = pts[nb * 2 + 1] - jz, l = Math.hypot(ddx, ddz);
+      if (l < 12) continue;
+      const fx = ddx / l, fz = ddz / l, px = -fz, pz = fx;
+      for (let k = 0; k < 3; k++) {
+        const t = 7 + wearRand() * 6, off = laneOff(w, oneWay);
+        blot(decals, jx + fx * t + px * off, jz + fz * t + pz * off, 0.3 + wearRand() * 0.45, dy, OIL, 0.2 + wearRand() * 0.25, Math.atan2(fx, fz), 1.5 + wearRand(), wearRand);
+        decalN++;
+      }
+      for (let k = 0, marksN = Math.floor(wearRand() * 3); k < marksN; k++) {
+        // A car's pair of tyres: from its lane, braking into the junction and swinging round the corner.
+        const off = laneOff(w, oneWay), t0 = 6 + wearRand() * 10, turn = (wearRand() < 0.5 ? -1 : 1) * (3 + wearRand() * 7), back = 1 + wearRand() * 4;
+        const S = [jx + fx * t0 + px * off, jz + fz * t0 + pz * off], C = [jx + px * off, jz + pz * off], E = [jx + px * turn - fx * back, jz + pz * turn - fz * back];
+        for (const tyre of [-0.75, 0.75]) {
+          const path: number[] = [];
+          for (let q = 0; q <= 10; q++) {
+            const u = q / 10, a = (1 - u) * (1 - u), b2 = 2 * u * (1 - u), c2 = u * u;
+            path.push(a * S[0] + b2 * C[0] + c2 * E[0] + px * tyre, a * S[1] + b2 * C[1] + c2 * E[1] + pz * tyre);
+          }
+          streak(decals, path, 0.2, dy + 0.002, RUBBER_MARK, 0.16 + wearRand() * 0.2);
+        }
+        decalN++;
+      }
+    }
+  };
   tile.r.forEach((r, ri) => {
     const pts = unpacked[ri];
     if (pts.length < 4 || r.x) return;
@@ -1026,6 +1289,9 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       }
     }
     if (r.k === "major" && realStyle) for (const off of [-(r.w / 2 - 0.35), r.w / 2 - 0.35]) ribbon(marks, offsetLine(pts, off), 0.12, my, white);
+    // The asphalt's life: manhole covers, oil dripped in the lanes, patched trenches, and
+    // rubber laid down where cars brake and turn at the junctions.
+    if (detailed && r.w >= 5) streetWear(pts, r.w, y, !!r.ow, vk, degree);
     // Zebra crossings a few metres back from each intersection.
     if (!realStyle || lite || mapped || zebras > 140 || r.w < 6) return;
     const n = pts.length / 2;
@@ -1252,7 +1518,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const d of dumpsters) obstacles.push(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
 
-  const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs")].filter((l): l is Layer => !!l);
+  const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs"), decals.layer("decals")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
   placeSigns(tile as VtCell, frame, footprints, labels, obstacles, stand);
   // The store's model carries its own sign and number.

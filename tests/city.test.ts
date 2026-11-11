@@ -60,12 +60,26 @@ describe("drawing a street", () => {
     const full = buildTileArrays(street(10), origin, "real", false).layers;
     const trim = layer(full, "trim");
     assert.ok(trim && trim.idx.length > 0, "balconies and rooftop kit");
-    // Every trim vertex is on the buildings: above street level, up to roof kit height.
-    for (let i = 1; i < trim!.pos.length; i += 3) assert.ok(trim!.pos[i] >= 3 && trim!.pos[i] <= 16.5 + 1.3);
+    // Every trim vertex is on the buildings: above people's heads (the lowest is an awning's
+    // valance), up to the top of a rooftop aerial.
+    for (let i = 1; i < trim!.pos.length; i += 3) assert.ok(trim!.pos[i] >= 1.9 && trim!.pos[i] <= 16.5 + 2.6, `y ${trim!.pos[i]}`);
     assert.equal(layer(buildTileArrays(street(10), origin, "real", true).layers, "trim"), undefined, "lite phones");
     const toon = buildTileArrays(street(10), origin, "toon", false).layers;
     assert.equal(layer(toon, "trim"), undefined, "the storybook city keeps its look");
     assert.equal(layer(toon, "walls")!.fac, undefined);
+  });
+
+  it("hangs air-conditioners on walls, awnings over shops, dishes on roofs", () => {
+    const rows: CityBuilding[] = [];
+    for (let row = 0; row < 4; row++) for (let i = 0; i < 10; i++) rows.push({ r: rect(200 + i * 240, 1000 + row * 300, 220, 160), h: 13 + (i % 4) * 3.3, k: i % 3 ? "apartments" : "shop", rf: "flat" });
+    const tile: CityTile = { ...street(0, rows), r: Array.from({ length: 4 }, (_, row) => ({ l: [100, 900 + row * 300, 2700, 900 + row * 300], w: 8, k: "minor" as const })) };
+    const trim = layer(buildTileArrays(tile, origin, "real", false).layers, "trim")!;
+    const ys = Array.from({ length: trim.pos.length / 3 }, (_, i) => trim.pos[i * 3 + 1]);
+    // Awnings: below the first floor (≈ 2–2.8 m). Wall units: a storey up, 0.95 m over the floor.
+    assert.ok(ys.some((y) => y > 1.9 && y < 2.8), "awnings over the shop windows");
+    assert.ok(ys.some((y) => Math.abs(y - (3.3 + 0.95)) < 1e-3), "air-conditioners beside first-floor windows");
+    // Dishes and aerials stand clear above the roof (more than a cooler or tank reaches).
+    assert.ok(ys.some((y) => y > 13 + 1.4), "dishes and aerials above the roofs");
   });
 
   it("draws a mosque with a dome and minarets, not a spire", () => {
@@ -109,6 +123,36 @@ describe("the street's edge", () => {
     assert.ok(ys.some((y) => y < 0.075), "the jube sits below the street");
     assert.equal(layer(buildTileArrays(street(4), origin, "real", true).layers, "kerbs"), undefined, "lite phones");
     assert.equal(layer(buildTileArrays(street(4), origin, "toon", false).layers, "kerbs"), undefined, "the storybook city");
+  });
+
+  it("bevels the kerbstone's street-side lip", () => {
+    const kerbs = layer(buildTileArrays(street(4), origin, "real", false).layers, "kerbs")!;
+    // A chamfer: normals tipped halfway between up and sideways.
+    let bevel = 0;
+    for (let i = 0; i < kerbs.nor.length; i += 3) if (kerbs.nor[i + 1] > 0.6 && kerbs.nor[i + 1] < 0.8) bevel++;
+    assert.ok(bevel >= 12, `${bevel} bevelled vertices`); // both sides of a one-segment street: 2 × 2 triangles
+  });
+
+  it("stains the asphalt and sets manholes in it, at a junction too, in full detail only", () => {
+    const tile: CityTile = { ...street(0), r: [{ l: [100, 900, 3400, 900], w: 10, k: "major" }, { l: [1700, 100, 1700, 900], w: 8, k: "minor" }, { l: [1700, 900, 1700, 2000], w: 8, k: "minor" }] };
+    const a = buildTileArrays(tile, origin, "real", false);
+    const decals = layer(a.layers, "decals")!;
+    assert.ok(decals && decals.idx.length > 0, "oil, patches and tyre marks");
+    // Opacity rides in fac: between nothing and solid, soft at the edges.
+    const alpha = Array.from(decals.fac!);
+    assert.ok(alpha.every((v) => v >= 0 && v <= 1) && alpha.some((v) => v === 0) && alpha.some((v) => v > 0.15));
+    // On the asphalt, a hair above it and under the paint.
+    for (let i = 0; i < decals.pos.length; i += 3) {
+      assert.ok(decals.pos[i + 1] > 0.075 && decals.pos[i + 1] < 0.1 + 0.012);
+      assert.ok(Math.min(...a.roads.map((l, r) => toLine(l, decals.pos[i], decals.pos[i + 2]) - a.roadWidths[r] / 2)) < 0.8, "on a street");
+    }
+    // Manholes: cast-iron discs in the markings layer.
+    const marks = layer(a.layers, "marks")!;
+    let iron = 0;
+    for (let i = 0; i < marks.col.length; i += 3) if (marks.col[i] < 0.05 && marks.col[i + 1] < 0.05) iron++;
+    assert.ok(iron >= 11, `${iron} iron vertices`);
+    assert.equal(layer(buildTileArrays(tile, origin, "real", true).layers, "decals"), undefined, "lite phones");
+    assert.equal(layer(buildTileArrays(tile, origin, "toon", false).layers, "decals"), undefined, "the storybook city");
   });
 
   it("stops at a cross street instead of running over it", () => {

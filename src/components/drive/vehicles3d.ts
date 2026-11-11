@@ -12,6 +12,7 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import { TAXI_YELLOW } from "@/lib/fleet";
 import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { fleetParts, kitMaterial, wheelMaterial } from "./fleet3d";
+import { carGlass, carGrime, carPaint, carTrim, carWheel, tyreAttr, type CarGrime } from "./carLook";
 import { toon, type Style } from "./world3d";
 
 export type Rotor = { obj: THREE.Object3D; axis: "x" | "y"; speed: number; blur?: THREE.Mesh };
@@ -29,6 +30,8 @@ export type VehicleModel = {
   /** Cone beams (toon) — real style uses `light`. */
   beams: THREE.Object3D | null;
   light: THREE.SpotLight | null;
+  /** How dirty it is (real style: Drive builds it up as you drive, the rain washes it). */
+  grime: CarGrime | null;
   cargo: THREE.Object3D;
   /** Roughly how tall it is (camera, collisions under canopies). */
   height: number;
@@ -37,7 +40,7 @@ export type VehicleModel = {
 
 type Mats = { paint: THREE.Material; trim: THREE.Material; glass: THREE.Material; tire: THREE.Material; rim: THREE.Material; skin: THREE.Material };
 
-function materials(style: Style, color: string, keep: <T extends { dispose: () => void }>(x: T) => T, clearcoat = false): Mats {
+function materials(style: Style, color: string, keep: <T extends { dispose: () => void }>(x: T) => T, clearcoat = false, grime?: CarGrime): Mats {
   if (style === "toon")
     return {
       paint: keep(toon({ color })),
@@ -49,11 +52,13 @@ function materials(style: Style, color: string, keep: <T extends { dispose: () =
     };
   return {
     // Clear-coated metallic paint on the tiers that can afford it: a glossy lacquer over a softer metallic base.
-    paint: keep(mirrored(clearcoat ? new THREE.MeshPhysicalMaterial({ color, metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 }) : new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.3 }), PAINT_MIRROR)),
-    trim: keep(new THREE.MeshStandardMaterial({ color: "#1f2124", metalness: 0.2, roughness: 0.65 })),
-    glass: keep(mirrored(new THREE.MeshStandardMaterial({ color: "#121a24", metalness: 0.9, roughness: clearcoat ? 0.03 : 0.06 }), "0.5")),
-    tire: keep(new THREE.MeshStandardMaterial({ color: "#161618", roughness: 0.92 })),
-    rim: keep(new THREE.MeshStandardMaterial({ color: "#c9ccd1", metalness: 0.9, roughness: 0.28 })),
+    // Metallic flakes, dust, rain beads and scratches: carLook.ts.
+    paint: keep(mirrored(carPaint(clearcoat ? new THREE.MeshPhysicalMaterial({ color, metalness: 0.05, roughness: 0.42, clearcoat: 0.85, clearcoatRoughness: 0.06, envMapIntensity: 0.75 }) : new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.3 }), grime), PAINT_MIRROR)),
+    trim: keep(carTrim(new THREE.MeshStandardMaterial({ color: "#1f2124", metalness: 0.2, roughness: 0.65 }))),
+    // Tinted glass: dark, with a lacquer's reflection (and the street's, mirrored).
+    glass: keep(mirrored(carGlass(clearcoat ? new THREE.MeshPhysicalMaterial({ name: "glass" }) : new THREE.MeshStandardMaterial({ name: "glass" })), "0.5")),
+    tire: keep(carWheel(new THREE.MeshStandardMaterial({ color: "#161618", roughness: 0.92 }))),
+    rim: keep(carWheel(new THREE.MeshStandardMaterial({ color: "#b4b8be", metalness: 0.9, roughness: 0.28 }))),
     skin: keep(new THREE.MeshStandardMaterial({ color: "#2a2d33", roughness: 0.7 })),
   };
 }
@@ -65,7 +70,10 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   const disposables: { dispose: () => void }[] = [];
   const keep = <T extends { dispose: () => void }>(x: T) => (disposables.push(x), x);
   // A taxi is yellow, whatever the garage's paint.
-  const M = materials(style, key === "taxi" ? TAXI_YELLOW : color, keep, !!opts.clearcoat);
+  const grime = style === "real" ? carGrime() : null;
+  const M = materials(style, key === "taxi" ? TAXI_YELLOW : color, keep, !!opts.clearcoat, grime ?? undefined);
+  // Dirt is measured up from where the wheels stand: wherever the car is this frame.
+  if (grime) M.paint.onBeforeRender = () => void (grime.base.value = group.matrixWorld.elements[13]);
   const shadows = opts.shadows ?? true;
   const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
     const m = new THREE.Mesh(keep(geo), mat);
@@ -95,8 +103,10 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   const wheel = (x: number, z: number, r: number, w: number, steers: boolean) => {
     const tire = keep(new THREE.CylinderGeometry(r, r, w, 18));
     tire.rotateZ(Math.PI / 2);
-    const rim = keep(new THREE.CylinderGeometry(r * 0.58, r * 0.58, w + 0.02, 10));
+    tyreAttr(tire);
+    const rim = keep(new THREE.CylinderGeometry(r * 0.58, r * 0.58, w + 0.02, 20));
     rim.rotateZ(Math.PI / 2);
+    tyreAttr(rim, { spokes: true, R: r });
     const pivot = new THREE.Group();
     pivot.position.set(x, r, z);
     const spin = new THREE.Group();
@@ -326,7 +336,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   shadow.name = "blob";
   group.add(shadow);
 
-  return { key, group, body, wheels, steer, rotors, brake, head: lights, beams, light, cargo, height, dispose: () => disposables.forEach((d) => d.dispose()) };
+  return { key, group, body, wheels, steer, rotors, brake, head: lights, beams, light, grime, cargo, height, dispose: () => disposables.forEach((d) => d.dispose()) };
 }
 
 // ---------------------------------------------------------------- first person

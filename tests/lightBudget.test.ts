@@ -1,7 +1,7 @@
 // The night-light pool's rules (lib/lightBudget.ts): how many lights, and which candidates get them.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { lightBudget, pickLights, score, type Candidate } from "@/lib/lightBudget";
+import { lightBudget, pickLights, poolKinds, score, type Candidate } from "@/lib/lightBudget";
 
 const eye = { x: 0, z: 0 }, fwd = { x: 0, z: -1 };
 const lamp = (id: string, x: number, z: number): Candidate => ({ id, kind: "lamp", x, z });
@@ -20,6 +20,20 @@ describe("light budget", () => {
       const b = lightBudget(total, 1);
       assert.equal(b.lamp + b.head + b.brake, b.total);
       assert.ok(b.lamp >= b.head && b.brake >= 0, `${total}`);
+    }
+  });
+});
+
+describe("the pool's make-up", () => {
+  it("has room for every kind at every hour of the night, and adds up to the pool", () => {
+    for (const total of [0, 1, 2, 4, 6, 8, 12]) {
+      const k = poolKinds(total);
+      assert.equal(k.lamp + k.head + k.brake, total);
+      // Dusk asks for fewer lights, never more of a kind than the pool holds (no slot of another type is borrowed).
+      for (let n = 0; n <= 1.0001; n += 0.01) {
+        const b = lightBudget(total, n);
+        assert.ok(b.lamp <= k.lamp && b.head <= k.head && b.brake <= k.brake, `${total} at ${n.toFixed(2)}`);
+      }
     }
   });
 });

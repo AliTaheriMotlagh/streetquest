@@ -80,6 +80,7 @@ import { drawnParts } from "./fleet3d";
 import {
   LIGHT, makeBeacon, makeClouds, makeCoin, makeCornerSign, makeGate, makeLoot, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, adoptModels, paintSignals, setNight, tileMeshes, WORLD,
   type Board, type Light, type Phase, type TileMeshes,
+  POOLS,
 } from "./world3d";
 import { loadPropModels } from "./propModels";
 import { PROP_MODELS } from "@/lib/propModels";
@@ -1362,6 +1363,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       fogShown.set(L.fog);
       const fogColor = gfx.sceneColor(fogShown);
       scene.fog = new THREE.Fog(fogColor, L.fogNear, Math.min(L.fogFar, prof.fogFar));
+      POOLS.far.value = Math.min(L.fogFar, prof.fogFar);
       renderer.setClearColor(fogColor);
       hemi.intensity = L.hemi;
       hemi.color.set(L.hemiSky);
@@ -1415,6 +1417,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // The adaptive controller gave something back or took it away.
       prof = p;
       nightLights.setMax(style === "real" ? p.nightLights : 0);
+      POOLS.near.value = style === "real" && p.nightLights > 0 ? 0.85 : 0;
       shadows = p.shadows;
       gfx.shadeSun(sun);
       sky.cloudsOn(p.clouds);
@@ -1423,6 +1426,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const camFwd = new THREE.Vector3();
     // Real lights at night (nightLights.ts): the pool the tier allows, the realistic city only.
     const nightLights = new NightLights(scene, style === "real" ? prof.nightLights : 0);
+    // Near lamps light the ground for real: their painted glow gives way (world3d POOLS).
+    POOLS.near.value = style === "real" && prof.nightLights > 0 ? 0.85 : 0;
     const lampCands: Candidate[] = [];
     const collectLights = (out: Candidate[]) => {
       const R = 90;
@@ -1598,6 +1603,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const lfl = Math.hypot(camFwd.x, camFwd.z) || 1;
       nightLights.update(dt, style === "real" ? night : 0, st, { x: camFwd.x / lfl, z: camFwd.z / lfl }, collectLights, 1 + 1.4 * rainAmount + 0.5 * skyOvercast);
       model.cargo.visible = !!L.me?.activeRun;
+      // Road dust builds up on the paint as you drive (filthy after ~40 km); rain washes it off.
+      if (model.grime) {
+        const g = model.grime.dirt;
+        g.value = Math.min(0.85, Math.max(0.06, g.value + (Math.abs(vF) * dt) / 48_000 - dt * rainAmount * 0.006));
+      }
 
       // -- camera (the soldier placed it already when on foot)
       const flying = D.flies && st.alt > 1;

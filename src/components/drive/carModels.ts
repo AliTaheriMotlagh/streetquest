@@ -17,6 +17,7 @@ import { CAR_MODELS } from "@/lib/carModels";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import type { FleetParts } from "./fleet3d";
 import { loadModel, plainGeometry } from "./gltf";
+import { tyreAttr } from "./carLook";
 import { paint as tint } from "./world3d";
 
 /** Kinds drawn from another kind's model: the city taxi is a yellow Samand with its roof sign. */
@@ -102,6 +103,8 @@ function toParts(key: FleetKey, root: THREE.Object3D, meta: Meta, suffix: string
   };
   const paint = part("paint"), kit = part("kit"), head = part("head"), tail = part("tail"), wheel = part("wheel");
   if (!paint || !kit || !head || !tail || !wheel) return null;
+  // Where each vertex is on its tyre, for the tread and sidewall (carLook.ts).
+  tyreAttr(wheel);
   const { len, wid, hgt } = FLEET[key];
   const isTaxi = key === "taxi";
   return {

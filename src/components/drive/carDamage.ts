@@ -159,6 +159,9 @@ export class CarDamage {
       }
       const g = mesh.geometry;
       const pos = g.getAttribute("position") as THREE.BufferAttribute;
+      // How scraped each vertex is: the paint shows scratches down to bare metal there (carLook.ts).
+      let scuff = g.getAttribute("aScuff") as THREE.BufferAttribute | undefined;
+      if (!scuff) g.setAttribute("aScuff", (scuff = new THREE.BufferAttribute(new Float32Array(pos.count), 1)));
       inv.copy(mesh.matrixWorld).invert();
       let moved = false;
       for (let i = 0; i < pos.count; i++) {
@@ -177,10 +180,12 @@ export class CarDamage {
         v.y -= depth * k * 0.25;
         v.applyMatrix4(inv);
         pos.setXYZ(i, v.x, v.y, v.z);
+        scuff.setX(i, Math.min(1, Math.max(scuff.getX(i), k * (0.35 + depth * 4))));
         moved = true;
       }
       if (!moved) return;
       pos.needsUpdate = true;
+      scuff.needsUpdate = true;
       if (g.getAttribute("normal")) g.computeVertexNormals();
       g.computeBoundingSphere();
     });

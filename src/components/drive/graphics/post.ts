@@ -14,7 +14,8 @@
 //    what it hits is laid over the surface. A ray that leaves the screen or passes behind
 //    something leaves the surface as drawn: reflecting the sky's environment map;
 //  - haze (`haze`): height fog from each pixel's depth — thicker near the ground, glowing
-//    towards the sun — and a heat shimmer over the far tarmac at a hot midday;
+//    towards the sun — and a heat shimmer over the far tarmac at a hot midday (AO goes on
+//    here, under the air, when there's haze; otherwise in the last pass);
 //  - a dual-filter bloom chain;
 //  - one last pass that adds them up, sharpens, fringes the corners (chromatic aberration),
 //    adds a lens flare while the sun is in view, tone-maps (three.js's ACES, so it matches
@@ -307,10 +308,13 @@ void main() {
 // screen's edges and for rays coming back at the camera) and how strongly this surface
 // mirrors at this angle (Fresnel: a wet road is a mirror at a glancing angle, hardly looking down).
 const SSR_FRAG = /* glsl */ `
-uniform sampler2D tScene; uniform highp sampler2D tDepth; uniform mat4 uProj; uniform mat4 uInvProj; uniform vec2 uTexel; uniform float uSeed;
+uniform sampler2D tScene; uniform highp sampler2D tDepth; uniform mat4 uProj; uniform mat4 uInvProj; uniform vec2 uTexel;
 varying vec2 vUv;
 vec3 viewPos(vec2 uv) { float d = texture2D(tDepth, uv).r; vec4 p = uInvProj * vec4(vec3(uv, d) * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// Interleaved gradient noise: the same every frame (no temporal filter here to average a
+// per-frame jitter, which would only make the reflections' edges crawl), dithered finely
+// enough for the blur in the mix to hide.
+float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 void main() {
   float m = 1.0 - texture2D(tScene, vUv).a;
   if (m < 0.03) { gl_FragColor = vec4(0.0); return; }
@@ -321,7 +325,7 @@ void main() {
   vec3 dy = abs(pu.z - P.z) < abs(P.z - pd.z) ? pu - P : P - pd;
   vec3 N = normalize(cross(dx, dy));
   vec3 V = normalize(P);
-  float n1 = hash(gl_FragCoord.xy + uSeed), n2 = hash(gl_FragCoord.yx * 1.37 + uSeed);
+  float n1 = ign(gl_FragCoord.xy), n2 = ign(gl_FragCoord.yx + 5.588);
   // A rougher surface scatters its reflection: the ray is nudged, the blur afterwards does the rest.
   vec3 R = normalize(reflect(V, N) + (vec3(n1, n2, n1 * n2 * 2.0) - 0.5) * (1.0 - m) * 0.025);
   float away = smoothstep(0.3, 0.0, R.z);
@@ -382,6 +386,9 @@ void main() {
 const HAZE_FRAG = /* glsl */ `
 uniform sampler2D tScene; uniform highp sampler2D tDepth; uniform mat4 uInvProj; uniform mat4 uCamWorld;
 uniform vec3 uFogColor, uSunDir, uSunColor; uniform float uDensity, uScatter, uHeat, uTime, uCamY;
+#ifdef USE_AO
+uniform sampler2D tAO; uniform float uAO;
+#endif
 varying vec2 vUv;
 void main() {
   float d = texture2D(tDepth, vUv).r;
@@ -396,6 +403,10 @@ void main() {
     uv += vec2(sin(vUv.y * 240.0 + uTime * 3.1) + sin(vUv.x * 95.0 - uTime * 2.3), cos(vUv.y * 180.0 - uTime * 2.7)) * 0.0007 * uHeat * low * far;
   }
   vec3 c = texture2D(tScene, uv).rgb;
+#ifdef USE_AO
+  // Contact shadows belong to the surface, under the air in front of it: a far wall's fog isn't darkened.
+  c *= mix(1.0, texture2D(tAO, uv).r, uAO);
+#endif
   if (!sky) {
     const float K = 0.014;
     float dy = rd.y * dist;
@@ -461,9 +472,9 @@ export class PostPipeline {
   private motionMat = pass(MOTION_FRAG, { tScene: { value: null }, tDepth: { value: null }, uReproject: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uAmount: { value: 0 }, uNear: { value: 10 }, uSeed: { value: 0 } }, { SAMPLES: 8 });
   private rayMaskMat = pass(RAY_MASK_FRAG, { tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uSkyZ: { value: SKY_Z } });
   private rayBlurMat = pass(RAY_BLUR_FRAG, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uReach: { value: 0.5 } }, { SAMPLES: 14 });
-  private hazeMat = pass(HAZE_FRAG, { tScene: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uFogColor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3() }, uSunColor: { value: new THREE.Color() }, uDensity: { value: 0 }, uScatter: { value: 0 }, uHeat: { value: 0 }, uTime: { value: 0 }, uCamY: { value: 0 } });
+  private hazeMat = pass(HAZE_FRAG, { tScene: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uFogColor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3() }, uSunColor: { value: new THREE.Color() }, uDensity: { value: 0 }, uScatter: { value: 0 }, uHeat: { value: 0 }, uTime: { value: 0 }, uCamY: { value: 0 }, tAO: { value: null }, uAO: { value: 0 } });
   private foggy: THREE.WebGLRenderTarget | null = null;
-  private ssrMat = pass(SSR_FRAG, { tScene: { value: null }, tDepth: { value: null }, uProj: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uSeed: { value: 0 } }, { STEPS: 22 });
+  private ssrMat = pass(SSR_FRAG, { tScene: { value: null }, tDepth: { value: null }, uProj: { value: new THREE.Matrix4() }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() } }, { STEPS: 22 });
   private ssrMixMat = pass(SSR_MIX_FRAG, { tScene: { value: null }, tRefl: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private fxaaMat = pass(FXAA_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
   private size = new THREE.Vector2();
@@ -511,8 +522,11 @@ export class PostPipeline {
   }
   private defines() {
     const o = this.opts;
-    this.final.defines = { ...(o.bloom ? { USE_BLOOM: "" } : {}), ...(o.ao ? { USE_AO: "" } : {}), ...(o.cinematic ? { USE_CINEMATIC: "" } : {}), ...(this.lut ? { USE_LUT: "" } : {}) };
+    // AO goes on before the haze when there is haze (HAZE_FRAG), else in the last pass.
+    this.final.defines = { ...(o.bloom ? { USE_BLOOM: "" } : {}), ...(o.ao && !o.haze ? { USE_AO: "" } : {}), ...(o.cinematic ? { USE_CINEMATIC: "" } : {}), ...(this.lut ? { USE_LUT: "" } : {}) };
     this.final.needsUpdate = true;
+    this.hazeMat.defines = o.ao ? { USE_AO: "" } : {};
+    this.hazeMat.needsUpdate = true;
   }
 
   /** Turn effects on or off (the adaptive controller strips AO, then the film look, then bloom). */
@@ -618,7 +632,6 @@ export class PostPipeline {
       u.uProj.value.copy(camera.projectionMatrix);
       u.uInvProj.value.copy(camera.projectionMatrixInverse);
       u.uTexel.value.set(1 / this.refl.width, 1 / this.refl.height);
-      u.uSeed.value = (u.uSeed.value + 3.77) % 1000;
       this.draw(this.ssrMat, this.refl);
       const m = this.ssrMixMat.uniforms;
       m.tScene.value = sceneTex;
@@ -643,6 +656,8 @@ export class PostPipeline {
       u.uHeat.value = g.heat;
       u.uTime.value = (now / 1000) % 1000;
       u.uCamY.value = camera.position.y;
+      u.tAO.value = this.aoA?.texture ?? null;
+      u.uAO.value = g.ao;
       this.draw(this.hazeMat, this.foggy);
       sceneTex = this.foggy.texture;
     }

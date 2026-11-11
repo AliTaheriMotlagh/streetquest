@@ -17,6 +17,17 @@ export function lightBudget(total: number, night: number): { total: number; lamp
 }
 
 /**
+ * How a pool of `total` lights is made up by kind: as `lightBudget` splits it at full
+ * night, which is the most of each kind any night level asks for. The pool is built of
+ * these whole (spot lights for lamps and headlights, points for brake glow) so the number
+ * of each light type never changes while driving — a change would recompile every material.
+ */
+export function poolKinds(total: number): { lamp: number; head: number; brake: number } {
+  const b = lightBudget(total, 1);
+  return { lamp: b.lamp, head: b.head, brake: b.brake };
+}
+
+/**
  * Score of a candidate: lower is better. Distance from the eye, behind the camera costs
  * twice as much (you see where you're going), and a lamp that's already lit is "closer"
  * by 12% so two lamps at the same distance don't swap every frame as you drive.
