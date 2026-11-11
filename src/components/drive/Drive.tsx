@@ -393,18 +393,38 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const currentKey = (): VehicleKey => serverVehicle ?? driving();
     const paintNow = () => streetCar?.paint ?? live.current.paint;
     const def = () => VEHICLES[currentKey()];
+    /**
+     * The next car, built off screen until its shaders are ready (graphics/warmup.ts): the one
+     * you're in stays drawn till then, so a new model or paint never blinks out or stalls a frame.
+     */
+    let nextModel: { key: string; model: typeof model; cockpit: typeof cockpit; ready: boolean } | null = null;
+    /** The vehicle the car on screen is (modelKey is cleared to force a rebuild). */
+    let shownVehicle: VehicleKey = live.current.vehicle;
     const rebuildModel = () => {
       const want = `${currentKey()}|${paintNow()}`;
-      if (want === modelKey) return;
+      if (want === modelKey) {
+        if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose(), (nextModel = null));
+        return;
+      }
+      if (nextModel?.key !== want) {
+        if (nextModel) nextModel.model.dispose(), nextModel.cockpit.dispose();
+        const n = { key: want, model: makeVehicle(currentKey(), paintNow(), style, { lights: true, shadows, clearcoat: prof.clearcoat }), cockpit: makeCockpit(currentKey(), paintNow(), style), ready: false };
+        n.model.group.add(n.cockpit.group);
+        nextModel = n;
+        void gfx.gate.whenReady(n.model.group).then(() => (n.ready = true));
+      }
+      // A different vehicle (not just its real model or a new paint): the old one isn't left
+      // standing where the new one is for the frame or two this takes.
+      if (!nextModel.ready) return void (model.group.visible = shownVehicle === currentKey());
       scene.remove(model.group);
       model.dispose();
-      model = makeVehicle(currentKey(), paintNow(), style, { lights: true, shadows, clearcoat: prof.clearcoat });
+      cockpit.dispose();
+      ({ model, cockpit } = nextModel);
+      nextModel = null;
       scene.add(model.group);
       street?.car.attach(model);
-      cockpit.dispose();
-      cockpit = makeCockpit(currentKey(), paintNow(), style);
-      model.group.add(cockpit.group);
       modelKey = want;
+      shownVehicle = currentKey();
       if (!VEHICLES[currentKey()].flies) st.alt = st.cruise = st.vy = 0;
     };
     let camMode: CamMode = P.cam;
@@ -633,7 +653,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // until then); when my own car's lands, it's rebuilt with it.
     preloadCarModels(drawnParts);
     const offCarModel = onCarModel((k) => {
-      if (VEHICLES[currentKey()].model === k) modelKey = "";
+      if (VEHICLES[currentKey()].model !== k) return;
+      modelKey = "";
+      // A drawn stand-in still being readied is out of date now: build the real one instead.
+      if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose(), (nextModel = null));
     });
     // People on the pavements: they run from trouble, and cars knock them down.
     const crowd = new Crowd(scene, style, lite);
@@ -662,7 +685,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         .catch(() => {});
     };
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
-    let trafficSync = 0, lightsAt = 0;
+    let trafficSync = 0, lightsAt = 0, syncCrowd = false;
     /** A store's pole sign: on the pavement in front of it, facing the nearest street (lib/storefront.ts). */
     const placeSign = (x: number, z: number) => {
       const lines: Float32Array[] = [], widths: number[] = [];
@@ -1783,11 +1806,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       others.tick(dt, serverNow, st.x, st.z);
       feed.update(frame.toLatLng(st.x, st.z));
       traffic.enabled = crowd.enabled = !matchOn;
+      // The streets traffic and people use, re-read when tiles came or went: not while a batch of
+      // tiles is still arriving (every one would set it off again — the parked rows are the
+      // costly part), and never both on the same frame.
       if (now - trafficSync > 1000) {
-        trafficSync = now;
-        const real = [...tiles.values()].flatMap((s) => (s.mesh?.real ? [s.mesh] : []));
-        traffic.sync(real);
-        crowd.sync(real);
+        const slots = [...tiles.values()];
+        if (!slots.some((s) => s.building) || now - trafficSync > 4000) {
+          trafficSync = now;
+          syncCrowd = true;
+          traffic.sync(slots.flatMap((s) => (s.mesh?.real ? [s.mesh] : [])));
+        }
+      } else if (syncCrowd && now - trafficSync > 250) {
+        syncCrowd = false;
+        crowd.sync([...tiles.values()].flatMap((s) => (s.mesh?.real ? [s.mesh] : [])));
       }
       // The camera, so no car appears in front of it (traffic joins out of sight).
       camera.getWorldDirection(camFwd);
@@ -2051,7 +2082,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt, model: () => model };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -2112,6 +2143,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       landmarks.dispose();
       markers.dispose();
       cinemaBoards.dispose();
+      if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose());
       model.dispose();
       cockpit.dispose();
       mats.dispose();

@@ -6,6 +6,22 @@ import { useEffect, useRef, useState } from "react";
 import { swEnabled } from "./pwaClient";
 import { installHScroll } from "./hscroll";
 import { Button } from "./Button";
+import { mayOffer, NO_SNOOZE, parseSnooze, snoozeLater, snoozeStuck, type UpdateSnooze } from "@/lib/updatePrompt";
+
+/** localStorage: when the bar may show again (lib/updatePrompt.ts). */
+const SNOOZE_KEY = "sq_update_snooze";
+const readSnooze = (): UpdateSnooze => {
+  try {
+    return parseSnooze(localStorage.getItem(SNOOZE_KEY));
+  } catch {
+    return NO_SNOOZE;
+  }
+};
+const saveSnooze = (s: UpdateSnooze) => {
+  try {
+    localStorage.setItem(SNOOZE_KEY, JSON.stringify(s));
+  } catch {}
+};
 
 /** If the new worker hasn't taken over by then (message lost, odd browser), reload anyway. */
 const UPDATE_FALLBACK_MS = 10_000;
@@ -90,8 +106,11 @@ export function Pwa() {
       requested.current = true;
       // Still not switched over by now: hand the choice back to the player.
       giveUp = setTimeout(() => {
+        // Still the old version: don't offer it again at once (that went round and round) —
+        // it takes over by itself next time the app is opened.
         stopFinishing();
-        offer();
+        saveSnooze(snoozeStuck(readSnooze(), Date.now()));
+        setUpdate(null);
       }, UPDATE_FALLBACK_MS * 2);
     }
     // A new version finished installing while an old one controls the page → offer it.
@@ -105,11 +124,12 @@ export function Pwa() {
           w.postMessage({ type: "SKIP_WAITING" }); // → controllerchange → reload
         } else {
           stopFinishing(); // nothing waiting: we're already on the new version
+          saveSnooze(NO_SNOOZE);
           setUpdate(null);
         }
         return;
       }
-      if (w && sw.controller && w !== dismissed.current) setUpdate("waiting");
+      if (w && sw.controller && w !== dismissed.current && mayOffer(readSnooze(), Date.now())) setUpdate("waiting");
     };
     const watch = (w: ServiceWorker | null) => w?.addEventListener("statechange", () => w.state === "installed" && offer());
 
@@ -181,6 +201,8 @@ export function Pwa() {
 
   const later = () => {
     dismissed.current = reg.current?.waiting ?? null;
+    // Not again on the next reload or return to the app: in a few hours.
+    saveSnooze(snoozeLater(readSnooze(), Date.now()));
     setUpdate(null);
   };
 

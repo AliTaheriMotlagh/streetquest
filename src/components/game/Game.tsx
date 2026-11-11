@@ -1478,11 +1478,14 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
-    <Button className="btn yellow block" onClick={() => teleport(target)}><MoveIcon /> {t("Go here · {d}", { d: formatDistance(dist) })}</Button>
+    <div className="row">
+      <Button className="btn yellow grow" onClick={() => teleport(target)}><MoveIcon /> {t("Go here · {d}", { d: formatDistance(dist) })}</Button>
+      {dist > 60 && <Directions to={target} />}
+    </div>
   ) : (
     <div className="row">
       <Button className="btn grow" disabled>{t("Get closer · {d}", { d: formatDistance(dist) })}</Button>
-      {dist > 150 && <Directions to={target} />}
+      {dist > 60 && <Directions to={target} />}
     </div>
   );
 
@@ -1596,7 +1599,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
         <div className="row wrap">
           <Button className="btn yellow" onClick={() => openShop(sh.id)}>{sh.mine ? `🛠️ ${t("My shop")}` : `🛍️ ${t("Visit the shop")}`}</Button>
           {teleport && dist > 40 && <Button className="btn ghost" onClick={() => teleport(sh)}><MoveIcon /> {t("Go there")}</Button>}
-          {!teleport && dist > 150 && <Directions to={sh} />}
+          {dist > 60 && <Directions to={sh} name={sh.name} />}
         </div>
         <StoreExtras query={{ store: "shop", id: sh.id }} at={sh} />
       </Sheet>

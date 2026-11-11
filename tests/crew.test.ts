@@ -59,7 +59,8 @@ describe("the cabin", () => {
     const p = fleetParts("samand");
     const c = cabinShape(p.glass!.getAttribute("position").array, p.hgt)!;
     const g = cabinGeometry(c);
-    const pos = g.getAttribute("position"), nor = g.getAttribute("normal");
+    const pos = g.getAttribute("position"), nor = g.getAttribute("normal"), col = g.getAttribute("color");
+    const WALL = new THREE.Color("#0d0f12");
     // The walls are the first triangles (seats, dash and wheel follow): check every wall
     // triangle's winding agrees with its normal, and both point into the cabin.
     const mid = new THREE.Vector3((c.x0 + c.x1) / 2, (c.roof + c.waist) / 2 - 0.2, (c.front + c.back) / 2);
@@ -69,16 +70,35 @@ describe("the cabin", () => {
       a.fromBufferAttribute(pos, i);
       b.fromBufferAttribute(pos, i + 1);
       d.fromBufferAttribute(pos, i + 2);
-      // Only the walls: every corner on the outer surface (outside the seat/dash region is hard to tell, so use the side walls).
-      if (!(Math.abs(a.x - c.x0) < 1e-4 && Math.abs(b.x - c.x0) < 1e-4 && Math.abs(d.x - c.x0) < 1e-4)) continue;
-      walls++;
+      // Only the left wall (drawn in towards the roof, so not quite flat): every corner on the
+      // left, facing across the car.
+      const left = (q: THREE.Vector3) => q.x < mid.x - 0.3;
+      if (Math.abs(col.getX(i) - WALL.r) > 1e-4 || Math.abs(col.getZ(i) - WALL.b) > 1e-4 || !(left(a) && left(b) && left(d))) continue;
       w.subVectors(b, a).cross(n.subVectors(d, a)).normalize();
+      if (Math.abs(w.x) < 0.7) continue;
+      walls++;
       n.fromBufferAttribute(nor, i);
-      assert.ok(w.dot(n) > 0.9, "winding and normal agree");
-      assert.ok(w.x > 0.9, "the left wall faces right, into the cabin");
+      assert.ok(w.dot(n) > 0.6, "winding and normal agree");
+      assert.ok(w.x > 0.7, "the left wall faces right, into the cabin");
     }
     assert.ok(walls >= 2, `${walls} wall triangles`);
     assert.ok(mid.x > c.x0);
+  });
+});
+
+describe("the cabin stays inside the car", () => {
+  it("near the roof it's no wider than the glass there (cars narrow upwards: it used to poke out through the roof and pillars)", () => {
+    for (const key of CARS) {
+      const p = fleetParts(key);
+      const gp = p.glass!.getAttribute("position").array;
+      const c = cabinShape(gp, p.hgt)!;
+      const mid = (c.x0 + c.x1) / 2, band = (c.roof - c.waist) * 0.25;
+      let glassTop = 0;
+      for (let i = 0; i + 2 < gp.length; i += 3) if (gp[i + 1] >= c.roof - band) glassTop = Math.max(glassTop, Math.abs(gp[i] - mid));
+      const pos = cabinGeometry(c).getAttribute("position");
+      for (let i = 0; i < pos.count; i++)
+        if (pos.getY(i) > c.roof - 0.05) assert.ok(Math.abs(pos.getX(i) - mid) <= glassTop + 1e-3, `${key}: cabin corner ${Math.abs(pos.getX(i) - mid).toFixed(2)} m out, glass ${glassTop.toFixed(2)} m`);
+    }
   });
 });
 

@@ -756,12 +756,21 @@ h2, .sheet-head h2 { text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 18px rgba(240,192,
 .mk.quest-pt.next { animation: bob 1.4s ease-in-out infinite; }
 .mk.quest-pt .nm { position: absolute; top: 34px; font-size: 11px; font-weight: 800; background: rgba(0,0,0,.75); padding: 0 6px; border-radius: 6px; }
 
-/* Directions hand-off */
-.dir-wrap { position: relative; display: inline-flex; }
-.dir-menu { position: absolute; bottom: calc(100% + 6px); inset-inline-end: 0; z-index: 30; display: flex; flex-direction: column; min-width: 200px; background: var(--panel-solid); border: 2px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,.6); animation: pop .2s; }
-.dir-menu a { padding: 11px 14px; color: var(--text); text-decoration: none; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--line); }
-.dir-menu a:last-child { border-bottom: 0; }
-.dir-menu a:active { background: rgba(255,255,255,.08); }
+/* Directions hand-off: "Navigate with…" (NavigateWith.tsx) */
+.nav-pick { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); padding: 0 0 env(safe-area-inset-bottom); }
+.nav-card { width: min(440px, 100%); max-height: 86dvh; overflow-y: auto; background: var(--panel-solid); border: 2px solid var(--line); border-bottom: 0; border-radius: 22px 22px 0 0; padding: 14px 14px 16px; box-shadow: 0 -12px 40px rgba(0,0,0,.6); animation: pop .2s; }
+@media (min-width: 700px) { .nav-pick { align-items: center; } .nav-card { border-bottom: 2px solid var(--line); border-radius: 22px; } }
+.nav-head { display: flex; flex-direction: column; gap: 2px; margin: 0 4px 10px; }
+.nav-head b { font-family: var(--display); font-weight: 400; font-size: 18px; }
+.nav-apps { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.nav-app { display: flex; align-items: center; gap: 12px; padding: 10px 12px; min-height: 52px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
+.nav-app:last-child { border-bottom: 0; }
+.nav-app:active, .nav-app:hover { background: rgba(255,255,255,.07); }
+.nav-app .grow { display: flex; flex-direction: column; min-width: 0; }
+.nav-app b { font-size: 15px; }
+.nav-tile { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 17px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.25); }
+.nav-fav { flex: none; font-size: 11px; font-weight: 800; color: #2a2000; background: var(--yellow); padding: 2px 8px; border-radius: 999px; }
+.nav-tools { margin-top: 12px; gap: 8px; }
 
 /* Meters */
 .meter { position: relative; height: 10px; background: rgba(0,0,0,.45); border-radius: 8px; overflow: hidden; margin: 5px 0; box-shadow: inset 0 2px 3px rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.06); }
@@ -1950,3 +1959,20 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .deal-price em { font-style: normal; font-size: 11px; font-weight: 800; color: #ff6f8c; }
 .deal-price s { font-size: 11px; color: var(--muted); }
 .pp-card.pp-takhfifan { --pp-accent: #e2264d; }
+
+/* Admin → Car lab (AdminCars.tsx) */
+.carlab { display: flex; flex-direction: column; gap: 10px; }
+.carlab-cars { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.carlab-cars .chip { flex: none; white-space: nowrap; }
+.carlab-tag { margin-inline-start: 4px; font-size: 10px; font-weight: 800; color: #2a2000; background: var(--yellow); padding: 0 5px; border-radius: 6px; }
+.carlab-stage { height: min(62vh, 560px); min-height: 280px; border-radius: 16px; overflow: hidden; border: 2px solid var(--line); background: #bcd0e2; touch-action: none; }
+.carlab-bar { gap: 6px; }
+.carlab-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.carlab-range { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
+.carlab-range input { flex: 1; }
+.carlab-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; }
+.carlab-swatch.on { outline: 3px solid var(--yellow); }
+.carlab-parts { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.carlab-parts td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.carlab-parts tr.bad td { color: var(--red); font-weight: 700; }
+.carlab-issues { color: var(--red); margin: 6px 0; padding-inline-start: 18px; }

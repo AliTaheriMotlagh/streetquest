@@ -51,6 +51,40 @@ export function plainGeometry(m: THREE.Mesh) {
   return g;
 }
 
+/**
+ * How many of a mesh's triangles face the way its normals say (0…1). A part exported inside
+ * out (the Xantia's wheel: every triangle wound backwards) shows only its far side — a see-through
+ * ghost — once back faces are culled. Pure: tests/carWinding.test.ts.
+ */
+export function windingAgreement(pos: ArrayLike<number>, nor: ArrayLike<number>, idx: ArrayLike<number> | null): number {
+  const n = (idx ? idx.length : pos.length / 3) / 3;
+  if (!n) return 1;
+  let agree = 0;
+  const at = (k: number) => (idx ? idx[k] : k) * 3;
+  for (let t = 0; t < n; t++) {
+    const a = at(t * 3), b = at(t * 3 + 1), c = at(t * 3 + 2);
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
+    const nx = nor[a] + nor[b] + nor[c], ny = nor[a + 1] + nor[b + 1] + nor[c + 1], nz = nor[a + 2] + nor[b + 2] + nor[c + 2];
+    if (fx * nx + fy * ny + fz * nz > 0) agree++;
+  }
+  return agree / n;
+}
+
+/** Turn a part that's inside out (most triangles against their normals) the right way round. Returns whether it did. */
+export function fixWinding(g: THREE.BufferGeometry): boolean {
+  const p = g.getAttribute("position"), nrm = g.getAttribute("normal");
+  if (!p || !nrm) return false;
+  if (!g.index) g.setIndex([...Array(p.count).keys()]);
+  const idx = g.index!;
+  if (windingAgreement(p.array, nrm.array, idx.array) >= 0.25) return false;
+  const a = idx.array as Uint32Array | Uint16Array;
+  for (let i = 0; i + 2 < a.length; i += 3) [a[i + 1], a[i + 2]] = [a[i + 2], a[i + 1]];
+  idx.needsUpdate = true;
+  return true;
+}
+
 /** Parse a .glb (an address or its bytes) into a scene, reference objects removed. */
 export async function loadModel(src: string | ArrayBuffer): Promise<THREE.Group> {
   const l = gltfLoader();

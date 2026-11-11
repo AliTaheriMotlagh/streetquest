@@ -30,7 +30,7 @@ function GoThere({ to, dist, label, name }: { to: { lat: number; lng: number }; 
       )}
       {drive && <Button className="btn cyan" onClick={() => drive(to)}>🚗 {t("Drive there")}</Button>}
       {!teleport && dist > 150 && <RouteButton to={to} name={name} className="btn cyan" />}
-      {!teleport && dist > 150 && <Directions to={to} />}
+      {dist > 60 && <Directions to={to} name={name} />}
     </div>
   );
 }

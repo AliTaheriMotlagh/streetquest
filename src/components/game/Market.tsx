@@ -182,12 +182,15 @@ function ShopBanner({ shop }: { shop: Pick<ShopView, "coverId" | "emoji" | "name
 /** "Go there" for the shop: walk with directions, or travel in test mode / from home. */
 function GoToShop({ to }: { to: { lat: number; lng: number } }) {
   const { teleport } = useGame();
-  return teleport ? (
-    <Button className="btn yellow small" onClick={() => teleport(to)}>
-      <MoveIcon /> {t("Go there")}
-    </Button>
-  ) : (
-    <Directions to={to} className="btn cyan small" label={`🧭 ${t("Directions")}`} />
+  return (
+    <>
+      {teleport && (
+        <Button className="btn yellow small" onClick={() => teleport(to)}>
+          <MoveIcon /> {t("Go there")}
+        </Button>
+      )}
+      <Directions to={to} className="btn cyan small" label={`🧭 ${t("Directions")}`} />
+    </>
   );
 }
 

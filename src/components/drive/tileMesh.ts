@@ -18,7 +18,30 @@ export type Style = "real" | "toon";
 /** `decals`: soft stains on the asphalt (oil, tyre rubber, patches), each vertex's opacity in `fac`. */
 export type LayerName = "ground" | "water" | "roads" | "marks" | "walls" | "glass" | "roofs" | "trim" | "kerbs" | "decals";
 /** `fac`: the façade each wall vertex wears (an index into FACADES), when any isn't plaster. */
-export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array };
+/** `bs`: bounding sphere (x, y, z, radius) — worked out here, in the worker, not on the frame. */
+export type Layer = { name: LayerName; pos: Float32Array; nor: Float32Array; col: Float32Array; uv: Float32Array; idx: Uint32Array; fac?: Float32Array; bs: [number, number, number, number] };
+
+/** Bounding sphere of packed xyz positions as three.js computes it: the box's centre, the farthest point. */
+export function boundingSphere(pos: ArrayLike<number>): [number, number, number, number] {
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  for (let i = 0; i < pos.length; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+    if (z < z0) z0 = z;
+    if (z > z1) z1 = z;
+  }
+  if (x0 > x1) return [0, 0, 0, -1];
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
+  let r2 = 0;
+  for (let i = 0; i < pos.length; i += 3) {
+    const dx = pos[i] - cx, dy = pos[i + 1] - cy, dz = pos[i + 2] - cz, d = dx * dx + dy * dy + dz * dz;
+    if (d > r2) r2 = d;
+  }
+  return [cx, cy, cz, Math.sqrt(r2)];
+}
 export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk" | "dumpster";
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
 /** A solid outline (mh..h m up). `ref`: what moves with it (a street car), for whoever bumps into it. */
@@ -228,7 +251,8 @@ class Builder {
   layer(name: LayerName): Layer | null {
     if (!this.idx.length) return null;
     const fac = this.fac.some((f) => f !== 0) ? new Float32Array(this.fac) : undefined;
-    return { name, pos: new Float32Array(this.pos), nor: new Float32Array(this.nor), col: new Float32Array(this.col), uv: new Float32Array(this.uv), idx: new Uint32Array(this.idx), ...(fac ? { fac } : {}) };
+    const pos = new Float32Array(this.pos);
+    return { name, pos, nor: new Float32Array(this.nor), col: new Float32Array(this.col), uv: new Float32Array(this.uv), idx: new Uint32Array(this.idx), ...(fac ? { fac } : {}), bs: boundingSphere(pos) };
   }
   /** A flat-shaded triangle facing away from `out` (a point inside the solid). */
   tri(a: V3, b: V3, c: V3, col: THREE.Color, out: V3) {

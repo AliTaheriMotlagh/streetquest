@@ -10,6 +10,7 @@ import { defaultGrade, PostPipeline, type Grade } from "./post";
 import { Adaptive, effective, MAX_LEVEL, withCaps, type Profile, type QualityPick, type Tier } from "./quality";
 import { acesInverse, DISPLAY } from "./shaders";
 import { sharpenFor } from "@/lib/view";
+import { ShaderGate } from "./warmup";
 
 export type GfxStats = { tier: Tier; pick: QualityPick; level: number; dpr: number; fps: number; frameMs: number; calls: number; triangles: number; textures: number; geometries: number; targetsMB: number; lost: boolean };
 
@@ -19,6 +20,8 @@ export class GraphicsEngine {
   readonly tier: Tier;
   profile: Profile;
   readonly grade: Grade = defaultGrade();
+  /** New materials' shaders are built in the background, never in the middle of a frame (warmup.ts). */
+  readonly gate: ShaderGate;
   private adaptive: Adaptive;
   private post: PostPipeline | null = null;
   private listeners = new Set<(p: Profile) => void>();
@@ -57,6 +60,7 @@ export class GraphicsEngine {
       { features: this.pick === "auto" },
     );
     const r = this.renderer;
+    this.gate = new ShaderGate(r);
     r.setPixelRatio(this.adaptive.dpr);
     r.setSize(el.clientWidth, el.clientHeight);
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -209,9 +213,10 @@ export class GraphicsEngine {
     DISPLAY.post.value = this.post ? 1 : 0;
     DISPLAY.exposure.value = this.renderer.toneMappingExposure;
     DISPLAY.mirror.value = this.post && this.profile.ssr ? 1 : 0;
-    if (this.post) this.post.render(scene, camera, this.grade);
+    if (this.post) this.post.render(scene, camera, this.grade, this.gate);
     else {
       this.renderer.setRenderTarget(null);
+      this.gate.check(scene, camera);
       this.renderer.render(scene, camera);
     }
   }
@@ -231,6 +236,7 @@ export class GraphicsEngine {
 
   dispose() {
     this.listeners.clear();
+    this.gate.release();
     this.grade.lut?.dispose();
     this.post?.dispose();
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onLost);

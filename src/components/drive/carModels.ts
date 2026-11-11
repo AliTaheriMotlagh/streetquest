@@ -16,7 +16,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { CAR_MODELS } from "@/lib/carModels";
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import type { FleetParts } from "./fleet3d";
-import { loadModel, plainGeometry } from "./gltf";
+import { fixWinding, loadModel, plainGeometry } from "./gltf";
 import { tyreAttr } from "./carLook";
 import { paint as tint } from "./world3d";
 
@@ -48,6 +48,9 @@ export function carModel(key: FleetKey, fallback: () => FleetParts): FleetParts 
   }
   return null;
 }
+
+/** Whether this kind's real model has arrived (the admin's car lab shows which are drawn). */
+export const hasRealModel = (key: FleetKey) => ready.has(key);
 
 /** Called with a kind once its real model is in (to rebuild a player's car that was drawn before it came). */
 export function onCarModel(fn: (key: FleetKey) => void) {
@@ -99,7 +102,11 @@ function toParts(key: FleetKey, root: THREE.Object3D, meta: Meta, suffix: string
   root.updateMatrixWorld(true);
   const part = (name: string) => {
     const m = root.getObjectByName(name + suffix) as THREE.Mesh | undefined;
-    return m?.isMesh ? plainGeometry(m) : null;
+    if (!m?.isMesh) return null;
+    const g = plainGeometry(m);
+    // A part exported inside out would draw as a see-through shell.
+    fixWinding(g);
+    return g;
   };
   const paint = part("paint"), kit = part("kit"), head = part("head"), tail = part("tail"), wheel = part("wheel");
   if (!paint || !kit || !head || !tail || !wheel) return null;

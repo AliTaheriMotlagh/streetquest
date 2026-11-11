@@ -1104,7 +1104,9 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     g.setAttribute("uv", new THREE.BufferAttribute(l.uv, 2));
     if (l.fac) g.setAttribute("fac", new THREE.BufferAttribute(l.fac, 1));
     g.setIndex(new THREE.BufferAttribute(l.idx, 1));
-    g.computeBoundingSphere();
+    // Measured in the build worker (a tile's walls are ~100k points: too long a loop for the frame).
+    if (l.bs) g.boundingSphere = new THREE.Sphere(new THREE.Vector3(l.bs[0], l.bs[1], l.bs[2]), l.bs[3]);
+    else g.computeBoundingSphere();
     geoms.push(g);
     // Balconies and rooftop kit are drawn like roofs, kerbs and pavements like the street,
     // and only up close (with the other detail).

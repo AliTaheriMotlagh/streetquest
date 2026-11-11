@@ -598,11 +598,13 @@ export class PostPipeline {
     this.fresh = true;
   }
 
-  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, g: Grade) {
+  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, g: Grade, gate?: { check(s: THREE.Scene, c: THREE.Camera): void }) {
     const r = this.renderer, o = this.opts;
     r.getDrawingBufferSize(this.tmp);
     this.setSize(this.tmp.x, this.tmp.y);
     r.setRenderTarget(this.hdr);
+    // With the HDR target bound: new shaders are built for exactly what this pass draws.
+    gate?.check(scene, camera);
     r.render(scene, camera);
     const depth = this.hdr.depthTexture;
     let sceneTex = this.hdr.texture;

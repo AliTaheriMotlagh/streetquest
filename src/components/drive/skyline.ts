@@ -17,6 +17,8 @@ const R0 = 1200;
 const EARTH = 6_371_000;
 /** Rebuild after moving this far from where the ring was built. */
 const REBUILD_M = 3000;
+/** Elevation tiles that wouldn't load (offline, blocked): try again after this long (ms), not every frame. */
+const RETRY_MS = 60_000;
 
 type Dem = { z: number; tiles: Map<string, Float32Array | null> };
 
@@ -67,6 +69,8 @@ export class Skyline {
   private hazeNow = new THREE.Color();
   private center: { x: number; z: number } | null = null;
   private busy = false;
+  /** When to try again after the tiles failed (0: no failure pending). */
+  private retryAt = 0;
   private disposed = false;
   private radius: number;
 
@@ -81,7 +85,7 @@ export class Skyline {
     // Dawn, dusk, night: the haze changed colour.
     const haze = this.haze();
     if (this.mesh && Math.abs(haze.r - this.hazeNow.r) + Math.abs(haze.g - this.hazeNow.g) + Math.abs(haze.b - this.hazeNow.b) > 0.02) this.recolor();
-    if (!this.busy && (!this.center || Math.hypot(x - this.center.x, z - this.center.z) > REBUILD_M)) void this.build(x, z);
+    if (!this.busy && (!this.center || Math.hypot(x - this.center.x, z - this.center.z) > REBUILD_M || (this.retryAt > 0 && performance.now() > this.retryAt))) void this.build(x, z);
     // world = cam + k·(p − cam): every vertex stays on the same line of sight, k brings the far ring inside the far plane.
     const k = (2000 / this.radius) * 0.95, c = camera.position;
     this.group.matrix.makeScale(k, k, k).setPosition(c.x * (1 - k), c.y * (1 - k), c.z * (1 - k));
@@ -98,7 +102,13 @@ export class Skyline {
     for (let tx = Math.floor(a.x); tx <= Math.floor(b.x); tx++) for (let ty = Math.floor(a.y); ty <= Math.floor(b.y); ty++) jobs.push(loadTile(Z, tx, ty).then((h) => void dem.tiles.set(`${tx}_${ty}`, h)));
     await Promise.all(jobs);
     const ground = heightAt(dem, here);
-    if (this.disposed || ground == null) return void (this.busy = false);
+    if (this.disposed || ground == null) {
+      // No tiles: wait before asking again (it used to go again the very next frame, for ever).
+      this.center ??= { x, z };
+      this.retryAt = performance.now() + RETRY_MS;
+      return void (this.busy = false);
+    }
+    this.retryAt = 0;
 
     const pos = new Float32Array(AZ * RINGS * 3), col = new Float32Array(AZ * RINGS * 3);
     const heights = new Float32Array(AZ * RINGS), dists = new Float32Array(AZ * RINGS);

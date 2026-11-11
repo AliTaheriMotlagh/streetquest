@@ -699,13 +699,9 @@ function GoButtons({ to, name, dist }: { to: LatLng; name: string; dist: number 
           <MoveIcon /> {t("Go there")}
         </Button>
       ) : (
-        dist > 150 && (
-          <>
-            <RouteButton to={to} name={name} />
-            <Directions to={to} />
-          </>
-        )
+        dist > 150 && <RouteButton to={to} name={name} />
       )}
+      {dist > 60 && <Directions to={to} name={name} className="btn small cyan" />}
       {drive && (
         <Button className="btn small cyan" onClick={() => drive(to)}>
           🚗 {t("Drive there")}

@@ -22,33 +22,9 @@ import { burst, celebrate, parseRewards } from "./Rewards";
 // ---------------------------------------------------------------- celebrations (Rewards.tsx)
 export { burst, celebrate, CelebrationLayer } from "./Rewards";
 
-// ---------------------------------------------------------------- directions (car / walking hand-off)
-const isApple = () => typeof navigator !== "undefined" && /iPhone|iPad|Macintosh/.test(navigator.userAgent);
-const isAndroid = () => typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
-export function Directions({ to, label, className = "btn cyan" }: { to: LatLng; label?: string; className?: string }) {
-  const [open, setOpen] = useState(false);
-  const { lat, lng } = to;
-  const links: [string, string][] = [
-    // Android: the phone's own map apps (Neshan, Balad, Google Maps…) through the standard geo: link.
-    ...(isAndroid() ? ([[t("📍 Open in a map app"), `geo:${lat},${lng}?q=${lat},${lng}`]] as [string, string][]) : []),
-    [t("🚗 Google Maps · drive"), `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`],
-    [t("🚶 Google Maps · walk"), `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`],
-    ...(isApple() ? ([[t("🍎 Apple Maps"), `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`]] as [string, string][]) : []),
-    [t("🟦 Waze"), `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`],
-  ];
-  return (
-    <span className="dir-wrap">
-      <Button className={className} onClick={() => setOpen(!open)}>{label ?? t("🧭 Directions")}</Button>
-      {open && (
-        <span className="dir-menu" onClick={() => setOpen(false)}>
-          {links.map(([l, href]) => (
-            <a key={l} href={href} target="_blank" rel="noreferrer">{l}</a>
-          ))}
-        </span>
-      )}
-    </span>
-  );
-}
+// ---------------------------------------------------------------- directions: "Navigate with…" (NavigateWith.tsx)
+export { Directions } from "./NavigateWith";
+import { Directions } from "./NavigateWith";
 
 // ---------------------------------------------------------------- live GPS game
 /** Polls the active GPS game and asks the server to check progress every few seconds. */

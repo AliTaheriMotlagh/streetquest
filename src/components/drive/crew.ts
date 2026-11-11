@@ -53,6 +53,8 @@ export function cabinShape(
   waist: number;
   front: number;
   back: number;
+  /** How far out (m from the middle) the cabin may reach at a height and point along the car. */
+  halfAt: (y: number, z: number) => number;
 } | null {
   const pts: P2[] = [];
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -86,6 +88,34 @@ export function cabinShape(
     y: Math.min(y1 - 0.24, y0 + 0.42),
     z: Math.min(ze - 0.3, Math.max(roofFront + 0.15, zs + Math.min(0.97, 0.4 * (ze - zs)))),
   };
+  // Cars narrow towards the roof (tumblehome) and towards the rear window: the glass's own
+  // width near the roof, slice by slice along the car, and at the waist. The cabin is drawn
+  // within them — a box as wide as the waist poked out through the roof and the rear pillars.
+  const NZ = 8, band = (y1 - y0) * 0.25, slice = (ze - zs) / NZ || 1;
+  const top: number[] = new Array(NZ).fill(-1);
+  let bottom = 0;
+  for (let i = 0; i + 2 < pos.length; i += 3) {
+    const y = pos[i + 1];
+    if (y < hgt * 0.5) continue;
+    const w = Math.abs(pos[i] - cx);
+    if (y >= y1 - band) {
+      const k = Math.min(NZ - 1, Math.max(0, Math.floor((pos[i + 2] - zs) / slice)));
+      top[k] = Math.max(top[k], w);
+    }
+    if (y <= y0 + band) bottom = Math.max(bottom, w);
+  }
+  if (!bottom) bottom = half + 0.05;
+  // A slice with no glass up top takes its nearest neighbour's width.
+  for (let k = 0; k < NZ; k++)
+    if (top[k] < 0) {
+      for (let d = 1; d < NZ && top[k] < 0; d++) top[k] = Math.max(top[k - d] ?? -1, top[k + d] ?? -1);
+      if (top[k] < 0) top[k] = bottom;
+    }
+  const halfAt = (y: number, z: number) => {
+    const t = Math.min(1, Math.max(0, (y - y0) / (y1 - y0 || 1)));
+    const k = Math.min(NZ - 1, Math.max(0, Math.floor((z - zs) / slice)));
+    return Math.max(0.2, Math.min(half, bottom + (Math.min(top[k], bottom) - bottom) * t - 0.06));
+  };
   return {
     outline,
     x0: cx - half,
@@ -95,6 +125,7 @@ export function cabinShape(
     waist: y0,
     front: zs,
     back: ze,
+    halfAt,
   };
 }
 
@@ -149,7 +180,15 @@ export function cabinGeometry(c: NonNullable<ReturnType<typeof cabinShape>>): TH
   if (dashBack > c.front + 0.12) parts.push(box(c.x1 - c.x0 - 0.04, 0.16, dashBack - c.front - 0.06, mid, c.waist - 0.02, (c.front + 0.06 + dashBack) / 2, "#16171a"));
   const wheel = new THREE.TorusGeometry(0.16, 0.022, 5, 14).rotateX(-0.45).translate(s.x, s.y - 0.33, s.z - 0.42);
   parts.push(paint(wheel, "#0b0b0c"));
-  return mergeAll(parts);
+  const all = mergeAll(parts);
+  // Within the glass: drawn in where the car narrows (roof, rear pillars).
+  const p = all.getAttribute("position") as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const lim = c.halfAt(p.getY(i), p.getZ(i)), dx = p.getX(i) - mid;
+    if (Math.abs(dx) > lim) p.setX(i, mid + Math.sign(dx) * lim);
+  }
+  // (Normals kept: the walls face in on purpose, and pulling them in hardly turns them.)
+  return all;
 }
 
 /** Merge geometries with only position, normal and colour (no uv, no index). */
