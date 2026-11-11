@@ -1,0 +1,191 @@
+/* =====================================================================
+   The 3D city's HUD, second pass: flat, dark and quiet (think GTA V / CoD Mobile, not a
+   toy). One accent, one typeface, a 11 / 13 / 15 / 20 type scale, 8 px spacing, 10 px radii,
+   48 px touch targets, 1.75 px line icons (components/drive/icons.tsx). No gradients, glows,
+   blur or emoji. Loaded after world.css / arena.css so it wins, before compact.css so the
+   small-phone sizes still apply on top. Logical properties throughout (RTL mirrors itself).
+   ===================================================================== */
+.drive {
+  --hud-bg: rgba(14, 17, 24, .84); --hud-solid: #12151c; --hud-line: rgba(255, 255, 255, .1); --hud-hi: rgba(255, 255, 255, .06);
+  --hud-mute: rgba(255, 255, 255, .62); --hud-r: 10px; --hud-ease: cubic-bezier(.2, .8, .2, 1);
+  font-family: var(--body);
+}
+.drive :is(button, input, [tabindex]):focus-visible { outline: 2px solid var(--dpad-accent); outline-offset: 2px; }
+.drive button { font-family: inherit; }
+.drive ::selection { background: var(--dpad-accent); color: #1a1200; }
+
+/* ---- round buttons -> square-ish 48 px tools; the right-hand ones form one rail */
+.drive-round {
+  width: 48px; height: 48px; border-radius: var(--hud-r); flex-direction: column; gap: 1px; align-content: center; justify-content: center;
+  background: var(--hud-bg); border: 1px solid var(--hud-line); box-shadow: none; color: #fff; transition: background .12s, color .12s, opacity .12s;
+}
+.drive-round:active:not(:disabled) { transform: none; background: var(--hud-hi); }
+.drive-round.on { background: var(--dpad-accent); color: #1a1200; border-color: transparent; }
+.drive-round:disabled { opacity: .38; cursor: not-allowed; }
+.drive-round.cam small { position: static; transform: none; padding: 0; border-radius: 0; background: none; color: var(--hud-mute); font: 600 11px/1 var(--body); letter-spacing: .04em; }
+.drive-round .badge { top: 3px; inset-inline-end: 3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--dpad-accent); color: #1a1200; font: 700 11px/18px var(--body); font-variant-numeric: tabular-nums; box-shadow: none; }
+.drive-side { flex-direction: column; gap: 0; background: var(--hud-bg); border: 1px solid var(--hud-line); border-radius: var(--hud-r); }
+.drive-side .drive-round { background: none; border: 0; border-radius: 0; }
+.drive-side .drive-round:first-child { border-start-start-radius: var(--hud-r); border-start-end-radius: var(--hud-r); }
+.drive-side .drive-round:last-child { border-end-start-radius: var(--hud-r); border-end-end-radius: var(--hud-r); }
+.drive-side .drive-round + .drive-round { border-top: 1px solid var(--hud-line); }
+.drive-side .drive-round.on { background: var(--dpad-accent); }
+/* Tooltips on a mouse only; the rail sits at the right edge, so they open to its left. */
+@media (hover: hover) and (pointer: fine) {
+  .drive-round[data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); z-index: 9; white-space: nowrap; pointer-events: none;
+    padding: 5px 9px; border-radius: 6px; background: var(--hud-solid); border: 1px solid var(--hud-line); color: #fff; font: 600 13px/1.2 var(--body); animation: hudFade .12s ease-out;
+  }
+  .drive-start .drive-round[data-tip]:hover::after { right: auto; left: calc(100% + 8px); }
+}
+@keyframes hudFade { from { opacity: 0; } }
+
+/* ---- me, street, store, destination */
+.drive-me { gap: 8px; padding: 4px 12px 4px 4px; border-radius: var(--hud-r); background: var(--hud-bg); border: 1px solid var(--hud-line); box-shadow: none; min-height: 48px; }
+.drive-me:active { transform: none; background: var(--hud-hi); }
+.drive-me-av { width: 38px; height: 38px; border-radius: 8px; font: 700 15px/1 var(--body); background: var(--hud-hi); box-shadow: none; border: 1px solid var(--hud-line); }
+.drive-me-av i { inset-inline-end: -4px; right: auto; bottom: -4px; min-width: 18px; text-align: center; font: 700 11px/16px var(--body); border-radius: 4px; padding: 0 4px; font-variant-numeric: tabular-nums; }
+.drive-me-tx b { font: 600 13px/1.25 var(--body); }
+.drive-me-tx span { font: 600 13px/1.25 var(--body); gap: 4px; color: var(--hud-mute); }
+.drive-me-tx svg { color: var(--dpad-accent); }
+.drive-street { padding: 6px 12px; border-radius: var(--hud-r); background: var(--hud-bg); border: 1px solid var(--hud-line); border-inline-start: 2px solid var(--dpad-accent); font: 600 13px/1.3 var(--body); box-shadow: none; }
+.drive-store { padding: 4px 12px 4px 4px; border-radius: var(--hud-r); box-shadow: none; border-inline-start-width: 2px; }
+.drive-store .ic { width: 36px; height: 36px; border-radius: 8px; box-shadow: none; background: var(--hud-hi); color: var(--trade, #fff); }
+.drive-store .tx b { font: 600 13px/1.25 var(--body); }
+.drive-store .tx span { font: 400 11px/1.25 var(--body); opacity: .7; }
+.drive-nav { padding: 4px 12px 4px 4px; border-radius: var(--hud-r); box-shadow: none; }
+.drive-nav-arrow { width: 36px; height: 36px; border-radius: 8px; background: #ec6fa4; color: #1a0a12; }
+.drive-nav-tx b { font: 600 13px/1.25 var(--body); }
+.drive-nav-tx span { font: 600 11px/1.25 var(--body); letter-spacing: .02em; }
+
+/* ---- minimap and gauge: flat instruments */
+.drive-mini { border: 1.5px solid rgba(255, 255, 255, .7); box-shadow: none; }
+.drive-mini-tag { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--hud-line); background: var(--hud-solid); box-shadow: none; }
+.dgauge { background: var(--hud-bg); box-shadow: none; }
+.dg-speed { font: 700 20px/1 var(--body); }
+.dg-unit { font: 600 11px/1 var(--body); letter-spacing: .06em; }
+html[lang="fa"] .dg-unit { letter-spacing: 0; text-transform: none; }
+
+/* ---- bottom prompt: key glyph + verb */
+.drive-action { padding: 4px; border-radius: var(--hud-r); border: 1px solid var(--hud-line); background: var(--hud-solid); box-shadow: none; animation: hudRise .18s var(--hud-ease) backwards; }
+.da-main { gap: 12px; padding: 0; min-height: 48px; border-radius: 8px; }
+.da-main:active:not(:disabled) { transform: none; background: var(--hud-hi); }
+.da-key { flex: none; min-width: 48px; height: 40px; padding: 0 8px; margin-inline-start: 4px; border-radius: 8px; display: grid; place-items: center; background: var(--hud-hi); border: 1px solid var(--hud-line); border-bottom-width: 2px; color: #fff; }
+.da-key kbd { font: 600 11px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; }
+.da-key .drive-spinner { width: 18px; height: 18px; }
+.da-tx b { font: 600 15px/1.25 var(--body); text-transform: none; letter-spacing: 0; }
+.da-tx span { font: 400 13px/1.25 var(--body); color: var(--hud-mute); }
+.da-x { width: 40px; height: 40px; border-radius: 8px; background: none; color: var(--hud-mute); }
+.da-x:active { background: var(--hud-hi); }
+.drive-action { --job: var(--dpad-accent); border-inline-start: 2px solid var(--job); }
+@keyframes hudRise { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* ---- tapped something, notes, hints */
+.drive-pick { border-radius: var(--hud-r); background: var(--hud-solid); border: 1px solid var(--hud-line); box-shadow: none; }
+.drive-pick .ic { color: var(--dpad-accent); font-size: inherit; display: grid; place-items: center; }
+.drive-pick .close { width: 40px; height: 40px; border-radius: 8px; background: none; border: 0; color: var(--hud-mute); display: grid; place-items: center; cursor: pointer; }
+.drive-banner, .drive-loading, .drive-hint { border-radius: var(--hud-r); box-shadow: none; font: 400 13px/1.35 var(--body); }
+.drive-banner svg { flex: none; color: var(--dpad-accent); }
+.drive-hint .dh-x { width: 40px; height: 40px; border-radius: 8px; background: none; display: grid; place-items: center; color: var(--hud-mute); }
+.party-hud { border-radius: var(--hud-r); border-width: 1px; box-shadow: none; }
+
+/* ---- 3D waypoints: icon badge + distance on screen, an arrow on the edge when it is off screen */
+.drive-wp { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
+.wp { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
+.wp[hidden] { display: none; }
+.wp-ic { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--hud-solid); border: 1.5px solid var(--wp, #fff); color: #fff; }
+.wp-ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.wp-d { position: absolute; left: -40px; width: 80px; top: 18px; text-align: center; font: 600 11px/1 var(--body); letter-spacing: .02em; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .8), 0 0 4px rgba(0, 0, 0, .6); }
+.wp-arr { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; display: none; }
+.wp-arr svg { width: 16px; height: 16px; fill: var(--wp, #fff); stroke: var(--hud-solid); stroke-width: 1.5; stroke-linejoin: round; }
+.wp.edge .wp-arr { display: block; }
+.wp.edge .wp-ic { opacity: .95; }
+
+/* ---- the pause menu */
+.pm-scrim { position: absolute; inset: 0; z-index: 7; background: rgba(4, 6, 9, .55); animation: hudFade .18s ease-out; }
+.pm-scrim.out { opacity: 0; transition: opacity .17s ease-in; animation: none; }
+.pm {
+  position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column-reverse; background: var(--hud-solid); color: #fff; overflow: hidden;
+  padding-top: var(--safe-t); animation: pmUp .2s var(--hud-ease) backwards; overscroll-behavior: contain;
+}
+.pm.out { opacity: 0; transform: translateY(12px); transition: opacity .17s ease-in, transform .17s ease-in; animation: none; }
+.pm-rail { flex: none; display: flex; align-items: stretch; border-top: 1px solid var(--hud-line); background: var(--hud-solid); padding: 0 var(--safe-r) var(--safe-b) var(--safe-l); }
+.pm-tab { position: relative; flex: 1; min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 2px; border: 0; background: none; color: var(--hud-mute); cursor: pointer; transition: color .12s, background .12s; }
+.pm-tab:hover { background: var(--hud-hi); color: #fff; }
+.pm-tab[aria-selected="true"] { color: var(--dpad-accent); background: var(--hud-hi); }
+.pm-tab[aria-selected="true"]::before { content: ""; position: absolute; inset-inline: 12px; top: 0; height: 2px; background: var(--dpad-accent); }
+.pm-tab:focus-visible { outline-offset: -3px; }
+.pm-lb { font: 600 11px/1.1 var(--body); letter-spacing: .02em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[lang="en"] .pm-lb { text-transform: uppercase; letter-spacing: .06em; }
+.pm-badge { position: absolute; top: 4px; inset-inline-end: calc(50% - 30px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--dpad-accent); color: #1a1200; font: 700 11px/18px var(--body); text-align: center; font-variant-numeric: tabular-nums; }
+.pm-exit { display: none; }
+.pm-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-inline: var(--safe-l) var(--safe-r); }
+.pm-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 16px; min-height: 56px; border-bottom: 1px solid var(--hud-line); }
+html[dir="rtl"] .pm-head { padding: 8px 16px 8px 8px; }
+.pm-head h2 { margin: 0; font: 600 20px/1.2 var(--body); letter-spacing: 0; }
+.pm-x { width: 48px; height: 48px; border-radius: var(--hud-r); border: 0; background: none; color: var(--hud-mute); display: grid; place-items: center; cursor: pointer; }
+.pm-x:hover, .pm-x:active { background: var(--hud-hi); color: #fff; }
+.pm-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px; display: flex; flex-direction: column; gap: 8px; -webkit-overflow-scrolling: touch; }
+.pm .drive-tab { gap: 8px; }
+@keyframes pmUp { from { opacity: 0; transform: translateY(16px); } }
+@keyframes pmSide { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes pmSideRtl { from { opacity: 0; transform: translateX(16px); } }
+
+@media (min-width: 900px) {
+  .pm { inset-block: 0; inset-inline: 0 auto; width: 480px; flex-direction: row; border-inline-end: 1px solid var(--hud-line); animation-name: pmSide; padding-top: 0; }
+  html[dir="rtl"] .pm { animation-name: pmSideRtl; }
+  .pm.out { transform: translateX(-12px); }
+  html[dir="rtl"] .pm.out { transform: translateX(12px); }
+  .pm-rail { flex-direction: column; width: 80px; border-top: 0; border-inline-end: 1px solid var(--hud-line); padding: var(--safe-t) 0 0 0; }
+  .pm-tab { flex: none; min-height: 72px; }
+  .pm-tab[aria-selected="true"]::before { inset: 12px auto 12px 0; width: 2px; height: auto; inset-inline-start: 0; }
+  .pm-badge { top: 10px; inset-inline-end: 12px; }
+  .pm-exit { display: flex; margin-top: auto; }
+  .pm-x { display: none; }
+  .pm-head { padding-top: calc(8px + var(--safe-t)); }
+  .pm-scrim { background: rgba(4, 6, 9, .35); }
+}
+html[dir="rtl"] .drive .pm { direction: rtl; }
+html[dir="rtl"] .drive .pm-scrim { direction: rtl; }
+
+/* ---- what is inside the menu: flat rows and cards */
+.pm :is(.drive-job, .pm-row, .garage-car, .ctl-pick button) { border-radius: var(--hud-r); border: 1px solid var(--hud-line); background: var(--hud-hi); box-shadow: none; transition: background .12s, border-color .12s; }
+.pm-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 12px; color: inherit; font: 600 13px/1.3 var(--body); text-align: start; cursor: pointer; }
+.pm .drive-job { min-height: 48px; padding: 8px 12px; gap: 12px; font-size: 13px; }
+.pm .drive-job .ic { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--hud-hi); color: var(--dpad-accent); font-size: inherit; }
+.pm .drive-job:hover, .pm .pm-row:hover, .pm .garage-car:not(:disabled):hover { background: rgba(255, 255, 255, .09); }
+.pm .small { font-size: 11px; }
+.pm .muted { color: var(--hud-mute); }
+.pm .drive-place { padding: 0; }
+.pm .drive-place-go { min-height: 48px; padding: 8px 12px; gap: 12px; font-size: 13px; }
+.pm .drive-place-go .ic { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--hud-hi); color: var(--dpad-accent); }
+.pm .drive-search { height: 48px; padding: 0 12px; border-radius: var(--hud-r); border: 1px solid var(--hud-line); background: var(--hud-hi); font-size: 13px; }
+.pm .garage-grid { gap: 8px; }
+.pm .garage-car { padding: 12px; gap: 4px; font-size: 13px; }
+.pm .garage-car .ic { color: #fff; font-size: inherit; line-height: 0; margin-bottom: 4px; }
+.pm .garage-car.on { border-color: var(--dpad-accent); background: rgba(255, 176, 32, .1); }
+.pm .garage-car.on .ic { color: var(--dpad-accent); }
+.pm .garage-stats { display: flex; align-items: center; gap: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pm .swatch { width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--hud-line); }
+.pm .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px var(--dpad-accent); }
+.pm .ctl-pick button { min-height: 72px; color: var(--hud-mute); }
+.pm .ctl-pick button.on { border-color: var(--dpad-accent); color: #fff; background: rgba(255, 176, 32, .1); }
+.pm .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.pm .seg.seg-fill { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); grid-auto-flow: row; }
+.pm :is(.btn, .seg button) {
+  min-height: 44px; border-radius: var(--hud-r); border: 1px solid var(--hud-line); background: var(--hud-hi); background-image: none; box-shadow: none; text-shadow: none; text-transform: none; letter-spacing: 0;
+  color: #fff; font: 600 13px/1.2 var(--body); display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.pm :is(.btn, .seg button).yellow { background: var(--dpad-accent); border-color: transparent; color: #1a1200; }
+.pm :is(.btn, .seg button):disabled { opacity: .4; }
+.pm :is(.btn, .seg button):active:not(:disabled) { transform: none; filter: brightness(1.12); }
+.pm-scroll b.small { margin-top: 8px; font: 600 11px/1.2 var(--body); color: var(--hud-mute); }
+html[lang="en"] .pm-scroll b.small { text-transform: uppercase; letter-spacing: .08em; }
+.pm input:not([type="range"]) { font-size: 13px; }
+.pm .party-code { border-radius: var(--hud-r); border: 1px solid var(--hud-line); background: var(--hud-hi); }
+.pm .party-code b { font: 700 20px/1 var(--body); letter-spacing: .14em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pm, .pm-scrim, .drive-action, .drive-round[data-tip]:hover::after { animation: none !important; }
+  .pm.out, .pm-scrim.out { transition: none; }
+}

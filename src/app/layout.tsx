@@ -16,6 +16,7 @@ import "./theme.css";
 import "./social.css";
 import "./controls.css";
 import "./storefront.css";
+import "./hud.css";
 import "./compact.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.

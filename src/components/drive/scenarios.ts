@@ -23,7 +23,8 @@ import type { StreetLife } from "./street";
 import type { TrafficCars, CarRef } from "./traffic";
 import { forward } from "./physics";
 import { peekScenario, takeScenario } from "./scenarioLink";
-import { makeBeacon, type TileMeshes } from "./world3d";
+import { type TileMeshes } from "./world3d";
+import { makeBeacon } from "./markerKit";
 
 /** A scenario as the server sends it. */
 export type Offered = Scenario & { done: boolean; paidNow: boolean };
@@ -219,7 +220,7 @@ export class Scenarios {
       if (have && (have.key === cell || fixed)) continue;
       if (have) (this.removeGiver(have), this.givers.delete(s.id));
       const p = resolveScenario({ ...s, steps: [] }, me, this.probe(), seeded(`${s.id}:${cell}`)).giver;
-      const beacon = makeBeacon(s.emoji, "#ffb020", `${say(s.title, getLocale())} · ${say(s.giver.name, getLocale())}`);
+      const beacon = makeBeacon("flag", "#ffb020", `${say(s.title, getLocale())} · ${say(s.giver.name, getLocale())}`);
       beacon.group.position.set(p.x, 0, p.z);
       this.h.scene.add(beacon.group);
       this.givers.set(s.id, { at: p, key: cell, beacon });
@@ -349,7 +350,7 @@ export class Scenarios {
   private setGoal(p: Pt | null) {
     this.clearGoal();
     if (!p) return;
-    this.goal = makeBeacon("🎯", "#5bd38c", t("Objective"));
+    this.goal = makeBeacon("target", "#5bd38c", t("Objective"));
     this.goal.group.position.set(p.x, 0, p.z);
     this.h.scene.add(this.goal.group);
   }
