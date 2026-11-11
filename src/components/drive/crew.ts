@@ -248,6 +248,43 @@ function driverGeometry() {
 
 type Part = "top" | "skin" | "hair" | "scarf";
 
+let driverGeo: ReturnType<typeof driverGeometry> | null = null;
+const cabins = new Map<THREE.BufferGeometry, { cabin: THREE.BufferGeometry; seat: Seat } | null>();
+
+/**
+ * You, at the wheel of your own car (seen from the chase camera through the glass), and the
+ * cabin you sit in — the same figure and interior the traffic's drivers have. `glass`: the
+ * model's windows (null, or none above the waist: a bike — nothing to add). The geometry is
+ * shared and cached per model; `dispose` frees only the materials.
+ */
+export function seatedDriver(glass: THREE.BufferGeometry | null, hgt: number, seed: number): { group: THREE.Group; dispose: () => void } | null {
+  if (!glass) return null;
+  let c = cabins.get(glass);
+  if (c === undefined) {
+    const shape = cabinShape(glass.getAttribute("position").array, hgt);
+    c = shape ? { cabin: cabinGeometry(shape), seat: shape.seat } : null;
+    cabins.set(glass, c);
+  }
+  if (!c) return null;
+  driverGeo ??= driverGeometry();
+  const look = driverLook(seed);
+  const mats: THREE.Material[] = [];
+  const mat = (color: THREE.ColorRepresentation, double = false) => {
+    const m = new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 0.85, metalness: 0, side: double ? THREE.DoubleSide : THREE.FrontSide });
+    mats.push(m);
+    return m;
+  };
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(c.cabin, mat("#ffffff")));
+  const me = new THREE.Group();
+  me.position.set(c.seat.x, c.seat.y, c.seat.z);
+  me.add(new THREE.Mesh(driverGeo.top, mat(look.top)), new THREE.Mesh(driverGeo.skin, mat(look.skin)));
+  me.add(look.woman ? new THREE.Mesh(driverGeo.scarf, mat(look.hair, true)) : new THREE.Mesh(driverGeo.hair, mat(look.hair)));
+  group.add(me);
+  group.traverse((o) => ((o as THREE.Mesh).isMesh && ((o as THREE.Mesh).castShadow = false)));
+  return { group, dispose: () => mats.forEach((m) => m.dispose()) };
+}
+
 export class Crew {
   private mesh: Record<Part, THREE.InstancedMesh>;
   private count: Record<Part, number> = { top: 0, skin: 0, hair: 0, scarf: 0 };

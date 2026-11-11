@@ -532,6 +532,16 @@ export class Crowd {
     return true;
   }
 
+  /** Person `id` gives up (a thief caught): stops running and stands still for `secs` s, facing (x, z). */
+  surrender(id: number, secs: number, x: number, z: number) {
+    const w = this.walkers.find((v) => v.id === id);
+    if (!w || w.dead || w.mode === "down" || w.mode === "flying") return;
+    w.mode = "stop";
+    w.t = secs;
+    w.fromX = x;
+    w.fromZ = z;
+  }
+
   /** Person `id` runs off (a thief making a getaway): away from (x, z) for `secs` s. */
   runFrom(id: number, x: number, z: number, secs: number) {
     const w = this.walkers.find((v) => v.id === id);

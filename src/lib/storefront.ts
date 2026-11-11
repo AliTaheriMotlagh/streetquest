@@ -37,16 +37,9 @@ export function nearStore(list: StoreSpot[], x: number, z: number, fx: number, f
  * `lines`/`widths`: the streets' centrelines (x, z pairs) and widths. Null: no street near.
  */
 export function signSpot(lines: ArrayLike<number>[], widths: number[], x: number, z: number, out = 1.3, reach = 60): { x: number; z: number; angle: number } | null {
-  let best = reach, px = 0, pz = 0, w = 8;
-  lines.forEach((l, li) => {
-    for (let i = 0; i + 3 < l.length; i += 2) {
-      const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, l2 = dx * dx + dz * dz || 1;
-      const k = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
-      const qx = ax + dx * k, qz = az + dz * k, d = Math.hypot(qx - x, qz - z);
-      if (d < best) (best = d), (px = qx), (pz = qz), (w = widths[li] ?? 8);
-    }
-  });
-  if (best >= reach) return null;
+  const near = nearestOn(lines, widths, x, z, reach);
+  if (!near) return null;
+  const { d: best, px, pz, w } = near;
   const kerb = w / 2 + out;
   let sx = x, sz = z;
   if (best < kerb) {
@@ -59,5 +52,99 @@ export function signSpot(lines: ArrayLike<number>[], widths: number[], x: number
     sx = px + ((x - px) / best) * kerb;
     sz = pz + ((z - pz) / best) * kerb;
   }
-  return { x: sx, z: sz, angle: Math.atan2(px - sx, pz - sz) };
+  // Out of one street can be into the next (a store at a junction, the corner of a
+  // crossing): walked out of every street it still stands in, which ends on the corner.
+  // No pavement within a few steps: no pole at all — never a sign in the road.
+  const clear = offRoads(lines, widths, sx, sz, out);
+  if (!clear) return null;
+  return { x: clear.x, z: clear.z, angle: Math.atan2(px - clear.x, pz - clear.z) };
+}
+
+/** The nearest point on any street within `reach`: where, how far, and that street's width. */
+function nearestOn(lines: ArrayLike<number>[], widths: number[], x: number, z: number, reach: number) {
+  let best = reach, px = 0, pz = 0, w = 8;
+  lines.forEach((l, li) => {
+    for (let i = 0; i + 3 < l.length; i += 2) {
+      const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, l2 = dx * dx + dz * dz || 1;
+      const k = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      const qx = ax + dx * k, qz = az + dz * k, d = Math.hypot(qx - x, qz - z);
+      if (d < best) (best = d), (px = qx), (pz = qz), (w = widths[li] ?? 8);
+    }
+  });
+  return best < reach ? { d: best, px, pz, w } : null;
+}
+
+/**
+ * Is (x, z) on the asphalt of any of these streets, or within `pad` m of its edge? (A pole
+ * there stands in the way of the traffic: the 3D city leaves it out.)
+ */
+export function onRoads(lines: ArrayLike<number>[], widths: number[], x: number, z: number, pad = 0.3): boolean {
+  for (let li = 0; li < lines.length; li++) {
+    const l = lines[li], half = (widths[li] ?? 8) / 2 + pad;
+    for (let i = 0; i + 3 < l.length; i += 2) {
+      const ax = l[i], az = l[i + 1];
+      const dx = l[i + 2] - ax, dz = l[i + 3] - az, l2 = dx * dx + dz * dz || 1;
+      const k = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if (Math.hypot(ax + dx * k - x, az + dz * k - z) < half) return true;
+    }
+  }
+  return false;
+}
+
+/** (x, z) pushed out of every street it stands in, `out` m past that street's kerb; null when it can't get clear in a few steps. */
+export function offRoads(lines: ArrayLike<number>[], widths: number[], x: number, z: number, out = 1.3): { x: number; z: number } | null {
+  let sx = x, sz = z;
+  for (let step = 0; step < 6; step++) {
+    let worst: { px: number; pz: number; d: number; w: number } | null = null;
+    for (let li = 0; li < lines.length; li++) {
+      const l = lines[li], w = widths[li] ?? 8;
+      for (let i = 0; i + 3 < l.length; i += 2) {
+        const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, l2 = dx * dx + dz * dz || 1;
+        const k = Math.max(0, Math.min(1, ((sx - ax) * dx + (sz - az) * dz) / l2));
+        const qx = ax + dx * k, qz = az + dz * k, d = Math.hypot(qx - sx, qz - sz);
+        // Deepest in first: the street it's most in the middle of.
+        if (d < w / 2 + out * 0.6 - 0.01 && (!worst || d - w / 2 < worst.d - worst.w / 2)) worst = { px: qx, pz: qz, d, w };
+      }
+    }
+    if (!worst) return { x: sx, z: sz };
+    const nx = worst.d > 0.01 ? (sx - worst.px) / worst.d : 1, nz = worst.d > 0.01 ? (sz - worst.pz) / worst.d : 0;
+    sx = worst.px + nx * (worst.w / 2 + out);
+    sz = worst.pz + nz * (worst.w / 2 + out);
+  }
+  return null;
+}
+
+/** `onRoads` for many points against many streets: the segments bucketed on a grid once. */
+export class RoadGrid {
+  private cells = new Map<string, number[]>();
+  private segs: number[] = [];
+  private static G = 24;
+  constructor(lines: ArrayLike<number>[], widths: number[]) {
+    const G = RoadGrid.G;
+    lines.forEach((l, li) => {
+      const w = widths[li] ?? 8;
+      for (let i = 0; i + 3 < l.length; i += 2) {
+        const id = this.segs.length;
+        this.segs.push(l[i], l[i + 1], l[i + 2], l[i + 3], w);
+        const pad = w / 2 + 2;
+        for (let gx = Math.floor((Math.min(l[i], l[i + 2]) - pad) / G); gx <= Math.floor((Math.max(l[i], l[i + 2]) + pad) / G); gx++)
+          for (let gz = Math.floor((Math.min(l[i + 1], l[i + 3]) - pad) / G); gz <= Math.floor((Math.max(l[i + 1], l[i + 3]) + pad) / G); gz++) {
+            const k = `${gx}_${gz}`;
+            const c = this.cells.get(k);
+            if (c) c.push(id);
+            else this.cells.set(k, [id]);
+          }
+      }
+    });
+  }
+  /** On the asphalt of any street, or within `pad` m of its edge (pad ≤ 2). */
+  on(x: number, z: number, pad = 0.3): boolean {
+    const s = this.segs;
+    for (const id of this.cells.get(`${Math.floor(x / RoadGrid.G)}_${Math.floor(z / RoadGrid.G)}`) ?? []) {
+      const ax = s[id], az = s[id + 1], dx = s[id + 2] - ax, dz = s[id + 3] - az, l2 = dx * dx + dz * dz || 1;
+      const k = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      if (Math.hypot(ax + dx * k - x, az + dz * k - z) < s[id + 4] / 2 + pad) return true;
+    }
+    return false;
+  }
 }

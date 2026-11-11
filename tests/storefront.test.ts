@@ -3,7 +3,7 @@
 // and a store's pole sign stands on the pavement in front of it, facing the street.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NEAR_STORE_M, nearStore, signSpot, type StoreSpot } from "@/lib/storefront";
+import { NEAR_STORE_M, nearStore, offRoads, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
 
 const shop = (id: string, x: number, z: number): StoreSpot => ({ id, x, z, name: id });
 
@@ -49,4 +49,27 @@ describe("a store's pole sign", () => {
   it("no street near: no spot", () => {
     assert.equal(signSpot(lines, widths, 0, 500), null);
   });
+
+  it("a store at a junction never gets its pole in the crossing street", () => {
+    // A second street along z (x = 0), 10 m wide, crossing the first.
+    const two = [lines[0], new Float32Array([0, -100, 0, 100])], w2 = [10, 10];
+    for (const [x, z] of [[1, 2], [-2, 3], [3, -1], [0.5, 0.5]]) {
+      const s = signSpot(two, w2, x, z)!;
+      assert.ok(s, `a spot for ${x},${z}`);
+      assert.ok(!onRoads(two, w2, s.x, s.z, 0.3), `off both streets: ${JSON.stringify(s)}`);
+    }
+  });
+
+  it("onRoads / offRoads: a point in the street is on it; pushed out, it's on the pavement", () => {
+    assert.ok(onRoads(lines, widths, 10, 1));
+    assert.ok(!onRoads(lines, widths, 10, 8));
+    const p = offRoads(lines, widths, 10, 1)!;
+    assert.ok(p.z > 5 && !onRoads(lines, widths, p.x, p.z));
+  });
+
+  it("RoadGrid answers like onRoads", () => {
+    const g = new RoadGrid(lines, widths);
+    for (const [x, z] of [[10, 1], [10, 8], [-50, -4.9], [-50, -5.6], [99, 0], [130, 0]]) assert.equal(g.on(x, z, 0.3), onRoads(lines, widths, x, z, 0.3), `${x},${z}`);
+  });
 });
+

@@ -64,6 +64,23 @@ test.beforeAll(async () => {
     // Northville (neighbourhoods along 75°N) and Smalltown (none) far from every random spot.
     if (u.pathname === "/dv/v8/places/cities") return send({ cities: [{ id: 1, name: "Northville", slug: "northville", centroid: { latitude: 75, longitude: 0 }, radius: 4_000_000 }, { id: 2, name: "Smalltown", slug: "smalltown", centroid: SMALLTOWN, radius: 3000 }] });
     if (u.pathname === "/dv/v8/places/cities/2/districts") return send({ districts: [] });
+    // One ad in full (its page in the game); any other token is gone.
+    if (u.pathname.startsWith("/dv/v8/posts-v2/web/"))
+      return u.pathname.endsWith("/stubAd1")
+        ? send({ sections: [{ section_name: "TITLE", widgets: [{ widget_type: "LEGEND_TITLE_ROW", data: { title: "Stub flat" } }] }, { section_name: "DESCRIPTION", widgets: [{ widget_type: "DESCRIPTION_ROW", data: { text: "Two rooms" } }] }, { section_name: "LIST_DATA", widgets: [{ widget_type: "GROUP_INFO_ROW", data: { items: [{ title: "Rooms", value: "2" }] } }] }] })
+        : ((res.statusCode = 404), send({}));
+    // Takhfifan's search: by a neighbourhood's name, every store whose name has it (a deal 200 m from that neighbourhood's centre, one 5 km off).
+    if (u.pathname === "/tk/v4/api/universal_search/search") {
+      const q = u.searchParams.get("query") ?? "";
+      const d = districts.find((x) => x.name === q);
+      if (!d) return send({ data: [] });
+      const at = offset(d, 200), far = offset(d, 5000);
+      return send({ data: [
+        { id: 7_000_000 + d.id, name: `Cafe ${q}`, max_discount_percentage: 20, location: { lat: at.lat, lon: at.lng, district: q }, products: [{ id: 1, name: "Coffee for two", price: 2_000_000, retail_price: 2_500_000, discount_percentage: 20 }] },
+        { id: 8_000_000 + d.id, name: `Far ${q}`, max_cashback_percentage: 5, location: { lat: far.lat, lon: far.lng } },
+        { id: 9_000_000 + d.id, name: `Nothing off ${q}`, location: { lat: at.lat, lon: at.lng } },
+      ] });
+    }
     if (u.pathname === "/dv/v8/places/cities/1/districts") return send({ districts: districts.map((d) => ({ id: d.id, name: d.name, slug: `d${d.id}`, centroid: { latitude: d.lat, longitude: d.lng } })) });
     if (u.pathname === "/dv/v8/postlist/w/search" && req.method === "POST") {
       let raw = "";
@@ -474,6 +491,28 @@ test.describe("the map's own data", () => {
     // Nowhere near a neighbourhood Divar knows: nothing to pin.
     const nowhere = randomSpot();
     expect(expectOk(await p.get<A>(`/api/local?divar=1&lat=${nowhere.lat}&lng=${nowhere.lng}`)).data.areas).toEqual([]);
+    await p.dispose();
+  });
+
+  test("an ad's own page in the game, before divar.ir", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    type D = { post: { title: string; description: string; facts: { title: string; value: string }[]; url: string } | null };
+    const { data } = expectOk(await p.get<D>("/api/local?divarPost=stubAd1"));
+    expect(data.post).toMatchObject({ title: "Stub flat", description: "Two rooms", facts: [{ title: "Rooms", value: "2" }], url: "https://divar.ir/v/stubAd1" });
+    expect(expectOk(await p.get<D>("/api/local?divarPost=goneAd1")).data.post).toBeNull();
+    expect((await p.get("/api/local?divarPost=../x")).status).toBe(400);
+    await p.dispose();
+  });
+
+  test("Takhfifan: stores with a deal near you, found by the neighbourhoods' names", async ({ baseURL }) => {
+    const k = Math.floor(Math.random() * 998);
+    const here = offset(pairAt(k), 300);
+    const p = await Player.create(baseURL!);
+    type R = { deals: { name: string; off: number; items: { price: number; retail: number }[]; url: string }[] };
+    const { data } = expectOk(await p.get<R>(`/api/local?deals=1&lat=${here.lat}&lng=${here.lng}`));
+    // Near: both neighbourhoods' cafés; the stores 5 km off, and the one with nothing off, are left out.
+    expect(data.deals.map((d) => d.name).sort()).toEqual([`Cafe A${k}`, `Cafe B${k}`]);
+    expect(data.deals.find((d) => d.name === `Cafe A${k}`)).toMatchObject({ off: 20, items: [{ price: 200_000, retail: 250_000 }], url: expect.stringMatching(/^https:\/\/takhfifan\.com\/vendor\/\d+$/) });
     await p.dispose();
   });
 });

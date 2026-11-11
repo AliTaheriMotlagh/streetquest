@@ -61,6 +61,7 @@ export default defineConfig({
           SNAPPFOOD_URL: `http://localhost:${STUB_PORT}/sf`,
           TOROB_URL: `http://localhost:${STUB_PORT}/tr`,
           DIVAR_URL: `http://localhost:${STUB_PORT}/dv`,
+          TAKHFIFAN_URL: `http://localhost:${STUB_PORT}/tk`,
           BALAD_URL: `http://localhost:${STUB_PORT}/bl`,
           BALAD_POI_URL: `http://localhost:${STUB_PORT}/blp`,
           GOOGLE_PLACES_URL: `http://localhost:${STUB_PORT}/gp`,

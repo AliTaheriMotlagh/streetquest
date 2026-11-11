@@ -16,7 +16,9 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: "/",
     display: "standalone",
     display_override: ["standalone", "minimal-ui"],
-    orientation: "portrait",
+    // Any way up: the 3D city, the arena and the map are all played with the phone on its side too (a
+    // portrait lock made installed apps letterbox the landscape view with black bars).
+    orientation: "any",
     background_color: "#0b0e14",
     theme_color: "#0b0e14",
     lang: locale,

@@ -297,6 +297,13 @@ mood scales XP; loot funds research; territory funds the army.
     officer's sight long enough (6 s + 4 s per star), they lose you; stopped beside an officer (on foot, or in a
     stopped car with one at the door), you're arrested. Their shots hurt only in the open city and apart from the
     referee's health (`Combat.streetHurt`): at zero you're knocked out and up again 5 s later.
+  - *Street jobs* (`src/lib/street/jobs.ts`), little GTA-style stories that start from what's already happening: a
+    bag snatched within 45 m of you is yours to chase — **Stop the thief** shows under the stars with its 45 s clock
+    and how far ahead they are; they keep looking back and running on; reach them on foot (2 m) or cut them off with
+    the car (4 m) and they give up — run 140 m behind, or out of time, and they're gone. Shake off a chase of 2 ★ or
+    more and it's a **Clean getaway**, paid by the stars. The server pays both (`POST /api/drive/street`, XP and
+    coins with the admin's multipliers, less from home) but can't see the chase, so it limits them: one of a kind
+    per 3 minutes (a unique `Claim` per window) and 12 a day.
   - All of it is local to your phone, like the traffic: nobody else sees your wanted level, and it never touches a
     match (a match is a clean shooter: no traffic, no people, no police).
 - **Small phones** — on screens ≤ 380 px wide or ≤ 680 px tall (iPhone SE, 360×640 Androids) the HUD is a size
@@ -321,7 +328,13 @@ mood scales XP; loot funds research; territory funds the army.
   pick-ups under 12 m and stay so up to 15 m, so the job card at the bottom doesn't flicker while you hover over
   uneven roofs. The touch controls let go of any finger the browser loses (a system swipe, the screen's edge, the app
   going to the background) and a new touch always takes the wheel or stick, so a control never sticks or freezes;
-  keys let go when the window loses focus.
+  keys let go when the window loses focus. **The pedals are analog**, like a sim racer's: the higher up the pedal your
+  thumb is, the deeper it's pushed (45 % at its foot, full at its top — feather the throttle round a corner, brake
+  lightly in traffic), with a meter on each pedal's edge; the horn sounds as long as it's held. **Drone and
+  helicopter fly on two sticks** laid out like a real radio ("mode 2"): the left stick turns and climbs or sinks,
+  the right stick (a vertical slot) tips the nose — up flies forward, down backs off — as far as you push it. **The
+  minimap is the way back to the map**: tap it (a map tag on its corner says so). Your driver sits at the wheel —
+  seen through the glass from the chase camera — in the same cabin the traffic's drivers have.
 - **Play together** — one tab in the 3D city's menu (☰ → 👥 Play together) for everything with other people: start
   a party (or join one by its code or an invite), invite friends or players online near you (each is pinged once),
   and 🚀 go to the host — your car lines up right behind theirs, so you see each other drive. Then the host picks the
@@ -398,18 +411,18 @@ mood scales XP; loot funds research; territory funds the army.
   `image` / `wikimedia_commons`, stored with each place by the city pack). **Phone numbers are the store's own:**
   Snappfood answers every vendor with its own call centre (021-96612), which is never shown. **Every card shows all
   the numbers anyone has**, each once (`+98 21…` and `021…` are one number) with where it was read — the map, the
-  store's own Torob page (both its numbers), Snappfood, **Balad**, Google: one number is a **Call** button, several
-  open a list to pick from, and Info lists them all (at most 6). Balad is asked by name where the store stands — the
+  store's own Torob page (both its numbers), Snappfood, **Google**, Balad: one number is a **Call** button, several
+  open a list to pick from, and Info lists them all (at most 6). **Google Places is asked first** (the official Text
+  Search API, only when `GOOGLE_PLACES_KEY` is set: matched by name and distance like Balad below, at most
+  `GOOGLE_PLACES_PER_DAY` paid lookups a day, default 300, cached a month); when it has no number, Balad is asked by name where the store stands — the
   name without Snappfood's "(Area)", then without "Restaurant" / "Pizza"… (Balad answers those with the whole category,
   so "پیتزا پرپروک" is asked again as "پرپروک") — and the place is matched by name and distance: 120 m for a similar
   name, 300 m for the same one, 700 m word for word, one name however it is spaced ("برگرلند" / "برگر لند"), never
   another kind of place ("بیمه ایران" is not "ایران برگر"). Every number on its page is kept, cached a month; a miss
-  (Balad's 404 too) is retried after a week (`BALAD_URL` / `BALAD_POI_URL`, `off` disables). Only when Balad has none:
-  **Google Places** (the official Text Search API, only when `GOOGLE_PLACES_KEY` is set: same match, at most
-  `GOOGLE_PLACES_PER_DAY` paid lookups a day, default 300, cached a month). Balad lists about half of Snappfood's
+  (Balad's 404 too) is retried after a week (`BALAD_URL` / `BALAD_POI_URL`, `off` disables). Balad lists about half of Snappfood's
   vendors with a number (delivery-only kitchens are often not on any map), so a card that came back without one asks
   again on its own (`/api/local?phone=1`, waiting up to 12 s for Balad and Google), and with no number anywhere it
-  offers **Find the number** — a Balad search and a web search for the store — so every store has a way to call.
+  offers **Find the number** — a Google search for the store (and a Balad search beside it in Info) — so every store has a way to call.
   Neshan's API has no phone numbers. Owners can paste their Snappfood / Torob /
   Divar links in the Business center or their Market shop, which beat the automatic match. Names match however Persian
   words are spaced ("چلوکباب" / "چلو کباب"). The card is built for phones: a compact head with the rating and 🟢 open
@@ -434,8 +447,17 @@ mood scales XP; loot funds research; territory funds the army.
   [cinematicket.org](https://cinematicket.org) (each with its name; its card has every film today and tomorrow with its
   poster and sessions — time, hall, price in toman, VIP halls marked — and buys the tickets there; `src/lib/cinema.ts`,
   `src/server/cinema.ts`, `/api/cinema`, read from cinematicket's own JSON API, which answers from abroad: no relay;
-  the list cached a day, a cinema's sessions ten minutes; `CINEMATICKET_URL`), 📢 Divar — each nearby
-  neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…), and 🚦 live
+  the list cached a day, a cinema's sessions ten minutes; `CINEMATICKET_URL`; like every place it shrinks as you zoom
+  out and names itself only where there's room), 🏷️ **Deals (Takhfifan)** — stores within 2.5 km with a discount or
+  cashback on [takhfifan.com](https://takhfifan.com), each a price tag on the map ("−15%" red, "5%↺" cashback green,
+  a dot where crowded); its card lists every deal (price in toman, the usual price, until when) and the way there.
+  Takhfifan's search has no "near here", so the nearest five neighbourhoods' names (Divar's list) are searched and only
+  stores really near are kept (6 h cache per neighbourhood; `TAKHFIFAN_URL`, `off` disables; `?deals=1`), 📢 Divar — each nearby
+  neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…). **Every ad and
+  product opens its own page in the game first** — photos you swipe, the price, and for a Divar ad the whole ad: its
+  description, its facts (area, rooms, year, price per metre…), what it has, when it was posted and roughly how far
+  (`?divarPost=<token>`, Divar's own post page, 30 min cache); Torob products and Takhfifan deals the same — and only
+  its button goes on to divar.ir / torob.com / takhfifan.com. And 🚦 live
   traffic — each chip with how many there are around, and real places narrowed by kind (cafés, pharmacies, banks…).
   Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
   its sign size); nothing groups from zoom 18, plain places name themselves only there, and places, vendors and ads
@@ -596,7 +618,7 @@ snatched and its owner shouts after the thief — the people stop, turn to each 
 | Tower defense: towers fire when a commander reports their position (`/api/loc` → `takeFire`), HP regenerates from a stored snapshot; raider waves are generated from a seed and fought by a deterministic simulation the server resolves once and clients animate | `src/lib/td.ts`, `src/server/td.ts`, `src/app/api/{towers,waves}` |
 | Field armies: squad positions are interpolated from the march (from/to/depart/arrive), arrivals are settled lazily by whoever looks at the map; battles reuse the siege/outpost code with the squad as the attacking force | `src/server/{td,warfare}.ts`, `src/app/api/squads`, `src/components/game/LiveLayer.tsx` |
 | Real places & 3D city: OpenStreetMap (Overpass) per ~450 m cell, cached in `CityTile` for a month, never waited on for long (the client draws a generated village meanwhile). `OVERPASS_URL` lists endpoints (`off` disables; admins can upload tiles with `POST /api/city`). Place jobs are deterministic per place and 30-min window, rebuilt from their id to verify | `src/lib/{city,places}.ts`, `src/server/{city,places}.ts`, `/api/{city,places}` |
-| Store menus, prices & ads: Snappfood (a cell's whole vendor list — every vendor delivering there, read 400 a page — per ~1 km cell, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h), Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h) and Divar (cities and neighbourhoods a week, each neighbourhood's latest ads per category 15 min) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. None has an official API — `SNAPPFOOD_URL` / `TOROB_URL` / `DIVAR_URL` (`off` disables), admin switch *Menus, prices and ads from Snappfood, Torob and Divar*; *Places on the map* range / most at once | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `/api/route`, `src/components/game/StoreInfo.tsx`, `GameMap.tsx` |
+| Store menus, prices & ads: Snappfood (a cell's whole vendor list — every vendor delivering there, read 400 a page — per ~1 km cell, 12 h; name search 12 h, top 3 hits checked by position; menus 6 h), Torob (search, shop by name / id, a shop's catalog via `shop_id`, 12 h), Divar (cities and neighbourhoods a week, each neighbourhood's latest ads per category 15 min, one ad in full 30 min) and Takhfifan (deals per neighbourhood name, 6 h) cached in `ExtCache`, one fetch per key at a time, stale copy on failure. None has an official API — `SNAPPFOOD_URL` / `TOROB_URL` / `DIVAR_URL` / `TAKHFIFAN_URL` (`off` disables), admin switch *Menus, prices and ads from Snappfood, Torob and Divar*; *Places on the map* range / most at once | `src/lib/localData.ts`, `src/server/localData.ts`, `/api/local`, `/api/route`, `src/components/game/StoreInfo.tsx`, `GameMap.tsx` |
 | 3D drive: three.js, one merged mesh set per tile (toon walls with lit windows, roofs, roads, parks, instanced trees), arcade car physics with building collisions, tiles streamed around the car; the car's position feeds play-from-home travel (server cap `driveSpeedKmh`). Traffic and pedestrians are instanced per model / body part (`fleet3d.ts`, `people.ts`) | `src/components/drive`, `src/lib/{fleet,vehicles}.ts` |
 | 3D graphics: `GraphicsEngine` owns the WebGL renderer — tier from `detectTier(caps)` (or the player's pick, `sq_gfx_quality`), dynamic resolution and effect stripping by `Adaptive` (median/p90 frame time per 60 frames, holds when steps don't help), context-loss recovery. High/Ultra render into a half-float 4× MSAA target, then SSAO from the resolved depth (normals rebuilt from depth, no second scene pass, bilateral blur), a 5-mip dual-filter bloom and one final pass (clamped sharpening by render scale — `lib/view.ts` `sharpenFor` —, chromatic aberration, sun shafts and flare, ACES as three.js does it, white balance, saturation, contrast, split toning, optional 3D LUT, vignette, grain). Before it, on `ssr` tiers: screen-space reflections (materials write 1 − mirror into the HDR target's alpha via `shaders.ts` `mirrored`; a 22-step growing ray march with 4 refinement steps, premultiplied by confidence × Fresnel, then a 3×3 tent composite). On `cinematic` tiers: depth-reprojected camera motion blur (8 taps, near pixels masked out) and ¼-size sun shafts (sky mask + two radial blurs); after it, on the light pipeline (medium), FXAA. Colours meant for the screen as-is (fog, night gradient sky, horizon mountains) go through the exact ACES inverse so both paths look alike. Materials are patched per tier (`patchShader`): façade relief/roughness/metal arrays and interior-mapped rooms behind the glass, world-planar asphalt and slabs with wetness and puddles, worn road paint, stain decals that leave the HDR alpha (mirror) alone, wind, lamp pools that fade near the real lights; car paint/glass/trim/wheels (`carLook.ts`, applied inside fleetDamage's `withDents` wrapper); time of day from the solar position (`daylight.ts`), the sky's environment map re-rendered only when it visibly changes | `src/components/drive/graphics/{engine,quality,caps,post,shaders,surfaces,weather}.ts`, `src/lib/daylight.ts` |
 | Street Arena without the realtime server: the host's browser runs the hub; players poll `/api/arena` (two requests in flight, a poll every 150 ms; each poll one SQL statement): their trail (last ~0.7 s of samples, lat/lng on the host's clock) is written to `ArenaPeer` and read by everyone, the referee's messages wait in `ArenaMsg` until acknowledged, the host's snapshots (bots, health, teams) sit on `ArenaRoom`. Party members see each other on the realtime server too (a pair counts when both list each other) | `src/lib/arena/relay.ts`, `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts` |
@@ -661,7 +683,7 @@ relay with no dependencies (any Node 18+) that runs on a server in Iran; the app
 
 The relay forwards only the endpoints the game calls (anything else, or a wrong key, is a 404), passes the app's
 User-Agent and nothing about the player, and logs no positions. Torob and Divar answer Vercel directly today; if one
-starts refusing, point `TOROB_URL` / `DIVAR_URL` at the same relay with `/torob` or `/divar` at the end — and
+starts refusing, point `TOROB_URL` / `DIVAR_URL` / `TAKHFIFAN_URL` at the same relay with `/torob`, `/divar` or `/takhfifan` at the end — and
 `BALAD_URL` / `BALAD_POI_URL` with `/balad` and `/baladpoi` if restaurants' phone numbers stop showing (redeploy the relay
 first with `relay/install.sh` so it knows Balad).
 

@@ -2,9 +2,12 @@
 // The open city's crime HUD (drive/street.ts): the wanted stars (steady while an officer
 // sees you, blinking while they search for you), your car's health while it's hurt (red
 // and pulsing once it's on fire), and the big moments — wanted, lost them, arrested,
-// wrecked, knocked out — as a banner that fades by itself. Small on phones (compact.css).
+// wrecked, knocked out, a thief stopped — as a banner that fades by itself; and a street job
+// on now (lib/street/jobs.ts) as an objective card with its clock. Small on phones (compact.css).
 import { useSyncExternalStore } from "react";
 import { fmtNum, t } from "@/lib/i18n";
+import { formatDistance } from "@/lib/geo";
+import { THIEF_SECS } from "@/lib/street/jobs";
 import type { Banner, StreetLife } from "./street";
 
 const TEXT: Record<Banner, () => [string, string]> = {
@@ -14,6 +17,8 @@ const TEXT: Record<Banner, () => [string, string]> = {
   wrecked: () => [t("Wrecked"), t("Take another car off the street (F), or pick one in the garage")],
   down: () => [t("Knocked out"), t("Back on your feet in a moment")],
   fire: () => [t("Your car is on fire!"), t("Get out before it blows")],
+  caught: () => [t("Thief stopped"), t("The bag goes back to its owner")],
+  escaped: () => [t("The thief got away"), t("Too slow this time")],
 };
 
 export function StreetHud({ street }: { street: StreetLife }) {
@@ -34,6 +39,16 @@ export function StreetHud({ street }: { street: StreetLife }) {
         <div className={`shud-car ${s.burning ? "fire" : s.car < 35 ? "low" : ""}`} style={{ ["--hp" as string]: Math.max(0, s.car) / 100 }} role="img" aria-label={t("Car health {n}%", { n: fmtNum(Math.max(0, s.car)) })}>
           <span aria-hidden>{s.burning ? "🔥" : "🔧"}</span>
           <i />
+        </div>
+      )}
+      {s.job && (
+        <div className="shud-job" role="status">
+          <span className="shud-job-k">{t("Stop the thief")}</span>
+          <span className="shud-job-v">
+            <b>{fmtNum(s.job.left)}</b>
+            {t("s")} · {formatDistance(s.job.dist)}
+          </span>
+          <i style={{ ["--left" as string]: s.job.left / THIEF_SECS }} />
         </div>
       )}
       {banner && (

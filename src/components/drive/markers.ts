@@ -20,7 +20,8 @@ export function markersOf(w: World | null): MarkerInfo[] {
 
 type Built = { info: MarkerInfo; board: Board; x: number; z: number };
 /** Where a sign stands for a store at (x, z) (Drive: on the pavement in front of it, facing the street). */
-export type SignPlace = (x: number, z: number) => { x: number; z: number; angle: number };
+/** Null: no pavement for it there (a junction, a road with no kerb) — the sign isn't put up rather than stand in the street. */
+export type SignPlace = (x: number, z: number) => { x: number; z: number; angle: number } | null;
 
 export class Markers {
   private built = new Map<string, Built>();
@@ -59,6 +60,10 @@ export class Markers {
       b.info = m;
       // Placed again each time: the streets around it may have loaded since.
       const s = this.place(p.x, p.z);
+      if (!s) {
+        b.board.group.visible = false;
+        continue;
+      }
       b.x = s.x;
       b.z = s.z;
       b.board.group.position.set(s.x, 2.6, s.z);

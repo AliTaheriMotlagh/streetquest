@@ -3,6 +3,8 @@
 //   ?torobNear=1&lat&lng       Torob's walk-in stores around a point (the map layer)
 //   ?divar=1&lat&lng           the nearest Divar neighbourhoods and their latest ads (the map layer)
 //   ?divar=<id>&city=<id>&cat  one neighbourhood's ads in a category (the Divar card's tabs)
+//   ?divarPost=<token>         one ad in full: its page in the game, before divar.ir
+//   ?deals=1&lat&lng           stores with a deal or cashback on Takhfifan around a point (the map layer)
 //   ?menu=<code>&lat&lng       one vendor's menu / catalog, hours, phone and review counts
 //   ?reviews=<code>&page       one vendor's reviews, ten to a page
 //   ?torobPlace=<id>&lat&lng   a walk-in Torob store's page, what it was seen selling at its own
@@ -22,7 +24,7 @@ import { requireUser } from "@/server/auth";
 import { findPlace, placesNear } from "@/server/city";
 import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
-import { divarAround, divarPosts, PHONE_LATE_MS, phonesFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
+import { dealsAround, divarAround, divarPost, divarPosts, PHONE_LATE_MS, phonesFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
 
 const num = z.coerce.number().finite();
 const Query = z.union([
@@ -32,6 +34,8 @@ const Query = z.union([
   z.object({ torobPlace: z.coerce.number().int().positive().max(1e9), lat: num.min(-90).max(90).optional(), lng: num.min(-180).max(180).optional() }),
   z.object({ divar: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ divar: z.string().regex(/^\d{1,9}$/), city: z.string().regex(/^\d{1,9}$/), cat: z.enum(DIVAR_CAT_KEYS).default("all") }),
+  z.object({ deals: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
+  z.object({ divarPost: z.string().regex(/^[A-Za-z0-9_-]{4,16}$/) }),
   z.object({ menu: z.string().regex(/^[0-9a-z]{6}$/), lat: num.optional(), lng: num.optional() }),
   z.object({ phone: z.literal("1"), name: z.string().trim().min(1).max(120), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ store: z.literal("place"), id: z.string().max(40).optional(), name: z.string().trim().min(1).max(120), lat: num, lng: num, cat: z.string().max(20) }),
@@ -70,10 +74,14 @@ export const GET = route(async (req) => {
     if ("reviews" in q) return { reviews: { count: 0, reviews: [] } };
     if ("torobPlace" in q) return { info: null, items: [], stock: [] };
     if ("phone" in q) return { phone: "", phones: [] };
+    if ("divarPost" in q) return { post: null };
+    if ("deals" in q) return { deals: [] };
     return "divar" in q ? (q.divar === "1" ? { areas: [] } : { posts: [] }) : "menu" in q ? { menu: null } : "torob" in q ? { items: [] } : empty;
   }
 
   if ("near" in q) return { vendors: (await vendorsAround(q)).slice(0, 400) };
+  if ("divarPost" in q) return { post: await divarPost(q.divarPost) };
+  if ("deals" in q) return { deals: (await dealsAround(q)).slice(0, 120) };
   if ("torobNear" in q) {
     // The map needs where and what kind: each store's products come with its card.
     const { shops, pending } = await torobPlacesAround(q);

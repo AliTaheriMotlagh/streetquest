@@ -10,17 +10,19 @@
 // now), a short cover, the actions in one row, then tabs that stick to the top of the
 // sheet while scrolling (Menu / Reviews / Info, or Catalog / Info) with compact rows.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { createPortal } from "react-dom";
+import { fmtNum, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
   clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
-  type DivarArea, type DivarCat, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
+  type Deal, type DivarArea, type DivarCat, type DivarDetail, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { cinemaUrl, showTime, tehranDay, type Cinema, type CinemaShows, type Film } from "@/lib/cinema";
 import { Button } from "@/components/Button";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
+import { Icon } from "../drive/icons";
 
 /**
  * GET /api/local with these params; null while loading, and the error if it failed. A
@@ -111,10 +113,10 @@ function CallButton({ store, phones: known }: { store: StoreRef | null; phones?:
     );
   if (looking) return <span className="btn small ghost ext-link ext-phone is-looking" aria-busy="true">📞 …</span>;
   if (!store?.name) return null;
-  return <a className="btn small ghost ext-link ext-phone-find" href={phoneSearchLinks(store.name, store.city).balad} target="_blank" rel="noopener noreferrer">🔎 {t("Find the number")}</a>;
+  return <a className="btn small ghost ext-link ext-phone-find" href={phoneSearchLinks(store.name, store.city).web} target="_blank" rel="noopener noreferrer">🔎 {t("Find the number")}</a>;
 }
 
-/** The phones in Info: every number with its source, else links to look one up (Balad, the web). */
+/** The phones in Info: every number with its source, else links to look one up (Google first, then Balad). */
 function PhoneRows({ store, phones: known }: { store: StoreRef | null; phones?: StorePhone[] }) {
   const { phones, looking } = usePhones(store, known);
   if (phones.length)
@@ -130,9 +132,9 @@ function PhoneRows({ store, phones: known }: { store: StoreRef | null; phones?: 
   return (
     <div className="info-row">
       📞 <span className="muted">{t("No phone number listed.")}</span>{" "}
-      <a href={l.balad} target="_blank" rel="noopener noreferrer">{t("Search Balad")}</a>
+      <a href={l.web} target="_blank" rel="noopener noreferrer">{t("Search Google")}</a>
       {" · "}
-      <a href={l.web} target="_blank" rel="noopener noreferrer">{t("Search the web")}</a>
+      <a href={l.balad} target="_blank" rel="noopener noreferrer">{t("Search Balad")}</a>
     </div>
   );
 }
@@ -397,6 +399,153 @@ function ReviewsView({ code, total, stars }: { code: string; total?: number; sta
   );
 }
 
+// ---------------------------------------------------------------- product page
+/**
+ * A product or ad from another site (a Divar ad, a store's product on Torob). Tapping one
+ * opens its page here first — its photos, price, details and (for Divar) the whole ad with
+ * its facts and description — and only its button goes on to the site itself.
+ */
+type Product = { source: "divar" | "torob" | "takhfifan"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string };
+const SOURCE = { divar: { name: msg("Divar"), open: msg("Open on Divar") }, torob: { name: msg("Torob"), open: msg("Open on Torob") }, takhfifan: { name: msg("Takhfifan"), open: msg("Buy on Takhfifan") } } as const;
+
+/** A list row that opens the product's page. */
+function ProductRow({ product, children }: { product: Product; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="ext-item tap" onClick={() => setOpen(true)}>
+        {children}
+      </button>
+      {open && <ProductPage p={product} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function ProductPage({ p, onClose }: { p: Product; onClose: () => void }) {
+  const { pos } = useGame();
+  const detail = useLocal<{ post: DivarDetail | null }>(p.source === "divar" && p.token ? { divarPost: p.token } : null);
+  const d = detail.data?.post ?? null;
+  const photos = d?.photos.length ? d.photos : p.photo ? [p.photo] : [];
+  const [shot, setShot] = useState(0);
+  const strip = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  const onStrip = () => {
+    const el = strip.current;
+    if (el) setShot(Math.round(Math.abs(el.scrollLeft) / Math.max(1, el.clientWidth)));
+  };
+  const lines = p.lines.filter((x): x is string => !!x);
+  const far = d?.at && pos ? distanceM(pos, d.at) : null;
+  const share = typeof navigator !== "undefined" && "share" in navigator;
+  const src = SOURCE[p.source];
+  const long = (d?.description.length ?? 0) > 360;
+  return createPortal(
+    <div className="pp" role="dialog" aria-modal="true" aria-label={p.title} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`pp-card pp-${p.source}`}>
+        <header className="pp-bar">
+          <button type="button" className="pp-icon" onClick={onClose} aria-label={t("Back")}>
+            <Icon name="back" size={20} className="pp-back" />
+          </button>
+          <span className="pp-src">{t(src.name)}</span>
+          {share && (
+            <button type="button" className="pp-icon" onClick={() => void navigator.share({ title: p.title, url: p.url }).catch(() => {})} aria-label={t("Share")}>
+              <Icon name="share" size={19} />
+            </button>
+          )}
+        </header>
+        <div className="pp-scroll">
+          {photos.length > 0 && (
+            <div className="pp-gallery">
+              <div className="pp-strip" ref={strip} onScroll={onStrip}>
+                {photos.map((u) => (
+                  <Pic key={u} src={u} />
+                ))}
+              </div>
+              {photos.length > 1 && (
+                <span className="pp-count">
+                  {fmtNum(shot + 1)} / {fmtNum(photos.length)}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="pp-main">
+            <h3 dir="auto">{d?.title || p.title}</h3>
+            {p.price && (
+              <p className="pp-price" dir="auto">
+                {p.price}
+              </p>
+            )}
+            {(lines.length > 0 || d?.posted || far != null) && (
+              <ul className="pp-meta">
+                {lines.map((l) => (
+                  <li key={l} dir="auto">
+                    <Icon name="tag" size={15} /> {l}
+                  </li>
+                ))}
+                {d?.posted && (
+                  <li dir="auto">
+                    <Icon name="clock" size={15} /> {d.posted}
+                  </li>
+                )}
+                {far != null && (
+                  <li>
+                    <Icon name="pin" size={15} /> {d!.at!.radius ? t("About {d} from you", { d: formatDistance(far) }) : t("{d} from you", { d: formatDistance(far) })}
+                  </li>
+                )}
+              </ul>
+            )}
+            {p.source === "divar" && !d && !detail.error && <p className="small muted pp-loading">{t("Loading…")}</p>}
+            {!!d?.facts.length && (
+              <dl className="pp-facts">
+                {d.facts.map((f) => (
+                  <div key={f.title + f.value}>
+                    <dt dir="auto">{f.title}</dt>
+                    <dd dir="auto">{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {!!d?.features.length && (
+              <div className="pp-chips">
+                {d.features.map((f) => (
+                  <span key={f} dir="auto">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+            {d?.description && (
+              <section className="pp-desc">
+                <h4>{t("Description")}</h4>
+                <p dir="auto" className={long && !more ? "clamp" : ""}>
+                  {d.description}
+                </p>
+                {long && (
+                  <button type="button" className="pp-more" onClick={() => setMore((m) => !m)}>
+                    {more ? t("Show less") : t("Show more")}
+                  </button>
+                )}
+              </section>
+            )}
+          </div>
+        </div>
+        <footer className="pp-foot">
+          <a className="pp-go" href={p.url} target="_blank" rel="noopener noreferrer">
+            {t(src.open)}
+            <Icon name="external" size={17} />
+          </a>
+          <p>{t("Opens {site} in a new tab — the game keeps your place.", { site: t(src.name) })}</p>
+        </footer>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ---------------------------------------------------------------- Torob
 /**
  * A store's products on Torob. A row whose price is Torob's lowest anywhere (`from`: a
@@ -406,14 +555,14 @@ function TorobList({ items }: { items: TorobItem[] }) {
   return (
     <div className="ext-items compact">
       {items.map((i) => (
-        <a key={i.url} className="ext-item" href={i.url} target="_blank" rel="noopener noreferrer">
+        <ProductRow key={i.url} product={{ source: "torob", title: i.title, photo: i.photo, url: i.url, price: i.price > 0 ? (i.from ? t("from {n} toman", { n: fmtNum(i.price) }) : toman(i.price)) : "", lines: [i.from ? t("Lowest price on Torob") : ""] }}>
           {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
           <div className="grow">
             <b dir="auto">{i.title}</b>
             {i.from && <p className="small muted">{t("Lowest price on Torob")}</p>}
           </div>
           {i.price > 0 ? <span className="price-tag"><b>{i.from ? t("from {n} toman", { n: fmtNum(i.price) }) : toman(i.price)}</b></span> : <span className="small muted">{t("Out of stock")}</span>}
-        </a>
+        </ProductRow>
       ))}
     </div>
   );
@@ -424,14 +573,14 @@ function StockList({ items }: { items: TorobStock[] }) {
   return (
     <div className="ext-items compact">
       {items.map((i) => (
-        <a key={i.url} className="ext-item" href={i.url} target="_blank" rel="noopener noreferrer">
+        <ProductRow key={i.url} product={{ source: "torob", title: i.title, photo: i.photo, url: i.url, price: i.price > 0 ? toman(i.price) : t("Ask in the store"), lines: [i.note, i.when && t("price changed {when}", { when: i.when })] }}>
           {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
           <div className="grow">
             <b dir="auto">{i.title}</b>
             {(i.note || i.when) && <p className="small muted" dir="auto">{[i.note, i.when && t("price changed {when}", { when: i.when })].filter(Boolean).join(" · ")}</p>}
           </div>
           {i.price > 0 ? <span className="price-tag"><b>{toman(i.price)}</b></span> : <span className="small muted">{t("Ask in the store")}</span>}
-        </a>
+        </ProductRow>
       ))}
     </div>
   );
@@ -661,14 +810,14 @@ function DivarList({ posts }: { posts: DivarPost[] }) {
   return (
     <div className="ext-items compact">
       {posts.map((p) => (
-        <a key={p.token} className="ext-item" href={p.url} target="_blank" rel="noopener noreferrer">
+        <ProductRow key={p.token} product={{ source: "divar", token: p.token, title: p.title, photo: p.photo, url: p.url, price: p.price, lines: [p.note, p.when] }}>
           {p.photo ? <img src={p.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">📢</span>}
           <div className="grow">
             <b dir="auto">{p.title}</b>
             <p className="small muted" dir="auto">{[p.note, p.when].filter(Boolean).join(" · ")}</p>
           </div>
           {p.price && <span className="price-tag" dir="auto"><b>{p.price}</b></span>}
-        </a>
+        </ProductRow>
       ))}
     </div>
   );
@@ -711,6 +860,66 @@ export function OwnerLinkFields({ v, set }: { v: Links; set: (k: keyof Links, va
       <label>📢 {t("Divar ad link")}<input className="input" dir="ltr" inputMode="url" maxLength={300} placeholder="https://divar.ir/v/…" value={v.divar} onChange={(e) => set("divar", e.target.value)} /></label>
       {bad("divar") && <p className="small warn-text">{t("Paste a link to your ad on divar.ir")}</p>}
     </fieldset>
+  );
+}
+
+// ---------------------------------------------------------------- Takhfifan
+/** A store with deals on Takhfifan, tapped on the map: what's off, each deal (its own page first), and the way there. */
+export function DealCard({ d, onClose }: { d: Deal; onClose: () => void }) {
+  const { pos } = useGame();
+  const dist = pos ? distanceM(pos, d) : Infinity;
+  const sub = [d.category, d.district, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
+  const ends = (iso: string) => (iso ? t("until {date}", { date: fmtTime(iso) }) : "");
+  return (
+    <Sheet title={d.name} onClose={onClose} tall>
+      <StoreHead logo={d.photos[0]} emoji="🏷️" name={d.name} sub={sub} rating={d.rating || undefined} reviews={d.reviews || undefined} at={d} />
+      {d.photos[0] && (
+        <div className="ext-cover">
+          <Pic src={d.photos[0]} className="ext-cover-img" />
+        </div>
+      )}
+      <div className="deal-head">
+        {d.off > 0 && <span className="deal-big">{t("Up to {n}% off", { n: fmtNum(d.off) })}</span>}
+        {d.cashback > 0 && <span className="deal-big back">{t("{n}% back when you pay there", { n: fmtNum(d.cashback) })}</span>}
+      </div>
+      <div className="store-actions">
+        <a className="btn small ghost ext-link ext-takhfifan" href={d.url} target="_blank" rel="noopener noreferrer">
+          {t("Takhfifan")}
+        </a>
+        <GoButtons to={d} name={d.name} dist={dist} />
+      </div>
+      {d.items.length ? (
+        <div className="ext-items compact">
+          {d.items.map((i) => (
+            <ProductRow
+              key={i.id}
+              product={{
+                source: "takhfifan",
+                title: i.name,
+                photo: i.photo,
+                url: d.url,
+                price: toman(i.price),
+                lines: [i.retail > i.price && t("instead of {n}", { n: toman(i.retail) }), i.off > 0 && t("{n}% off", { n: fmtNum(i.off) }), ends(i.ends), d.name],
+              }}
+            >
+              {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
+              <div className="grow">
+                <b dir="auto">{i.name}</b>
+                {i.ends && <p className="small muted">{ends(i.ends)}</p>}
+              </div>
+              <span className="price-tag deal-price">
+                {i.off > 0 && <em>−{fmtNum(i.off)}%</em>}
+                <b>{toman(i.price)}</b>
+                {i.retail > i.price && <s>{fmtNum(i.retail)}</s>}
+              </span>
+            </ProductRow>
+          ))}
+        </div>
+      ) : (
+        <p className="small muted">{t("Pay at the store with Takhfifan's app to get the cashback.")}</p>
+      )}
+      <p className="small muted ext-source">{t("From Takhfifan · updated every few hours")}</p>
+    </Sheet>
   );
 }
 

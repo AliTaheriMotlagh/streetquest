@@ -31,7 +31,6 @@ const game: Record<string, string> = {
   Jump: "پرش",
   Failed: "شکست",
   Finish: "تمومش کن",
-  Travelling: "در راه",
   "{d} · {n} min": "{d} · {n} دقیقه",
   "ends in {time}": "{time} تا پایان",
 

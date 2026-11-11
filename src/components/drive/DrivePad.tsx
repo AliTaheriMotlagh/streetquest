@@ -27,7 +27,8 @@ type Props = {
   /** What the left thumb holds: a steering wheel, handlebars or a drone stick. */
   kind: "car" | "moto" | "air";
   mode: SteerMode;
-  onHorn: () => void;
+  /** Pressed (true) and let go (false): the horn sounds while it's held. */
+  onHorn: (on: boolean) => void;
   onLand: () => void;
 };
 
@@ -102,7 +103,7 @@ export const DrivePad = memo(function DrivePad({ input, kind, mode, onHorn, onLa
   const air = kind === "air";
   return (
     <div className={`dpad ${air ? "air" : ""}`} data-mode={mode}>
-      <div className="dpad-left">{air ? <Stick input={input} /> : mode === "buttons" ? <SteerButtons input={input} /> : mode === "tilt" ? <Tilt input={input} /> : <Wheel input={input} moto={kind === "moto"} />}</div>
+      <div className="dpad-left">{air ? <Stick input={input} axes="yaw-lift" /> : mode === "buttons" ? <SteerButtons input={input} /> : mode === "tilt" ? <Tilt input={input} /> : <Wheel input={input} moto={kind === "moto"} />}</div>
       <div className="dpad-right">
         <div className="dpad-tools">
           {air ? (
@@ -112,9 +113,9 @@ export const DrivePad = memo(function DrivePad({ input, kind, mode, onHorn, onLa
             </button>
           ) : (
             <>
-              <button className="dpad-tool" onClick={onHorn} aria-label={t("Horn")} title={t("Horn")}>
+              <Hold className="dpad-tool" set={onHorn} label={t("Horn")}>
                 <Icon name="horn" />
-              </button>
+              </Hold>
               <Hold className="dpad-tool wide hand" set={(on) => (input.current.hand = on)} label={t("Handbrake")}>
                 <Icon name="hand" size={20} />
                 <span>{t("DRIFT")}</span>
@@ -122,7 +123,7 @@ export const DrivePad = memo(function DrivePad({ input, kind, mode, onHorn, onLa
             </>
           )}
         </div>
-        <Pedals input={input} air={air} />
+        {air ? <Stick input={input} axes="pitch" /> : <Pedals input={input} />}
       </div>
     </div>
   );
@@ -165,42 +166,50 @@ function Hold({ set, className, label, children }: { set: (on: boolean) => void;
 }
 
 // ---------------------------------------------------------------- pedals
+/** How deep a pedal is pushed with the thumb at its very bottom (at the top: all the way). */
+const PEDAL_MIN = 0.45;
 /**
  * Gas and brake share one touch area, so a thumb can roll from one to the other without
- * lifting — whichever pedal is nearer the finger is the one pressed.
+ * lifting — whichever pedal is nearer the finger is the one pressed. Analog, like a sim
+ * racer's: the higher up the pedal the thumb is, the deeper it's pushed (a feathered
+ * throttle round a corner, a light brake in traffic); each pedal shows how deep it is.
  */
-function Pedals({ input, air }: { input: Input; air: boolean }) {
+function Pedals({ input }: { input: Input }) {
   const gasEl = useRef<HTMLDivElement>(null);
   const brakeEl = useRef<HTMLDivElement>(null);
-  const fingers = useRef(new Map<number, "gas" | "brake">());
+  const fingers = useRef(new Map<number, { pedal: "gas" | "brake"; depth: number }>());
   const split = useRef(0);
 
   const apply = () => {
     let gas = 0, brake = 0;
-    for (const p of fingers.current.values()) p === "gas" ? (gas = 1) : (brake = 1);
+    for (const f of fingers.current.values()) f.pedal === "gas" ? (gas = Math.max(gas, f.depth)) : (brake = Math.max(brake, f.depth));
     if (gas && !input.current.gas) buzz(8);
     if (brake && !input.current.brake) buzz(8);
     input.current.gas = gas;
     input.current.brake = brake;
-    gasEl.current?.classList.toggle("on", !!gas);
-    brakeEl.current?.classList.toggle("on", !!brake);
+    for (const [el, v] of [[gasEl.current, gas], [brakeEl.current, brake]] as const) {
+      if (!el) continue;
+      el.classList.toggle("on", v > 0);
+      el.style.setProperty("--depth", v.toFixed(3));
+    }
   };
-  const which = (x: number) => (x >= split.current ? "gas" : "brake");
+  const read = (x: number, y: number) => {
+    const pedal: "gas" | "brake" = x >= split.current ? "gas" : "brake";
+    const r = (pedal === "gas" ? gasEl : brakeEl).current?.getBoundingClientRect();
+    const k = r && r.height ? Math.max(0, Math.min(1, (r.bottom - y) / r.height)) : 1;
+    return { pedal, depth: PEDAL_MIN + (1 - PEDAL_MIN) * k };
+  };
   const down = (e: RPointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const b = brakeEl.current?.getBoundingClientRect(), g = gasEl.current?.getBoundingClientRect();
     if (b && g) split.current = (b.right + g.left) / 2;
-    fingers.current.set(e.pointerId, which(e.clientX));
+    fingers.current.set(e.pointerId, read(e.clientX, e.clientY));
     apply();
   };
   const move = (e: RPointerEvent<HTMLDivElement>) => {
-    const was = fingers.current.get(e.pointerId);
-    if (!was) return;
-    const now = which(e.clientX);
-    if (now !== was) {
-      fingers.current.set(e.pointerId, now);
-      apply();
-    }
+    if (!fingers.current.has(e.pointerId)) return;
+    fingers.current.set(e.pointerId, read(e.clientX, e.clientY));
+    apply();
   };
   const up = (e: RPointerEvent<HTMLDivElement>) => {
     if (fingers.current.delete(e.pointerId)) apply();
@@ -214,13 +223,15 @@ function Pedals({ input, air }: { input: Input; air: boolean }) {
 
   return (
     <div className="dpad-pedals" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} onContextMenu={(e) => e.preventDefault()}>
-      <div className="pedal-v2 brake" ref={brakeEl} role="button" aria-label={air ? t("Back") : t("Brake / reverse")}>
+      <div className="pedal-v2 brake" ref={brakeEl} role="button" aria-label={t("Brake / reverse")}>
         <i className="pedal-plate" />
-        <span className="pedal-lb">{air ? <Icon name="down" size={18} /> : t("BRAKE")}</span>
+        <i className="pedal-meter" />
+        <span className="pedal-lb">{t("BRAKE")}</span>
       </div>
-      <div className="pedal-v2 gas" ref={gasEl} role="button" aria-label={air ? t("Forward") : t("Gas")}>
+      <div className="pedal-v2 gas" ref={gasEl} role="button" aria-label={t("Gas")}>
         <i className="pedal-plate" />
-        <span className="pedal-lb">{air ? <Icon name="up" size={18} /> : t("GAS")}</span>
+        <i className="pedal-meter" />
+        <span className="pedal-lb">{t("GAS")}</span>
       </div>
     </div>
   );
@@ -404,10 +415,16 @@ function Tilt({ input }: { input: Input }) {
   );
 }
 
-// ---------------------------------------------------------------- drone stick
-function Stick({ input }: { input: Input }) {
+// ---------------------------------------------------------------- flight sticks
+/**
+ * The flight sticks, laid out like a drone's or a helicopter's radio ("mode 2"): the left
+ * stick turns (left / right) and climbs or sinks (up / down); the right one only tips the
+ * nose — up flies forward, down backs off — as far as you push it.
+ */
+function Stick({ input, axes }: { input: Input; axes: "yaw-lift" | "pitch" }) {
   const zone = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const pitch = axes === "pitch";
   const dead = (v: number) => (Math.abs(v) < 0.16 ? 0 : (v - Math.sign(v) * 0.16) / 0.84);
   const show = (x: number, y: number, held: boolean) => {
     const z = zone.current;
@@ -416,10 +433,19 @@ function Stick({ input }: { input: Input }) {
     z.style.setProperty("--ky", `${y.toFixed(1)}px`);
     z.classList.toggle("on", held);
   };
+  const set = (x: number, y: number) => {
+    if (pitch) {
+      input.current.gas = Math.max(0, y);
+      input.current.brake = Math.max(0, -y);
+    } else {
+      input.current.steer = x;
+      input.current.lift = y;
+    }
+  };
   const release = (id: number | null) => {
     if (!drag.current || (id != null && drag.current.id !== id)) return;
     drag.current = null;
-    input.current.steer = input.current.lift = 0;
+    set(0, 0);
     show(0, 0, false);
   };
   const end = (e: RPointerEvent) => release(e.pointerId);
@@ -427,8 +453,8 @@ function Stick({ input }: { input: Input }) {
   return (
     <div
       ref={zone}
-      className="dstick"
-      aria-label={t("Stick: left and right to turn, up and down to climb and descend")}
+      className={`dstick ${pitch ? "pitch" : ""}`}
+      aria-label={pitch ? t("Stick: up to fly forward, down to back off") : t("Stick: left and right to turn, up and down to climb and descend")}
       onPointerDown={(e) => {
         // A new touch takes the stick over: the old one may be a finger the browser lost.
         e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -438,11 +464,10 @@ function Stick({ input }: { input: Input }) {
       onPointerMove={(e) => {
         const d = drag.current;
         if (d?.id !== e.pointerId) return;
-        let dx = e.clientX - d.x, dy = e.clientY - d.y;
+        let dx = pitch ? 0 : e.clientX - d.x, dy = e.clientY - d.y;
         const len = Math.hypot(dx, dy);
         if (len > STICK_R) (dx *= STICK_R / len), (dy *= STICK_R / len);
-        input.current.steer = dead(-dx / STICK_R);
-        input.current.lift = dead(-dy / STICK_R);
+        set(dead(-dx / STICK_R), dead(-dy / STICK_R));
         show(dx, dy, true);
       }}
       onPointerUp={end}
@@ -450,12 +475,10 @@ function Stick({ input }: { input: Input }) {
       onLostPointerCapture={end}
     >
       <div className="dstick-base">
-        <Icon name="up" className="dstick-mk n" size={16} />
-        <Icon name="down" className="dstick-mk s" size={16} />
-        <Icon name="left" className="dstick-mk w" size={16} />
-        <Icon name="right" className="dstick-mk e" size={16} />
+        <i className="dstick-cross" />
         <i className="dstick-knob" />
       </div>
+      <span className="dstick-lb">{pitch ? t("PITCH") : t("TURN · CLIMB")}</span>
     </div>
   );
 }

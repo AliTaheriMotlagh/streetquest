@@ -13,11 +13,11 @@
 //    are spaced out (TOROB_GAP_MS), and when it says "slow down" (490/429) we stop asking
 //    for half an hour;
 //  - every store's phone number (restaurants, Torob walk-in shops, map places) comes from the
-//    map's own record, then Balad, then Google Places when GOOGLE_PLACES_KEY is set
+//    map's own record, then Google Places when GOOGLE_PLACES_KEY is set, then Balad
 //    (Snappfood only gives its own call centre), looked up by name where the store stands
 //    and cached for a month; a card that came back without one asks again (?phone=1) and
 //    waits longer, and with none anywhere the card links a web search for the number;
-//  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
+//  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / TAKHFIFAN_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
 import { Prisma } from "@prisma/client";
 import { after } from "next/server";
@@ -25,7 +25,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealOf, dealsNear, type Deal, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -34,10 +34,12 @@ const base = (env: string | undefined, fallback: string) => (env === "off" ? nul
 const snappBase = () => base(process.env.SNAPPFOOD_URL, "https://snappfood.ir");
 const torobBase = () => base(process.env.TOROB_URL, "https://api.torob.com");
 const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
+// Takhfifan (takhfifan.com): deals and cashback at stores, found by the neighbourhood's name.
+const takhfifanBase = () => base(process.env.TAKHFIFAN_URL, "https://takhfifan.com");
 // Balad (balad.ir) — the map Iranians use most — knows each place's real phone number.
 const baladBase = () => base(process.env.BALAD_URL, "https://search.raah.ir");
 const baladPoiBase = () => base(process.env.BALAD_POI_URL, "https://poi.raah.ir");
-// Google Places (official API, paid per request): only with a key, only when Balad has no number.
+// Google Places (official API, paid per request): asked first when there is a key; Balad when Google has no number.
 const googleKey = () => process.env.GOOGLE_PLACES_KEY?.trim() || "";
 const googleBase = () => base(process.env.GOOGLE_PLACES_URL, "https://places.googleapis.com");
 /** Google lookups a day at most (each costs money; cached a month, so the same store never asks twice). */
@@ -57,6 +59,11 @@ const BALAD_TTL = 30 * 24 * HOUR;
 const BALAD_MISS_TTL = 7 * 24 * HOUR;
 const DIVAR_PLACES_TTL = 7 * 24 * HOUR;
 const DIVAR_POSTS_TTL = 15 * 60_000;
+const DIVAR_POST_TTL = 30 * 60_000;
+/** Takhfifan's deals in one neighbourhood: they change by the day. */
+const DEALS_TTL = 6 * HOUR;
+/** Deals this far round (m), and the neighbourhoods asked about (their names are the search). */
+const DEALS_NEAR_M = 2500, DEALS_AREAS = 5;
 /** Vendor lists are cached per cell of this many degrees (~1 km). */
 const CELL = 0.01;
 /**
@@ -696,6 +703,15 @@ export async function divarPosts(cityId: number, districtId: number, cat: DivarC
   return out ?? [];
 }
 
+/** One ad in full (its page in the game, before divar.ir): half an hour in the cache, null when it's gone. */
+export async function divarPost(token: string): Promise<DivarDetail | null> {
+  return cached<DivarDetail | null>(`dv:post:${token}`, DIVAR_POST_TTL, async () => {
+    const root = divarBase();
+    if (!root) return null;
+    return divarDetailOf(token, await getJson<Parameters<typeof divarDetailOf>[1]>(`${root}/v8/posts-v2/web/${encodeURIComponent(token)}`));
+  });
+}
+
 /**
  * Divar around a point: the city it's in, the nearest few neighbourhoods (by their
  * centre) and the latest ads in each — what the map pins on each neighbourhood.
@@ -731,6 +747,31 @@ export async function divarAround(here: LatLng): Promise<DivarArea[]> {
     near.map(async ({ d, m }) => ({ city: city.id, citySlug: city.slug, id: d.id, name: d.name, lat: d.lat, lng: d.lng, distanceM: Math.round(m), posts: await divarPosts(city.id, d.id).catch(() => []) })),
   );
   return areas.filter((a) => a.posts.length);
+}
+
+// ---------------------------------------------------------------- Takhfifan
+/**
+ * Stores with a deal or cashback on Takhfifan near a point. Its search has no "near here",
+ * but every store carries its spot and neighbourhood: so the nearest few neighbourhoods'
+ * names (Divar's list) are searched, and only what is really near is kept.
+ */
+export async function dealsAround(here: LatLng): Promise<Deal[]> {
+  const root = takhfifanBase();
+  if (!root) return [];
+  const cities = (await divarCities()) ?? [];
+  const city = cities.map((c) => ({ c, d: distanceM(here, c) })).filter((x) => x.d <= Math.max(x.c.r, 5000) + DIVAR_TOWN_SLACK_M).sort((a, b) => a.d - b.d)[0]?.c;
+  if (!city) return [];
+  const districts = ((await divarDistricts(city.id)) ?? []).map((d) => ({ d, m: distanceM(here, d) })).sort((a, b) => a.m - b.m);
+  const names = districts.length ? districts.filter((x, i) => i === 0 || x.m <= DEALS_NEAR_M).slice(0, DEALS_AREAS).map((x) => x.d.name) : [city.name];
+  const found = await Promise.all(
+    names.map((name) =>
+      cached<Deal[]>(`tk:deals:${name}`, DEALS_TTL, async () => {
+        const r = await getJson<{ data?: Parameters<typeof dealOf>[0][] }>(`${root}/v4/api/universal_search/search?query=${encodeURIComponent(name)}&size=50`);
+        return r?.data ? r.data.map(dealOf).filter((d): d is Deal => !!d) : null;
+      }).catch(() => null),
+    ),
+  );
+  return dealsNear(found.flatMap((x) => x ?? []), here, DEALS_NEAR_M);
 }
 
 // ---------------------------------------------------------------- one store
@@ -879,9 +920,10 @@ export async function googlePhone(store: { name: string; lat: number; lng: numbe
 
 /** The store's own numbers from the other maps: all of Balad's (free), else Google's (paid, if set up). */
 async function realPhones(store: { name: string; lat: number; lng: number }): Promise<StorePhone[]> {
-  const balad = await baladPhones(store).catch(() => []);
-  if (balad.length) return phonesFrom("balad", ...balad);
-  return phonesFrom("google", await googlePhone(store).catch(() => ""));
+  // Google first (when there is a key): its numbers are the ones the store keeps up to date; Balad fills in the rest.
+  const google = await googlePhone(store).catch(() => "");
+  if (google) return phonesFrom("google", google);
+  return phonesFrom("balad", ...(await baladPhones(store).catch(() => [])));
 }
 
 /** How long a card waits for the phone lookup; a slower one finishes in the background (cached for next time). */

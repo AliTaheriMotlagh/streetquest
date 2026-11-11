@@ -6,6 +6,7 @@ import { useT } from "@/components/I18nProvider";
 import { applyConfig } from "@/lib/config";
 import { S } from "@/lib/settings";
 import { distanceM, formatDistance } from "@/lib/geo";
+import { stepWalk, walkOf, type Walk } from "@/lib/homeWalk";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import type { HeroTabId } from "./Panels";
 import { api, fmtTime, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
@@ -37,10 +38,10 @@ import { Icon } from "../drive/icons";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
-import { CinemaCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
+import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
 import type { Cinema } from "@/lib/cinema";
 import { OnlineChip, OnlineSheet } from "./Online";
-import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
+import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { MapFilter } from "./MapFilter";
 import type { LiveRoute } from "@/server/traffic";
@@ -66,7 +67,7 @@ const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "divar" | "traffic";
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "deals" | "divar" | "traffic";
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -76,6 +77,7 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   { key: "places", emoji: "📍", label: msg("Real places"), group: msg("Around you") },
   { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)"), group: msg("Around you") },
   { key: "cinema", emoji: "🎬", label: msg("Cinemas (Cinematicket)"), group: msg("Around you") },
+  { key: "deals", emoji: "🏷️", label: msg("Deals (Takhfifan)"), group: msg("Around you") },
   { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
 ];
@@ -93,6 +95,7 @@ const TOROB_REFETCH_M = 800;
 /** Cinemas are read for 20 km round: again after this far. */
 const CINEMA_REFETCH_M = 5000;
 const DIVAR_REFETCH_M = 800;
+const DEALS_REFETCH_M = 1200;
 const EXT_REFRESH_MS = 10 * 60_000;
 /** The world (money, jobs, players…) reloads this often while the app is on screen. */
 const WORLD_REFRESH_MS = 25_000;
@@ -225,6 +228,8 @@ export default function Game() {
   const cinemaAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [onlineOpen, setOnlineOpen] = useState(false);
   const torobAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const dealsAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   const [divar, setDivar] = useState<DivarArea[]>([]);
   const divarAt = useRef<{ pos: LatLng; at: number; ok: boolean } | null>(null);
   useEffect(() => {
@@ -303,6 +308,19 @@ export default function Game() {
       })
       .catch(() => {});
   }, [torobOn, look, now]);
+  const dealsOn = layers.includes("deals");
+  useEffect(() => {
+    if (!dealsOn || !look) return;
+    const last = dealsAt.current;
+    if (last && distanceM(last.pos, look) < DEALS_REFETCH_M && Date.now() - last.at < (last.ok ? EXT_REFRESH_MS * 3 : 60_000)) return;
+    const tried = (dealsAt.current = { pos: look, at: Date.now(), ok: false as boolean });
+    api<{ deals: Deal[] }>(`/api/local?deals=1&lat=${look.lat.toFixed(4)}&lng=${look.lng.toFixed(4)}`)
+      .then((r) => {
+        tried.ok = true;
+        setDeals(r.deals);
+      })
+      .catch(() => {});
+  }, [dealsOn, look, now]);
   const cinemaOn = layers.includes("cinema");
   useEffect(() => {
     if (!cinemaOn || !look) return;
@@ -352,11 +370,12 @@ export default function Game() {
       places: (world?.spots ?? []).length,
       torob: torobShops.length,
       cinema: cinemas.length,
+      deals: deals.length,
       divar: divar.length,
     };
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
     return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) }));
-  }, [world, vendors, torobShops, cinemas, divar]);
+  }, [world, vendors, torobShops, cinemas, deals, divar]);
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -783,18 +802,42 @@ export default function Game() {
   }, [homeMode]);
   const homeRef = useRef(homePos);
   homeRef.current = homePos;
+  // The walk there (lib/homeWalk.ts): straight at once, then along the streets when the
+  // route comes back. Small steps several times a second — the marker walks, it doesn't hop.
+  // The path lives in state (the map draws it); progress along it only in the ref (it moves every tick).
+  const [walk, setWalkState] = useState<Walk | null>(null);
+  const walkRef = useRef<Walk | null>(null);
+  const setWalk = (w: Walk | null) => ((walkRef.current = w), setWalkState(w));
+  useEffect(() => {
+    const from = homeRef.current;
+    if (!homeMode || !travel || !from) return setWalk(null);
+    setWalk(walkOf(from, travel));
+    if (distanceM(from, travel) < 60) return;
+    let live = true;
+    api<LiveRoute>(`/api/route?from=${from.lat.toFixed(6)},${from.lng.toFixed(6)}&to=${travel.lat.toFixed(6)},${travel.lng.toFixed(6)}`)
+      .then((r) => {
+        const cur = homeRef.current;
+        // Only a sensible route (not a drive round the block for a short walk), started from where you are now.
+        if (!live || !cur || !r.line?.length || r.distanceM > distanceM(from, travel) * 2.2 + 150) return;
+        setWalk(walkOf(cur, travel, r.line));
+      })
+      .catch(() => {});
+    return () => void (live = false);
+  }, [homeMode, travel]);
   useEffect(() => {
     if (!homeMode || !travel) return;
+    const TICK = 400;
     const t = setInterval(() => {
-      const cur = homeRef.current;
-      if (!cur) return;
-      const d = distanceM(cur, travel);
-      const step = S.remoteSpeedKmh / 3.6; // metres per 1 s tick
-      if (d <= step) {
-        setHomePos(travel);
+      const w = walkRef.current;
+      if (!w) return;
+      const step = stepWalk(w, (S.remoteSpeedKmh / 3.6) * (TICK / 1000));
+      walkRef.current = step.walk;
+      setHomePos(step.at);
+      if (step.arrived) {
         setTravel(null);
-      } else setHomePos({ lat: cur.lat + ((travel.lat - cur.lat) * step) / d, lng: cur.lng + ((travel.lng - cur.lng) * step) / d });
-    }, 1000);
+        setWalk(null);
+      }
+    }, TICK);
     return () => clearInterval(t);
   }, [homeMode, travel]);
   const setHomeMode = useCallback(
@@ -1004,6 +1047,7 @@ export default function Game() {
           follow={follow}
           picking={!!picker}
           travelTo={homeMode ? travel : null}
+          travelPath={homeMode && travel ? (walk?.path ?? null) : null}
           game={gps.view}
           onUnfollow={handleUnfollow}
           onFollow={handleFollow}
@@ -1014,6 +1058,7 @@ export default function Game() {
           divar={divarOn ? divar : undefined}
           torob={torobOn ? torobShops : undefined}
           cinemas={cinemaOn ? cinemas : undefined}
+          deals={dealsOn ? deals : undefined}
           traffic={layers.includes("traffic")}
           route={route}
           others={exploreOn ? (layers.includes("players") ? exploreData?.players ?? [] : []) : undefined}
@@ -1137,13 +1182,23 @@ export default function Game() {
         )}
         {!pos && !homeMode && !modeAsk && !exploreOn && <LocationGate error={geo.error} onRetry={geo.retry} onSimulate={me.canSimulate ? toggleSim : undefined} onHome={S.remoteEnabled ? () => setHomeMode(true) : undefined} onExplore={() => startExplore(me.lastPos ?? EXPLORE_PLACES[0])} />}
 
-        {homeMode && travel && pos && !picker && (
-          <div className="travel-banner">
-            🛋️ <b>{t("Travelling")}</b>
-            <span className="small">{t("{d} · {n} min", { d: formatDistance(distanceM(pos, travel)), n: Math.ceil(distanceM(pos, travel) / (S.remoteSpeedKmh / 3.6) / 60) })}</span>
-            <Button className="btn ghost small" onClick={() => setTravel(null)}>{t("Stop")}</Button>
-          </div>
-        )}
+        {homeMode && travel && pos && !picker && (() => {
+          // Read each render (the walk ticks re-render the game): what's left along the path, not as the crow flies.
+          const w = walkRef.current, left = w ? Math.max(0, w.total - w.done) : distanceM(pos, travel), part = w && w.total > 0 ? w.done / w.total : 0;
+          return (
+            <div className="travel-banner" role="status">
+              <span className="tb-ic" aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 4.5a1.5 1.5 0 1 0 0-.01M10 21l2-6 3 3v3m-5-9 2-3.5 3 2.5 3 1M12 11.5 9.5 13 8 16" /></svg>
+              </span>
+              <span className="tb-txt">
+                <b>{w && w.path.length > 2 ? t("Walking there by the streets") : t("Walking there")}</b>
+                <span>{t("{d} · {n} min", { d: formatDistance(left), n: Math.max(1, Math.ceil(left / (S.remoteSpeedKmh / 3.6) / 60)) })}</span>
+              </span>
+              <button type="button" className="tb-stop" onClick={() => setTravel(null)}>{t("Stop")}</button>
+              <i className="tb-bar" style={{ transform: `scaleX(${part})` }} />
+            </div>
+          );
+        })()}
 
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
@@ -1442,6 +1497,7 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   if (sel.type === "divar") return <DivarCard area={sel.data} onClose={onClose} />;
   if (sel.type === "torob") return <TorobPlaceCard p={sel.data} onClose={onClose} />;
   if (sel.type === "cinema") return <CinemaCard c={sel.data} onClose={onClose} />;
+  if (sel.type === "deal") return <DealCard d={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
 
   if (sel.type === "money") {

@@ -52,6 +52,10 @@ export class CinemaBoards {
       if (!b) b = this.build(c);
       // On the pavement in front of it, facing the street (again: streets load later).
       const s = this.place(p.x, p.z);
+      if (!s) {
+        b.group.visible = false;
+        continue;
+      }
       const f = { x: Math.sin(s.angle), z: Math.cos(s.angle) };
       // Pushed back from the kerb spot toward the cinema, so the board's face is on the pavement.
       b.group.position.set(s.x - f.x * (OUT - 1.3), 0, s.z - f.z * (OUT - 1.3));

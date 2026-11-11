@@ -8,7 +8,7 @@ import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { distanceM } from "@/lib/geo";
 import { EXPLORE_ZOOM } from "@/lib/explore";
 import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
-import { VENDOR_KINDS, type DivarArea, type TorobPlace, type Vendor } from "@/lib/localData";
+import { VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor } from "@/lib/localData";
 import type { Cinema } from "@/lib/cinema";
 import type { LiveRoute } from "@/server/traffic";
 import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
@@ -43,6 +43,8 @@ type Props = {
   /** Tiles + filter the map is drawn with (mapStyles.ts). */
   look?: MapStyle;
   travelTo?: LatLng | null;
+  /** Play from home: the streets the walk there follows (null: straight there). */
+  travelPath?: LatLng[] | null;
   game?: GpsView | null;
   world: World | null;
   me: Me | null;
@@ -67,6 +69,8 @@ type Props = {
   torob?: TorobPlace[];
   /** Cinemas (cinematicket.org): a few per district, each always on the map with its name. */
   cinemas?: Cinema[];
+  /** Stores with a deal or cashback on Takhfifan (a badge with the % off). */
+  deals?: Deal[];
   /** Live traffic on the roads, coloured by speed. */
   traffic?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
@@ -82,23 +86,25 @@ export default memo(GameMap);
 const GOLD = "#f0c05a";
 
 /** Dashed lines from the player to wherever they're headed (drawn by PlayerLayer). */
-function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | undefined, travelTo: LatLng | null | undefined): Guide[] {
+function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | undefined, travelTo: LatLng | null | undefined, onStreets = false): Guide[] {
   const out: Guide[] = [];
   if (run) out.push({ to: { lat: run.targetLat, lng: run.targetLng }, color: "#ee7fae", dash: "8 10", weight: 3 });
   const next = game?.points && game.next != null ? game.points[game.next] : null;
   if (next) out.push({ to: next, color: GOLD, dash: "8 10", weight: 3 });
   if (game?.target) out.push({ to: game.target, color: GOLD, dash: "10 10", weight: 4, opacity: 0.9 });
   if (game?.area) out.push({ to: game.area.center, color: GOLD, dash: "10 10", weight: 3, opacity: 0.7 });
-  if (travelTo) out.push({ to: travelTo, color: "#5bd38c", dash: "6 8", weight: 3 });
+  // Walking the streets there: the route is drawn instead of a straight line through the buildings.
+  if (travelTo && !onStreets) out.push({ to: travelTo, color: "#5bd38c", dash: "6 8", weight: 3 });
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, vendors, spots, divar, torob, cinemas, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
   const tint = world ? `${world.phase}-tint` : "";
-  const guides = useMemo(() => guidesFor(run, game, travelTo), [run, game, travelTo]);
+  const onStreets = !!travelPath && travelPath.length > 2;
+  const guides = useMemo(() => guidesFor(run, game, travelTo, onStreets), [run, game, travelTo, onStreets]);
   // Read once per mount: tile fading gives every tile its own GPU layer (will-change),
   // which is what made panning and rotating stutter on Android and ate RAM.
   const [tuning] = useState(() => ({ touch: isTouch(), lite: isLite() }));
@@ -148,7 +154,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {explore && <ExploreView jump={explore.jump} onCenter={explore.onCenter} />}
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
-        <Layers world={world} me={me} game={game} travelTo={travelTo} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} travelPath={onStreets ? travelPath : null} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} deals={deals} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -304,7 +310,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
  * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, cinemas, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
+function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "travelPath" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "deals" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
   const players = others ?? world?.players;
   const map = useMap();
   const view = useMapView();
@@ -379,6 +385,10 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, cinem
       const it = g.items[0], one = g.items.length === 1;
       put(g.key, g.lat, g.lng, 21, !one ? "" : it.m ? t("{n} toman", { n: it.m.amount }) : it.j!.place.name);
     }
+    // Cinemas are few and a destination of their own: right after the game's own markers.
+    for (const c of cinemas ?? []) put(`ct${c.id}`, c.lat, c.lng, lod === "far" ? 13 : lod === "mid" ? 16 : 19, lod === "far" ? "" : c.name);
+    // Deals: a store's badge, shrunk to a dot where crowded (never at city zoom: too many).
+    if (lod !== "far") for (const d of deals ?? []) if (view.bounds.contains([d.lat, d.lng])) put(`dl${d.id}`, d.lat, d.lng, 17, d.name, true);
     for (const b of world?.businesses ?? []) put(`bz${b.id}`, b.lat, b.lng, b.featured ? 25 : 21, b.name);
     for (const g of playerGroups) put(g.key, g.lat, g.lng, 17, g.items.length === 1 ? `${g.items[0].username} · ${g.items[0].level}` : "");
     const pois = poiGroups
@@ -390,7 +400,7 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, cinem
     for (const { g, one } of pois) put(g.key, g.lat, g.lng, one ? (one.p ? 15 : one.tp ? 18 : 19) : 17, one ? one.v?.title ?? one.tp?.name ?? one.p!.name : "", !!one);
     if (lod !== "far") for (const a of divar ?? []) put(`dv${a.city}-${a.id}`, a.lat, a.lng, 20, t("Divar · {area}", { area: a.name }));
     return declutter(marks, lite ? MARKER_BUDGET.lite : MARKER_BUDGET.full);
-  }, [map, view, lod, gameGroups, poiGroups, playerGroups, world, divar, lite]);
+  }, [map, view, lod, gameGroups, poiGroups, playerGroups, world, divar, cinemas, deals, lite]);
   /** " nolabel" when a marker's name has no room. */
   const nl = (id: string) => (deco.named.has(id) ? "" : " nolabel");
 
@@ -405,16 +415,34 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, cinem
 
   return (
     <>
-      {/* Cinemas: few, so each stands on its own with its name (its card shows what's on). */}
+      {/* Cinemas: few, so each stands on its own (its card shows what's on); like every other
+          place it shrinks as you zoom out and shows its name only where it has room. */}
       {(cinemas ?? []).map((c) => (
         <Marker
           key={`ct${c.id}`}
           position={[c.lat, c.lng]}
           zIndexOffset={320}
-          icon={icon(`<span class="ring" style="color:#f5c518"></span>🎬${lod === "far" ? "" : `<span class="nm">${esc(c.name)}</span>`}`, "place cinema", 36)}
+          icon={icon(`<span class="ring"></span>🎬${lod === "far" ? "" : `<span class="nm">${esc(c.name)}</span>`}`, `place cinema lod-${lod}${nl(`ct${c.id}`)}`, lod === "far" ? 26 : lod === "mid" ? 30 : 36)}
           eventHandlers={{ click: () => onSelect({ type: "cinema", data: c }) }}
         />
       ))}
+      {/* Takhfifan: what's off, in the store's own badge ("15%" off, or "5%" back in cashback). */}
+      {lod !== "far" &&
+        (deals ?? []).map((d) => {
+          const key = `dl${d.id}`;
+          if (!view.bounds.contains([d.lat, d.lng])) return null;
+          const tag = d.off > 0 ? `−${fmtNum(d.off)}%` : `${fmtNum(d.cashback)}%↺`;
+          const dot = deco.dots.has(key);
+          return (
+            <Marker
+              key={key}
+              position={[d.lat, d.lng]}
+              zIndexOffset={dot ? 0 : 300}
+              icon={icon(dot ? `<i class="deal-dot"></i>` : `<span class="deal-tag${d.off > 0 ? "" : " back"}">${esc(tag)}</span><span class="nm">${esc(d.name)}</span>`, `place deal${dot ? " dot" : ""}${nl(key)}`, dot ? 12 : 34)}
+              eventHandlers={{ click: () => onSelect({ type: "deal", data: d }) }}
+            />
+          );
+        })}
       {/* Money (green bills, then blue, purple, red for bigger money levels, gold for admin
           drops; the amount at street level) and store jobs (the burger delivery starts at the
           real burger joint). */}
@@ -578,6 +606,12 @@ function Layers({ world, me, game, travelTo, vendors, spots, divar, torob, cinem
       )}
 
       {/* Play from home: where the commander is travelling to */}
+      {travelPath && (
+        <>
+          <Polyline positions={travelPath.map((p) => [p.lat, p.lng] as [number, number])} interactive={false} pathOptions={{ color: "#0b3d24", weight: 9, opacity: 0.35, lineCap: "round", lineJoin: "round" }} />
+          <Polyline positions={travelPath.map((p) => [p.lat, p.lng] as [number, number])} interactive={false} pathOptions={{ color: "#5bd38c", weight: 4, opacity: 0.95, dashArray: "1 9", lineCap: "round", lineJoin: "round" }} />
+        </>
+      )}
       {travelTo && <Marker position={[travelTo.lat, travelTo.lng]} zIndexOffset={1100} interactive={false} icon={icon(`<span class="ring" style="color:#5bd38c"></span>📍`, "quest-pt next", 36)} />}
     </>
   );

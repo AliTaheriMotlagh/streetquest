@@ -5,7 +5,7 @@
 // Snappfood refuses servers abroad (from Vercel it answers 403, so the map shows no
 // restaurants and no menus), and it only allows its own sites to read it from a browser.
 // The app asks this relay instead: SNAPPFOOD_URL=https://<relay>/<RELAY_KEY>/snappfood
-// (and TOROB_URL / DIVAR_URL with /torob, /divar if those start refusing too; BALAD_URL /
+// (and TOROB_URL / DIVAR_URL / TAKHFIFAN_URL with /torob, /divar, /takhfifan if those start refusing too; BALAD_URL /
 // BALAD_POI_URL with /balad, /baladpoi for restaurants' phone numbers).
 //  - only the endpoints the game calls are forwarded (GET, and POST for Divar's ad
 //    search); anything else, or a wrong key, is a 404 — it is not an open proxy;
@@ -15,7 +15,7 @@
 //    CDN in front (ArvanCloud CDN for HTTPS) never caches them.
 // No dependencies: any Node 18+ runs it (Ubuntu 24.04's apt package). relay/install.sh
 // sets it up as a service. Env: PORT, RELAY_KEY (16+ characters), and SNAPPFOOD_ORIGIN /
-// TOROB_ORIGIN / DIVAR_ORIGIN to point a site elsewhere (the tests use a local stub).
+// TOROB_ORIGIN / DIVAR_ORIGIN / TAKHFIFAN_ORIGIN to point a site elsewhere (the tests use a local stub).
 import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
@@ -40,8 +40,14 @@ const SITES = {
   },
   divar: {
     origin: process.env.DIVAR_ORIGIN || "https://api.divar.ir",
-    get: ["/v8/places/cities", /^\/v8\/places\/cities\/\d{1,9}\/districts$/],
+    get: ["/v8/places/cities", /^\/v8\/places\/cities\/\d{1,9}\/districts$/, /^\/v8\/posts-v2\/web\/[A-Za-z0-9_-]{4,16}$/],
     post: ["/v8/postlist/w/search"],
+  },
+  // Takhfifan: deals and cashback at stores near you (searched by the neighbourhood's name).
+  takhfifan: {
+    origin: process.env.TAKHFIFAN_ORIGIN || "https://takhfifan.com",
+    get: ["/v4/api/universal_search/search"],
+    post: [],
   },
   // Balad: restaurants' real phone numbers (a name search near a spot, then the place's page).
   balad: {

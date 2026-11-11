@@ -29,6 +29,7 @@ import { api, type Selected, type World, type WorldPlayer } from "../game/client
 import { useGame } from "../game/ui";
 import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { setEars } from "../game/spatial";
+import { holdSample } from "../game/samples";
 import { fovFor } from "@/lib/view";
 import { filmLook } from "@/lib/filmLook";
 import { airFor } from "@/lib/atmosphere";
@@ -51,7 +52,7 @@ import type { Cinema } from "@/lib/cinema";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
 import { Others } from "./others";
-import { nearStore, signSpot, type StoreSpot } from "@/lib/storefront";
+import { nearStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
@@ -276,7 +277,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const api3d = useRef<{
     setGoal: (p: LatLng | null) => void;
     cycleCam: () => void;
-    horn: () => void;
+    horn: (on: boolean) => void;
     land: () => void;
     course: (g: PartyGame) => { start: LatLng & { yaw: number }; points: LatLng[] } | null;
     kick: () => void;
@@ -549,9 +550,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       job.mesh.detail.visible = slot.dist < prof.detailM;
       scene.add(job.mesh.group);
       collision.add(job.key, job.mesh.footprints);
-      obstacles.add(job.key, job.mesh.obstacles);
-      labelsDirty = true;
       cityDrawn++;
+      // Its streets can put a neighbour's sign pole in the road too: every tile's poles checked again.
+      for (const [k, t] of tiles) if (t.mesh) obstacles.add(k, clearPoles(t.mesh));
+      labelsDirty = true;
       // Snap onto a street once our own cell is drawn — and again when its real map
       // arrives, unless the player has already driven off. GPS fixes are often indoors.
       const mine = tileOf(frame.toLatLng(st.x, st.z));
@@ -649,6 +651,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       shake: (k) => (shakeK = Math.max(shakeK, k)),
     });
     setStreet(street);
+    // A street job done (a thief stopped, the police shaken off): the server pays it, within its limits.
+    street.onJob = (job, stars) => {
+      if (live.current.sim) return;
+      api<{ reward: { xp: number; coins: number } }>("/api/drive/street", { body: { job, stars } })
+        .then(({ reward }) => {
+          live.current.toast({ kind: "reward", title: job === "thief" ? t("Thief stopped") : t("Clean getaway"), body: t("+{xp} XP · +{coins} coins", { xp: fmtNum(reward.xp), coins: fmtNum(reward.coins) }) });
+          live.current.refresh();
+        })
+        .catch(() => {});
+    };
     const trafficColors = new WeakMap<Float32Array, { v: number; c: (string | null)[] }>();
     let trafficSync = 0, lightsAt = 0;
     /** A store's pole sign: on the pavement in front of it, facing the nearest street (lib/storefront.ts). */
@@ -662,7 +674,43 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           widths.push(s.mesh!.roadWidths[i] ?? 8);
         });
       }
-      return signSpot(lines, widths, x, z) ?? { x, z, angle: 0 };
+      // No clear pavement near: its own spot if that's off the road, else no pole at all.
+      return signSpot(lines, widths, x, z) ?? (onRoads(lines, widths, x, z, 0.5) ? null : { x, z, angle: 0 });
+    };
+    /**
+     * Every street of every tile drawn (a sign the worker put up beside its own tile's streets
+     * can stand in the next tile's): poles on any of them are left out, with their colliders.
+     */
+    let roadsAt = -1, roadGrid: RoadGrid | null = null;
+    const streets = () => {
+      if (roadsAt === cityDrawn && roadGrid) return roadGrid;
+      const lines: Float32Array[] = [], widths: number[] = [];
+      for (const s of tiles.values()) {
+        if (!s.mesh) continue;
+        s.mesh.roads.forEach((l, i) => {
+          if (!s.mesh!.roadDrawn[i] || s.mesh!.roadKinds[i] === "foot" || s.mesh!.roadKinds[i] === "rail") return;
+          lines.push(l);
+          widths.push(s.mesh!.roadWidths[i] ?? 8);
+        });
+      }
+      roadsAt = cityDrawn;
+      return (roadGrid = new RoadGrid(lines, widths));
+    };
+    const inStreet = new WeakMap<Label, { at: number; on: boolean }>();
+    /** A pole sign (a corner's street names, a shop's board on a post) standing on a street. */
+    const poleInStreet = (l: Label) => {
+      if (!l.pole && l.kind !== "corner") return false;
+      const g = streets(), c = inStreet.get(l);
+      if (c && c.at === roadsAt) return c.on;
+      const on = g.on(l.x, l.z, 0.25);
+      inStreet.set(l, { at: roadsAt, on });
+      return on;
+    };
+    /** A tile's colliders without the poles of its signs that stand in a street. */
+    const clearPoles = (m: TileMeshes) => {
+      const bad = m.labels.filter(poleInStreet);
+      if (!bad.length) return m.obstacles;
+      return m.obstacles.filter((f) => !(f.maxX - f.minX < 0.5 && bad.some((l) => Math.abs((f.minX + f.maxX) / 2 - l.x) < 0.3 && Math.abs((f.minZ + f.maxZ) / 2 - l.z) < 0.3)));
     };
     const markers = new Markers(scene, frame, lite ? 16 : 32, style, placeSign);
     // Cinemas' billboards (what's on, from cinematicket.org): the list is read again after 3 km.
@@ -769,6 +817,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (!s.mesh || s.dist > 160) continue;
         s.mesh.labels.forEach((l, i) => {
           if ((l.kind !== "shop" || l.noBoard) && l.kind !== "num") return;
+          if (poleInStreet(l)) return;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d < (l.kind === "num" ? 55 : 150)) want.push({ id: `${s.key}:${i}`, l, d });
         });
@@ -795,7 +844,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const s of tiles.values()) {
         if (!s.mesh || s.dist > CORNER_M) continue;
         s.mesh.labels.forEach((l, i) => {
-          if (l.kind !== "corner") return;
+          if (l.kind !== "corner" || poleInStreet(l)) return;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d < CORNER_M) want.push({ id: `${s.key}:${i}`, l, d });
         });
@@ -1161,23 +1210,42 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       engine = { osc, osc2, gain, filter, lfo, lfoGain };
       keepAwake("drive", true);
     };
-    const horn = () => {
+    // The horn sounds as long as it's held (a tap is a short beep, a lean a long blast): the
+    // recording's middle looped; without a file yet, two detuned reeds through a body filter
+    // (the 420/500 Hz pair of a real car horn), never a bare square-wave beep.
+    let hornOff: (() => void) | null = null;
+    const hornVoice = Math.floor(Math.random() * 3);
+    const horn = (on = true) => {
+      if (!on) return void (hornOff?.(), (hornOff = null));
+      if (hornOff) return;
+      hornOff = holdSample("horn", 0.55, hornVoice);
+      if (hornOff) return;
       const out = audioOut();
       if (!out || isMuted()) return;
       const { ctx } = out;
       const g = ctx.createGain();
+      const body = ctx.createBiquadFilter();
+      body.type = "bandpass";
+      body.frequency.value = 900;
+      body.Q.value = 0.9;
       g.gain.setValueAtTime(0.0001, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
-      g.connect(out.out);
-      for (const f of [392, 494]) {
+      g.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + 0.015);
+      body.connect(g).connect(out.out);
+      const oscs = [418, 502].map((f) => {
         const o = ctx.createOscillator();
-        o.type = "square";
+        o.type = "sawtooth";
         o.frequency.value = f;
-        o.connect(g);
+        o.connect(body);
         o.start();
-        o.stop(ctx.currentTime + 0.5);
-      }
+        return o;
+      });
+      const t0 = ctx.currentTime;
+      hornOff = () => {
+        const at = Math.max(ctx.currentTime, t0 + 0.16);
+        g.gain.setValueAtTime(0.16, at);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+        for (const o of oscs) o.stop(at + 0.08);
+      };
     };
 
     // ---- input
@@ -1187,18 +1255,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (combat.onFoot) return;
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
       input.current.keys.add(k);
-      if (k === "h") horn();
+      if (k === "h" && !e.repeat) horn(true);
       if (k === "c") cycleCam();
       if (k === "l") land();
       startEngine();
     };
     const keyUp = (e: KeyboardEvent) => {
       input.current.keys.delete(e.key.toLowerCase());
+      if (e.key.toLowerCase() === "h") horn(false);
       // A Mac sends no keyup for keys let go while ⌘ is held: start over when it goes.
       if (e.key === "Meta") input.current.keys.clear();
     };
     // Switching away (alt-tab, another window) swallows the keyups: let go of every key.
-    const keysOff = () => input.current.keys.clear();
+    const keysOff = () => (input.current.keys.clear(), horn(false));
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
     window.addEventListener("blur", keysOff);
@@ -1613,6 +1682,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const flying = D.flies && st.alt > 1;
       const fp = !onFoot && camMode === "cockpit";
       model.body.visible = !fp;
+      // You're seen at the wheel — unless you got out (the car stays parked, empty).
+      if (model.driver) model.driver.visible = !onFoot;
       for (const w of model.wheels) w.visible = !fp;
       cockpit.group.visible = fp;
       cockpit.group.rotation.z = st.roll * 0.4;
@@ -1994,6 +2065,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     return () => {
       disposed = true;
+      horn(false);
       cancelAnimationFrame(raf);
       net.stop();
       combat.dispose();
@@ -2124,7 +2196,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     store.set(CTL_KEY, m);
   };
   // Stable, so the memoised touch controls never re-render while driving.
-  const onHorn = useCallback(() => api3d.current?.horn(), []);
+  const onHorn = useCallback((on: boolean) => api3d.current?.horn(on), []);
   const onLand = useCallback(() => api3d.current?.land(), []);
   // The arrow points up; 0° relative bearing is straight ahead.
   const arrowStyle = hud?.nav ? { transform: `rotate(${hud.nav.rel}deg)` } : undefined;
@@ -2193,9 +2265,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           )}
         </div>
         <div className="drive-end">
-          <div className={`drive-mini-wrap ${hud && hud.loading > 0 ? "loading" : ""}`} title={hud && hud.loading > 0 ? t("Loading the city…") : undefined}>
+          {/* The minimap is the way back to the full map: tap it, like opening the map in any open-world game. */}
+          <button type="button" className={`drive-mini-wrap ${hud && hud.loading > 0 ? "loading" : ""}`} onClick={onExit} aria-label={t("Open the map")} title={hud && hud.loading > 0 ? t("Loading the city…") : t("Open the map")}>
             <canvas className="drive-mini" ref={mini} width={256} height={256} />
-          </div>
+            <span className="drive-mini-tag" aria-hidden>
+              <Icon name="map" size={12} />
+            </span>
+          </button>
           <div className="dgauge" ref={gauge} role="img" aria-label={t("Speedometer")}>
             <svg viewBox="0 0 80 80" aria-hidden>
               {GAUGE_TICKS}

@@ -138,3 +138,41 @@ export class SampleLoop {
     this.emitter?.stop();
   }
 }
+
+/**
+ * A sound held for as long as a button is: the recording's attack, then its steady middle
+ * looped, then a short fade when let go — a horn honks as long as you lean on it, from a
+ * tap's beep to a long blast. Always the same take for one player (`pick`), so your car
+ * keeps its own voice. Returns the release, or null while the slot has no decoded file.
+ */
+export function holdSample(key: SoundKey, vol: number, pick = 0): (() => void) | null {
+  const all = decoded.get(key);
+  if (!all?.length) return void load(key), null;
+  const out = audioOut();
+  if (!out || isMuted()) return () => {};
+  const buf = all[Math.abs(pick) % all.length];
+  const { ctx } = out;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  // The steady part: past the attack, before the tail (most horn takes ring off for the last fifth).
+  src.loop = true;
+  src.loopStart = Math.min(0.12, buf.duration * 0.2);
+  src.loopEnd = Math.max(src.loopStart + 0.08, buf.duration * 0.78);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(Math.min(1, vol), ctx.currentTime + 0.012);
+  src.connect(g).connect(out.out);
+  src.start();
+  // A tap still sounds like a horn: at least this long.
+  const t0 = ctx.currentTime, MIN = 0.16;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    const at = Math.max(ctx.currentTime, t0 + MIN);
+    g.gain.setValueAtTime(Math.min(1, vol), at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.07);
+    src.stop(at + 0.09);
+    src.onended = () => g.disconnect();
+  };
+}

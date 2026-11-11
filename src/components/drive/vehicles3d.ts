@@ -9,9 +9,10 @@
 import * as THREE from "three";
 import { mirrored, PAINT_MIRROR } from "./graphics/shaders";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { TAXI_YELLOW } from "@/lib/fleet";
+import { FLEET, TAXI_YELLOW } from "@/lib/fleet";
 import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { fleetParts, kitMaterial, wheelMaterial } from "./fleet3d";
+import { seatedDriver } from "./crew";
 import { carGlass, carGrime, carPaint, carTrim, carWheel, tyreAttr, type CarGrime } from "./carLook";
 import { toon, type Style } from "./world3d";
 
@@ -35,6 +36,8 @@ export type VehicleModel = {
   cargo: THREE.Object3D;
   /** Roughly how tall it is (camera, collisions under canopies). */
   height: number;
+  /** You at the wheel and the cabin around you (street models with glass; hidden when you're out or in first person). */
+  driver: THREE.Object3D | null;
   dispose: () => void;
 };
 
@@ -63,7 +66,7 @@ function materials(style: Style, color: string, keep: <T extends { dispose: () =
   };
 }
 
-export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: { lights?: boolean; shadows?: boolean; clearcoat?: boolean } = {}): VehicleModel {
+export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: { lights?: boolean; shadows?: boolean; clearcoat?: boolean; seed?: number } = {}): VehicleModel {
   const group = new THREE.Group();
   const body = new THREE.Group();
   group.add(body);
@@ -120,6 +123,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   };
 
   let height = 1.6;
+  let driver: THREE.Object3D | null = null;
   let cargoAt = new THREE.Vector3(0, 1.9, 0.3);
   let beamAt = { y: 0.75, z: -2.1 };
   /** Footprint of a street model (its blob shadow). */
@@ -150,6 +154,10 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
       if (w.steers) steer.push(pivot);
     }
     height = P.hgt;
+    if (!FLEET[street]?.bike) {
+      const d = seatedDriver(P.glass, P.hgt, opts.seed ?? 0.37);
+      if (d) (body.add(d.group), disposables.push(d), (driver = d.group));
+    }
     cargoAt = P.cargo.clone();
     beamAt = { y: P.lamp.y, z: P.lamp.z - 0.1 };
     size = [P.wid + 1.3, P.len + 1.3];
@@ -336,7 +344,7 @@ export function makeVehicle(key: VehicleKey, color: string, style: Style, opts: 
   shadow.name = "blob";
   group.add(shadow);
 
-  return { key, group, body, wheels, steer, rotors, brake, head: lights, beams, light, grime, cargo, height, dispose: () => disposables.forEach((d) => d.dispose()) };
+  return { key, group, body, wheels, steer, rotors, brake, head: lights, beams, light, grime, cargo, height, driver, dispose: () => disposables.forEach((d) => d.dispose()) };
 }
 
 // ---------------------------------------------------------------- first person

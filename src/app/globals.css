@@ -927,7 +927,15 @@ h2, .sheet-head h2 { text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 18px rgba(240,192,
 
 /* Play from home */
 .home-chip { cursor: pointer; color: var(--green); }
-.travel-banner { position: absolute; top: calc(68px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 555; display: flex; gap: 10px; align-items: center; padding: 6px 8px; padding-inline-start: 14px; border-radius: 14px; background: var(--panel); border: 2px solid rgba(91,211,140,.5); box-shadow: 0 6px 20px rgba(0,0,0,.4); white-space: nowrap; }
+.travel-banner { position: absolute; top: calc(68px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 555; display: flex; gap: 10px; align-items: center; min-width: min(320px, calc(100% - 24px)); max-width: calc(100% - 24px); padding: 8px 8px 10px; padding-inline-start: 8px; border-radius: 12px; background: #11161f; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; overflow: hidden; }
+.travel-banner .tb-ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: rgba(91,211,140,.14); color: #5bd38c; flex: none; }
+.travel-banner .tb-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; line-height: 1.2; }
+.travel-banner .tb-txt b { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.travel-banner .tb-txt span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.travel-banner .tb-stop { flex: none; height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.travel-banner .tb-stop:active { background: rgba(255,255,255,.12); }
+.travel-banner .tb-bar { position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: #5bd38c; transform-origin: left; transition: transform .4s linear; }
+[dir="rtl"] .travel-banner .tb-bar { transform-origin: right; }
 /* Play mode cards: walk with GPS / play from home (welcome-back prompt + Hero → Profile) */
 .mode-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mode { --tone: var(--green); --tone-rgb: 61, 255, 143; position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 16px 10px 12px; border-radius: 20px; cursor: pointer; background: rgba(255,255,255,.04); border: 2px solid var(--line); color: var(--text); font: inherit; transition: transform .18s cubic-bezier(.3,1.6,.5,1), border-color .2s, background .2s, box-shadow .2s; -webkit-tap-highlight-color: transparent; }
@@ -1890,3 +1898,55 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .explore-chips::-webkit-scrollbar { display: none; }
 .explore-chips .chip { flex: none; }
 @media (max-width: 420px) { .explore-head .muted { display: none; } }
+
+/* ---------- Product page (a Divar ad / a product on Torob, before the site itself) ----------
+   One quiet surface, a photo strip, the price, a facts grid and one clear way out. */
+.pp { position: fixed; inset: 0; z-index: 4000; display: grid; place-items: end center; background: rgba(4, 6, 10, .6); animation: fadein .16s ease-out; }
+.pp-card { --pp-accent: #a62626; position: relative; display: flex; flex-direction: column; width: min(560px, 100%); height: min(100dvh, 920px); background: #10131a; color: var(--text); border-radius: 16px 16px 0 0; overflow: hidden; box-shadow: 0 -12px 40px rgba(0, 0, 0, .5); animation: pp-up .22s cubic-bezier(.2, .8, .2, 1); }
+.pp-card.pp-torob { --pp-accent: #e0364b; }
+.pp-card.pp-divar { --pp-accent: #c43a3a; }
+@keyframes pp-up { from { transform: translateY(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (min-width: 700px) { .pp { place-items: center; } .pp-card { border-radius: 16px; height: min(88dvh, 860px); } }
+.pp-bar { position: absolute; top: 0; inset-inline: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: calc(10px + var(--safe-t)) 12px 10px; background: linear-gradient(180deg, rgba(0, 0, 0, .55), transparent); pointer-events: none; }
+.pp-bar > * { pointer-events: auto; }
+.pp-icon { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 50%; border: 0; background: rgba(16, 19, 26, .78); color: #fff; cursor: pointer; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.pp-icon:active { background: rgba(40, 44, 54, .9); }
+[dir="rtl"] .pp-back { transform: scaleX(-1); }
+.pp-src { flex: 1; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: rgba(255, 255, 255, .85); text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+.pp-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.pp-gallery { position: relative; background: #000; }
+.pp-strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 4 / 3; max-height: 52dvh; }
+.pp-strip::-webkit-scrollbar { display: none; }
+.pp-strip img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: center; }
+.pp-count { position: absolute; bottom: 10px; inset-inline-end: 10px; padding: 3px 8px; border-radius: 6px; background: rgba(0, 0, 0, .6); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pp-main { padding: 16px 16px 24px; }
+.pp-card:not(:has(.pp-gallery)) .pp-main { padding-top: calc(64px + var(--safe-t)); }
+.pp-main h3 { margin: 0; font-family: var(--body); font-size: 19px; font-weight: 700; line-height: 1.4; text-shadow: none; letter-spacing: 0; }
+.pp-price { margin: 6px 0 0; font-size: 18px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.pp-meta { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
+.pp-meta li { display: flex; align-items: center; gap: 8px; }
+.pp-meta svg { flex: none; opacity: .8; }
+.pp-loading { margin-top: 14px; }
+.pp-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1px; margin: 16px 0 0; border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .07); }
+.pp-facts > div { padding: 10px 12px; background: #141822; }
+.pp-facts dt { font-size: 12px; color: var(--muted); }
+.pp-facts dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.pp-chips span { padding: 4px 10px; border-radius: 6px; font-size: 12px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .08); }
+.pp-desc { margin-top: 18px; }
+.pp-desc h4 { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.pp-desc p { margin: 0; font-size: 14px; line-height: 1.75; white-space: pre-line; -webkit-user-select: text; user-select: text; }
+.pp-desc p.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.pp-more { margin-top: 6px; padding: 0; border: 0; background: none; color: #8ab4ff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.pp-foot { flex: none; padding: 12px 16px calc(12px + var(--safe-b)); border-top: 1px solid rgba(255, 255, 255, .07); background: #10131a; }
+.pp-go { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border-radius: 10px; background: var(--pp-accent); color: #fff; font-size: 15px; font-weight: 700; text-decoration: none; }
+.pp-go:active { filter: brightness(.9); }
+.pp-foot p { margin: 8px 0 0; text-align: center; font-size: 11px; color: var(--muted); }
+/* Takhfifan card */
+.deal-head { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.deal-big { padding: 5px 10px; border-radius: 6px; background: rgba(226, 38, 77, .14); color: #ff6f8c; font-size: 13px; font-weight: 700; }
+.deal-big.back { background: rgba(19, 163, 107, .14); color: #43d79a; }
+.deal-price { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.deal-price em { font-style: normal; font-size: 11px; font-weight: 800; color: #ff6f8c; }
+.deal-price s { font-size: 11px; color: var(--muted); }
+.pp-card.pp-takhfifan { --pp-accent: #e2264d; }

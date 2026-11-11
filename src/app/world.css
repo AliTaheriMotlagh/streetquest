@@ -182,7 +182,9 @@ html.lite .map.light .leaflet-tile { filter: grayscale(1); }
 .drive-nav-tx b { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .drive-nav-tx span { font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, .7); font-variant-numeric: tabular-nums; }
 .drive-end { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.drive-mini-wrap { position: relative; border-radius: 50%; }
+.drive-mini-wrap { position: relative; border-radius: 50%; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; transition: transform .12s; }
+.drive-mini-wrap:active { transform: scale(.94); }
+.drive-mini-tag { position: absolute; inset-inline-end: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--hud-solid); color: #fff; border: 1.5px solid rgba(255, 255, 255, .85); box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
 .drive-mini { display: block; width: 104px; height: 104px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .85); box-shadow: 0 8px 20px rgba(0, 0, 0, .35); background: rgba(0, 0, 0, .2); }
 .drive-mini-wrap.loading::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2.5px solid transparent; border-top-color: var(--dpad-accent); animation: spin 1s linear infinite; }
 .drive-side { display: flex; flex-direction: row; gap: 8px; }
@@ -276,39 +278,42 @@ html[lang="fa"] .da-tx b { text-transform: none; }
 .dtilt-bar { position: absolute; left: 8px; right: 8px; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--dpad-accent); transform: rotate(calc(var(--steer) * -32deg)); }
 .dtilt-dot { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: #fff; }
 .dtilt-lb { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: rgba(255, 255, 255, .7); }
-/* Drone stick */
-.dstick { --kx: 0px; --ky: 0px; width: min(46vw, 200px); height: 178px; display: grid; place-items: center; touch-action: none; }
-.dstick-base { position: relative; width: 132px; height: 132px; border-radius: 50%; color: rgba(255, 255, 255, .45); background: radial-gradient(circle, rgba(255, 255, 255, .07), rgba(12, 14, 20, .78) 70%); border: 1px solid var(--hud-line); box-shadow: 0 10px 22px rgba(0, 0, 0, .35); }
-.dstick-mk { position: absolute; }
-.dstick-mk.n { top: 6px; left: 50%; margin-left: -8px; }
-.dstick-mk.s { bottom: 6px; left: 50%; margin-left: -8px; }
-.dstick-mk.w { left: 6px; top: 50%; margin-top: -8px; }
-.dstick-mk.e { right: 6px; top: 50%; margin-top: -8px; }
-.dstick-knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px; border-radius: 50%; background: radial-gradient(circle at 50% 32%, #626877, #23262e); border: 1px solid rgba(255, 255, 255, .25); box-shadow: 0 6px 14px rgba(0, 0, 0, .5); transform: translate(var(--kx), var(--ky)); transition: transform .22s cubic-bezier(.2, .9, .3, 1.2); will-change: transform; }
-.dstick.on .dstick-knob { transition: none; box-shadow: 0 0 0 3px var(--dpad-accent), 0 6px 14px rgba(0, 0, 0, .5); }
+/* Flight sticks (mode 2): a recessed base with a crosshair, a machined knob; the pitch stick runs in a vertical slot */
+.dstick { --kx: 0px; --ky: 0px; position: relative; width: min(46vw, 200px); height: 178px; display: grid; place-items: center; touch-action: none; }
+.dstick-base { position: relative; width: 132px; height: 132px; border-radius: 50%; background: radial-gradient(circle, rgba(0, 0, 0, .55), rgba(10, 12, 16, .82) 72%); border: 1px solid var(--hud-line); box-shadow: inset 0 2px 10px rgba(0, 0, 0, .6), 0 8px 20px rgba(0, 0, 0, .35); }
+.dstick-cross { position: absolute; inset: 14px; border-radius: 50%; border: 1px dashed rgba(255, 255, 255, .12); background: linear-gradient(rgba(255, 255, 255, .12), rgba(255, 255, 255, .12)) center / 1px 100% no-repeat, linear-gradient(90deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .12)) center / 100% 1px no-repeat; }
+.dstick-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px; border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, .06) 0 6deg, transparent 6deg 12deg), radial-gradient(circle at 50% 35%, #4a4f5b, #1c1f26 70%); border: 1px solid rgba(255, 255, 255, .22); box-shadow: 0 6px 14px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .15); transform: translate(var(--kx), var(--ky)); transition: transform .22s cubic-bezier(.2, .9, .3, 1.2); will-change: transform; }
+.dstick.on .dstick-knob { transition: none; border-color: var(--dpad-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--dpad-accent) 60%, transparent), 0 6px 14px rgba(0, 0, 0, .55); }
+.dstick.pitch { width: 120px; }
+.dstick.pitch .dstick-base { width: 70px; height: 150px; border-radius: 35px; }
+.dstick.pitch .dstick-cross { inset: 12px 33px; border: 0; border-radius: 2px; background: rgba(255, 255, 255, .12); }
+.dstick-lb { position: absolute; bottom: -2px; left: 0; right: 0; text-align: center; font: 700 9px/1 var(--body); letter-spacing: .14em; color: rgba(255, 255, 255, .55); pointer-events: none; }
+html[lang="fa"] .dstick-lb { letter-spacing: 0; font-size: 10px; }
 /* Horn, handbrake, land */
 .dpad-tools { display: flex; gap: 8px; justify-content: flex-end; }
 .dpad-tool { height: 46px; min-width: 46px; padding: 0 12px; border-radius: 23px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #fff; font: 800 12px/1 var(--body) !important; letter-spacing: .08em; background: var(--hud-bg); border: 1px solid var(--hud-line); box-shadow: 0 8px 18px rgba(0, 0, 0, .35); touch-action: none; cursor: pointer; transition: transform .08s ease-out, background .1s; }
 .dpad-tool.wide { flex: 1; }
 .dpad-tool:active, .dpad-tool.on { transform: scale(.95); background: var(--dpad-accent); color: #1a1200; border-color: transparent; }
 html[lang="fa"] .dpad-tool { letter-spacing: 0; }
-/* Pedals: brushed-metal plates on a shared touch area (roll your thumb between them) */
+/* Pedals: matte plates with a rubber grip, on a shared touch area (roll your thumb between them). Analog: the
+   higher the thumb, the deeper the pedal — the meter on its edge shows how deep (--depth, 0–1). */
 .dpad-pedals { display: flex; align-items: flex-end; gap: 10px; padding: 10px 6px 6px; margin: -10px -6px -6px; touch-action: none; }
-.pedal-v2 { --glow: #3ddc84; position: relative; border-radius: 16px; transform-origin: 50% 100%; transition: transform .07s ease-out; }
-.pedal-v2.gas { width: 76px; height: 140px; }
-.pedal-v2.brake { --glow: #ff4d5e; width: 84px; height: 108px; }
+.pedal-v2 { --glow: #35d07f; --depth: 0; position: relative; border-radius: 12px; transform-origin: 50% 100%; transition: transform .07s ease-out; }
+.pedal-v2.gas { width: 74px; height: 146px; }
+.pedal-v2.brake { --glow: #ff4b5c; width: 86px; height: 112px; }
 .pedal-plate {
-  position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgba(255, 255, 255, .15);
-  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .08) 0 3px, transparent 3px 12px), linear-gradient(180deg, #4d525f, #2a2d35 55%, #1a1c22);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 -4px 0 rgba(0, 0, 0, .35), 0 12px 24px rgba(0, 0, 0, .45);
+  position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgba(255, 255, 255, .12);
+  background: radial-gradient(circle, rgba(0, 0, 0, .55) 1.6px, transparent 2.2px) 0 0 / 10px 10px, linear-gradient(180deg, #2e323b, #1d2027 60%, #15171c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 -3px 0 rgba(0, 0, 0, .4), 0 10px 22px rgba(0, 0, 0, .45);
 }
-.pedal-v2.gas .pedal-plate { background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .08) 0 3px, transparent 3px 11px), linear-gradient(180deg, #4d525f, #2a2d35 55%, #1a1c22); }
-.pedal-v2::before { content: ""; position: absolute; top: 8px; left: 50%; width: 26px; height: 4px; margin-left: -13px; border-radius: 2px; background: var(--glow); opacity: .75; z-index: 1; }
-.pedal-lb { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; font: 800 10px/1 var(--body); letter-spacing: .14em; color: rgba(255, 255, 255, .72); }
+.pedal-v2.gas .pedal-plate { background: repeating-linear-gradient(180deg, rgba(0, 0, 0, .45) 0 3px, transparent 3px 9px), linear-gradient(180deg, #2e323b, #1d2027 60%, #15171c); background-position: 0 6px, 0 0; background-size: 100% calc(100% - 34px), auto; background-repeat: no-repeat; }
+.pedal-meter { position: absolute; top: 8px; bottom: 30px; inset-inline-end: 6px; width: 3px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.pedal-meter::after { content: ""; position: absolute; inset: 0; background: var(--glow); transform-origin: 50% 100%; transform: scaleY(var(--depth)); transition: transform .05s linear; }
+.pedal-lb { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; font: 800 10px/1 var(--body); letter-spacing: .14em; color: rgba(255, 255, 255, .7); }
 html[lang="fa"] .pedal-lb { letter-spacing: 0; font-size: 11px; }
-.pedal-v2.on { transform: perspective(380px) rotateX(16deg) translateY(2px); }
-.pedal-v2.on .pedal-plate { border-color: var(--glow); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 18px color-mix(in srgb, var(--glow) 55%, transparent), 0 6px 14px rgba(0, 0, 0, .45); }
-.pedal-v2.on::before { opacity: 1; }
+.pedal-v2.on { transform: perspective(380px) rotateX(calc(6deg + var(--depth) * 12deg)) translateY(2px); }
+.pedal-v2.on .pedal-plate { border-color: color-mix(in srgb, var(--glow) 70%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 16px color-mix(in srgb, var(--glow) 40%, transparent), 0 6px 14px rgba(0, 0, 0, .45); }
+.pedal-v2.on .pedal-lb { color: #fff; }
 
 /* ---- menu (jobs · garage · party) */
 .drive-sheet { position: absolute; z-index: 6; display: flex; flex-direction: column; gap: 10px; padding: 14px; overflow-y: auto; overscroll-behavior: contain; border-radius: 20px; background: var(--hud-solid); border: 1px solid var(--hud-line); box-shadow: 0 18px 44px rgba(0, 0, 0, .55); color: var(--text); animation: sheetIn .2s ease-out; }
@@ -545,3 +550,52 @@ html[lang="fa"] .shud-banner b { letter-spacing: 0; }
 @media (prefers-reduced-motion: reduce) { .shud-stars.search i.on, .shud-car.fire { animation: none; } }
 /* The "following your real GPS" note, shrunk to a chip after a few seconds. */
 .drive-banner.small { padding: 4px 10px; font-size: 11px; opacity: .85; }
+
+/* Cinemas on the 2D map: sized per zoom like the other places; few, so the name stays at mid zoom where it has room. */
+.mk.place.cinema .ring { color: #f5c518; }
+.mk.place.cinema.lod-mid { font-size: 23px; }
+.mk.place.cinema.lod-far { font-size: 20px; }
+.mk.place.cinema.lod-far .ring { border-width: 2px; box-shadow: 0 0 6px currentColor; }
+.lod-mid .mk.place.cinema .nm { display: block; top: 30px; }
+
+/* Takhfifan deals on the 2D map: a price-tag badge (% off in red, % cashback in green). */
+.mk.place.deal { font-size: 0; }
+.mk.place.deal .deal-tag { display: inline-block; padding: 3px 6px 3px 7px; border-radius: 4px 9px 9px 4px; background: #e2264d; color: #fff; font: 800 12px/1 var(--body); font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .25); }
+[dir="rtl"] .mk.place.deal .deal-tag { border-radius: 9px 4px 4px 9px; }
+.mk.place.deal .deal-tag.back { background: #13a36b; }
+.mk.place.deal .nm { top: 26px; font-size: 10px; }
+.lod-mid .mk.place.deal .nm { display: none; }
+.mk.place.deal.dot .deal-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: #e2264d; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+
+/* Street job objective (lib/street/jobs.ts): a slim card under the stars with the clock running down. */
+.shud-job { position: absolute; top: calc(118px + var(--safe-t)); left: 50%; transform: translateX(-50%); display: flex; align-items: baseline; gap: 10px; padding: 7px 12px 9px; border-radius: 8px; background: rgba(8, 10, 16, .78); border-inline-start: 3px solid #ffb020; overflow: hidden; animation: shudIn .3s ease-out; white-space: nowrap; }
+.shud-job-k { font: 800 12px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: #ffb020; }
+html[lang="fa"] .shud-job-k { letter-spacing: 0; }
+.shud-job-v { font-size: 12px; color: rgba(255, 255, 255, .85); font-variant-numeric: tabular-nums; }
+.shud-job-v b { font-size: 15px; color: #fff; margin-inline-end: 1px; }
+.shud-job i { position: absolute; inset-inline: 0; bottom: 0; height: 2px; background: #ffb020; transform-origin: left; transform: scaleX(var(--left)); transition: transform .3s linear; }
+[dir="rtl"] .shud-job i { transform-origin: right; }
+.shud-banner.caught b { color: #43d79a; }
+.shud-banner.escaped b { color: #ff8a8a; }
+
+/* ---- drive menu, refined: one quiet surface, a segmented tab bar with an accent underline,
+   rows as one grouped list (icon tile · name · distance) instead of separate pills. */
+.drive-sheet { border-radius: 14px; background: rgba(14, 16, 22, .96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.drive-tabs { gap: 2px; padding: 8px 8px 0; background: rgba(14, 16, 22, .98); border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.drive-tabs button[role="tab"] { padding: 9px 11px 11px; border-radius: 8px 8px 0 0; background: transparent; color: rgba(255, 255, 255, .55); }
+.drive-tabs button[role="tab"]:hover { color: rgba(255, 255, 255, .85); }
+.drive-tabs button[role="tab"].on { color: #fff; background: transparent; box-shadow: inset 0 -2px 0 var(--dpad-accent); }
+.drive-tabs .close { width: 32px; height: 32px; margin-bottom: 4px; border-radius: 8px; }
+.drive-tab { gap: 0; }
+.drive-tab > .drive-search { margin-bottom: 10px; }
+.drive-tab > p { margin: 6px 2px; }
+.drive-job { gap: 12px; padding: 10px 6px; border: 0; border-radius: 0; background: transparent; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+.drive-job:last-child { border-bottom: 0; }
+.drive-job:active, .drive-job:hover { background: rgba(255, 255, 255, .04); }
+.drive-job .ic { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 8px; background: rgba(255, 255, 255, .06); font-size: 18px; line-height: 1; }
+.drive-job .grow { min-width: 0; font-weight: 600; font-size: 14px; }
+.drive-job > .small.muted, .drive-place-go > .small.muted { font-variant-numeric: tabular-nums; flex: none; }
+.drive-search { border-radius: 8px; background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .1); }
+.drive-search:focus { outline: none; border-color: var(--dpad-accent); }
+.drive-job.drive-place { padding: 0; padding-inline-end: 6px; gap: 6px; }
+.drive-job.drive-place .drive-place-go { padding: 10px 6px; gap: 12px; }

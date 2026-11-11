@@ -228,6 +228,105 @@ export function openState(week: Week, at: Date, timeZone?: string): { open: bool
 // ---------------------------------------------------------------- Divar
 /** An ad on Divar. `price`, `when` ("half an hour ago in Narmak") and `note` are Divar's own words (Persian). */
 export type DivarPost = { token: string; title: string; price: string; when: string; note: string; photo: string; url: string };
+/**
+ * One Divar ad in full, for its page in the game (opened before going to divar.ir): its
+ * description, every photo, the facts Divar lists (area, rooms, year, price per metre… as
+ * title/value), what it has (elevator, parking…), when it was posted, and roughly where
+ * (Divar blurs it to a circle). Read from Divar's own web page data; see `divarDetailOf`.
+ */
+export type DivarDetail = { token: string; title: string; description: string; photos: string[]; facts: { title: string; value: string }[]; features: string[]; posted: string; at: { lat: number; lng: number; radius: number } | null; url: string };
+
+type DvWidget = { widget_type?: string; data?: Record<string, unknown> & { widget_list?: DvWidget[] } };
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+/** Divar's post page (`/v8/posts-v2/web/<token>`) → the ad's page; null when it isn't one (removed, or not an ad). */
+export function divarDetailOf(token: string, raw: { sections?: { section_name?: string; widgets?: DvWidget[] }[] } | null): DivarDetail | null {
+  if (!raw?.sections?.length) return null;
+  const out: DivarDetail = { token, title: "", description: "", photos: [], facts: [], features: [], posted: "", at: null, url: `https://divar.ir/v/${encodeURIComponent(token)}` };
+  const walk = (ws: DvWidget[] | undefined, section: string) => {
+    for (const w of ws ?? []) {
+      const d = w.data ?? {};
+      switch (w.widget_type) {
+        case "LEGEND_TITLE_ROW":
+          if (section === "TITLE" && !out.title) out.title = str(d.title);
+          break;
+        case "DESCRIPTION_ROW":
+          // The title's own little row is when it was posted; the description section is the text.
+          if (section === "DESCRIPTION") out.description ||= str(d.text);
+          else if (section === "TITLE") out.posted ||= str(d.text).split("\n")[0];
+          break;
+        case "IMAGE_CAROUSEL":
+          for (const it of (d.items as { image?: { url?: string } }[] | undefined) ?? []) if (it.image?.url?.startsWith("https://")) out.photos.push(it.image.url);
+          break;
+        case "GROUP_INFO_ROW":
+          for (const it of (d.items as { title?: string; value?: string }[] | undefined) ?? []) if (str(it.title) && str(it.value)) out.facts.push({ title: str(it.title), value: str(it.value) });
+          break;
+        case "UNEXPANDABLE_ROW":
+          if (section === "LIST_DATA" && str(d.title) && str(d.value)) out.facts.push({ title: str(d.title), value: str(d.value) });
+          break;
+        case "GROUP_FEATURE_ROW":
+          for (const it of (d.items as { title?: string; available?: boolean }[] | undefined) ?? []) if (str(it.title) && it.available !== false) out.features.push(str(it.title));
+          break;
+        case "MAP_ROW": {
+          const f = (d.location as { fuzzy_data?: { point?: { latitude?: number; longitude?: number }; radius?: number }; exact_data?: { point?: { latitude?: number; longitude?: number } } } | undefined) ?? {};
+          const pt = f.fuzzy_data?.point ?? f.exact_data?.point;
+          if (typeof pt?.latitude === "number" && typeof pt.longitude === "number") out.at = { lat: pt.latitude, lng: pt.longitude, radius: f.fuzzy_data?.radius ?? 0 };
+          break;
+        }
+      }
+      if (w.data?.widget_list) walk(w.data.widget_list, section);
+    }
+  };
+  for (const sec of raw.sections) walk(sec.widgets, sec.section_name ?? "");
+  if (!out.title) return null;
+  out.photos = [...new Set(out.photos)].slice(0, 12);
+  out.facts = out.facts.slice(0, 16);
+  out.features = [...new Set(out.features)].slice(0, 16);
+  out.description = out.description.slice(0, 4000);
+  return out;
+}
+
+// ---------------------------------------------------------------- Takhfifan (deals)
+/** One of a store's deals on Takhfifan: its price and the usual price (toman), the discount, its photo, and when it ends (ISO). */
+export type DealItem = { id: number; name: string; price: number; retail: number; off: number; photo: string; ends: string };
+/**
+ * A store near you with a deal on Takhfifan (takhfifan.com): where it is, its best discount
+ * (`off`, %) or the cashback you get paying there (`cashback`, %), its rating, photos and
+ * the deals themselves. Prices are TOMAN (Takhfifan's own are rials).
+ */
+export type Deal = { id: number; name: string; lat: number; lng: number; district: string; category: string; rating: number; reviews: number; off: number; cashback: number; photos: string[]; items: DealItem[]; url: string };
+type RawDeal = {
+  id?: number; name?: string; review_rate?: number; review_count?: number; max_discount_percentage?: number; max_cashback_percentage?: number;
+  category?: { name?: string }; location?: { lat?: number; lon?: number; district?: string; area?: string };
+  images?: { url?: string }[]; products?: { id?: number; name?: string; price?: number; retail_price?: number; discount_percentage?: number; image?: string; deal_end_date?: string }[];
+};
+const toToman = (rial: number | undefined) => (rial && rial > 0 ? Math.round(rial / 10) : 0);
+/** A row of Takhfifan's search → a deal on the map; null without a real spot, or with nothing off. */
+export function dealOf(r: RawDeal): Deal | null {
+  const lat = r.location?.lat, lng = r.location?.lon;
+  if (!r.id || !r.name?.trim() || typeof lat !== "number" || typeof lng !== "number" || Math.abs(lat) < 1 || Math.abs(lng) < 1) return null;
+  const items = (r.products ?? [])
+    .filter((p) => p.id && p.name?.trim() && (p.price ?? 0) > 0)
+    .map((p) => ({ id: p.id!, name: p.name!.trim(), price: toToman(p.price), retail: toToman(p.retail_price), off: Math.round(p.discount_percentage ?? 0), photo: p.image?.startsWith("https://") ? p.image : "", ends: p.deal_end_date ?? "" }))
+    .slice(0, 12);
+  const off = Math.round(Math.max(r.max_discount_percentage ?? 0, ...items.map((i) => i.off)));
+  const cashback = Math.round((r.max_cashback_percentage ?? 0) * 10) / 10;
+  if (off <= 0 && cashback <= 0) return null;
+  return {
+    id: r.id, name: r.name.trim(), lat, lng, district: r.location?.district?.trim() || r.location?.area?.trim() || "", category: r.category?.name?.trim() ?? "",
+    rating: Math.round((r.review_rate ?? 0) * 10) / 10, reviews: r.review_count ?? 0, off, cashback,
+    photos: (r.images ?? []).map((i) => i.url ?? "").filter((u) => u.startsWith("https://")).slice(0, 8), items, url: `https://takhfifan.com/vendor/${r.id}`,
+  };
+}
+/** Deals within `radiusM` of `here`, each store once, nearest first. */
+export function dealsNear(list: Deal[], here: { lat: number; lng: number }, radiusM: number): Deal[] {
+  const seen = new Set<number>();
+  return list
+    .map((d) => ({ d, m: distanceM(here, d) }))
+    .filter(({ d, m }) => m <= radiusM && !seen.has(d.id) && (seen.add(d.id), true))
+    .sort((a, b) => a.m - b.m)
+    .map(({ d }) => d);
+}
+
 /** A Divar neighbourhood near the player (or a small town with none: `id` 0): pinned on its centre, with its latest ads. */
 export type DivarArea = { city: number; citySlug: string; id: number; name: string; lat: number; lng: number; distanceM: number; posts: DivarPost[] };
 /** The ad categories the Divar card can filter by (Divar's own category slugs). */

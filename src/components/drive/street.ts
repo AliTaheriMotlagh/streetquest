@@ -34,6 +34,7 @@ import { driverLook } from "./crew";
 import { Voices } from "./voices";
 import type { Situation, VoiceKind } from "@/lib/street/barks";
 import { pickScene, SCENE_GAP_S, sceneLength, sceneScript } from "@/lib/street/scenes";
+import { GETAWAY_MIN_STARS, secsLeft, startThief, THIEF_NOTICE_M, THIEF_REFLEE_S, tickThief, type StreetJob, type StreetJobKind } from "@/lib/street/jobs";
 import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
 import { FLEET } from "@/lib/fleet";
 
@@ -61,7 +62,7 @@ export type StreetHost = {
 /** Me, this frame. `car*`: where my car is (parked while I'm on foot). */
 export type StreetMe = { x: number; z: number; vx: number; vz: number; yaw: number; onFoot: boolean; inCar: boolean; flying: boolean; matchOn: boolean; carX: number; carZ: number; carYaw: number; carR: number };
 
-export type Banner = "wanted" | "lost" | "busted" | "wrecked" | "down" | "fire";
+export type Banner = "wanted" | "lost" | "busted" | "wrecked" | "down" | "fire" | "caught" | "escaped";
 export type StreetHud = {
   stars: number;
   /** An officer sees me now (the stars burn steady; searching, they blink). */
@@ -70,6 +71,8 @@ export type StreetHud = {
   car: number | null;
   burning: boolean;
   banner: { id: number; kind: Banner } | null;
+  /** A street job on now (lib/street/jobs.ts): what, the seconds left, how far the target is (m). */
+  job: { kind: StreetJob["kind"]; left: number; dist: number } | null;
 };
 
 const BANNER_MS = 2800;
@@ -109,7 +112,12 @@ export class StreetLife {
   private bannerAt = 0;
   private banner: StreetHud["banner"] = null;
   private bannerId = 0;
-  private snapshot: StreetHud = { stars: 0, seen: false, car: null, burning: false, banner: null };
+  private snapshot: StreetHud = { stars: 0, seen: false, car: null, burning: false, banner: null, job: null };
+  /** The street job on now, and when the thief last looked back and ran on. */
+  private job: StreetJob | null = null;
+  private refleeAt = 0;
+  /** A street job done: Drive claims its reward (POST /api/drive/street). */
+  onJob: ((kind: StreetJobKind, stars: number) => void) | null = null;
   private sig = "";
   private listeners = new Set<() => void>();
   private hudAt = 0;
@@ -203,6 +211,7 @@ export class StreetLife {
       car: hurt ? Math.round(this.car.health.hp) : null,
       burning: !!me?.inCar && this.car.health.hp <= 0 && !this.car.health.exploded,
       banner: this.banner && now - this.bannerAt < BANNER_MS ? this.banner : null,
+      job: this.job ? { kind: this.job.kind, left: secsLeft(this.job), dist: Math.round(this.job.dist) } : null,
     };
     const sig = JSON.stringify(s);
     if (sig === this.sig) return;
@@ -369,9 +378,11 @@ export class StreetLife {
     if (!a) return;
     const va: VoiceKind = cast.woman[0] ? "f" : "m", vb: VoiceKind = cast.woman[1] ? "f" : "m";
     if (s.runs && cast.b != null) {
-      // The thief is off; the one robbed stops and shouts after them.
+      // The thief is off; the one robbed stops and shouts after them. Near enough, it's yours to chase.
       crowd.runFrom(cast.b, a.x, a.z, 8);
       crowd.stopFor(cast.a, end, b?.x ?? me.x, b?.z ?? me.z);
+      const d = b ? Math.hypot(b.x - me.x, b.z - me.z) : Infinity;
+      if (!this.job && !me.flying && d < THIEF_NOTICE_M) (this.job = startThief(cast.b, d)), (this.refleeAt = now + THIEF_REFLEE_S * 1000);
     } else if (b && cast.b != null) {
       // Turned to each other while they talk.
       crowd.stopFor(cast.a, end, b.x, b.z);
@@ -379,6 +390,25 @@ export class StreetLife {
     } else crowd.stopFor(cast.a, end, s.id === "vendor" ? me.x : a.x + 1, s.id === "vendor" ? me.z : a.z);
     const ida = cast.a, idb = cast.b;
     this.scene = { script, said: 0, t: 0, end, cast: [() => crowd.head(ida), idb != null ? () => crowd.head(idb) : null], voice: [s.id === "vendor" ? "m" : va, vb] };
+  }
+
+  /** The thief chase: they keep running from you; caught or gone, the job ends (lib/street/jobs.ts). */
+  private tickJob(dt: number, me: StreetMe, now: number) {
+    const job = this.job;
+    if (!job) return;
+    if (me.matchOn) return void ((this.job = null), this.publish(true));
+    const crowd = this.h.crowd, h = crowd.head(job.target);
+    const out = tickThief(job, dt, h ? Math.hypot(h.x - me.x, h.z - me.z) : null, me.inCar && !me.flying);
+    if (!out) {
+      if (now >= this.refleeAt) (this.refleeAt = now + THIEF_REFLEE_S * 1000), crowd.runFrom(job.target, me.x, me.z, THIEF_REFLEE_S + 2);
+      return;
+    }
+    this.job = null;
+    if (out === "caught") {
+      crowd.surrender(job.target, 6, me.x, me.z);
+      this.say("caught");
+      this.onJob?.("thief", 0);
+    } else this.say("escaped");
   }
 
   /** A street car's driver says something (from their window). */
@@ -501,6 +531,7 @@ export class StreetLife {
     const crowd = this.h.crowd, traffic = this.h.traffic;
     this.voices.tick(dt);
     this.tickScene(dt, me, now);
+    this.tickJob(dt, me, now);
     {
       // A pedestrian I nearly ran down shouts after me; one I stroll past says hello.
       const sp = Math.hypot(me.vx, me.vz);
@@ -566,8 +597,11 @@ export class StreetLife {
       const speed = Math.hypot(me.vx, me.vz);
       // Cuffed: on foot with an officer at arm's length; in a stopped car with one at the door.
       const cuffable = !combat?.streetDown && (me.onFoot ? speed < 2.6 && this.police.beside(me.x, me.z, 2.2, 0) : me.inCar && speed < 1.2 && this.police.beside(me.x, me.z, 5.5, 0));
+      const was = this.wanted.stars;
       const out = tickWanted(this.wanted, dt, known, cuffable);
       if (out === "lost") this.say("lost");
+      // A real chase shaken off: a getaway, paid by how big it was.
+      if (out === "lost" && was >= GETAWAY_MIN_STARS) this.onJob?.("getaway", was);
       if (out === "busted") (this.say("busted"), this.voices.say("copBusted", "cop", () => ({ x: me.x, y: 2, z: me.z }), me));
       if (out) this.police.standDown();
     } else {

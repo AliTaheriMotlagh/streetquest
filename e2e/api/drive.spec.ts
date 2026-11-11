@@ -252,3 +252,21 @@ test.describe("party games", () => {
     await Promise.all([c.host.dispose(), c.guest.dispose()]);
   });
 });
+
+test.describe("street jobs", () => {
+  test("a thief stopped pays once per few minutes; a getaway pays by the stars; bad claims are refused", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    type R = { reward: { xp: number; coins: number } };
+    const one = expectOk(await p.post<R>("/api/drive/street", { job: "thief" })).data.reward;
+    expect(one.xp).toBeGreaterThan(0);
+    expect(one.coins).toBeGreaterThan(0);
+    // The same kind again within the window: refused.
+    expect((await p.post("/api/drive/street", { job: "thief" })).status).toBe(429);
+    // Another kind is its own claim; more stars, more pay.
+    const getaway = expectOk(await p.post<R>("/api/drive/street", { job: "getaway", stars: 4 })).data.reward;
+    expect(getaway.coins).toBeGreaterThan(one.coins);
+    expect((await p.post("/api/drive/street", { job: "robbery" })).status).toBe(400);
+    expect((await p.post("/api/drive/street", { job: "getaway", stars: 9 })).status).toBe(400);
+    await p.dispose();
+  });
+});

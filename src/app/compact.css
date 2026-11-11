@@ -67,6 +67,9 @@
   .dwheel::before { width: 132px; height: 132px; margin: -66px; }
   .dstick-base { width: 110px; height: 110px; }
   .dstick-knob { width: 50px; height: 50px; margin: -25px; }
+  .dstick.pitch { width: 96px; }
+  .dstick.pitch .dstick-base { width: 60px; height: 128px; }
+  .dstick.pitch .dstick-cross { inset: 12px 28px; }
   .dsteer { width: 62px; height: 88px; border-radius: 17px; }
   .dsteer-btns { gap: 8px; }
   .dtilt { width: 116px; height: 116px; }
@@ -120,6 +123,8 @@
   .dwheel-rot { width: 108px; height: 108px; }
   .dwheel::before { width: 118px; height: 118px; margin: -59px; }
   .dstick-base { width: 100px; height: 100px; }
+  .dstick.pitch .dstick-base { width: 56px; height: 118px; }
+  .dstick.pitch .dstick-cross { inset: 12px 26px; }
   .dsteer { width: 56px; height: 80px; }
   .pedal-v2.gas { width: 56px; height: 104px; }
   .pedal-v2.brake { width: 60px; height: 80px; }

@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import { gzipSync } from "node:zlib";
 
 const KEY = "test-key-0123456789";
-const SITES = ["snappfood", "torob", "divar", "balad", "baladpoi"];
+const SITES = ["snappfood", "torob", "divar", "takhfifan", "balad", "baladpoi"];
 
 type Seen = { method?: string; url?: string; headers: http.IncomingHttpHeaders; body: string };
 let seen: Seen[] = [];
@@ -37,7 +37,7 @@ before(async () => {
   const dead = await listen(gone);
   await new Promise((r) => gone.close(r));
   relay = spawn(process.execPath, ["relay/relay.mjs"], {
-    env: { ...process.env, PORT: "0", RELAY_KEY: KEY, SNAPPFOOD_ORIGIN: site, DIVAR_ORIGIN: site, BALAD_ORIGIN: site, BALAD_POI_ORIGIN: site, TOROB_ORIGIN: `http://127.0.0.1:${dead}` },
+    env: { ...process.env, PORT: "0", RELAY_KEY: KEY, SNAPPFOOD_ORIGIN: site, DIVAR_ORIGIN: site, TAKHFIFAN_ORIGIN: site, BALAD_ORIGIN: site, BALAD_POI_ORIGIN: site, TOROB_ORIGIN: `http://127.0.0.1:${dead}` },
     stdio: ["ignore", "pipe", "inherit"],
   });
   base = await new Promise<string>((resolve, reject) => {

@@ -21,6 +21,8 @@ const DRIVE_OFF = 2.5;
 const REFOLLOW_SPEED = 4; // m/s: cycling/driving
 const REFOLLOW_IDLE_MS = 12_000;
 const TELEPORT_M = 2_000;
+/** Standing still, a real GPS fix this much (m) from where the marker is is noise, not a step: it stays put. */
+const JITTER_M = 4;
 
 type Anim = { from: L.LatLng; to: L.LatLng; start: number; dur: number; raf: number };
 const guideKey = (gs: Guide[]) => gs.map((g) => `${g.to.lat},${g.to.lng},${g.color}`).join("|");
@@ -94,8 +96,11 @@ export function PlayerLayer({ follow, guides, onUnfollow, onFollow }: { follow: 
       const now = performance.now();
       const gap = now - lastAt;
       lastAt = now;
-      // Teleports (test mode) and coming back after a long time: jump, don't crawl.
-      const dur = from.distanceTo(to) > TELEPORT_M || gap > 30_000 || document.hidden ? 0 : Math.min(1800, Math.max(250, gap * 0.9));
+      // Teleports (test mode) and coming back after a long time: jump, don't crawl. Otherwise
+      // the glide lasts as long as the gap between fixes (a touch longer): the marker is still
+      // moving when the next one comes and simply carries on from where it is — one smooth,
+      // steady walk instead of a hop, a stop, a hop.
+      const dur = from.distanceTo(to) > TELEPORT_M || gap > 30_000 || document.hidden ? 0 : Math.min(2600, Math.max(300, gap * 1.08));
       if (!dur) {
         draw(to);
         if (followRef.current) map.setView(to, map.getZoom(), { animate: false });
@@ -114,13 +119,19 @@ export function PlayerLayer({ follow, guides, onUnfollow, onFollow }: { follow: 
     };
 
     let haloR = 0;
+    let coneDeg = 0;
     const onSnap = () => {
       const s = getLocation();
       if (s === prev) return;
       const last = prev;
       prev = s;
       if (!s.pos) return;
-      if (!last || last.pos !== s.pos) glide(L.latLng(s.pos.lat, s.pos.lng));
+      if (!last || last.pos !== s.pos) {
+        const to = L.latLng(s.pos.lat, s.pos.lng);
+        // GPS wander while standing still (a real fix, not moving, a few metres off): keep the marker still.
+        const jitter = marker && !s.simulated && s.speed < 0.6 && marker.getLatLng().distanceTo(to) < Math.min(JITTER_M, (s.accuracy ?? 10) * 0.4);
+        if (!jitter) glide(to);
+      }
       if (!marker) return;
 
       if (reach!.getRadius() !== INTERACT_RADIUS_M) reach!.setRadius(INTERACT_RADIUS_M);
@@ -137,8 +148,10 @@ export function PlayerLayer({ follow, guides, onUnfollow, onFollow }: { follow: 
       const cone = el?.querySelector<HTMLElement>(".me-heading");
       if (cone) {
         cone.style.opacity = s.heading == null ? "0" : "1";
-        if (s.heading != null) cone.style.transform = `rotate(${s.heading}deg)`;
+        // Turned the short way round (350° → 10° is 20°, not 340° back the other way).
+        if (s.heading != null) (coneDeg += ((((s.heading - coneDeg) % 360) + 540) % 360) - 180), (cone.style.transform = `rotate(${coneDeg}deg)`);
       }
+      el?.classList.toggle("me-moving", s.speed > 0.4);
 
       // Driving: zoom out a step above ~25 km/h, back in at walking pace.
       const drive = s.speed > DRIVE_ON ? true : s.speed < DRIVE_OFF ? false : driving.current;

@@ -10,7 +10,7 @@
 //  - restart when the page comes back (visibility, bfcache, focus, back online)
 //  - the Permissions API: once location is allowed in settings, resume by itself
 //  - paused while a simulated/home position overrides it (saves battery)
-import type { LatLng } from "@/lib/geo";
+import { bearingTo, distanceM, type LatLng } from "@/lib/geo";
 import { browserInfo } from "./browser";
 import { FixFilter, type Fix } from "./filter";
 
@@ -69,6 +69,7 @@ class LocationTracker {
   };
 
   /** Test mode / play from home: drive the position by hand (null = back to GPS). */
+  private still: ReturnType<typeof setTimeout> | null = null;
   setOverride(p: LatLng | null) {
     const was = this.override;
     if (was === p || (was && p && was.lat === p.lat && was.lng === p.lng)) return;
@@ -235,7 +236,15 @@ class LocationTracker {
     const o = this.override;
     const g = this.gps;
     if (o) {
-      this.set({ pos: o, accuracy: 5, heading: null, speed: 0, simulated: true, stale: false, approximate: false, error: null, at: Date.now() });
+      // Moved by play from home (or test mode): which way and how fast, from the last spot —
+      // the marker's heading cone and walk follow it. A jump (a teleport) or standing: no speed.
+      const now = Date.now(), last = this.snap.simulated ? this.snap.pos : null;
+      const d = last ? distanceM(last, o) : 0, dt = (now - (this.snap.at || now)) / 1000;
+      const moving = d > 0.3 && d < 400 && dt > 0.05 && dt < 10;
+      this.set({ pos: o, accuracy: 5, heading: moving ? bearingTo(last!, o) : this.snap.simulated ? this.snap.heading : null, speed: moving ? d / dt : 0, simulated: true, stale: false, approximate: false, error: null, at: now });
+      // No next step within a moment: arrived (or stopped) — standing again.
+      if (this.still) clearTimeout(this.still);
+      this.still = moving ? setTimeout(() => this.override === o && this.set({ speed: 0 }), Math.min(3000, dt * 1000 * 1.6 + 200)) : null;
       return;
     }
     const stale = !!g && Date.now() - this.lastRawAt > STALE_MS;
