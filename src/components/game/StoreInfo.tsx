@@ -15,7 +15,7 @@ import { fmtNum, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
   clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
-  type Deal, type DivarArea, type DivarCat, type DivarDetail, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
+  type Deal, type DealInfo, type DealProduct, type DealReviewPage, type DivarArea, type DivarCat, type DivarDetail, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { cinemaUrl, showTime, tehranDay, type Cinema, type CinemaShows, type Film } from "@/lib/cinema";
 import { Button } from "@/components/Button";
@@ -82,7 +82,7 @@ function usePhones(store: StoreRef | null, known: StorePhone[] | undefined) {
   return { phones, looking: !!ask && !data && !error };
 }
 /** Who had the number. */
-const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "google" ? t("Google") : t("Map"));
+const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "google" ? t("Google") : s === "takhfifan" ? t("Takhfifan") : t("Map"));
 /** One number to tap: a mobile or a landline, and where it was read. */
 function PhoneLink({ p }: { p: StorePhone }) {
   return (
@@ -405,7 +405,7 @@ function ReviewsView({ code, total, stars }: { code: string; total?: number; sta
  * opens its page here first — its photos, price, details and (for Divar) the whole ad with
  * its facts and description — and only its button goes on to the site itself.
  */
-type Product = { source: "divar" | "torob" | "takhfifan"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string };
+type Product = { source: "divar" | "torob" | "takhfifan"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string; photos?: string[]; desc?: string; terms?: string };
 const SOURCE = { divar: { name: msg("Divar"), open: msg("Open on Divar") }, torob: { name: msg("Torob"), open: msg("Open on Torob") }, takhfifan: { name: msg("Takhfifan"), open: msg("Buy on Takhfifan") } } as const;
 
 /** A list row that opens the product's page. */
@@ -425,7 +425,8 @@ function ProductPage({ p, onClose }: { p: Product; onClose: () => void }) {
   const { pos } = useGame();
   const detail = useLocal<{ post: DivarDetail | null }>(p.source === "divar" && p.token ? { divarPost: p.token } : null);
   const d = detail.data?.post ?? null;
-  const photos = d?.photos.length ? d.photos : p.photo ? [p.photo] : [];
+  const photos = d?.photos.length ? d.photos : p.photos?.length ? p.photos : p.photo ? [p.photo] : [];
+  const text = d?.description || p.desc || "";
   const [shot, setShot] = useState(0);
   const strip = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
@@ -442,7 +443,7 @@ function ProductPage({ p, onClose }: { p: Product; onClose: () => void }) {
   const far = d?.at && pos ? distanceM(pos, d.at) : null;
   const share = typeof navigator !== "undefined" && "share" in navigator;
   const src = SOURCE[p.source];
-  const long = (d?.description.length ?? 0) > 360;
+  const long = text.length > 360;
   return createPortal(
     <div className="pp" role="dialog" aria-modal="true" aria-label={p.title} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`pp-card pp-${p.source}`}>
@@ -518,17 +519,23 @@ function ProductPage({ p, onClose }: { p: Product; onClose: () => void }) {
                 ))}
               </div>
             )}
-            {d?.description && (
+            {text && (
               <section className="pp-desc">
                 <h4>{t("Description")}</h4>
                 <p dir="auto" className={long && !more ? "clamp" : ""}>
-                  {d.description}
+                  {text}
                 </p>
                 {long && (
                   <button type="button" className="pp-more" onClick={() => setMore((m) => !m)}>
                     {more ? t("Show less") : t("Show more")}
                   </button>
                 )}
+              </section>
+            )}
+            {p.terms && (
+              <section className="pp-desc">
+                <h4>{t("Terms")}</h4>
+                <p dir="auto">{p.terms}</p>
               </section>
             )}
           </div>
@@ -861,58 +868,196 @@ export function OwnerLinkFields({ v, set }: { v: Links; set: (k: keyof Links, va
 
 // ---------------------------------------------------------------- Takhfifan
 /** A store with deals on Takhfifan, tapped on the map: what's off, each deal (its own page first), and the way there. */
+/** A store's comments on Takhfifan (stars, text, the store's reply), ten more at a time. */
+function DealReviewsPage({ id, page, last, onMore }: { id: number; page: number; last: boolean; onMore: () => void }) {
+  const { data, error } = useLocal<{ reviews: DealReviewPage }>({ dealReviews: id, page });
+  if (error) return <p className="small warn-text">{error}</p>;
+  if (!data) return <p className="small muted">{t("Loading…")}</p>;
+  const { reviews, count } = data.reviews;
+  if (!reviews.length) return page === 0 ? <p className="small muted">{t("No reviews yet")}</p> : null;
+  return (
+    <>
+      {reviews.map((r) => (
+        <div className="review" key={r.id}>
+          <div className="review-top">
+            <b>{r.buyer ? t("A buyer") : t("A customer")}</b>
+            {r.rate > 0 && (
+              <span className="review-stars" role="img" aria-label={t("{n} of 5 stars", { n: fmtNum(r.rate) })}>
+                {"★".repeat(r.rate)}
+                <span className="dim">{"★".repeat(5 - r.rate)}</span>
+              </span>
+            )}
+            <span className="grow" />
+            {r.date && <span className="small muted">{fmtTime(r.date)}</span>}
+          </div>
+          {r.text && <p dir="auto">{r.text}</p>}
+          {r.reply && <p className="small review-reply" dir="auto">↩️ {r.reply}</p>}
+        </div>
+      ))}
+      {last && (page + 1) * 10 < count && (
+        <Button className="btn small ghost block" onClick={onMore}>
+          {t("More reviews")}
+        </Button>
+      )}
+    </>
+  );
+}
+function DealReviewsView({ id, total, avg }: { id: number; total: number; avg: number }) {
+  const [pages, setPages] = useState(1);
+  return (
+    <div className="reviews">
+      {avg > 0 && (
+        <div className="star-bars">
+          <div className="star-avg">
+            <b>{fmtNum(avg)}</b>
+            <span aria-hidden>{"★".repeat(Math.round(avg))}</span>
+            {!!total && <span className="small muted">{t("{n} reviews", { n: fmtNum(total) })}</span>}
+          </div>
+        </div>
+      )}
+      {Array.from({ length: pages }, (_, i) => (
+        <DealReviewsPage key={i} id={id} page={i} last={i === pages - 1} onMore={() => setPages((n) => Math.min(n + 1, 20))} />
+      ))}
+      <p className="small muted ext-source">{t("Reviews from Takhfifan customers")}</p>
+    </div>
+  );
+}
+
+/** A store's deals on Takhfifan: photo, what you pay, what it was, the % off, how many were sold; tap for the whole deal. */
+function DealItems({ items, total, store, url }: { items: DealProduct[]; total: number; store: string; url: string }) {
+  const ends = (iso: string) => (iso ? t("until {date}", { date: fmtTime(iso) }) : "");
+  if (!items.length) return <p className="small muted">{t("Pay at the store with Takhfifan's app to get the cashback.")}</p>;
+  return (
+    <>
+      <div className="ext-items compact">
+        {items.map((i) => (
+          <ProductRow
+            key={i.id}
+            product={{
+              source: "takhfifan",
+              title: i.name,
+              photo: i.photo,
+              url,
+              price: toman(i.price),
+              lines: [i.retail > i.price && t("instead of {n}", { n: toman(i.retail) }), i.off > 0 && t("{n}% off", { n: fmtNum(i.off) }), ends(i.ends), i.sold > 0 && t("{n} sold", { n: fmtNum(i.sold) }), store],
+              desc: i.about,
+              terms: i.terms,
+            }}
+          >
+            {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
+            <div className="grow">
+              <b dir="auto">{i.name}</b>
+              {(i.ends || i.sold > 0) && <p className="small muted">{[ends(i.ends), i.sold > 0 ? t("{n} sold", { n: fmtNum(i.sold) }) : ""].filter(Boolean).join(" · ")}</p>}
+            </div>
+            <span className="price-tag deal-price">
+              {i.off > 0 && <em>−{fmtNum(i.off)}%</em>}
+              <b>{toman(i.price)}</b>
+              {i.retail > i.price && <s>{fmtNum(i.retail)}</s>}
+            </span>
+          </ProductRow>
+        ))}
+      </div>
+      {total > items.length && (
+        <a className="btn small ghost block ext-link ext-takhfifan" href={url} target="_blank" rel="noopener noreferrer">
+          {t("All {n} deals on Takhfifan", { n: fmtNum(total) })}
+        </a>
+      )}
+    </>
+  );
+}
+
+/** The Info tab: hours, address, phones (InfoView) and what only Takhfifan knows: how to pay for the cashback, the features, categories, site. */
+function DealInfoView({ d, info }: { d: Deal; info: DealInfo }) {
+  return (
+    <>
+      <InfoView at={d} store={{ name: d.name, lat: d.lat, lng: d.lng, city: info.city }} week={info.week} hours={info.hours} address={info.address} area={info.district} city={info.city} phones={info.phones} />
+      <div className="store-info">
+        {(info.cashback > 0 || info.payDiscount > 0) && (
+          <section>
+            <h4>💳 {t("Pay with Takhfifan")}</h4>
+            {info.payDiscount > 0 && <div className="info-row">🏷️ {t("{n}% off when you pay there with the app", { n: fmtNum(info.payDiscount) })}</div>}
+            {info.cashback > 0 && <div className="info-row">↩️ {t("Up to {n}% back", { n: fmtNum(info.cashback) })}</div>}
+            {info.banks.map((b) => (
+              <div className="info-row small muted" key={b.name} dir="auto">
+                {b.name} · {t("{n}% back", { n: fmtNum(b.cashback) })}
+              </div>
+            ))}
+          </section>
+        )}
+        {!!info.features.length && (
+          <section>
+            <h4>✨ {t("Features")}</h4>
+            {info.features.map((f) => (
+              <div className="info-row" key={f.label} dir="auto">
+                <span className="muted">{f.label}:</span> {f.value}
+              </div>
+            ))}
+          </section>
+        )}
+        {!!info.categories.length && <div className="info-row" dir="auto">🗂️ {info.categories.join(" › ")}</div>}
+        {info.sold > 0 && <div className="info-row">🛍️ {t("{n} sold on Takhfifan", { n: fmtNum(info.sold) })}</div>}
+        {info.website && (
+          <a className="info-row link" href={info.website} target="_blank" rel="noopener noreferrer">
+            🌐 <span dir="ltr">{info.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</span>
+          </a>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** A store with a deal or cashback on Takhfifan: photos, deals, comments and info in tabs; what the map lists shows at once, the rest loads. */
 export function DealCard({ d, onClose }: { d: Deal; onClose: () => void }) {
   const { pos } = useGame();
   const dist = pos ? distanceM(pos, d) : Infinity;
-  const sub = [d.category, d.district, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
-  const ends = (iso: string) => (iso ? t("until {date}", { date: fmtTime(iso) }) : "");
+  const { data, error, retry } = useLocal<{ info: DealInfo | null }>({ dealInfo: d.id });
+  const info = data?.info ?? null;
+  const photos = info?.photos.length ? info.photos : d.photos;
+  const rating = info?.rating || d.rating, reviews = info?.reviews || d.reviews;
+  const off = Math.max(d.off, info?.off ?? 0), cashback = Math.max(d.cashback, info?.cashback ?? 0);
+  const sub = [d.category || info?.categories[0], info?.district || d.district, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
+  const items = info?.items.length ? info.items : (d.items as DealProduct[]);
   return (
     <Sheet title={d.name} onClose={onClose} tall>
-      <StoreHead logo={d.photos[0]} emoji="🏷️" name={d.name} sub={sub} rating={d.rating || undefined} reviews={d.reviews || undefined} at={d} />
-      {d.photos[0] && (
-        <div className="ext-cover">
-          <Pic src={d.photos[0]} className="ext-cover-img" />
+      <StoreHead logo={info?.logo || photos[0]} emoji="🏷️" name={d.name} sub={sub} rating={rating || undefined} reviews={reviews || undefined} week={info?.week} at={d} />
+      {photos.length > 0 && (
+        <div className={`deal-gallery${photos.length === 1 ? " one" : ""}`}>
+          {photos.map((u) => (
+            <Pic key={u} src={u} />
+          ))}
         </div>
       )}
       <div className="deal-head">
-        {d.off > 0 && <span className="deal-big">{t("Up to {n}% off", { n: fmtNum(d.off) })}</span>}
-        {d.cashback > 0 && <span className="deal-big back">{t("{n}% back when you pay there", { n: fmtNum(d.cashback) })}</span>}
+        {off > 0 && <span className="deal-big">{t("Up to {n}% off", { n: fmtNum(off) })}</span>}
+        {cashback > 0 && <span className="deal-big back">{t("{n}% back when you pay there", { n: fmtNum(cashback) })}</span>}
       </div>
       <div className="store-actions">
         <a className="btn small ghost ext-link ext-takhfifan" href={d.url} target="_blank" rel="noopener noreferrer">
-          {t("Takhfifan")}
+          🏷️ {t("Open on Takhfifan")}
         </a>
+        {info && <CallButton store={{ name: d.name, lat: d.lat, lng: d.lng, city: info.city }} phones={info.phones} />}
         <GoButtons to={d} name={d.name} dist={dist} />
       </div>
-      {d.items.length ? (
-        <div className="ext-items compact">
-          {d.items.map((i) => (
-            <ProductRow
-              key={i.id}
-              product={{
-                source: "takhfifan",
-                title: i.name,
-                photo: i.photo,
-                url: d.url,
-                price: toman(i.price),
-                lines: [i.retail > i.price && t("instead of {n}", { n: toman(i.retail) }), i.off > 0 && t("{n}% off", { n: fmtNum(i.off) }), ends(i.ends), d.name],
-              }}
-            >
-              {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
-              <div className="grow">
-                <b dir="auto">{i.name}</b>
-                {i.ends && <p className="small muted">{ends(i.ends)}</p>}
-              </div>
-              <span className="price-tag deal-price">
-                {i.off > 0 && <em>−{fmtNum(i.off)}%</em>}
-                <b>{toman(i.price)}</b>
-                {i.retail > i.price && <s>{fmtNum(i.retail)}</s>}
-              </span>
-            </ProductRow>
-          ))}
+      {error ? (
+        <div className="ext-error">
+          <p className="small warn-text">{error}</p>
+          <Button className="btn small cyan" onClick={retry}>🔄 {t("Try again")}</Button>
         </div>
+      ) : !data ? (
+        <p className="small muted ext-loading">⏳ {t("Loading the store's deals…")}</p>
+      ) : !info ? (
+        <>
+          <p className="small muted">{t("Takhfifan has no more about this store right now.")}</p>
+          <DealItems items={items} total={items.length} store={d.name} url={d.url} />
+        </>
       ) : (
-        <p className="small muted">{t("Pay at the store with Takhfifan's app to get the cashback.")}</p>
+        <StoreTabs
+          tabs={[
+            { key: "deals", label: `🏷️ ${items.length ? t("Deals ({n})", { n: fmtNum(info.itemsTotal || items.length) }) : t("Deals")}`, body: () => <DealItems items={items} total={info.itemsTotal} store={d.name} url={d.url} /> },
+            { key: "reviews", label: `⭐ ${reviews ? t("Reviews ({n})", { n: fmtNum(reviews) }) : t("Reviews")}`, body: () => <DealReviewsView id={d.id} total={reviews} avg={rating} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <DealInfoView d={d} info={info} /> },
+          ]}
+        />
       )}
       <p className="small muted ext-source">{t("From Takhfifan · updated every few hours")}</p>
     </Sheet>

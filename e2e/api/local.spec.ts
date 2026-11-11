@@ -41,6 +41,8 @@ const districts = Array.from({ length: 1000 }, (_, k) => [
 /** `district` 0: a whole town's ads (Smalltown has no neighbourhoods). */
 const ads: { district: number; cat: string; title: string }[] = [{ district: 0, cat: "home-kitchen", title: "Old sofa" }];
 const SMALLTOWN = { latitude: -75, longitude: 20 };
+// Takhfifan's /nearby map answers only for this spot (anywhere else: 404, so the name search fills in).
+const TK_SPOT = { lat: 10.123, lng: 20.123 };
 let server: Server;
 let calls = 0;
 
@@ -81,6 +83,22 @@ test.beforeAll(async () => {
         { id: 9_000_000 + d.id, name: `Nothing off ${q}`, location: { lat: at.lat, lon: at.lng } },
       ] });
     }
+    // Takhfifan's nearby map (positions in a box), a store's page, its deals and its comments.
+    if (u.pathname === "/tk/v6/api/taxonomy/collections/nearby/vendors/nearby") {
+      const [n, w, s, e] = ["top_left_lat", "top_left_lng", "bottom_right_lat", "bottom_right_lng"].map((k) => Number(u.searchParams.get(k)));
+      if (!(TK_SPOT.lat < n && TK_SPOT.lat > s && TK_SPOT.lng > w && TK_SPOT.lng < e)) return (res.statusCode = 404), res.end();
+      return send({ meta: { total: 2 }, data: { pins: [], pois: [
+        { id: 4242, name: "Stub Bistro", catalog_category_name: "Cafe", coordinates: { lat: TK_SPOT.lat + 0.001, lon: TK_SPOT.lng }, image: "https://example.com/t.jpg&width=100", images: [], location: "Stubville", rate: "4.5", rate_count: 12, discount: 25, max_cashback_percent: 5 },
+        { id: 4243, name: "Stub Nothing", coordinates: { lat: TK_SPOT.lat + 0.001, lon: TK_SPOT.lng }, discount: 0, max_cashback_percent: 0 },
+      ] } });
+    }
+    if (u.pathname === "/tk/v5/api/magento/vendors/4242")
+      return send({ data: { attributes: { name: "Stub Bistro", address: "Stub street 9", city: "Stubtown", latitude: "10.124", longitude: "20.123", phone_v2: "02187654321", vendor_id: 4242, sale_count: 7, max_discount_percentage: 25, offline_max_cashback_percent: 5,
+        business_timing: JSON.stringify(["شنبه", "یکشنبه", "دوشنبه", "سه شنبه", "چهارشنبه", "پنج شنبه", "جمعه"].map((day) => ({ day, service_time: "10:00-23:00" }))) } }, rating: { rate: "4.5", rate_count: 12 }, categories: [] });
+    if (u.pathname === "/tk/v5/api/magento/vendors/4242/products")
+      return send({ data: [{ attributes: { name: "Coffee for two", product_id: 1, price_regular: 2_500_000, price_deal: 2_000_000, deal_discount: 20, deal_qty_sold: 3, deal_date_to: "2099-01-01 00:00:00", description: "<p>Two coffees</p>", deal_fine_print: "<p>Weekdays only</p>" } }], meta: { total: { value: 1 } } });
+    if (u.pathname === "/tk/v4/api/commentify/entities/core/vendor/4242/comments")
+      return send({ meta: { total: 1, rate_average: 4.5 }, data: [{ id: 1, body: "Lovely", rate: 5, created_at: "2026-11-04T12:32:12.466+03:30", is_buyer: true, status: "published", replies: [{ body: "Thanks!" }] }] });
     if (u.pathname === "/dv/v8/places/cities/1/districts") return send({ districts: districts.map((d) => ({ id: d.id, name: d.name, slug: `d${d.id}`, centroid: { latitude: d.lat, longitude: d.lng } })) });
     if (u.pathname === "/dv/v8/postlist/w/search" && req.method === "POST") {
       let raw = "";
@@ -303,6 +321,23 @@ test.describe("store hours, reviews and walk-in stores", () => {
     expect(r.data.external.snappfood).toMatchObject({ ok: true, status: "200" });
     expect(r.data.external.torob.ok).toBe(true);
     expect(r.data.external.divar.ok).toBe(true);
+    await p.dispose();
+  });
+
+  test("Takhfifan: the nearby map's stores, then one store in full (page, deals, comments)", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    type R = { deals: { id: number; name: string; off: number; cashback: number; district: string; photos: string[] }[] };
+    const { data } = expectOk(await p.get<R>(`/api/local?deals=1&lat=${TK_SPOT.lat}&lng=${TK_SPOT.lng}`));
+    expect(data.deals).toEqual([expect.objectContaining({ id: 4242, name: "Stub Bistro", off: 25, cashback: 5, district: "Stubville", photos: ["https://example.com/t.jpg&width=640"] })]);
+    type I = { info: { name: string; phones: { number: string }[]; week: number[][][]; items: { price: number; retail: number; about: string; terms: string; sold: number }[]; itemsTotal: number } | null };
+    const info = expectOk(await p.get<I>("/api/local?dealInfo=4242")).data.info!;
+    expect(info).toMatchObject({ name: "Stub Bistro", phones: [{ number: "02187654321" }], itemsTotal: 1 });
+    expect(info.week[0]).toEqual([[600, 1380]]);
+    expect(info.items).toEqual([expect.objectContaining({ price: 200_000, retail: 250_000, about: "Two coffees", terms: "Weekdays only", sold: 3 })]);
+    expect(expectOk(await p.get<I>("/api/local?dealInfo=999999")).data.info).toBeNull();
+    type C = { reviews: { count: number; avg: number; reviews: { text: string; rate: number; reply: string }[] } };
+    expect(expectOk(await p.get<C>("/api/local?dealReviews=4242")).data.reviews).toMatchObject({ count: 1, avg: 4.5, reviews: [{ text: "Lovely", rate: 5, reply: "Thanks!" }] });
+    expect((await p.get("/api/local?dealInfo=abc")).status).toBe(400);
     await p.dispose();
   });
 });

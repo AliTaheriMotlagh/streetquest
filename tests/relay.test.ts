@@ -92,6 +92,15 @@ describe("store-site relay", () => {
     assert.equal(seen.length, 0);
   });
 
+  it("forwards Takhfifan's nearby map, store page, its deals and comments — and nothing else of it", async () => {
+    seen = [];
+    for (const path of ["/v6/api/taxonomy/collections/nearby/vendors/nearby?zoom=15", "/v5/api/magento/vendors/53670", "/v5/api/magento/vendors/53670/products?limit=20", "/v4/api/commentify/entities/core/vendor/53670/comments?limit=10&offset=0"])
+      assert.equal((await fetch(`${base}/${KEY}/takhfifan${path}`)).status, 200, path);
+    for (const path of ["/v5/api/magento/vendors/abc", "/v5/api/magento/vendors/1/complaints", "/v4/api/commentify/entities/core/vendor/1/comments/extra", "/v4/api/magento/customers/1"])
+      assert.equal((await fetch(`${base}/${KEY}/takhfifan${path}`)).status, 404, path);
+    assert.equal(seen.length, 4);
+  });
+
   it("takes POST only for Divar's ad search, with its body, and not a big one", async () => {
     seen = [];
     const post = (path: string, body = JSON.stringify({ city_ids: ["1"] })) =>

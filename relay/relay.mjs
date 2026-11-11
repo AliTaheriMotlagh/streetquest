@@ -43,10 +43,10 @@ const SITES = {
     get: ["/v8/places/cities", /^\/v8\/places\/cities\/\d{1,9}\/districts$/, /^\/v8\/posts-v2\/web\/[A-Za-z0-9_-]{4,16}$/],
     post: ["/v8/postlist/w/search"],
   },
-  // Takhfifan: deals and cashback at stores near you (searched by the neighbourhood's name).
+  // Takhfifan: deals and cashback at stores near you (its /nearby map; a name search as a fallback), a store's page and comments.
   takhfifan: {
     origin: process.env.TAKHFIFAN_ORIGIN || "https://takhfifan.com",
-    get: ["/v4/api/universal_search/search"],
+    get: ["/v4/api/universal_search/search", "/v6/api/taxonomy/collections/nearby/vendors/nearby", /^\/v5\/api\/magento\/vendors\/\d{1,9}(?:\/products)?$/, /^\/v4\/api\/commentify\/entities\/core\/vendor\/\d{1,9}\/comments$/],
     post: [],
   },
   // Balad: restaurants' real phone numbers (a name search near a spot, then the place's page).
