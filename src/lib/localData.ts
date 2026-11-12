@@ -87,7 +87,7 @@ export function mergeTorobPlace(a: TorobPlace, b: TorobPlace): TorobPlace {
 }
 /** The rest of a walk-in Torob shop's page: full address, phone, logo and photos. */
 export type TorobPlaceInfo = { id: number; name: string; logo: string; photos: string[]; address: string; phone: string; phones?: StorePhone[]; city: string; url: string };
-export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone" | "instagram"; url: string; label: string };
+export type StoreLink = { kind: "snappfood" | "torob" | "divar" | "website" | "phone" | "instagram" | "directory"; url: string; label: string };
 /**
  * `torob`: the store's own Torob shop catalog when `torobShop` is set, else listings only it sells.
  * `about`: what the card shows at the top — a picture (Snappfood cover, OSM photo), a logo,
@@ -612,7 +612,7 @@ export function storePhones(raw: string | null | undefined): string[] {
   return out;
 }
 /** Where a number was read: the map (OpenStreetMap), the store's own Snappfood / Torob page, Balad, Google. */
-export type PhoneSource = "map" | "snappfood" | "torob" | "balad" | "google" | "takhfifan";
+export type PhoneSource = "map" | "snappfood" | "torob" | "balad" | "google" | "takhfifan" | "irangaah" | "netbarg";
 export type StorePhone = { number: string; source: PhoneSource };
 /** A card shows at most this many numbers. */
 export const MAX_PHONES = 6;

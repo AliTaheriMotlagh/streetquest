@@ -652,14 +652,14 @@ export async function torobPlacesAround(here: LatLng, radiusM = 4000): Promise<{
 
 // ---------------------------------------------------------------- Divar
 type RawPlace = { id?: number; name?: string; slug?: string; centroid?: { latitude?: number; longitude?: number }; radius?: number };
-type DivarPlace = { id: number; name: string; slug: string; lat: number; lng: number; r: number };
+export type DivarPlace = { id: number; name: string; slug: string; lat: number; lng: number; r: number };
 const toPlace = (p: RawPlace): DivarPlace | null =>
   p.id && p.name && typeof p.centroid?.latitude === "number" && typeof p.centroid.longitude === "number"
     ? { id: p.id, name: p.name, slug: p.slug ?? "", lat: p.centroid.latitude, lng: p.centroid.longitude, r: p.radius ?? 0 }
     : null;
 
 /** Divar's cities, with their centre and radius (a week: they hardly change). */
-function divarCities() {
+export function divarCities() {
   return cached<DivarPlace[]>("dv:cities2", DIVAR_PLACES_TTL, async () => {
     const root = divarBase();
     if (!root) return null;
@@ -669,7 +669,7 @@ function divarCities() {
 }
 
 /** A city's neighbourhoods (Divar's "districts"), with their centres. */
-function divarDistricts(cityId: number) {
+export function divarDistricts(cityId: number) {
   return cached<DivarPlace[]>(`dv:districts:${cityId}`, DIVAR_PLACES_TTL, async () => {
     const root = divarBase();
     if (!root) return null;

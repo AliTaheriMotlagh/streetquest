@@ -1,8 +1,9 @@
 "use client";
 // What the map shows, picked right on the map (its filter button, or ⋯ → On the map):
 // the game's own markers, Snappfood's vendors by kind, real places (narrowed to some
-// kinds of place), Torob's walk-in stores, Divar's ads and live traffic — each chip with
-// how many there are around you.
+// kinds of place), Torob's walk-in stores, Divar's ads, live traffic and the store sites
+// (Bilbooard, Irangaah, Okala, Netbarg, Sheypoor — narrowed to some types of store) — each
+// chip with how many there are around you. From here: every store as a list, and services.
 import { fmtNum, t } from "@/lib/i18n";
 import { Button } from "@/components/Button";
 
@@ -15,6 +16,11 @@ type Props = {
   onAll: (show: boolean) => void;
   /** Kinds of real place (shown while real places are on): every kind is on unless hidden. */
   kinds?: { items: FilterItem[]; hidden: string[]; onToggle: (kind: string) => void } | null;
+  /** Types of store from the store sites (shown while one of them is on): every type is on unless hidden. */
+  types?: { items: FilterItem[]; hidden: string[]; onToggle: (type: string) => void } | null;
+  /** Open every store round you as a list / the home services and shopping sites. */
+  onList?: () => void;
+  onServices?: () => void;
   onClose: () => void;
 };
 
@@ -28,7 +34,7 @@ function Chip({ item, on, onClick }: { item: FilterItem; on: boolean; onClick: (
   );
 }
 
-export function MapFilter({ groups, on, onToggle, onAll, kinds, onClose }: Props) {
+export function MapFilter({ groups, on, onToggle, onAll, kinds, types, onList, onServices, onClose }: Props) {
   const all = groups.flatMap((g) => g.items);
   const shown = all.filter((i) => on(i.key)).length;
   return (
@@ -57,6 +63,22 @@ export function MapFilter({ groups, on, onToggle, onAll, kinds, onClose }: Props
             ))}
           </div>
         </section>
+      )}
+      {!!types?.items.length && (
+        <section>
+          <h4 className="small muted">{t("Types of store")}</h4>
+          <div className="filter-chips kinds">
+            {types.items.map((i) => (
+              <Chip key={i.key} item={i} on={!types.hidden.includes(i.key)} onClick={() => types.onToggle(i.key)} />
+            ))}
+          </div>
+        </section>
+      )}
+      {(onList || onServices) && (
+        <div className="row">
+          {onList && <Button className="btn small cyan grow" onClick={onList}>🗂️ {t("List all stores")}</Button>}
+          {onServices && <Button className="btn small ghost grow" onClick={onServices}>🛠️ {t("Services & shops")}</Button>}
+        </div>
       )}
       <div className="row">
         <Button className="btn small ghost grow" onClick={() => onAll(true)}>✅ {t("Show all")}</Button>

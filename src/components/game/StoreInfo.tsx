@@ -66,7 +66,7 @@ const LOCAL_CACHE_MS = 60_000;
 const AUTO_RETRY_MS = 1500;
 
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
-const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸" } as const;
+const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸", directory: "🗂️" } as const;
 /** "09:30" in the player's digits. */
 const clock = (min: number) => clockOf(min).replace(/\d/g, (d) => fmtNum(Number(d)));
 const spanText = ([a, b]: [number, number]) => `${clock(a)}–${clock(b > 1440 ? b - 1440 : b)}`;
@@ -87,7 +87,7 @@ function usePhones(store: StoreRef | null, known: StorePhone[] | undefined) {
   return { phones, looking: !!ask && !data && !error };
 }
 /** Who had the number. */
-const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "google" ? t("Google") : s === "takhfifan" ? t("Takhfifan") : t("Map"));
+const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "google" ? t("Google") : s === "takhfifan" ? t("Takhfifan") : s === "irangaah" ? t("Irangaah") : s === "netbarg" ? t("Netbarg") : t("Map"));
 /** One number to tap: a mobile or a landline, and where it was read. */
 function PhoneLink({ p }: { p: StorePhone }) {
   return (
@@ -102,7 +102,7 @@ function PhoneLink({ p }: { p: StorePhone }) {
  * "Call" in the actions row: the number (several open a list to pick from), a spinner while
  * it's looked up, else where to find it.
  */
-function CallButton({ store, phones: known }: { store: StoreRef | null; phones?: StorePhone[] }) {
+export function CallButton({ store, phones: known }: { store: StoreRef | null; phones?: StorePhone[] }) {
   const { phones, looking } = usePhones(store, known);
   if (phones.length === 1) return <a className="btn small ghost ext-link ext-phone" href={telOf(phones[0].number)}>📞 {t("Call")}</a>;
   if (phones.length)
@@ -145,7 +145,7 @@ function PhoneRows({ store, phones: known }: { store: StoreRef | null; phones?: 
 }
 
 /** A picture that quietly goes away when it can't load (a dead link, a blocked CDN). */
-function Pic({ src, className }: { src: string; className?: string }) {
+export function Pic({ src, className }: { src: string; className?: string }) {
   const [bad, setBad] = useState(false);
   if (!src || bad) return null;
   return <img className={className} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBad(true)} />;
@@ -191,7 +191,7 @@ function HoursTable({ week, at }: { week: Week; at: LatLng }) {
 
 type InfoProps = { at: LatLng; store?: StoreRef | null; week?: Week | null; hours?: string; address?: string; area?: string; phones?: StorePhone[]; city?: string; minOrder?: number; deliveryFee?: number };
 /** Hours, address, phone (or where to find it), delivery terms: whatever is known, else a line saying so. */
-function InfoView({ at, store = null, week, hours, address, area, phones, city, minOrder, deliveryFee }: InfoProps) {
+export function InfoView({ at, store = null, week, hours, address, area, phones, city, minOrder, deliveryFee }: InfoProps) {
   const empty = !week && !hours && !address && !phones?.length && !store?.name;
   return (
     <div className="store-info">
@@ -223,7 +223,7 @@ function InfoView({ at, store = null, week, hours, address, area, phones, city, 
 // ---------------------------------------------------------------- tabs
 type Tab = { key: string; label: string; body: () => React.ReactNode };
 /** The card's sections, one at a time; the bar sticks to the top of the sheet while scrolling. */
-function StoreTabs({ tabs }: { tabs: Tab[] }) {
+export function StoreTabs({ tabs }: { tabs: Tab[] }) {
   const [on, setOn] = useState(tabs[0]?.key);
   const cur = tabs.find((x) => x.key === on) ?? tabs[0];
   if (!cur) return null;
@@ -685,7 +685,7 @@ export function StoreExtras({ query, at, bare }: { query: Record<string, string 
 }
 
 /** The head every store card starts with: logo, name, what and how far, rating and open now. */
-function StoreHead({ logo, emoji, name, sub, rating, reviews, week, at }: { logo?: string; emoji: string; name: string; sub: string; rating?: number; reviews?: number; week?: Week | null; at: LatLng }) {
+export function StoreHead({ logo, emoji, name, sub, rating, reviews, week, at }: { logo?: string; emoji: string; name: string; sub: string; rating?: number; reviews?: number; week?: Week | null; at: LatLng }) {
   const [bad, setBad] = useState(false);
   return (
     <div className="store-head">
@@ -703,7 +703,7 @@ function StoreHead({ logo, emoji, name, sub, rating, reviews, week, at }: { logo
 }
 
 /** Get there: walk/teleport in test mode, the in-app route and maps apps, or drive the 3D city. */
-function GoButtons({ to, name, dist }: { to: LatLng; name: string; dist: number }) {
+export function GoButtons({ to, name, dist }: { to: LatLng; name: string; dist: number }) {
   const { teleport, drive } = useGame();
   return (
     <>

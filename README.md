@@ -577,7 +577,31 @@ mood scales XP; loot funds research; territory funds the army.
   the box round you, ~1 km cells, 6 h cache); if that fails, its search by the nearest five neighbourhoods' names (Divar's
   list) fills in. A store's page and deals are read when its card opens (`?dealInfo=<id>`, 2 h cache), its comments by
   page (`?dealReviews=<id>&page=`). `TAKHFIFAN_URL`, `off` disables; `?deals=1`. **The prod relay must be redeployed
-  (`relay/install.sh`; relay v2 forwards any path, so this was the last time)**, 📢 Divar — each nearby
+  (`relay/install.sh`; relay v2 forwards any path, so this was the last time)**, 🗂️ **Store sites** — Iran's
+  directories and store sites as layers of their own, each a chip in the filter with how many it has round you:
+  🪧 [Bilbooard](https://bilbooard.ir) (its bbox map API: ~1,500 businesses per cell, photos, hours, description),
+  🧭 [Irangaah](https://irangaah.ir) (its whole-city index, read once a day: doctors, shops and services with their
+  phone numbers), 🛒 [Okala](https://www.okala.com) (supermarkets, bakeries and fruit shops that deliver: rating,
+  delivery time, smallest order, customers' reviews), 🎟️ [Netbarg](https://netbarg.com) (a neighbourhood's deals; a
+  live deal shows "−10%", an ended deal's store stays as a store) and 📣 [Sheypoor](https://www.sheypoor.com) (the
+  city's newest ads pinned on the neighbourhoods they name, like Divar). Every store gets one of 25 **store types**
+  (restaurants, cafés, supermarkets, doctors, pharmacies, beauty, cars, phones, estate agents…) read from its site's
+  own category words, and the filter's **Types of store** section hides any of them. One store listed by two sites is
+  one marker (its card lists both). Its card: photos you swipe, rating, open now, the deal, about, then tabs —
+  **Info** (week's hours, address, every phone), **Menu & prices** (the same store's Snappfood menu or Torob catalog
+  when one matches), **Reviews** (Okala) and **On Basalam** (products of its kind from [Basalam](https://basalam.com),
+  sellers in your city first). **List all stores** (filter → 🗂️) shows them all as a list: search, filter by site and
+  by type with counts, nearest / best rated / A–Z. **Services & shops** (filter → 🛠️) books home services —
+  cleaning, repairs, moving, beauty… on [Achareh](https://achareh.co), [Sanjagh](https://sanjagh.pro) and
+  [Khedmatazma](https://khedmatazma.com), for your city — and lists the shopping sites (Basalam, Okala,
+  [Emalls](https://emalls.ir), [Snapp Shop](https://snapp.shop)…) with what each is for. Every 2D and 3D store card
+  also gets the store's Bilbooard / Irangaah pages as links and their phone numbers. **Before any link leaves the
+  game** (any site, from the map or the 3D city) a page says where it goes — the site, what it's for, the address and
+  whether it's https — with *Stay in the game* / *Open*, and "don't ask again for this site" (this device). Cells are
+  cached a day (Okala 6 h, Sheypoor 15 min) in `ExtCache` and in memory; `/api/stores` (`?near=1&sites=`, `?detail=`,
+  `?basalam=`, `?city=1`); `BILBOOARD_URL` / `IRANGAAH_URL` / `OKALA_URL` / `NETBARG_URL` / `SHEYPOOR_URL` /
+  `BASALAM_URL` (`off` disables), `/api/health?ext=1` checks them. Emalls, Snapp Shop and the three services sites
+  publish no data the game can read — they are links. 📢 Divar — each nearby
   neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…). **Every ad and
   product opens its own page in the game first** — photos you swipe, the price, and for a Divar ad the whole ad: its
   description, its facts (area, rooms, year, price per metre…), what it has, when it was posted and roughly how far

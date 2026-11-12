@@ -1,0 +1,83 @@
+/* Store sites (components/game/Directory.tsx, LeaveGuard.tsx): site chips, the store card's photos /
+   deal / reviews, the store list, home services, the leave page, and the stores' markers on the map.
+   A site's colour comes in as --site. */
+
+/* ---- site chips */
+.site-chip { --site: var(--sky); display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font: 700 12px/1.1 var(--body); color: var(--text); background: color-mix(in srgb, var(--site) 18%, transparent); border: 1px solid color-mix(in srgb, var(--site) 45%, transparent); white-space: nowrap; text-decoration: none; }
+.site-chip.sm { padding: 2px 7px; font-size: 11px; }
+a.site-chip.link { cursor: pointer; }
+a.site-chip.link:hover, a.site-chip.link:focus-visible { background: color-mix(in srgb, var(--site) 30%, transparent); }
+.dir-sites { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+
+/* ---- the store card */
+.dir-photos { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 8px 0; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.dir-photo { flex: 0 0 auto; width: min(72%, 260px); aspect-ratio: 4 / 3; border-radius: var(--r-xs); overflow: hidden; background: var(--panel-solid); scroll-snap-align: start; }
+.dir-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dir-photos:has(.dir-photo:only-child) .dir-photo { width: 100%; aspect-ratio: 16 / 9; }
+.dir-about { margin: 6px 0; line-height: 1.6; color: var(--text); }
+.dir-about.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dir-about .link-btn { margin-inline-start: 6px; background: none; border: 0; color: var(--sky); font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+.dir-deal { display: flex; gap: 10px; align-items: center; padding: 10px 12px; margin: 8px 0; border-radius: var(--r-xs); background: linear-gradient(135deg, rgba(255, 122, 0, .18), rgba(226, 38, 77, .12)); border: 1px solid rgba(255, 122, 0, .35); }
+.dir-deal s { margin-inline-start: 6px; }
+.dir-deal.ended { background: rgba(255, 255, 255, .04); border-color: var(--line); }
+.dir-deal.ended .deal-tag { background: #6b7280; }
+.dir-deal .deal-tag, .dir-row-tags .deal-tag { display: inline-block; padding: 2px 6px; border-radius: 6px; background: #e2264d; color: #fff; font: 800 12px/1.2 var(--body); font-variant-numeric: tabular-nums; }
+.dir-eta { margin: 4px 0; }
+.ext-link.ext-dir { background: color-mix(in srgb, var(--site) 22%, transparent); border-color: color-mix(in srgb, var(--site) 55%, transparent); color: var(--text); }
+.dir-reviews { display: grid; gap: 8px; }
+.dir-review { padding: 8px 10px; border-radius: var(--r-xs); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); }
+.dir-review p { margin: 4px 0 0; line-height: 1.55; }
+.dir-review .row { justify-content: space-between; }
+.dir-basalam form { margin-bottom: 8px; gap: 6px; }
+.dir-basalam input, .dir-search { width: 100%; padding: 10px 12px; border-radius: var(--r-xs); border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .05); color: var(--text); font: 600 14px/1.2 var(--body); }
+.dir-search { margin-bottom: 10px; }
+.dir-search:focus-visible, .dir-basalam input:focus-visible { outline: 2px solid var(--sky); outline-offset: 1px; }
+.ext-item .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---- the store list */
+.dir-chips { margin-bottom: 8px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.dir-chips::-webkit-scrollbar { display: none; }
+.dir-chips .filter-chip { flex: 0 0 auto; }
+.dir-chips .filter-chip.on[style] { border-color: var(--site); background: color-mix(in srgb, var(--site) 22%, transparent); color: var(--text); }
+.dir-sort { gap: 6px; flex-wrap: wrap; margin-bottom: 6px; align-items: center; }
+.dir-sort .btn.on { outline: 2px solid var(--yellow); }
+.dir-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dir-row { display: flex; gap: 10px; align-items: center; width: 100%; padding: 8px; border-radius: var(--r-xs); border: 1px solid var(--line); background: rgba(255, 255, 255, .03); color: var(--text); text-align: start; cursor: pointer; font: inherit; }
+.dir-row:hover, .dir-row:focus-visible { background: rgba(255, 255, 255, .07); border-color: var(--line-strong); }
+.dir-row .grow { display: grid; gap: 3px; min-width: 0; }
+.dir-row b, .dir-row .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-thumb { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: var(--panel-solid); }
+.dir-thumb.ph { display: grid; place-items: center; font-size: 24px; color: #fff; }
+.dir-row-tags { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+
+/* ---- home services and shopping sites */
+.svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.svc-card { display: grid; gap: 8px; padding: 10px; border-radius: var(--r-xs); border: 1px solid var(--line); background: rgba(255, 255, 255, .03); }
+.svc-links { display: flex; flex-wrap: wrap; gap: 5px; }
+.svc-sites { display: grid; gap: 6px; margin-bottom: 10px; }
+.svc-site { --site: var(--sky); display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: var(--r-xs); border: 1px solid var(--line); border-inline-start: 4px solid var(--site); background: rgba(255, 255, 255, .03); color: var(--text); text-decoration: none; }
+.svc-site:hover, .svc-site:focus-visible { background: rgba(255, 255, 255, .07); }
+.svc-site .grow { display: grid; gap: 2px; }
+.svc-ico { font-size: 26px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--site) 22%, transparent); }
+
+/* ---- leaving the game */
+.leave-back { position: fixed; inset: 0; z-index: 4000; display: grid; place-items: center; padding: 16px; background: rgba(4, 6, 10, .62); backdrop-filter: blur(4px); animation: leave-fade .18s ease-out; }
+.leave-card { --site: var(--sky); width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px 18px 16px; border-radius: 18px; background: var(--panel-solid); border: 1px solid var(--line-strong); border-top: 4px solid var(--site); box-shadow: 0 20px 60px rgba(0, 0, 0, .55); text-align: center; animation: leave-up .22s cubic-bezier(.2, .8, .2, 1); }
+.leave-ico { width: 64px; height: 64px; margin: 0 auto 10px; display: grid; place-items: center; font-size: 34px; border-radius: 18px; background: color-mix(in srgb, var(--site) 22%, transparent); }
+.leave-card h3 { margin: 0 0 4px; font-size: 18px; }
+.leave-to { margin: 0 0 6px; font-weight: 700; }
+.leave-what { margin: 0 0 10px; }
+.leave-url { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.leave-url .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leave-notes { text-align: start; margin: 12px 0; padding-inline-start: 18px; line-height: 1.6; }
+.leave-skip { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 4px 0 12px; cursor: pointer; }
+.leave-card .row { gap: 8px; }
+@keyframes leave-fade { from { opacity: 0; } }
+@keyframes leave-up { from { opacity: 0; transform: translateY(16px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .leave-back, .leave-card { animation: none; } }
+
+/* ---- markers */
+.mk.place.dirstore { font-size: 17px; }
+.mk.place.dirstore .ring { opacity: .95; }
+.mk.place.dirstore .job.deal-off { width: auto; min-width: 20px; padding: 0 5px; border-radius: 9px; background: #e2264d; color: #fff; font: 800 11px/20px var(--body); animation: none; }
+.mk.place.sheypoor .ring { color: #7a3cff; }

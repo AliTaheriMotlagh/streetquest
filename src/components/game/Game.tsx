@@ -49,6 +49,9 @@ import { OnlineChip, OnlineSheet } from "./Online";
 import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { MapFilter } from "./MapFilter";
+import { AdAreaCard, DirStoreCard, ServicesSheet, StoreDirectory, useDirectory } from "./Directory";
+import { LeaveGuard } from "./LeaveGuard";
+import { MAP_SITES, SITES, siteLayer, STORE_TYPE_KEYS, STORE_TYPES, type DirStore, type StoreType } from "@/lib/stores/directory";
 import type { LiveRoute } from "@/server/traffic";
 import { SocialPanel } from "./Social";
 import { BusinessPanel } from "./Business";
@@ -72,7 +75,7 @@ const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "deals" | "divar" | "traffic" | "siktir";
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "deals" | "divar" | "traffic" | "siktir" | ReturnType<typeof siteLayer>;
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -87,6 +90,8 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
   // A plain glyph (not an emoji): the thumbs-down drawn in SiktirIcon is for the buttons and the map.
   { key: "siktir", emoji: "⊘", label: msg("Siktir spots"), group: msg("Around you") },
+  // Iran's store directories, deal and ad sites: each its own layer (their stores' types are filtered below).
+  ...[...MAP_SITES, "sheypoor" as const].map((id) => ({ key: siteLayer(id), emoji: SITES[id].emoji, label: SITES[id].name, group: msg("Store sites") })),
 ];
 const ALL_LAYERS = MAP_LAYERS.map((l) => l.key);
 const LAYER_GROUPS = [...new Set(MAP_LAYERS.map((l) => l.group))];
@@ -96,6 +101,8 @@ const MAP_LAYERS_KNOWN_KEY = "sq_map_layers_known";
 const LAYERS_BEFORE_TOROB: string[] = ["places", ...VENDOR_KIND_KEYS, "divar", "traffic"];
 /** Kinds of real place the player hid on the map. */
 const MAP_KINDS_KEY = "sq_map_kinds";
+/** Types of store (directory stores) the player hid on the map. */
+const MAP_TYPES_KEY = "sq_map_store_types";
 /** Fetch Snappfood vendors / Divar ads again this far from the last fetch, or after this long. */
 const VENDOR_REFETCH_M = 500;
 const TOROB_REFETCH_M = 800;
@@ -198,6 +205,10 @@ export default function Game() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [layers, setLayers] = useState<MapLayer[]>(ALL_LAYERS);
   const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
+  const [hiddenTypes, setHiddenTypes] = useState<StoreType[]>([]);
+  /** The store list and the services / shopping sites sheet (from the filter or ⋯). */
+  const [dirOpen, setDirOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
   // Explore mode: the map moves freely, and the store layers and places load around its
   // middle instead of around the player (lib/explore.ts). `explore` is that middle.
   const [explore, setExplore] = useState<LatLng | null>(null);
@@ -247,15 +258,30 @@ export default function Game() {
       if (Array.isArray(v)) setLayers(ALL_LAYERS.filter((k) => v.includes(k) || !known.includes(k)));
       const kinds = JSON.parse(localStorage.getItem(MAP_KINDS_KEY) ?? "null");
       if (Array.isArray(kinds)) setHiddenKinds(kinds.filter((k) => typeof k === "string"));
+      const types = JSON.parse(localStorage.getItem(MAP_TYPES_KEY) ?? "null");
+      if (Array.isArray(types)) setHiddenTypes(types.filter((k): k is StoreType => (STORE_TYPE_KEYS as string[]).includes(k)));
     } catch {}
   }, []);
   /** Everything on (every kind of place too), or nothing. */
   const showAll = (show: boolean) => {
     toggleLayer(show ? "all" : "none");
+    if (show && hiddenTypes.length) {
+      setHiddenTypes([]);
+      try {
+        localStorage.removeItem(MAP_TYPES_KEY);
+      } catch {}
+    }
     if (!show || !hiddenKinds.length) return;
     setHiddenKinds([]);
     try {
       localStorage.removeItem(MAP_KINDS_KEY);
+    } catch {}
+  };
+  const toggleType = (k: string) => {
+    const next = hiddenTypes.includes(k as StoreType) ? hiddenTypes.filter((x) => x !== k) : [...hiddenTypes, k as StoreType];
+    setHiddenTypes(next);
+    try {
+      localStorage.setItem(MAP_TYPES_KEY, JSON.stringify(next));
     } catch {}
   };
   const toggleKind = (k: string) => {
@@ -346,6 +372,17 @@ export default function Game() {
       .catch(() => {});
   }, [cinemaOn, look, now]);
   const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
+  // Iran's store directories (Bilbooard, Irangaah, Okala, Netbarg) and Sheypoor's ads, for the site layers that are on.
+  const dirData = useDirectory((k) => layers.includes(k as MapLayer), look ?? null, now);
+  const dirOn = MAP_SITES.some((s) => layers.includes(siteLayer(s)));
+  const siteShown = (d: DirStore) => layers.includes(siteLayer(d.site)) || (d.also ?? []).some((a) => layers.includes(siteLayer(a)));
+  const dirStores = useMemo(() => dirData.stores.filter(siteShown), [dirData.stores, layers]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownDir = useMemo(() => (hiddenTypes.length ? dirStores.filter((d) => !hiddenTypes.includes(d.type)) : dirStores), [dirStores, hiddenTypes]);
+  const typeChips = useMemo(() => {
+    const n = new Map<StoreType, number>();
+    for (const d of dirStores) n.set(d.type, (n.get(d.type) ?? 0) + 1);
+    return STORE_TYPE_KEYS.filter((k) => n.has(k) || hiddenTypes.includes(k)).map((k) => ({ key: k, emoji: STORE_TYPES[k].emoji, label: STORE_TYPES[k].label, count: n.get(k) ?? 0 }));
+  }, [dirStores, hiddenTypes]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
   const spotsAround = useMemo(() => {
@@ -384,16 +421,18 @@ export default function Game() {
       deals: deals.length,
       divar: divar.length,
       siktir: siktirSpots.length,
+      [siteLayer("sheypoor")]: dirData.ads.reduce((n, a) => n + a.ads.length, 0),
     };
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
+    for (const k of MAP_SITES) count[siteLayer(k)] = dirData.stores.filter((d) => d.site === k || d.also?.includes(k)).length;
     return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) }));
-  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots]);
+  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots, dirData]);
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
     return [...n].sort((a, b) => b[1] - a[1]).map(([k, count]) => ({ key: k, emoji: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).emoji, label: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).label, count }));
   }, [spotsAround]);
-  const hiddenCount = ALL_LAYERS.length - layers.length + hiddenKinds.filter((k) => kindChips.some((c) => c.key === k)).length;
+  const hiddenCount = ALL_LAYERS.length - layers.length + hiddenKinds.filter((k) => kindChips.some((c) => c.key === k)).length + hiddenTypes.length;
   const [meTab, setMeTab] = useState<HeroTabId>("quests");
   const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
@@ -1072,6 +1111,8 @@ export default function Game() {
           torob={torobOn ? torobShops : undefined}
           cinemas={cinemaOn ? cinemas : undefined}
           deals={dealsOn ? deals : undefined}
+          dir={shownDir}
+          ads={layers.includes(siteLayer("sheypoor")) ? dirData.ads : undefined}
           traffic={layers.includes("traffic")}
           siktir={siktirOn ? siktirSpots : undefined}
           onLongPress={picker ? undefined : setSiktirAt}
@@ -1231,6 +1272,9 @@ export default function Game() {
               onToggle={(k) => toggleLayer(k as MapLayer)}
               onAll={showAll}
               kinds={layers.includes("places") ? { items: kindChips, hidden: hiddenKinds, onToggle: toggleKind } : null}
+              types={dirOn ? { items: typeChips, hidden: hiddenTypes, onToggle: toggleType } : null}
+              onList={() => (setDirOpen(true), setFilterOpen(false))}
+              onServices={() => (setServicesOpen(true), setFilterOpen(false))}
               onClose={() => setFilterOpen(false)}
             />
           )}
@@ -1284,6 +1328,18 @@ export default function Game() {
         )}
 
         <Toasts toasts={toasts} onDismiss={dismissToast} onOpen={(l) => ctx.openLink(l)} />
+
+        <LeaveGuard />
+        {dirOpen && !panel && (
+          <StoreDirectory
+            stores={dirStores}
+            at={look ?? null}
+            onPick={(d) => (setDirOpen(false), setSelected({ type: "dir", data: d }))}
+            onClose={() => setDirOpen(false)}
+            onServices={() => (setDirOpen(false), setServicesOpen(true))}
+          />
+        )}
+        {servicesOpen && !panel && <ServicesSheet at={look ?? null} onClose={() => setServicesOpen(false)} />}
 
         {/* Selected object card */}
         {selected && !panel && (
@@ -1520,6 +1576,8 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   if (sel.type === "siktir") return <SiktirSheet target={{ lat: sel.data.lat, lng: sel.data.lng, placeKey: sel.data.placeKey, name: sel.data.name }} onClose={onClose} />;
   if (sel.type === "cinema") return <CinemaCard c={sel.data} onClose={onClose} />;
   if (sel.type === "deal") return <DealCard d={sel.data} onClose={onClose} />;
+  if (sel.type === "dir") return <DirStoreCard s={sel.data} onClose={onClose} />;
+  if (sel.type === "ads") return <AdAreaCard area={sel.data} onClose={onClose} />;
   if (sel.type === "biz") return <BizCard b={world?.businesses.find((x) => x.id === sel.data.id) ?? sel.data} onClose={onClose} />;
 
   if (sel.type === "money") {

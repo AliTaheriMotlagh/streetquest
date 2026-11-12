@@ -25,6 +25,7 @@ import { VasatyabLayer } from "./VasatyabLayer";
 import type { SiktirSpot } from "@/lib/siktir";
 import type { MidView } from "@/server/midpoint";
 import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
+import { SITES, STORE_TYPES, type AdArea, type DirStore } from "@/lib/stores/directory";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
 function FrameTarget({ target }: { target: LatLng | null }) {
@@ -75,6 +76,9 @@ type Props = {
   cinemas?: Cinema[];
   /** Stores with a deal or cashback on Takhfifan (a badge with the % off). */
   deals?: Deal[];
+  /** Directory stores (Bilbooard, Irangaah, Okala, Netbarg) and Sheypoor's ads by neighbourhood. */
+  dir?: DirStore[];
+  ads?: AdArea[];
   /** Live traffic on the roads, coloured by speed. */
   traffic?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
@@ -107,7 +111,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, dir, ads, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -166,7 +170,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
         {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
         {vasatyab && <VasatyabLayer view={vasatyab} />}
-        <Layers world={world} me={me} game={game} travelTo={travelTo} travelPath={onStreets ? travelPath : null} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} deals={deals} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} travelPath={onStreets ? travelPath : null} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} deals={deals} dir={dir} ads={ads} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -243,7 +247,7 @@ type GameItem = { id: string; lat: number; lng: number; m?: World["money"][numbe
 /** Game markers are bigger than most: they group a little more loosely. */
 const GAME_SPACING = 1.5;
 /** A real place, a Snappfood vendor or a walk-in Torob store, as the points-of-interest layer clusters them. */
-type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot; tp?: TorobPlace };
+type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot; tp?: TorobPlace; ds?: DirStore };
 /** Places and vendors cluster this much more loosely than other markers (their signs are wider). */
 const POI_SPACING = 1.35;
 /** Full markers on screen at most (more and the furthest places become dots): a phone stays smooth with everything on. */
@@ -322,7 +326,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
  * groups what would overlap into a bubble, and nothing groups from street level on.
  */
-function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "travelPath" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "deals" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
+function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, dir, ads, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "travelPath" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "deals" | "dir" | "ads" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
   const players = others ?? world?.players;
   const map = useMap();
   const view = useMapView();
@@ -369,8 +373,9 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
     for (const v of vendors ?? []) if (view.bounds.contains([v.lat, v.lng])) list.push({ id: `sf${v.code}`, lat: v.lat, lng: v.lng, v });
     for (const p of spots ?? []) if (view.bounds.contains([p.lat, p.lng])) list.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, p });
     for (const tp of torob ?? []) if (view.bounds.contains([tp.lat, tp.lng])) list.push({ id: `tr${tp.id}`, lat: tp.lat, lng: tp.lng, tp });
+    for (const ds of dir ?? []) if (view.bounds.contains([ds.lat, ds.lng])) list.push({ id: `ds${ds.id}`, lat: ds.lat, lng: ds.lng, ds });
     return cluster(list, view.zoom, cell && Math.round(cell * POI_SPACING), "poi");
-  }, [vendors, spots, torob, view, cell, lod]);
+  }, [vendors, spots, torob, dir, view, cell, lod]);
 
   // Money and store jobs: grouped only where they'd overlap (a bubble shows what's in it),
   // each on its own from street level. Nothing is dropped — tap a bubble to zoom in.
@@ -409,10 +414,11 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
         return { g, one, d: Math.hypot(p.x - mid.x, p.y - mid.y) * (one?.p ? 1.4 : 1) };
       })
       .sort((a, b) => a.d - b.d);
-    for (const { g, one } of pois) put(g.key, g.lat, g.lng, one ? (one.p ? 15 : one.tp ? 18 : 19) : 17, one ? one.v?.title ?? one.tp?.name ?? one.p!.name : "", !!one);
+    for (const { g, one } of pois) put(g.key, g.lat, g.lng, one ? (one.p || one.ds ? 15 : one.tp ? 18 : 19) : 17, one ? one.v?.title ?? one.tp?.name ?? one.ds?.name ?? one.p!.name : "", !!one);
     if (lod !== "far") for (const a of divar ?? []) put(`dv${a.city}-${a.id}`, a.lat, a.lng, 20, t("Divar · {area}", { area: a.name }));
+    if (lod !== "far") for (const a of ads ?? []) put(`sh${a.id}`, a.lat, a.lng, 20, t("Sheypoor · {area}", { area: a.name }));
     return declutter(marks, lite ? MARKER_BUDGET.lite : MARKER_BUDGET.full);
-  }, [map, view, lod, gameGroups, poiGroups, playerGroups, world, divar, cinemas, deals, lite]);
+  }, [map, view, lod, gameGroups, poiGroups, playerGroups, world, divar, ads, cinemas, deals, lite]);
   /** " nolabel" when a marker's name has no room. */
   const nl = (id: string) => (deco.named.has(id) ? "" : " nolabel");
 
@@ -523,9 +529,24 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
         const it = g.items[0];
         if (deco.dots.has(g.key)) {
           // Crowded: a dot on the map's canvas (cheap, still tappable).
-          const color = it.tp ? "#e2363c" : it.v ? "#ff2f6e" : (PLACE_CATS[it.p!.cat] ?? PLACE_CATS.shop).color;
-          const sel: Selected = it.tp ? { type: "torob", data: it.tp } : it.v ? { type: "vendor", data: it.v } : { type: "spot", data: it.p! };
+          const color = it.ds ? STORE_TYPES[it.ds.type].color : it.tp ? "#e2363c" : it.v ? "#ff2f6e" : (PLACE_CATS[it.p!.cat] ?? PLACE_CATS.shop).color;
+          const sel: Selected = it.ds ? { type: "dir", data: it.ds } : it.tp ? { type: "torob", data: it.tp } : it.v ? { type: "vendor", data: it.v } : { type: "spot", data: it.p! };
           return <CircleMarker key={it.id} center={[it.lat, it.lng]} radius={DOT_R} pathOptions={{ color: "#ffffff", weight: 1.5, fillColor: color, fillOpacity: 0.95 }} eventHandlers={{ click: () => onSelect(sel) }} />;
+        }
+        if (it.ds) {
+          // A directory store: its type's sign in its site's colour (a Netbarg deal shows what's off).
+          const ds = it.ds, ty = STORE_TYPES[ds.type], site = SITES[ds.site];
+          const pic = lod === "near" && ds.img && ds.site === "okala" ? `<img class="lg" src="${esc(ds.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
+          const tag = ds.off ? `<span class="job deal-off">−${fmtNum(ds.off)}%</span>` : ds.rating >= 4.5 ? `<span class="job">⭐</span>` : "";
+          return (
+            <Marker
+              key={it.id}
+              position={[ds.lat, ds.lng]}
+              zIndexOffset={ds.off ? 290 : 240}
+              icon={icon(`<span class="ring" style="color:${site.color}"></span>${ty.emoji}${pic}<span class="nm">${esc(ds.name)}</span>${tag}`, `place dirstore dir-${ds.site} ${pic ? "has-logo" : ""}${nl(g.key)}`, 32)}
+              eventHandlers={{ click: () => onSelect({ type: "dir", data: ds }) }}
+            />
+          );
         }
         if (it.tp) {
           const tp = it.tp;
@@ -567,6 +588,17 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
         );
       })}
 
+      {/* Sheypoor: like Divar, each neighbourhood with fresh ads, pinned on its centre. */}
+      {lod !== "far" &&
+        ads?.map((a) => (
+          <Marker
+            key={`sh${a.id}`}
+            position={[a.lat, a.lng]}
+            zIndexOffset={245}
+            icon={icon(`<span class="ring"></span>📣<span class="cl-n">${fmtNum(a.ads.length)}</span><span class="nm">${esc(t("Sheypoor · {area}", { area: a.name }))}</span>`, `place sheypoor${nl(`sh${a.id}`)}`, 40)}
+            eventHandlers={{ click: () => onSelect({ type: "ads", data: a }) }}
+          />
+        ))}
       {/* Divar: each neighbourhood around, pinned on its centre with how many fresh ads it has. */}
       {lod !== "far" &&
         divar?.map((a) => (

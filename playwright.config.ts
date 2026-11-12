@@ -66,6 +66,13 @@ export default defineConfig({
           BALAD_POI_URL: `http://localhost:${STUB_PORT}/blp`,
           GOOGLE_PLACES_URL: `http://localhost:${STUB_PORT}/gp`,
           GOOGLE_PLACES_KEY: "test-google-key",
+          // Iran's store sites answer from e2e/api/stores.spec.ts's stub (Netbarg / Sheypoor are unit-tested).
+          BILBOOARD_URL: `http://localhost:${STUB_PORT}/bb`,
+          IRANGAAH_URL: `http://localhost:${STUB_PORT}/ig`,
+          OKALA_URL: `http://localhost:${STUB_PORT}/ok`,
+          NETBARG_URL: "off",
+          SHEYPOOR_URL: "off",
+          BASALAM_URL: `http://localhost:${STUB_PORT}/ba`,
           // Cinemas and sessions answer from e2e/api/cinema.spec.ts's stub.
           CINEMATICKET_URL: `http://localhost:${STUB_PORT}/ct`,
           // No speech service: /api/tts says so (e2e/api/cinema.spec.ts).

@@ -1,10 +1,12 @@
 // Deployment check: open /api/health on your deployed site to see what's misconfigured.
 // Reports which settings exist (never their values) and whether the database works.
-// /api/health?ext=1 also checks that this server can reach Snappfood, Torob and Divar
+// /api/health?ext=1 also checks that this server can reach Snappfood, Torob, Divar, Balad and the
+// store sites (Bilbooard, Irangaah, Okala, Netbarg, Sheypoor, Basalam)
 // (they often refuse servers abroad: then the store layers stay empty).
 import { prisma } from "@/lib/db";
 import { turnConfigured } from "@/server/calls";
 import { extHealth } from "@/server/localData";
+import { storeSitesHealth } from "@/server/storeSites";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,7 @@ const short = (e: unknown) => {
 
 export async function GET(req: Request) {
   const env = process.env;
-  const ext = new URL(req.url).searchParams.get("ext") === "1" ? await extHealth() : undefined;
+  const ext = new URL(req.url).searchParams.get("ext") === "1" ? await Promise.all([extHealth(), storeSitesHealth()]).then(([a, b]) => ({ ...a, ...b })) : undefined;
   const settings = {
     database: !!(env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL),
     authSecret: !!env.AUTH_SECRET && env.AUTH_SECRET !== "change-me",

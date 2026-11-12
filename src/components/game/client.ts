@@ -1,4 +1,5 @@
 "use client";
+import type { AdArea, DirStore } from "@/lib/stores/directory";
 import type { SiktirSpot } from "@/lib/siktir";
 import { fmtWhen, t } from "@/lib/i18n";
 import type { ItemDef } from "@/lib/catalog";
@@ -220,6 +221,8 @@ export type Selected =
   | { type: "cinema"; data: Cinema }
   | { type: "deal"; data: Deal }
   | { type: "siktir"; data: SiktirSpot }
+  | { type: "dir"; data: DirStore }
+  | { type: "ads"; data: AdArea }
   | { type: "player"; data: WorldPlayer };
 
 /** A timestamp in the player's language and calendar (Solar Hijri in Persian). */

@@ -26,6 +26,8 @@ import { requireUser } from "@/server/auth";
 import { findPlace, placesNear } from "@/server/city";
 import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
+import { directoryTwins } from "@/server/storeSites";
+import { SITES } from "@/lib/stores/directory";
 import { dealInfo, dealReviews, dealsAround, divarAround, divarPost, divarPosts, PHONE_LATE_MS, phonesFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
 
 const num = z.coerce.number().finite();
@@ -67,6 +69,15 @@ const withPhones = <T extends { phone?: string }>(x: T, phones: StorePhone[]) =>
 /** The restaurant's own numbers (Snappfood only gives its call centre). */
 async function withMapPhone(menu: Menu): Promise<Menu> {
   return withPhones(menu, await anyPhones({ name: menu.vendor.title, lat: menu.vendor.lat, lng: menu.vendor.lng }, menu.phones ?? phonesFrom("snappfood", menu.phone)));
+}
+
+/** The store's pages on Bilbooard / Irangaah as links, and their numbers after the ones it had. */
+function withTwins(data: StoreData, twins: Awaited<ReturnType<typeof directoryTwins>> | null): StoreData {
+  if (!twins || (!twins.links.length && !twins.phones.length)) return data;
+  const phones = mergePhones(data.about.phones, twins.phones);
+  const links = [...data.links, ...twins.links.map((l) => ({ kind: "directory" as const, url: l.url, label: t("On {site}", { site: t(SITES[l.site].name) }) }))];
+  if (!data.about.phone && phones[0]) links.push({ kind: "phone", url: `tel:${phones[0].number.replace(/[^\d+]/g, "")}`, label: phones[0].number });
+  return { ...data, links, about: { ...data.about, phones, phone: data.about.phone || phones[0]?.number || "" } };
 }
 
 export const GET = route(async (req) => {
@@ -118,7 +129,11 @@ export const GET = route(async (req) => {
     const biz = q.id ? await prisma.business.findFirst({ where: { osmId: q.id } }) : null;
     if (biz) return storeData({ ...biz, cat: biz.category });
     const info = q.id ? (await findPlace(tileKey(tileOf(q).cx, tileOf(q).cy), q.id))?.info : undefined;
-    return storeData({ name: q.name, lat: q.lat, lng: q.lng, cat: q.cat, website: info?.web, phone: info?.phone, instagram: info?.ig, hours: info?.hours, address: info?.addr, photo: info?.img });
+    const [data, twins] = await Promise.all([
+      storeData({ name: q.name, lat: q.lat, lng: q.lng, cat: q.cat, website: info?.web, phone: info?.phone, instagram: info?.ig, hours: info?.hours, address: info?.addr, photo: info?.img }),
+      directoryTwins(q).catch(() => null),
+    ]);
+    return withTwins(data, twins);
   }
   if (q.store === "biz") {
     const b = await prisma.business.findUnique({ where: { id: q.id } });
