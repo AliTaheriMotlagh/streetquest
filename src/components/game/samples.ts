@@ -5,6 +5,7 @@
 // same mute, same ducking). Until a slot's file is decoded — or when it has none — the
 // callers fall back to their Web Audio synth, so a missing file is never silence.
 import { readManifest, SOUND_SLOTS, type SoundKey, type SoundManifest } from "@/lib/soundSlots";
+import { busOfSlot } from "@/lib/audio/mix";
 import type { SoundKind, Vec } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "./sfx";
 import { Emitter, place } from "./spatial";
@@ -106,7 +107,7 @@ export class SampleLoop {
     if (!this.node && v <= 0) return decoded.has(this.key);
     const buf = take(this.key);
     if (!buf) return false;
-    const out = audioOut();
+    const out = audioOut(busOfSlot(this.key));
     if (!out) return true;
     const want = isMuted() ? 0 : Math.max(0, Math.min(1, v)) * this.max;
     const e = this.emitter && at ? this.emitter.at(at, 1) : null;
@@ -148,7 +149,7 @@ export class SampleLoop {
 export function holdSample(key: SoundKey, vol: number, pick = 0): (() => void) | null {
   const all = decoded.get(key);
   if (!all?.length) return void load(key), null;
-  const out = audioOut();
+  const out = audioOut(busOfSlot(key));
   if (!out || isMuted()) return () => {};
   const buf = all[Math.abs(pick) % all.length];
   const { ctx } = out;

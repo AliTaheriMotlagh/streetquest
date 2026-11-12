@@ -125,7 +125,11 @@ mood scales XP; loot funds research; territory funds the army.
   names. Jobs happen *at* them: a 🍔 burger delivery starts at a real burger joint and ends at another real place, a ☕
   check-in is at a real café, and food spawns sit on real restaurants instead of random street corners.
 - **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
-  footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). From home or in
+  footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). A loading screen
+  (`src/components/drive/DriveBoot.tsx`, rules `src/lib/bootGate.ts`) covers the city — progress, what it's doing, a tip —
+  until every tile within 150 m is drawn and your car stands on a street; the controls stay off until then. After 9 s
+  a **Play now** button lets you start anyway, after 30 s it starts by itself, and **Back to the map** works throughout.
+  A mission giver's marker opens its briefing when you drive into it, never because you arrived on top of it. From home or in
   test mode the car *is* your commander: where you drive is where you are, missions are beacons of light, loot is collected by
   driving through it — the only things drawn as game markers. Stores look like stores: their own signs (a board on the
   wall, or a lit sign on a pole at the kerb for the game's businesses — `markers.ts`, `lib/storefront.ts`), small
@@ -150,6 +154,9 @@ mood scales XP; loot funds research; territory funds the army.
   (stereo), or *5.1* when the audio device has six channels (front pair, subwoofer, and a rear pair for what's behind
   you). A browser can't encode Dolby itself — over HDMI the 5.1 mix reaches the receiver as multichannel PCM, and on
   headphones the 3D mode is the same idea as Dolby's headphone rendering (`src/components/game/spatial.ts`).
+  **Settings → Sound** also has a mixer: one slider for everything and one each for *effects & menus*, *cars & sirens*,
+  *guns & explosions*, *voices* and *city ambience* (music keeps its own) — heard as you drag, saved on the device
+  (`sq_mix`; which sound answers to which slider: `src/lib/audio/mix.ts`).
 - **The film look** (High and Ultra, realistic style) — camera motion blur: each pixel is traced back to where it was
   a frame ago from its depth and the two cameras, and smeared along the way; whatever is nearer than the player's car
   stays sharp (the car never smears), a change of camera never blurs, and behind the wheel there's a third of it.
@@ -439,7 +446,9 @@ mood scales XP; loot funds research; territory funds the army.
   played from home (players on real GPS can watch, and switch with one tap). Members see how far each other is, and
   a deliberate jump of the car (start line, going to the host) is announced to the referee so it isn't taken for a
   speed hack (`warp`). `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts`, `src/app/api/party`.
-- **Vasatyab (وسط‌یاب) — where should the party meet?** A group finds the point in the middle of all its members,
+- **Vasatyab (وسط‌یاب) — where should the party meet?** Works with any friends — on their real GPS or playing from
+  home: the 📍 button on the map opens a party (or joins one by code or invite) and invites friends right there; only
+  *driving* there together is a from-home game. A group finds the point in the middle of all its members,
   from where each was last seen (the 3D city position while driving, else the last GPS report; positions older than
   10 minutes are marked stale, older than 6 hours ignored). Three ways to pick it: **Balanced** (the geometric median,
   the default — least travel for everyone put together; robust to one far-away friend), **Fairest** (the minimax point —
@@ -594,8 +603,18 @@ mood scales XP; loot funds research; territory funds the army.
   one marker (its card lists both). Its card: photos you swipe, rating, open now, the deal, about, then tabs —
   **Info** (week's hours, address, every phone), **Menu & prices** (the same store's Snappfood menu or Torob catalog
   when one matches), **Reviews** (Okala) and **On Basalam** (products of its kind from [Basalam](https://basalam.com),
-  sellers in your city first). **List all stores** (filter → 🗂️) shows them all as a list: search, filter by site and
-  by type with counts, nearest / best rated / A–Z. **Services & shops** (filter → 🛠️) books home services —
+  sellers in your city first).
+- **Search — every store and every product, no map needed** (🔍 on the map, or Menu → Places in the 3D city). One
+  screen with two halves. **Stores**: every store the game knows round you from *every* site as one list
+  (`src/lib/stores/listing.ts`) — Snappfood restaurants, Torob's walk-in shops, Takhfifan deals, cinemas, Bilbooard,
+  Irangaah, Okala, Netbarg and the map's own places; the same shop on two sites is one row wearing both sites' badges
+  (and the best of each site's facts). **Products & prices**: dishes from nearby Snappfood menus plus Takhfifan, Torob and
+  Basalam (`src/lib/productSearch.ts`) — a price range in toman with one-tap caps, discounted only, by site; sorted by best
+  match (each restaurant gets two dishes in before any gets more), cheapest, dearest, nearest, best rated or biggest
+  discount. Both halves — and the 3D city's Places panel — share one filter design (`src/components/game/Filters.tsx`,
+  `src/app/filters.css`): a search box, one sideways-scrolling bar of quick chips (open now, deals, ★ 4+, sites in their
+  brand colours), and **Filters** opening a panel in place (sort, sites with counts, store types, show only…) with
+  "Show n results". Built for 360 px phones first. **Services & shops** (filter → 🛠️) books home services —
   cleaning, repairs, moving, beauty… on [Achareh](https://achareh.co), [Sanjagh](https://sanjagh.pro) and
   [Khedmatazma](https://khedmatazma.com), for your city — and lists the shopping sites (Basalam, Okala,
   [Emalls](https://emalls.ir), [Snapp Shop](https://snapp.shop)…) with what each is for. Every 2D and 3D store card
@@ -627,7 +646,11 @@ mood scales XP; loot funds research; territory funds the army.
   cinemas show (grouped where they'd overlap), at neighbourhood zoom everything groups into bubbles showing their
   most common kind and how many, and at street level nothing groups: one pass over all layers in screen space
   (`declutter.ts`) keeps a gap of about one pin between full markers, turns the rest into small dots on the map's
-  canvas (still tappable) — also past 120 full markers (60 on lite phones) — and shows a name only where it has room.
+  canvas (still tappable) — also past a screen's budget of full pins — drops a dot that would sit on another dot or right
+  under a pin, stops adding dots past the dot budget, and names at most a few places, only where they have room
+  (budgets per screen, pins/dots/names: desktop 120/220/40, phone 44/40/12, lite 32/24/10 — `MARKER_BUDGET`). On a
+  phone the HUD is one row (who you are, your money, the inbox): the online count and step counter live in Social and
+  Play, and the "ready for you" tray folds to its icon and a count.
   The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor
   that moves only after a 250 m walk, so they don't reshuffle on every refresh.
 - **Visits** — the home page counts its visits (once per browser session, once per network per half hour) and shows

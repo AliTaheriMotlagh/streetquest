@@ -17,6 +17,7 @@ import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { iconForEmoji } from "@/lib/hudMarkers";
 import { api, type Selected } from "../game/client";
 import { Icon } from "./icons";
+import { Chip, FilterBar, FilterGroup, FilterPanel, Meta, SearchField } from "../game/Filters";
 
 export type PlaceRow = {
   id: string;
@@ -81,6 +82,7 @@ export const DrivePlaces = memo(function DrivePlaces({ rows, here, onQuery, onOp
   const [city, setCity] = useState<string>("");
   const [found, setFound] = useState<{ key: string; rows: PlaceRow[] } | null>(null);
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
   const cb = useRef({ here, onQuery });
   cb.current = { here, onQuery };
 
@@ -127,68 +129,62 @@ export const DrivePlaces = memo(function DrivePlaces({ rows, here, onQuery, onOp
   }, [rows, found, key, asking, cats, away]);
   const loading = asking && found?.key !== key;
 
+  const note = loading
+    ? t("Searching…")
+    : failed
+      ? t("Couldn't search right now — showing what's on the streets around you.")
+      : away && !asking
+        ? t("Type a name or pick a kind to look around {place}.", { place: t(away.name) })
+        : list.length === 0
+          ? asking || draft.trim()
+            ? t("Nothing called “{q}” around here.", { q: draft.trim() || t(PLACE_CATS[cats?.[0] ?? "shop"].label) })
+            : t("No places found around here yet — drive on and the map fills in.")
+          : asking
+            ? t("{n} places within {d}", { n: fmtNum(list.length), d: formatDistance(SEARCH_RADIUS_M) })
+            : t("{n} places on the streets around you — search to look further", { n: fmtNum(list.length) });
+
   return (
-    <div className="drive-tab dplaces">
-      <button className="pm-row" onClick={onMap}>
-        <Icon name="map" size={20} />
-        <span className="grow">{t("Open the map")}</span>
-        <Icon name="external" size={16} />
-      </button>
-      <button className="pm-row dp-products" onClick={onProducts}>
-        <Icon name="search" size={20} />
-        <span className="grow">{t("Find a product")} <span className="small muted">· {t("prices in every store")}</span></span>
-        <Icon name="tag" size={16} />
-      </button>
-      <div className="dp-find">
-        <input className="drive-search" type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t("Search shops, banks, cafés…")} aria-label={t("Search places")} dir="auto" maxLength={60} enterKeyHint="search" />
-        <select className="dp-city" value={city} onChange={(e) => setCity(e.target.value)} aria-label={t("Search around")}>
-          <option value="">{t("Around me")}</option>
-          {EXPLORE_PLACES.map((p) => (
-            <option key={p.id} value={p.id}>{t(p.name)}</option>
-          ))}
-        </select>
+    <div className="drive-tab dplaces fx-stack">
+      <div className="fx-sticky">
+        <SearchField value={draft} onChange={setDraft} placeholder={t("Search shops, banks, cafés…")} label={t("Search places")} />
+        <FilterBar count={city ? 1 : 0} open={open} onToggle={() => setOpen(!open)} panelId="dp-filters">
+          {KINDS.map((k) => {
+            const c = PLACE_CATS[k.cats[0]];
+            return <Chip key={k.key} emoji={c.emoji} label={t(c.label)} on={kind === k.key} onClick={() => setKind(kind === k.key ? null : k.key)} />;
+          })}
+        </FilterBar>
+        <FilterPanel id="dp-filters" open={open} onDone={() => setOpen(false)} onClear={city ? () => setCity("") : undefined} results={t("Done")}>
+          <FilterGroup title={t("Search around")}>
+            <Chip label={t("Around me")} on={!city} onClick={() => setCity("")} />
+            {EXPLORE_PLACES.map((p) => (
+              <Chip key={p.id} label={t(p.name)} on={city === p.id} onClick={() => setCity(p.id)} />
+            ))}
+          </FilterGroup>
+        </FilterPanel>
+        <p className={`fx-status${loading ? " busy" : ""}`} aria-live="polite">{note}</p>
       </div>
-      <div className="dp-chips" role="group" aria-label={t("Kinds of places")}>
-        {KINDS.map((k) => {
-          const c = PLACE_CATS[k.cats[0]];
-          return (
-            <button key={k.key} className={`dp-chip ${kind === k.key ? "on" : ""}`} aria-pressed={kind === k.key} onClick={() => setKind(kind === k.key ? null : k.key)}>
-              <span aria-hidden>{c.emoji}</span>
-              {t(c.label)}
+      <ul className="fx-list">
+        {list.map((p) => (
+          <li key={p.id} className="dp-row">
+            <button type="button" className="fx-row" onClick={() => (p.sel ? onSelect(p.sel) : onOpen(p))} aria-label={t("Open {name}", { name: p.name })}>
+              <span className="fx-thumb" style={p.color ? { background: `color-mix(in srgb, ${p.color} 35%, var(--panel-solid))` } : undefined} aria-hidden>
+                <Icon name={iconForEmoji(p.emoji)} size={22} />
+              </span>
+              <span className="fx-body">
+                <span className="fx-title" dir="auto">{p.name}</span>
+                <Meta parts={[p.sub, formatDistance(p.dist)]} />
+              </span>
             </button>
-          );
-        })}
+            <button type="button" className="dp-go" onClick={() => onGo(p)} aria-label={t("Route to {name}", { name: p.name })} data-tip={t("Go there")}>
+              <Icon name="nav" size={18} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn small ghost grow" onClick={onProducts}>🔎 {t("Find a product")}</button>
+        <button className="btn small ghost grow" onClick={onMap}>🗺️ {t("Open the map")}</button>
       </div>
-      <p className="small muted dp-note" aria-live="polite">
-        {loading
-          ? t("Searching…")
-          : failed
-            ? t("Couldn't search right now — showing what's on the streets around you.")
-            : away && !asking
-              ? t("Type a name or pick a kind to look around {place}.", { place: t(away.name) })
-              : list.length === 0
-                ? asking || draft.trim()
-                  ? t("Nothing called “{q}” around here.", { q: draft.trim() || t(PLACE_CATS[cats?.[0] ?? "shop"].label) })
-                  : t("No places found around here yet — drive on and the map fills in.")
-                : asking
-                  ? t("{n} places within {d}", { n: fmtNum(list.length), d: formatDistance(SEARCH_RADIUS_M) })
-                  : t("{n} places on the streets around you — search to look further", { n: fmtNum(list.length) })}
-      </p>
-      {list.map((p) => (
-        <div key={p.id} className="drive-job drive-place">
-          <button className="drive-place-go" onClick={() => (p.sel ? onSelect(p.sel) : onOpen(p))} aria-label={t("Open {name}", { name: p.name })}>
-            <span className="ic"><Icon name={iconForEmoji(p.emoji)} size={20} /></span>
-            <span className="grow">
-              <b dir="auto">{p.name}</b>
-              <span className="small muted">{p.sub}</span>
-            </span>
-            <span className="small muted">{formatDistance(p.dist)}</span>
-          </button>
-          <button className="dp-go" onClick={() => onGo(p)} aria-label={t("Route to {name}", { name: p.name })} data-tip={t("Go there")}>
-            <Icon name="nav" size={18} />
-          </button>
-        </div>
-      ))}
     </div>
   );
 });

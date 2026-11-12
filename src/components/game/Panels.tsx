@@ -12,7 +12,8 @@ import { QuestsTab } from "./Hero";
 import { askConfirm } from "@/components/Dialogs";
 import { resizePhoto } from "./photo";
 import type { AudioOutput } from "@/lib/audio/spatial";
-import { audioOutput, isMuted, onMuteChange, panning, setAudioOutput, setMuted, sfx, surroundAvailable } from "./sfx";
+import { audioOutput, getMix, isMuted, onMuteChange, panning, setAudioOutput, setMix, setMuted, sfx, surroundAvailable } from "./sfx";
+import { MIX_BUS_KEYS, MIX_BUSES, type Mix } from "@/lib/audio/mix";
 import { musicOn, musicVolume, onMusicChange, setMusicOn, setMusicVolume } from "./music";
 import { canInstall, currentPushSub, disablePush, enablePush, isIos, isStandalone, onPwaChange, promptInstall, pushSupported } from "@/components/pwaClient";
 import { Button } from "@/components/Button";
@@ -1260,6 +1261,25 @@ function BagTab() {
 }
 
 // ---------------------------------------------------------------- sound & music
+/** One slider for everything, then one per kind of sound (lib/audio/mix.ts): heard as you drag. */
+function MixSliders({ off }: { off: boolean }) {
+  const [m, setM] = useState<Mix>(() => getMix());
+  const set = (p: Partial<Mix>) => (setMix(p), setM(getMix()));
+  const row = (key: keyof Mix, emoji: string, label: string) => (
+    <div className="row mix-row" key={key}>
+      <span className="mix-lb"><span aria-hidden>{emoji}</span> {label}</span>
+      <input type="range" min={0} max={1} step={0.05} value={m[key]} disabled={off} onChange={(e) => set({ [key]: Number(e.target.value) })} className="grow" aria-label={label} />
+      <span className="mix-n">{fmtNum(Math.round(m[key] * 100))}</span>
+    </div>
+  );
+  return (
+    <div className="mix">
+      {row("master", "🔊", t("Everything"))}
+      {MIX_BUS_KEYS.map((b) => row(b, MIX_BUSES[b].emoji, t(MIX_BUSES[b].label)))}
+    </div>
+  );
+}
+
 const AUDIO_OUTS: [AudioOutput, string][] = [
   ["auto", msg("Auto")],
   ["headphones", msg("Headphones (3D)")],
@@ -1284,6 +1304,7 @@ function SoundSettings() {
           <span className="grow">🔊 {t("Sound effects & music")}</span>
           <Button className={`btn small ${isMuted() ? "ghost" : "green"}`} onClick={() => setMuted(!isMuted())}>{isMuted() ? t("Off") : t("On")}</Button>
         </div>
+        <MixSliders off={isMuted()} />
         <div className="row">
           <span className="grow">🎵 {t("Background music")}</span>
           <Button className={`btn small ${musicOn() ? "green" : "ghost"}`} disabled={isMuted()} onClick={() => setMusicOn(!musicOn())}>{musicOn() ? t("On") : t("Off")}</Button>

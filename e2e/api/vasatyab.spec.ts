@@ -29,6 +29,22 @@ test.describe("Vasatyab", () => {
     await p.dispose();
   });
 
+  test("friends on their real GPS (not playing from home) open and join a party and get the middle", async ({ baseURL }) => {
+    const here = randomSpot();
+    const [a, b] = await Promise.all([Player.create(baseURL!), Player.create(baseURL!)]);
+    await a.goTo(here);
+    await b.goTo(offset(here, 90, 1200));
+    expectOk(await a.post("/api/party", { action: "create" }));
+    const code = (await a.get<{ party: { code: string } }>("/api/party")).data.party.code;
+    expectOk(await b.post("/api/party", { action: "join", code }));
+    const r = await a.get<Mid>("/api/party/midpoint?lite=1");
+    expect(r.data.members).toHaveLength(2);
+    expect(r.data.point).toBeTruthy();
+    // Driving there together is still a from-home game.
+    expect((await b.post("/api/party/midpoint", { action: "gather" })).status).toBe(403);
+    await Promise.all([a.dispose(), b.dispose()]);
+  });
+
   test("the middle of three members, per-member distances, gather point shared with the party", async ({ baseURL }) => {
     const here = randomSpot();
     const [a, b, c] = await Promise.all([homePlayer(baseURL!, here), homePlayer(baseURL!, offset(here, 0, 1000)), homePlayer(baseURL!, offset(here, 800, 500))]);

@@ -256,6 +256,21 @@ const drive: Record<string, string> = {
   "No menu listed here": "منویی برای این‌جا ثبت نشده",
   "Looking it up…": "در حال جستجو…",
   "Tap for the full card": "برای دیدن همه‌چیز لمس کنید",
+  "Slow down past a shop to see its menu and prices.": "کنار یک مغازه آهسته برو تا منو و قیمت‌هایش را ببینی.",
+  "Every store in the city is a real one — its menu, its prices, its hours.": "همهٔ مغازه‌های شهر واقعی‌اند — با منو، قیمت و ساعت کاری خودشان.",
+  "Press F (or the door button) to get out and walk; again to get back in.": "F (یا دکمهٔ در) را بزن تا پیاده شوی؛ دوباره بزن تا سوار شوی.",
+  "Hold Shift for nitro. On a pad: L2 + R2 slows time.": "برای نیترو Shift را نگه دار. با دسته: L2 + R2 زمان را کند می‌کند.",
+  "Settings → Sound has a slider for every kind of sound.": "در تنظیمات ← صدا برای هر نوع صدا یک اسلایدر هست.",
+  "Menu → Places finds any store in the district, not only the nearest.": "منو ← مکان‌ها هر مغازه‌ای را در محله پیدا می‌کند، نه فقط نزدیک‌ترین‌ها را.",
+  "Vasatyab finds the fairest place to meet your friends.": "وسط‌یاب منصفانه‌ترین جا را برای قرار با دوستانت پیدا می‌کند.",
+  "Crash into a police car and you'll have a star on your head.": "به ماشین پلیس بزنی، یک ستاره تحت تعقیب می‌گیری.",
+  StreetQuest: "استریت‌کوئست",
+  "Your real city, in 3D": "شهر واقعی خودت، سه‌بعدی",
+  "Fetching the real map…": "گرفتن نقشهٔ واقعی…",
+  "Building the streets around you…": "ساختن خیابان‌های اطرافت…",
+  "Putting your car on the street…": "گذاشتن ماشینت توی خیابان…",
+  Ready: "آماده",
+  "Loading the 3D city…": "بارگذاری شهر سه‌بعدی…",
 };
 
 export default drive;

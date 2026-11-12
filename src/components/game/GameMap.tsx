@@ -248,7 +248,15 @@ const GAME_SPACING = 1.5;
 /** Places and vendors cluster this much more loosely than other markers (their signs are wider). */
 const POI_SPACING = 1.35;
 /** Full markers on screen at most (more and the furthest places become dots): a phone stays smooth with everything on. */
-const MARKER_BUDGET = { lite: 60, full: 120 };
+/**
+ * What one screen may hold (declutter.ts): full pins, dots past them, and names. A phone gets
+ * less — a calm map with the nearest places named — and a lite phone less again.
+ */
+const MARKER_BUDGET = {
+  lite: { pins: 32, dots: 24, names: 10 },
+  phone: { pins: 44, dots: 40, names: 12 },
+  full: { pins: 120, dots: 220, names: 40 },
+};
 /** Full pins keep a gap of about one pin between them (declutter.ts); a place closer than that is a dot. */
 const PIN_SPACING = 1.7;
 /** Half a traffic dash's length, and how far each direction sits to its right of the road's middle (m). */
@@ -481,7 +489,7 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
       .sort((a, b) => a.rank - b.rank);
     for (const { g } of places) put(g.key, g);
     for (const g of areaGroups) put(g.key, g);
-    return declutter(marks, lite ? MARKER_BUDGET.lite : MARKER_BUDGET.full, PIN_SPACING);
+    return declutter(marks, lite ? MARKER_BUDGET.lite : map.getSize().x < 600 ? MARKER_BUDGET.phone : MARKER_BUDGET.full, PIN_SPACING);
   }, [map, view, lod, gameGroups, bizList, playerGroups, placeGroups, areaGroups, inView, lite]);
 
   /** One group as the map draws it: a bubble, a dot, or the pin. */
@@ -493,6 +501,7 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
       return <Pin key={g.key} lat={g.lat} lng={g.lng} html={pinHtml(spec)} cls={pinClass(spec)} z={clusterZ} named={false} title={t("{n} places here — tap to zoom in", { n: fmtNum(g.items.length) })} onClick={() => zoomInto(g)} />;
     }
     const it = g.items[0];
+    if (deco.hidden.has(g.key)) return null;
     if (deco.dots.has(g.key)) return <Dot key={g.key} lat={it.lat} lng={it.lng} color={it.spec.color} onClick={() => onSelect(it.sel)} />;
     return <Pin key={g.key} lat={it.lat} lng={it.lng} html={pinHtml(it.spec)} cls={pinClass(it.spec)} z={it.z} named={deco.named.has(g.key)} title={it.spec.label ?? ""} onClick={() => onSelect(it.sel)} />;
   };

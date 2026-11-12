@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { offset } from "@/lib/geo";
 import type { Deal, Menu } from "@/lib/localData";
-import { basalamHits, dealHits, filterProducts, menuHits, menusToRead, offOf, onceTitle, priceSteps, productRank, torobHits, type ProductHit } from "@/lib/productSearch";
+import { basalamHits, dealHits, filterProducts, menuHits, menusToRead, offOf, onceTitle, priceSteps, productRank, spreadStores, torobHits, type ProductHit } from "@/lib/productSearch";
 
 const here = { lat: 35.7355, lng: 51.531 };
 const menu = (code: string, title: string, m: number, rating: number, items: [string, number, number?, string?][]): Menu => ({
@@ -83,5 +83,19 @@ describe("product search", () => {
 
   it("reads the menus a search named first, then the nearest, each once, up to the cap", () => {
     assert.deepEqual(menusToRead(["c", "a"], [{ code: "a" }, { code: "b" }, { code: "c" }, { code: "d" }], 3), ["c", "a", "b"]);
+  });
+});
+
+describe("best match spreads the stores", () => {
+  it("each store gets two in before any gets a third, within a match tier, order otherwise kept", () => {
+    const h = (store: string, n: number, rank = 0) => ({ store, rank, id: `${store}${n}` });
+    const list = [h("a", 1), h("a", 2), h("a", 3), h("a", 4), h("b", 1), h("b", 2), h("b", 3), h("c", 1), h("a", 5, 1)];
+    assert.deepEqual(spreadStores(list).map((x) => x.id), ["a1", "a2", "b1", "b2", "c1", "a3", "a4", "b3", "a5"]);
+  });
+  it("browsing with nothing typed no longer opens with one restaurant's whole menu", () => {
+    const big = menu("cccccc", "سبزی پلاس", 60, 8, Array.from({ length: 12 }, (_, i) => [`سبزی ${i}`, 100_000 + i] as [string, number]));
+    const all = [...menuHits(big, "", here), ...menuHits(near, "", here), ...menuHits(far, "", here)];
+    const top = filterProducts(all, {}).hits.slice(0, 6).map((x) => x.store);
+    assert.ok(new Set(top).size === 3, top.join(","));
   });
 });

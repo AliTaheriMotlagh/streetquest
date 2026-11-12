@@ -14,6 +14,7 @@
 // measured from the player and direction from the camera: the car beside you is loud, and
 // what's on the left of the screen is in the left ear.
 import { admit, airCutoffHz, delayS, dopplerRate, gainAt, hear, stereo, surround, wetAt, type Ears, type Panning, type SoundKind, type Vec } from "@/lib/audio/spatial";
+import { busOfKind } from "@/lib/audio/mix";
 import { audioOut, audioPeek, isMuted, isWeakAudio, panning } from "./sfx";
 
 const ears: Ears = { x: 0, y: 1.6, z: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0 };
@@ -123,7 +124,7 @@ export type Placed = {
  * or every voice is busy with something louder.
  */
 export function place(at: Vec | null | undefined, kind: SoundKind, lifeS: number): Placed | null {
-  const o = audioOut();
+  const o = audioOut(busOfKind(kind));
   // Still waking up: skip this one rather than have it fire late with the next ones.
   if (!o || isMuted() || o.ctx.state !== "running") return null;
   const { ctx } = o;
@@ -161,7 +162,7 @@ export class Emitter {
    * play it at; null while audio isn't there.
    */
   at(at: Vec, level: number): { ctx: AudioContext; input: AudioNode; rate: number; gain: number } | null {
-    const o = audioOut();
+    const o = audioOut(busOfKind(this.kind));
     if (!o) return null;
     const { ctx } = o;
     if (this.c && this.c.mode !== panning()) this.stop(); // the player changed the output

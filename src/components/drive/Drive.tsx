@@ -61,6 +61,8 @@ import type { Cinema } from "@/lib/cinema";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
 import { Others } from "./others";
+import { bootProgress, BOOT_NEAR_M, type BootOut } from "@/lib/bootGate";
+import { DriveBoot } from "./DriveBoot";
 import { nearStore, oncePerStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
@@ -199,6 +201,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const mini = useRef<HTMLCanvasElement>(null);
   const wpRoot = useRef<HTMLDivElement>(null);
   const [hud, setHud] = useState<Hud | null>(null);
+  // The loading screen (lib/bootGate.ts): up until the streets round you are drawn and the car stands on one.
+  const [boot, setBoot] = useState<BootOut>({ pct: 0, stage: "map", done: false, canSkip: false });
+  const skipBoot = useRef(false);
   const [menu, setMenu] = useState<MenuTab | null>(null);
   const [showKeys, setShowKeys] = useState(true);
   useEffect(() => {
@@ -1296,7 +1301,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let engine: { osc: OscillatorNode; osc2: OscillatorNode; gain: GainNode; filter: BiquadFilterNode; lfo: OscillatorNode; lfoGain: GainNode } | null = null;
     const startEngine = () => {
       if (engine) return;
-      const out = audioOut();
+      const out = audioOut("vehicles");
       if (!out) return;
       const { ctx } = out;
       const osc = ctx.createOscillator(), osc2 = ctx.createOscillator(), gain = ctx.createGain(), filter = ctx.createBiquadFilter();
@@ -1331,7 +1336,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (hornOff) return;
       hornOff = holdSample("horn", 0.55, hornVoice);
       if (hornOff) return;
-      const out = audioOut();
+      const out = audioOut("vehicles");
       if (!out || isMuted()) return;
       const { ctx } = out;
       const g = ctx.createGain();
@@ -1660,10 +1665,27 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     pad.start();
     const abil = newAbilities();
     let bSat = 1, bVig = 0.2, aSat = -1, aVig = -1;
+    const bootAt = performance.now();
+    let booted = false, bootCheck = 0;
     const tick = () => {
       if (disposed) return;
       raf = requestAnimationFrame(tick);
       const now = performance.now();
+      // -- loading screen: count what's drawn round the car a few times a second until it may start
+      if (!booted && now - bootCheck > 200) {
+        bootCheck = now;
+        let near = 0, drawn = 0, real = 0;
+        for (const s of tiles.values())
+          if (s.dist < BOOT_NEAR_M) {
+            near++;
+            if (s.mesh) (drawn++, s.mesh.real && real++);
+          }
+        const b = bootProgress({ near, drawn, real, placed: !!P.placed, elapsedMs: now - bootAt });
+        if (b.done || skipBoot.current) {
+          booted = true;
+          setBoot({ ...b, pct: 100, done: true, canSkip: false });
+        } else setBoot((o) => (o.pct === b.pct && o.stage === b.stage && o.canSkip === b.canSkip ? o : b));
+      }
       const rdt = Math.min(0.05, (now - last) / 1000);
       last = now;
       // ---- game pad, then abilities: the world's clock (dt) is the real frame time scaled by slow motion
@@ -1701,7 +1723,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // -- driving / flying
       const keys = input.current.keys;
       // Frozen on the start grid until the countdown ends.
-      const frozen = onFoot || (!!partyNow?.startsAt && partyNow.status === "LIVE" && serverNow < partyNow.startsAt);
+      const frozen = !booted || onFoot || (!!partyNow?.startsAt && partyNow.status === "LIVE" && serverNow < partyNow.startsAt);
       const c = {
         gas: frozen ? 0 : abil.nitroOn ? 1 : Math.max(keys.has("w") || keys.has("arrowup") ? 1 : 0, input.current.gas),
         brake: Math.max(keys.has("s") || keys.has("arrowdown") ? 1 : 0, input.current.brake),
@@ -2003,7 +2025,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
       // -- engine note
       if (engine) {
-        const out = audioOut();
+        const out = audioOut("vehicles");
         if (out) {
           const tt = out.ctx.currentTime;
           const rpm = (0.2 + gearbox.rpm * 0.8 + c.gas * 0.08) * (0.55 + 0.45 * abil.scale); // slow motion drops the pitch
@@ -2557,7 +2579,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {/* Stacked, so two never sit on top of each other. */}
       <div className="drive-notes">
         {!canDrive && <div className={`drive-banner ${gpsNoteSmall ? "small" : ""}`}><Icon name="walk" size={16} />{gpsNoteSmall ? t("Real GPS") : t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
-        {hud?.village && hud.loading > 0 && (
+        {!boot.done && <DriveBoot boot={boot} onSkip={() => (skipBoot.current = true)} onExit={onExit} />}
+        {boot.done && hud?.village && hud.loading > 0 && (
           <div className="drive-loading">
             <i className="drive-spinner" aria-hidden />
             {t("Drawing this neighbourhood from the real map…")}

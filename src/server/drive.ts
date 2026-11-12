@@ -196,12 +196,15 @@ export async function myParty(userId: string) {
   return m ? loadParty(m.partyId) : null;
 }
 
+/**
+ * Games together (going to the host, a round in the 3D city) are played from home; a party
+ * itself is not: friends on their real GPS open or join one to find where to meet (Vasatyab).
+ */
 function assertCanParty(u: User, sim?: boolean) {
   if (!isVirtual(u, sim)) throw new HttpError(403, t("Party games are for Play from home — switch it on to join your friends"));
 }
 
-export async function createParty(u: User, sim?: boolean) {
-  assertCanParty(u, sim);
+export async function createParty(u: User, _sim?: boolean) {
   await leaveParty(u.id);
   for (let i = 0; i < 5; i++) {
     const party = await prisma.driveParty
@@ -215,8 +218,7 @@ export async function createParty(u: User, sim?: boolean) {
   throw new HttpError(503, t("Couldn't open a party — try again"));
 }
 
-export async function joinParty(u: User, code: string, sim?: boolean) {
-  assertCanParty(u, sim);
+export async function joinParty(u: User, code: string, _sim?: boolean) {
   const c = code.trim().toUpperCase();
   if (!isPartyCode(c)) throw new HttpError(400, t("Party codes are 6 letters and numbers"));
   const party = await prisma.driveParty.findUnique({ where: { code: c }, include: { members: true } });

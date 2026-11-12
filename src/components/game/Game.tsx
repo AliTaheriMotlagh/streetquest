@@ -49,7 +49,9 @@ import { OnlineChip, OnlineSheet } from "./Online";
 import { oneEach, VENDOR_KIND_KEYS, VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { MapFilter } from "./MapFilter";
-import { AdAreaCard, DirStoreCard, ServicesSheet, StoreDirectory, useDirectory } from "./Directory";
+import { AdAreaCard, DirStoreCard, ServicesSheet, useDirectory } from "./Directory";
+import { StoreBrowser } from "./StoreBrowser";
+import { fromCinema, fromDeal, fromDir, fromSpot, fromTorob, fromVendor, mergeListings } from "@/lib/stores/listing";
 import { ProductSearch } from "./ProductSearch";
 import { LeaveGuard } from "./LeaveGuard";
 import { applyPreset, currentPreset, type PresetId } from "@/lib/mapPresets";
@@ -61,7 +63,21 @@ import { WalletPanel } from "./WalletPanel";
 import { MAP_STYLES, mapStyle as styleById, type MapStyle } from "./mapStyles";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
-const Drive = dynamic(() => import("../drive/Drive"), { ssr: false, loading: () => <div className="drive drive-boot"><div className="splash-bar"><i /></div></div> });
+// While the 3D code downloads: the same loading screen the city then keeps up until it's drawn (DriveBoot).
+const Drive = dynamic(() => import("../drive/Drive"), {
+  ssr: false,
+  loading: () => (
+    <div className="dboot" role="progressbar" aria-label={t("Loading the 3D city…")}>
+      <div className="db-sky" aria-hidden />
+      <div className="db-card">
+        <div className="db-title">{t("StreetQuest")}</div>
+        <div className="db-sub">{t("Your real city, in 3D")}</div>
+        <div className="db-bar wait" aria-hidden><i /></div>
+        <div className="db-stage"><span>{t("Loading the 3D city…")}</span></div>
+      </div>
+    </div>
+  ),
+});
 
 const NAV: [PanelId, string, string][] = [
   ["nearby", "🎯", msg("Nearby")],
@@ -420,6 +436,21 @@ export default function Game() {
     const jobs = new Set(world.places.map((m) => m.place.id));
     return oneEach((world.spots ?? []).filter((p) => !jobs.has(p.id)), (p) => p.name, taken);
   }, [world, layers, shownVendors, exploreOn, exploreData, shownDir, torobOn, torobShops, dealsOn, deals, cinemaOn, cinemas]);
+  // Every store from every site as one list (StoreBrowser): best source first, each store once.
+  const listings = useMemo(
+    () =>
+      dirOpen
+        ? mergeListings(
+            vendors.map(fromVendor),
+            torobShops.map(fromTorob),
+            deals.map(fromDeal),
+            dirData.stores.map(fromDir),
+            cinemas.map(fromCinema),
+            (exploreOn ? exploreData?.spots ?? [] : world?.spots ?? []).map(fromSpot),
+          )
+        : [],
+    [dirOpen, vendors, torobShops, deals, dirData.stores, cinemas, exploreOn, exploreData, world?.spots],
+  );
   const shownSpots = useMemo(() => (hiddenKinds.length ? spotsAround.filter((p) => !hiddenKinds.includes(p.cat)) : spotsAround), [spotsAround, hiddenKinds]);
   // The game's own markers, as the filter has them.
   const mapWorld = useMemo(
@@ -1287,7 +1318,7 @@ export default function Game() {
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
           <VasatyabDock onView={setVasa} />
-          <Button className="fab" title={t("Find a product")} aria-label={t("Find a product")} aria-haspopup="dialog" onClick={() => (setProductsOpen(true), setFilterOpen(false), setMoreOpen(false))}>
+          <Button className="fab" title={t("Search stores & products")} aria-label={t("Search stores & products")} aria-haspopup="dialog" onClick={() => (setDirOpen(true), setFilterOpen(false), setMoreOpen(false))}>
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </Button>
           <Button className={`fab map-filter-fab ${filterOpen ? "on" : ""}`} title={t("Filter the map")} aria-label={t("Filter the map")} aria-expanded={filterOpen} onClick={() => (setFilterOpen(!filterOpen), setMoreOpen(false))}>
@@ -1369,16 +1400,17 @@ export default function Game() {
 
         <LeaveGuard />
         {dirOpen && !panel && (
-          <StoreDirectory
-            stores={dirAll}
+          <StoreBrowser
+            listings={listings}
             at={look ?? null}
-            onPick={(d) => (setDirOpen(false), setSelected({ type: "dir", data: d }))}
+            loading={dirData.pending}
+            onPick={(ref) => (setDirOpen(false), setSelected(ref as Selected))}
             onClose={() => setDirOpen(false)}
             onServices={() => (setDirOpen(false), setServicesOpen(true))}
             onProducts={() => (setDirOpen(false), setProductsOpen(true))}
           />
         )}
-        {productsOpen && !panel && <ProductSearch at={look ?? null} onClose={() => setProductsOpen(false)} />}
+        {productsOpen && !panel && <ProductSearch at={look ?? null} onClose={() => setProductsOpen(false)} onStores={() => (setProductsOpen(false), setDirOpen(true))} />}
         {servicesOpen && !panel && <ServicesSheet at={look ?? null} onClose={() => setServicesOpen(false)} />}
 
         {/* Selected object card */}

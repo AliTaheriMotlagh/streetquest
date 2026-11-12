@@ -89,15 +89,11 @@ const directory: Record<string, string> = {
   "From Sheypoor · updated every 15 minutes": "از شیپور · هر ۱۵ دقیقه به‌روز می‌شه",
 
   // ---- the store list
-  "All stores around you": "همه مغازه‌های دوروبرت",
-  "Search stores, doctors, services…": "جستجوی مغازه، پزشک، خدمات…",
   "Sites": "سایت‌ها",
-  "Store types": "نوع مغازه",
   "{n} stores": "{n} مغازه",
   "Nearest": "نزدیک‌ترین",
   "Best rated": "بهترین امتیاز",
   "A–Z": "الفبایی",
-  "Loading the stores around you… turn on a store site in the map filter if this stays empty.": "در حال پیدا کردن مغازه‌های دوروبرت… اگه خالی موند، از فیلتر نقشه یه سایت فروشگاهی رو روشن کن.",
   "No store matches — try fewer filters.": "مغازه‌ای پیدا نشد — فیلترها رو کمتر کن.",
 
   // ---- services and shopping sites

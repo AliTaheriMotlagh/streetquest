@@ -41,3 +41,14 @@ describe("declutter", () => {
     assert.equal(labelPx("x".repeat(200)), 140);
   });
 });
+
+describe("a calm map: dots and names have a budget too", () => {
+  it("a dot on another dot or under a pin isn't drawn; past the dot budget none are; names stop at their cap", () => {
+    const m = (id: string, x: number, y: number, dot = true, label = 0) => ({ id, x, y, r: 14, label, dot });
+    const marks = [m("pin", 0, 0, false, 60), m("a", 3, 0), m("b", 200, 0, true, 60), m("c", 230, 0), m("d", 233, 3), m("e", 400, 0), m("f", 600, 0), m("g", 800, 0, false, 60)];
+    const r = declutter(marks, { pins: 2, dots: 2, names: 1 });
+    assert.deepEqual([...r.dots].sort(), ["c", "e"]);
+    assert.deepEqual([...r.hidden].sort(), ["a", "d", "f"]);
+    assert.deepEqual([...r.named], ["pin"]);
+  });
+});

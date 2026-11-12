@@ -71,6 +71,10 @@ const social: Record<string, string> = {
   "{n, plural, one {# mark} other {# marks}} on this place": "{n} علامت روی این مکان",
   "Showing the latest {n}": "{n} مورد آخر نمایش داده می‌شه",
   "Vasatyab · the middle": "وسط‌یاب · وسطِ جمع",
+  "Find the fairest place to meet: open a party, invite friends — on GPS or from home — and Vasatyab shows the middle and places to sit down there.": "منصفانه‌ترین جای قرار را پیدا کن: یک پارتی باز کن، دوستانت را دعوت کن — با GPS یا از خانه — و وسط‌یاب وسطِ جمع و جاهای نشستن نزدیکش را نشان می‌دهد.",
+  "Find where to meet": "پیدا کردن جای قرار",
+  "Invite friends": "دعوت از دوستان",
+  "Vasatyab — where to meet": "وسط‌یاب — کجا قرار بگذاریم",
 };
 
 export default social;

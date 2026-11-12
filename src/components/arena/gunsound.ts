@@ -255,7 +255,7 @@ export class Siren {
     }
     // Silent and not started: don't touch the audio (asking for it keeps it awake).
     if (!this.node && v <= 0) return;
-    const o = audioOut();
+    const o = audioOut("vehicles");
     if (!o) return;
     const { ctx } = o;
     const want = isMuted() ? 0 : Math.max(0, Math.min(1, v)) * 0.05;

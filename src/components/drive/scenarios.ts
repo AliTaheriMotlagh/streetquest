@@ -91,6 +91,10 @@ const SUB_MIN_S = 2.6;
 
 export class Scenarios {
   private offered: Offered[] = [];
+  /** Givers I was standing in last frame (a briefing opens on the way in, not for being there). */
+  private wasInside = new Set<string>();
+  /** Givers that were already there last frame (one that just appeared round me isn't "walked into"). */
+  private known = new Set<string>();
   private loaded = false;
   private givers = new Map<string, { at: Pt; key: string; beacon: ReturnType<typeof makeBeacon> }>();
   private goal: ReturnType<typeof makeBeacon> | null = null;
@@ -513,14 +517,17 @@ export class Scenarios {
       this.syncGivers(me);
     }
     // Stepping into a giver's marker opens its briefing (not again for a minute after "not now").
-    if (!this.card && !me.flying && Math.hypot(me.vx, me.vz) < 14) {
-      for (const [id, g] of this.givers) {
-        if (Math.hypot(g.at.x - me.x, g.at.z - me.z) > GIVER_RADIUS) continue;
-        if (this.clock - (this.dismissedAt.get(id) ?? -Infinity) < 60) continue;
+    // Only on the way in: arriving in the city on top of one (or it appearing round you) doesn't.
+    const inside = new Set<string>();
+    for (const [id, g] of this.givers) if (Math.hypot(g.at.x - me.x, g.at.z - me.z) <= GIVER_RADIUS) inside.add(id);
+    if (!this.card && !me.flying && Math.hypot(me.vx, me.vz) < 14)
+      for (const id of inside) {
+        if (this.wasInside.has(id) || !this.known.has(id) || this.clock - (this.dismissedAt.get(id) ?? -Infinity) < 60) continue;
         this.open(id);
         break;
       }
-    }
+    this.wasInside = inside;
+    this.known = new Set(this.givers.keys());
     this.publish(me);
   }
 

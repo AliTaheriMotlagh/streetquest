@@ -205,3 +205,29 @@ html[lang="en"] .pm-scroll b.small { text-transform: uppercase; letter-spacing: 
 .dp-go { flex: none; width: 44px; height: 44px; margin-inline-end: 2px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--hud-line); background: transparent; color: var(--dpad-accent); cursor: pointer; }
 .dp-go:hover { background: rgba(255, 255, 255, .09); }
 .dplaces .dp-products { color: var(--dpad-accent); }
+
+/* ---- the 3D city's loading screen (drive/DriveBoot.tsx, and Game.tsx while the 3D code downloads): over the city until it's ready */
+.dboot { position: fixed; inset: 0; z-index: 900; pointer-events: auto; display: grid; place-items: end center; padding: 0 16px calc(28px + env(safe-area-inset-bottom)); background: #06080d; overflow: hidden; animation: db-in .25s ease-out; }
+.db-sky { position: absolute; inset: 0; background:
+  radial-gradient(120% 70% at 50% 110%, rgba(240, 160, 60, .32), transparent 60%),
+  radial-gradient(80% 50% at 80% 0%, rgba(99, 179, 242, .18), transparent 70%),
+  linear-gradient(180deg, #0b1220 0%, #121a2b 55%, #241a20 100%); }
+.db-sky::after { content: ""; position: absolute; inset: auto 0 0 0; height: 46%; opacity: .55;
+  background: repeating-linear-gradient(90deg, #070a10 0 22px, #0c111b 22px 30px, #070a10 30px 64px, #0e1420 64px 72px);
+  -webkit-mask: linear-gradient(transparent, #000 35%); mask: linear-gradient(transparent, #000 35%);
+  clip-path: polygon(0 40%, 6% 40%, 6% 18%, 12% 18%, 12% 52%, 20% 52%, 20% 8%, 26% 8%, 26% 36%, 35% 36%, 35% 22%, 44% 22%, 44% 48%, 52% 48%, 52% 0, 57% 0, 57% 30%, 66% 30%, 66% 14%, 74% 14%, 74% 44%, 83% 44%, 83% 26%, 91% 26%, 91% 50%, 100% 50%, 100% 100%, 0 100%); }
+.db-card { position: relative; width: min(460px, 100%); display: grid; gap: 10px; }
+.db-title { font: 900 clamp(30px, 9vw, 46px)/1 var(--display, var(--body)); letter-spacing: .02em; color: #fff; text-shadow: 0 4px 24px rgba(0, 0, 0, .6); }
+.db-sub { font: 700 13px/1.2 var(--body); color: var(--yellow); letter-spacing: .08em; text-transform: uppercase; margin-top: -4px; }
+[lang="fa"] .db-sub { letter-spacing: 0; }
+.db-bar { height: 6px; border-radius: 6px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.db-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--yellow), #ff8a3d); transform-origin: left; transition: transform .35s ease-out; }
+[dir="rtl"] .db-bar i { transform-origin: right; }
+.db-stage { display: flex; justify-content: space-between; gap: 10px; font: 600 13px/1.3 var(--body); color: rgba(255, 255, 255, .8); font-variant-numeric: tabular-nums; }
+.db-tip { margin: 4px 0 0; min-height: 2.6em; font: 500 14px/1.45 var(--body); color: rgba(255, 255, 255, .72); animation: db-tip .4s ease-out; }
+.db-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@keyframes db-in { from { opacity: 0; } }
+@keyframes db-tip { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .dboot, .db-tip { animation: none; } .db-bar i { transition: none; } }
+.db-bar.wait i { width: 35%; transform: none; animation: db-wait 1.1s ease-in-out infinite alternate; }
+@keyframes db-wait { from { margin-inline-start: 0; } to { margin-inline-start: 65%; } }

@@ -153,3 +153,24 @@ describe("signs before the junctions", () => {
     assert.ok(corners.length && corners.every((l) => l.ir));
   });
 });
+
+describe("trees keep off the road", () => {
+  it("jube rows and roadside trees never stand on the asphalt, not even on the inside of a bend", () => {
+    // A winding main road (sharp bends) and a straight one crossing it.
+    const zig: number[] = [];
+    for (let i = 0; i <= 20; i++) zig.push(100 + i * 480, 5000 + (i % 2 ? 900 : -900));
+    let trees = 0;
+    for (let dx = 0; dx < 4; dx++) {
+      const { tile, origin } = tehran(dx, [
+        { l: zig, w: 12, k: "major", n: "خیابان پیچ" },
+        { l: [5000, 100, 5000, 9900], w: 9, k: "minor", n: "خیابان حافظ" },
+      ]);
+      const a = buildTileArrays(tile, origin, "real", false);
+      for (const s of spots(a, "tree")) {
+        trees++;
+        assert.ok(onStreet(a, s.x, s.z) < -0.25, `a tree ${onStreet(a, s.x, s.z).toFixed(2)} m into the road`);
+      }
+    }
+    assert.ok(trees > 20, `${trees} trees`);
+  });
+});

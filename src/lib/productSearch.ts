@@ -171,7 +171,25 @@ export function filterProducts(hits: ProductHit[], f: ProductFilter = {}): { hit
     off: (a, b) => offOf(b) - offOf(a) || a.rank - b.rank || a.price - b.price,
   };
   list.sort(by[sort]);
+  if (sort === "match") list = spreadStores(list);
   return { hits: list.slice(0, f.limit ?? PRODUCT_LIMIT).map(({ rank: _rank, ...h }) => h), total: list.length };
+}
+
+/**
+ * Best match shouldn't be one shop's whole menu: browsing with nothing typed, every dish of
+ * the nearest restaurant ties with the next. Within each match tier, each store gets its
+ * first `per` items in before any store gets more; the order is otherwise kept.
+ */
+export function spreadStores<T extends { store: string; rank: number }>(list: T[], per = 2): T[] {
+  const seen = new Map<string, number>();
+  return list
+    .map((h, i) => {
+      const k = `${h.rank}|${h.store}`, n = seen.get(k) ?? 0;
+      seen.set(k, n + 1);
+      return { h, i, round: Math.floor(n / per) };
+    })
+    .sort((a, b) => a.h.rank - b.h.rank || a.round - b.round || a.i - b.i)
+    .map((x) => x.h);
 }
 
 /**

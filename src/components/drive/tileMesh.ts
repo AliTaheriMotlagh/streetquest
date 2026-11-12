@@ -1503,6 +1503,10 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       }
     }
   });
+  // Last word on trees: the jube rows and roadside trees above only kept clear of *other*
+  // streets, so on the inside of a bend the offset could still put a trunk on its own
+  // asphalt. A tree in the jube stands ≥0.45 m past the edge; anything nearer is in the road.
+  for (let i = treeSpots.length - 1; i >= 0; i--) if (road.on(treeSpots[i].x, treeSpots[i].z, 0.3)) treeSpots.splice(i, 1);
 
   const props: Instances[] = [];
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);

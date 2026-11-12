@@ -187,15 +187,86 @@ export function VasatyabPanel({ view, method, setMethod, reload, onTeleport, onG
 }
 
 /** The 2D map's Vasatyab button (only while you're in a party) and its panel. */
+type PartyResp = { party: { id: string; code: string; members: { userId: string }[] } | null; invites: { id: string; code: string; host: string; players: number }[]; friends: { id: string; username: string; avatar: string; online: boolean }[] };
+
+/**
+ * Not in a party yet (or nobody's invited): open one, join with a code or an invite, and invite
+ * friends — any friend, on GPS or playing from home: meeting up needs no 3D city.
+ */
+function PartyStart({ inParty, onChanged }: { inParty: boolean; onChanged: () => void }) {
+  const { toast } = useGame();
+  const [data, setData] = useState<PartyResp | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [invited, setInvited] = useState<Set<string>>(new Set());
+  const load = useCallback(() => api<PartyResp>("/api/party").then(setData).catch(() => {}), []);
+  useEffect(() => void load(), [load, inParty]);
+  const run = async (body: Record<string, unknown>, ok?: string) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      await api("/api/party", { body });
+      if (ok) toast({ kind: "social", title: ok });
+      await load();
+      onChanged();
+      return true;
+    } catch (e) {
+      toast({ kind: "error", title: (e as Error).message });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const party = data?.party ?? null;
+  const members = new Set(party?.members.map((m) => m.userId) ?? []);
+  const friends = (data?.friends ?? []).filter((f) => !members.has(f.id)).sort((a, b) => Number(b.online) - Number(a.online));
+  if (!party)
+    return (
+      <div className="vasa-start">
+        <p className="small muted">{t("Find the fairest place to meet: open a party, invite friends — on GPS or from home — and Vasatyab shows the middle and places to sit down there.")}</p>
+        <Button className="btn yellow block" disabled={busy} onClick={() => run({ action: "create" }, t("Party open — invite your friends!"))}>📍 {t("Find where to meet")}</Button>
+        <div className="row party-join">
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))} placeholder={t("Party code")} aria-label={t("Party code")} autoCapitalize="characters" spellCheck={false} />
+          <Button className="btn" disabled={busy || code.length !== 6} onClick={() => run({ action: "join", code }, t("You joined the party"))}>{t("Join")}</Button>
+        </div>
+        {data?.invites.map((i) => (
+          <div key={i.id} className="row vasa-invite">
+            <span className="grow small">{t("{name}'s party · {n} players", { name: i.host, n: i.players })}</span>
+            <Button className="btn small yellow" disabled={busy} onClick={() => run({ action: "join", code: i.code }, t("You joined the party"))}>{t("Join")}</Button>
+          </div>
+        ))}
+      </div>
+    );
+  if (!friends.length) return null;
+  return (
+    <details className="vasa-friends" open={party.members.length < 2}>
+      <summary className="small">{t("Invite friends")} · {party.code}</summary>
+      {friends.map((f) => (
+        <div key={f.id} className="row vasa-invite">
+          <span aria-hidden>{f.avatar}</span>
+          <span className="grow small">{f.username}</span>
+          <span className={`dot ${f.online ? "on" : ""}`} aria-label={f.online ? t("online") : t("offline")} />
+          <Button
+            className="btn small"
+            disabled={busy || invited.has(f.id)}
+            onClick={() => run({ action: "invite", partyId: party.id, userId: f.id }, t("Invite sent to {name}", { name: f.username })).then((ok) => ok && setInvited(new Set([...invited, f.id])))}
+          >
+            {invited.has(f.id) ? "✓" : t("Invite")}
+          </Button>
+        </div>
+      ))}
+    </details>
+  );
+}
+
 export function VasatyabDock({ onView }: { onView: (v: MidView | null) => void }) {
   const [open, setOpen] = useState(false);
   const v = useVasatyab(open);
   // The map draws the point while the panel is open, and the gather point whenever there is one.
   useEffect(() => onView(v.inParty && v.view && (open || v.view.meet) ? v.view : null), [v.view, open, v.inParty]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!v.inParty) return null;
   return (
     <>
-      <Button className={`fab vasa-fab ${open ? "on" : ""}`} title={t("Vasatyab")} aria-label={t("Vasatyab")} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <Button className={`fab vasa-fab ${open ? "on" : ""} ${v.inParty ? "" : "idle"}`} title={t("Vasatyab")} aria-label={t("Vasatyab — where to meet")} aria-expanded={open} onClick={() => setOpen(!open)}>
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="5" cy="6" r="2" />
           <circle cx="19" cy="7" r="2" />
@@ -210,7 +281,8 @@ export function VasatyabDock({ onView }: { onView: (v: MidView | null) => void }
             <b className="grow">📍 {t("Vasatyab")}</b>
             <button className="close" onClick={() => setOpen(false)} aria-label={t("Close")}>✕</button>
           </div>
-          <VasatyabPanel view={v.view} method={v.method} setMethod={v.setMethod} reload={v.reload} />
+          <PartyStart inParty={v.inParty} onChanged={v.reload} />
+          {v.inParty && <VasatyabPanel view={v.view} method={v.method} setMethod={v.setMethod} reload={v.reload} />}
         </div>
       )}
     </>

@@ -5,7 +5,7 @@
 //  - DirStoreCard: one store — photos, hours, phones, the deal, Okala's reviews, its menu (Snappfood)
 //    or catalog (Torob) when one matches, Basalam products of its kind, and its page on its site;
 //  - AdAreaCard: a neighbourhood's newest Sheypoor ads;
-//  - StoreDirectory: every store round you as a list, searchable, filtered by site and by type;
+//  (the list of every store round you is StoreBrowser.tsx, over every site, not only these);
 //  - ServicesSheet: home services (Achareh, Sanjagh, Khedmatazma) and the online shopping sites.
 // Every link out goes through the leave page (LeaveGuard).
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -234,111 +234,6 @@ export function AdAreaCard({ area, onClose }: { area: AdArea; onClose: () => voi
       </div>
       <a className="btn small ghost ext-link ext-sheypoor block" href={SITES.sheypoor.url} target="_blank" rel="noopener noreferrer">📣 {t("More on Sheypoor")}</a>
       <p className="small muted ext-source">{t("From Sheypoor · updated every 15 minutes")}</p>
-    </Sheet>
-  );
-}
-
-// ---------------------------------------------------------------- the list
-type Sort = "near" | "rating" | "name";
-const PAGE = 60;
-/** Every directory store round you, as a list: search, by site, by type, nearest / best rated first. */
-export function StoreDirectory({ stores, at, onPick, onClose, onServices, onProducts }: { stores: DirStore[]; at: LatLng | null; onPick: (s: DirStore) => void; onClose: () => void; onServices: () => void; /** Search what the stores sell instead (ProductSearch). */ onProducts?: () => void }) {
-  const [q, setQ] = useState("");
-  const [sites, setSites] = useState<MapSite[]>([]);
-  const [types, setTypes] = useState<StoreType[]>([]);
-  const [sort, setSort] = useState<Sort>("near");
-  const [shown, setShown] = useState(PAGE);
-  const withDist = useMemo(() => stores.map((s) => ({ s, m: at ? distanceM(at, s) : 0 })), [stores, at]);
-  // Typing never waits for the list: the box updates at once, the (long) list a moment later,
-  // and each store's searchable text is built once, not three times a key.
-  const dq = useDeferredValue(q);
-  const hay = useMemo(() => new Map(stores.map((s) => [s.id, `${s.name} ${s.cat} ${t(STORE_TYPES[s.type].label)}`.toLowerCase()])), [stores]);
-  const words = dq.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const match = (s: DirStore) => !words.length || words.every((w) => (hay.get(s.id) ?? "").includes(w));
-  // Counts for each chip: what the other filters leave.
-  const bySite = (s: DirStore) => !sites.length || sites.includes(s.site) || (s.also ?? []).some((a) => sites.includes(a));
-  const byType = (s: DirStore) => !types.length || types.includes(s.type);
-  const siteN = useMemo(() => {
-    const n = new Map<MapSite, number>();
-    for (const { s } of withDist) if (match(s) && byType(s)) for (const x of [s.site, ...(s.also ?? [])]) n.set(x, (n.get(x) ?? 0) + 1);
-    return n;
-  }, [withDist, dq, types]); // eslint-disable-line react-hooks/exhaustive-deps
-  const typeN = useMemo(() => {
-    const n = new Map<StoreType, number>();
-    for (const { s } of withDist) if (match(s) && bySite(s)) n.set(s.type, (n.get(s.type) ?? 0) + 1);
-    return n;
-  }, [withDist, dq, sites]); // eslint-disable-line react-hooks/exhaustive-deps
-  const list = useMemo(() => {
-    const l = withDist.filter(({ s }) => match(s) && bySite(s) && byType(s));
-    l.sort((a, b) => (sort === "near" ? a.m - b.m : sort === "rating" ? b.s.rating - a.s.rating || a.m - b.m : a.s.name.localeCompare(b.s.name, "fa")));
-    return l;
-  }, [withDist, dq, sites, types, sort]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => setShown(PAGE), [dq, sites, types, sort]);
-  const flip = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
-  return (
-    <Sheet title={`🗂️ ${t("All stores around you")}`} onClose={onClose} tall>
-      <input className="dir-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search stores, doctors, services…")} aria-label={t("Search stores, doctors, services…")} dir="auto" />
-      {onProducts && (
-        <button className="btn small cyan dir-products" onClick={onProducts}>
-          🔎 {t("Find a product")} <span className="small">· {t("prices in every store")}</span>
-        </button>
-      )}
-      <div className="filter-chips dir-chips" aria-label={t("Sites")}>
-        {MAP_SITES.map((s) => (
-          <button key={s} className={`filter-chip ${sites.includes(s) ? "on" : ""}`} aria-pressed={sites.includes(s)} onClick={() => setSites(flip(sites, s))} style={{ "--site": SITES[s].color } as React.CSSProperties}>
-            <span aria-hidden>{SITES[s].emoji}</span>
-            <span className="lb">{t(SITES[s].name)}</span>
-            <span className="n">{fmtNum(siteN.get(s) ?? 0)}</span>
-          </button>
-        ))}
-      </div>
-      <div className="filter-chips kinds dir-chips" aria-label={t("Store types")}>
-        {STORE_TYPE_KEYS.filter((k) => typeN.get(k) || types.includes(k)).map((k) => (
-          <button key={k} className={`filter-chip ${types.includes(k) ? "on" : ""}`} aria-pressed={types.includes(k)} onClick={() => setTypes(flip(types, k))}>
-            <span aria-hidden>{STORE_TYPES[k].emoji}</span>
-            <span className="lb">{t(STORE_TYPES[k].label)}</span>
-            <span className="n">{fmtNum(typeN.get(k) ?? 0)}</span>
-          </button>
-        ))}
-      </div>
-      <div className="row dir-sort">
-        <span className="small muted grow">{t("{n} stores", { n: fmtNum(list.length) })}</span>
-        {(["near", "rating", "name"] as Sort[]).map((k) => (
-          <button key={k} className={`btn tiny ghost ${sort === k ? "on" : ""}`} aria-pressed={sort === k} onClick={() => setSort(k)}>
-            {k === "near" ? `📍 ${t("Nearest")}` : k === "rating" ? `⭐ ${t("Best rated")}` : `🔤 ${t("A–Z")}`}
-          </button>
-        ))}
-        {(sites.length > 0 || types.length > 0 || q) && (
-          <button className="btn tiny ghost" onClick={() => (setSites([]), setTypes([]), setQ(""))}>✕ {t("Clear")}</button>
-        )}
-      </div>
-      {!stores.length ? (
-        <p className="small muted">{t("Loading the stores around you… turn on a store site in the map filter if this stays empty.")}</p>
-      ) : !list.length ? (
-        <p className="small muted">{t("No store matches — try fewer filters.")}</p>
-      ) : (
-        <ul className="dir-list">
-          {list.slice(0, shown).map(({ s, m }) => (
-            <li key={s.id}>
-              <button className="dir-row" onClick={() => onPick(s)}>
-                {s.img ? <Pic src={s.img} className="dir-thumb" /> : <span className="dir-thumb ph" style={{ background: STORE_TYPES[s.type].color }}>{STORE_TYPES[s.type].emoji}</span>}
-                <span className="grow">
-                  <b dir="auto">{s.name}</b>
-                  <span className="small muted" dir="auto">{[t(STORE_TYPES[s.type].label), s.cat, at ? formatDistance(m) : ""].filter(Boolean).join(" · ")}</span>
-                  <span className="dir-row-tags">
-                    <SiteChip site={s.site} small />
-                    {s.rating > 0 && <span className="tag">{stars(s.rating)}</span>}
-                    {!!s.off && <span className="deal-tag">−{fmtNum(s.off)}%</span>}
-                    {s.phone && <span className="tag">📞</span>}
-                  </span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {list.length > shown && <button className="btn small ghost block" onClick={() => setShown(shown + PAGE)}>{t("Show more")} ({fmtNum(list.length - shown)})</button>}
-      <button className="btn small cyan block" onClick={onServices}>🛠️ {t("Home services & shopping sites")}</button>
     </Sheet>
   );
 }

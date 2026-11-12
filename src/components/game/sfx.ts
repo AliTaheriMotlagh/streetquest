@@ -1,5 +1,6 @@
 "use client";
 import { panningFor, readOutput, type AudioOutput, type Panning } from "@/lib/audio/spatial";
+import { DEFAULT_MIX, MIX_BUS_KEYS, parseMix, sliderGain, type Mix, type MixBus } from "@/lib/audio/mix";
 // Game sound effects, synthesized with the Web Audio API: no audio files to host,
 // license or download. Browsers only allow audio after a user gesture, so the context
 // is unlocked on the first tap. Mute is remembered per device.
@@ -53,11 +54,22 @@ let white: AudioBuffer | null = null;
 let pink: AudioBuffer | null = null;
 let brown: AudioBuffer | null = null;
 let muted = false;
+/** The player's mixer (lib/audio/mix.ts): the master level and one per kind of sound. */
+const MIX_KEY = "sq_mix";
+let mix: Mix = { ...DEFAULT_MIX };
+let mixNode: GainNode | null = null;
+/** Per kind of sound: its dry bus and its reverb send, each at the slider's level. */
+const buses: Partial<Record<MixBus, { dry: GainNode; wet: GainNode; synth: GainNode }>> = {};
+/** The synthesized sounds that belong on another slider than "effects". */
+const SFX_BUS: Partial<Record<Sfx, MixBus>> = { shot: "weapons", miss: "weapons", hit: "weapons", explode: "weapons", nuke: "weapons", reload: "weapons", siren: "vehicles" };
+/** Where route() sends what's being synthesized right now (null: the effects bus). */
+let synthTo: GainNode | null = null;
 const listeners = new Set<(m: boolean) => void>();
 
 if (typeof window !== "undefined") {
   try {
     muted = localStorage.getItem(KEY) === "1";
+    mix = parseMix(localStorage.getItem(MIX_KEY));
     output = readOutput(localStorage.getItem(OUT_KEY));
   } catch {}
   // The events that count as a user activation (pointerdown only does for a mouse).
@@ -173,8 +185,9 @@ function audio() {
 function build(a: BaseAudioContext, cheap: boolean) {
   {
     // Master: everything meets here, then sub-cut → glue compressor → limiter.
-    const mix = a.createGain();
-    mix.gain.value = 0.8;
+    const mixIn = a.createGain();
+    mixIn.gain.value = 0.8 * sliderGain(mix.master);
+    mixNode = mixIn;
     const hp = a.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 38;
@@ -187,15 +200,15 @@ function build(a: BaseAudioContext, cheap: boolean) {
     glue.release.value = 0.18;
     const ceiling = a.createGain();
     ceiling.gain.value = 0.9;
-    mix.connect(hp).connect(glue).connect(softClip(a, cheap)).connect(ceiling);
+    mixIn.connect(hp).connect(glue).connect(softClip(a, cheap)).connect(ceiling);
     master = ceiling;
     rearBus = a.createGain();
     rearBus.gain.value = 0.8;
     wire(a);
 
     sfxBus = a.createGain();
-    sfxBus.gain.value = 0.7;
-    sfxBus.connect(mix);
+    sfxBus.gain.value = 0.7 * sliderGain(mix.effects);
+    sfxBus.connect(mixIn);
     // Room reverb on a send: gives sounds a space to live in instead of a dry, boxy beep.
     // Weak phones: two short darkened echoes — most of the space, a fraction of the work.
     const ret = a.createGain();
@@ -213,16 +226,28 @@ function build(a: BaseAudioContext, cheap: boolean) {
       warm.connect(d1).connect(ret);
       warm.connect(d2).connect(fb).connect(d2);
       d2.connect(ret);
-      ret.connect(mix);
+      ret.connect(mixIn);
     } else {
       ret.gain.value = 0.55;
       const conv = a.createConvolver();
       conv.buffer = impulse(a, 1.6, 3.2);
-      verb.connect(conv).connect(warm).connect(ret).connect(mix);
+      verb.connect(conv).connect(warm).connect(ret).connect(mixIn);
     }
 
     musicBus = a.createGain();
-    musicBus.connect(mix);
+    musicBus.connect(mixIn);
+    // One bus per kind of sound made outside this file (cars, guns, voices, the city…).
+    for (const b of MIX_BUS_KEYS) {
+      const dry = a.createGain(), wet = a.createGain();
+      dry.gain.value = wet.gain.value = sliderGain(mix[b]);
+      dry.connect(musicBus);
+      wet.connect(verb);
+      // Synthesized sounds of this kind come in at the effects bus's own level.
+      const synth = a.createGain();
+      synth.gain.value = 0.7;
+      synth.connect(dry);
+      buses[b] = { dry, wet, synth };
+    }
 
     // Short loops (long sounds loop them): less to compute on the first tap.
     white = noiseBuffer(a, 1, "white");
@@ -302,12 +327,36 @@ export const isMuted = () => muted;
  * horn (same context, own bus, ducked under big sounds). Asking for it counts as making a
  * sound: it keeps the audio thread from falling asleep mid-fight and wakes it if it has.
  */
-export function audioOut() {
+export function audioOut(bus?: MixBus) {
   const a = audio();
   if (!a || !musicBus) return null;
   lastSound = performance.now();
   if (a.state === "suspended" && !document.hidden && (!muted || awake.size)) void a.resume().catch(() => {});
-  return { ctx: a, out: musicBus as AudioNode, verb: verb as AudioNode, rear: rearBus as AudioNode };
+  // A kind of sound goes through its own slider (dry and reverb alike); music has its own (music.ts).
+  const b = bus ? buses[bus] : undefined;
+  return { ctx: a, out: (b?.dry ?? musicBus) as AudioNode, verb: (b?.wet ?? verb) as AudioNode, rear: rearBus as AudioNode };
+}
+
+/** The player's mixer as it stands. */
+export const getMix = (): Mix => ({ ...mix });
+/** Move one slider (or several): heard at once, remembered on this device. */
+export function setMix(p: Partial<Mix>) {
+  mix = parseMix(JSON.stringify({ ...mix, ...p }));
+  try {
+    localStorage.setItem(MIX_KEY, JSON.stringify(mix));
+  } catch {}
+  const a = ctx;
+  if (a) {
+    const t = a.currentTime;
+    mixNode?.gain.setTargetAtTime(0.8 * sliderGain(mix.master), t, 0.03);
+    sfxBus?.gain.setTargetAtTime(0.7 * sliderGain(mix.effects), t, 0.03);
+    for (const b of MIX_BUS_KEYS) {
+      const n = buses[b];
+      n?.dry.gain.setTargetAtTime(sliderGain(mix[b]), t, 0.03);
+      n?.wet.gain.setTargetAtTime(sliderGain(mix[b]), t, 0.03);
+    }
+  }
+  listeners.forEach((l) => l(muted));
 }
 export function setMuted(m: boolean) {
   muted = m;
@@ -338,7 +387,7 @@ function route(node: AudioNode, o: Out) {
     p.pan.value = Math.max(-1, Math.min(1, o.pan));
     last = node.connect(p);
   }
-  last.connect(sfxBus!);
+  last.connect(synthTo ?? sfxBus!);
   if (o.wet) {
     const s = a.createGain();
     s.gain.value = o.wet;
@@ -671,6 +720,17 @@ let waiting: { name: Sfx; at: number } | null = null;
 let waking = false;
 
 /** Play a sound. Never throws; silently does nothing when muted or audio is blocked. */
+/** Build `name` now, on its own slider's bus (it's all scheduled synchronously). */
+function synth(name: Sfx) {
+  const b = SFX_BUS[name];
+  synthTo = b ? buses[b]?.synth ?? null : null;
+  try {
+    SOUNDS[name]();
+  } finally {
+    synthTo = null;
+  }
+}
+
 export function sfx(name: Sfx) {
   if (muted) return;
   try {
@@ -694,12 +754,12 @@ export function sfx(name: Sfx) {
           const w = waiting;
           waiting = null;
           if (!w) return;
-          if (a.state === "running" && !muted && performance.now() - w.at < WAKE_MS) (SOUNDS[w.name](), stats.played++);
+          if (a.state === "running" && !muted && performance.now() - w.at < WAKE_MS) (synth(w.name), stats.played++);
           else stats.dropped++;
         });
       return;
     }
-    SOUNDS[name]();
+    synth(name);
     stats.played++;
   } catch {}
 }
@@ -713,13 +773,15 @@ const stats = { played: 0, dropped: 0 };
  */
 async function renderTest(name: Sfx, cheap: boolean) {
   const off = new OfflineAudioContext(2, 48000 * 3, 48000);
-  const saved = { ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix };
+  const saved = { ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix, mixNode };
+  const savedBuses = { ...buses };
   ctx = off as unknown as AudioContext;
   build(off, cheap);
   try {
     SOUNDS[name]();
   } finally {
-    ({ ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix } = saved);
+    ({ ctx, sfxBus, verb, musicBus, white, pink, brown, master, rearBus, matrix, mixNode } = saved);
+    for (const b of MIX_BUS_KEYS) buses[b] = savedBuses[b];
   }
   const buf = await off.startRendering();
   let peak = 0, tail = 0, bad = 0;

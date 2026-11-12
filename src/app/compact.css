@@ -147,3 +147,23 @@
   .shud-banner b { font-size: 18px; }
   .shud-banner span { font-size: 11px; }
 }
+
+/* ---- Minimal map HUD on phones: one row (who I am · my money · inbox). The online count and
+   the step counter live in Social and Play; the status pill only shows when something needs
+   you (GPS trouble, test mode, playing from home, driving). The "ready for you" tray folds to
+   its icon and a count — tap to open it, as before. */
+@media (max-width: 520px) {
+  .hud-status .online-chip, .hud-status .step-chip { display: none; }
+  .hud-status:not(:has(> :not(.online-chip):not(.step-chip))) { display: none; }
+  .gem-chip .plus { display: none; }
+  .ready-tray.has-items { width: auto; padding: 6px 8px; gap: 6px; }
+  .ready-tray.has-items .rt-txt { display: none; }
+  .ready-wrap.open .ready-tray.has-items .rt-txt { display: grid; }
+}
+
+/* ---- Settings → Sound: the mixer (game/Panels.tsx MixSliders) */
+.mix { display: grid; gap: 2px; }
+.mix-row { gap: 10px; align-items: center; min-height: 40px; }
+.mix-lb { flex: 0 0 42%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.mix-n { flex: none; width: 34px; text-align: end; font: 700 12px/1 var(--body); color: var(--muted); font-variant-numeric: tabular-nums; }
+.mix-row input[type="range"] { min-height: 32px; }

@@ -41,7 +41,7 @@ function files() {
 async function load(file: string) {
   if (bufs.has(file)) return;
   bufs.set(file, null);
-  const o = audioOut();
+  const o = audioOut("voices");
   if (!o) return bufs.delete(file);
   try {
     const r = await fetch(`/sounds/voice/${file}`);
@@ -61,7 +61,7 @@ function ttsLine(b: Bark, v: VoiceKind): AudioBuffer | Promise<AudioBuffer | nul
   const key = `${b.id}-${v}`, have = tts.get(key);
   if (have === "none") return null;
   if (have) return have;
-  const o = audioOut();
+  const o = audioOut("voices");
   if (!o) return null;
   const p = fetch(`/api/tts?id=${encodeURIComponent(b.id)}&v=${v}&k=${barkKey(b, v)}`)
     .then(async (r) => {

@@ -18,6 +18,7 @@ import "./controls.css";
 import "./storefront.css";
 import "./hud.css";
 import "./directory.css";
+import "./filters.css";
 import "./map-pins.css";
 import "./compact.css";
 
