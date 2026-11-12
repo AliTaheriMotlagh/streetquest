@@ -21,7 +21,7 @@ import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { S } from "@/lib/settings";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
-import { allowedVehicle, drivableOf, isPaint, LAND_ALT_M, lowEnough, PAINTS, VEHICLES, type VehicleKey } from "@/lib/vehicles";
+import { allowedVehicle, drivableOf, drivenVehicle, isPaint, LAND_ALT_M, lowEnough, PAINTS, startVehicle, STARTER_CAR, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { CHECKPOINT_M, type PartyGame, type PartyView } from "@/lib/party";
 import { Button } from "@/components/Button";
 import { Art } from "@/components/art/Art";
@@ -236,7 +236,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [quality, setQuality] = useState<QualityPick>(() => qualityPick());
   const [timeOfDay, setTimeOfDay] = useState<TimePick>(() => timePick());
   const [weather, setWeather] = useState<Weather>(() => weatherPick());
-  const [vehicle, setVehicle] = useState<VehicleKey>(() => allowedVehicle(store.get(VEHICLE_KEY), me?.level ?? 1));
+  const [vehicle, setVehicle] = useState<VehicleKey>(() => startVehicle(store.get(VEHICLE_KEY), me?.level ?? 1));
   const [paint, setPaint] = useState(() => {
     const c = store.get(COLOR_KEY);
     return isPaint(c) ? c : PAINTS[0];
@@ -337,7 +337,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
   // A vehicle you haven't unlocked (level dropped, other device) falls back to the hatchback.
   useEffect(() => {
-    if (me && allowedVehicle(vehicle, me.level) !== vehicle) setVehicle("car");
+    if (me && drivenVehicle(vehicle, me.level) !== vehicle) setVehicle(STARTER_CAR);
   }, [me?.level]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1591,12 +1591,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const G = gfx.grade, toonish = style === "toon";
       G.bloom = (toonish ? 0.05 : 0.06) + 0.14 * night;
       G.threshold = night > 0.5 ? 1.1 : 1.6;
-      G.saturation = toonish ? 1.04 : 1.08 - 0.22 * W.overcast;
-      G.contrast = toonish ? 1.02 : 1.06 - 0.04 * W.overcast;
-      G.vignette = 0.2 + 0.1 * night;
-      G.ao = 0.7;
+      // Realistic: an open-world look — rich colour and contrast under a clear sky, a sun-warmed
+      // day (teal shadows come from the film look's split toning), flatter and greyer when overcast.
+      G.saturation = toonish ? 1.04 : 1.16 - 0.26 * W.overcast;
+      G.contrast = toonish ? 1.02 : 1.12 - 0.07 * W.overcast;
+      G.vignette = toonish ? 0.2 + 0.1 * night : 0.28 + 0.1 * night;
+      G.ao = toonish ? 0.7 : 0.85;
       const warm = !toonish && night > 0.2 && night < 0.6 ? 1 - Math.abs(night - 0.45) / 0.25 : 0;
-      G.tint.setRGB(1 + 0.05 * warm - 0.05 * Math.max(0, night - 0.6), 1, 1 - 0.06 * warm + 0.07 * Math.max(0, night - 0.6));
+      const day = toonish ? 0 : Math.max(0, 1 - night * 2) * (1 - W.overcast);
+      G.tint.setRGB(1 + 0.05 * warm + 0.025 * day - 0.05 * Math.max(0, night - 0.6), 1 + 0.005 * day, 1 - 0.06 * warm - 0.035 * day + 0.07 * Math.max(0, night - 0.6));
       // The film look's share of the sky (lib/filmLook.ts; speed and camera are added each frame).
       G.sunDir.copy(skyDir);
       const air = airFor({ night, overcast: W.overcast, rain: W.rain, sunHeight: skyDir.y });

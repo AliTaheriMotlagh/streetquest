@@ -581,7 +581,17 @@ const FILLER = new Set(
   "رستوران کافه کافی شاپ فست فود فستفود پیتزا پیتزای برگر شیرینی سرای فروشگاه سوپرمارکت سوپر مارکت هایپر شعبه نان قنادی کترینگ تهیه غذای غذا کالا مارکت شاپ گالری مرکز فروشگاهی و restaurant cafe café coffee shop fast food pizza burger bakery market supermarket store the branch".split(" "),
 );
 /** Persian/Arabic letter variants, digits and punctuation folded so names compare. */
+/** normName's answers: the same few thousand store names are compared again and again (oneEach, mergeListings). */
+const normCache = new Map<string, string>();
 export function normName(s: string) {
+  const hit = normCache.get(s);
+  if (hit !== undefined) return hit;
+  const out = normNameRaw(s);
+  if (normCache.size > 20_000) normCache.clear();
+  normCache.set(s, out);
+  return out;
+}
+function normNameRaw(s: string) {
   return s
     .toLowerCase()
     .replace(/\(.*?\)/g, " ")

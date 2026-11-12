@@ -167,3 +167,25 @@
 .mix-lb { flex: 0 0 42%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
 .mix-n { flex: none; width: 34px; text-align: end; font: 700 12px/1 var(--body); color: var(--muted); font-variant-numeric: tabular-nums; }
 .mix-row input[type="range"] { min-height: 32px; }
+
+/* ---- Phones: the driving pad's abilities as one row of round icons over the pedals (horn ·
+   drift · focus · nitro) instead of two rows of labelled pills — the city stays in view. The
+   name is still each button's label for screen readers and its tooltip. */
+@media (max-width: 520px) {
+  .dpad:not(.air) .dpad-right { display: grid; grid-template-columns: auto auto; justify-content: end; column-gap: 6px; row-gap: 8px; }
+  .dpad:not(.air) .dpad-right > .dpad-pedals { grid-column: 1 / -1; justify-self: end; }
+  .dpad:not(.air) .dpad-tools { gap: 6px; }
+  .dpad:not(.air) .dpad-tool, .dpad:not(.air) .dpad-tools.ab .dpad-tool { flex: none; width: 44px; height: 44px; min-width: 44px; padding: 0; border-radius: 50%; }
+  .dpad:not(.air) .dpad-tool > span { display: none; }
+}
+
+/* ---- a panel's "how it works", the first time: one quiet line (game/ui.tsx Sheet) */
+.help-hint { display: flex; align-items: center; gap: 4px; margin: 0 0 10px; border-radius: 12px; border: 1px solid rgba(240, 192, 90, .35); background: rgba(240, 192, 90, .08); }
+.help-hint button { min-height: 40px; border: 0; background: none; color: var(--text); font: 600 13px/1.3 var(--body); text-align: start; padding: 0 12px; cursor: pointer; }
+.help-hint .help-hint-x { flex: none; width: 40px; padding: 0; color: var(--muted); }
+
+/* ---- the 3D menu's quality row: five even columns on a phone, not four and a straggler */
+@media (max-width: 520px) {
+  .pm .seg.seg-fill { grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)); gap: 6px; }
+  .pm .seg.seg-fill button { font-size: 12px; }
+}

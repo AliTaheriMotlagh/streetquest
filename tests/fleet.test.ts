@@ -134,3 +134,14 @@ describe("taking a car off the street", () => {
     assert.equal(carToTake([cars[1]], 2 + 0.85 + TAKE_REACH_M + 0.1, 0), null);
   });
 });
+
+describe("the first car", () => {
+  it("a new player starts in a real model; a saved pick stays; and a street car stays", async () => {
+    const { startVehicle, STARTER_CAR, VEHICLES } = await import("@/lib/vehicles");
+    assert.ok(VEHICLES[STARTER_CAR].model, "the starter car has a real 3D model");
+    assert.equal(startVehicle(null, 1), STARTER_CAR);
+    assert.equal(startVehicle("nonsense", 1), STARTER_CAR);
+    assert.equal(startVehicle("car", 1), "car");
+    assert.equal(startVehicle("samand", 1), "samand");
+  });
+});

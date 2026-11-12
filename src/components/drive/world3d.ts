@@ -657,7 +657,8 @@ export function makeMaterials(style: Style, opts: MaterialOpts = PLAIN) {
   const s = opts.surfaces ? surfaces(opts.anisotropy) : null;
   const noise = s?.noise ?? null;
   const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(o);
-  const trees = weathered(clearNearCamera(std({ vertexColors: true, roughness: 0.92, flatShading: true })), null, { darken: 0.18, rough: 0.55 });
+  // Smooth, not faceted: the crowns' normals point out from their middle (softFoliage), so a canopy is lit like a volume.
+  const trees = weathered(clearNearCamera(std({ vertexColors: true, roughness: 0.92 })), null, { darken: 0.18, rough: 0.55 });
   const m = {
     walls: wearFacades(std({ map: facade("real", false), vertexColors: true, roughness: 0.86, metalness: 0, emissiveMap: facade("real", true), emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 0 }), noise),
     // Curtain walls mirror the city around them (screen-space reflections, where on).
@@ -909,18 +910,60 @@ export function paint(g: THREE.BufferGeometry, c: string) {
 }
 const at = (g: THREE.BufferGeometry, x: number, y: number, z: number) => (g.translate(x, y, z), g);
 
+/** A tree's shape: how its crown is built (crownTree). */
+type CrownShape = { trunkH: number; trunkR: number; blobs: [number, number, number, number][]; seed: number };
+/** Broad plane tree (chenar) — Tehran's street tree; a tall narrow cypress; a young street tree. */
+const CROWNS: Record<"plane" | "cypress" | "young", CrownShape> = {
+  plane: { trunkH: 3.4, trunkR: 0.24, seed: 1, blobs: [[0, 4.6, 0, 2.1], [1.3, 4.3, 0.5, 1.5], [-1.2, 4.4, -0.6, 1.55], [0.4, 5.6, -0.9, 1.4], [-0.5, 5.9, 0.8, 1.35], [0.2, 6.6, 0.1, 1.1]] },
+  cypress: { trunkH: 1.6, trunkR: 0.16, seed: 2, blobs: [[0, 2.6, 0, 1.15], [0.1, 3.9, 0.05, 1.05], [-0.05, 5.1, -0.05, 0.92], [0.05, 6.2, 0, 0.75], [0, 7.1, 0, 0.5]] },
+  young: { trunkH: 2.6, trunkR: 0.13, seed: 3, blobs: [[0, 3.5, 0, 1.3], [0.6, 4.1, 0.3, 0.95], [-0.5, 4.3, -0.3, 0.9], [0.1, 4.8, 0, 0.75]] },
+};
+/** A hash of a position (−1…1): the same point always moves the same way, so faces never crack apart. */
+const posHash = (x: number, y: number, z: number, seed: number) => {
+  const h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719 + seed * 4.123) * 43758.5453;
+  return (h - Math.floor(h)) * 2 - 1;
+};
+/**
+ * A realistic-style street tree: a trunk and a bushy crown of lumpy blobs (each vertex pushed
+ * in or out a little), shaded darker underneath and inside (fake ambient occlusion) in near-white
+ * so the street's tint colours it, with normals bent out from the crown (softFoliage) so it's
+ * lit like a volume of leaves rather than a set of facets. `detail` 1: ~80 triangles a blob.
+ */
+export function crownTree(shape: CrownShape, detail = 1) {
+  const parts: THREE.BufferGeometry[] = [paint(at(new THREE.CylinderGeometry(shape.trunkR * 0.7, shape.trunkR, shape.trunkH, 7), 0, shape.trunkH / 2, 0), "#7d6e5e")];
+  let top = 0, bottom = Infinity;
+  for (const [, y, , r] of shape.blobs) (top = Math.max(top, y + r)), (bottom = Math.min(bottom, y - r));
+  shape.blobs.forEach(([bx, by, bz, r], bi) => {
+    const g = new THREE.IcosahedronGeometry(r, detail).toNonIndexed();
+    g.deleteAttribute("uv");
+    const pos = g.getAttribute("position") as THREE.BufferAttribute;
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const k = 1 + 0.18 * posHash(x + bx, y + by, z + bz, shape.seed);
+      const wx = bx + x * k, wy = by + y * k * 0.92, wz = bz + z * k;
+      pos.setXYZ(i, wx, wy, wz);
+      // Darker underneath and towards the trunk, a little variation blob to blob.
+      const up = (wy - bottom) / Math.max(0.1, top - bottom);
+      const out = Math.min(1, Math.hypot(wx, wz) / 2.2);
+      // …and a leafy speckle: neighbouring points a shade apart, a few catching more light.
+      const fleck = 0.1 * posHash(wx * 3.1, wy * 3.1, wz * 3.1, shape.seed + 7);
+      const v = (0.6 + 0.3 * up + 0.08 * out + fleck) * (0.94 + 0.06 * Math.sin(bi * 2.3 + shape.seed));
+      col.set([v * (1 - 0.04 * fleck), v, v * (0.94 + 0.05 * fleck)], i * 3);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    parts.push(g);
+  });
+  return softFoliage(mergeGeometries(parts)!);
+}
+
 export type Templates = ReturnType<typeof makeTemplates>;
 /** One geometry per kind of prop, shared by every tile's instanced meshes. */
 export function makeTemplates(style: Style) {
   const real = style === "real";
   const tree = real
-    ? mergeGeometries([
-        paint(at(new THREE.CylinderGeometry(0.17, 0.27, 3.2, 6), 0, 1.6, 0), "#8a7a68"),
-        paint(at(new THREE.IcosahedronGeometry(1.7, 0), 0, 3.9, 0), "#ffffff"),
-        paint(at(new THREE.IcosahedronGeometry(1.35, 0), 0.8, 4.9, 0.3), "#f0f4ec"),
-        paint(at(new THREE.IcosahedronGeometry(1.2, 0), -0.7, 4.6, -0.4), "#e6ece0"),
-        paint(at(new THREE.IcosahedronGeometry(1.0, 0), 0.1, 5.8, -0.1), "#f6faf2"),
-      ])!
+    ? crownTree(CROWNS.plane)
     : mergeGeometries([
         paint(at(new THREE.CylinderGeometry(0.22, 0.32, 2.4, 6), 0, 1.2, 0), "#b98a62"),
         paint(at(new THREE.IcosahedronGeometry(1.9, 1), 0, 3.6, 0), "#ffffff"),
@@ -996,8 +1039,8 @@ export function makeTemplates(style: Style) {
   const dumpster = kit.dumpster;
   const tpl = {
     tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk, ...kit, dumpster,
-    /** Other kinds of tree from real models (adoptModels): a street's trees are spread over all of them. */
-    variants: [] as THREE.BufferGeometry[],
+    /** Other kinds of tree: a street's trees are spread over all of them (the realistic city's cypress and young tree). */
+    variants: (real ? [crownTree(CROWNS.cypress), crownTree(CROWNS.young)] : []) as THREE.BufferGeometry[],
     /** Real models are in (tree tints soften: the models bring their own colours). */
     modelled: false,
     dispose() {
@@ -1012,6 +1055,42 @@ export function makeTemplates(style: Style) {
 const MODELLED = ["tree", "lamp", "bus", "bench", "bin", "hydrant"] as const;
 
 /**
+ * Foliage lit like a volume, as games do it: above the trunk, each normal is bent towards the
+ * direction from the crown's middle (an ellipsoid round its bounds), so a low-poly canopy
+ * shades softly from sunlit to shadowed side instead of showing every facet. The trunk keeps
+ * its own normals. In place; returns `g`.
+ */
+export function softFoliage(g: THREE.BufferGeometry, bend = 0.8) {
+  g.computeBoundingBox();
+  const b = g.boundingBox!, pos = g.getAttribute("position"), h = b.max.y - b.min.y;
+  if (!pos || h <= 0) return g;
+  let nrm = g.getAttribute("normal") as THREE.BufferAttribute | undefined;
+  if (!nrm) (g.computeVertexNormals(), (nrm = g.getAttribute("normal") as THREE.BufferAttribute));
+  // The crown: the top part; its middle and half-sizes.
+  const base = b.min.y + h * 0.3;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, minY = Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < base) continue;
+    const x = pos.getX(i), z = pos.getZ(i);
+    (minX = Math.min(minX, x)), (maxX = Math.max(maxX, x)), (minZ = Math.min(minZ, z)), (maxZ = Math.max(maxZ, z)), (minY = Math.min(minY, y));
+  }
+  if (!Number.isFinite(minX)) return g;
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, cy = (minY + b.max.y) / 2;
+  const rx = Math.max(0.1, (maxX - minX) / 2), rz = Math.max(0.1, (maxZ - minZ) / 2), ry = Math.max(0.1, (b.max.y - minY) / 2);
+  const v = new THREE.Vector3(), n = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < base) continue;
+    v.set((pos.getX(i) - cx) / rx, (y - cy) / ry, (pos.getZ(i) - cz) / rz).normalize();
+    n.set(nrm.getX(i), nrm.getY(i), nrm.getZ(i)).lerp(v, bend).normalize();
+    nrm.setXYZ(i, n.x, n.y, n.z);
+  }
+  nrm.needsUpdate = true;
+  return g;
+}
+
+/**
  * Real street furniture (drive/propModels.ts) in place of the drawn templates. Returns the
  * drawn geometries it replaced, for the caller to swap on tiles already built (their
  * instanced meshes carry `userData.prop`) and then dispose.
@@ -1020,7 +1099,9 @@ export function adoptModels(tpl: Templates, models: Partial<Record<string, THREE
   const old: THREE.BufferGeometry[] = [];
   for (const k of MODELLED) {
     const g = models[k];
-    if (!g) continue;
+    // Trees stay drawn (crownTree): the models' leaves are flat cards meant for a leaf texture
+    // the street-furniture pipeline doesn't carry, and drawn plain they read as big triangles.
+    if (!g || k === "tree") continue;
     old.push(tpl[k]);
     tpl[k] = g;
   }
@@ -1031,7 +1112,6 @@ export function adoptModels(tpl: Templates, models: Partial<Record<string, THREE
     tpl.lampHead = paint(at(new THREE.BoxGeometry(0.3, 0.04, 0.46), x, y - 0.12, z), "#ffffff");
     tpl.pool = new THREE.PlaneGeometry(24, 24).rotateX(-Math.PI / 2).translate(x, 0.3, z + 0.4);
   }
-  tpl.variants = [models.tree2, models.pine].filter((g): g is THREE.BufferGeometry => !!g);
   tpl.modelled = true;
   return old;
 }
@@ -1039,14 +1119,15 @@ export function adoptModels(tpl: Templates, models: Partial<Record<string, THREE
 
 /**
  * A tile's trees spread over the kinds of tree (treeVariant), each tree's tint softened
- * toward white: a real model brings its own greens, the tint only varies them a little.
+ * toward white when the trees are real models (they bring their own greens, the tint only
+ * varies them); drawn trees (crownTree) are near-white and take the street's tint in full.
  */
-function treeGroups(p: { mats: Float32Array; cols: Float32Array | null }, variants: number) {
+function treeGroups(p: { mats: Float32Array; cols: Float32Array | null }, variants: number, soften = true) {
   const groups = Array.from({ length: variants + 1 }, () => ({ m: [] as number[], c: [] as number[] }));
   for (let i = 0; i < p.mats.length / 16; i++) {
     const g = groups[treeVariant(p.mats[i * 16 + 12], p.mats[i * 16 + 14], variants)];
     for (let k = 0; k < 16; k++) g.m.push(p.mats[i * 16 + k]);
-    for (let k = 0; k < 3; k++) g.c.push(p.cols ? 0.78 + 0.22 * p.cols[i * 3 + k] : 1);
+    for (let k = 0; k < 3; k++) g.c.push(p.cols ? (soften ? 0.78 + 0.22 * p.cols[i * 3 + k] : p.cols[i * 3 + k]) : 1);
   }
   return groups.map((g) => ({ mats: new Float32Array(g.m), cols: new Float32Array(g.c) }));
 }
@@ -1136,8 +1217,8 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     bags: tpl.bags, postbox: tpl.postbox, power: tpl.power, telecom: tpl.telecom, phone: tpl.phone, saqa: tpl.saqa, rail: tpl.rail, bridgeDeck: tpl.bridgeDeck, bridgeStair: tpl.bridgeStair,
   };
   for (const p of a.props) {
-    if (p.kind === "tree" && tpl.modelled) {
-      treeGroups(p, tpl.variants.length).forEach((g, vi) => g.mats.length && inst(vi ? tpl.variants[vi - 1] : tpl.tree, mats.trees, g, true, vi ? undefined : "tree"));
+    if (p.kind === "tree" && tpl.variants.length) {
+      treeGroups(p, tpl.variants.length, false).forEach((g, vi) => g.mats.length && inst(vi ? tpl.variants[vi - 1] : tpl.tree, mats.trees, g, true, vi ? undefined : "tree"));
       continue;
     }
     inst(byKind[p.kind], p.kind === "tree" ? mats.trees : mats.props, p, p.kind === "tree", p.kind);

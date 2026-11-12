@@ -51,6 +51,7 @@ import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { MapFilter } from "./MapFilter";
 import { AdAreaCard, DirStoreCard, ServicesSheet, useDirectory } from "./Directory";
 import { StoreBrowser } from "./StoreBrowser";
+import { commitDue } from "@/lib/driveCommit";
 import { fromCinema, fromDeal, fromDir, fromSpot, fromTorob, fromVendor, mergeListings } from "@/lib/stores/listing";
 import { ProductSearch } from "./ProductSearch";
 import { LeaveGuard } from "./LeaveGuard";
@@ -402,7 +403,27 @@ export default function Game() {
       })
       .catch(() => {});
   }, [cinemaOn, look, now]);
-  const shownVendors = useMemo(() => vendors.filter((v) => layers.includes(v.kind)), [vendors, layers]);
+  // The car's position, from the 3D city: committed to the game when lib/driveCommit.ts says so,
+  // and the last one always when it closes.
+  const drivePos = useRef<{ last: LatLng | null; at: number; pending: LatLng | null }>({ last: null, at: 0, pending: null });
+  const commitDrivePos = (p: LatLng) => (simMode ? setSimPos(p) : homeMode ? setHomePos(p) : undefined);
+  const onDriveMove = (p: LatLng) => {
+    const d = drivePos.current, t = Date.now();
+    if (commitDue(d.last ? { p: d.last, at: d.at } : null, p, t)) {
+      drivePos.current = { last: p, at: t, pending: null };
+      commitDrivePos(p);
+    } else d.pending = p;
+  };
+  const leaveDrive = () => {
+    const d = drivePos.current;
+    if (d.pending) commitDrivePos(d.pending);
+    drivePos.current = { last: null, at: 0, pending: null };
+    setDriveOn(null);
+  };
+  // In the 3D city the 2D map is hidden underneath: its store layers wait (no matching stores
+  // against each other every time the car reports where it is — that was most of the lag).
+  const mapAsleep = !!driveOn;
+  const shownVendors = useMemo(() => (mapAsleep ? [] : vendors.filter((v) => layers.includes(v.kind))), [vendors, layers, mapAsleep]);
   // Iran's store directories (Bilbooard, Irangaah, Okala, Netbarg) and Sheypoor's ads, for the site layers that are on.
   const dirData = useDirectory((k) => layers.includes(k as MapLayer), look ?? null, now);
   const dirOn = MAP_SITES.some((s) => layers.includes(siteLayer(s)));
@@ -410,7 +431,7 @@ export default function Game() {
   // A directory store that is a Snappfood vendor on the map keeps one marker: the vendor's (its card has the menu and links to the directory page).
   // (The list of all stores keeps every one: `dirAll`.)
   const dirAll = useMemo(() => dirData.stores.filter(siteShown), [dirData.stores, layers]); // eslint-disable-line react-hooks/exhaustive-deps
-  const dirStores = useMemo(() => oneEach(dirAll, (d) => d.name, shownVendors.map((v) => ({ name: v.title, lat: v.lat, lng: v.lng }))), [dirAll, shownVendors]);
+  const dirStores = useMemo(() => (mapAsleep ? [] : oneEach(dirAll, (d) => d.name, shownVendors.map((v) => ({ name: v.title, lat: v.lat, lng: v.lng })))), [dirAll, shownVendors, mapAsleep]);
   const shownDir = useMemo(() => (hiddenTypes.length ? dirStores.filter((d) => !hiddenTypes.includes(d.type)) : dirStores), [dirStores, hiddenTypes]);
   const typeChips = useMemo(() => {
     const n = new Map<StoreType, number>();
@@ -422,7 +443,7 @@ export default function Game() {
   // …nor one that any other store layer on the map already marks (a directory store, a Torob
   // shop, a Takhfifan deal, a cinema), nor twice when the map itself has it twice (oneEach).
   const spotsAround = useMemo(() => {
-    if (!layers.includes("places")) return [];
+    if (mapAsleep || !layers.includes("places")) return [];
     const taken = [
       ...shownVendors.map((v) => ({ name: v.title, lat: v.lat, lng: v.lng })),
       ...shownDir,
@@ -435,7 +456,7 @@ export default function Game() {
     if (!world) return [];
     const jobs = new Set(world.places.map((m) => m.place.id));
     return oneEach((world.spots ?? []).filter((p) => !jobs.has(p.id)), (p) => p.name, taken);
-  }, [world, layers, shownVendors, exploreOn, exploreData, shownDir, torobOn, torobShops, dealsOn, deals, cinemaOn, cinemas]);
+  }, [mapAsleep, world, layers, shownVendors, exploreOn, exploreData, shownDir, torobOn, torobShops, dealsOn, deals, cinemaOn, cinemas]);
   // Every store from every site as one list (StoreBrowser): best source first, each store once.
   const listings = useMemo(
     () =>
@@ -1149,6 +1170,7 @@ export default function Game() {
       <EmojiArtLayer />
       <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle.id}`}>
         <GameMap
+          asleep={mapAsleep}
           world={mapWorld}
           me={me}
           look={mapStyle}
@@ -1489,17 +1511,17 @@ export default function Game() {
             canDrive={simMode || homeMode}
             sim={simMode}
             follow={simMode || homeMode ? null : pos}
-            onMove={simMode ? setSimPos : homeMode ? setHomePos : null}
+            onMove={simMode || homeMode ? onDriveMove : null}
             onCollect={(id) => collect(id).then(() => undefined)}
             onSelect={(s) => {
-              setDriveOn(null);
+              leaveDrive();
               handleSelect(s);
             }}
             onProfile={() => {
-              setDriveOn(null);
+              leaveDrive();
               setPanel("me");
             }}
-            onExit={() => setDriveOn(null)}
+            onExit={leaveDrive}
           />
         )}
 

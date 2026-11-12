@@ -14,6 +14,7 @@ import { canFullscreen, isFullscreen, onFullscreenChange, setFullscreen } from "
 import { askTilt, type SteerMode } from "./DrivePad";
 import { Icon, type IconName } from "./icons";
 import { saveTouchPrefs, useTouchPrefs } from "./touchPrefs";
+import { MixSliders } from "../game/MixSliders";
 
 const CTL: { key: SteerMode; icon: IconName; label: string }[] = [
   { key: "wheel", icon: "wheel", label: msg("Wheel") },
@@ -149,6 +150,8 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
           <TouchPrefsCard />
         </>
       )}
+      <b className="small">{t("Sound")}</b>
+      <MixSliders withMute />
       <b className="small">{t("Graphics")}</b>
       <div className="seg">
         <Button className={`btn small ${style === "real" ? "yellow" : "ghost"}`} onClick={() => onStyle("real")}>{t("Realistic")}</Button>

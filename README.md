@@ -154,7 +154,7 @@ mood scales XP; loot funds research; territory funds the army.
   (stereo), or *5.1* when the audio device has six channels (front pair, subwoofer, and a rear pair for what's behind
   you). A browser can't encode Dolby itself — over HDMI the 5.1 mix reaches the receiver as multichannel PCM, and on
   headphones the 3D mode is the same idea as Dolby's headphone rendering (`src/components/game/spatial.ts`).
-  **Settings → Sound** also has a mixer: one slider for everything and one each for *effects & menus*, *cars & sirens*,
+  **Settings → Sound** (on the map, and in the 3D city's menu → Settings) also has a mixer: one slider for everything and one each for *effects & menus*, *cars & sirens*,
   *guns & explosions*, *voices* and *city ambience* (music keeps its own) — heard as you drag, saved on the device
   (`sq_mix`; which sound answers to which slider: `src/lib/audio/mix.ts`).
 - **The film look** (High and Ultra, realistic style) — camera motion blur: each pixel is traced back to where it was
@@ -279,14 +279,17 @@ mood scales XP; loot funds research; territory funds the army.
   `ARENA_ONLY=civilian npm run assets:arena` rebuilds it alone).
 - **Real street furniture** — where OpenStreetMap maps them (trees, street lamps, bus stops, benches, bins,
   hydrants) and where the city fills them in along the real streets (rows of trees, lamps every 34 m, and a
-  municipal dumpster every block or two at the kerb, solid to cars), the 3D city draws real CC BY models: a
-  full broadleaf and a pine (a street's trees spread over both, the same tree on the same spot every time), a
+  municipal dumpster every block or two at the kerb, solid to cars), the 3D city draws real CC BY models for a
   street lamp whose arm and glow reach out over the road, a bus shelter, a bench, a bin and a hydrant. `npm run assets:props` (`scripts/props.ts`) builds them from `assets/models/prop/*.glb`: colours
   and textures baked into vertex colours, each stood on its foot, turned to the street, scaled to its real
   height and simplified (≤ 760 triangles), all in one ~80 KB file (`public/models/props`, manifest
   `src/lib/propModels.ts`, credits on /credits). Every kind stays one instanced draw call per tile; tiles show
   the drawn ones until the file arrives and then swap over. The storybook style keeps its drawn furniture;
   Iran's own (the green kiosk, the blue charity box, the water-cooler fountain, and the street kit below) stays drawn too.
+  **Trees** are drawn too in the realistic city (`world3d.ts` `crownTree`): a broad plane tree (*chenar*), a tall
+  narrow cypress and a young street tree — a lumpy crown of blobs, darker underneath, with its normals bent out from
+  the crown (`softFoliage`) so it's lit like a volume of leaves, under 700 triangles each. (The tree models' leaves
+  are flat cards meant for a texture the furniture pipeline doesn't carry; drawn plain they read as big triangles.)
 - **Iran's street kit** — what every Iranian street has and no map records, drawn in code from photos of Tehran
   (`src/components/drive/streetKit3d.ts`) and placed per tile from its seeded random (`streetKit.ts`, the same tile
   always looks the same): the municipality's **galvanised waste container** on castors with its no-parking plate (now
@@ -422,7 +425,8 @@ mood scales XP; loot funds research; territory funds the army.
   you come back, they're solid, and traffic keeps to the lanes they leave (`src/lib/parking.ts`; the nearest 60 are
   drawn, 20 on lite phones). Leaves close to the camera aren't drawn, so the chase camera never looks out from inside
   a tree.
-- **The garage** — the same street cars are yours to drive (Pride, Peykan, 206, 207, Pars, Samand, the taxi, the
+- **The garage** — a new player starts in a real Saipa Shahin (`STARTER_CAR`, `lib/vehicles.ts` `startVehicle`);
+  the same street cars are yours to drive (Pride, Peykan, 206, 207, Pars, Samand, the taxi, the
   Zamyad pickup, the city bus, a delivery bike with its box) next to the hatchback, sports car, pickup, motorbike,
   drone and helicopter. Every vehicle — the drone and the helicopter too — is free from level 1 (admin: *Every vehicle
   free from the start*; turn it off to unlock them by level). A bus gets collision circles down its length and a
@@ -850,6 +854,8 @@ snatched and its owner shouts after the thief — the people stop, turn to each 
 
 | Area | Where |
 |---|---|
+| Smooth driving: the 2D map sleeps under the 3D city (its store layers stop matching stores, the Leaflet map stops re-rendering), the car's position reaches the 2D game every 5 s / 150 m instead of every second, store-name normalisation is cached — measured under 4× CPU throttling: 3.4 → ~31 fps, p90 frame 279 → 33 ms | `src/lib/driveCommit.ts`, `Game.tsx` `mapAsleep`, `GameMap` `asleep`, `localData.ts` `normName` |
+| Streets as wide as the map says: mapped `width`/`est_width`, else lanes, else the street's kind (the OSM path; vector tiles go by class) | `src/lib/city.ts` `roadWidthOf` |
 | Strategy rules: factions, buildings, power, units, auto-resolved battles (pure, shared client/server) | `src/lib/rts.ts`, `src/app/api/{base,battle}` |
 | RPG: classes/attributes/bonus folding, gear rolls, quests, General's Powers (pure) | `src/lib/{hero,gear,quests,powers}.ts`, `src/server/{hero,quests}.ts`, `src/app/api/{hero,powers}` |
 | Territory: deterministic outposts per ~900 m cell, only ownership + garrison stored | `src/lib/outposts.ts`, `src/app/api/outposts` |

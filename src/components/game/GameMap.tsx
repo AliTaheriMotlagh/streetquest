@@ -93,9 +93,11 @@ type Props = {
   vasatyab?: MidView | null;
   /** Explore mode: the map moves freely; `jump` flies it somewhere, `onCenter` reports where it ends up. */
   explore?: { jump: { at: LatLng; n: number } | null; onCenter: (c: LatLng) => void } | null;
+  /** Hidden under the 3D city: keep the map as it was, re-render nothing until it shows again. */
+  asleep?: boolean;
 };
 
-export default memo(GameMap);
+export default memo(GameMap, (a, b) => (a.asleep && b.asleep ? true : Object.keys({ ...a, ...b }).every((k) => a[k as keyof Props] === b[k as keyof Props])));
 
 const GOLD = "#f0c05a";
 

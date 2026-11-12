@@ -96,6 +96,11 @@ export const allowedVehicle = (k: unknown, level: number): VehicleKey => (isVehi
  */
 export const drivenVehicle = (k: unknown, level: number): VehicleKey => (isVehicle(k) && VEHICLES[k].model && !VEHICLES[k].flies ? k : allowedVehicle(k, level));
 
+/** A new player's first car: a real Iranian model (Saipa Shahin), not the procedural hatchback. */
+export const STARTER_CAR: VehicleKey = "shahin";
+/** The car the 3D city starts in: what you drove last (if you still may), else the starter car. */
+export const startVehicle = (saved: unknown, level: number): VehicleKey => (isVehicle(saved) ? drivenVehicle(saved, level) : STARTER_CAR);
+
 /** What you drive when you take a street car (traffic or parked) of this model: the vehicle built from it. */
 export function drivableOf(k: FleetKey): VehicleKey {
   const own = VEHICLE_KEYS.find((v) => VEHICLES[v].model === k);

@@ -183,3 +183,25 @@ describe("the street's edge", () => {
     assert.equal(clearRuns(new Float32Array([0, 0, 5, 0]), () => false).length, 0);
   });
 });
+
+describe("streets as wide as the map says", () => {
+  it("a mapped width wins, then lanes, then the street's kind", async () => {
+    const { roadWidthOf } = await import("@/lib/city");
+    assert.equal(roadWidthOf({ highway: "residential", width: "5.5" }, "minor"), 5.5);
+    assert.equal(roadWidthOf({ highway: "residential", est_width: "4,5 m" }, "minor"), 4.5);
+    assert.equal(roadWidthOf({ highway: "primary", width: "30 ft" }, "major"), 17, "feet aren't metres");
+    assert.equal(roadWidthOf({ highway: "residential", lanes: "2" }, "minor"), 7.6);
+    assert.equal(roadWidthOf({ highway: "primary", lanes: "6" }, "major"), 20.8);
+    assert.equal(roadWidthOf({ highway: "primary", lanes: "1" }, "major"), 10.2, "a stray lanes=1 doesn't make an avenue an alley");
+    assert.equal(roadWidthOf({ highway: "living_street" }, "minor"), 5.5);
+    assert.ok(roadWidthOf({ highway: "residential" }, "minor") < roadWidthOf({ highway: "tertiary" }, "minor"));
+    assert.ok(roadWidthOf({ highway: "tertiary" }, "minor") < roadWidthOf({ highway: "secondary" }, "major"));
+  });
+  it("one carriageway of a dual road is a bit over half; a one-way alley most of one; paths keep theirs", async () => {
+    const { roadWidthOf } = await import("@/lib/city");
+    assert.equal(roadWidthOf({ highway: "primary", oneway: "yes" }, "major"), 9.4);
+    assert.equal(roadWidthOf({ highway: "residential", oneway: "yes" }, "minor"), 5.6);
+    assert.equal(roadWidthOf({ highway: "primary_link", oneway: "yes" }, "major"), 6.5);
+    assert.equal(roadWidthOf({ highway: "footway", width: "9" }, "foot"), 2.2);
+  });
+});

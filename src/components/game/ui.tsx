@@ -52,14 +52,17 @@ export const useGame = () => useContext(Ctx)!;
 export const MoveIcon = () => <>{useGame().moveIcon}</>;
 
 export function Sheet({ title, onClose, children, peek, actions, help, tall }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string; tall?: boolean }) {
-  // "How this works" card: shown automatically the first time, then from the ? button.
+  // "How this works": the first time, a one-line hint at the top that opens the card; after
+  // that, the ? button. (It used to open in full and push the panel itself off a phone's screen.)
   const [showHelp, setShowHelp] = useState(false);
+  const [hint, setHint] = useState(false);
   useEffect(() => {
-    if (help && HELP[help] && !helpSeen(help)) setShowHelp(true);
+    if (help && HELP[help] && !helpSeen(help)) setHint(true);
   }, [help]);
   const closeHelp = () => {
     if (help) markHelpSeen(help);
     setShowHelp(false);
+    setHint(false);
   };
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -81,7 +84,19 @@ export function Sheet({ title, onClose, children, peek, actions, help, tall }: {
         </button>
       </div>
       <div className="sheet-body">
-        {showHelp && help && <HelpCard k={help} onClose={closeHelp} />}
+        {showHelp && help ? (
+          <HelpCard k={help} onClose={closeHelp} />
+        ) : (
+          hint &&
+          help && (
+            <div className="help-hint">
+              <button type="button" className="grow" onClick={() => setShowHelp(true)}>
+                💡 {t("New here? How {title} works", { title: t(HELP[help].title) })} ›
+              </button>
+              <button type="button" className="help-hint-x" onClick={closeHelp} aria-label={t("Dismiss")}>✕</button>
+            </div>
+          )
+        )}
         {children}
       </div>
     </div>

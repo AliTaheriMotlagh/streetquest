@@ -132,6 +132,40 @@ const FOOT = /^(footway|cycleway|path|steps|track)$/;
 const RAIL = /^(rail|tram|light_rail|narrow_gauge)$/;
 const ROAD_W: Record<RoadKind, number> = { major: 12, minor: 8, path: 4.5, foot: 2.2, rail: 3 };
 const LANE_W = 3.3;
+/** Each kind of street's usual width (m, both ways) — the same as the vector tiles' (vectorTile.ts ROAD). */
+const HIGHWAY_W: Record<string, number> = {
+  motorway: 22, trunk: 20, primary: 17, secondary: 14, tertiary: 11,
+  motorway_link: 6.5, trunk_link: 6.5, primary_link: 6.5, secondary_link: 6.5, tertiary_link: 6,
+  unclassified: 7, residential: 7, road: 7, living_street: 5.5, service: 4.5, pedestrian: 5,
+};
+/** "7", "7.5 m", "7,5" → metres; feet and nonsense → NaN. */
+const metres = (v: string | undefined) => {
+  if (!v || /'|ft|feet/i.test(v)) return NaN;
+  const n = parseFloat(v.replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+};
+/**
+ * How wide a street is drawn (m), as close to the real one as the map says: its mapped width
+ * (`width`, then `est_width`) when it has one; else from its lanes (3.3 m each and a metre of
+ * gutter, kept within reason of what its kind usually is); else its kind's usual width. One
+ * carriageway of a dual road (a one-way main road) is a bit over half; a one-way side street,
+ * most of one. Paths, footways and rails keep their fixed widths.
+ */
+export function roadWidthOf(tags: Record<string, string | undefined>, k: RoadKind): number {
+  return Math.round(rawWidth(tags, k) * 10) / 10;
+}
+function rawWidth(tags: Record<string, string | undefined>, k: RoadKind): number {
+  if (k !== "major" && k !== "minor" && k !== "path") return ROAD_W[k];
+  const hw = tags.highway ?? "";
+  const def = HIGHWAY_W[hw] ?? ROAD_W[k];
+  const mapped = [metres(tags.width), metres(tags.est_width)].find((n) => n >= 2 && n <= 60);
+  if (mapped) return mapped;
+  const ow = tags.oneway === "yes" || tags.junction === "roundabout" || /^motorway/.test(hw);
+  const base = ow && !/_link$/.test(hw) ? def * (k === "major" ? 0.55 : 0.8) : def;
+  const lanes = parseInt(tags.lanes ?? "", 10);
+  if (lanes > 0 && k !== "path") return Math.min(base * 1.6, Math.max(base * 0.6, Math.min(8, lanes) * LANE_W + 1));
+  return base;
+}
 
 const ROOFS: Record<string, RoofShape> = { flat: "flat", gabled: "gabled", saltbox: "gabled", gambrel: "gabled", mansard: "hipped", hipped: "hipped", half_hipped: "hipped", pyramidal: "pyramidal", dome: "dome", onion: "dome", round: "dome", skillion: "skillion", lean_to: "skillion" };
 const NAMED_COLOURS: Record<string, string> = {
@@ -375,7 +409,7 @@ export function fromOverpass(elements: OsmEl[], cx: number, cy: number): CityTil
       if (!k || tile.r.length >= 2500 || underground(tags)) continue;
       const lanes = parseInt(tags.lanes ?? "", 10);
       const ow = tags.oneway === "yes" || tags.junction === "roundabout" || /^motorway/.test(hw ?? "");
-      const w = k === "major" || k === "minor" ? Math.max(ROAD_W[k] * (ow ? 0.6 : 1), lanes > 0 ? Math.min(8, lanes) * LANE_W : 0) : ROAD_W[k];
+      const w = roadWidthOf(tags, k);
       // Keep the runs of segments whose midpoint is in this tile.
       let run: { lat: number; lon: number }[] = [];
       const flush = () => {

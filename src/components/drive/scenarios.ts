@@ -87,6 +87,8 @@ const STORE_CLS: Record<string, RegExp> = {
 };
 
 const GIVER_RADIUS = 14, GIVER_RESET_M = 1800;
+/** A giver put round me stands at least this far off (m), never on my car. */
+const GIVER_CLEAR_M = 35;
 const SUB_MIN_S = 2.6;
 
 export class Scenarios {
@@ -223,7 +225,10 @@ export class Scenarios {
       const fixed = s.giver.at.at === "fixed";
       if (have && (have.key === cell || fixed)) continue;
       if (have) (this.removeGiver(have), this.givers.delete(s.id));
-      const p = resolveScenario({ ...s, steps: [] }, me, this.probe(), seeded(`${s.id}:${cell}`)).giver;
+      // Not on top of me: a giver placed round me lands at least GIVER_CLEAR_M away (a few tries, then wherever it fell).
+      let p = resolveScenario({ ...s, steps: [] }, me, this.probe(), seeded(`${s.id}:${cell}`)).giver;
+      for (let k = 1; !fixed && k < 5 && Math.hypot(p.x - me.x, p.z - me.z) < GIVER_CLEAR_M; k++)
+        p = resolveScenario({ ...s, steps: [] }, me, this.probe(), seeded(`${s.id}:${cell}:${k}`)).giver;
       const beacon = makeBeacon("flag", "#ffb020", `${say(s.title, getLocale())} · ${say(s.giver.name, getLocale())}`);
       beacon.group.position.set(p.x, 0, p.z);
       this.h.scene.add(beacon.group);

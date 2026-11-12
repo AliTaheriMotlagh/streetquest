@@ -1,6 +1,7 @@
 // "How this works" cards, the first-run tour, and map labels.
 const help: Record<string, string> = {
   // ---- help cards
+  "New here? How {title} works": "تازه‌واردی؟ {title} چطور کار می‌کند",
   "{title}: how it works": "{title}: چطور کار می‌کنه",
   "Got it": "فهمیدم",
   Gems: "جم‌ها",
