@@ -20,6 +20,7 @@ import { heightToNormal, surfaces } from "./graphics/surfaces";
 import { FACADES, FLOOR_M, WINDOW_M, type Footprint, type Label, type PropKind, type Style, type TileArrays } from "./tileMesh";
 import { treeVariant } from "@/lib/streetProps";
 import { nameLines, oneLine, tradeOf } from "./trades";
+import { makeKitTemplates } from "./streetKit3d";
 
 export type Phase = "night" | "dawn" | "day" | "dusk";
 export type { Style };
@@ -989,14 +990,12 @@ export function makeTemplates(style: Style) {
     paint(at(new THREE.BoxGeometry(1.4, 0.12, 0.26), 0, 1.07, 0.82), "#ff6a13"),
     ...[-0.5, 0, 0.5].map((x, i) => paint(at(new THREE.BoxGeometry(0.3, 0.4, 0.03), x, 1.45, 0.7), ["#e8384f", "#f2c230", "#1f6feb"][i])),
   ])!;
-  // The municipality's waste container: a green bin on wheels with a hinged lid, front (+z) to the road.
-  const dumpster = mergeGeometries([
-    paint(at(new THREE.BoxGeometry(1.75, 1.05, 1.1), 0, 0.68, 0), real ? "#2f6b3f" : "#3fbf6a"),
-    paint(at(new THREE.BoxGeometry(1.85, 0.1, 1.2), 0, 1.25, -0.02), real ? "#26583a" : "#2f9e55"),
-    ...[-0.7, 0.7].flatMap((x) => [-0.42, 0.42].map((z) => paint(at(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 8).rotateZ(Math.PI / 2), x, 0.1, z), "#1b1b1b"))),
-  ])!;
+  // Iran's street kit (streetKit3d.ts): the galvanised waste container, bags, post box, cabinets, payphone,
+  // saqakhaneh, median railings and footbridges.
+  const kit = makeKitTemplates();
+  const dumpster = kit.dumpster;
   const tpl = {
-    tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk, dumpster,
+    tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk, ...kit, dumpster,
     /** Other kinds of tree from real models (adoptModels): a street's trees are spread over all of them. */
     variants: [] as THREE.BufferGeometry[],
     /** Real models are in (tree tints soften: the models bring their own colours). */
@@ -1010,7 +1009,7 @@ export function makeTemplates(style: Style) {
 }
 
 /** The kinds a real model can stand in for (scripts/props.ts builds them). */
-const MODELLED = ["tree", "lamp", "bus", "bench", "bin", "hydrant", "dumpster"] as const;
+const MODELLED = ["tree", "lamp", "bus", "bench", "bin", "hydrant"] as const;
 
 /**
  * Real street furniture (drive/propModels.ts) in place of the drawn templates. Returns the
@@ -1132,7 +1131,10 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
     detail.add(m);
     insts.push(m);
   };
-  const byKind: Record<PropKind, THREE.BufferGeometry> = { tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain, charity: tpl.charity, kiosk: tpl.kiosk, dumpster: tpl.dumpster };
+  const byKind: Record<PropKind, THREE.BufferGeometry> = {
+    tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain, charity: tpl.charity, kiosk: tpl.kiosk, dumpster: tpl.dumpster,
+    bags: tpl.bags, postbox: tpl.postbox, power: tpl.power, telecom: tpl.telecom, phone: tpl.phone, saqa: tpl.saqa, rail: tpl.rail, bridgeDeck: tpl.bridgeDeck, bridgeStair: tpl.bridgeStair,
+  };
   for (const p of a.props) {
     if (p.kind === "tree" && tpl.modelled) {
       treeGroups(p, tpl.variants.length).forEach((g, vi) => g.mats.length && inst(vi ? tpl.variants[vi - 1] : tpl.tree, mats.trees, g, true, vi ? undefined : "tree"));
@@ -1431,7 +1433,7 @@ let poleGeo: THREE.CylinderGeometry | null = null, poleMat: THREE.MeshStandardMa
  * same), blue enamel in the real city, green in the storybook one, each plate turned
  * along its street. `angle`s are world yaws; the group itself stays unrotated.
  */
-export function makeCornerSign(plates: { text: string; angle: number }[], style: Style): Board & { plates: THREE.Mesh[] } {
+export function makeCornerSign(plates: { text: string; angle: number }[], style: Style, tehran = false): Board & { plates: THREE.Mesh[] } {
   poleGeo ??= (() => {
     const g = new THREE.CylinderGeometry(0.06, 0.07, 4.2, 8);
     g.translate(0, -2.1, 0);
@@ -1441,13 +1443,16 @@ export function makeCornerSign(plates: { text: string; angle: number }[], style:
   plateGeo ??= new THREE.PlaneGeometry(1, 1);
   const group = new THREE.Group();
   group.add(new THREE.Mesh(poleGeo, poleMat));
-  const bg = style === "real" ? "#1d4f91" : "#2f9e5b";
+  const bg = tehran ? "#394045" : style === "real" ? "#1d4f91" : "#2f9e5b";
   const owned: { dispose: () => void }[] = [];
   const meshes: THREE.Mesh[] = [];
   let top = 0;
   for (const p of plates) {
     const [main, second] = nameLines(p.text);
-    const ch = second ? 112 : 72;
+    // Tehran's plate: charcoal, a white rule between the Persian and the English, and a
+    // wrought-iron scroll under it (drawn into the same picture, cut out by alphaTest).
+    const orn = tehran ? 34 : 0;
+    const body = second ? 112 : 72, ch = body + orn;
     const probe = canvas(4).g;
     probe.font = `800 44px ${SIGN_FONT}`;
     let tw = probe.measureText(main).width;
@@ -1456,12 +1461,41 @@ export function makeCornerSign(plates: { text: string; angle: number }[], style:
     const { c, g } = canvas(cw, ch);
     g.fillStyle = bg;
     g.beginPath();
-    if (g.roundRect) g.roundRect(2, 2, cw - 4, ch - 4, 10);
-    else g.rect(2, 2, cw - 4, ch - 4);
+    if (g.roundRect) g.roundRect(2, 2, cw - 4, body - 4, 10);
+    else g.rect(2, 2, cw - 4, body - 4);
     g.fill();
     g.strokeStyle = "#ffffff";
     g.lineWidth = 4;
+    if (tehran) {
+      g.beginPath();
+      if (g.roundRect) g.roundRect(9, 9, cw - 18, body - 18, 7);
+      else g.rect(9, 9, cw - 18, body - 18);
+    }
     g.stroke();
+    if (tehran && second) {
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(cw * 0.1, 62);
+      g.lineTo(cw * 0.9, 62);
+      g.stroke();
+    }
+    if (orn) {
+      g.strokeStyle = "#1c1f22";
+      g.lineWidth = 4;
+      for (const k of [-1, 1]) {
+        const mx = cw / 2;
+        g.beginPath();
+        g.moveTo(mx, body);
+        g.bezierCurveTo(mx + k * cw * 0.12, body + orn * 0.9, mx + k * cw * 0.24, body + orn * 0.1, mx + k * cw * 0.34, body + orn * 0.55);
+        g.bezierCurveTo(mx + k * cw * 0.38, body + orn * 0.85, mx + k * cw * 0.43, body + orn * 0.5, mx + k * cw * 0.4, body + orn * 0.35);
+        g.stroke();
+        g.beginPath();
+        g.arc(mx + k * cw * 0.2, body + orn * 0.45, 6, 0, Math.PI * 2);
+        g.stroke();
+      }
+      g.fillStyle = "#1c1f22";
+      g.fillRect(cw / 2 - 5, body - 2, 10, orn - 2);
+    }
     g.fillStyle = "#ffffff";
     g.textAlign = "center";
     g.textBaseline = "middle";
@@ -1476,7 +1510,7 @@ export function makeCornerSign(plates: { text: string; angle: number }[], style:
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 4;
-    const mat = new THREE.MeshBasicMaterial({ map: t });
+    const mat = new THREE.MeshBasicMaterial({ map: t, ...(orn ? { alphaTest: 0.5 } : {}) });
     // Pixels → metres: 72 px of plate is 0.55 m (real ones are ~0.25 m; game-sized to read at speed).
     const H = (ch / 72) * 0.55, W = (cw / ch) * H;
     const mesh = new THREE.Mesh(plateGeo, mat);

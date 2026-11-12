@@ -898,9 +898,9 @@
    "Object_81"
   ]
  },
- "/models/props/props.49bb9c62ef.glb": {
-  "bytes": 83868,
-  "tris": 3669,
+ "/models/props/props.82627b4d4b.glb": {
+  "bytes": 74476,
+  "tris": 3319,
   "joints": [],
   "clips": [],
   "materials": 0,
@@ -908,7 +908,7 @@
   "bbox": {
    "min": [
     -3.055948895130675,
-    -0.00005491357350706494,
+    0,
     -3.7642161434656547
    ],
    "max": [
@@ -929,8 +929,7 @@
    "bus",
    "bench",
    "bin",
-   "hydrant",
-   "dumpster"
+   "hydrant"
   ]
  },
  "/models/arena/soldier.glb": {

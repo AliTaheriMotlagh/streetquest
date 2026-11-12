@@ -271,13 +271,27 @@ mood scales XP; loot funds research; territory funds the army.
   hydrants) and where the city fills them in along the real streets (rows of trees, lamps every 34 m, and a
   municipal dumpster every block or two at the kerb, solid to cars), the 3D city draws real CC BY models: a
   full broadleaf and a pine (a street's trees spread over both, the same tree on the same spot every time), a
-  street lamp whose arm and glow reach out over the road, a bus shelter, a bench, a bin, a hydrant and a
-  dumpster. `npm run assets:props` (`scripts/props.ts`) builds them from `assets/models/prop/*.glb`: colours
+  street lamp whose arm and glow reach out over the road, a bus shelter, a bench, a bin and a hydrant. `npm run assets:props` (`scripts/props.ts`) builds them from `assets/models/prop/*.glb`: colours
   and textures baked into vertex colours, each stood on its foot, turned to the street, scaled to its real
   height and simplified (≤ 760 triangles), all in one ~80 KB file (`public/models/props`, manifest
   `src/lib/propModels.ts`, credits on /credits). Every kind stays one instanced draw call per tile; tiles show
   the drawn ones until the file arrives and then swap over. The storybook style keeps its drawn furniture;
-  Iran's own (the green kiosk, the blue charity box, the water-cooler fountain) stays drawn too.
+  Iran's own (the green kiosk, the blue charity box, the water-cooler fountain, and the street kit below) stays drawn too.
+- **Iran's street kit** — what every Iranian street has and no map records, drawn in code from photos of Tehran
+  (`src/components/drive/streetKit3d.ts`) and placed per tile from its seeded random (`streetKit.ts`, the same tile
+  always looks the same): the municipality's **galvanised waste container** on castors with its no-parking plate (now
+  the only dumpster; rubbish bags lie beside about half of them), the yellow-and-red **Iran Post box**, cream
+  **electricity cabinets** and grey **telecom cabinets (کافو)** at the back of the pavement, the odd yellow
+  **payphone** hood on a main road and, in Iran, a turquoise-tiled **saqakhaneh (سقاخانه)** on a named side street.
+  Two-way main roads (14–20 m wide) get **green-and-yellow median railings** down the middle, with a gap at every
+  junction (solid: a U-turn across them is a crash), and one wide main road per tile may get a **pedestrian bridge
+  (پل عابر پیاده)** — a canopied truss deck high over the traffic (solid only up where it is) and a stair tower on
+  each pavement. At the crossings: **street-name plates** are Tehran's charcoal ones in Iran (Persian over English
+  under a white rule, a wrought-iron scroll under the plate), **white arrow signs** stand on the right-hand pavement
+  ~30 m before a main road's junction naming the cross street to each side, and motorways get a **green overhead
+  sign** ~110 m before a junction (the road itself straight on, the exit with a slanted arrow). All of it is skipped on
+  lite phones except a few signs; caps per tile in `KIT_CAPS`. Admin → Objects lists the kit (`STREET_KIT` in
+  `src/lib/objectCatalog.ts`). Tests `tests/streetKit.test.ts`.
   `scripts/lib/meshSoup.ts` is the reading / baking / welding / preview code the car and furniture builds share.
   The build bakes each texture into vertex colours, removes everything you can't see from outside (the cabin,
   engine and underside: it draws the car from 60 directions with the glass opaque), levels the car, scales it to the
@@ -432,8 +446,10 @@ mood scales XP; loot funds research; territory funds the army.
   point** (the party remembers it and everyone is notified; in the 3D city 🚀 *Gather here* puts your car there) and
   **Share** (a maps link). In the 3D city it is a section of the Play together tab; on the 2D map a party button
   (only while you're in a party) opens the panel and draws the middle, each member and a dashed line to the middle. It
-  refreshes as members move (4 s while open). Not done: snapping the point to the nearest street (there is no cheap
-  server-side street helper), and drawing the point as a 3D beacon. Maths `src/lib/midpoint.ts` (tests
+  refreshes as members move (4 s while open). **In the 3D city** the point (the gather point once one is set) is a
+  violet beacon with a light column, a dot on the minimap (on its rim when further away) and a HUD waypoint, polled
+  every 20 s while you're in a party. Not done: snapping the point to the nearest street (there is no cheap
+  server-side street helper). Maths `src/lib/midpoint.ts` (tests
   `tests/midpoint.test.ts`), server `src/server/midpoint.ts`, `GET/POST /api/party/midpoint` (`?method=`, `?lite=1`),
   UI `src/components/game/Vasatyab.tsx`, `DriveParty.meetLat/meetLng/meetName`.
 - **Siktir (سیکتیر) — "never again" for a place** — mark a place you didn't like, with a reason (dirty, rude staff,
@@ -561,7 +577,7 @@ mood scales XP; loot funds research; territory funds the army.
   the box round you, ~1 km cells, 6 h cache); if that fails, its search by the nearest five neighbourhoods' names (Divar's
   list) fills in. A store's page and deals are read when its card opens (`?dealInfo=<id>`, 2 h cache), its comments by
   page (`?dealReviews=<id>&page=`). `TAKHFIFAN_URL`, `off` disables; `?deals=1`. **The prod relay must be redeployed
-  (`relay/install.sh`) so it forwards these new Takhfifan paths**, 📢 Divar — each nearby
+  (`relay/install.sh`; relay v2 forwards any path, so this was the last time)**, 📢 Divar — each nearby
   neighbourhood pinned on its centre with its latest ads, by category (homes, vehicles, electronics…). **Every ad and
   product opens its own page in the game first** — photos you swipe, the price, and for a Divar ad the whole ad: its
   description, its facts (area, rooms, year, price per metre…), what it has, when it was posted and roughly how far
@@ -834,7 +850,7 @@ snatched and its owner shouts after the thief — the people stop, turn to each 
 After the first deploy, play once, then open `/admin?key=<ADMIN_KEY>` to make yourself admin.
 Don't run the demo seed in production.
 
-### Snappfood from abroad: the relay (ArvanCloud)
+### Iranian sites from abroad: the relay (ArvanCloud)
 Snappfood refuses servers outside Iran: on Vercel the map shows no restaurants and no menus, and `/api/health?ext=1`
 says `snappfood (403)`. Browsers can't read it either (it only allows its own sites). `relay/relay.mjs` is a small
 relay with no dependencies (any Node 18+) that runs on a server in Iran; the app reads Snappfood through it.
@@ -843,17 +859,26 @@ relay with no dependencies (any Node 18+) that runs on a server in Iran; the app
 2. From the repo: `scp relay/relay.mjs relay/install.sh <user>@<server-ip>:` then
    `ssh -t <user>@<server-ip> sudo bash install.sh`. It installs Node from Ubuntu's mirror, runs the relay as a service
    on port 80 with a random key (kept in `/etc/streetquest-relay.env`), checks that Snappfood answers the server
-   (`200 = good`) and prints the `SNAPPFOOD_URL` to use. Run it again to update the relay; the key stays.
+   (`200 = good`) and prints the `RELAY_URL` to use. Run it again to update the relay; the key stays. Or, once
+   `ssh-copy-id <user>@<server-ip>` has put your key on the server, `npm run relay:deploy` does all of it
+   (`RELAY_SSH=<user>@<server-ip>` in `.env`, `scripts/relay-deploy.sh`).
 3. HTTPS (recommended — the key is part of the URL): put a (sub)domain on **ArvanCloud CDN** with an A record to the
    server, going through the CDN with HTTPS on. The relay marks every answer `no-store`, so the CDN doesn't cache them.
-4. On Vercel: `vercel env add SNAPPFOOD_URL production` = `https://<domain>/<key>/snappfood` (or the
-   `http://<ip>/<key>/snappfood` the script printed), then redeploy. `/api/health?ext=1` should say `snappfood` `200`.
+4. On Vercel: `vercel env add RELAY_URL production` = `https://<domain>/<key>` (or the `http://<ip>/<key>` the script
+   printed), then redeploy. `/api/health?ext=1` should say `snappfood` `200`. (An older `SNAPPFOOD_URL=…/<key>/snappfood`
+   keeps working and wins over `RELAY_URL` for Snappfood.)
 
-The relay forwards only the endpoints the game calls (anything else, or a wrong key, is a 404), passes the app's
-User-Agent and nothing about the player, and logs no positions. Torob and Divar answer Vercel directly today; if one
-starts refusing, point `TOROB_URL` / `DIVAR_URL` / `TAKHFIFAN_URL` at the same relay with `/torob`, `/divar` or `/takhfifan` at the end — and
-`BALAD_URL` / `BALAD_POI_URL` with `/balad` and `/baladpoi` if restaurants' phone numbers stop showing (redeploy the relay
-first with `relay/install.sh` so it knows Balad).
+Since **relay v2** it is generic, so new features never need it redeployed: `/<key>/https/<host>/<path>` reaches any
+public HTTPS site (the app builds these from `RELAY_URL`, `src/lib/relayUrl.ts`), and the named addresses
+(`/<key>/snappfood`, `/torob`, `/divar`, `/takhfifan`, `/balad`, `/baladpoi`, `/cinematicket`) forward any path. Which
+sites go through it is `RELAY_FOR` on the app (default `snappfood`; e.g. `snappfood,torob,divar`, or `all`) — a site
+that starts refusing Vercel is one env change. It is still not an open proxy: a wrong key is a 404; it never connects to
+a private, loopback or link-local address (checked after DNS and pinned, so the other services on the server stay out of
+reach); `RELAY_HOSTS` on the server can narrow the generic route to a list of domains; it passes the app's User-Agent,
+Accept*, Content-Type and Referer/Origin and nothing about the player (no cookies, authorization or forwarded-for — a
+header a site needs is sent as `x-relay-<name>` and passed on as `<name>`); bodies up to 1 MB; cookies are dropped,
+answers are `no-store`, redirects aren't followed, and no query string (positions) is logged. `GET /health` says its
+`version`. Tests `tests/relay.test.ts`, `tests/relayUrl.test.ts`.
 
 ## Production checklist
 

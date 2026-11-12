@@ -50,6 +50,7 @@ import { Icon, type IconName } from "./icons";
 import { MODES, type ModeKey } from "@/lib/arena/modes";
 import { PartyHud } from "./PartyHud";
 import { PlayTogether } from "./PlayTogether";
+import { useVasatyab } from "../game/Vasatyab";
 import { Markers, markersOf } from "./markers";
 import { CinemaBoards } from "./cinemaBoards";
 import { Storefronts, type StorePanel } from "./storefronts";
@@ -89,6 +90,7 @@ import { drawnParts } from "./fleet3d";
 import { makeBeacon, makeLoot } from "./markerKit";
 import { DriveMenu } from "./DriveMenu";
 import { Waypoints } from "./waypoints";
+import { makeDirectionSign, makeGantry } from "./streetKit3d";
 import { iconForEmoji, MARKER_COLORS, rarityOf } from "@/lib/hudMarkers";
 import {
   LIGHT, makeClouds, makeCoin, makeCornerSign, makeGate, makeMaterials, makePlaque, makeShopSign, makeSign, makeSkySystem, makeStreetLabel, makeTemplates, adoptModels, paintSignals, setNight, tileMeshes, WORLD,
@@ -171,6 +173,8 @@ const CTL_KEY = "sq_drive_ctl";
 const NAMES_KEY = "sq_drive_names";
 const FLY_HINT_KEY = "sq_fly_hint_off";
 const SHOPS_M = 260; // shops on the minimap and for the store card this far
+/** The party's meeting point (Vasatyab) in the 3D city: its beacon, minimap dot and waypoint. */
+const VASA_COLOR = "#b18cff";
 const CORNER_M = 170; // street-name signs at corners this close
 
 const store = {
@@ -295,8 +299,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
    * action button; pickups and check-ins you merely drive past don't pop one up. */
   const wanted = useRef<string | null>(null);
   // Latest props/context for the render loop (it lives as long as the component).
-  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather });
-  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather };
+  // Vasatyab: the party's meeting point (the one set, else the middle of everyone) as a beacon in the
+  // city, a dot on the minimap and a waypoint — polled every 20 s while in a party.
+  const vasa = useVasatyab(false, !!party);
+  const meet: (LatLng & { name: string; set: boolean }) | null = vasa.view?.meet ? { ...vasa.view.meet, set: true } : vasa.view?.point ? { ...vasa.view.point, name: "", set: false } : null;
+  const live = useRef({ world, me, follow, canDrive, onMove, onCollect, onSelect, goal: goal ?? null, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather, meet });
+  live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather, meet };
   const api3d = useRef<{
     setGoal: (p: LatLng | null) => void;
     cycleCam: () => void;
@@ -658,6 +666,23 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     /** Where the map puts an item, and the city drawn when it was last settled (see settle). */
     type Placed = { raw: { x: number; z: number }; settledAt: number };
     type Beacon = ReturnType<typeof makeBeacon> & { job: Job } & Placed;
+    // The party's meeting point (Vasatyab): one beacon, rebuilt when its name changes.
+    let vasaBeacon: ReturnType<typeof makeBeacon> | null = null, vasaKey = "", vasaLabel = "";
+    const syncVasa = () => {
+      const m = live.current.meet;
+      const label = m ? (m.set ? m.name || t("Meeting point") : t("Vasatyab · the middle")) : "";
+      const key = m ? `${m.set}|${label}` : "";
+      if (key !== vasaKey) {
+        if (vasaBeacon) (scene.remove(vasaBeacon.group), vasaBeacon.dispose(), (vasaBeacon = null));
+        if (m) scene.add((vasaBeacon = makeBeacon("people", VASA_COLOR, label, { lite })).group);
+        vasaKey = key;
+        vasaLabel = label;
+      }
+      if (vasaBeacon && m) {
+        const p = frame.toXZ(m.lat, m.lng);
+        vasaBeacon.group.position.set(p.x, 0, p.z);
+      }
+    };
     const beacons = new Map<string, Beacon>();
     type Loot = ReturnType<typeof makeLoot> & { id: string; taken: boolean } & Placed;
     const loot = new Map<string, Loot>();
@@ -666,7 +691,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const wpPick: Beacon[] = [];
     const labels = new Map<string, ReturnType<typeof makeStreetLabel> & { x: number; z: number; angle: number }>();
     const boards = new Map<string, Board>();
-    const corners = new Map<string, Board>();
+    const corners = new Map<string, { group: THREE.Group; dispose: () => void }>();
     let boardNight = 0.15;
     const titles = new Map<string, ReturnType<typeof makeSign>>();
     /** Shops near you (their boards, on the minimap, and for the store card). */
@@ -909,25 +934,26 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
     };
 
-    /** Street-name signs on their poles at the corners close by. */
+    /** Street-name signs on their poles at the corners close by, arrow signs and motorway gantries before the junctions. */
     const syncCorners = () => {
       const want: { id: string; l: Label; d: number }[] = [];
       for (const s of tiles.values()) {
         if (!s.mesh || s.dist > CORNER_M) continue;
         s.mesh.labels.forEach((l, i) => {
-          if (l.kind !== "corner" || poleInStreet(l)) return;
+          if ((l.kind !== "corner" && l.kind !== "direction" && l.kind !== "gantry") || poleInStreet(l)) return;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d < CORNER_M) want.push({ id: `${s.key}:${i}`, l, d });
         });
       }
       want.sort((a, b) => a.d - b.d);
-      const pick = want.slice(0, lite ? 6 : 16);
+      const pick = want.slice(0, lite ? 8 : 22);
       const keep = new Set(pick.map((w) => w.id));
       for (const [id, b] of corners) if (!keep.has(id)) (scene.remove(b.group), b.dispose(), corners.delete(id));
       for (const { id, l } of pick) {
         if (corners.has(id)) continue;
-        const b = makeCornerSign(l.plates ?? [], style);
-        b.group.position.set(l.x, l.y, l.z);
+        const b = l.kind === "gantry" ? makeGantry(l.plates ?? [], l.w) : l.kind === "direction" ? makeDirectionSign(l.plates ?? []) : makeCornerSign(l.plates ?? [], style, !!l.ir);
+        if (l.kind === "corner") b.group.position.set(l.x, l.y, l.z);
+        else (b.group.position.set(l.x, 0, l.z), (b.group.rotation.y = l.angle));
         scene.add(b.group);
         corners.set(id, b);
       }
@@ -1898,6 +1924,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const matchOn = combat.inMatch;
       markers.hidden = cinemaBoards.hidden = storefronts.hidden = matchOn;
       for (const b of beacons.values()) (b.group.visible = !matchOn), b.tick(time, Math.hypot(b.group.position.x - st.x, b.group.position.z - st.z));
+      const vasaD = vasaBeacon ? Math.hypot(vasaBeacon.group.position.x - st.x, vasaBeacon.group.position.z - st.z) : 0;
+      if (vasaBeacon) (vasaBeacon.group.visible = !matchOn), vasaBeacon.tick(time, vasaD);
       for (const l of loot.values()) if (matchOn) l.group.visible = false;
       for (const l of loot.values()) l.tick(time, Math.hypot(l.group.position.x - st.x, l.group.position.z - st.z));
       for (const g of gates) g.tick(time);
@@ -1947,6 +1975,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       wp.hidden = matchOn;
       wp.begin();
       if (wpNav) wp.add(wpNav.x, st.alt + 6, wpNav.z, "flag", MARKER_COLORS.deliver, wpNav.label);
+      if (vasaBeacon && vasaD > 30) wp.add(vasaBeacon.group.position.x, 8, vasaBeacon.group.position.z, "people", VASA_COLOR, vasaLabel);
       for (const b of wpPick) wp.add(b.group.position.x, b.group.position.y + 8, b.group.position.z, b.badgeIcon, b.job.color, b.job.label);
       wp.end();
       wp.frame(camera, el.clientWidth, el.clientHeight, st.x, st.z);
@@ -1984,6 +2013,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         ensureTiles();
         landmarks.update(st.x, st.z);
         if (labelsDirty || Math.random() < 0.3) (syncLabels(), syncBoards(), syncCorners(), syncShops());
+        syncVasa();
         if (menuTab.current === "places") syncPlaces();
         markers.sync(st.x, st.z);
         syncCinemas();
@@ -2160,6 +2190,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             dot(o.x, o.z, o.color, 4.5);
             g.stroke();
           }
+          // The party's meeting point: on the rim when it's further than the minimap reaches.
+          if (vasaBeacon) {
+            const v = vasaBeacon.group.position, len = Math.hypot(v.x - st.x, v.z - st.z) * scale, ang = Math.atan2(v.z - st.z, v.x - st.x), r = Math.min(len, R - 8);
+            g.fillStyle = VASA_COLOR;
+            g.strokeStyle = "#fff";
+            g.lineWidth = 2;
+            g.beginPath();
+            g.arc(Math.cos(ang) * r, Math.sin(ang) * r, 5.5, 0, Math.PI * 2);
+            g.fill();
+            g.stroke();
+          }
           if (goalLL) {
             const p = frame.toXZ(goalLL.lat, goalLL.lng);
             const len = Math.hypot(p.x - st.x, p.z - st.z) * scale;
@@ -2206,7 +2247,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt, model: () => model };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign } };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -2259,6 +2300,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const s of tiles.values()) s.mesh?.dispose();
       for (const r of ready) r.mesh.dispose();
       for (const b of beacons.values()) b.dispose();
+      vasaBeacon?.dispose();
       for (const l of loot.values()) l.dispose();
       wp.dispose();
       for (const l of labels.values()) l.dispose();

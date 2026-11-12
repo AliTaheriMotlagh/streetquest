@@ -10,6 +10,7 @@
 // corner street-name signs, every shop and house number.
 import * as THREE from "three";
 import { hashStr, rng, type LatLng } from "@/lib/geo";
+import { crossSigns, KIT_KINDS, kitObstacles, placeKit, type Crossing, type KitKind, type KitRoad } from "./streetKit";
 import { insidePacked, makeFrame, PROP, tileSW, type BuildingKind, type CityPitch, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
 import type { VtCell } from "./vectorTile";
 
@@ -42,7 +43,7 @@ export function boundingSphere(pos: ArrayLike<number>): [number, number, number,
   }
   return [cx, cy, cz, Math.sqrt(r2)];
 }
-export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk" | "dumpster";
+export type PropKind = "tree" | "lamp" | "signal" | "bus" | "bench" | "bin" | "hydrant" | "fountain" | "charity" | "kiosk" | "dumpster" | "bags" | KitKind;
 export type Instances = { kind: PropKind; mats: Float32Array; cols: Float32Array | null };
 /** A solid outline (mh..h m up). `ref`: what moves with it (a street car), for whoever bumps into it. */
 export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: number; maxZ: number; h: number; mh: number; ref?: object };
@@ -52,7 +53,10 @@ export type Footprint = { pts: Float32Array; minX: number; maxX: number; minZ: n
  * pole when there's no wall close by; `noBoard` when its wall is already full — it still
  * gets a pin and a line in the Places list; `top`: the roof over it), house-number
  * plaques ("num") and street-name signs on a pole at a corner ("corner", one plate per
- * street in `plates`, each turned to run along its street). Names may hold a second
+ * street in `plates`, each turned to run along its street; `ir`: Tehran's charcoal plate),
+ * arrow signs before a main road's junction ("direction", a plate per side, `dir` 1 right,
+ * −1 left as the driver sees it) and green overhead signs on motorways ("gantry", `w` the
+ * arm's reach, `dir` 0 straight on) — streetKit.ts crossSigns. Names may hold a second
  * line after "\n" (trades.ts nameLines).
  */
 export type Label = {
@@ -62,12 +66,13 @@ export type Label = {
   angle: number;
   w: number;
   y: number;
-  kind: "street" | "building" | "shop" | "num" | "corner";
+  kind: "street" | "building" | "shop" | "num" | "corner" | "direction" | "gantry";
   cls?: string;
   pole?: boolean;
   noBoard?: boolean;
   top?: number;
-  plates?: { text: string; angle: number }[];
+  plates?: { text: string; angle: number; dir?: -1 | 0 | 1 }[];
+  ir?: boolean;
 };
 /**
  * A store's own 3D building (landmarks.ts) standing on this tile: its street-level
@@ -563,7 +568,7 @@ function edgeDist(p: ArrayLike<number>, x: number, z: number) {
 }
 
 /** A small solid for the collision world: an octagon (trunk, post) or a turned box. */
-function post(x: number, z: number, r: number, h: number): Footprint {
+export function post(x: number, z: number, r: number, h: number): Footprint {
   const pts = new Float32Array(16);
   for (let k = 0; k < 8; k++) (pts[k * 2] = x + Math.cos((k / 8) * Math.PI * 2) * r), (pts[k * 2 + 1] = z + Math.sin((k / 8) * Math.PI * 2) * r);
   return { pts, minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, h, mh: 0 };
@@ -902,7 +907,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
 
   // ---- streets first: a wall needs to know whether it faces one (shopfronts, balconies)
   const unpacked = tile.r.map((r) => frame.unpack(tile.cx, tile.cy, r.l));
-  const roadLines: Float32Array[] = [], roadWidths: number[] = [], roadKinds: RoadKind[] = [], roadNames: (string | null)[] = [], roadDrawn: boolean[] = [];
+  const roadLines: Float32Array[] = [], roadWidths: number[] = [], roadKinds: RoadKind[] = [], roadNames: (string | null)[] = [], roadDrawn: boolean[] = [], roadOw: boolean[] = [];
   tile.r.forEach((r, ri) => {
     if (unpacked[ri].length < 4) return;
     roadLines.push(unpacked[ri]);
@@ -910,6 +915,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     roadKinds.push(r.k);
     roadNames.push(r.n ?? null);
     roadDrawn.push(!r.x);
+    roadOw.push(!!r.ow);
   });
   const road = roadIndex(roadLines, roadWidths, roadKinds, roadDrawn);
 
@@ -1527,6 +1533,13 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   pack("charity", charities);
   pack("kiosk", kiosks);
   pack("dumpster", dumpsters);
+  // Rubbish bags left beside about half the containers (the bin men come at night).
+  const bags = dumpsters.filter(() => rand() < 0.55).map((d) => ({ x: d.x + Math.cos(d.yaw) * 1.35, z: d.z - Math.sin(d.yaw) * 1.35, yaw: d.yaw + (rand() - 0.5) }));
+  pack("bags", bags.filter((b) => !road.on(b.x, b.z, 0.2) && !blocked(b.x, b.z, 0.1)));
+  // Iran's street kit: post boxes, cabinets, payphones, saqakhaneh, median railings, footbridges (streetKit.ts).
+  const kitRoads: KitRoad[] = roadLines.map((pts, ri) => ({ pts, k: roadKinds[ri], w: roadWidths[ri], n: roadNames[ri], drawn: roadDrawn[ri], ow: roadOw[ri] }));
+  const iranKit = realStyle ? placeKit({ roads: kitRoads, road, blocked, rand, lite, iran: region === "me", taken: [...charities, ...kiosks, ...dumpsters, ...buses, ...lamps], box, post }) : null;
+  if (iranKit) for (const k of KIT_KINDS) pack(k, iranKit[k]);
 
   // What a car can hit: the trunk (and canopy, for low flyers), posts and shelters.
   const obstacles: Footprint[] = [];
@@ -1541,9 +1554,10 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const k of kiosks) obstacles.push(box(k.x, k.z, 1.0, 0.75, k.yaw, 2.4));
   for (const d of dumpsters) obstacles.push(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
+  if (iranKit) obstacles.push(...iranKit.obstacles, ...kitObstacles({ box, post }, iranKit));
 
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs"), decals.layer("decals")].filter((l): l is Layer => !!l);
-  cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite);
+  cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite, region === "me" && realStyle);
   placeSigns(tile as VtCell, frame, footprints, labels, obstacles, stand);
   // The store's model carries its own sign and number.
   if (cuts.length) for (let i = labels.length - 1; i >= 0; i--) if ((labels[i].kind === "shop" || labels[i].kind === "num" || labels[i].kind === "building") && inCut(labels[i].x, labels[i].z, 4)) labels.splice(i, 1);
@@ -1556,15 +1570,15 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
  * city. Found by intersecting the named lines themselves (in vector tiles the name and
  * the asphalt are separate lines, so shared vertices can't be relied on).
  */
-function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typeof roadIndex>, blocked: (x: number, z: number, pad: number) => boolean, labels: Label[], obstacles: Footprint[], lite: boolean) {
-  type NSeg = { ax: number; az: number; bx: number; bz: number; w: number; n: string };
+function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typeof roadIndex>, blocked: (x: number, z: number, pad: number) => boolean, labels: Label[], obstacles: Footprint[], lite: boolean, ir: boolean) {
+  type NSeg = { ax: number; az: number; bx: number; bz: number; w: number; n: string; line: Float32Array };
   const G = 30;
   const grid = new Map<string, NSeg[]>();
   tile.r.forEach((r, ri) => {
     if (!r.n || !DRIVABLE.includes(r.k)) return;
     const p = lines[ri];
     for (let i = 0; i + 3 < p.length; i += 2) {
-      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: r.w, n: r.n };
+      const sg = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], w: r.w, n: r.n, line: p };
       for (let gx = Math.floor(Math.min(sg.ax, sg.bx) / G); gx <= Math.floor(Math.max(sg.ax, sg.bx) / G); gx++)
         for (let gz = Math.floor(Math.min(sg.az, sg.bz) / G); gz <= Math.floor(Math.max(sg.az, sg.bz) / G); gz++) {
           const k = `${gx}_${gz}`;
@@ -1576,9 +1590,11 @@ function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typ
   });
   const cap = lite ? 12 : 40;
   const done: { x: number; z: number; pair: string }[] = [];
+  const crossings: Crossing[] = [];
+  let signed = 0;
   for (const list of grid.values()) {
-    for (let i = 0; i < list.length && done.length < cap; i++)
-      for (let j = i + 1; j < list.length && done.length < cap; j++) {
+    for (let i = 0; i < list.length; i++)
+      for (let j = i + 1; j < list.length; j++) {
         const a = list[i], b = list[j];
         if (a.n === b.n) continue;
         // Where the two centre lines cross (both parameters within their segments).
@@ -1593,6 +1609,9 @@ function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typ
         if (done.some((d) => d.pair === pair && Math.hypot(d.x - px, d.z - pz) < 40)) continue;
         const la = Math.hypot(rx, rz) || 1, lb = Math.hypot(sx, sz) || 1;
         const ax = rx / la, az = rz / la, bx = sx / lb, bz = sz / lb;
+        done.push({ x: px, z: pz, pair });
+        crossings.push({ x: px, z: pz, a: { n: a.n, w: a.w, dx: ax, dz: az, line: a.line }, b: { n: b.n, w: b.w, dx: bx, dz: bz, line: b.line } });
+        if (signed >= cap) continue;
         // Try the four corners for one on the pavement, clear of buildings and asphalt.
         let spot: { x: number; z: number } | null = null;
         for (const [sa, sb] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) {
@@ -1602,13 +1621,24 @@ function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typ
           break;
         }
         if (!spot) continue;
-        done.push({ x: px, z: pz, pair });
+        signed++;
         // Plate angle: its face turned square to the street, so it runs along it.
         const plate = (dx: number, dz: number) => Math.atan2(dz, -dx);
-        labels.push({ text: a.n, x: spot.x, z: spot.z, angle: 0, w: 0, y: 4.2, kind: "corner", pole: true, plates: [{ text: a.n, angle: plate(ax, az) }, { text: b.n, angle: plate(bx, bz) }] });
+        labels.push({ text: a.n, x: spot.x, z: spot.z, angle: 0, w: 0, y: 4.2, kind: "corner", pole: true, plates: [{ text: a.n, angle: plate(ax, az) }, { text: b.n, angle: plate(bx, bz) }], ...(ir ? { ir: true } : {}) });
         obstacles.push(post(spot.x, spot.z, 0.1, 4.2));
       }
   }
+  // Arrow signs and motorway gantries before the junctions (streetKit.ts).
+  const nameAt = (x: number, z: number, not: string) => {
+    for (const sg of grid.get(`${Math.floor(x / G)}_${Math.floor(z / G)}`) ?? []) {
+      if (sg.n === not) continue;
+      const dx = sg.bx - sg.ax, dz = sg.bz - sg.az, l2 = dx * dx + dz * dz || 1;
+      const k = Math.max(0, Math.min(1, ((x - sg.ax) * dx + (z - sg.az) * dz) / l2));
+      if (Math.hypot(sg.ax + dx * k - x, sg.az + dz * k - z) < sg.w / 2 + 2) return sg.n;
+    }
+    return null;
+  };
+  crossSigns(crossings, { road, blocked, lite, post }, nameAt, labels, obstacles);
 }
 
 /**

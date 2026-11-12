@@ -29,16 +29,18 @@ import {
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
+import { siteBase } from "../lib/relayUrl";
 
 const base = (env: string | undefined, fallback: string) => (env === "off" ? null : (env || fallback).replace(/\/$/, ""));
-const snappBase = () => base(process.env.SNAPPFOOD_URL, "https://snappfood.ir");
-const torobBase = () => base(process.env.TOROB_URL, "https://api.torob.com");
-const divarBase = () => base(process.env.DIVAR_URL, "https://api.divar.ir");
+// The Iranian sites: straight, or through the Iran relay (RELAY_URL + RELAY_FOR, lib/relayUrl.ts).
+const snappBase = () => siteBase("snappfood", process.env.SNAPPFOOD_URL, "https://snappfood.ir");
+const torobBase = () => siteBase("torob", process.env.TOROB_URL, "https://api.torob.com");
+const divarBase = () => siteBase("divar", process.env.DIVAR_URL, "https://api.divar.ir");
 // Takhfifan (takhfifan.com): deals and cashback at stores (its /nearby map by position; a neighbourhood-name search as a fallback), a store's page and comments.
-const takhfifanBase = () => base(process.env.TAKHFIFAN_URL, "https://takhfifan.com");
+const takhfifanBase = () => siteBase("takhfifan", process.env.TAKHFIFAN_URL, "https://takhfifan.com");
 // Balad (balad.ir) — the map Iranians use most — knows each place's real phone number.
-const baladBase = () => base(process.env.BALAD_URL, "https://search.raah.ir");
-const baladPoiBase = () => base(process.env.BALAD_POI_URL, "https://poi.raah.ir");
+const baladBase = () => siteBase("balad", process.env.BALAD_URL, "https://search.raah.ir");
+const baladPoiBase = () => siteBase("baladpoi", process.env.BALAD_POI_URL, "https://poi.raah.ir");
 // Google Places (official API, paid per request): asked first when there is a key; Balad when Google has no number.
 const googleKey = () => process.env.GOOGLE_PLACES_KEY?.trim() || "";
 const googleBase = () => base(process.env.GOOGLE_PLACES_URL, "https://places.googleapis.com");

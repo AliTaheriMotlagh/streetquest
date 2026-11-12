@@ -21,7 +21,7 @@ import { nearby } from "./location/nearby";
 import { getLocation } from "./useLocation";
 import { isLite, isTouch, probeFrameRate } from "../perf";
 import { LongPress, SiktirLayer } from "./SiktirLayer";
-import { VasatyabLayer } from "./Vasatyab";
+import { VasatyabLayer } from "./VasatyabLayer";
 import type { SiktirSpot } from "@/lib/siktir";
 import type { MidView } from "@/server/midpoint";
 import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";

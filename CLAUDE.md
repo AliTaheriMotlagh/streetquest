@@ -8,11 +8,12 @@ only the section you need.
 | Area | Files |
 |---|---|
 | 2D map, layers, map styles | `src/components/game/{Game,GameMap,mapStyles}.ts(x)`, `src/app/world.css` |
-| Store cards (Snappfood menus/reviews/hours, Torob walk-in stores, Divar) | `src/components/game/StoreInfo.tsx`, `src/lib/localData.ts` (pure), `src/server/localData.ts` (fetch + ExtCache), `src/app/api/local/route.ts`; prod reads Snappfood via the Iran relay `relay/{relay.mjs,install.sh}` (`SNAPPFOOD_URL`) |
+| Store cards (Snappfood menus/reviews/hours, Torob walk-in stores, Divar) | `src/components/game/StoreInfo.tsx`, `src/lib/localData.ts` (pure), `src/server/localData.ts` (fetch + ExtCache), `src/app/api/local/route.ts`; prod reads Snappfood via the Iran relay `relay/{relay.mjs,install.sh}` (v2 is generic: any host via `RELAY_URL` + `RELAY_FOR`, `src/lib/relayUrl.ts`; deploy `npm run relay:deploy`) |
 | 3D city geometry (worker) / look | `src/components/drive/tileMesh.ts` / `world3d.ts`; data: `vectorTile.ts`, `src/lib/city.ts` |
 | 3D renderer, quality tiers, post-processing, weather/time of day | `src/components/drive/graphics/*` (`engine.ts` renderer + adaptive, `quality.ts` pure tiers, `post.ts` HDR pipeline, `shaders.ts` patches + ACES inverse, `surfaces.ts` procedural textures, `weather.ts` rain), `src/lib/daylight.ts` (pure sun/sky), `src/lib/filmLook.ts` (pure: motion blur/rays/grain per frame), `src/lib/lut.ts` (.cube) |
 | Driving mode, items in 3D | `src/components/drive/Drive.tsx` (beacons, loot, `settle()`), `markers.ts`, `pins.ts` |
 | Street Arena | `src/lib/arena/{weapons,modes,medals,protocol}.ts`, `src/components/arena/*`, `realtime/*`; without the realtime server matches are relayed: `src/lib/arena/relay.ts` (pure), `src/components/arena/{relay,rt}.ts`, `src/server/arenaRelay.ts`, `/api/arena` |
+| Iran street kit (post box, cabinets, galvanised dumpster, saqakhaneh, median railings, footbridges, arrow signs, motorway gantries) | placement `src/components/drive/streetKit.ts` (worker, called from tileMesh), look `streetKit3d.ts`; test `tests/streetKit.test.ts` |
 | Street life: crashes, car damage, people reacting, wanted level, police | `src/components/drive/{street,police,streetFx,carDamage,people,peopleModels}.ts`, `StreetHud.tsx`; pure rules `src/lib/street/{damage,wanted}.ts`; people models `scripts/people.ts` → `src/lib/peopleModels.ts` |
 | 3D sound (distance, direction, output modes) / screen shape (FOV, sharpening, full screen) | `src/lib/audio/spatial.ts` (pure rules), `src/components/game/{spatial,sfx,samples}.ts`, `src/components/arena/gunsound.ts` (sounds take a world position `at`) / `src/lib/view.ts`, `src/components/drive/fullscreen.ts` |
 | Small-phone HUD sizes | `src/app/compact.css` (loaded last) |

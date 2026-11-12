@@ -8,11 +8,9 @@
 import { distanceM, type LatLng } from "../lib/geo";
 import { filmsFrom, parseCinema, sessionWindow, type Cinema, type CinemaShows } from "../lib/cinema";
 import { cached, getJson } from "./localData";
+import { siteBase } from "../lib/relayUrl";
 
-const base = () => {
-  const v = process.env.CINEMATICKET_URL;
-  return v === "off" ? null : (v || "https://cinematicket.org/api/v1").replace(/\/$/, "");
-};
+const base = () => siteBase("cinematicket", process.env.CINEMATICKET_URL, "https://cinematicket.org/api/v1");
 
 const DAY_MS = 86_400_000, SESSIONS_MS = 10 * 60_000;
 /** Pages of the cinema list read at most (100 each). */

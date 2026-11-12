@@ -8,7 +8,7 @@ import { PEOPLE_MODELS } from "@/lib/peopleModels";
 import { PROP_MODELS } from "@/lib/propModels";
 import { WEAPON_KEYS } from "@/lib/arena/weapons";
 import { PLACE_CATS } from "@/lib/places";
-import { buildCatalog, buildSlots, builtinFiles } from "@/lib/objectCatalog";
+import { buildCatalog, buildSlots, builtinFiles, STREET_KIT } from "@/lib/objectCatalog";
 
 describe("objectCatalog", () => {
   const cat = buildCatalog({ landmarks: [{ id: "abc", name: "Kebab house", url: "/landmark/abc/1.glb", height: 9, stats: { triangles: 5000, bytes: 90000 } }] });
@@ -17,7 +17,8 @@ describe("objectCatalog", () => {
     assert.equal(of("car").length, Object.keys(FLEET).length);
     assert.equal(of("person").length, PEOPLE_MODELS.length);
     assert.equal(of("weapon").length, WEAPON_KEYS.length);
-    assert.equal(of("prop").length, Object.keys(PROP_MODELS.kinds).length);
+    assert.equal(of("prop").length, Object.keys(PROP_MODELS.kinds).length + STREET_KIT.length, "the model props and the street kit drawn in code");
+    for (const [key] of STREET_KIT) assert.equal(cat.find((o) => o.id === `prop:${key}`)?.file, null, `${key}: nothing to download`);
     assert.equal(of("loot").length, ITEMS.length);
     assert.equal(of("store").length, Object.keys(PLACE_CATS).length);
     assert.equal(of("landmark").length, 1);

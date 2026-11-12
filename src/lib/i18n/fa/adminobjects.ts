@@ -154,5 +154,16 @@ const adminobjects: Record<string, string> = {
   "The file storage refused the upload ({status})": "فضای ذخیره‌سازی آپلود رو قبول نکرد ({status})",
   "File storage isn't set up: add BLOB_READ_WRITE_TOKEN": "ذخیره‌سازیِ فایل راه‌اندازی نشده: BLOB_READ_WRITE_TOKEN رو اضافه کن",
   "Only drafts that were never published can be discarded": "فقط پیش‌نویس‌هایی که هیچ‌وقت منتشر نشدن رو می‌شه دور انداخت",
+  "Waste container": "سطل زباله‌ی شهرداری",
+  "Rubbish bags": "کیسه‌های زباله",
+  "Post box": "صندوق پست",
+  "Electricity cabinet": "تابلو برق",
+  "Telecom cabinet": "کافوی مخابرات",
+  "Payphone": "تلفن همگانی",
+  "Saqakhaneh": "سقاخانه",
+  "Median railing": "نرده‌ی وسط خیابان",
+  "Footbridge": "پل عابر پیاده",
+  "Direction sign": "تابلوی راهنما",
+  "Motorway sign": "تابلوی بزرگراه",
 };
 export default adminobjects;

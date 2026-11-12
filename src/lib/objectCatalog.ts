@@ -73,6 +73,21 @@ const U = {
   landmark: msg("A paying store's own building in the 3D city"),
 };
 
+/** The street kit drawn from code: key, name, width x height x depth (m). */
+export const STREET_KIT: [string, string, [number, number, number]][] = [
+  ["dumpster", msg("Waste container"), [1.58, 1.42, 1.22]],
+  ["bags", msg("Rubbish bags"), [1.3, 0.5, 1.1]],
+  ["postbox", msg("Post box"), [0.62, 1.65, 0.48]],
+  ["power", msg("Electricity cabinet"), [1.47, 1.64, 0.72]],
+  ["telecom", msg("Telecom cabinet"), [0.98, 1.33, 0.54]],
+  ["phone", msg("Payphone"), [0.84, 2.14, 0.5]],
+  ["saqa", msg("Saqakhaneh"), [1.32, 2.32, 0.78]],
+  ["rail", msg("Median railing"), [2.4, 1.15, 0.55]],
+  ["bridge", msg("Footbridge"), [3, 8.5, 3.1]],
+  ["direction", msg("Direction sign"), [3, 3.6, 0.1]],
+  ["gantry", msg("Motorway sign"), [12, 7.3, 0.4]],
+];
+
 export function buildCatalog(opts: { landmarks?: LandmarkRow[] } = {}): CatalogObject[] {
   const out: CatalogObject[] = [];
   for (const car of Object.values(CAR_MODELS)) {
@@ -104,6 +119,8 @@ export function buildCatalog(opts: { landmarks?: LandmarkRow[] } = {}): CatalogO
   for (const [kind, k] of Object.entries(PROP_MODELS.kinds)) {
     out.push({ id: `prop:${kind}`, kind: "prop", name: kind, slot: "props:street", file: PROP_MODELS.url, bytes: null, tris: k.tris, size: [0, k.height, 0].map(round) as [number, number, number], credits: [], usedIn: [U.props], note: "credits: see the props file" });
   }
+  // Iran's street kit, drawn in code (drive/streetKit3d.ts): nothing to download.
+  for (const [key, name, size] of STREET_KIT) out.push({ id: `prop:${key}`, kind: "prop", name, slot: null, file: null, bytes: null, tris: null, size, credits: [OWN], usedIn: [U.props], note: "drawn from code (streetKit3d.ts)" });
   for (const it of ITEMS) out.push({ id: `loot:${it.key}`, kind: "loot", name: it.name, emoji: it.emoji, slot: null, file: null, bytes: null, tris: null, size: null, credits: [], usedIn: [U.loot], note: it.rarity });
   for (const [m, name] of [["store", msg("Store sign")], ["job", msg("Job beacon")], ["loot", msg("Loot beacon")], ["player", msg("Player pin")]] as const) {
     out.push({ id: `marker:${m}`, kind: "marker", name, slot: null, file: null, bytes: null, tris: null, size: null, credits: [OWN], usedIn: [U.marker] });

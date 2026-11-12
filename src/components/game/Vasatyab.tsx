@@ -7,7 +7,6 @@
 //  - VasatyabLayer: the point, the members and the lines between them on the 2D map.
 // The maths is lib/midpoint.ts; the server side server/midpoint.ts (/api/party/midpoint).
 import { useCallback, useEffect, useState } from "react";
-import { Marker, Polyline } from "react-leaflet";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { msg, t } from "@/lib/i18n";
 import type { MidMethod } from "@/lib/midpoint";
@@ -15,7 +14,6 @@ import { siktirCountLabel } from "@/lib/siktir";
 import type { MidView } from "@/server/midpoint";
 import { Button } from "@/components/Button";
 import { api } from "./client";
-import { esc, icon } from "./mapIcons";
 import { useGame } from "./ui";
 
 const METHODS: { key: MidMethod; label: string; hint: string }[] = [
@@ -34,8 +32,11 @@ const savedMethod = (): MidMethod => {
   }
 };
 
-/** Poll the party's midpoint: every 4 s while `open` (with places), every 20 s otherwise (just the point, to know the party is there). */
-export function useVasatyab(open: boolean) {
+/**
+ * Poll the party's midpoint: every 4 s while `open` (with places), every 20 s otherwise (just the
+ * point, to know the party is there). `enabled` false: no polling at all (the 3D city, not in a party).
+ */
+export function useVasatyab(open: boolean, enabled = true) {
   const [method, setMethodState] = useState<MidMethod>("median");
   const [view, setView] = useState<MidView | null>(null);
   const [inParty, setInParty] = useState(true);
@@ -54,10 +55,11 @@ export function useVasatyab(open: boolean) {
     [method, open],
   );
   useEffect(() => {
+    if (!enabled) return void setView(null);
     void load();
     const i = setInterval(load, open ? 4000 : 20_000);
     return () => clearInterval(i);
-  }, [load, open]);
+  }, [load, open, enabled]);
   return { view, method, setMethod, inParty, reload: load };
 }
 
@@ -210,32 +212,6 @@ export function VasatyabDock({ onView }: { onView: (v: MidView | null) => void }
           </div>
           <VasatyabPanel view={v.view} method={v.method} setMethod={v.setMethod} reload={v.reload} />
         </div>
-      )}
-    </>
-  );
-}
-
-/** On the 2D map: each member joined by a line to the middle, the middle itself, and the gather point. */
-export function VasatyabLayer({ view }: { view: MidView }) {
-  const mid = view.point;
-  return (
-    <>
-      {mid &&
-        view.members.map((m) =>
-          m.lat == null || m.lng == null ? null : (
-            <Polyline key={`l${m.userId}`} positions={[[m.lat, m.lng], [mid.lat, mid.lng]]} interactive={false} pathOptions={{ color: "#f0c05a", weight: 2.5, opacity: 0.85, dashArray: "6 8" }} />
-          ),
-        )}
-      {view.members.map((m) =>
-        m.lat == null || m.lng == null || m.me ? null : (
-          <Marker key={`m${m.userId}`} position={[m.lat, m.lng]} zIndexOffset={900} interactive={false} icon={icon(`<span class="ring" style="color:#f0c05a"></span>${esc(m.avatar)}<span class="nm">${esc(m.name)}${m.distM != null ? ` · ${esc(formatDistance(m.distM))}` : ""}</span>`, "place vasa-member", 36)} />
-        ),
-      )}
-      {mid && (
-        <Marker position={[mid.lat, mid.lng]} zIndexOffset={1000} interactive={false} icon={icon(`<span class="beacon"></span><span class="bc-pin">📍</span><span class="bc-label">${esc(t("The middle"))}</span>`, "story-beacon", 56)} />
-      )}
-      {view.meet && (
-        <Marker position={[view.meet.lat, view.meet.lng]} zIndexOffset={1100} interactive={false} icon={icon(`<span class="beacon ok"></span><span class="bc-pin">🚩</span><span class="bc-label">${esc(view.meet.name || t("Gather point"))}</span>`, "story-beacon", 56)} />
       )}
     </>
   );

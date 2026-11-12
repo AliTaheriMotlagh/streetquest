@@ -21,6 +21,7 @@
     "assets:cars": "tsx scripts/cars.ts",
     "assets:props": "tsx scripts/props.ts",
     "assets:catalog": "tsx scripts/object-catalog.ts",
+    "relay:deploy": "bash scripts/relay-deploy.sh",
     "assets:find": "tsx scripts/sketchfab.ts find",
     "assets:get": "tsx --env-file-if-exists=.env scripts/sketchfab.ts get",
     "typecheck": "tsc --noEmit",

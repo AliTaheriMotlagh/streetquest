@@ -31,7 +31,8 @@ describe("the model build", () => {
       assert.ok(m.height > 0.3 && m.height < 12, `${k} height`);
       assert.ok(m.tris > 20 && m.tris <= 1000, `${k}: ${m.tris} triangles`);
     }
-    assert.ok(kinds.tree && kinds.lamp && kinds.dumpster);
+    assert.ok(kinds.tree && kinds.lamp);
+    assert.ok(!("dumpster" in kinds), "the waste container is Tehran's, drawn in code");
     assert.ok(kinds.lamp.top[2] > 0.3, "the arm reaches over the street (+z)");
     assert.ok(kinds.lamp.top[1] > 5, "the head is up top");
     assert.match(PROP_MODELS.url, /^\/models\/props\/props\.[0-9a-f]{10}\.glb$/, "hashed: cached forever");

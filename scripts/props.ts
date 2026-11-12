@@ -30,7 +30,7 @@ const MANIFEST = path.join(ROOT, "src/lib/propModels.ts");
 const PREVIEW = path.resolve(process.argv.find((a) => a.startsWith("--out="))?.slice(6) ?? path.join(ROOT, ".cache/props"));
 
 /** What the city draws from a model (world3d PropKind, plus tree variants). */
-export type ModelKind = "tree" | "pine" | "lamp" | "bus" | "bench" | "bin" | "hydrant" | "dumpster";
+export type ModelKind = "tree" | "pine" | "lamp" | "bus" | "bench" | "bin" | "hydrant";
 
 type Prop = {
   kind: ModelKind;
@@ -60,7 +60,7 @@ const PROPS: Prop[] = [
   { kind: "bench", file: "bench.glb", height: 0.85, budget: 300 },
   { kind: "bin", file: "bin.glb", height: 1.0, budget: 220 },
   { kind: "hydrant", file: "hydrant.glb", height: 0.75, budget: 260, paint: [["fire_hydrant", "#b8322a"]] },
-  { kind: "dumpster", file: "dumpster.glb", height: 1.35, budget: 320 },
+  // (The waste container is Tehran's galvanised one, drawn in code: drive/streetKit3d.ts.)
 ];
 
 type Built = { kind: ModelKind; mesh: Mesh; height: number; top: [number, number, number]; credit: Credit | null };

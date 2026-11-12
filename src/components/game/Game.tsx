@@ -40,7 +40,7 @@ import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
 import { BizCard, PlaceCard, SpotCard } from "./PlaceCards";
 import { SiktirSheet, type SiktirTarget } from "./Siktir";
-import { useSiktirSpots } from "./SiktirLayer";
+import { useSiktirSpots } from "./siktirSpots";
 import { VasatyabDock } from "./Vasatyab";
 import type { MidView } from "@/server/midpoint";
 import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";

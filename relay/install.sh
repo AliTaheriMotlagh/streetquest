@@ -5,8 +5,10 @@
 #   scp relay/relay.mjs relay/install.sh <user>@<server-ip>:
 #   ssh -t <user>@<server-ip> sudo bash install.sh
 #
-# Run it again to update relay.mjs: the key is kept. It listens on port 80 (PORT=… to
-# change), checks that Snappfood answers this server, and prints the SNAPPFOOD_URL to set.
+# or `npm run relay:deploy` (scripts/relay-deploy.sh: copies, installs and checks over SSH).
+# Run it again to update relay.mjs: the key and port are kept. It listens on port 80 (PORT=… to
+# change), checks that Snappfood answers this server, and prints the RELAY_URL to set. Since relay v2
+# any public site goes through the generic route, so a new feature doesn't need this run again.
 set -euo pipefail
 cd "$(dirname "$0")"
 [ "$(id -u)" = 0 ] || { echo "Run as root: sudo bash install.sh"; exit 1; }
@@ -26,7 +28,7 @@ chmod 600 /etc/streetquest-relay.env
 
 cat > /etc/systemd/system/streetquest-relay.service <<EOF
 [Unit]
-Description=StreetQuest relay for Snappfood, Torob and Divar
+Description=StreetQuest relay for the Iranian sites
 After=network-online.target
 Wants=network-online.target
 
@@ -52,7 +54,9 @@ code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "http://127.0.0.1:$P
 echo "Relay is running. Snappfood answers this server with: $code (200 = good)."
 ip=$(curl -s --max-time 5 https://ifconfig.io 2>/dev/null || hostname -I | cut -d' ' -f1)
 port=$([ "$PORT" = 80 ] && echo "" || echo ":$PORT")
+echo "Version: $(curl -fsS "http://127.0.0.1:$PORT/health")"
 echo
-echo "Set this on Vercel (production), then redeploy:"
-echo "  SNAPPFOOD_URL=http://$ip$port/$RELAY_KEY/snappfood"
-echo "With a domain on ArvanCloud CDN pointing here (HTTPS), use https://<that domain>/$RELAY_KEY/snappfood instead."
+echo "Set this on Vercel (production), then redeploy (the old SNAPPFOOD_URL=http://$ip$port/$RELAY_KEY/snappfood keeps working):"
+echo "  RELAY_URL=http://$ip$port/$RELAY_KEY"
+echo "  RELAY_FOR=snappfood          (or e.g. snappfood,torob,divar — \"all\" for every Iranian site)"
+echo "With a domain on ArvanCloud CDN pointing here (HTTPS), use https://<that domain>/$RELAY_KEY instead."

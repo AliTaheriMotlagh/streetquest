@@ -70,6 +70,7 @@ const social: Record<string, string> = {
   hidden: "پنهان",
   "{n, plural, one {# mark} other {# marks}} on this place": "{n} علامت روی این مکان",
   "Showing the latest {n}": "{n} مورد آخر نمایش داده می‌شه",
+  "Vasatyab · the middle": "وسط‌یاب · وسطِ جمع",
 };
 
 export default social;
