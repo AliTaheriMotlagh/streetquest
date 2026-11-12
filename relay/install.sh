@@ -52,7 +52,8 @@ curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null || { journalctl -u streetqu
 q="lat=35.699700&long=51.338000&optionalClient=WEBSITE&client=WEBSITE&deviceType=WEBSITE&appVersion=8.1.1&page=0&page_size=1"
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "http://127.0.0.1:$PORT/$RELAY_KEY/snappfood/mobile/v3/restaurant/vendors-list?$q" || true)
 echo "Relay is running. Snappfood answers this server with: $code (200 = good)."
-ip=$(curl -s --max-time 5 https://ifconfig.io 2>/dev/null || hostname -I | cut -d' ' -f1)
+# The address the app reaches it at (a cloud server's outgoing address can differ: npm run relay:deploy passes it).
+ip=${PUBLIC_HOST:-$(curl -s --max-time 5 https://ifconfig.io 2>/dev/null || hostname -I | cut -d' ' -f1)}
 port=$([ "$PORT" = 80 ] && echo "" || echo ":$PORT")
 echo "Version: $(curl -fsS "http://127.0.0.1:$PORT/health")"
 echo

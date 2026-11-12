@@ -1,0 +1,11 @@
+# Runs one ssh/scp command, typing the password from $RELAY_SSH_PASSWORD at its prompt
+# (scripts/relay-deploy.sh, when the server takes passwords only). Exits with the command's code.
+set timeout 180
+log_user 1
+spawn {*}$argv
+expect {
+  -re "(?i)password:" { log_user 0; send "$env(RELAY_SSH_PASSWORD)\r"; log_user 1; exp_continue }
+  eof
+}
+catch wait result
+exit [lindex $result 3]

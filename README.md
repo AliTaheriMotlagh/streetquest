@@ -860,8 +860,8 @@ relay with no dependencies (any Node 18+) that runs on a server in Iran; the app
    `ssh -t <user>@<server-ip> sudo bash install.sh`. It installs Node from Ubuntu's mirror, runs the relay as a service
    on port 80 with a random key (kept in `/etc/streetquest-relay.env`), checks that Snappfood answers the server
    (`200 = good`) and prints the `RELAY_URL` to use. Run it again to update the relay; the key stays. Or, once
-   `ssh-copy-id <user>@<server-ip>` has put your key on the server, `npm run relay:deploy` does all of it
-   (`RELAY_SSH=<user>@<server-ip>` in `.env`, `scripts/relay-deploy.sh`).
+   `RELAY_SSH=<user>@<server-ip>` is in your local `.env`, `npm run relay:deploy` does all of it
+   (`scripts/relay-deploy.sh`: your SSH key, or `RELAY_SSH_PASSWORD` in `.env` typed at the prompts by `expect`).
 3. HTTPS (recommended — the key is part of the URL): put a (sub)domain on **ArvanCloud CDN** with an A record to the
    server, going through the CDN with HTTPS on. The relay marks every answer `no-store`, so the CDN doesn't cache them.
 4. On Vercel: `vercel env add RELAY_URL production` = `https://<domain>/<key>` (or the `http://<ip>/<key>` the script
