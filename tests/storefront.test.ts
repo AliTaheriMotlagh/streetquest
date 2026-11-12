@@ -3,7 +3,7 @@
 // and a store's pole sign stands on the pavement in front of it, facing the street.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NEAR_STORE_M, nearStore, offRoads, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
+import { NEAR_STORE_M, nearStore, offRoads, oncePerStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
 
 const shop = (id: string, x: number, z: number): StoreSpot => ({ id, x, z, name: id });
 
@@ -73,3 +73,18 @@ describe("a store's pole sign", () => {
   });
 });
 
+
+describe("one sign, one blip, one row per store", () => {
+  it("drops the second copy of a shop the map has twice, keeps branches a street apart and unnamed things", () => {
+    const list = [
+      { id: "a", x: 0, z: 0, name: "پتشاپ بلوپت 2" },
+      { id: "a2", x: 3, z: 4, name: " پتشاپ  بلوپت 2 " }, // the same shop: a point and its building
+      { id: "b", x: 120, z: 0, name: "پتشاپ بلوپت 2" }, // another branch down the road
+      { id: "c", x: 1, z: 1, name: "نانوایی" },
+      { id: "n1", x: 0, z: 0, name: "" },
+      { id: "n2", x: 0, z: 0, name: "" },
+    ];
+    assert.deepEqual(oncePerStore(list).map((s) => s.id), ["a", "b", "c", "n1", "n2"]);
+    assert.deepEqual(oncePerStore(list, 200).map((s) => s.id), ["a", "c", "n1", "n2"]);
+  });
+});

@@ -30,6 +30,7 @@ import {
 } from "../lib/localData";
 import { t } from "../lib/i18n";
 import { siteBase } from "../lib/relayUrl";
+import { pacerFor } from "../lib/pace";
 
 const base = (env: string | undefined, fallback: string) => (env === "off" ? null : (env || fallback).replace(/\/$/, ""));
 // The Iranian sites: straight, or through the Iran relay (RELAY_URL + RELAY_FOR, lib/relayUrl.ts).
@@ -125,6 +126,12 @@ export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Rec
     torobNext = Math.max(Date.now(), torobNext) + TOROB_GAP_MS;
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   }
+  // Every site at its own gentle pace (lib/pace.ts): spaced out, capped a minute, left alone
+  // for a while once it says no. A request the pace refuses isn't made — the cache answers.
+  const pace = pacerFor(url);
+  const hold = pace ? pace.take(Date.now()) : 0;
+  if (hold == null) return null;
+  if (hold > 0) await new Promise((r) => setTimeout(r, hold));
   if (running >= MAX_PARALLEL) await new Promise<void>((r) => queue.push(r));
   running++;
   const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
@@ -139,6 +146,7 @@ export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Rec
       const timer = setTimeout(() => ctl.abort(), torob ? FETCH_TIMEOUT_MS : ATTEMPT_TIMEOUT_MS);
       try {
         const res = await fetch(url, { ...init, signal: ctl.signal });
+        pace?.saw(res.status, Date.now());
         if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
         if (!torob && attempt < RETRIES && [502, 503, 504].includes(res.status)) continue;
         if (res.status === 404 && none !== undefined) return none;
@@ -173,6 +181,16 @@ export async function cached<T>(key: string, ttlMs: number, load: () => Promise<
     inflight.set(key, p);
   }
   return (await p) ?? ((row?.data as T | undefined) ?? null);
+}
+
+/** Whatever is cached under these keys, however old (a search reads many menus at once without fetching any). */
+export async function cachedMany<T>(keys: string[]): Promise<Map<string, T>> {
+  const out = new Map<string, T>();
+  for (let i = 0; i < keys.length; i += 200) {
+    const rows = await prisma.extCache.findMany({ where: { key: { in: keys.slice(i, i + 200) } }, select: { key: true, data: true } });
+    for (const r of rows) if (r.data != null) out.set(r.key, r.data as T);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- Snappfood
@@ -310,12 +328,39 @@ type RawMenu = {
 /** A store's own number — never a platform's call centre (Snappfood answers its own for every vendor). */
 const phoneOf = (s: string | undefined) => storePhone(s);
 
+/** The cache key of a vendor's menu (cachedMany reads many of them for a product search). */
+export const menuKey = (code: string) => `sf:menu6:${code}`;
+
+type RawDish = { id?: number; title?: string; description?: string; price?: number; discount?: number; images?: { thumb?: string; main?: string }[]; vendor?: { code?: string; title?: string; rating?: number } };
+/** A dish Snappfood's own search named, with the vendor that sells it (toman; no position). */
+export type SnappDish = { id: string; title: string; about: string; price: number; was: number; photo: string; code: string; store: string; rating: number };
+/**
+ * Snappfood's search for a product: the couple of dishes it names (its full list is closed
+ * to us) and the vendors it matched — whose menus a product search then reads.
+ */
+export function snappProducts(q: string, at: LatLng) {
+  const c = cellOf(at);
+  return cached<{ dishes: SnappDish[]; vendors: string[] }>(`sf:qp:${c.y}:${c.x}:${normName(q)}`, VENDORS_TTL, async () => {
+    const root = snappBase();
+    if (!root) return null;
+    const r = await getJson<{ data?: { vendor?: { items?: { code?: string }[] }; product_variation?: { items?: RawDish[] } } }>(`${root}/search/api/v1/desktop/search?${snappQuery(at)}&query=${encodeURIComponent(q)}`);
+    if (!r?.data) return null;
+    const dishes = (r.data.product_variation?.items ?? [])
+      .filter((d) => d.id && d.title && d.vendor?.code && d.vendor.title)
+      .map((d) => {
+        const price = Math.max(0, Math.round(d.price ?? 0)), off = Math.max(0, Math.round(d.discount ?? 0));
+        return { id: String(d.id), title: d.title!.trim(), about: (d.description ?? "").trim().slice(0, 200), price: Math.max(0, price - off), was: off > 0 ? price : 0, photo: d.images?.[0]?.thumb ?? d.images?.[0]?.main ?? "", code: d.vendor!.code!, store: d.vendor!.title!, rating: d.vendor!.rating ?? 0 };
+      });
+    return { dishes, vendors: (r.data.vendor?.items ?? []).map((v) => v.code).filter((x): x is string => !!x) };
+  });
+}
+
 /** A vendor's menu (restaurants) or catalog (supermarkets, bakeries…), prices in toman. */
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
   // "menu6": Snappfood's call-centre number is dropped (the restaurant's own is added per request, phoneFor).
-  return cached<Menu>(`sf:menu6:${code}`, MENU_TTL, async () => {
+  return cached<Menu>(menuKey(code), MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
     const at = near ?? { lat: 35.6997, lng: 51.338 };

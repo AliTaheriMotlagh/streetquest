@@ -27,13 +27,16 @@ from mathutils import Euler, Matrix, Quaternion, Vector
 sys.path.insert(0, os.path.dirname(__file__))
 from guns import import_gun  # noqa: E402
 from police import build_police  # noqa: E402
+from civilian import build_civilian  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "public", "models", "arena")
 argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 PREVIEW = argv[0] if argv else None
 ONLY_POLICE = os.environ.get("ARENA_ONLY") == "police"
+ONLY_CIVILIAN = os.environ.get("ARENA_ONLY") == "civilian"
 POLICE_SRC = os.path.join(ROOT, "assets", "models", "character", "police.glb")
+CIVILIAN_SRC = os.path.join(ROOT, "assets", "models", "character", "casual.glb")
 FPS = 30
 
 # ---------------------------------------------------------------- scene
@@ -624,7 +627,7 @@ EXPORT = dict(
     export_optimize_animation_size=True, export_def_bones=False, export_rest_position_armature=True, export_anim_single_armature=True,
     export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
 )
-if not ONLY_POLICE:
+if not ONLY_POLICE and not ONLY_CIVILIAN:
     bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "soldier.glb"), **EXPORT)
     tris = sum(len(p.vertices) - 2 for p in body.data.polygons)
     print(f"[arena] soldier body ~{tris} tris; actions: {[a.name for a in actions]}")
@@ -633,7 +636,7 @@ if not ONLY_POLICE:
 
 # ---------------------------------------------------------------- the police officer (same rig)
 police = None
-if os.path.exists(POLICE_SRC):
+if not ONLY_CIVILIAN and os.path.exists(POLICE_SRC):
     police = build_police(POLICE_SRC, rig, J, BONES, UPPER, FORE)
     body.hide_render = True
     bpy.ops.object.select_all(action="DESELECT")
@@ -643,8 +646,25 @@ if os.path.exists(POLICE_SRC):
     bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "police.glb"), **EXPORT)
     ptris = sum(len(p.vertices) - 2 for p in police.data.polygons)
     print(f"[arena] police body ~{ptris} tris; police.glb: {os.path.getsize(os.path.join(OUT, 'police.glb')) // 1024} KB")
-else:
+elif not ONLY_CIVILIAN:
     print("[arena] no assets/models/character/police.glb: police.glb not built (officers use the soldier)")
+
+# ---------------------------------------------------------------- the main character (same rig)
+civilian = None
+if os.path.exists(CIVILIAN_SRC):
+    civilian = build_civilian(CIVILIAN_SRC, rig, J, BONES, UPPER, FORE)
+    body.hide_render = True
+    if police:
+        police.hide_render = True
+    bpy.ops.object.select_all(action="DESELECT")
+    rig.select_set(True)
+    for o in rig.children_recursive:
+        o.select_set(o not in (body, police))
+    bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "civilian.glb"), **EXPORT)
+    ctris = sum(len(p.vertices) - 2 for p in civilian.data.polygons)
+    print(f"[arena] civilian body ~{ctris} tris; civilian.glb: {os.path.getsize(os.path.join(OUT, 'civilian.glb')) // 1024} KB")
+else:
+    print("[arena] no assets/models/character/casual.glb: civilian.glb not built (the main character uses the soldier)")
 
 # ---------------------------------------------------------------- optional preview render
 if PREVIEW:

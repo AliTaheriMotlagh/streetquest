@@ -2,7 +2,7 @@
 // Torob and OpenStreetMap, open-now in the store's time zone, and store-name matching.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clockOf, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, openState, sameName, sameStore, snappfoodCode, snappfoodMenuUrl, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
+import { clockOf, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, oneEach, openState, sameName, sameStore, snappfoodCode, snappfoodMenuUrl, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
 
 const TEHRAN = { lat: 35.73, lng: 51.53 };
 /** A Tehran wall-clock moment (Iran has kept +03:30 all year since 2022). */
@@ -243,5 +243,25 @@ describe("every phone number of a store", () => {
     assert.ok(placeMatch(far(600), { name: "کترینگ ابوالفضل", ...at }) != null);
     assert.equal(placeMatch(far(2000), { name: "کترینگ ابوالفضل", ...at }), null);
     assert.equal(placeMatch({ name: "رستوران ابوالفضل", lat: far(600).lat, lng: at.lng }, { name: "کترینگ ابوالفضل", ...at }), null);
+  });
+});
+
+describe("one marker per store on the map", () => {
+  const at = (m: number) => ({ lat: 35.7 + m / 111_320, lng: 51.4 });
+  it("hides a place another layer already marks, and the map's own second copy — not a branch down the road", () => {
+    const places = [
+      { id: "p1", name: "پیتزا بلوط", ...at(0) },
+      { id: "p1b", name: "پیتزا بلوط", ...at(12) }, // the same shop mapped twice
+      { id: "p2", name: "پیتزا بلوط", ...at(900) }, // another branch
+      { id: "p3", name: "داروخانه دکتر رضایی", ...at(30) },
+      { id: "p4", name: "کافه لمیز", ...at(60) },
+      { id: "p5", name: "", ...at(0) },
+      { id: "p6", name: "", ...at(1) },
+    ];
+    // A Snappfood vendor 40 m off with the café's name: the café's own marker goes.
+    const taken = [{ name: "کافه لمیز (تهرانپارس)", ...at(100) }];
+    assert.deepEqual(oneEach(places, (p) => p.name, taken).map((p) => p.id), ["p1", "p2", "p3", "p5", "p6"]);
+    assert.deepEqual(oneEach(places, (p) => p.name).map((p) => p.id), ["p1", "p2", "p3", "p4", "p5", "p6"]);
+    assert.deepEqual(oneEach([], (p: { name: string; lat: number; lng: number }) => p.name, taken), []);
   });
 });

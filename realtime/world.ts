@@ -11,6 +11,7 @@
 import { distanceM } from "../src/lib/geo";
 import { FREE_RESPAWN_S, PASSIVE_COOLDOWN_S, ROOKIE_LEVEL } from "../src/lib/arena/modes";
 import type { KillCause, LL } from "../src/lib/arena/protocol";
+import { resupply } from "../src/lib/arena/throwables";
 import type { Player } from "./player";
 import { Space } from "./space";
 
@@ -64,6 +65,22 @@ export class World extends Space {
   *visible(p: Player) {
     if (!p.placed) return;
     for (const o of this.near(p, VIEW_M)) if (this.shows(p, o)) yield o;
+  }
+
+  private resuppliedAt = 0;
+  /** Grenades thrown a while ago are back in the bag (checked once a second; a match never restocks). */
+  resupply(now: number) {
+    if (now - this.resuppliedAt < 1000) return;
+    this.resuppliedAt = now;
+    for (const p of this.players) {
+      if (p.bot || p.dead || p.gearless) continue;
+      const gear = resupply(p.gear, p.gearThrownAt, now);
+      if (!gear) continue;
+      // (A C4 still lying out there stays the only one.)
+      if (this.nades.some((n) => n.by === p && n.def.sticky && !n.live)) gear.c4 = p.gear.c4;
+      p.gear = gear;
+      p.status(this.id);
+    }
   }
 
   canHurt(a: Player, b: Player, now: number) {

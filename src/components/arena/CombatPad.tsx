@@ -4,8 +4,9 @@
 //    to sprint (the ring turns amber);
 //  - right half: drag anywhere to look, faster flicks turn further (and a look-sensitivity setting);
 //    when the sights are up, a quick tap on it fires one shot;
-//  - an arc of actions around the fire button under the right thumb: aim (hold to aim, tap to lock
-//    it on), jump, crouch, reload, switch gun, and "car" only while one is within reach;
+//  - two rings of actions around the fire button under the right thumb (lib/input/touch footLayout):
+//    aim (hold to aim, tap to lock it on), jump, crouch, reload nearest; switch gun and "car" (only
+//    while one is within reach) further out — all of them whole on a narrow phone's screen;
 //  - a dead-eye button (slow motion while aiming), left-handed layout mirrors it all.
 // Every finger is tracked by its pointer id, so a thumb on the stick, one on the look area and a
 // third on a button never steal each other's events. Everything writes straight into the combat
@@ -14,7 +15,7 @@ import { memo, useEffect, useRef, type CSSProperties, type PointerEvent as RPoin
 import { t } from "@/lib/i18n";
 import type { CombatInput } from "./combat";
 import { SENS_TOUCH } from "./combat";
-import { arc, footActions, lookGain, STICK_R, stickMove, type FootAction, type Stick } from "@/lib/input/touch";
+import { footActions, footLayout, lookGain, STICK_R, stickMove, type FootSlot, type Stick } from "@/lib/input/touch";
 import { buzz, useTouchPrefs } from "../drive/touchPrefs";
 
 type Props = {
@@ -31,12 +32,11 @@ type Props = {
   inMatch: boolean;
 };
 
-const ARC_R = 134;
 const TAP_MS = 220;
 const TAP_PX = 12;
 
 type Look = { x: number; y: number; t: number; x0: number; y0: number; t0: number; moved: boolean; fire: boolean };
-const SLOTS: (FootAction | "swap")[] = ["swap", "reload", "crouch", "jump", "aim", "car"];
+const SLOTS: FootSlot[] = ["swap", "reload", "crouch", "jump", "aim", "car"];
 
 export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap, onJump, onCar, onFocus, nearCar, inMatch }: Props) {
   const prefs = useTouchPrefs();
@@ -209,7 +209,7 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
     buzz(12);
   };
 
-  const slots = arc(SLOTS.length, ARC_R, 94, 210, prefs.left);
+  const slots = footLayout(prefs.left);
   const shown = new Set<string>([...footActions({ nearCar, inMatch }), "swap"]);
   const rootCls = `cpad ${prefs.left ? "lh" : ""}`;
   const label: Record<string, string> = { swap: t("Switch gun"), reload: t("Reload"), crouch: t("Crouch"), jump: t("Jump"), aim: t("Aim"), car: t("Get in the car") };
@@ -239,9 +239,9 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
             <Icon d="eye" />
           </button>
         )}
-        {SLOTS.map((k, i) =>
+        {SLOTS.map((k) =>
           shown.has(k) ? (
-            <button key={k} className={`cp-btn ${k}`} style={{ "--ax": `${slots[i].x}px`, "--ay": `${slots[i].y}px` } as CSSProperties} aria-label={label[k]} onPointerDown={onDown[k]}>
+            <button key={k} className={`cp-btn ${k}`} style={{ "--ax": `${slots[k].x.toFixed(1)}px`, "--ay": `${slots[k].y.toFixed(1)}px` } as CSSProperties} aria-label={label[k]} onPointerDown={onDown[k]}>
               <Icon d={k} />
             </button>
           ) : null,

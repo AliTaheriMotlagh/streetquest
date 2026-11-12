@@ -8,7 +8,7 @@
 //  - StoreDirectory: every store round you as a list, searchable, filtered by site and by type;
 //  - ServicesSheet: home services (Achareh, Sanjagh, Khedmatazma) and the online shopping sites.
 // Every link out goes through the leave page (LeaveGuard).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
 import {
@@ -242,15 +242,19 @@ export function AdAreaCard({ area, onClose }: { area: AdArea; onClose: () => voi
 type Sort = "near" | "rating" | "name";
 const PAGE = 60;
 /** Every directory store round you, as a list: search, by site, by type, nearest / best rated first. */
-export function StoreDirectory({ stores, at, onPick, onClose, onServices }: { stores: DirStore[]; at: LatLng | null; onPick: (s: DirStore) => void; onClose: () => void; onServices: () => void }) {
+export function StoreDirectory({ stores, at, onPick, onClose, onServices, onProducts }: { stores: DirStore[]; at: LatLng | null; onPick: (s: DirStore) => void; onClose: () => void; onServices: () => void; /** Search what the stores sell instead (ProductSearch). */ onProducts?: () => void }) {
   const [q, setQ] = useState("");
   const [sites, setSites] = useState<MapSite[]>([]);
   const [types, setTypes] = useState<StoreType[]>([]);
   const [sort, setSort] = useState<Sort>("near");
   const [shown, setShown] = useState(PAGE);
   const withDist = useMemo(() => stores.map((s) => ({ s, m: at ? distanceM(at, s) : 0 })), [stores, at]);
-  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const match = (s: DirStore) => !words.length || words.every((w) => `${s.name} ${s.cat} ${t(STORE_TYPES[s.type].label)}`.toLowerCase().includes(w));
+  // Typing never waits for the list: the box updates at once, the (long) list a moment later,
+  // and each store's searchable text is built once, not three times a key.
+  const dq = useDeferredValue(q);
+  const hay = useMemo(() => new Map(stores.map((s) => [s.id, `${s.name} ${s.cat} ${t(STORE_TYPES[s.type].label)}`.toLowerCase()])), [stores]);
+  const words = dq.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const match = (s: DirStore) => !words.length || words.every((w) => (hay.get(s.id) ?? "").includes(w));
   // Counts for each chip: what the other filters leave.
   const bySite = (s: DirStore) => !sites.length || sites.includes(s.site) || (s.also ?? []).some((a) => sites.includes(a));
   const byType = (s: DirStore) => !types.length || types.includes(s.type);
@@ -258,22 +262,27 @@ export function StoreDirectory({ stores, at, onPick, onClose, onServices }: { st
     const n = new Map<MapSite, number>();
     for (const { s } of withDist) if (match(s) && byType(s)) for (const x of [s.site, ...(s.also ?? [])]) n.set(x, (n.get(x) ?? 0) + 1);
     return n;
-  }, [withDist, q, types]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [withDist, dq, types]); // eslint-disable-line react-hooks/exhaustive-deps
   const typeN = useMemo(() => {
     const n = new Map<StoreType, number>();
     for (const { s } of withDist) if (match(s) && bySite(s)) n.set(s.type, (n.get(s.type) ?? 0) + 1);
     return n;
-  }, [withDist, q, sites]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [withDist, dq, sites]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = useMemo(() => {
     const l = withDist.filter(({ s }) => match(s) && bySite(s) && byType(s));
     l.sort((a, b) => (sort === "near" ? a.m - b.m : sort === "rating" ? b.s.rating - a.s.rating || a.m - b.m : a.s.name.localeCompare(b.s.name, "fa")));
     return l;
-  }, [withDist, q, sites, types, sort]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => setShown(PAGE), [q, sites, types, sort]);
+  }, [withDist, dq, sites, types, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setShown(PAGE), [dq, sites, types, sort]);
   const flip = <T,>(list: T[], x: T) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
   return (
     <Sheet title={`🗂️ ${t("All stores around you")}`} onClose={onClose} tall>
       <input className="dir-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search stores, doctors, services…")} aria-label={t("Search stores, doctors, services…")} dir="auto" />
+      {onProducts && (
+        <button className="btn small cyan dir-products" onClick={onProducts}>
+          🔎 {t("Find a product")} <span className="small">· {t("prices in every store")}</span>
+        </button>
+      )}
       <div className="filter-chips dir-chips" aria-label={t("Sites")}>
         {MAP_SITES.map((s) => (
           <button key={s} className={`filter-chip ${sites.includes(s) ? "on" : ""}`} aria-pressed={sites.includes(s)} onClick={() => setSites(flip(sites, s))} style={{ "--site": SITES[s].color } as React.CSSProperties}>

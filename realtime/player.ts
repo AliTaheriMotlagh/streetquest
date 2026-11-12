@@ -68,6 +68,8 @@ export class Player {
   /** Grenades and C4 left this life, and when the last one was thrown. */
   gear: Record<ThrowKey, number> = fullGear();
   thrownAt = 0;
+  /** When each kind was last thrown (the open city hands them back after a rest). */
+  gearThrownAt: Partial<Record<ThrowKey, number>> = {};
   /** Gun Game: guns only, no grenades. */
   gearless = false;
   /** A flashbang blinded them until then (bots hold fire; people see it on their own screens). */

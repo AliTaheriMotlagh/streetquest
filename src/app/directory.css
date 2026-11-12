@@ -81,3 +81,21 @@ a.site-chip.link:hover, a.site-chip.link:focus-visible { background: color-mix(i
 .mk.place.dirstore .ring { opacity: .95; }
 .mk.place.dirstore .job.deal-off { width: auto; min-width: 20px; padding: 0 5px; border-radius: 9px; background: #e2264d; color: #fff; font: 800 11px/20px var(--body); animation: none; }
 .mk.place.sheypoor .ring { color: #7a3cff; }
+
+/* ---- product search (game/ProductSearch.tsx): one list of things to buy, no map */
+.dir-products { width: 100%; margin-bottom: 10px; justify-content: center; }
+.psearch { display: flex; flex-direction: column; gap: 8px; }
+.psearch .dir-search, .psearch .dir-chips { margin-bottom: 0; }
+.ps-find .dir-search { width: 100%; }
+.ps-price { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; align-items: end; }
+.ps-price label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ps-price .input { width: 100%; min-width: 0; min-height: 44px; }
+.psearch .filter-chip:disabled { opacity: .4; cursor: not-allowed; }
+.psearch .filter-chip { min-height: 40px; }
+.ps-note { margin: 0; min-height: 1.3em; }
+.ps-note.busy { color: var(--sky); }
+.ps-list.busy { opacity: .55; transition: opacity .15s; }
+.ps-list .ext-item img, .ps-list .ext-item .ext-ph { flex: none; }
+.ps-list .price-tag { flex-direction: column; align-items: flex-end; text-align: end; flex: none; max-width: 42%; }
+.ps-more { align-self: center; }
+@media (prefers-reduced-motion: reduce) { .ps-list.busy { transition: none; } }

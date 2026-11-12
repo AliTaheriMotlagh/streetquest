@@ -142,7 +142,7 @@ export type SlotRule = {
 export const MODEL_MAX_BYTES = 4 * 1024 * 1024;
 
 /** The arena's own files (not in a generated registry). */
-export const ARENA_FILES = { soldier: "/models/arena/soldier.glb", police: "/models/arena/police.glb", weapons: "/models/arena/weapons.glb" } as const;
+export const ARENA_FILES = { soldier: "/models/arena/soldier.glb", police: "/models/arena/police.glb", civilian: "/models/arena/civilian.glb", weapons: "/models/arena/weapons.glb" } as const;
 
 const CAR_PARTS = ["paint", "kit", "head", "tail", "wheel"].flatMap((p) => [p, `${p}_far`]);
 
@@ -152,7 +152,7 @@ export function slotRule(slot: string): SlotRule | null {
   const base = { maxBytes: MODEL_MAX_BYTES };
   if (group === "car" && key in CAR_MODELS) return { ...base, kind: "car", warnTris: 40_000, maxTris: 90_000, nodes: CAR_PARTS, extras: ["wheelR", "wheels", "lamp", "roof"], height: [0.8, 4.5], maxFootprint: 14 };
   if (group === "person" && PEOPLE_MODELS.some((p) => p.key === key)) return { ...base, kind: "person", warnTris: 10_000, maxTris: 30_000, nodes: [], rig: { joints: [], clips: ["walk", "idle"] }, height: [0.5, 3], maxFootprint: 3 };
-  if (slot === "arena:soldier" || slot === "arena:police") return { ...base, kind: "soldier", warnTris: 40_000, maxTris: 60_000, nodes: [], rig: { joints: ["spine"], clips: ["Idle", "Walk", "Run", "Death"] }, height: [1.2, 2.4], maxFootprint: 3 };
+  if (slot === "arena:soldier" || slot === "arena:police" || slot === "arena:civilian") return { ...base, kind: "soldier", warnTris: 40_000, maxTris: 60_000, nodes: [], rig: { joints: ["spine"], clips: ["Idle", "Walk", "Run", "Death"] }, height: [1.2, 2.4], maxFootprint: 3 };
   if (slot === "arena:weapons") return { ...base, kind: "weapons", warnTris: 40_000, maxTris: 90_000, nodes: WEAPON_KEYS.map((k) => `fp_${k}`), height: [0.05, 3], maxFootprint: 3 };
   if (slot === "props:street") return { ...base, kind: "props", warnTris: 20_000, maxTris: 40_000, nodes: Object.keys(PROP_MODELS.kinds), height: [0.3, 30], maxFootprint: 60 };
   return null;
@@ -171,7 +171,7 @@ export function slotOfUrl(url: string): string | null {
 
 /** Every slot the game has, in a stable order. */
 export function allSlots(): string[] {
-  return [...Object.keys(CAR_MODELS).map((k) => `car:${k}`), ...PEOPLE_MODELS.map((p) => `person:${p.key}`), "arena:soldier", "arena:police", "arena:weapons", "props:street"];
+  return [...Object.keys(CAR_MODELS).map((k) => `car:${k}`), ...PEOPLE_MODELS.map((p) => `person:${p.key}`), "arena:soldier", "arena:police", "arena:civilian", "arena:weapons", "props:street"];
 }
 
 /** The reasons a file can't replace the slot's model (`errors`) and what's worth a second look (`warnings`). */

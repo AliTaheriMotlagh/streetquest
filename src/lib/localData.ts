@@ -477,6 +477,46 @@ export const DIVAR_CAT_KEYS = Object.keys(DIVAR_CATS) as [DivarCat, ...DivarCat[
 export const sameStore = (p: { name: string; lat: number; lng: number }, v: { title: string; lat: number; lng: number }, metres: number) =>
   metres <= 150 ? nameScore(p.name, v.title) >= 0.5 : metres <= 400 && nameScore(p.name, v.title) >= 1;
 
+/**
+ * One marker per store. Of `list`, those that aren't the same store as one already shown
+ * (`taken`: other layers' markers — a Snappfood vendor, a directory store…, by sameStore)
+ * and aren't a second copy of an earlier one in `list` itself (the map often has a shop
+ * twice: as a point and as its building — same name within `selfM` m; two branches of a
+ * chain a street apart both stay). A coarse grid keeps it linear: a few hundred places
+ * against a few hundred stores is a handful of name comparisons each, not all pairs.
+ */
+export function oneEach<T extends { lat: number; lng: number }>(list: T[], nameOf: (x: T) => string, taken: { name: string; lat: number; lng: number }[] = [], selfM = 40): T[] {
+  const CELL = 0.004; // ≈ 440 m: sameStore never reaches further
+  const key = (lat: number, lng: number) => `${Math.floor(lat / CELL)}:${Math.floor(lng / CELL)}`;
+  const grid = new Map<string, { name: string; lat: number; lng: number; own: boolean }[]>();
+  const put = (p: { name: string; lat: number; lng: number }, own: boolean) => {
+    const k = key(p.lat, p.lng);
+    (grid.get(k) ?? grid.set(k, []).get(k)!).push({ name: p.name, lat: p.lat, lng: p.lng, own });
+  };
+  for (const t of taken) if (t.name) put(t, false);
+  const out: T[] = [];
+  for (const x of list) {
+    const name = nameOf(x);
+    let twin = false;
+    if (name) {
+      const cy = Math.floor(x.lat / CELL), cx = Math.floor(x.lng / CELL);
+      for (let dy = -1; dy <= 1 && !twin; dy++)
+        for (let dx = -1; dx <= 1 && !twin; dx++)
+          for (const o of grid.get(`${cy + dy}:${cx + dx}`) ?? []) {
+            const m = distanceM(x, o);
+            if (o.own ? m <= selfM && sameName(name, o.name) : sameStore({ name, lat: x.lat, lng: x.lng }, { title: o.name, lat: o.lat, lng: o.lng }, m)) {
+              twin = true;
+              break;
+            }
+          }
+    }
+    if (twin) continue;
+    out.push(x);
+    if (name) put({ name, lat: x.lat, lng: x.lng }, true);
+  }
+  return out;
+}
+
 /** Snappfood's vendor types, grouped the way the map filter shows them. */
 export type VendorKind = "food" | "cafe" | "sweets" | "market";
 export const VENDOR_KINDS: Record<VendorKind, { emoji: string; label: string; cat: PlaceCat }> = {

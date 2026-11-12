@@ -3,6 +3,8 @@
 // of around you; nothing there can be picked up (that still needs you on the spot).
 import { msg } from "./i18n";
 import { distanceM, type LatLng } from "./geo";
+import { normName } from "./localData";
+import type { Place, PlaceCat } from "./places";
 
 /** Quick jumps: big cities and the north (shomal), where many players holiday — each at its busiest streets. */
 export const EXPLORE_PLACES: { id: string; name: string; lat: number; lng: number }[] = [
@@ -42,4 +44,42 @@ export const exploreMoved = (from: LatLng | null, to: LatLng) => !from || distan
 export function travelWaitMin(lastAt: number | null, cooldownMin: number, now = Date.now()) {
   if (!lastAt || cooldownMin <= 0) return 0;
   return Math.max(0, Math.ceil((lastAt + cooldownMin * 60_000 - now) / 60_000));
+}
+
+// ---------------------------------------------------------------- finding a store by name
+/** A search looks this far round the spot (m) — a whole district, not just the streets drawn so far. */
+export const SEARCH_RADIUS_M = 3500;
+export const SEARCH_MAX = 60;
+export type PlaceHit = { id: string; name: string; cat: PlaceCat; lat: number; lng: number; dist: number };
+
+/**
+ * The places that answer a search, best first: a name that starts with the words typed, then
+ * one with a word that does, then one that has them anywhere, then a brand or a kind
+ * ("pharmacy", "داروخانه" via `labelOf`) — nearest first within each. Persian and Arabic
+ * spellings, digits and half-spaces are folded (normName). With `cats`, only those kinds;
+ * an empty search with `cats` lists the kind by distance.
+ */
+export function searchPlaces(places: Place[], q: string, here: LatLng, opts: { max?: number; cats?: PlaceCat[]; labelOf?: (c: PlaceCat) => string } = {}): PlaceHit[] {
+  const nq = normName(q), tight = nq.replace(/ /g, "");
+  const cats = opts.cats?.length ? new Set(opts.cats) : null;
+  if (!tight && !cats) return [];
+  const seen = new Set<string>();
+  const out: (PlaceHit & { rank: number })[] = [];
+  for (const p of places) {
+    if (!p.name || (cats && !cats.has(p.cat)) || seen.has(p.id)) continue;
+    let rank = 0;
+    if (tight) {
+      const name = normName(p.name);
+      // "برگر لند" finds "برگرلند" and the other way round.
+      if (name.startsWith(nq) || name.replace(/ /g, "").startsWith(tight)) rank = 0;
+      else if (name.split(" ").some((w) => w.startsWith(nq))) rank = 1;
+      else if (name.includes(nq) || name.replace(/ /g, "").includes(tight)) rank = 2;
+      else if (normName(`${p.brand ?? ""} ${p.cat} ${opts.labelOf?.(p.cat) ?? ""}`).includes(nq)) rank = 3;
+      else continue;
+    }
+    seen.add(p.id);
+    out.push({ id: p.id, name: p.name, cat: p.cat, lat: p.lat, lng: p.lng, dist: Math.round(distanceM(here, p)), rank });
+  }
+  out.sort((a, b) => a.rank - b.rank || a.dist - b.dist);
+  return out.slice(0, opts.max ?? SEARCH_MAX).map(({ rank: _rank, ...hit }) => hit);
 }

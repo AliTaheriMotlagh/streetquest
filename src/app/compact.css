@@ -103,7 +103,7 @@
   .cpad-throw-pick { width: 28px; height: 28px; font-size: 14px; }
   .cpad-act { padding: 10px 16px; font-size: 13px; bottom: calc(96px + var(--safe-b)); }
   /* Left thumb column, bottom up: stick · grenades · health and ammo · second trigger */
-  .chud.touch .chud-gear { inset-inline-start: calc(12px + var(--safe-l)); transform: none; bottom: calc(152px + var(--safe-b)); }
+  .chud.touch .chud-gear { inset-inline-start: calc(12px + var(--safe-l)); inset-inline-end: auto; transform: none; bottom: calc(152px + var(--safe-b)); }
   .chud.touch .chud-gear small { display: none; }
   .chud.touch .chud-stats { bottom: calc(188px + var(--safe-b)); }
 }

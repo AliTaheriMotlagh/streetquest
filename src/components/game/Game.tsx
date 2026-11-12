@@ -46,10 +46,11 @@ import type { MidView } from "@/server/midpoint";
 import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
 import type { Cinema } from "@/lib/cinema";
 import { OnlineChip, OnlineSheet } from "./Online";
-import { sameStore, VENDOR_KIND_KEYS, VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
+import { oneEach, VENDOR_KIND_KEYS, VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { MapFilter } from "./MapFilter";
 import { AdAreaCard, DirStoreCard, ServicesSheet, StoreDirectory, useDirectory } from "./Directory";
+import { ProductSearch } from "./ProductSearch";
 import { LeaveGuard } from "./LeaveGuard";
 import { applyPreset, currentPreset, type PresetId } from "@/lib/mapPresets";
 import { MAP_SITES, SITES, siteLayer, STORE_TYPE_KEYS, STORE_TYPES, type DirStore, type StoreType } from "@/lib/stores/directory";
@@ -209,6 +210,7 @@ export default function Game() {
   const [hiddenTypes, setHiddenTypes] = useState<StoreType[]>([]);
   /** The store list and the services / shopping sites sheet (from the filter or ⋯). */
   const [dirOpen, setDirOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   // Explore mode: the map moves freely, and the store layers and places load around its
   // middle instead of around the player (lib/explore.ts). `explore` is that middle.
@@ -389,7 +391,10 @@ export default function Game() {
   const dirData = useDirectory((k) => layers.includes(k as MapLayer), look ?? null, now);
   const dirOn = MAP_SITES.some((s) => layers.includes(siteLayer(s)));
   const siteShown = (d: DirStore) => layers.includes(siteLayer(d.site)) || (d.also ?? []).some((a) => layers.includes(siteLayer(a)));
-  const dirStores = useMemo(() => dirData.stores.filter(siteShown), [dirData.stores, layers]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A directory store that is a Snappfood vendor on the map keeps one marker: the vendor's (its card has the menu and links to the directory page).
+  // (The list of all stores keeps every one: `dirAll`.)
+  const dirAll = useMemo(() => dirData.stores.filter(siteShown), [dirData.stores, layers]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirStores = useMemo(() => oneEach(dirAll, (d) => d.name, shownVendors.map((v) => ({ name: v.title, lat: v.lat, lng: v.lng }))), [dirAll, shownVendors]);
   const shownDir = useMemo(() => (hiddenTypes.length ? dirStores.filter((d) => !hiddenTypes.includes(d.type)) : dirStores), [dirStores, hiddenTypes]);
   const typeChips = useMemo(() => {
     const n = new Map<StoreType, number>();
@@ -398,16 +403,23 @@ export default function Game() {
   }, [dirStores, hiddenTypes]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
+  // …nor one that any other store layer on the map already marks (a directory store, a Torob
+  // shop, a Takhfifan deal, a cinema), nor twice when the map itself has it twice (oneEach).
   const spotsAround = useMemo(() => {
     if (!layers.includes("places")) return [];
+    const taken = [
+      ...shownVendors.map((v) => ({ name: v.title, lat: v.lat, lng: v.lng })),
+      ...shownDir,
+      ...(torobOn ? torobShops : []),
+      ...(dealsOn ? deals : []),
+      ...(cinemaOn ? cinemas : []),
+    ];
     // Exploring: the places around the explored spot (no jobs there — you aren't).
-    if (exploreOn) return (exploreData?.spots ?? []).filter((p) => !shownVendors.some((v) => Math.abs(v.lat - p.lat) < 0.004 && Math.abs(v.lng - p.lng) < 0.005 && sameStore(p, v, distanceM(p, v))));
+    if (exploreOn) return oneEach(exploreData?.spots ?? [], (p) => p.name, taken);
     if (!world) return [];
     const jobs = new Set(world.places.map((m) => m.place.id));
-    return (world.spots ?? []).filter(
-      (p) => !jobs.has(p.id) && !shownVendors.some((v) => Math.abs(v.lat - p.lat) < 0.004 && Math.abs(v.lng - p.lng) < 0.005 && sameStore(p, v, distanceM(p, v))),
-    );
-  }, [world, layers, shownVendors, exploreOn, exploreData]);
+    return oneEach((world.spots ?? []).filter((p) => !jobs.has(p.id)), (p) => p.name, taken);
+  }, [world, layers, shownVendors, exploreOn, exploreData, shownDir, torobOn, torobShops, dealsOn, deals, cinemaOn, cinemas]);
   const shownSpots = useMemo(() => (hiddenKinds.length ? spotsAround.filter((p) => !hiddenKinds.includes(p.cat)) : spotsAround), [spotsAround, hiddenKinds]);
   // The game's own markers, as the filter has them.
   const mapWorld = useMemo(
@@ -1275,6 +1287,9 @@ export default function Game() {
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
           <VasatyabDock onView={setVasa} />
+          <Button className="fab" title={t("Find a product")} aria-label={t("Find a product")} aria-haspopup="dialog" onClick={() => (setProductsOpen(true), setFilterOpen(false), setMoreOpen(false))}>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </Button>
           <Button className={`fab map-filter-fab ${filterOpen ? "on" : ""}`} title={t("Filter the map")} aria-label={t("Filter the map")} aria-expanded={filterOpen} onClick={() => (setFilterOpen(!filterOpen), setMoreOpen(false))}>
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 5h16l-6.2 7.4V18l-3.6 1.8v-7.4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
             {hiddenCount > 0 && <span className="badge">{fmtNum(hiddenCount)}</span>}
@@ -1323,6 +1338,12 @@ export default function Game() {
               <Button role="menuitem" aria-haspopup="menu" onClick={() => setStylesOpen(true)}>
                 {mapStyle.emoji} {t("Map style")} <span className="small">· {t(mapStyle.name)}</span>
               </Button>
+              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setProductsOpen(true), setMoreOpen(false))}>
+                🔎 {t("Find a product")} <span className="small">· {t("prices in every store")}</span>
+              </Button>
+              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setDirOpen(true), setMoreOpen(false))}>
+                🗂️ {t("List all stores")} <span className="small">· {t("no map needed")}</span>
+              </Button>
               <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setFilterOpen(true), setMoreOpen(false))}>
                 🗺️ {t("On the map")} <span className="small">· {fmtNum(layers.length)}/{fmtNum(ALL_LAYERS.length)}</span>
               </Button>
@@ -1349,13 +1370,15 @@ export default function Game() {
         <LeaveGuard />
         {dirOpen && !panel && (
           <StoreDirectory
-            stores={dirStores}
+            stores={dirAll}
             at={look ?? null}
             onPick={(d) => (setDirOpen(false), setSelected({ type: "dir", data: d }))}
             onClose={() => setDirOpen(false)}
             onServices={() => (setDirOpen(false), setServicesOpen(true))}
+            onProducts={() => (setDirOpen(false), setProductsOpen(true))}
           />
         )}
+        {productsOpen && !panel && <ProductSearch at={look ?? null} onClose={() => setProductsOpen(false)} />}
         {servicesOpen && !panel && <ServicesSheet at={look ?? null} onClose={() => setServicesOpen(false)} />}
 
         {/* Selected object card */}

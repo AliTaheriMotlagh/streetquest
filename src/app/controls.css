@@ -42,7 +42,11 @@
 .cpad.lh .cp-btn.focus { --ax: -46px; }
 .cp-btn.focus.on { background: var(--ab-focus); color: #04131f; }
 /* The car button only exists next to a car; it stands out a little. */
-.cp-btn.car { border-color: var(--cp-accent); animation: cpPop .22s ease-out; }
+.cp-btn.car { border-color: var(--cp-accent); background: rgba(255, 176, 32, .28); animation: cpPop .22s ease-out; }
+/* On foot the pad's look layer spans the screen under the top bar: the tools (get in the car, menu) stay on top of it. */
+.drive.on-foot .drive-top { z-index: 3; }
+/* Upright phones: the grenade tray sits over the throw button, clear of the action rings. */
+@media (orientation: portrait) { .chud.touch .chud-gear { inset-inline-start: auto; inset-inline-end: calc(18px + var(--safe-r)); transform: none; bottom: calc(302px + var(--safe-b)); } .drive.lefty .chud.touch .chud-gear { inset-inline-end: auto; inset-inline-start: calc(18px + var(--safe-l)); } }
 @keyframes cpPop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cp-btn.car { animation: none; } }
 

@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/db";
 import { turnConfigured } from "@/server/calls";
 import { extHealth } from "@/server/localData";
+import { paceReport } from "@/lib/pace";
 import { storeSitesHealth } from "@/server/storeSites";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ const short = (e: unknown) => {
 
 export async function GET(req: Request) {
   const env = process.env;
-  const ext = new URL(req.url).searchParams.get("ext") === "1" ? await Promise.all([extHealth(), storeSitesHealth()]).then(([a, b]) => ({ ...a, ...b })) : undefined;
+  const ext = new URL(req.url).searchParams.get("ext") === "1" ? await Promise.all([extHealth(), storeSitesHealth()]).then(([a, b]) => ({ ...a, ...b, pace: paceReport() })) : undefined;
   const settings = {
     database: !!(env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL),
     authSecret: !!env.AUTH_SECRET && env.AUTH_SECRET !== "change-me",

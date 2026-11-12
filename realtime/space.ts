@@ -99,7 +99,8 @@ export abstract class Space {
 
   // ------------------------------------------------------------ grenades and C4
   throwNade(p: Player, m: ThrowMsg, now: number) {
-    if (p.dead || !p.onFoot || p.passive || !isThrow(m.k) || !this.armed(p, now)) return;
+    // (Passive players throw too: canHurt keeps their blast off everyone but themselves.)
+    if (p.dead || !p.onFoot || !isThrow(m.k) || !this.armed(p, now)) return;
     const def = THROWABLES[m.k];
     if ((p.gear[m.k] ?? 0) <= 0 || now - p.thrownAt < THROW_GAP_MS || !finite3(m.o) || !finite3(m.v)) return;
     // One C4 out at a time (the client sets the first one off instead).
@@ -110,8 +111,8 @@ export abstract class Space {
     if (Math.hypot(ox - me.x, oz - me.z) > (p.slackM || MUZZLE_SLACK_M) || Math.abs(oy - p.y - 1.4) > 2.5) return;
     if (Math.hypot(...m.v) > def.speed * 1.2 + 8) return;
     p.gear[m.k]--;
-    p.thrownAt = now;
-    p.passiveLockUntil = now + 12_000;
+    p.thrownAt = p.gearThrownAt[m.k] = now;
+    if (!p.passive) p.passiveLockUntil = now + 12_000;
 
     // Fly it through the buildings we know (a match's), else over open ground in the thrower's frame.
     let restLL: LL, restY: number, landS: number, goS: number;

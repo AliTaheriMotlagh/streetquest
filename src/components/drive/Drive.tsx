@@ -55,11 +55,13 @@ import { Markers, markersOf } from "./markers";
 import { CinemaBoards } from "./cinemaBoards";
 import { Storefronts, type StorePanel } from "./storefronts";
 import { StoreChip, StoreSheet, type StoreTarget } from "./StoreCard";
+import { DrivePlaces, type PlaceRow } from "./DrivePlaces";
+import { ProductSearch } from "../game/ProductSearch";
 import type { Cinema } from "@/lib/cinema";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
 import { Others } from "./others";
-import { nearStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
+import { nearStore, oncePerStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
@@ -139,7 +141,6 @@ type Job = {
 type CamMode = "cockpit" | "chase" | "far" | "top";
 type MenuTab = "jobs" | "places" | "garage" | "settings" | "play";
 /** A line in the Places list: a real shop from the map, a player's shop or a business. */
-type PlaceRow = { id: string; emoji: string; name: string; sub: string; dist: number; lat: number; lng: number; sel: Selected | null };
 const CAM_LABEL: Record<CamMode, string> = { cockpit: "1P", chase: "3P", far: "FAR", top: "TOP" };
 type Picked = { emoji: string; title: string; sub: string; lat: number; lng: number; sel: Selected | null };
 type Hud = {
@@ -240,7 +241,6 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     return n && NAME_MODES.includes(n) ? n : "mine";
   });
   const [places, setPlaces] = useState<PlaceRow[]>([]);
-  const [query, setQuery] = useState("");
   const placeQuery = useRef("");
   const [party, setParty] = useState<PartyView | null>(null);
   // The party's host started a Street Arena match: everyone in the party is pulled in
@@ -264,6 +264,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [picked, setPicked] = useState<Picked | null>(null);
   /** A store tapped (its sign, or its chip): the full card with photos, deals and the menu. */
   const [storeSheet, setStoreSheet] = useState<StoreTarget | null>(null);
+  /** Product search open, round where I was when I opened it. */
+  const [productsAt, setProductsAt] = useState<LatLng | null>(null);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
   // "Fly low to pick things up": once waved away, gone for good on this device.
   const [flyHintOff, setFlyHintOff] = useState(() => store.get(FLY_HINT_KEY) === "1");
@@ -307,6 +309,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   live.current = { ...live.current, world, me, follow, canDrive, onMove, onCollect, onSelect, act, refresh, vehicle, paint, sim: !!sim, toast, touch, timeOfDay, weather, meet };
   const api3d = useRef<{
     setGoal: (p: LatLng | null) => void;
+    /** Where I am now. */
+    here: () => LatLng;
     cycleCam: () => void;
     horn: (on: boolean) => void;
     land: () => void;
@@ -918,7 +922,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         });
       }
       want.sort((a, b) => a.d - b.d);
-      storefronts.sync(want.filter((w) => w.l.kind === "shop").map((w) => ({ id: w.id, text: w.l.text, cls: w.l.cls, x: w.l.x, y: w.l.y, z: w.l.z, angle: w.l.angle, w: w.l.w, pole: w.l.pole, d: w.d })));
+      // (One sign per store: the map has some twice — oncePerStore.)
+      storefronts.sync(oncePerStore(want.filter((w) => w.l.kind === "shop").map((w) => ({ ...w, x: w.l.x, z: w.l.z, name: oneLine(w.l.text) }))).map((w) => ({ id: w.id, text: w.l.text, cls: w.l.cls, x: w.l.x, y: w.l.y, z: w.l.z, angle: w.l.angle, w: w.l.w, pole: w.l.pole, d: w.d })));
       const pick = want.filter((w) => w.l.kind === "num").slice(0, lite ? 8 : 24);
       const keep = new Set(pick.map((w) => w.id));
       for (const [id, b] of boards) if (!keep.has(id)) (scene.remove(b.group), b.dispose(), boards.delete(id));
@@ -977,7 +982,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         });
       }
       want.sort((a, b) => a.d - b.d);
-      shops = want.slice(0, lite ? 90 : 220);
+      shops = oncePerStore(want).slice(0, lite ? 90 : 220);
     };
 
     /** The Places list (only while it's open): shops on the map, players' shops, businesses. */
@@ -987,6 +992,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const match = (...texts: string[]) => !q || texts.some((x) => x.toLowerCase().includes(q));
       const here = frame.toLatLng(st.x, st.z);
       const rows: PlaceRow[] = [];
+      const mapRows: (PlaceRow & { x: number; z: number })[] = [];
       for (const s of tiles.values()) {
         if (!s.mesh) continue;
         s.mesh.labels.forEach((l, i) => {
@@ -994,9 +1000,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           const tr = tradeOf(l.cls), name = oneLine(l.text), sub = t(tr.label);
           if (!match(name, sub)) return;
           const at = frame.toLatLng(l.x, l.z);
-          rows.push({ id: `${s.key}:${i}`, emoji: tr.emoji, name, sub, dist: Math.hypot(l.x - st.x, l.z - st.z), lat: at.lat, lng: at.lng, sel: null });
+          mapRows.push({ id: `${s.key}:${i}`, emoji: tr.emoji, name, sub, dist: Math.hypot(l.x - st.x, l.z - st.z), lat: at.lat, lng: at.lng, sel: null, cls: l.cls, color: tr.bg[0], x: l.x, z: l.z });
         });
       }
+      // The map has some shops twice (a point and its building, or one in each of two tiles): one row each.
+      mapRows.sort((a, b) => a.dist - b.dist);
+      for (const { x: _x, z: _z, ...row } of oncePerStore(mapRows)) rows.push(row);
       const w = live.current.world;
       for (const sh of w?.shops ?? [])
         if ((sh.live || sh.mine) && match(sh.name, t("Player shop"))) rows.push({ id: `sh:${sh.id}`, emoji: sh.emoji, name: sh.name, sub: sh.deal ? `${t("Player shop")} · −${fmtNum(sh.deal)}%` : t("Player shop"), dist: distanceM(here, sh), lat: sh.lat, lng: sh.lng, sel: { type: "shop", data: sh } });
@@ -1207,6 +1216,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- on foot and live (Street Arena): the soldier, guns, the realtime link
     /** Where the car waits while I'm on foot. */
     let parked: { x: number; z: number; yaw: number; alt: number } | null = null;
+    /** The driver asked to get out while rolling: the brakes are on until the car stops (combat.getOut). */
+    let stopForExit = false;
     const combat: Combat = new Combat({
       scene, camera, renderer, el, frame, collision, obstacles, others, shadows, sim: !!live.current.sim,
       get touch() {
@@ -1236,7 +1247,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       },
       street: (x, z) => nearestStreet(x, z, 120),
       arenaGeo: (r) => arenaGeo(r),
+      brake: (on) => void (stopForExit = on),
       setFoot: (on, at) => {
+        stopForExit = false;
         if (on && !parked) {
           parked = { x: st.x, z: st.z, yaw: st.yaw, alt: st.alt };
           Object.assign(st, { vx: 0, vz: 0, vy: 0, speed: 0, cruise: 0 });
@@ -1452,6 +1465,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     api3d.current = {
       setGoal: (p) => ((navGoal = p), (wanted.current = null)),
+      here: () => frame.toLatLng(st.x, st.z),
       openPick,
       storeInfo: (id, info) => storefronts.setInfo(id, info),
       showPanel: (id) => storefronts.showPanel(id),
@@ -1701,6 +1715,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // A hurt engine pulls less; a burnt-out wreck doesn't go at all.
       const power = combat.inMatch || D.flies ? 1 : street.car.power;
       if (power < 1) (c.gas *= power), (c.lift *= power);
+      // "Get out" pressed while rolling: on the brakes until the car has stopped (combat opens the door then).
+      if (stopForExit) (c.gas = 0), (c.brake = 1), (c.hand = true);
       if (onFoot) {
         // The car waits where it was parked.
       } else if (L.canDrive) {
@@ -2396,15 +2412,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     setNames(n);
     store.set(NAMES_KEY, n);
   };
-  const onQuery = (q: string) => {
-    setQuery(q);
-    placeQuery.current = q;
-  };
   const goTo = (p: { lat: number; lng: number }, label: string) => {
     api3d.current?.setGoal({ lat: p.lat, lng: p.lng });
     setMenu(null);
     toast({ title: t("🧭 Heading to {place}", { place: label }) });
   };
+  // The Places tab (memoised: these stay the same from render to render).
+  const onPlaceQuery = useCallback((q: string) => void (placeQuery.current = q), []);
+  const placeHere = useCallback(() => api3d.current?.here() ?? null, []);
+  const onPlaceOpen = useCallback((p: PlaceRow) => setStoreSheet({ id: p.id, name: p.name, cls: p.cls, cat: p.cat, lat: p.lat, lng: p.lng, emoji: p.emoji, color: p.color ?? "#63b3f2", sub: `${p.sub} · ${formatDistance(p.dist)}` }), []);
+  const goToRef = useRef(goTo);
+  goToRef.current = goTo;
+  const onPlaceGo = useCallback((p: PlaceRow) => goToRef.current(p, p.name), []);
+  const onProducts = useCallback(() => setProductsAt(api3d.current?.here() ?? null), []);
   const pickCtl = (m: SteerMode) => {
     setCtl(m);
     store.set(CTL_KEY, m);
@@ -2569,28 +2589,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           </div>
         )}
         {menu === "places" && (
-          <div className="drive-tab">
-            <button className="pm-row" onClick={onExit}>
-              <Icon name="map" size={20} />
-              <span className="grow">{t("Open the map")}</span>
-              <Icon name="external" size={16} />
-            </button>
-            <input className="drive-search" type="search" value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t("Search shops, banks, cafés…")} aria-label={t("Search places")} />
-            {places.length === 0 && <p className="small muted">{query.trim() ? t("Nothing called “{q}” around here.", { q: query.trim() }) : t("No places found around here yet — drive on and the map fills in.")}</p>}
-            {places.map((p) => (
-              <div key={p.id} className="drive-job drive-place">
-                <button className="drive-place-go" onClick={() => goTo(p, p.name)}>
-                  <span className="ic"><Icon name={iconForEmoji(p.emoji)} size={20} /></span>
-                  <span className="grow">
-                    <b>{p.name}</b>
-                    <span className="small muted">{p.sub}</span>
-                  </span>
-                  <span className="small muted">{formatDistance(p.dist)}</span>
-                </button>
-                {p.sel && <Button className="btn small yellow" onClick={() => onSelect(p.sel!)}>{t("Open")}</Button>}
-              </div>
-            ))}
-          </div>
+          <DrivePlaces rows={places} here={placeHere} onQuery={onPlaceQuery} onOpen={onPlaceOpen} onGo={onPlaceGo} onSelect={onSelect} onMap={onExit} onProducts={onProducts} />
         )}
         {menu === "garage" && (
           <DriveGarage
@@ -2663,6 +2662,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </DriveMenu>
       )}
 
+      {productsAt && <ProductSearch at={productsAt} onClose={() => setProductsAt(null)} />}
       {storeSheet && <StoreSheet s={storeSheet} onClose={() => setStoreSheet(null)} onGo={() => (api3d.current?.setGoal({ lat: storeSheet.lat, lng: storeSheet.lng }), toast({ title: t("🧭 Heading to {place}", { place: storeSheet.name }) }), setStoreSheet(null))} />}
 
       {picked && (

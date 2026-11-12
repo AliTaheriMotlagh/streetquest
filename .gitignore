@@ -12,6 +12,7 @@ next-env.d.ts
 /playwright-report
 /.next-qa
 /.next-ui
+/.next-claude
 .cache/
 
 # Production settings for scripts run from this machine (npm run city:pack:prod) — never commit

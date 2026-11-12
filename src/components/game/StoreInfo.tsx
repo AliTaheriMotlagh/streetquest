@@ -410,8 +410,10 @@ function ReviewsView({ code, total, stars }: { code: string; total?: number; sta
  * opens its page here first — its photos, price, details and (for Divar) the whole ad with
  * its facts and description — and only its button goes on to the site itself.
  */
-type Product = { source: "divar" | "torob" | "takhfifan"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string; photos?: string[]; desc?: string; terms?: string };
-const SOURCE = { divar: { name: msg("Divar"), open: msg("Open on Divar") }, torob: { name: msg("Torob"), open: msg("Open on Torob") }, takhfifan: { name: msg("Takhfifan"), open: msg("Buy on Takhfifan") } } as const;
+type Product = { source: "divar" | "torob" | "takhfifan" | "basalam" | "snappfood"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string; photos?: string[]; desc?: string; terms?: string };
+const SOURCE = { divar: { name: msg("Divar"), open: msg("Open on Divar") }, torob: { name: msg("Torob"), open: msg("Open on Torob") }, takhfifan: { name: msg("Takhfifan"), open: msg("Buy on Takhfifan") }, basalam: { name: msg("Basalam"), open: msg("Open on Basalam") }, snappfood: { name: msg("Snappfood"), open: msg("Order on Snappfood") } } as const;
+/** A product's page (ProductSearch opens Torob / Basalam / Takhfifan hits in it). */
+export type ExtProduct = Product;
 
 /** A list row that opens the product's page. */
 function ProductRow({ product, children }: { product: Product; children: React.ReactNode }) {
@@ -426,7 +428,7 @@ function ProductRow({ product, children }: { product: Product; children: React.R
   );
 }
 
-function ProductPage({ p, onClose }: { p: Product; onClose: () => void }) {
+export function ProductPage({ p, onClose }: { p: Product; onClose: () => void }) {
   const { pos } = useGame();
   const detail = useLocal<{ post: DivarDetail | null }>(p.source === "divar" && p.token ? { divarPost: p.token } : null);
   const d = detail.data?.post ?? null;

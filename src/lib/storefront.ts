@@ -9,6 +9,25 @@
 /** A store the card can offer: where it stands, what it is. */
 export type StoreSpot = { id: string; x: number; z: number; name: string; cls?: string; emoji?: string };
 
+/**
+ * Each store once: the map often carries a shop twice (as a point and as its building, or
+ * once in each of two neighbouring tiles), which showed as two signs, two blips and two rows
+ * in the Places list. Same name within `m` metres is one store — the first in `list` stays.
+ */
+export function oncePerStore<T extends { x: number; z: number; name: string }>(list: T[], m = 25): T[] {
+  const byName = new Map<string, T[]>();
+  const out: T[] = [];
+  for (const s of list) {
+    const key = s.name.replace(/\s+/g, " ").trim().toLowerCase();
+    const same = byName.get(key);
+    if (key && same?.some((o) => Math.hypot(o.x - s.x, o.z - s.z) <= m)) continue;
+    if (same) same.push(s);
+    else byName.set(key, [s]);
+    out.push(s);
+  }
+  return out;
+}
+
 /** How near (m) a store has to be for its card. */
 export const NEAR_STORE_M = 26;
 

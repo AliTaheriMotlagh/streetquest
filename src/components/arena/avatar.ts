@@ -62,6 +62,30 @@ export function loadPolice(): Promise<Template> {
   return police;
 }
 
+const CIVILIAN_URL = "/models/arena/civilian.glb";
+let civilian: Promise<Template> | null = null;
+
+/**
+ * The main character: a plain-clothes Tehrani everyman on the soldier's skeleton (built by
+ * assets/blender/civilian.py from a CC-BY character), so he plays every one of the soldier's
+ * animations and holds its guns. Falls back to the soldier when the model isn't built.
+ */
+export function loadCivilian(): Promise<Template> {
+  civilian ??= (async () => {
+    const draco = new DRACOLoader();
+    draco.setDecoderPath("/draco/");
+    draco.setWorkerLimit(1);
+    const l = new GLTFLoader();
+    l.setDRACOLoader(draco);
+    const g = await l.loadAsync(await modelUrl(CIVILIAN_URL));
+    return { scene: g.scene, clips: g.animations };
+  })().catch(() => {
+    civilian = null;
+    return loadSoldier();
+  });
+  return civilian;
+}
+
 /** The guns on their own (first-person view), each with its muzzle point. */
 export function loadWeapons() {
   weapons ??= loadModel(WEAPONS_URL)

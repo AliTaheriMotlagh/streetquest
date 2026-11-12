@@ -215,3 +215,18 @@ export function smokeRadius(s: number) {
 
 /** What you carry at the start of a life. */
 export const fullGear = (): Record<ThrowKey, number> => Object.fromEntries(THROW_KEYS.map((k) => [k, THROWABLES[k].per])) as Record<ThrowKey, number>;
+
+/** In the open city a kind you threw is back in the bag this long after its last throw (a match never restocks). */
+export const RESUPPLY_MS = 40_000;
+/**
+ * The bag after a rest: every kind short of its full count whose last throw was at least
+ * RESUPPLY_MS ago is full again. null when nothing came back.
+ */
+export function resupply(gear: Record<ThrowKey, number>, thrownAt: Partial<Record<ThrowKey, number>>, now: number): Record<ThrowKey, number> | null {
+  let out: Record<ThrowKey, number> | null = null;
+  for (const k of THROW_KEYS) {
+    if ((gear[k] ?? 0) >= THROWABLES[k].per || now - (thrownAt[k] ?? 0) < RESUPPLY_MS) continue;
+    (out ??= { ...gear })[k] = THROWABLES[k].per;
+  }
+  return out;
+}

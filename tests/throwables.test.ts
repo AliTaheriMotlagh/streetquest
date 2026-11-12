@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { FootprintIndex, rayFootprint, type Footprint, type Normal, type Ray } from "@/lib/arena/geom";
 import { F_FOOT, type ServerMsg, type State } from "@/lib/arena/protocol";
-import { blastDamage, flashSeconds, fly, fullGear, smokeBlocks, smokeRadius, THROW_GAP_MS, THROW_KEYS, THROW_MAX_M, THROWABLES, throwVelocity, type Walls } from "@/lib/arena/throwables";
+import { blastDamage, flashSeconds, fly, fullGear, RESUPPLY_MS, resupply, smokeBlocks, smokeRadius, THROW_GAP_MS, THROW_KEYS, THROW_MAX_M, THROWABLES, throwVelocity, type Walls } from "@/lib/arena/throwables";
 import { Hub } from "../realtime/hub";
 
 const A = { lat: 35.7325, lng: 51.5352 };
@@ -148,6 +148,17 @@ describe("the referee", () => {
     assert.ok(!msgs.some((m) => m.t === "nade"));
   });
 
+  it("the open city hands a thrown grenade back after a rest", () => {
+    const { hub, a, t0 } = setup();
+    hub.message(a, { t: "throw", k: "smoke", o: [0, 1.5, 0], v: [12, 2, 0], rest: [5, 0, 0] }, t0 + 10);
+    assert.equal(a.gear.smoke, 0);
+    hub.tick(t0 + RESUPPLY_MS - 2000);
+    assert.equal(a.gear.smoke, 0, "not yet");
+    hub.tick(t0 + RESUPPLY_MS + 1500);
+    assert.equal(a.gear.smoke, THROWABLES.smoke.per);
+    assert.equal(resupply(fullGear(), {}, t0), null, "a full bag has nothing to get back");
+  });
+
   it("C4 waits for its owner, then goes off on command", () => {
     const { hub, msgs, a, b, t0 } = setup();
     hub.message(a, { t: "throw", k: "c4", o: [0, 1.5, 0], v: [2, 1, 0], rest: [3, 0, 0] }, t0 + 10);
@@ -159,12 +170,16 @@ describe("the referee", () => {
     assert.ok(b.dead, "C4 a metre away kills");
   });
 
-  it("can't be thrown in passive mode; smoke hides one side from the other", () => {
+  it("a passive player's grenade goes off but hurts nobody else; smoke hides one side from the other", () => {
     const { hub, msgs, a, b, t0 } = setup();
     hub.world.setPassive(b, true, t0 + 60_000);
     msgs.length = 0;
-    hub.message(b, { t: "throw", k: "frag", o: [4, 1.5, 0], v: [-6, 2, 0] }, t0 + 60_010);
-    assert.ok(!msgs.some((m) => m.t === "nade"), "passive players can't throw");
+    hub.message(b, { t: "throw", k: "frag", o: [4, 1.5, 0], v: [-6, 2, 0], rest: [0.5, 0, 0] }, t0 + 60_010);
+    assert.ok(msgs.some((m) => m.t === "nade"), "passive players throw too (the street takes the blast)");
+    assert.equal(b.passive, true, "and stay passive");
+    hub.tick(t0 + 60_010 + THROWABLES.frag.fuseS * 1000 + 50);
+    assert.ok(msgs.some((m) => m.t === "boom" && m.k === "frag"));
+    assert.equal(a.hp, 100, "a passive player's blast can't hurt another player");
 
     hub.state(b, state(10, 0), t0 + 60_020);
     const eye = (p: typeof a) => [p.ll, 1.5] as const;

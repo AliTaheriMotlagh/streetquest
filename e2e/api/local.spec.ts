@@ -550,4 +550,42 @@ test.describe("the map's own data", () => {
     expect(data.deals.find((d) => d.name === `Cafe A${k}`)).toMatchObject({ off: 20, items: [{ price: 200_000, retail: 250_000 }], url: expect.stringMatching(/^https:\/\/takhfifan\.com\/vendor\/\d+$/) });
     await p.dispose();
   });
+
+  test("product search: a dish by name across the menus round you, in a price range, sorted, one source at a time", async ({ baseURL }) => {
+    const spot = randomSpot();
+    // Two restaurants near the spot, each with its own menu (the stub's /details/dynamic serves it).
+    const one = { code: code(), title: "Pizza Stub Alpha", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", items: [{ title: "Pizza Pepperoni", price: 500_000 }, { title: "Pizza Margherita", price: 300_000 }] };
+    const away = offset(spot, 0, 220);
+    const two = { code: code(), title: "Pizza Stub Beta", lat: away.lat, lon: away.lng, type: "RESTAURANT", items: [{ title: "برگر ویژه", price: 250_000 }, { title: "Pizza Special", price: 900_000 }] };
+    vendors.push(one, two);
+    const p = await Player.create(baseURL!);
+    type Hit = { title: string; source: string; price: number; store: string };
+    type Ans = { hits: Hit[]; total: number; stores: number; failed: string[] };
+    const search = (extra: string) => `/api/local?products=Pizza&lat=${spot.lat}&lng=${spot.lng}&read=1&${extra}`;
+
+    // Both restaurants are round the spot (the search reads their menus itself below).
+    const nearCodes = expectOk(await p.get<{ vendors: { code: string }[] }>(`/api/local?near=1&lat=${spot.lat}&lng=${spot.lng}`)).data.vendors.map((v) => v.code);
+    expect(nearCodes).toEqual(expect.arrayContaining([one.code, two.code]));
+
+    // The first search reads a few menus: the dishes that answer the word, from both restaurants (never the burger).
+    const food = expectOk(await p.get<Ans>(search("src=food"))).data;
+    expect(food.hits.map((h) => h.title).sort()).toEqual(["Pizza Margherita", "Pizza Pepperoni", "Pizza Special"]);
+    expect(food.hits.find((h) => h.title === "Pizza Margherita")!.price).toBe(300_000);
+    expect(food.hits.every((h) => h.source === "food")).toBe(true);
+
+    // A price range narrows the list (the filter is applied, not ignored).
+    expect(expectOk(await p.get<Ans>(search("src=food&max=400000"))).data.hits.map((h) => h.title)).toEqual(["Pizza Margherita"]);
+    expect(expectOk(await p.get<Ans>(search("src=food&min=600000"))).data.hits.map((h) => h.title)).toEqual(["Pizza Special"]);
+
+    // Sorting by price: cheapest first across every source that answers.
+    const cheap = expectOk(await p.get<Ans>(search("sort=cheap"))).data;
+    expect(cheap.hits.map((h) => h.price)).toEqual([...cheap.hits.map((h) => h.price)].sort((a, b) => a - b));
+    expect(cheap.hits.length).toBeGreaterThan(food.hits.length);
+
+    // Only one source: Torob's own product search (the stub's two listings).
+    const torob = expectOk(await p.get<Ans>(search("src=torob"))).data;
+    expect(torob.hits.length).toBe(2);
+    expect(torob.hits.every((h) => h.source === "torob")).toBe(true);
+    await p.dispose();
+  });
 });

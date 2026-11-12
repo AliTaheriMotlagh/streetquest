@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { padActive, padKind, padNames, pressed, radial, readPad, stick, trigger, type PadSnapshot } from "@/lib/input/gamepad";
-import { arc, clampSens, footActions, lookGain, stickMove } from "@/lib/input/touch";
+import { arc, clampSens, FOOT_BELOW_MAX, FOOT_BTN, footActions, footLayout, lookGain, stickMove } from "@/lib/input/touch";
 
 const btn = (pressedV = false, value = pressedV ? 1 : 0) => ({ pressed: pressedV, value });
 const snap = (axes: number[], on: Record<number, number> = {}): PadSnapshot => ({
@@ -68,9 +68,10 @@ describe("touch controls", () => {
     assert.ok(far.mag <= 1);
     assert.equal(stickMove({ ox: 0, oy: 0 }, 2, 2).mag, 0, "dead centre");
   });
-  it("sprint needs forward, not sideways or back", () => {
-    assert.equal(stickMove({ ox: 0, oy: 0 }, 90, 0).sprint, false);
-    assert.equal(stickMove({ ox: 0, oy: 0 }, 0, 90).sprint, false);
+  it("the edge of the stick asks for a sprint whichever way (the body decides: foot.test.ts)", () => {
+    assert.equal(stickMove({ ox: 0, oy: 0 }, 90, 0).sprint, true);
+    assert.equal(stickMove({ ox: 0, oy: 0 }, 0, 90).sprint, true);
+    assert.equal(stickMove({ ox: 0, oy: 0 }, 30, 0).sprint, false);
   });
   it("look accelerates with flick speed and honours sensitivity", () => {
     assert.equal(lookGain(0.1, 1), 1);
@@ -84,6 +85,20 @@ describe("touch controls", () => {
     const r = arc(3, 100), l = arc(3, 100, 100, 190, true);
     assert.equal(r.length, 3);
     r.forEach((p, i) => assert.ok(Math.abs(p.x + l[i].x) < 1e-9 && p.y === l[i].y));
+  });
+  it("the on-foot buttons clear each other and the fire button, stay on the screen, and mirror", () => {
+    const r = footLayout(), l = footLayout(true);
+    const keys = Object.keys(r) as (keyof typeof r)[];
+    assert.deepEqual([...keys].sort(), ["aim", "car", "crouch", "jump", "reload", "swap"]);
+    for (const a of keys) {
+      assert.ok(Math.hypot(r[a].x, r[a].y) >= 44 + FOOT_BTN / 2 + 8, `${a} clears the fire button`);
+      assert.ok(r[a].y <= FOOT_BELOW_MAX, `${a} is whole above the bottom edge (${r[a].y.toFixed(0)})`);
+      assert.ok(r[a].x < 0, `${a} is on the thumb's inner side`);
+      assert.ok(Math.abs(r[a].x + l[a].x) < 1e-9 && r[a].y === l[a].y, `${a} mirrors`);
+      for (const b of keys) if (a < b) assert.ok(Math.hypot(r[a].x - r[b].x, r[a].y - r[b].y) >= FOOT_BTN + 6, `${a} and ${b} don't touch`);
+    }
+    // Dead-eye (fixed in the stylesheet at 46, -84) keeps clear of the inner ring too.
+    for (const a of keys) assert.ok(Math.hypot(r[a].x - 46, r[a].y + 84) >= FOOT_BTN + 4, `${a} clears dead-eye`);
   });
   it("the car button shows only near a car and never in a match", () => {
     assert.ok(!footActions({ nearCar: false, inMatch: false }).includes("car"));

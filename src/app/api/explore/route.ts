@@ -1,6 +1,8 @@
 // Explore mode and visiting friends (lib/explore.ts).
 //   GET  ?lat&lng       real places and players around any spot on the map — no need to be
 //                       there (strangers stay fuzzed, friends exact; nothing to pick up)
+//   GET  ?q&lat&lng[&cats]  real places by name (or kind) in the whole district round a spot —
+//                       the 3D city's search, which otherwise only knows the streets drawn so far
 //   GET  ?friend=<id>   where an online friend is right now (friends see each other exactly)
 //   POST {friend}       play from home: jump next to an online friend (once every
 //                       S.friendTravelMin minutes); walking players visit by exploring instead
@@ -10,16 +12,31 @@ import { bbox, distanceM, offset } from "@/lib/geo";
 import { S } from "@/lib/settings";
 import { levelForXp } from "@/lib/progression";
 import { t } from "@/lib/i18n";
-import { EXPLORE_MAX_PLACES, EXPLORE_PLACES_RADIUS_M, FRIEND_LAND_M, travelWaitMin } from "@/lib/explore";
+import { EXPLORE_MAX_PLACES, EXPLORE_PLACES_RADIUS_M, FRIEND_LAND_M, SEARCH_RADIUS_M, searchPlaces, travelWaitMin } from "@/lib/explore";
+import { tileKey, tileOf } from "@/lib/city";
+import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { requireUser } from "@/server/auth";
 import { onlineSince } from "@/server/hub";
 import { body, HttpError, route } from "@/server/http";
-import { placesNear } from "@/server/city";
+import { placesIn, placesNear } from "@/server/city";
 import { fuzzed } from "@/server/presence";
 import { areFriends, friendIds } from "@/server/rooms";
 
 const num = z.coerce.number().finite();
-const Query = z.union([z.object({ friend: z.string().min(1).max(40) }), z.object({ lat: num.min(-90).max(90), lng: num.min(-180).max(180) })]);
+const Query = z.union([
+  z.object({ friend: z.string().min(1).max(40) }),
+  z.object({ q: z.string().trim().max(60), cats: z.string().max(200).optional(), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
+  z.object({ lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
+]);
+
+/** Every known place in the cells covering the search circle (one read; the cells are cached). */
+async function placesToSearch(here: { lat: number; lng: number }) {
+  const b = bbox(here, SEARCH_RADIUS_M);
+  const lo = tileOf({ lat: b.minLat, lng: b.minLng }), hi = tileOf({ lat: b.maxLat, lng: b.maxLng });
+  const keys: string[] = [];
+  for (let x = lo.cx; x <= hi.cx && keys.length < 400; x++) for (let y = lo.cy; y <= hi.cy; y++) keys.push(tileKey(x, y));
+  return [...(await placesIn(keys)).values()].flat().filter((p) => distanceM(here, p) <= SEARCH_RADIUS_M);
+}
 
 /** An online friend's spot, or a 404 that doesn't say whether they exist. */
 async function friendSpot(me: string, id: string) {
@@ -33,6 +50,11 @@ export const GET = route(async (req) => {
   const q = Query.parse(Object.fromEntries(new URL(req.url).searchParams));
   if ("friend" in q) return friendSpot(u.id, q.friend);
   const here = { lat: q.lat, lng: q.lng };
+  if ("q" in q) {
+    const cats = (q.cats ?? "").split(",").filter((c): c is PlaceCat => c in PLACE_CATS);
+    if (q.q.length < 2 && !cats.length) return { results: [] };
+    return { results: searchPlaces(await placesToSearch(here).catch(() => []), q.q, here, { cats, labelOf: (c) => t(PLACE_CATS[c].label) }) };
+  }
   const box = bbox(here, 3000);
   const [spots, friends, rows] = await Promise.all([
     placesNear(here, EXPLORE_PLACES_RADIUS_M, EXPLORE_MAX_PLACES).catch(() => []),

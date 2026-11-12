@@ -9,6 +9,7 @@
 import { after } from "next/server";
 import { distanceM, type LatLng } from "../lib/geo";
 import { siteBase } from "../lib/relayUrl";
+import { pacerFor } from "../lib/pace";
 import { mergePhones, phonesFrom, type StorePhone } from "../lib/localData";
 import {
   adAreas, bboxAround, bilbooardCity, detailFromLd, findTwin, fromBasalam, fromBilbooard, fromIrangaah, fromNetbargDeal, fromOkala,
@@ -39,10 +40,16 @@ export const sitesOn = () => Object.fromEntries(Object.entries(base).map(([k, f]
 
 /** One GET: the body as text (or JSON), null on any failure. Never retried: the cache keeps the last good copy. */
 async function fetchText(url: string, timeoutMs = TIMEOUT_MS, accept = "text/html,application/json"): Promise<string | null> {
+  // The site's own gentle pace (lib/pace.ts); a request it refuses isn't made — the cache answers.
+  const pace = pacerFor(url);
+  const hold = pace ? pace.take(Date.now()) : 0;
+  if (hold == null) return null;
+  if (hold > 0) await new Promise((r) => setTimeout(r, hold));
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { headers: { "user-agent": UA(), accept }, signal: ctl.signal });
+    pace?.saw(res.status, Date.now());
     return res.ok ? await res.text() : null;
   } catch {
     return null;

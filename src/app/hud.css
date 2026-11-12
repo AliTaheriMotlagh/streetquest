@@ -189,3 +189,19 @@ html[lang="en"] .pm-scroll b.small { text-transform: uppercase; letter-spacing: 
   .pm, .pm-scrim, .drive-action, .drive-round[data-tip]:hover::after { animation: none !important; }
   .pm.out, .pm-scrim.out { transition: none; }
 }
+
+/* ---- the Places tab (drive/DrivePlaces.tsx): search + where, kinds, and a route button per row */
+.dplaces .dp-find { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.dplaces .dp-find .drive-search { margin: 0; }
+.dplaces .dp-city { height: 48px; max-width: 128px; padding: 0 8px; border-radius: var(--hud-r); border: 1px solid var(--hud-line); background: var(--hud-hi); color: inherit; font: inherit; font-size: 13px; }
+.dplaces .dp-city option { color: #111; }
+.dp-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.dp-chips::-webkit-scrollbar { display: none; }
+.dp-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--hud-line); background: var(--hud-hi); color: inherit; font: 600 12px/1 var(--body); white-space: nowrap; cursor: pointer; transition: background .12s, border-color .12s; }
+.dp-chip:hover { background: rgba(255, 255, 255, .09); }
+.dp-chip.on { background: var(--dpad-accent); border-color: transparent; color: #1a1200; }
+.dp-chip:focus-visible, .dp-go:focus-visible, .dplaces .dp-city:focus-visible { outline: 2px solid var(--dpad-accent); outline-offset: 2px; }
+.dplaces .dp-note { margin: 0 2px; min-height: 1.3em; }
+.dp-go { flex: none; width: 44px; height: 44px; margin-inline-end: 2px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--hud-line); background: transparent; color: var(--dpad-accent); cursor: pointer; }
+.dp-go:hover { background: rgba(255, 255, 255, .09); }
+.dplaces .dp-products { color: var(--dpad-accent); }

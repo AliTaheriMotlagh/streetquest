@@ -96,7 +96,7 @@ Three games stacked on one real-world map:
   from `npm run assets:catalog` (`scripts/object-catalog.ts` → `src/lib/objectCatalog.generated.json`; run it after
   `assets:cars`/`assets:people`/`assets:props`/`assets:arena`).
 - **Admin → Model update** — replace a built-in model without a deploy. Upload a `.glb` for a slot (`car:<key>`,
-  `person:<key>`, `arena:soldier`, `arena:police`, `arena:weapons`, `props:street`); `lib/modelCheck.ts` checks it in
+  `person:<key>`, `arena:soldier`, `arena:police`, `arena:civilian`, `arena:weapons`, `props:street`); `lib/modelCheck.ts` checks it in
   the browser and again on the server (4 MB, triangle budget per kind, the parts/bones/clips the game looks up —
   a car's `paint`/`kit`/`head`/`tail`/`wheel` (+`_far`) and wheel positions in the scene extras, a rig with `spine` and
   the `Idle`/`Walk`/`Run`/`Death` clips for soldiers, `fp_<gun>` nodes for guns — and a believable scale). The new
@@ -266,7 +266,10 @@ mood scales XP; loot funds research; territory funds the army.
   `npm run assets:arena` (Blender) turns `assets/models/weapon/<key>.glb` into the soldier's and the first-person
   guns (`assets/blender/guns.py`: joined, turned barrel-forward, scaled to the real gun, grip at the hand, colours
   baked into vertex colours so each gun is two draw calls, thinned to 3,500 triangles) and writes each gun's sight
-  line and muzzle to `src/lib/arena/gunFit.ts`; a gun without its source falls back to a procedural one.
+  line and muzzle to `src/lib/arena/gunFit.ts`; a gun without its source falls back to a procedural one. The same
+  build also puts a downloaded CC-BY character on the soldier's skeleton as `police.glb` (`assets/blender/police.py`)
+  and the main character as `civilian.glb` (`assets/blender/civilian.py`, from `assets/models/character/casual.glb`;
+  `ARENA_ONLY=civilian npm run assets:arena` rebuilds it alone).
 - **Real street furniture** — where OpenStreetMap maps them (trees, street lamps, bus stops, benches, bins,
   hydrants) and where the city fills them in along the real streets (rows of trees, lamps every 34 m, and a
   municipal dumpster every block or two at the kerb, solid to cars), the 3D city draws real CC BY models: a
@@ -465,8 +468,9 @@ mood scales XP; loot funds research; territory funds the army.
   `/api/admin/siktir`, UI `src/components/game/{Siktir,SiktirLayer}.tsx`, `src/components/AdminSiktir.tsx`, model `PlaceDislike`.
 - **Street Arena (GTA Online meets Counter-Strike, on your real streets)** — in the 3D city, everyone driving or walking
   nearby shows up live (20 updates a second over WebSockets, or a few a second over HTTP without the realtime
-  server). Press **F** / 🚶 to get out of the car and walk as a 3D
-  soldier (third-person over the shoulder, or first-person with the gun in hand). On foot, **F** / the car button next to
+  server). Press **F** / 🚶 to get out of the car and walk as your character — a plain-clothes Tehrani
+  everyman in the open city (the main character, `public/models/arena/civilian.glb`), a soldier in a match —
+  third-person over the shoulder, or first-person with the gun in hand. On foot, **F** / the car button next to
   any car on the street — parked at the kerb, or stopped at a light or in a jam — takes it: you drive it in its own paint
   (a Tiba, a Shahin, a Khavar truck, the city bus…, each with its own handling; the street-only ones never show in the
   garage), the car you got out of stays parked at the kerb, and a new pick in the garage puts you back in your own

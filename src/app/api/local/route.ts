@@ -16,6 +16,12 @@
 //                              (place: name, lat, lng, cat · biz / shop: id)
 //   ?torob=<query>[&shop=<id>] Torob prices for a product — everywhere, or in one Torob shop
 //                              (an empty query there lists the shop's catalog)
+//   ?products=<query>&lat&lng[&src&min&max&sort&off]
+//                              product search across every store site (lib/productSearch.ts): dishes on the
+//                              menus round a point, Takhfifan deals there, Torob and Basalam products —
+//                              in a price range (toman), sorted by price / distance / rating / discount.
+//                              No words: only the nearby sources ("any food under 150,000"). read=1 (a fresh
+//                              search, "look in more restaurants") lets it fetch a few menus not cached yet
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
@@ -28,10 +34,23 @@ import { tileKey, tileOf } from "@/lib/city";
 import { HttpError, route } from "@/server/http";
 import { directoryTwins } from "@/server/storeSites";
 import { SITES } from "@/lib/stores/directory";
+import { PRODUCT_SORT_KEYS, PRODUCT_SOURCE_KEYS, type ProductSource } from "@/lib/productSearch";
+import { searchProducts } from "@/server/productSearch";
 import { dealInfo, dealReviews, dealsAround, divarAround, divarPost, divarPosts, PHONE_LATE_MS, phonesFor, storeData, torobPlaceInfo, torobPlacesAround, torobSearch, vendorMenu, vendorReviews, vendorsAround } from "@/server/localData";
 
 const num = z.coerce.number().finite();
 const Query = z.union([
+  z.object({
+    products: z.string().trim().max(60),
+    lat: num.min(-90).max(90),
+    lng: num.min(-180).max(180),
+    src: z.string().max(40).optional(),
+    min: z.coerce.number().int().min(0).max(1e10).optional(),
+    max: z.coerce.number().int().min(0).max(1e10).optional(),
+    sort: z.enum(PRODUCT_SORT_KEYS).default("match"),
+    off: z.enum(["0", "1"]).default("0"),
+    read: z.enum(["0", "1"]).default("0"),
+  }),
   z.object({ near: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ torobNear: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ reviews: z.string().regex(/^[0-9a-z]{6}$/), page: z.coerce.number().int().min(0).max(100).default(0) }),
@@ -83,6 +102,11 @@ function withTwins(data: StoreData, twins: Awaited<ReturnType<typeof directoryTw
 export const GET = route(async (req) => {
   await requireUser();
   const q = Query.parse(Object.fromEntries(new URL(req.url).searchParams));
+  if ("products" in q) {
+    if (!S.localDataEnabled) return { hits: [], total: 0, stores: 0, more: false, failed: [] };
+    const sources = (q.src ?? "").split(",").filter((s): s is ProductSource => (PRODUCT_SOURCE_KEYS as string[]).includes(s));
+    return searchProducts({ lat: q.lat, lng: q.lng }, { q: q.products, min: q.min, max: q.max, sort: q.sort, onlyOff: q.off === "1", sources, read: q.read === "1" });
+  }
   if (!S.localDataEnabled) {
     if ("near" in q) return { vendors: [] };
     if ("torobNear" in q) return { shops: [], pending: false };

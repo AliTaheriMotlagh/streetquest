@@ -11,7 +11,9 @@ export type Stick = { ox: number; oy: number };
 /**
  * A stick anchored where the thumb came down. Past 1.3x the radius the anchor follows the
  * thumb, so there's never a dead stretch when you turn round. Returns x right / y forward
- * (both -1…1), whether it's at the sprint edge, and the (possibly moved) anchor.
+ * (both -1…1), whether it's at the sprint edge (any way: arena/foot.ts decides whether a
+ * sideways push may sprint — it may when the body turns to where it goes), and the
+ * (possibly moved) anchor.
  */
 export function stickMove(s: Stick, px: number, py: number, r = STICK_R) {
   let dx = px - s.ox, dy = py - s.oy;
@@ -27,7 +29,7 @@ export function stickMove(s: Stick, px: number, py: number, r = STICK_R) {
   const k = m < r * 0.12 ? 0 : Math.min(1, m / r);
   const ang = Math.atan2(dy, dx);
   const x = Math.cos(ang) * k, y = -Math.sin(ang) * k;
-  return { x, y, mag: k, sprint: m > r * SPRINT_AT && y > 0.55, dx, dy, knobX: Math.cos(ang) * k * r, knobY: Math.sin(ang) * k * r };
+  return { x, y, mag: k, sprint: m > r * SPRINT_AT, dx, dy, knobX: Math.cos(ang) * k * r, knobY: Math.sin(ang) * k * r };
 }
 
 /** The look sensitivity setting, clamped to what the slider offers. */
@@ -57,6 +59,34 @@ export function arc(n: number, radius: number, from = 100, to = 190, mirror = fa
 }
 
 export type FootAction = "fire" | "aim" | "jump" | "crouch" | "reload" | "car";
+export type FootSlot = Exclude<FootAction, "fire"> | "swap";
+/** A round action button's size (px): every one clears its neighbours by this much. */
+export const FOOT_BTN = 52;
+/** How far below the fire button's centre a button may sit and still be whole on the screen (the fire button is 80 px up from the bottom edge). */
+export const FOOT_BELOW_MAX = 44;
+/** [ring radius px, angle°] of each button round the fire button: what the thumb uses most is nearest. */
+const FOOT_RING: Record<FootSlot, [number, number]> = {
+  reload: [112, 92],
+  crouch: [112, 124],
+  jump: [112, 156],
+  aim: [112, 188],
+  swap: [180, 122],
+  car: [180, 150],
+};
+/**
+ * Where the on-foot buttons sit, in px from the fire button's centre (x right, y down): two
+ * rings under the right thumb, so none of them leaves the screen or covers another on a
+ * narrow phone (one ring of six pushed "car" off the bottom edge and "aim" under the grenades).
+ * Mirrored for left-handed play.
+ */
+export function footLayout(mirror = false): Record<FootSlot, { x: number; y: number }> {
+  const out = {} as Record<FootSlot, { x: number; y: number }>;
+  for (const k of Object.keys(FOOT_RING) as FootSlot[]) {
+    const [r, deg] = FOOT_RING[k], a = (deg * Math.PI) / 180;
+    out[k] = { x: Math.cos(a) * r * (mirror ? -1 : 1), y: -Math.sin(a) * r };
+  }
+  return out;
+}
 /** Which buttons the arc shows right now (the car only when one is close). */
 export function footActions(o: { nearCar: boolean; inMatch: boolean }): FootAction[] {
   const list: FootAction[] = ["aim", "jump", "crouch", "reload"];

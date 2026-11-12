@@ -105,11 +105,14 @@ export function buildCatalog(opts: { landmarks?: LandmarkRow[] } = {}): CatalogO
   for (const p of PEOPLE_MODELS) {
     out.push({ id: `person:${p.key}`, kind: "person", name: p.key, slot: `person:${p.key}`, file: p.url, bytes: p.bytes, tris: p.tris, size: [round(p.height * 0.35), p.height, round(p.height * 0.2)], credits: p.credit ? [p.credit] : [], usedIn: [U.pavement], note: p.clips.join(", ") });
   }
-  for (const key of ["soldier", "police"] as const) {
+  const casualCredit = PEOPLE_MODELS.find((p) => p.key === "casual")?.credit;
+  for (const key of ["soldier", "police", "civilian"] as const) {
     const f = MEASURED[ARENA[key]];
     out.push({
       id: `soldier:${key}`, kind: "soldier", name: key, slot: `arena:${key}`, file: ARENA[key], bytes: f?.bytes ?? null, tris: f?.tris ?? null, size: sizeOf(f),
-      credits: key === "police" ? dl("/police.glb") : [OWN], usedIn: key === "police" ? [U.police] : [U.arena], note: f ? `${f.joints.length} bones, ${f.clips.length} clips` : undefined,
+      credits: key === "police" ? dl("/police.glb") : key === "civilian" ? (casualCredit ? [casualCredit] : []) : [OWN],
+      usedIn: key === "police" ? [U.police] : [U.arena],
+      note: f ? `${f.joints.length} bones, ${f.clips.length} clips` : undefined,
     });
   }
   const wf = MEASURED[ARENA.weapons];

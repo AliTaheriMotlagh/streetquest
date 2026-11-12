@@ -28,6 +28,15 @@ test("exploring a far-away spot: its places and players, strangers still fuzzed"
   expect(seen.friend).toBe(false);
   expect(metres(seen, far)).toBeGreaterThan(55);
   expect((await me.get("/api/explore?lat=nope&lng=1")).status).toBe(400);
+  // Search: a place by its name from anywhere in the district (not only the streets drawn in 3D), nearest first.
+  type S = { results: { id: string; name: string; dist: number }[] };
+  const target = places[0] as { id: string; name: string };
+  const from = offset(far, 1200);
+  const found = expectOk(await me.get<S>(`/api/explore?q=${encodeURIComponent(target.name)}&lat=${from.lat}&lng=${from.lng}`)).data.results;
+  expect(found.map((p) => p.id)).toContain(target.id);
+  expect(found.every((p, i) => i === 0 || p.dist >= 0)).toBe(true);
+  expect(expectOk(await me.get<S>(`/api/explore?q=x&lat=${far.lat}&lng=${far.lng}`)).data.results).toEqual([]);
+  expect(expectOk(await me.get<S>(`/api/explore?q=${encodeURIComponent("zzz-no-such-store")}&lat=${far.lat}&lng=${far.lng}`)).data.results).toEqual([]);
   await Promise.all([me.dispose(), local.dispose(), admin.dispose()]);
 });
 

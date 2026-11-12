@@ -14,6 +14,11 @@ export type FootInput = {
   crouch: boolean;
   aim: boolean;
   jump: boolean;
+  /**
+   * Third person, nothing in the sights: the body turns to where it goes (faceYaw), so a
+   * sprint may be in any direction. Otherwise (first person, aiming) only forward.
+   */
+  free?: boolean;
 };
 type Collide = (x: number, z: number, r: number, y: number, tall: number) => { x: number; z: number; hit: { nx: number; nz: number } | null };
 
@@ -31,8 +36,8 @@ export function newFoot(x: number, z: number, yaw: number): FootBody {
 
 export function stepFoot(b: FootBody, inp: FootInput, dt: number, mobility: number, collide: Collide) {
   const len = Math.min(1, Math.hypot(inp.mx, inp.mz));
-  // Sprint only running forward-ish, never while aiming or crouched.
-  b.sprint = inp.sprint && inp.mz > 0.5 && !inp.aim && !b.crouch && !b.air;
+  // Sprint only running forward-ish (any way when the body turns to where it goes), never while aiming or crouched.
+  b.sprint = inp.sprint && (inp.free ? len > 0.5 : inp.mz > 0.5) && !inp.aim && !b.crouch && !b.air;
   if (inp.crouch !== b.crouch && !b.air) b.crouch = inp.crouch;
   const top = (b.sprint ? SPRINT : b.crouch ? CROUCH : inp.aim ? AIMING : JOG) * mobility;
   // Stick → world (forward is -z at yaw 0, right is +x).
@@ -65,4 +70,24 @@ export function stepFoot(b: FootBody, inp: FootInput, dt: number, mobility: numb
   b.x = r.x;
   b.z = r.z;
   return Math.hypot(b.vx, b.vz);
+}
+
+/** How fast the body turns to where it's going / squares up with the camera again (per second). */
+const TURN_FREE = 11;
+const TURN_SQUARE = 20;
+/**
+ * Which way the body faces in third person, GTA-style: walking, it turns to where it's
+ * going (the camera stays yours to look around with); standing, it stays as it stopped;
+ * `squared` — aiming, firing, lining up a throw, first person — it faces where the camera
+ * looks, quickly, so the gun points down the sights. Returns the new facing (radians,
+ * eased from `cur` by the shortest way round). Forward is -z at yaw 0.
+ */
+export function faceYaw(cur: number, camYaw: number, vx: number, vz: number, squared: boolean, dt: number): number {
+  const moving = Math.hypot(vx, vz) > 0.6;
+  if (!squared && !moving) return cur;
+  const want = squared ? camYaw : Math.atan2(-vx, -vz);
+  let d = (want - cur) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  else if (d < -Math.PI) d += Math.PI * 2;
+  return cur + d * (1 - Math.exp(-dt * (squared ? TURN_SQUARE : TURN_FREE)));
 }

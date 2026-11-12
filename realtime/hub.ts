@@ -234,6 +234,7 @@ export class Hub {
     this.world.index();
     this.world.tickReloads(now);
     this.world.tickNades(now);
+    this.world.resupply(now);
     for (const m of [...this.matches.values()]) m.tick(dt, now);
     const refresh = now - this.matchViewAt > 3000;
     if (refresh) this.matchViewAt = now;

@@ -1124,6 +1124,102 @@
    "Soldier"
   ]
  },
+ "/models/arena/civilian.glb": {
+  "bytes": 1459012,
+  "tris": 33611,
+  "joints": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "upperarm.L",
+   "forearm.L",
+   "hand.L",
+   "upperarm.R",
+   "forearm.R",
+   "hand.R",
+   "thigh.L",
+   "shin.L",
+   "foot.L",
+   "thigh.R",
+   "shin.R",
+   "foot.R"
+  ],
+  "clips": [
+   "Idle",
+   "Walk",
+   "Run",
+   "Back",
+   "StrafeR",
+   "StrafeL",
+   "Crouch",
+   "CrouchWalk",
+   "Jump",
+   "Death"
+  ],
+  "materials": 13,
+  "textures": 3,
+  "bbox": {
+   "min": [
+    -0.30100393295288086,
+    4.136191833481462e-9,
+    -1.05399940617224
+   ],
+   "max": [
+    0.42620426416397095,
+    1.839996337890625,
+    0.18682003021240234
+   ]
+  },
+  "extensions": [
+   "KHR_draco_mesh_compression",
+   "KHR_materials_emissive_strength"
+  ],
+  "extras": [],
+  "nodes": [
+   "head",
+   "neck",
+   "hand.L",
+   "forearm.L",
+   "upperarm.L",
+   "muzzle_battle",
+   "gun_battle",
+   "muzzle_deagle",
+   "gun_deagle",
+   "muzzle_dmr",
+   "gun_dmr",
+   "muzzle_lmg",
+   "gun_lmg",
+   "muzzle_pistol",
+   "gun_pistol",
+   "muzzle_rifle",
+   "gun_rifle",
+   "muzzle_shotgun",
+   "gun_shotgun",
+   "muzzle_smg",
+   "gun_smg",
+   "muzzle_sniper",
+   "sniper_scope",
+   "gun_sniper",
+   "hand.R",
+   "forearm.R",
+   "upperarm.R",
+   "chest",
+   "spine",
+   "foot.L",
+   "shin.L",
+   "thigh.L",
+   "foot.R",
+   "shin.R",
+   "thigh.R",
+   "hips",
+   "root",
+   "CivilianBody",
+   "Soldier"
+  ]
+ },
  "/models/arena/weapons.glb": {
   "bytes": 370616,
   "tris": 29151,

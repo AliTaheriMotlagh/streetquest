@@ -25,8 +25,8 @@ import { VEHICLE_KEYS, type VehicleKey } from "@/lib/vehicles";
 import type { CollisionWorld } from "../drive/physics";
 import type { Others } from "../drive/others";
 import { makeSign } from "../drive/world3d";
-import { Avatar, loadSoldier } from "./avatar";
-import { newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
+import { Avatar, loadCivilian, loadSoldier } from "./avatar";
+import { faceYaw, newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { fovFor } from "@/lib/view";
 import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
 import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
@@ -105,6 +105,10 @@ export type CombatHud = {
   streak: number;
 };
 
+/** Above this speed (m/s) the door stays shut; asked to get out, the car brakes down to it first, for at most EXIT_WAIT_MS. */
+const EXIT_MAX_V = 6;
+const EXIT_WAIT_MS = 6000;
+
 export type CombatHost = {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -140,6 +144,8 @@ export type CombatHost = {
   npc?: NpcTargets;
   /** May I get back into my own car (a burnt-out wreck: no)? */
   carUsable?: () => boolean;
+  /** Stand on the brakes (the driver asked to get out while still rolling), or let go of them. */
+  brake?: (on: boolean) => void;
 };
 
 /** What bullets and blasts meet in the open city besides players (drive/street.ts). */
@@ -315,6 +321,7 @@ export class Combat {
     this.rt.start();
     this.bindDesktop();
     loadSoldier().catch(() => {});
+    loadCivilian().catch(() => {});
   }
 
   // ------------------------------------------------------------ store for the HUD
@@ -488,7 +495,15 @@ export class Combat {
     if (this.me || !this.h.canDrive()) return;
     const v = this.h.vehicle();
     if (v.flies && v.alt > 0.8) return this.h.toast(t("Land first to get out"));
-    if (Math.hypot(v.vx, v.vz) > 6) return this.h.toast(t("Slow down to get out"));
+    if (Math.hypot(v.vx, v.vz) > EXIT_MAX_V) {
+      // Still rolling: brake to a stop first, then the door opens by itself (tick). Asked again: never mind, drive on.
+      if (this.exitUntil) return this.stopExit();
+      if (!this.h.brake) return this.h.toast(t("Slow down to get out"));
+      this.exitUntil = performance.now() + EXIT_WAIT_MS;
+      this.h.brake(true);
+      return;
+    }
+    this.stopExit();
     // Step out on the driver's side.
     const rx = Math.cos(v.yaw), rz = -Math.sin(v.yaw);
     let x = v.x - rx * 2, z = v.z - rz * 2;
@@ -501,6 +516,16 @@ export class Combat {
     setTimeout(() => doorSound(false), 520);
     if (!v.flies) setTimeout(() => lockSound(), 1300);
   }
+
+  /** Asked to get out while still rolling: braking until then (0: not). */
+  private exitUntil = 0;
+  private stopExit() {
+    if (!this.exitUntil) return;
+    this.exitUntil = 0;
+    this.h.brake?.(false);
+  }
+  /** Which way my body faces in third person (foot.ts faceYaw): where I walk, or where I aim. */
+  private face = 0;
 
   /** Metres from me (on foot) to the middle of my parked car; Infinity without one. */
   private ownCarAt() {
@@ -550,9 +575,11 @@ export class Combat {
 
   private enterFoot(x: number, z: number, yaw: number) {
     this.me = newFoot(x, z, yaw);
+    this.face = yaw;
     this.camPos.set(x, 2, z);
     if (!this.avatar)
-      loadSoldier()
+      // In a match I'm a soldier on a team; in the open city I'm the plain-clothes main character.
+      (this.inMatch ? loadSoldier : loadCivilian)()
         .then((tpl) => {
           if (this.disposed || this.avatar || !this.me) return;
           this.avatar = new Avatar(tpl, "#7d8a6a", "#f0c05a", this.h.shadows);
@@ -560,7 +587,7 @@ export class Combat {
           this.avatar.setWeapon(this.weapon);
           this.h.scene.add(this.avatar.group);
         })
-        .catch(() => this.h.toast(t("Couldn't load the soldier — check your connection")));
+        .catch(() => this.h.toast(t("Couldn't load your character — check your connection")));
     this.publish(true);
   }
 
@@ -693,7 +720,7 @@ export class Combat {
     const me = this.me, k = this.throwKey, now = performance.now();
     if (!me || this.down || (this.gear[k] ?? 0) <= 0 || now - this.thrownAt < THROW_GAP_MS) return;
     if (this.match && this.match.phase !== "live") return this.h.toast(t("Wait for the round to start"));
-    if (!this.inMatch && this.passive) return this.h.toast(t("Turn off passive mode to fight"));
+    // (Passive mode only keeps players off each other: the street still gets the blast.)
     const tr = this.throwFrom(me);
     if (!tr) return;
     const flight = this.nades.fly(k, tr.o, tr.v);
@@ -1314,6 +1341,13 @@ export class Combat {
       this.publish();
     }
 
+    // Getting out of a rolling car: the brakes are on until it has (nearly) stopped — or the driver changes their mind.
+    if (this.exitUntil && !me) {
+      const v = H.vehicle();
+      if (Math.hypot(v.vx, v.vz) <= EXIT_MAX_V) this.getOut();
+      else if (performance.now() > this.exitUntil || this.inMatch) this.stopExit();
+    }
+
     if (me) {
       const reloading = performance.now() < this.reloadUntil;
       if (this.reloadUntil && !reloading) {
@@ -1347,7 +1381,9 @@ export class Combat {
       // -- move (pulling the trigger ends a sprint, so a shot is never swallowed)
       const frozen = this.match?.phase === "warmup" || (this.match?.phase === "live" && this.input.act && !!this.snapshot.act);
       const fireHeld = inp.fire || (this.autoFire && H.touch && !!assist?.onTarget);
-      const moveIn = this.down || frozen ? { ...inp, mx: 0, mz: 0, jump: false, sprint: false } : fireHeld ? { ...inp, sprint: false } : inp;
+      // Third person with nothing in the sights: the body turns to where it goes (and may sprint any way).
+      const squared = this.cam === "fps" || inp.aim || fireHeld || this.throwHeld || this.down || now - this.firedAt < 900;
+      const moveIn = this.down || frozen ? { ...inp, mx: 0, mz: 0, jump: false, sprint: false } : fireHeld ? { ...inp, sprint: false } : { ...inp, free: !squared };
       const speed = stepFoot(me, moveIn, dt, W.mobility, (x, z, r, y, tall) => {
         const a = H.collision.collide(x, z, r, y, tall);
         const b = H.obstacles.collide(a.x, a.z, r, y, tall);
@@ -1390,7 +1426,8 @@ export class Combat {
         if (accent !== this.myAccent) (this.myAccent = accent), this.avatar.setColors("#7d8a6a", accent);
         this.avatar.group.visible = !fps;
         this.avatar.group.position.set(me.x, me.y, me.z);
-        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: me.yaw, pitch: me.pitch, crouch: me.crouch, air: me.air, dead: this.down }, 0);
+        this.face = faceYaw(this.face, me.yaw, me.vx, me.vz, squared, dt);
+        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: this.face, pitch: squared ? me.pitch : 0, crouch: me.crouch, air: me.air, dead: this.down }, 0);
       }
       this.placeCamera(me, dt, fps);
       const scoped = this.snapshot.scoped;

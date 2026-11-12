@@ -97,7 +97,7 @@ const arena: Record<string, string> = {
   // ---- on foot
   "Land first to get out": "اول فرود بیا بعد پیاده شو",
   "Slow down to get out": "برای پیاده شدن سرعتت رو کم کن",
-  "Couldn't load the soldier — check your connection": "سرباز بارگذاری نشد — اینترنتت رو چک کن",
+  "Couldn't load your character — check your connection": "کاراکترت بارگذاری نشد — اینترنتت رو چک کن",
   "You took down {name}": "{name} رو از پا درآوردی",
   "Joined {mode}": "وارد {mode} شدی",
   "Site {s}": "سایت {s}",
@@ -168,7 +168,6 @@ const arena: Record<string, string> = {
   "Grenades": "نارنجک‌ها",
   "No {name} left": "{name} تمام شده",
   "Wait for the round to start": "صبر کن راند شروع شود",
-  "Turn off passive mode to fight": "برای مبارزه حالت صلح را خاموش کن",
   "You're standing in fire — move!": "وسط آتش ایستاده‌ای — برو کنار!",
   "G: set off the C4": "G: منفجر کردن سی‌فور",
   "Hold G to throw · 4 to switch": "G را نگه دار تا پرتاب کنی · ۴ برای عوض کردن",
