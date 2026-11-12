@@ -17,10 +17,11 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
  * after `budget` full markers — becomes a dot; then a name shows only where its label is
  * clear of every icon and of the names before it. Pure.
  */
-export function declutter(marks: Mark[], budget = Infinity): { named: Set<string>; dots: Set<string> } {
+export function declutter(marks: Mark[], budget = Infinity, spacing = 0.8): { named: Set<string>; dots: Set<string> } {
   const placed: Mark[] = [], dots = new Set<string>(), named = new Set<string>();
   for (const m of marks) {
-    const crowded = placed.length >= budget || placed.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < (o.r + m.r) * 0.8);
+    // `spacing`: how far apart two full markers must be, in their radii summed (0.8: they may touch; 1.6: a gap between them).
+    const crowded = placed.length >= budget || placed.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < (o.r + m.r) * spacing);
     if (m.dot && crowded) dots.add(m.id);
     else placed.push(m);
   }

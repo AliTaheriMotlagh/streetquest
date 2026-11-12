@@ -283,7 +283,8 @@ async function sheypoorCity(slug: string): Promise<AdItem[]> {
 }
 /** Sheypoor's newest ads in the neighbourhoods round a point, each pinned on its neighbourhood. */
 export async function sheypoorAround(at: LatLng): Promise<AdArea[]> {
-  const where = await districtsNear(at, 4000, 12);
+  // A page of newest ads is spread over the whole city: pin them on every district in it (the map draws what is in view).
+  const where = await districtsNear(at, 25_000, 600);
   if (!where?.city.slug) return [];
   const ads = await sheypoorCity(where.city.slug);
   return adAreas(ads, where.near.map((d) => ({ id: String(d.id), name: d.name, lat: d.lat, lng: d.lng })));

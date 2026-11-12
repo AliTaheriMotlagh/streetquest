@@ -51,6 +51,7 @@ import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { MapFilter } from "./MapFilter";
 import { AdAreaCard, DirStoreCard, ServicesSheet, StoreDirectory, useDirectory } from "./Directory";
 import { LeaveGuard } from "./LeaveGuard";
+import { applyPreset, currentPreset, type PresetId } from "@/lib/mapPresets";
 import { MAP_SITES, SITES, siteLayer, STORE_TYPE_KEYS, STORE_TYPES, type DirStore, type StoreType } from "@/lib/stores/directory";
 import type { LiveRoute } from "@/server/traffic";
 import { SocialPanel } from "./Social";
@@ -277,28 +278,40 @@ export default function Game() {
       localStorage.removeItem(MAP_KINDS_KEY);
     } catch {}
   };
-  const toggleType = (k: string) => {
-    const next = hiddenTypes.includes(k as StoreType) ? hiddenTypes.filter((x) => x !== k) : [...hiddenTypes, k as StoreType];
-    setHiddenTypes(next);
+  /** The filter's choices, each kept on this device. */
+  const saveTypes = (next: string[]) => {
+    const list = next.filter((k): k is StoreType => (STORE_TYPE_KEYS as string[]).includes(k));
+    setHiddenTypes(list);
     try {
-      localStorage.setItem(MAP_TYPES_KEY, JSON.stringify(next));
+      localStorage.setItem(MAP_TYPES_KEY, JSON.stringify(list));
     } catch {}
   };
-  const toggleKind = (k: string) => {
-    const next = hiddenKinds.includes(k) ? hiddenKinds.filter((x) => x !== k) : [...hiddenKinds, k];
+  const saveKinds = (next: string[]) => {
     setHiddenKinds(next);
     try {
       localStorage.setItem(MAP_KINDS_KEY, JSON.stringify(next));
     } catch {}
   };
-  const toggleLayer = (k: MapLayer | "all" | "none") => {
-    const next = k === "all" ? [...ALL_LAYERS] : k === "none" ? [] : layers.includes(k) ? layers.filter((x) => x !== k) : [...layers, k];
+  const saveLayers = (next: MapLayer[]) => {
     setLayers(next);
     try {
       localStorage.setItem(MAP_LAYERS_KEY, JSON.stringify(next));
       localStorage.setItem(MAP_LAYERS_KNOWN_KEY, JSON.stringify(ALL_LAYERS));
     } catch {}
   };
+  const toggleType = (k: string) => saveTypes(hiddenTypes.includes(k as StoreType) ? hiddenTypes.filter((x) => x !== k) : [...hiddenTypes, k]);
+  const toggleKind = (k: string) => saveKinds(hiddenKinds.includes(k) ? hiddenKinds.filter((x) => x !== k) : [...hiddenKinds, k]);
+  const toggleLayer = (k: MapLayer | "all" | "none") => saveLayers(k === "all" ? [...ALL_LAYERS] : k === "none" ? [] : layers.includes(k) ? layers.filter((x) => x !== k) : [...layers, k]);
+  /** A whole group of the filter on or off. */
+  const setGroup = (keys: string[], show: boolean) => saveLayers(show ? [...new Set([...layers, ...(keys as MapLayer[])])] : layers.filter((k) => !keys.includes(k)));
+  /** A one-tap preset: its layers, store types and kinds of place. */
+  const pickPreset = (id: PresetId) => {
+    const p = applyPreset(id, ALL_LAYERS);
+    saveLayers(p.layers as MapLayer[]);
+    saveTypes(p.hiddenTypes);
+    saveKinds(p.hiddenKinds);
+  };
+  const preset = currentPreset(layers, hiddenTypes, hiddenKinds, ALL_LAYERS);
   const vendorsOn = VENDOR_KIND_KEYS.some((k) => layers.includes(k));
   const divarOn = layers.includes("divar");
   const torobOn = layers.includes("torob");
@@ -381,7 +394,7 @@ export default function Game() {
   const typeChips = useMemo(() => {
     const n = new Map<StoreType, number>();
     for (const d of dirStores) n.set(d.type, (n.get(d.type) ?? 0) + 1);
-    return STORE_TYPE_KEYS.filter((k) => n.has(k) || hiddenTypes.includes(k)).map((k) => ({ key: k, emoji: STORE_TYPES[k].emoji, label: STORE_TYPES[k].label, count: n.get(k) ?? 0 }));
+    return STORE_TYPE_KEYS.filter((k) => n.has(k) || hiddenTypes.includes(k)).map((k) => ({ key: k, emoji: STORE_TYPES[k].emoji, label: STORE_TYPES[k].label, count: n.get(k) ?? 0, color: STORE_TYPES[k].color }));
   }, [dirStores, hiddenTypes]);
   // Real places with no job on the map: one sign per store (a Snappfood vendor that is the
   // same store keeps its sign — it has the menu).
@@ -430,9 +443,10 @@ export default function Game() {
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
-    return [...n].sort((a, b) => b[1] - a[1]).map(([k, count]) => ({ key: k, emoji: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).emoji, label: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).label, count }));
+    return [...n].sort((a, b) => b[1] - a[1]).map(([k, count]) => ({ key: k, emoji: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).emoji, label: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).label, count, color: (PLACE_CATS[k as PlaceCat] ?? PLACE_CATS.shop).color }));
   }, [spotsAround]);
-  const hiddenCount = ALL_LAYERS.length - layers.length + hiddenKinds.filter((k) => kindChips.some((c) => c.key === k)).length + hiddenTypes.length;
+  // The filter button's badge: layers off, plus one when the stores are narrowed to some types / kinds.
+  const hiddenCount = ALL_LAYERS.length - layers.length + (hiddenTypes.length || hiddenKinds.some((k) => kindChips.some((c) => c.key === k)) ? 1 : 0);
   const [meTab, setMeTab] = useState<HeroTabId>("quests");
   const [adOpen, setAdOpen] = useState<AdOffer | null>(null);
   const lastWorldFetch = useRef<{ at: number; pos: LatLng } | null>(null);
@@ -1271,8 +1285,11 @@ export default function Game() {
               on={(k) => layers.includes(k as MapLayer)}
               onToggle={(k) => toggleLayer(k as MapLayer)}
               onAll={showAll}
-              kinds={layers.includes("places") ? { items: kindChips, hidden: hiddenKinds, onToggle: toggleKind } : null}
-              types={dirOn ? { items: typeChips, hidden: hiddenTypes, onToggle: toggleType } : null}
+              onGroup={setGroup}
+              preset={preset}
+              onPreset={pickPreset}
+              kinds={layers.includes("places") ? { items: kindChips, hidden: hiddenKinds, onToggle: toggleKind, onSet: saveKinds } : null}
+              types={dirOn ? { items: typeChips, hidden: hiddenTypes, onToggle: toggleType, onSet: saveTypes } : null}
               onList={() => (setDirOpen(true), setFilterOpen(false))}
               onServices={() => (setServicesOpen(true), setFilterOpen(false))}
               onClose={() => setFilterOpen(false)}

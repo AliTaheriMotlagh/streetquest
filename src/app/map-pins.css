@@ -1,0 +1,125 @@
+/* The map's one marker (lib/mapPins.ts, GameMap.tsx Pin): every place, store, cinema, deal, ad area,
+   game marker, player and bubble is the same disc — one size per zoom level, colour = what kind of
+   place (--c), one badge at most, a name under it where there's room.
+   Size lives in --pin on the map (its level of detail), so a zoom changes every pin at once with a
+   transition, and a crowded pin turns into a dot by a class — the element is never swapped. */
+
+/* (The lod-* classes are on Leaflet's container, inside .map.) */
+.map .leaflet-container { --pin: 30px; --pin-label: 10px; }
+.map .leaflet-container.lod-near { --pin: 34px; --pin-label: 10.5px; }
+.map .leaflet-container.lod-mid { --pin: 28px; --pin-label: 10px; }
+.map .leaflet-container.lod-far { --pin: 24px; }
+
+/* The 48 px box Leaflet anchors on its centre; the disc sits in the middle of it. */
+.map .leaflet-marker-icon .mk.pin {
+  width: 48px; height: 48px; display: grid; place-items: center; position: relative;
+  font-size: calc(var(--pin) * .54); line-height: 1; text-shadow: none; scale: none;
+  animation: pin-in .22s cubic-bezier(.2, .8, .3, 1) backwards;
+  -webkit-tap-highlight-color: transparent;
+}
+/* A sheet over the map pauses marker animations; a pin that arrives meanwhile must still show. */
+.game:has(.sheet) .map .leaflet-marker-icon .mk.pin { animation-play-state: running !important; }
+@keyframes pin-in { from { opacity: 0; transform: scale(.6); } }
+
+/* ---- the disc */
+.mk.pin .pin-b {
+  --c: #6b7280;
+  position: relative; display: grid; place-items: center; overflow: hidden;
+  width: var(--pin); height: var(--pin); border-radius: 50%;
+  background: color-mix(in srgb, var(--c) 22%, #10141c);
+  border: 2px solid var(--c);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 3px 8px rgba(0, 0, 0, .3);
+  transition: width .2s ease, height .2s ease, box-shadow .2s ease, transform .15s ease;
+}
+.mk.pin .pin-f { display: grid; place-items: center; width: 100%; height: 100%; }
+.mk.pin .pin-f img, .mk.pin .pin-f svg { width: 64%; height: 64%; object-fit: contain; }
+.mk.pin .pin-logo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; opacity: 0; transition: opacity .2s; }
+/* A store's own logo only up close, where it reads; further out the kind of place is clearer. */
+.lod-near .mk.pin .pin-logo { opacity: 1; }
+@media (hover: hover) { .mk.pin:hover .pin-b { transform: scale(1.12); } }
+.leaflet-marker-icon:focus-visible { outline: none; }
+.leaflet-marker-icon:focus-visible .mk.pin .pin-b { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--c); }
+
+/* Families: an ad area is a rounded square; the game's markers wear a halo in their colour. */
+.mk.pin-area .pin-b { border-radius: 30%; }
+.mk.pin-game .pin-b { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 35%, transparent), 0 3px 8px rgba(0, 0, 0, .35); }
+.mk.pin.gold .pin-b { animation: pin-glow 1.8s ease-in-out infinite; }
+@keyframes pin-glow { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 30%, transparent), 0 0 16px var(--c); } }
+.mk.pin-player .pin-b { background: color-mix(in srgb, var(--c) 30%, #10141c); }
+.mk.pin.closed .pin-b { filter: grayscale(.7); opacity: .75; }
+.mk.pin.claimed .pin-b { opacity: .5; }
+/* A bubble: the same disc a little wider, dark, with how many inside. */
+.mk.pin-cluster .pin-b { width: calc(var(--pin) + 6px); height: calc(var(--pin) + 6px); background: rgba(16, 20, 28, .92); border-color: color-mix(in srgb, var(--c) 80%, #fff); }
+
+/* ---- the badge (one at most): top corner, never bigger than the disc's edge */
+.mk.pin .pin-badge {
+  position: absolute; top: calc(50% - var(--pin) / 2 - 6px); inset-inline-start: calc(50% + var(--pin) / 2 - 12px);
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center;
+  font: 800 10px/18px var(--body); font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: #fff; background: #1f2633; border: 1.5px solid rgba(255, 255, 255, .9);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .4); transition: opacity .15s;
+}
+.mk.pin .pin-badge.deal { background: #e2264d; }
+.mk.pin .pin-badge.back { background: #13a36b; }
+.mk.pin .pin-badge.count { background: #fff; color: #10141c; border-color: rgba(16, 20, 28, .25); }
+.mk.pin-area .pin-badge.count { background: var(--c); color: #fff; border-color: rgba(255, 255, 255, .9); }
+.mk.pin .pin-badge.star, .mk.pin .pin-badge.job, .mk.pin .pin-badge.ok { background: #fff; padding: 0; min-width: 18px; font-size: 11px; }
+.mk.pin .pin-badge.coin { background: var(--yellow, #f0c05a); color: #2a2000; }
+
+/* ---- the name: under the disc, wherever the disc is */
+.mk.pin .nm {
+  position: absolute; top: calc(50% + var(--pin) / 2 + 3px); left: 50%; translate: -50% 0;
+  max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 1px 6px; border-radius: 6px; font: 700 var(--pin-label)/1.45 var(--body); color: #fff;
+  background: rgba(14, 17, 26, .84); box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  transition: opacity .15s; pointer-events: none;
+}
+.mk.pin.nolabel .nm { display: none; }
+.lod-far .mk.pin .nm { display: none; }
+/* While Leaflet animates a zoom, names and badges would smear: hide them for that moment. */
+.leaflet-zoom-anim .mk.pin .nm, .leaflet-zoom-anim .mk.pin .pin-badge { opacity: 0; }
+
+/* ---- light map styles: a light disc reads better */
+.map.light .mk.pin .pin-b { background: color-mix(in srgb, var(--c) 18%, #fff); }
+
+@media (prefers-reduced-motion: reduce) {
+  .map .leaflet-marker-icon .mk.pin, .mk.pin.gold .pin-b { animation: none; }
+  .mk.pin .pin-b, .mk.pin .pin-logo, .mk.pin .nm, .mk.pin .pin-badge { transition: none; }
+}
+/* Driving: the 2D map behind the 3D city stays still. */
+.game.in-drive .mk.pin, .game.in-drive .mk.pin * { animation: none !important; }
+
+/* ---- the map filter (MapFilter.tsx): presets, folded groups with a switch each, colour dots that match the pins */
+.map-filter { gap: 8px; padding-bottom: 10px; }
+.map-filter .mf-head { position: sticky; top: -1px; z-index: 1; padding-bottom: 2px; background: inherit; }
+.mf-presets { display: flex; gap: 6px; overflow-x: auto; padding: 2px 1px 4px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.mf-presets::-webkit-scrollbar { display: none; }
+.mf-preset { flex: 0 0 auto; scroll-snap-align: start; display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; border-radius: 999px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .05); color: var(--text); font: 700 12.5px/1.1 var(--body); cursor: pointer; white-space: nowrap; }
+.mf-preset.on { background: var(--yellow); border-color: var(--yellow); color: #231a00; }
+.mf-preset:focus-visible, .fg-title:focus-visible, .fg-switch:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+.mf-body { display: grid; gap: 2px; }
+.fg { border-radius: 12px; }
+.fg.open { background: rgba(255, 255, 255, .03); padding-bottom: 8px; }
+.fg > .filter-chips { padding: 2px 8px 0; }
+.fg-head { display: flex; align-items: center; gap: 6px; min-height: 44px; }
+.fg-title { flex: 1; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; background: none; border: 0; color: var(--text); font: 700 13.5px/1.2 var(--body); cursor: pointer; text-align: start; }
+.fg-caret { display: inline-block; width: 12px; color: var(--muted); font-size: 16px; transition: transform .15s; }
+[dir="rtl"] .fg-caret { transform: scaleX(-1); }
+.fg.open .fg-caret { transform: rotate(90deg); }
+[dir="rtl"] .fg.open .fg-caret { transform: rotate(90deg) scaleX(-1); }
+.fg-n { font: 700 11.5px/1 var(--body); color: var(--yellow); font-variant-numeric: tabular-nums; }
+.fg-n.none { color: var(--muted); }
+/* The group's switch: off, some (half), on. */
+.fg-switch { position: relative; flex: 0 0 auto; width: 40px; height: 24px; margin-inline-end: 6px; border-radius: 12px; border: 0; background: rgba(255, 255, 255, .14); cursor: pointer; transition: background .15s; }
+.fg-switch i { position: absolute; top: 3px; inset-inline-start: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: inset-inline-start .15s; }
+.fg-switch.on { background: var(--green, #5bd38c); }
+.fg-switch.on i { inset-inline-start: 19px; }
+.fg-switch.some { background: color-mix(in srgb, var(--green, #5bd38c) 45%, rgba(255, 255, 255, .14)); }
+.fg-switch.some i { inset-inline-start: 11px; }
+.filter-chip .fc-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255, 255, 255, .15); flex: 0 0 auto; }
+.filter-chip:not(.on) .fc-dot { opacity: .45; }
+.mf-actions { gap: 6px; }
+.mf-foot { gap: 4px; align-items: center; justify-content: center; padding: 0 4px; flex-wrap: nowrap; }
+.mf-foot .link-btn { white-space: nowrap; }
+.mf-foot .link-btn, .map-filter .link-btn { background: none; border: 0; padding: 4px 2px; color: var(--sky); font: 700 12.5px/1.2 var(--body); cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .fg-caret, .fg-switch, .fg-switch i { transition: none; } }

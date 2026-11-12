@@ -8,7 +8,7 @@ import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { distanceM } from "@/lib/geo";
 import { EXPLORE_ZOOM } from "@/lib/explore";
 import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
-import { VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor } from "@/lib/localData";
+import { VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import type { Cinema } from "@/lib/cinema";
 import type { LiveRoute } from "@/server/traffic";
 import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
@@ -25,7 +25,8 @@ import { VasatyabLayer } from "./VasatyabLayer";
 import type { SiktirSpot } from "@/lib/siktir";
 import type { MidView } from "@/server/midpoint";
 import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
-import { SITES, STORE_TYPES, type AdArea, type DirStore } from "@/lib/stores/directory";
+import { STORE_TYPES, typeOf, type AdArea, type DirStore, type StoreType } from "@/lib/stores/directory";
+import { clusterFace, countText, PIN_BOX, PIN_DOT_R, PIN_PX, pinClass, pinHtml, type PinSpec } from "@/lib/mapPins";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
 function FrameTarget({ target }: { target: LatLng | null }) {
@@ -242,18 +243,14 @@ function ExploreView({ jump, onCenter }: { jump: { at: LatLng; n: number } | nul
 const TRAFFIC_FREE_KMH = 50;
 /** Snappfood rates out of 10: vendors at least this good get a ⭐ on their sign. */
 const TOP_RATING = 9.3;
-/** Money or a store job, as the game layer clusters them. */
-type GameItem = { id: string; lat: number; lng: number; m?: World["money"][number]; j?: World["places"][number] };
 /** Game markers are bigger than most: they group a little more loosely. */
 const GAME_SPACING = 1.5;
-/** A real place, a Snappfood vendor or a walk-in Torob store, as the points-of-interest layer clusters them. */
-type Poi = { id: string; lat: number; lng: number; v?: Vendor; p?: WorldSpot; tp?: TorobPlace; ds?: DirStore };
 /** Places and vendors cluster this much more loosely than other markers (their signs are wider). */
 const POI_SPACING = 1.35;
 /** Full markers on screen at most (more and the furthest places become dots): a phone stays smooth with everything on. */
 const MARKER_BUDGET = { lite: 60, full: 120 };
-/** A crowded place's dot, in its layer's colour. */
-const DOT_R = 5;
+/** Full pins keep a gap of about one pin between them (declutter.ts); a place closer than that is a dot. */
+const PIN_SPACING = 1.7;
 /** Half a traffic dash's length, and how far each direction sits to its right of the road's middle (m). */
 const DASH_M = 22, SIDE_M = 4;
 
@@ -321,10 +318,69 @@ function RouteLine({ route }: { route: LiveRoute & { to: LatLng } }) {
 const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
 
 /**
- * What the map shows, from top to bottom: where you're headed, other players, money to
- * pick up and stores with a job (the server sends only the nearest few), businesses,
- * Divar neighbourhoods, then every real place and Snappfood vendor around. Each layer
- * groups what would overlap into a bubble, and nothing groups from street level on.
+ * One marker on the map (mapPins.ts). Its icon is built from what the marker *is*, so it stays the
+ * same object while the map pans and zooms; whether its name fits is a class toggled on the element
+ * — the marker is never re-inserted, so nothing blinks or replays its entrance.
+ */
+const Pin = memo(function Pin({ lat, lng, html, cls, z, named, title, onClick }: { lat: number; lng: number; html: string; cls: string; z: number; named: boolean; title: string; onClick: () => void }) {
+  const ref = useRef<L.Marker | null>(null);
+  const at = useMemo<[number, number]>(() => [lat, lng], [lat, lng]);
+  const ic = icon(html, cls, PIN_BOX);
+  const click = useRef(onClick);
+  click.current = onClick;
+  const handlers = useMemo(() => ({ click: () => click.current() }), []);
+  useEffect(() => {
+    ref.current?.getElement()?.querySelector(".mk")?.classList.toggle("nolabel", !named);
+  }, [named, ic]);
+  return <Marker ref={ref} position={at} icon={ic} zIndexOffset={z} eventHandlers={handlers} title={title} alt={title} />;
+});
+/** A crowded place: a dot in its colour on the map's canvas (cheap with hundreds; still tappable). */
+const Dot = memo(function Dot({ lat, lng, color, onClick }: { lat: number; lng: number; color: string; onClick: () => void }) {
+  const at = useMemo<[number, number]>(() => [lat, lng], [lat, lng]);
+  const click = useRef(onClick);
+  click.current = onClick;
+  const handlers = useMemo(() => ({ click: () => click.current() }), []);
+  const style = useMemo(() => ({ color: "#ffffff", weight: 1.5, fillColor: color, fillOpacity: 0.95 }), [color]);
+  return <CircleMarker center={at} radius={PIN_DOT_R} pathOptions={style} eventHandlers={handlers} />;
+});
+
+/** Something the map draws: where, its pin, how it stacks, what tapping it opens, and how it may give way when crowded. */
+type Item = { id: string; lat: number; lng: number; spec: PinSpec; z: number; sel: Selected; dot: boolean };
+const VENDOR_TYPE: Record<VendorKind, StoreType> = { food: "food", cafe: "cafe", sweets: "sweets", market: "grocery" };
+const AREA_COLOR = { divar: "#c0392b", sheypoor: "#7a3cff" };
+
+/** Every place-like thing as a pin: Snappfood vendors, real places, Torob walk-ins, directory stores, cinemas, deals. Colour = what kind of place. */
+function placeItems({ vendors, spots, torob, dir, cinemas, deals }: Pick<Props, "vendors" | "spots" | "torob" | "dir" | "cinemas" | "deals">): { cinemas: Item[]; places: Item[] } {
+  const places: Item[] = [];
+  for (const v of vendors ?? []) {
+    const k = VENDOR_KINDS[v.kind];
+    places.push({ id: `sf${v.code}`, lat: v.lat, lng: v.lng, z: 260, dot: true, sel: { type: "vendor", data: v }, spec: { family: "place", face: k.emoji, color: STORE_TYPES[VENDOR_TYPE[v.kind]].color, logo: v.logo, label: v.title, badge: v.rating >= TOP_RATING ? { text: "⭐", kind: "star" } : undefined, state: v.open ? [] : ["closed"] } });
+  }
+  for (const d of dir ?? []) {
+    const ty = STORE_TYPES[d.type];
+    places.push({ id: `ds${d.id}`, lat: d.lat, lng: d.lng, z: d.off ? 280 : 250, dot: true, sel: { type: "dir", data: d }, spec: { family: "place", face: ty.emoji, color: ty.color, logo: d.site === "okala" ? d.img : undefined, label: d.name, badge: d.off ? { text: `−${fmtNum(d.off)}%`, kind: "deal" } : d.rating >= 4.5 ? { text: "⭐", kind: "star" } : undefined } });
+  }
+  for (const d of deals ?? []) {
+    const ty = STORE_TYPES[typeOf(d.category, d.name)];
+    places.push({ id: `dl${d.id}`, lat: d.lat, lng: d.lng, z: 290, dot: true, sel: { type: "deal", data: d }, spec: { family: "place", face: ty.emoji, color: ty.color, label: d.name, badge: d.off > 0 ? { text: `−${fmtNum(d.off)}%`, kind: "deal" } : { text: `${fmtNum(d.cashback)}%↺`, kind: "back" } } });
+  }
+  for (const tp of torob ?? [])
+    places.push({ id: `tr${tp.id}`, lat: tp.lat, lng: tp.lng, z: 240, dot: true, sel: { type: "torob", data: tp }, spec: { family: "place", face: tp.sells[0] ?? "🏷️", color: STORE_TYPES.other.color, logo: tp.photo, label: tp.name } });
+  for (const p of spots ?? []) {
+    const c = PLACE_CATS[p.cat] ?? PLACE_CATS.shop;
+    places.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, z: 200, dot: true, sel: { type: "spot", data: p }, spec: { family: "place", face: c.emoji, color: c.color, label: p.name } });
+  }
+  const cin = (cinemas ?? []).map<Item>((c) => ({ id: `ct${c.id}`, lat: c.lat, lng: c.lng, z: 300, dot: false, sel: { type: "cinema", data: c }, spec: { family: "place", face: "🎬", color: "#f5c518", label: c.name, badge: c.rate >= 4.5 ? { text: "⭐", kind: "star" } : undefined } }));
+  return { cinemas: cin, places };
+}
+
+/**
+ * What the map shows, from top to bottom: where you're headed, other players, money to pick up and
+ * stores with a job, businesses, cinemas, deals and every store and place, then the neighbourhoods
+ * with fresh ads. Every one is the same pin (mapPins.ts), one size per zoom level; each family groups
+ * what would overlap into a bubble (nothing groups from street level on); crowded places become dots
+ * and a name shows only where it has room (declutter.ts). At city zoom only the game, cinemas and
+ * bubbles show — the map stays readable over a whole city.
  */
 function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, dir, ads, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "travelPath" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "deals" | "dir" | "ads" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
   const players = others ?? world?.players;
@@ -335,7 +391,7 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
   const cell = cellFor(view.zoom);
   const run = me?.activeRun;
 
-  // Labels, sizes and animations per zoom level are pure CSS (see .lod-* in globals.css).
+  // Pin size, labels and animations per zoom level are pure CSS (--pin and .lod-* in map-pins.css).
   useEffect(() => {
     const el = map.getContainer();
     el.classList.remove("lod-near", "lod-mid", "lod-far");
@@ -351,271 +407,110 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
     },
     [map, onUnfollow],
   );
-  const clusterIcon = (emoji: string, n: number, cls: string, size = 42) => icon(`<span class="ring"></span>${emoji}<span class="cl-n">${n > 99 ? "99+" : n}</span>`, `cluster ${cls}`, size);
 
+  // ---- what there is (rebuilt only when the data changes, not on every pan)
+  const all = useMemo(() => placeItems({ vendors, spots, torob, dir, cinemas, deals }), [vendors, spots, torob, dir, cinemas, deals]);
+  const areaList = useMemo<Item[]>(
+    () => [
+      ...(divar ?? []).map<Item>((a) => ({ id: `dv${a.city}-${a.id}`, lat: a.lat, lng: a.lng, z: 180, dot: false, sel: { type: "divar", data: a }, spec: { family: "area", face: "📢", color: AREA_COLOR.divar, label: t("Divar · {area}", { area: a.name }), badge: { text: countText(a.posts.length, fmtNum), kind: "count" } } })),
+      ...(ads ?? []).map<Item>((a) => ({ id: `sh${a.id}`, lat: a.lat, lng: a.lng, z: 175, dot: false, sel: { type: "ads", data: a }, spec: { family: "area", face: "📣", color: AREA_COLOR.sheypoor, label: t("Sheypoor · {area}", { area: a.name }), badge: { text: countText(a.ads.length, fmtNum), kind: "count" } } })),
+    ],
+    [divar, ads],
+  );
+  const gameList = useMemo<Item[]>(() => {
+    const out: Item[] = [];
+    for (const m of world?.money ?? []) {
+      const tier = Math.min(TIER_COLORS.length - 1, m.tier ?? 0);
+      out.push({ id: `m${m.id}`, lat: m.lat, lng: m.lng, z: m.drop ? 800 : 600 + tier * 50, dot: false, sel: { type: "money", data: m }, spec: { family: "game", face: "💵", color: m.drop ? GOLD : TIER_COLORS[tier], label: t("{n} toman", { n: m.amount }), state: m.drop ? ["gold"] : [] } });
+    }
+    for (const j of world?.places ?? []) {
+      const c = PLACE_CATS[j.place.cat] ?? PLACE_CATS.shop;
+      out.push({ id: `j${j.id}`, lat: j.place.lat, lng: j.place.lng, z: 620, dot: false, sel: { type: "place", data: j }, spec: { family: "game", face: c.emoji, color: c.color, label: j.place.name, badge: { text: j.kind === "deliver" ? "📦" : "✅", kind: "job" } } });
+    }
+    return out;
+  }, [world]);
+  const bizList = useMemo<Item[]>(
+    () =>
+      (world?.businesses ?? []).map((b) => {
+        const open = b.campaigns.filter((c) => !c.visited).length;
+        const best = b.campaigns.reduce((n, c) => Math.max(n, c.rewardCoins), 0);
+        return { id: `bz${b.id}`, lat: b.lat, lng: b.lng, z: b.featured ? 700 : 360, dot: false, sel: { type: "biz", data: b }, spec: { family: "game", face: b.emoji, color: b.featured ? GOLD : b.mine ? "#63b3f2" : "#ff7ad9", label: `${b.verified ? "✔ " : ""}${b.name}`, badge: open && !b.mine ? { text: `+${fmtNum(best)}🪙`, kind: "coin" } : undefined, state: [b.featured ? "gold" : "", open ? "" : "claimed"].filter(Boolean) } } satisfies Item;
+      }),
+    [world],
+  );
+
+  // ---- grouped where they'd overlap, for this zoom and what's (about) on screen
+  const inView = useCallback((l: Item[]) => l.filter((x) => view.bounds.contains([x.lat, x.lng])), [view]);
+  // At city zoom the hundreds of stores leave the map to the game and the cinemas.
+  // At street level places aren't grouped: the ones too close to another become dots instead (a
+  // map of "2" and "3" bubbles reads worse than pins with dots between them).
+  const placeCell = lod === "near" ? 0 : cell && Math.round(cell * POI_SPACING);
+  const placeGroups = useMemo(() => cluster(inView(lod === "far" ? all.cinemas : [...all.cinemas, ...all.places]), view.zoom, placeCell, "poi"), [all, inView, lod, view.zoom, placeCell]);
+  const areaGroups = useMemo(() => (lod === "far" ? [] : cluster(inView(areaList), view.zoom, placeCell, "ar")), [areaList, inView, lod, view.zoom, placeCell]);
+  const gameGroups = useMemo(() => cluster(gameList, view.zoom, cell && Math.round(cell * GAME_SPACING), "g"), [gameList, view.zoom, cell]);
   // Other players further out: grouped. At street level OthersLayer animates them.
   const playerGroups = useMemo(() => {
     if (!players || lod === "near") return [];
     const live = new Map(nearby.list().map((n) => [n.id, n.last]));
-    const list = players.map((p) => {
+    const list = players.map<Item>((p) => {
       const l = live.get(p.id);
-      return l ? { ...p, lat: l.lat, lng: l.lng } : p;
+      return { id: p.id, lat: l?.lat ?? p.lat, lng: l?.lng ?? p.lng, z: 850, dot: false, sel: { type: "player", data: p }, spec: { family: "player", face: p.avatar, color: p.friend ? "#5bd38c" : "#63b3f2", label: `${p.home ? "🛋️ " : ""}${p.username} · ${fmtNum(p.level)}`, state: p.friend ? ["friend"] : [] } };
     });
-    return cluster(list.filter((p) => view.bounds.contains([p.lat, p.lng])), view.zoom, cell, "pl");
-  }, [players, view, lod, cell]);
+    return cluster(inView(list), view.zoom, cell, "pl");
+  }, [players, inView, lod, view.zoom, cell]);
 
-  // Places, Snappfood vendors and Torob's walk-in stores (hundreds around you) are one layer, grouped together so
-  // their bubbles never stack, a little more loosely than the rest (their signs are wider),
-  // and left out at city zoom, where the map is about the game.
-  const poiGroups = useMemo(() => {
-    if (lod === "far") return [];
-    const list: Poi[] = [];
-    for (const v of vendors ?? []) if (view.bounds.contains([v.lat, v.lng])) list.push({ id: `sf${v.code}`, lat: v.lat, lng: v.lng, v });
-    for (const p of spots ?? []) if (view.bounds.contains([p.lat, p.lng])) list.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, p });
-    for (const tp of torob ?? []) if (view.bounds.contains([tp.lat, tp.lng])) list.push({ id: `tr${tp.id}`, lat: tp.lat, lng: tp.lng, tp });
-    for (const ds of dir ?? []) if (view.bounds.contains([ds.lat, ds.lng])) list.push({ id: `ds${ds.id}`, lat: ds.lat, lng: ds.lng, ds });
-    return cluster(list, view.zoom, cell && Math.round(cell * POI_SPACING), "poi");
-  }, [vendors, spots, torob, dir, view, cell, lod]);
-
-  // Money and store jobs: grouped only where they'd overlap (a bubble shows what's in it),
-  // each on its own from street level. Nothing is dropped — tap a bubble to zoom in.
-  const gameGroups = useMemo(() => {
-    const list: GameItem[] = [];
-    for (const m of world?.money ?? []) list.push({ id: `m${m.id}`, lat: m.lat, lng: m.lng, m });
-    for (const j of world?.places ?? []) list.push({ id: `j${j.id}`, lat: j.place.lat, lng: j.place.lng, j });
-    return cluster(list, view.zoom, cell && Math.round(cell * GAME_SPACING), "g");
-  }, [world, view.zoom, cell]);
-
-  // Every layer at once, in screen space: in priority order (money and jobs, businesses,
-  // players, then places nearest the middle of the view — vendors and walk-in stores ahead
-  // of plain places — then Divar), crowded places shrink to dots, and a name shows only
-  // where it has room.
+  // ---- every layer at once, in screen space: in priority order (the game, businesses, players,
+  // cinemas, then places nearest the middle of the view — plain map places last — then the ad areas)
+  // crowded places shrink to dots and a name shows only where it has room. One radius for all: one size.
   const deco = useMemo(() => {
-    const zoom = view.zoom, mid = map.project(view.bounds.getCenter(), zoom);
-    const at = (lat: number, lng: number) => map.project([lat, lng], zoom);
+    const zoom = view.zoom, mid = map.project(view.bounds.getCenter(), zoom), r = PIN_PX[lod] / 2 + 3;
     const marks: Mark[] = [];
-    const put = (id: string, lat: number, lng: number, r: number, name: string, dot = false) => {
-      const p = at(lat, lng);
-      marks.push({ id, x: p.x, y: p.y, r, label: name ? labelPx(name) : 0, dot });
+    const put = (key: string, g: Group<Item>) => {
+      const p = map.project([g.lat, g.lng], zoom), one = g.items.length === 1 ? g.items[0] : null;
+      marks.push({ id: key, x: p.x, y: p.y, r, label: one?.spec.label ? labelPx(one.spec.label) : 0, dot: !!one?.dot });
     };
-    for (const g of gameGroups) {
-      const it = g.items[0], one = g.items.length === 1;
-      put(g.key, g.lat, g.lng, 21, !one ? "" : it.m ? t("{n} toman", { n: it.m.amount }) : it.j!.place.name);
-    }
-    // Cinemas are few and a destination of their own: right after the game's own markers.
-    for (const c of cinemas ?? []) put(`ct${c.id}`, c.lat, c.lng, lod === "far" ? 13 : lod === "mid" ? 16 : 19, lod === "far" ? "" : c.name);
-    // Deals: a store's badge, shrunk to a dot where crowded (never at city zoom: too many).
-    if (lod !== "far") for (const d of deals ?? []) if (view.bounds.contains([d.lat, d.lng])) put(`dl${d.id}`, d.lat, d.lng, 17, d.name, true);
-    for (const b of world?.businesses ?? []) put(`bz${b.id}`, b.lat, b.lng, b.featured ? 25 : 21, b.name);
-    for (const g of playerGroups) put(g.key, g.lat, g.lng, 17, g.items.length === 1 ? `${g.items[0].username} · ${g.items[0].level}` : "");
-    const pois = poiGroups
+    for (const g of gameGroups) put(g.key, g);
+    for (const b of inView(bizList)) put(`bz${b.id}`, { key: b.id, lat: b.lat, lng: b.lng, items: [b] });
+    for (const g of playerGroups) put(g.key, g);
+    const places = placeGroups
       .map((g) => {
-        const p = at(g.lat, g.lng), one = g.items.length === 1 ? g.items[0] : null;
-        return { g, one, d: Math.hypot(p.x - mid.x, p.y - mid.y) * (one?.p ? 1.4 : 1) };
+        const p = map.project([g.lat, g.lng], zoom), one = g.items.length === 1 ? g.items[0] : null;
+        const rank = one?.id.startsWith("ct") ? 0 : Math.hypot(p.x - mid.x, p.y - mid.y) * (one?.id.startsWith("sp") ? 1.4 : 1) + 1;
+        return { g, rank };
       })
-      .sort((a, b) => a.d - b.d);
-    for (const { g, one } of pois) put(g.key, g.lat, g.lng, one ? (one.p || one.ds ? 15 : one.tp ? 18 : 19) : 17, one ? one.v?.title ?? one.tp?.name ?? one.ds?.name ?? one.p!.name : "", !!one);
-    if (lod !== "far") for (const a of divar ?? []) put(`dv${a.city}-${a.id}`, a.lat, a.lng, 20, t("Divar · {area}", { area: a.name }));
-    if (lod !== "far") for (const a of ads ?? []) put(`sh${a.id}`, a.lat, a.lng, 20, t("Sheypoor · {area}", { area: a.name }));
-    return declutter(marks, lite ? MARKER_BUDGET.lite : MARKER_BUDGET.full);
-  }, [map, view, lod, gameGroups, poiGroups, playerGroups, world, divar, ads, cinemas, deals, lite]);
-  /** " nolabel" when a marker's name has no room. */
-  const nl = (id: string) => (deco.named.has(id) ? "" : " nolabel");
+      .sort((a, b) => a.rank - b.rank);
+    for (const { g } of places) put(g.key, g);
+    for (const g of areaGroups) put(g.key, g);
+    return declutter(marks, lite ? MARKER_BUDGET.lite : MARKER_BUDGET.full, PIN_SPACING);
+  }, [map, view, lod, gameGroups, bizList, playerGroups, placeGroups, areaGroups, inView, lite]);
 
-  const playerMarker = (p: WorldPlayer, key: string) => (
-    <Marker
-      key={p.id}
-      position={[p.lat, p.lng]}
-      icon={icon(`${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${fmtNum(p.level)}</span>`, `player ${p.friend ? "friend" : ""}${nl(key)}`, 34)}
-      eventHandlers={{ click: () => onSelect({ type: "player", data: p }) }}
-    />
-  );
+  /** One group as the map draws it: a bubble, a dot, or the pin. */
+  const draw = (g: Group<Item>, clusterZ: number) => {
+    if (g.items.length > 1) {
+      const faces = g.items.map((i) => i.spec.face);
+      const face = clusterFace(faces);
+      const spec: PinSpec = { family: "cluster", face, color: g.items.find((i) => i.spec.face === face)!.spec.color, badge: { text: countText(g.items.length, fmtNum), kind: "count" } };
+      return <Pin key={g.key} lat={g.lat} lng={g.lng} html={pinHtml(spec)} cls={pinClass(spec)} z={clusterZ} named={false} title={t("{n} places here — tap to zoom in", { n: fmtNum(g.items.length) })} onClick={() => zoomInto(g)} />;
+    }
+    const it = g.items[0];
+    if (deco.dots.has(g.key)) return <Dot key={g.key} lat={it.lat} lng={it.lng} color={it.spec.color} onClick={() => onSelect(it.sel)} />;
+    return <Pin key={g.key} lat={it.lat} lng={it.lng} html={pinHtml(it.spec)} cls={pinClass(it.spec)} z={it.z} named={deco.named.has(g.key)} title={it.spec.label ?? ""} onClick={() => onSelect(it.sel)} />;
+  };
 
   return (
     <>
-      {/* Cinemas: few, so each stands on its own (its card shows what's on); like every other
-          place it shrinks as you zoom out and shows its name only where it has room. */}
-      {(cinemas ?? []).map((c) => (
-        <Marker
-          key={`ct${c.id}`}
-          position={[c.lat, c.lng]}
-          zIndexOffset={320}
-          icon={icon(`<span class="ring"></span>🎬${lod === "far" ? "" : `<span class="nm">${esc(c.name)}</span>`}`, `place cinema lod-${lod}${nl(`ct${c.id}`)}`, lod === "far" ? 26 : lod === "mid" ? 30 : 36)}
-          eventHandlers={{ click: () => onSelect({ type: "cinema", data: c }) }}
-        />
-      ))}
-      {/* Takhfifan: what's off, in the store's own badge ("15%" off, or "5%" back in cashback). */}
-      {lod !== "far" &&
-        (deals ?? []).map((d) => {
-          const key = `dl${d.id}`;
-          if (!view.bounds.contains([d.lat, d.lng])) return null;
-          const tag = d.off > 0 ? `−${fmtNum(d.off)}%` : `${fmtNum(d.cashback)}%↺`;
-          const dot = deco.dots.has(key);
-          return (
-            <Marker
-              key={key}
-              position={[d.lat, d.lng]}
-              zIndexOffset={dot ? 0 : 300}
-              icon={icon(dot ? `<i class="deal-dot"></i>` : `<span class="deal-tag${d.off > 0 ? "" : " back"}">${esc(tag)}</span><span class="nm">${esc(d.name)}</span>`, `place deal${dot ? " dot" : ""}${nl(key)}`, dot ? 12 : 34)}
-              eventHandlers={{ click: () => onSelect({ type: "deal", data: d }) }}
-            />
-          );
-        })}
-      {/* Money (green bills, then blue, purple, red for bigger money levels, gold for admin
-          drops; the amount at street level) and store jobs (the burger delivery starts at the
-          real burger joint). */}
-      {gameGroups.map((g) => {
-        if (g.items.length > 1) {
-          const money = g.items.filter((x) => x.m).length;
-          const label = money === g.items.length ? "💵" : money ? "🎯" : "📦";
-          return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={650} icon={clusterIcon(label, g.items.length, "loot")} eventHandlers={{ click: () => zoomInto(g) }} />;
-        }
-        const it = g.items[0];
-        if (it.m) {
-          const m = it.m;
-          return (
-            <Marker
-              key={m.id}
-              position={[m.lat, m.lng]}
-              zIndexOffset={m.drop ? 800 : 600 + Math.min(3, m.tier ?? 0) * 50}
-              icon={icon(`<span class="ring" style="color:${m.drop ? "#f0c05a" : TIER_COLORS[Math.min(TIER_COLORS.length - 1, m.tier ?? 0)]}"></span>💵<span class="nm">${esc(t("{n} toman", { n: m.amount }))}</span>`, `money ${m.drop ? "drop legendary" : m.tier ? `tier tier${Math.min(3, m.tier)}` : ""}${nl(g.key)}`, m.drop ? 48 : m.tier ? 46 : 42)}
-              eventHandlers={{ click: () => onSelect({ type: "money", data: m }) }}
-            />
-          );
-        }
-        const m = it.j!;
-        const cat = PLACE_CATS[m.place.cat] ?? PLACE_CATS.shop;
-        return (
-          <Marker
-            key={`pl${m.id}`}
-            position={[m.place.lat, m.place.lng]}
-            zIndexOffset={320}
-            icon={icon(
-              `<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(m.place.name)}</span><span class="job">${m.kind === "deliver" ? "📦" : "✅"}</span>`,
-              `place${nl(g.key)}`,
-              40,
-            )}
-            eventHandlers={{ click: () => onSelect({ type: "place", data: m }) }}
-          />
-        );
-      })}
-
+      {/* Neighbourhoods with fresh ads (Divar, Sheypoor): square pins with how many, under everything. */}
+      {areaGroups.map((g) => draw(g, 170))}
+      {/* Stores, places, cinemas and deals: one layer, grouped together so their pins never stack. */}
+      {placeGroups.map((g) => draw(g, 210))}
+      {/* Money and store jobs: grouped only where they'd overlap; tap a bubble to zoom in. */}
+      {gameGroups.map((g) => draw(g, 650))}
       {/* Real businesses that joined: their own sign, gold when featured. */}
-      {world?.businesses.map((b) => {
-        const open = b.campaigns.filter((c) => !c.visited).length;
-        const best = b.campaigns.reduce((n, c) => Math.max(n, c.rewardCoins), 0);
-        return (
-          <Marker
-            key={`bz${b.id}`}
-            position={[b.lat, b.lng]}
-            zIndexOffset={b.featured ? 700 : 360}
-            icon={icon(
-              `<span class="ring" style="color:${b.featured ? "#f0c05a" : b.mine ? "#63b3f2" : "#ff7ad9"}"></span>${esc(b.emoji)}<span class="nm">${esc(b.name)}</span>${open && !b.mine ? `<span class="deal">+${fmtNum(best)} 🪙</span>` : ""}${b.verified ? '<span class="shield">✔</span>' : ""}`,
-              `biz ${b.featured ? "featured" : ""} ${open ? "" : "claimed"}${nl(`bz${b.id}`)}`,
-              b.featured ? 50 : 42,
-            )}
-            eventHandlers={{ click: () => onSelect({ type: "biz", data: b }) }}
-          />
-        );
-      })}
-
-      {/* Every real place around — restaurants, cafés, shops, parks (tap for the menu and
-          contacts) — and Snappfood vendors, with their logo up close (tap for the menu). */}
-      {poiGroups.map((g) => {
-        if (g.items.length > 1) {
-          const food = g.items.filter((x) => x.v).length * 2 >= g.items.length;
-          return <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={200} icon={clusterIcon(food ? "🍽️" : "📍", g.items.length, `poi ${food ? "vendors" : "spots"}`, 34)} eventHandlers={{ click: () => zoomInto(g) }} />;
-        }
-        const it = g.items[0];
-        if (deco.dots.has(g.key)) {
-          // Crowded: a dot on the map's canvas (cheap, still tappable).
-          const color = it.ds ? STORE_TYPES[it.ds.type].color : it.tp ? "#e2363c" : it.v ? "#ff2f6e" : (PLACE_CATS[it.p!.cat] ?? PLACE_CATS.shop).color;
-          const sel: Selected = it.ds ? { type: "dir", data: it.ds } : it.tp ? { type: "torob", data: it.tp } : it.v ? { type: "vendor", data: it.v } : { type: "spot", data: it.p! };
-          return <CircleMarker key={it.id} center={[it.lat, it.lng]} radius={DOT_R} pathOptions={{ color: "#ffffff", weight: 1.5, fillColor: color, fillOpacity: 0.95 }} eventHandlers={{ click: () => onSelect(sel) }} />;
-        }
-        if (it.ds) {
-          // A directory store: its type's sign in its site's colour (a Netbarg deal shows what's off).
-          const ds = it.ds, ty = STORE_TYPES[ds.type], site = SITES[ds.site];
-          const pic = lod === "near" && ds.img && ds.site === "okala" ? `<img class="lg" src="${esc(ds.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-          const tag = ds.off ? `<span class="job deal-off">−${fmtNum(ds.off)}%</span>` : ds.rating >= 4.5 ? `<span class="job">⭐</span>` : "";
-          return (
-            <Marker
-              key={it.id}
-              position={[ds.lat, ds.lng]}
-              zIndexOffset={ds.off ? 290 : 240}
-              icon={icon(`<span class="ring" style="color:${site.color}"></span>${ty.emoji}${pic}<span class="nm">${esc(ds.name)}</span>${tag}`, `place dirstore dir-${ds.site} ${pic ? "has-logo" : ""}${nl(g.key)}`, 32)}
-              eventHandlers={{ click: () => onSelect({ type: "dir", data: ds }) }}
-            />
-          );
-        }
-        if (it.tp) {
-          const tp = it.tp;
-          const pic = lod === "near" && tp.photo ? `<img class="lg" src="${esc(tp.photo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-          return (
-            <Marker
-              key={it.id}
-              position={[tp.lat, tp.lng]}
-              zIndexOffset={280}
-              icon={icon(`<span class="ring" style="color:#e2363c"></span>${tp.sells[0] ?? "🏷️"}${pic}<span class="nm">${esc(tp.name)}</span>`, `place torob ${pic ? "has-logo" : ""}${nl(g.key)}`, 36)}
-              eventHandlers={{ click: () => onSelect({ type: "torob", data: tp }) }}
-            />
-          );
-        }
-        if (it.v) {
-          const v = it.v;
-          const k = VENDOR_KINDS[v.kind];
-          const logo = lod === "near" && v.logo ? `<img class="lg" src="${esc(v.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-          return (
-            <Marker
-              key={it.id}
-              position={[v.lat, v.lng]}
-              zIndexOffset={300}
-              icon={icon(`<span class="ring" style="color:#ff2f6e"></span>${k.emoji}${logo}<span class="nm">${esc(v.title)}</span>${v.rating >= TOP_RATING ? `<span class="job">⭐</span>` : ""}`, `place vendor ${v.open ? "" : "closed"} ${logo ? "has-logo" : ""}${nl(g.key)}`, 38)}
-              eventHandlers={{ click: () => onSelect({ type: "vendor", data: v }) }}
-            />
-          );
-        }
-        const p = it.p!;
-        const cat = PLACE_CATS[p.cat] ?? PLACE_CATS.shop;
-        return (
-          <Marker
-            key={it.id}
-            position={[p.lat, p.lng]}
-            zIndexOffset={200}
-            icon={icon(`<span class="ring" style="color:${cat.color}"></span>${cat.emoji}<span class="nm">${esc(p.name)}</span>`, `place spot${nl(g.key)}`, 30)}
-            eventHandlers={{ click: () => onSelect({ type: "spot", data: p }) }}
-          />
-        );
-      })}
-
-      {/* Sheypoor: like Divar, each neighbourhood with fresh ads, pinned on its centre. */}
-      {lod !== "far" &&
-        ads?.map((a) => (
-          <Marker
-            key={`sh${a.id}`}
-            position={[a.lat, a.lng]}
-            zIndexOffset={245}
-            icon={icon(`<span class="ring"></span>📣<span class="cl-n">${fmtNum(a.ads.length)}</span><span class="nm">${esc(t("Sheypoor · {area}", { area: a.name }))}</span>`, `place sheypoor${nl(`sh${a.id}`)}`, 40)}
-            eventHandlers={{ click: () => onSelect({ type: "ads", data: a }) }}
-          />
-        ))}
-      {/* Divar: each neighbourhood around, pinned on its centre with how many fresh ads it has. */}
-      {lod !== "far" &&
-        divar?.map((a) => (
-          <Marker
-            key={`dv${a.city}-${a.id}`}
-            position={[a.lat, a.lng]}
-            zIndexOffset={250}
-            icon={icon(`<span class="ring"></span>📢<span class="cl-n">${fmtNum(a.posts.length)}</span><span class="nm">${esc(t("Divar · {area}", { area: a.name }))}</span>`, `place divar${nl(`dv${a.city}-${a.id}`)}`, 40)}
-            eventHandlers={{ click: () => onSelect({ type: "divar", data: a }) }}
-          />
-        ))}
+      {inView(bizList).map((b) => draw({ key: `bz${b.id}`, lat: b.lat, lng: b.lng, items: [b] }, b.z))}
 
       {/* Other players: animated + live at street level, grouped further out */}
       {lod === "near" && players && <OthersLayer players={players} onSelect={onSelect} />}
-      {playerGroups.map((g) =>
-        g.items.length === 1 ? playerMarker(g.items[0], g.key) : <Marker key={g.key} position={[g.lat, g.lng]} zIndexOffset={850} icon={clusterIcon("👥", g.items.length, "players")} eventHandlers={{ click: () => zoomInto(g) }} />,
-      )}
+      {playerGroups.map((g) => draw(g, 850))}
 
       {/* A store delivery under way: the drop-off. */}
       {run && (

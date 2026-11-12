@@ -59,6 +59,15 @@ const directory: Record<string, string> = {
   "Sheypoor · {area}": "شیپور · {area}",
   "On {site}": "در {site}",
 
+  // ---- the map filter: presets and groups (MapFilter.tsx), bubbles (GameMap.tsx)
+  "Quick picks": "انتخاب سریع",
+  "Shopping": "خرید",
+  "Going out": "بیرون رفتن",
+  "Just the game": "فقط بازی",
+  "Show all of {group}": "نشون دادن همه‌ی {group}",
+  "{n} of {total} on": "{n} از {total} روشن",
+  "{n} places here — tap to zoom in": "{n} مکان این‌جاست — بزن تا زوم کنه",
+
   // ---- a store's card
   "Less": "کمتر",
   "Menu & prices": "منو و قیمت‌ها",

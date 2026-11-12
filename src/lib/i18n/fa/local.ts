@@ -12,7 +12,6 @@ const local: Record<string, string> = {
   Businesses: "کسب‌وکارها",
   "Menus from Snappfood": "منوها از اسنپ‌فود",
   "Kinds of place": "نوع مکان‌ها",
-  "With everything on, the map groups nearby places into bubbles and shows crowded ones as dots — zoom in or tap one to see it.": "وقتی همه روشنه، نقشه مکان‌های نزدیک به هم رو توی حباب گروه می‌کنه و شلوغ‌ها رو نقطه نشون می‌ده — زوم کن یا روش بزن تا ببینی.",
   "Walk-in stores (Torob)": "فروشگاه‌های حضوری (ترب)",
   "Real places": "مکان‌های واقعی",
   "Divar ads": "آگهی‌های دیوار",

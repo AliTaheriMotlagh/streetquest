@@ -608,12 +608,23 @@ mood scales XP; loot funds research; territory funds the army.
   (`?divarPost=<token>`, Divar's own post page, 30 min cache); Torob products and Takhfifan deals the same — and only
   its button goes on to divar.ir / torob.com / takhfifan.com. And 🚦 live
   traffic — each chip with how many there are around, and real places narrowed by kind (cafés, pharmacies, banks…).
-  Every layer groups what would overlap into bubbles (game items, then places and vendors, each spaced to
-  its sign size); nothing groups from zoom 18, plain places name themselves only there, and places, vendors and ads
-  are left out at city zoom. With everything on, one pass over all layers in screen space (`declutter.ts`) keeps it
-  readable and light: a place that would sit on a game marker — or beyond 120 full markers (60 on lite phones) —
-  becomes a small dot on the map's canvas (still tappable), names show only where they don't collide, and place
-  bubbles are smaller than the game's. The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor
+  The filter opens on one-tap **presets** — Everything, Food & drink, Shopping, Health, Services, Going out, Just the
+  game (`src/lib/mapPresets.ts`; the game's markers stay on in each) — then each group folded into one line with how
+  many of its layers are on and a switch for the whole group (which groups are open is remembered).
+  **One marker for everything** (`src/lib/mapPins.ts`, `src/app/map-pins.css`): every place, store, cinema, deal,
+  ad area, game marker, player and bubble is the same disc — one size per zoom level (34 / 28 / 24 px, `--pin`),
+  its colour saying what kind of place it is (the filter's chips carry the same colours), an emoji or (up close) the
+  store's logo inside, at most one badge (what's off, ⭐, a job, a count) and its name under it. Shape tells the family:
+  round = a place, rounded square = a neighbourhood with ads (Divar / Sheypoor), a halo = the game (money, jobs,
+  businesses; a gold glow when featured). A marker's HTML depends only on what it is, so it keeps one icon for its
+  whole life: whether its name fits is a class toggled on it — nothing is re-inserted, so markers never blink or
+  replay their entrance while you pan and zoom; new ones fade in (none with reduced motion); names and badges hide
+  during a zoom animation. Grouping: places, cinemas, deals and ad areas are one layer — at city zoom only the game and
+  cinemas show (grouped where they'd overlap), at neighbourhood zoom everything groups into bubbles showing their
+  most common kind and how many, and at street level nothing groups: one pass over all layers in screen space
+  (`declutter.ts`) keeps a gap of about one pin between full markers, turns the rest into small dots on the map's
+  canvas (still tappable) — also past 120 full markers (60 on lite phones) — and shows a name only where it has room.
+  The game's own few (money and jobs, `mapMaxItems`) are ranked from an anchor
   that moves only after a 250 m walk, so they don't reshuffle on every refresh.
 - **Visits** — the home page counts its visits (once per browser session, once per network per half hour) and shows
   the total and today's next to the player count (`src/server/visits.ts`, `/api/visits`).
