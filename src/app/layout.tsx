@@ -19,6 +19,7 @@ import "./storefront.css";
 import "./hud.css";
 import "./directory.css";
 import "./filters.css";
+import "./travel.css";
 import "./map-pins.css";
 import "./loading.css";
 import "./compact.css";

@@ -200,6 +200,16 @@ mood scales XP; loot funds research; territory funds the army.
   at about a fifth in from each end, main cables sagging between them down to anchors, hangers to the deck. The road
   surface stays where it was, so driving is unchanged; a twin carriageway shares one structure. Tiles are version 3
   (`TILE_V`): stored tiles refresh in the background.
+- **/dev/lag: the lag test** (`app/dev/lag/LagPanel.tsx`, `lib/perf/frameStats.ts`, `components/perf/benchRunner.ts`):
+  every game mode scripted the same way each time — 2D map pan & zoom, the 3D city standing still, driving (with
+  nitro), on foot walking/running, shooting, hero Sky Rings, skydive, every camera — measured frame by frame: fps,
+  1% low, p50/p95/p99 frame time, stutters (frames over 2× the display's), freezes (> 100 ms), long tasks, the
+  renderer's tier, draw calls and triangles, JS heap. Each run gets a verdict against its budget (map 55 fps / p99
+  34 ms; 3D 45 fps / p99 50 ms; laggy under 30 fps, a 1% low under 15 or a freeze every 10 s) and the reasons; earlier
+  runs on the device stay for before/after. Run it on the phone you care about. From the terminal:
+  `npm run test:lag` (installed Chrome against :3000, CPU slowed 4× like a mid-range phone; `--only drive,foot`,
+  `--cpu 1`, `--phone`, `--headed` for real GPU numbers — headless WebGL is software) — exits 1 when a mode is laggy.
+  Any page can be measured by hand: `/play?bench=<mode>` (or `/play?drive=1&bench=<mode>`).
 - **/dev/sounds: every sound in the game** (`app/dev/sounds/SoundsPanel.tsx`, `/api/dev/sounds`): the street (crashes,
   horns, sirens, doors…), the fight (reload, hit, kill, hurt, empty click, bomb beep, throw, flashbang), each gun's shot
   and the 25 interface sounds — each a slot in `lib/soundSlots.ts` that plays its recordings, or the game's synth while
@@ -699,6 +709,52 @@ mood scales XP; loot funds research; territory funds the army.
 - **Business center** — real store owners claim their place from inside the store, post missions (check-in for coins)
   and coupons (a code the cashier redeems at the till), and see visits, redemptions and repeat customers. Plans:
   Free / Starter / Pro / Chain (Stripe), with a free trial. See `marketing/BUSINESS_PLAN.md` for the monetisation plan.
+- **Proving a store is yours, and the audit log** — a business starts unverified; Business center → 🪪 *Prove it's
+  your store* offers three ways: 🌐 the code (`SQ-XXXXXX`) anywhere on the store's own website (read by the server,
+  approved at once), 📍 two check-ins from inside the store on different days at least 16 h apart (approved at once),
+  📄 a photo of the business licence / a bill / the sign with the code on paper (an admin checks it). A risk score
+  (new account, claims turned down before, many claims a week, several stores, a store someone else runs) sends an
+  "at once" claim to an admin instead. *Is this your store? Prove it* on someone else's store card starts a
+  **dispute** (document only); approving it hands the store over and tells the old owner. A verified store that
+  changes its name or website proves itself again. Admin → 🪪 **Store claims** (queue with the photo, the visits and
+  their distances, the website, the risk flags; approve / turn down with a reason the owner sees) and Admin → 🧾
+  **Audit log** (every store edit with what changed, claims and decisions, missions, coupon redemptions, admin plan
+  and verification changes, with the IP; filter by kind, player, target or words). The owner sees their store's
+  history without IPs. Rules `lib/claims.ts`, work `server/claims.ts`, log `server/audit.ts`; `/api/business`
+  (`claim`, `claim_check`, `claim_visit`, `claim_doc`, `history`), `/api/admin/claims`, `/api/admin/audit`.
+- **Travel: tickets, stays and real planes** — Search → **Travel** (or ✈️ in the 3D city's Places, or a tap on an
+  airport ✈️ / train station 🚆 pin on the map from zoom 7 / 10): from the nearest city to any of 360+ Iranian cities
+  (search in Persian, English or by airport code), on any of the next 14 days. *All* compares flights, trains and
+  buses side by side (cheapest, fastest, how many); each list reads [Alibaba](https://www.alibaba.ir) (flights,
+  trains, buses) and [MrBilit](https://mrbilit.com) (flights, and trains straight from Raja), and the same flight or
+  train sold by both is **one row with both prices**, the cheaper first, each opening that site's booking page on
+  the right day (Jalali dates for Alibaba). Filters: time of day, price cap, company, refundable, seats left, direct;
+  sort by price, departure, duration or seats. **Stays**: villas, suites, apartments, eco-lodges and hotels from
+  [Jabama](https://www.jabama.com) with photos, rating, guests and price a night (kind, guests, instant booking,
+  price; sort by price, rating, distance, size), plus Alibaba's and [Booking.ir](https://www.booking.ir)'s hotel
+  pages and Alibaba's tours. [Flytoday](https://www.flytoday.ir), [Raja](https://www.raja.ir) and
+  [Payaneh](https://payaneh.ir) publish no data the game can read: they are *Compare on* links. Product search knows
+  a trip too: "بلیط مشهد", "hotel in Shiraz" offer the planner. **Planes**: live ADS-B positions
+  ([adsb.lol](https://adsb.lol): callsign, type, height, speed) where receivers hear them — Turkey, the Gulf, Europe —
+  and, over Iran (no public receivers), today's real flights from the nearest airport placed on their great circle
+  by the clock (climb, cruise, descent). They fly on smoothly on the 2D map (a tap: who, what, how high, from → to)
+  and in the 3D city's sky, at the real direction and angle above the horizon, banking into turns with blinking
+  navigation lights. Cities: `lib/travel/hubs.generated.json` (MrBilit's station and bus-city lists, Alibaba's
+  airports, positions from OpenStreetMap); rules `lib/travel`, `lib/flights.ts`; data `server/travel.ts`
+  (`/api/travel`, `/api/flights`; tickets cached 20 min per route and day, stays 3 h, planes 10 s);
+  `drive/planes3d.ts`, `game/TravelLayer.tsx`, `game/Travel.tsx`. Each site: `ALIBABA_URL` / `MRBILIT_FLIGHT_URL` /
+  `MRBILIT_TRAIN_URL` / `JABAMA_URL` / `ADSB_URL` (`off` disables; through the relay add `alibaba,mrbilit,jabama` to
+  `RELAY_FOR`). **Searches run on the player's phone where the site allows it** (`game/travelClient.ts`): Alibaba's
+  bus search answers any site, so the phone (on its own Iranian connection) asks it; Alibaba's flights/trains,
+  MrBilit (only its own origins), Jabama and adsb.lol refuse other sites' pages, so the server asks them — through
+  the Iran relay. A phone search that fails falls back to the server.
+- **Always answers, asks rarely** — every other site's data the server reads is kept in `ExtCache` and answered
+  from: fresh copies as they are; a stale one at once while a fresh copy loads in the background, for up to 12× its
+  TTL (tickets 4 h, planes 2 min, store lists a week); older, the request waits — and still gets the old copy if the
+  site fails (`lib/cachePolicy.ts`, `cached()` in `server/localData.ts`; `CACHE_SWR`, `CACHE_STALE_MAX_MS`). The phone
+  keeps its own copy of tickets, stays and product searches (`game/keep.ts`, last 40, localStorage): shown at once
+  next time — offline too, "Saved …" — and asked again only once it's old (tickets 15 min, stays 6 h, products
+  10 min).
 - **Storefronts that sell the plans** — every store that joined stands in the 3D city as a real shop: it takes over
   its own shop front on the map (the map sign of the same name within 40 m, else the nearest within 12 m; otherwise
   a pole sign at the kerb). **Free**: its own sign with its real name and opening hours (open/closed lamp).
@@ -791,7 +847,15 @@ mood scales XP; loot funds research; territory funds the army.
   back to the list with the search kept. The phone's Back closes whatever card is on top everywhere in the game
   (`components/game/backStack.ts`) instead of leaving it (`src/lib/productSearch.ts`) — a price range in toman with one-tap caps, discounted only, by site; sorted by best
   match (each restaurant gets two dishes in before any gets more), cheapest, dearest, nearest, best rated or biggest
-  discount. Both halves — and the 3D city's Places panel — share one filter design (`src/components/game/Filters.tsx`,
+  discount; store rating (★ 4+, 4.5+) and distance (500 m, 1 km, 3 km) filters, and each site's chip counts what it
+  would add. **It understands what you type** (`lib/search/query.ts`) in Persian, English or Turkish, any digits:
+  prices («زیر ۳۰۰ هزار», «بین ۱ تا ۲ میلیون», "under 300k", "over 1.5m", "300 TL altı"; a bare «زیر ۸۰» is thousands of
+  toman, in lira as said), an order («ارزان‌ترین», "nearest", "en ucuz"), discounts («تخفیف‌دار», "on sale") — each
+  shown as a chip that removes it — and trips («بلیط مشهد» → the travel planner). Words match across languages (pizza
+  = پیتزا, kebap = کباب, phone case = قاب گوشی…; Iran's shops are searched in Persian whatever you typed) and with a
+  typo from four letters ("piza"). Digikala, Torob, Emalls and Basalam are one tap away for the same words (*Also
+  search*) — Digikala refuses servers and other sites' pages alike, so the game links rather than reads it. Recent searches (this device) and a grid view (2 columns on phones, 3–4 on tablets
+  and desktops). Both halves — and the 3D city's Places panel — share one filter design (`src/components/game/Filters.tsx`,
   `src/app/filters.css`): a search box, one sideways-scrolling bar of quick chips (open now, deals, ★ 4+, sites in their
   brand colours), and **Filters** opening a panel in place (sort, sites with counts, store types, show only…) with
   "Show n results". Built for 360 px phones first. **Services & shops** (filter → 🛠️) books home services —

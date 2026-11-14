@@ -10,6 +10,7 @@ import { msg } from "./i18n";
 import { deliveryAt, sourceAt } from "./region";
 import { normName, type Deal, type Menu, type TorobItem, type Vendor } from "./localData";
 import type { Product as BasalamProduct } from "./stores/directory";
+import { alternatives, nearWord } from "./search/query";
 
 export type ProductSource = "food" | "torob" | "basalam" | "deal";
 export const PRODUCT_SOURCES: Record<ProductSource, { emoji: string; label: string; site: string }> = {
@@ -64,7 +65,13 @@ export const PRODUCT_SORTS: Record<ProductSort, string> = {
   off: msg("Biggest discount"),
 };
 export const PRODUCT_SORT_KEYS = Object.keys(PRODUCT_SORTS) as [ProductSort, ...ProductSort[]];
-export type ProductFilter = { q?: string; min?: number; max?: number; sort?: ProductSort; sources?: ProductSource[]; onlyOff?: boolean; limit?: number };
+export type ProductFilter = {
+  q?: string; min?: number; max?: number; sort?: ProductSort; sources?: ProductSource[]; onlyOff?: boolean; limit?: number;
+  /** Stores rated at least this (0…5). */
+  minRating?: number;
+  /** Stores at most this far (m); hits with no known spot are left out once it's set. */
+  maxDist?: number;
+};
 /** At most this many rows go to the player at once. */
 export const PRODUCT_LIMIT = 300;
 
@@ -73,12 +80,29 @@ export const offOf = (h: { price: number; was?: number }) => (h.was && h.price >
 
 /**
  * How well a product answers the words typed: 0 its name starts with them, 1 a word of
- * its name does, 2 they're somewhere in the name, 3 only in its description; -1 not at
- * all. Every word typed has to be there ("پیتزا پپرونی"). No words: 0. The store's name
- * never counts: the ketchup at "Tele Pizza" isn't a pizza.
+ * its name does, 2 they're somewhere in the name, 3 only in its description, 4 its name has
+ * them with a typo ("piza"); -1 not at all. Every word typed has to be there ("پیتزا پپرونی").
+ * The words also match in the other languages (pizza = پیتزا, kebap = کباب: search/query.ts).
+ * No words: 0. The store's name never counts: the ketchup at "Tele Pizza" isn't a pizza.
  */
 export function productRank(title: string, q: string, about = ""): number {
-  const nq = normName(q);
+  return rankAny(title, alternatives(q), about);
+}
+/** The best rank over several ways of saying it (`alts` from alternatives(), worked out once per search). */
+export function rankAny(title: string, alts: string[], about = ""): number {
+  if (!alts.length) return 0;
+  let best = -1;
+  for (const a of alts) {
+    const r = rankOne(title, a, about);
+    if (r >= 0 && (best < 0 || r < best)) best = r;
+    if (best === 0) return 0;
+  }
+  if (best >= 0) return best;
+  // Typos: every word typed is in the name, give or take a letter.
+  const name = normName(title), words = alts[0].split(" ");
+  return words.every((w) => name.includes(w) || nearWord(w, name)) ? 4 : -1;
+}
+function rankOne(title: string, nq: string, about: string): number {
   if (!nq) return 0;
   const name = normName(title), tight = name.replace(/ /g, ""), qt = nq.replace(/ /g, "");
   if (name.startsWith(nq) || tight.startsWith(qt)) return 0;
@@ -90,8 +114,8 @@ export function productRank(title: string, q: string, about = ""): number {
 }
 
 type Ranked = ProductHit & { rank: number };
-const withRank = (h: ProductHit, q: string): Ranked | null => {
-  const rank = productRank(h.title, q, h.about);
+const withRank = (h: ProductHit, alts: string[]): Ranked | null => {
+  const rank = rankAny(h.title, alts, h.about);
   return rank < 0 ? null : { ...h, rank };
 };
 
@@ -108,9 +132,10 @@ export function menuHits(menu: Menu, q: string, here?: LatLng | null): ProductHi
   const dist = here ? Math.round(distanceM(here, v)) : undefined;
   const seen = new Set<string>();
   const out: ProductHit[] = [];
+  const alts = alternatives(q);
   for (const s of menu.sections)
     for (const i of s.items) {
-      if (!i.title || seen.has(i.id) || productRank(i.title, q, i.about) < 0) continue;
+      if (!i.title || seen.has(i.id) || rankAny(i.title, alts, i.about) < 0) continue;
       seen.add(i.id);
       const now = i.priceNow > 0 && i.priceNow < i.price ? i.priceNow : i.price;
       out.push({
@@ -124,9 +149,10 @@ export function menuHits(menu: Menu, q: string, here?: LatLng | null): ProductHi
 /** Takhfifan's deals near you whose name (or store) answers `q`. */
 export function dealHits(deals: Deal[], q: string, here?: LatLng | null): ProductHit[] {
   const out: ProductHit[] = [];
+  const alts = alternatives(q);
   for (const d of deals)
     for (const i of d.items) {
-      if (!i.name || productRank(i.name, q, d.category) < 0) continue;
+      if (!i.name || rankAny(i.name, alts, d.category) < 0) continue;
       out.push({
         id: `deal:${d.id}:${i.id}`, source: "deal", title: i.name, about: d.category || undefined, price: i.price, was: i.retail > i.price ? i.retail : undefined,
         photo: i.photo || d.photos[0] || "", store: d.name, lat: d.lat, lng: d.lng, dist: here ? Math.round(distanceM(here, d)) : undefined, rating: d.rating > 0 ? d.rating : 0, url: d.url,
@@ -150,19 +176,26 @@ export const basalamHits = (items: BasalamProduct[]): ProductHit[] =>
  * after priced ones by price, stores with no known spot after those with one by distance.
  * `total`: how many passed before the list was cut to `limit`.
  */
-export function filterProducts(hits: ProductHit[], f: ProductFilter = {}): { hits: ProductHit[]; total: number } {
+export function filterProducts(hits: ProductHit[], f: ProductFilter = {}): { hits: ProductHit[]; total: number; bySource: Partial<Record<ProductSource, number>> } {
   const q = f.q ?? "", sort = f.sort ?? "match";
+  const alts = alternatives(q);
+  const bySource: Partial<Record<ProductSource, number>> = {};
   const src = f.sources?.length ? new Set(f.sources) : null;
   const min = f.min && f.min > 0 ? f.min : 0, max = f.max && f.max > 0 ? f.max : 0;
   const seen = new Set<string>();
   let list: Ranked[] = [];
   for (const h of hits) {
-    if (seen.has(h.id) || (src && !src.has(h.source))) continue;
+    if (seen.has(h.id)) continue;
     if ((min || max) && (h.price <= 0 || h.price < min || (max && h.price > max))) continue;
     if (f.onlyOff && !offOf(h)) continue;
-    const r = withRank(h, q);
+    if (f.minRating && (h.rating ?? 0) < f.minRating) continue;
+    if (f.maxDist && (h.dist == null || h.dist > f.maxDist)) continue;
+    const r = withRank(h, alts);
     if (!r) continue;
     seen.add(h.id);
+    // Every source's count with the other filters on (the source chips show how many each would add).
+    bySource[h.source] = (bySource[h.source] ?? 0) + 1;
+    if (src && !src.has(h.source)) continue;
     list.push(r);
   }
   if (sort !== "match" && list.some((h) => h.rank <= 2)) list = list.filter((h) => h.rank <= 2);
@@ -178,7 +211,7 @@ export function filterProducts(hits: ProductHit[], f: ProductFilter = {}): { hit
   };
   list.sort(by[sort]);
   if (sort === "match") list = spreadStores(list);
-  return { hits: list.slice(0, f.limit ?? PRODUCT_LIMIT).map(({ rank: _rank, ...h }) => h), total: list.length };
+  return { hits: list.slice(0, f.limit ?? PRODUCT_LIMIT).map(({ rank: _rank, ...h }) => h), total: list.length, bySource };
 }
 
 /**

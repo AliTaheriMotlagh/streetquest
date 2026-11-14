@@ -148,6 +148,7 @@ model User {
   postComments    PostComment[]
   following       Follow[]           @relation("follower")
   followers       Follow[]           @relation("followee")
+  bizClaims       BizClaim[]
 
   @@index([lastSeenAt])
   @@index([trophies])
@@ -1272,41 +1273,44 @@ model TrafficCell {
 // (check in on the spot, optionally redeem a coupon at the till). Every visit and
 // redemption is counted so the owner sees what the game brought in.
 model Business {
-  id        String        @id @default(cuid())
-  ownerId   String
-  name      String
-  category  String // lib/places PlaceCat
-  emoji     String        @default("🏪")
-  about     String        @default("")
-  address   String        @default("")
-  phone     String        @default("")
-  website   String        @default("")
+  id          String        @id @default(cuid())
+  ownerId     String
+  name        String
+  category    String // lib/places PlaceCat
+  emoji       String        @default("🏪")
+  about       String        @default("")
+  address     String        @default("")
+  phone       String        @default("")
+  website     String        @default("")
   // Owner links that override the automatic match (lib/localData.ts parses them).
-  snappfood String        @default("")
-  torob     String        @default("")
-  divar     String        @default("")
+  snappfood   String        @default("")
+  torob       String        @default("")
+  divar       String        @default("")
   // Its look in the game (lib/business.ts bizLook; logo, colour, banner line and menu show from Starter up).
-  logo      Bytes?
-  logoType  String        @default("")
-  logoHash  String        @default("") // changes with the logo: the image URL's cache key
-  color     String        @default("") // #rrggbb brand colour
-  tagline   String        @default("") // the banner line under the name
-  menu      Json          @default("[]") // [{ title, price }]
-  hours     String        @default("") // "09:00-22:00", "09:00-13:00, 16:00-21:00" or "24"
-  offDays   Int           @default(0) // bits of the days it's shut, Saturday = 1
-  lat       Float
-  lng       Float
-  osmId     String? // the OpenStreetMap place it claims ("n123" / "w456")
-  plan      String        @default("free") // free | starter | pro | chain
-  planUntil DateTime? // paid plans run until then, then fall back to free
-  trialUsed Boolean       @default(false)
-  verified  Boolean       @default(false) // checked by an admin
-  views     Int           @default(0) // times its card was opened in the game
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  campaigns BizCampaign[]
-  landmarks Landmark[]
+  logo        Bytes?
+  logoType    String        @default("")
+  logoHash    String        @default("") // changes with the logo: the image URL's cache key
+  color       String        @default("") // #rrggbb brand colour
+  tagline     String        @default("") // the banner line under the name
+  menu        Json          @default("[]") // [{ title, price }]
+  hours       String        @default("") // "09:00-22:00", "09:00-13:00, 16:00-21:00" or "24"
+  offDays     Int           @default(0) // bits of the days it's shut, Saturday = 1
+  lat         Float
+  lng         Float
+  osmId       String? // the OpenStreetMap place it claims ("n123" / "w456")
+  plan        String        @default("free") // free | starter | pro | chain
+  planUntil   DateTime? // paid plans run until then, then fall back to free
+  trialUsed   Boolean       @default(false)
+  verified    Boolean       @default(false) // the owner proved it's theirs (lib/claims.ts) or an admin checked it
+  verifiedAt  DateTime?
+  verifiedHow String        @default("") // website | visits | document | admin
+  views       Int           @default(0) // times its card was opened in the game
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  campaigns   BizCampaign[]
+  landmarks   Landmark[]
+  claims      BizClaim[]
 
   @@index([lat, lng])
   @@index([ownerId])
@@ -1638,11 +1642,11 @@ model ExtCache {
 // Visits to the home page, one row per (UTC) day: each browser counts once per session
 // (server/visits.ts), and the page shows the total and today's.
 model SiteVisit {
-  day      DateTime @id @db.Date // the Asia/Tehran calendar day (stored as that date)
-  count    Int      @default(0) // home-page visits
-  playOpens Int     @default(0) // /play game opens
-  visitors Int      @default(0) // distinct visitors (signed-in or anonymous) that day
-  players  Int      @default(0) // distinct signed-in players that day
+  day       DateTime @id @db.Date // the Asia/Tehran calendar day (stored as that date)
+  count     Int      @default(0) // home-page visits
+  playOpens Int      @default(0) // /play game opens
+  visitors  Int      @default(0) // distinct visitors (signed-in or anonymous) that day
+  players   Int      @default(0) // distinct signed-in players that day
 }
 
 // One row per (day, daily-salted visitor hash): the unique index is what makes "unique visitors"
@@ -1694,4 +1698,52 @@ model ApiKey {
   createdAt  DateTime  @default(now())
 
   @@index([userId])
+}
+
+// A store owner proving a store is theirs (lib/claims.ts, server/claims.ts): a code on the store's own
+// website, two visits at the store on different days, or a licence / bill photo an admin checks. A
+// claim on a store someone else already runs is a dispute: only an admin can hand it over.
+model BizClaim {
+  id         String    @id @default(cuid())
+  businessId String
+  userId     String
+  method     String // website | visits | document
+  code       String // SQ-XXXXXX, the code the owner puts on their website
+  status     String    @default("pending") // pending | review | approved | rejected
+  dispute    Boolean   @default(false) // the store belongs to someone else on the game
+  evidence   Json      @default("{}") // { url, visits: [{ at, lat, lng, dist }] }
+  doc        Bytes?
+  docType    String    @default("")
+  note       String    @default("") // the owner's word to the admin
+  decision   String    @default("") // the admin's reason
+  risk       Int       @default(0)
+  reviewerId String?
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([businessId, createdAt])
+  @@index([userId])
+}
+
+// Who did what, kept (server/audit.ts): business edits, claims and their decisions, admin actions,
+// redemptions. Admin → Audit log reads it; an owner reads their own store's.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      String   @default("") // username at the time
+  action     String // business.create | business.update | claim.start | claim.approve | admin.verify | …
+  targetType String // business | claim | user
+  targetId   String
+  summary    String   @default("")
+  data       Json     @default("{}")
+  ip         String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
 }

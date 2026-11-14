@@ -19,6 +19,7 @@
 //    waits longer, and with none anywhere the card links a web search for the number;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / TAKHFIFAN_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
+import { cacheAction } from "@/lib/cachePolicy";
 import { countryAt } from "@/lib/region";
 import { getirSearch, isYsCode, menuOfYs, reviewsOfYs, vendorOfYs, ysRaw, type RawYsReview, type RawYsVendor } from "@/lib/yemeksepeti";
 import { Prisma } from "@prisma/client";
@@ -169,13 +170,21 @@ export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Rec
 }
 
 const inflight = new Map<string, Promise<unknown>>();
-/** The cached copy while it's fresh; otherwise fetch once (shared by concurrent callers), falling back to the stale copy. */
-export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>): Promise<T | null> {
+// Stale-while-revalidate (lib/cachePolicy.ts): a stale copy within its window is served at once while a
+// fresh one loads; older, the caller waits (and still gets the old copy if the site fails).
+// CACHE_STALE_MAX_MS caps the window (default a week); CACHE_SWR="off" waits for every refresh.
+const STALE_MAX_MS = Number(process.env.CACHE_STALE_MAX_MS ?? 7 * 24 * 3600_000);
+
+/** The cached copy while it's fresh; a stale one at once while it refreshes; otherwise fetch once (shared by concurrent callers), falling back to the stale copy. */
+export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>, opts: { staleTtls?: number } = {}): Promise<T | null> {
   const row = await prisma.extCache.findUnique({ where: { key } });
-  if (row && Date.now() - row.fetchedAt.getTime() < ttlMs) return row.data as T;
+  const age = row ? Date.now() - row.fetchedAt.getTime() : Infinity;
+  const action = cacheAction(age, ttlMs, { staleTtls: opts.staleTtls, max: STALE_MAX_MS, swr: process.env.CACHE_SWR !== "off" });
+  if (row && action === "fresh") return row.data as T;
   let p = inflight.get(key) as Promise<T | null> | undefined;
   if (!p) {
     p = load()
+      .catch(() => null)
       .then(async (data) => {
         if (data == null) return null;
         const json = data as unknown as Prisma.InputJsonValue;
@@ -184,6 +193,10 @@ export async function cached<T>(key: string, ttlMs: number, load: () => Promise<
       })
       .finally(() => inflight.delete(key));
     inflight.set(key, p);
+  }
+  if (row && action === "stale") {
+    keepAlive(p);
+    return row.data as T;
   }
   return (await p) ?? ((row?.data as T | undefined) ?? null);
 }

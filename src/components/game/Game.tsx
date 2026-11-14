@@ -65,6 +65,7 @@ import { StoreBrowser } from "./StoreBrowser";
 import { commitDue } from "@/lib/driveCommit";
 import { fromCinema, fromDeal, fromDir, fromSpot, fromTorob, fromVendor, mergeListings } from "@/lib/stores/listing";
 import { ProductSearch } from "./ProductSearch";
+import { Travel } from "./Travel";
 import { LeaveGuard } from "./LeaveGuard";
 import { applyPreset, currentPreset, type PresetId } from "@/lib/mapPresets";
 import { MAP_SITES, SITES, siteLayer, STORE_TYPE_KEYS, STORE_TYPES, type DirStore, type StoreType } from "@/lib/stores/directory";
@@ -73,6 +74,7 @@ import { SocialPanel } from "./Social";
 import { BusinessPanel } from "./Business";
 import { WalletPanel } from "./WalletPanel";
 import { MAP_STYLES, mapStyle as styleById, type MapStyle } from "./mapStyles";
+import { startBenchIfAsked } from "../perf/benchRunner";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 // While the 3D code downloads: the same loading screen the city then keeps up until it's drawn (DriveBoot).
@@ -206,6 +208,8 @@ export default function Game() {
   // Nav badges the player clears by opening the panel: each badge has a signature of
   // what it's about; once seen, it stays hidden until something new changes it.
   const [seen, setSeen] = useState<Record<string, string>>({});
+  // The lag test: /play?bench=<scenario> measures this page (components/perf/benchRunner.ts).
+  useEffect(() => startBenchIfAsked(), []);
   useEffect(() => {
     try {
       setSeen(JSON.parse(localStorage.getItem("sq_seen") ?? "{}"));
@@ -262,6 +266,17 @@ export default function Game() {
   /** The store list and the services / shopping sites sheet (from the filter or ⋯). */
   const [dirOpen, setDirOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
+  // The travel planner (Travel.tsx): opened from Search's Travel tab or an airport / station pin (openTravel).
+  const [tripPlan, setTripPlan] = useState<{ to?: string } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => {
+      setDirOpen(false);
+      setProductsOpen(false);
+      setTripPlan({ to: (e as CustomEvent<{ to?: string }>).detail?.to });
+    };
+    addEventListener("sq-travel", on);
+    return () => removeEventListener("sq-travel", on);
+  }, []);
   const [servicesOpen, setServicesOpen] = useState(false);
   // Explore mode: the map moves freely, and the store layers and places load around its
   // middle instead of around the player (lib/explore.ts). `explore` is that middle.
@@ -1614,6 +1629,7 @@ export default function Game() {
             onProducts={() => (setDirOpen(false), setProductsOpen(true))}
           />
         )}
+        {tripPlan && !panel && <Travel at={look ?? pos ?? null} initialTo={tripPlan.to} onClose={() => setTripPlan(null)} />}
         {productsOpen && !panel && <ProductSearch at={look ?? null} onClose={() => setProductsOpen(false)} onStores={() => (setProductsOpen(false), setDirOpen(true))} />}
         {servicesOpen && !panel && <ServicesSheet at={look ?? null} onClose={() => setServicesOpen(false)} />}
 

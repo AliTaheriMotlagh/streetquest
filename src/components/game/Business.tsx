@@ -16,6 +16,8 @@ import { api, fmtTime } from "./client";
 import { celebrate } from "./Play";
 import { Sheet, useGame } from "./ui";
 import { OwnerLinkFields } from "./StoreInfo";
+import { ProveOwnership, StoreHistory } from "./BizClaim";
+import type { ClaimView } from "@/server/claims";
 
 type Data = {
   enabled: boolean;
@@ -27,6 +29,8 @@ type Data = {
   maxCoins: number;
   claimable: { id: string; name: string; cat: string; lat: number; lng: number; distanceM: number }[];
   admin: boolean;
+  /** Each of my stores' latest ownership claim (lib/claims.ts). */
+  claims?: Record<string, ClaimView>;
 };
 
 const money = (cents: number, currency: string) => new Intl.NumberFormat(undefined, { style: "currency", currency: currency.toUpperCase(), maximumFractionDigits: 0 }).format(cents / 100);
@@ -191,6 +195,8 @@ function Dashboard({ b, data, reload, onCampaign, onEdit, onLook, onPlans, onAdd
         {b.planUntil && <div className="small muted">{t("Plan active until {date}", { date: fmtTime(b.planUntil) })}</div>}
       </div>
 
+      {!b.verified && <ProveOwnership businessId={b.id} website={b.website} claim={data.claims?.[b.id]} reload={reload} />}
+
       {/* How the store looks in the 3D city right now; tap to change it. */}
       <button className="biz-look-open" onClick={onLook} aria-label={t("Storefront & menu")}>
         <SignPreview name={b.name} emoji={b.emoji} color={b.look.color} tagline={b.look.tagline} logo={b.look.logo} tier={b.look.tier} />
@@ -260,6 +266,7 @@ function Dashboard({ b, data, reload, onCampaign, onEdit, onLook, onPlans, onAdd
           <Button className="btn ghost" onClick={() => askConfirm(t("Remove {place} from the map?", { place: b.name }), { body: t("Its missions end and its stats are deleted."), ok: t("Remove"), danger: true }).then((ok) => ok && act(() => api("/api/business", { body: { action: "delete", businessId: b.id } })).then((ok2) => ok2 && reload()))}>🗑️</Button>
         )}
       </div>
+      <StoreHistory key={b.id} businessId={b.id} />
       {data.admin && <AdminTools b={b} reload={reload} />}
     </>
   );

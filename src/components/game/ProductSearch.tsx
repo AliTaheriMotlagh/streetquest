@@ -9,19 +9,46 @@
 //    with the way out to its own site.
 // Typing waits a moment before asking; the list on screen stays until the new one arrives.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { msg } from "@/lib/i18n";
 import { snappfoodMenuUrl, type Vendor } from "@/lib/localData";
 import { LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
 import { api } from "./client";
 import { Sheet } from "./ui";
-import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, Stars } from "./Filters";
+import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, openTravel, SearchField, Stars } from "./Filters";
+import { parseQuery, PART_LABEL, scaleBare, shopQuery, withoutPart, type Parsed } from "@/lib/search/query";
+import { fresh, keep, kept } from "./keep";
 import { LISTING_SOURCES } from "@/lib/stores/listing";
 import { countryAt, deliveryAt } from "@/lib/region";
 import { Pic, ProductPage, VendorCard, type ExtProduct } from "./StoreInfo";
 
-type Answer = { hits: ProductHit[]; total: number; stores: number; more: boolean; failed: ProductSource[] };
+type Answer = { hits: ProductHit[]; total: number; bySource?: Partial<Record<ProductSource, number>>; stores: number; more: boolean; failed: ProductSource[] };
+const RECENT = "sq-product-recent";
+/** A search's answer kept on the phone is used as is for this long. */
+const PRODUCTS_FRESH_MS = 10 * 60_000;
+/** Shops the game can't read (they refuse other sites, browsers and servers alike): one tap searches them for the same words. */
+const ELSEWHERE: { name: string; url: (q: string) => string }[] = [
+  { name: msg("Digikala"), url: (q) => `https://www.digikala.com/search/?q=${encodeURIComponent(q)}` },
+  { name: msg("Torob"), url: (q) => `https://torob.com/search/?query=${encodeURIComponent(q)}` },
+  { name: msg("Emalls"), url: (q) => `https://emalls.ir/Search/?q=${encodeURIComponent(q)}` },
+  { name: msg("Basalam"), url: (q) => `https://basalam.com/search?q=${encodeURIComponent(q)}` },
+];
+const VIEW = "sq-product-view";
+const RATINGS = [4, 4.5];
+const DISTANCES = [500, 1000, 3000];
+const readLocal = <T,>(k: string, none: T): T => {
+  try {
+    return (JSON.parse(localStorage.getItem(k) ?? "null") as T) ?? none;
+  } catch {
+    return none;
+  }
+};
+const writeLocal = (k: string, v: unknown) => {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch {}
+};
 /**
  * Words worth a tap, in the language the stores there write their menus in (Iran: Persian; Turkey:
  * Turkish; elsewhere the map's English). The label is in the player's language, the search in the stores'.
@@ -95,8 +122,15 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   const [maxDraft, setMaxDraft] = useState("");
   const [minDraft, setMinDraft] = useState("");
   const [range, setRange] = useState({ min: 0, max: 0 });
-  const [sort, setSort] = useState<ProductSort>("match");
-  const [onlyOff, setOnlyOff] = useState(false);
+  const [chosenSort, setSort] = useState<ProductSort | null>(null);
+  const [chosenOff, setOnlyOff] = useState(false);
+  const [minRating, setMinRating] = useState(0);
+  const [maxDist, setMaxDist] = useState(0);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [grid, setGrid] = useState(false);
+  useEffect(() => (setRecent(readLocal<string[]>(RECENT, [])), setGrid(readLocal<boolean>(VIEW, false))), []);
+  /** What the words say beyond the words ("under 300k", "cheapest", "on sale", "flight to Mashhad"). */
+  const [parsed, setParsed] = useState<Parsed>(() => parseQuery(""));
   const [open, setOpen] = useState(false);
   /** "Look in more restaurants": the same question again reads the next few menus. */
   const [round, setRound] = useState(0);
@@ -109,30 +143,57 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   /** The last search that was allowed to read new menus: changing the price or the order re-sorts what's already known. */
   const asked = useRef("");
 
+  const lira = deliveryAt(at) === "yemeksepeti";
   useEffect(() => {
-    const id = setTimeout(() => (setQ(draft.trim()), setRange({ min: numberOf(minDraft), max: numberOf(maxDraft) })), TYPE_WAIT_MS);
+    const id = setTimeout(() => {
+      const p = parseQuery(draft);
+      const said = scaleBare(p, lira);
+      setParsed(p);
+      setQ(p.words);
+      // A price typed in the boxes wins over one said in the words.
+      setRange({ min: numberOf(minDraft) || said.min || 0, max: numberOf(maxDraft) || said.max || 0 });
+    }, TYPE_WAIT_MS);
     return () => clearTimeout(id);
-  }, [draft, minDraft, maxDraft]);
+  }, [draft, minDraft, maxDraft, lira]);
+  const sort: ProductSort = chosenSort ?? parsed.sort ?? "match";
+  const onlyOff = chosenOff || !!parsed.onlyOff;
+  // A search that found something is remembered (the last 8, newest first).
+  const remember = (text: string) => {
+    const v = text.trim();
+    if (v.length < 2) return;
+    const next = [v, ...recent.filter((r) => r !== v)].slice(0, 8);
+    setRecent(next);
+    writeLocal(RECENT, next);
+  };
 
   const where = at ? `${at.lat.toFixed(4)},${at.lng.toFixed(4)}` : "";
   const base = `${q}|${sources.join(",")}|${where}`;
-  const key = at ? `${base}|${range.min}|${range.max}|${sort}|${onlyOff ? 1 : 0}|${round}` : "";
+  const key = at ? `${base}|${range.min}|${range.max}|${sort}|${onlyOff ? 1 : 0}|${minRating}|${maxDist}|${round}` : "";
   useEffect(() => {
     if (!key || !at) return;
     let live = true;
+    // This phone's copy of the same search shows at once (offline too); while it's fresh nothing is asked.
+    const mine = kept<Answer>(`products:${key}`);
+    if (mine) setRes({ key, data: mine.data });
+    if (fresh(mine, PRODUCTS_FRESH_MS) && asked.current === `${base}|${round}`) return;
     const p = new URLSearchParams({ products: q, lat: at.lat.toFixed(5), lng: at.lng.toFixed(5), sort, off: onlyOff ? "1" : "0" });
     if (sources.length) p.set("src", sources.join(","));
     if (range.min) p.set("min", String(range.min));
     if (range.max) p.set("max", String(range.max));
+    if (minRating) p.set("rating", String(minRating));
+    if (maxDist) p.set("dist", String(maxDist));
     if (asked.current !== `${base}|${round}`) (asked.current = `${base}|${round}`), p.set("read", "1");
     api<Answer>(`/api/local?${p}`)
       .then((data) => {
         if (!live) return;
         if (!range.min && !range.max && !onlyOff) caps.current = { key: base, steps: priceSteps(data.hits) };
+        if (!data.total && data.failed.length && mine?.data.total) return;
         setRes({ key, data });
         setError(null);
+        if (data.total) keep(`products:${key}`, data);
+        if (data.total && draft.trim().length >= 2) remember(draft);
       })
-      .catch((e) => live && setError({ key, text: (e as Error).message }));
+      .catch((e) => live && !mine && setError({ key, text: (e as Error).message }));
     return () => void (live = false);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -142,7 +203,6 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   const flip = (s: ProductSource) => setSources((l) => (l.includes(s) ? l.filter((x) => x !== s) : [...l, s]));
   // Only the sites that answer where the player is (Iran's in Iran; Yemeksepeti in Turkey).
   const here = useMemo(() => productSourcesAt(at), [at && countryAt(at.lat, at.lng)]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lira = deliveryAt(at) === "yemeksepeti";
   const shownSources = sources.length ? sources : here;
   // With nothing typed only the nearby sources can answer.
   const idle = q.length < 2;
@@ -161,13 +221,16 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     else setPage(h);
   };
 
-  const nSet = (sources.length ? 1 : 0) + (range.min || range.max ? 1 : 0) + (onlyOff ? 1 : 0);
-  const clearAll = () => (setMinDraft(""), setMaxDraft(""), setRange({ min: 0, max: 0 }), setOnlyOff(false), setSources([]));
+  const nSet = (sources.length ? 1 : 0) + (range.min || range.max ? 1 : 0) + (onlyOff ? 1 : 0) + (minRating ? 1 : 0) + (maxDist ? 1 : 0);
+  const clearAll = () => (setMinDraft(""), setMaxDraft(""), setRange({ min: 0, max: 0 }), setOnlyOff(false), setSources([]), setMinRating(0), setMaxDist(0), setDraft(parsed.words));
+  const flipGrid = () => (setGrid(!grid), writeLocal(VIEW, !grid));
+  const partText = (k: Parsed["parts"][number]) =>
+    k.kind === "max" ? t("Under {n}", { n: fmtNum(range.max) }) : k.kind === "min" ? t("From {n}", { n: fmtNum(range.min) }) : k.kind === "range" ? t("{a} to {b}", { a: fmtNum(range.min), b: fmtNum(range.max) }) : k.kind === "sort" ? t(PRODUCT_SORTS[sort]) : k.kind === "off" ? t("Discounted only") : t(PART_LABEL[k.kind]);
   const capTo = (s: number) => (setMaxDraft(range.max === s ? "" : String(s)), setRange((r) => ({ ...r, max: r.max === s ? 0 : s })));
   const srcChip = (s: ProductSource) => {
     const off = idle && !LOCAL_SOURCES.includes(s);
     return (
-      <Chip key={s} label={siteOf(s, at)} color={SOURCE_COLOR[s]} on={sources.includes(s)} disabled={off} title={off ? t("Type a name to search {site}", { site: siteOf(s, at) }) : t(PRODUCT_SOURCES[s].label)} onClick={() => flip(s)} />
+      <Chip key={s} label={siteOf(s, at)} color={SOURCE_COLOR[s]} n={data?.bySource?.[s]} on={sources.includes(s)} disabled={off} title={off ? t("Type a name to search {site}", { site: siteOf(s, at) }) : t(PRODUCT_SOURCES[s].label)} onClick={() => flip(s)} />
     );
   };
 
@@ -182,7 +245,8 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
           <SearchField value={draft} onChange={setDraft} onSubmit={() => setQ(draft.trim())} placeholder={t("Pizza, coffee, phone case…")} label={t("Search products")} />
           <FilterBar count={nSet} open={open} onToggle={() => setOpen(!open)} panelId={PANEL}>
             <Chip label={t(PRODUCT_SORTS[sort === "match" ? "cheap" : sort])} on={sort !== "match"} onClick={() => setSort(sort === "match" ? "cheap" : "match")} />
-            <Chip label={t("Discounted only")} on={onlyOff} onClick={() => setOnlyOff(!onlyOff)} />
+            <Chip label={t("Discounted only")} on={onlyOff} onClick={() => setOnlyOff(!chosenOff)} />
+            <Chip label={grid ? t("List") : t("Grid")} emoji={grid ? "☰" : "▦"} onClick={flipGrid} />
             {steps.slice(0, 2).map((s) => (
               <Chip key={s} label={t("Under {n}", { n: fmtNum(s) })} on={range.max === s} onClick={() => capTo(s)} />
             ))}
@@ -202,10 +266,41 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
               {steps.map((s) => (
                 <Chip key={s} label={t("Under {n}", { n: fmtNum(s) })} on={range.max === s} onClick={() => capTo(s)} />
               ))}
-              <Chip label={t("Discounted only")} on={onlyOff} onClick={() => setOnlyOff(!onlyOff)} />
+              <Chip label={t("Discounted only")} on={onlyOff} onClick={() => setOnlyOff(!chosenOff)} />
             </FilterGroup>
+            <FilterGroup title={t("Store rating")}>
+              <Chip label={t("Any")} on={!minRating} onClick={() => setMinRating(0)} />
+              {RATINGS.map((r) => <Chip key={r} label={`★ ${fmtNum(r)}+`} on={minRating === r} onClick={() => setMinRating(minRating === r ? 0 : r)} />)}
+            </FilterGroup>
+            {here.some((s) => LOCAL_SOURCES.includes(s)) && (
+              <FilterGroup title={t("Distance")}>
+                <Chip label={t("Any")} on={!maxDist} onClick={() => setMaxDist(0)} />
+                {DISTANCES.map((d) => <Chip key={d} label={t("Within {d}", { d: formatDistance(d) })} on={maxDist === d} onClick={() => setMaxDist(maxDist === d ? 0 : d)} />)}
+              </FilterGroup>
+            )}
             {here.length > 1 && <FilterGroup title={t("Sites")}>{here.map(srcChip)}</FilterGroup>}
           </FilterPanel>
+          {parsed.parts.length > 0 && (
+            <div className="fx-chips ps-understood" aria-label={t("Understood")}>
+              {parsed.parts.filter((k) => k.kind !== "trip").map((k) => (
+                <Chip key={k.kind + k.text} on label={`${partText(k)} ✕`} title={t("Remove “{w}” from the search", { w: k.text })} onClick={() => setDraft(withoutPart(draft, k.text))} />
+              ))}
+            </div>
+          )}
+          {parsed.trip && (
+            <button className="ps-trip" onClick={() => openTravel(parsed.trip!.city.key)}>
+              <span aria-hidden>{parsed.trip.kind === "hotel" ? "🏨" : parsed.trip.kind === "train" ? "🚆" : parsed.trip.kind === "bus" ? "🚌" : "✈️"}</span>
+              <b className="grow">{t("Tickets & hotels in {city}", { city: getLocale() === "fa" ? parsed.trip.city.fa : parsed.trip.city.en })}</b>
+              <span aria-hidden>›</span>
+            </button>
+          )}
+          {!draft && recent.length > 0 && (
+            <div className="fx-chips" aria-label={t("Recent searches")}>
+              <span className="tiny muted">🕘</span>
+              {recent.map((r) => <Chip key={r} label={r} onClick={() => setDraft(r)} />)}
+              <button className="link-btn tiny" onClick={() => (setRecent([]), writeLocal(RECENT, []))}>{t("Clear")}</button>
+            </div>
+          )}
           {!draft && (
             <div className="fx-chips" aria-label={t("Ideas")}>
               {ideasAt(at).map((i) => (
@@ -224,7 +319,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
             {nSet > 0 && <button className="btn small ghost" onClick={clearAll}>{t("Clear all")}</button>}
           </div>
         ) : (
-          <ul className={`fx-list ps-list ${loading ? "busy" : ""}`}>
+          <ul className={`fx-list ps-list ${grid ? "ps-grid" : ""} ${loading ? "busy" : ""}`}>
             {(data?.hits ?? []).map((h) => {
               const off = offOf(h);
               return (
@@ -254,6 +349,14 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
           <button className="btn small ghost fx-more" disabled={loading} onClick={() => setRound((n) => n + 1)}>
             🍽️ {t("Look in more restaurants")}
           </button>
+        )}
+        {q.length >= 2 && !lira && (
+          <div className="fx-chips ps-elsewhere" aria-label={t("Search other shops")}>
+            <span className="tiny muted">{t("Also search")}</span>
+            {ELSEWHERE.map((e) => (
+              <a key={e.name} className="fx-chip" href={e.url(shopQuery(q))} target="_blank" rel="noreferrer noopener">{t(e.name)} ↗</a>
+            ))}
+          </div>
         )}
         <p className="small muted ext-source">
           {!here.length

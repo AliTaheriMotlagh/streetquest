@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/dev/voices", label: "🗣️ Voices" },
   { href: "/dev/sounds", label: "🔊 Sounds" },
+  { href: "/dev/lag", label: "⏱️ Lag test" },
   { href: "/developers", label: "🔑 Data API" },
   { href: "/play", label: "🎮 Back to the game" },
 ];

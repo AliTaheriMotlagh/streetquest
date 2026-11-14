@@ -30,6 +30,8 @@ import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
 import { STORE_TYPES, typeOf, type AdArea, type DirStore, type StoreType } from "@/lib/stores/directory";
 import { clusterFace, countText, PIN_BOX, PIN_DOT_R, PIN_PX, pinClass, pinHtml, type PinSpec } from "@/lib/mapPins";
 import { glyphFor } from "@/lib/hudMarkers";
+import { benchOn } from "../perf/benchRunner";
+import { TravelLayer } from "./TravelLayer";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
 function FrameTarget({ target }: { target: LatLng | null }) {
@@ -40,6 +42,17 @@ function FrameTarget({ target }: { target: LatLng | null }) {
     if (!pos || !target) return;
     map.fitBounds(L.latLngBounds([pos.lat, pos.lng], [target.lat, target.lng]), { paddingTopLeft: [40, 110], paddingBottomRight: [80, 260], maxZoom: 17, animate: true });
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+/** The lag test pans this map (components/perf/benchRunner.ts): only during a bench. */
+function BenchHandle() {
+  const map = useMap();
+  useEffect(() => {
+    if (!benchOn()) return;
+    window.__sqMap = map;
+    return () => void delete window.__sqMap;
+  }, [map]);
   return null;
 }
 
@@ -175,6 +188,8 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {explore && <ExploreView jump={explore.jump} onCenter={explore.onCenter} />}
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
+        <BenchHandle />
+        <TravelLayer />
         {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
         {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
         {vasatyab && <VasatyabLayer view={vasatyab} />}

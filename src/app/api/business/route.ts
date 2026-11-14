@@ -18,6 +18,9 @@ import { placesAround } from "@/server/city";
 import { OwnerLinks } from "@/server/localData";
 import { confirmCheckout, stripeReady } from "@/server/store";
 import { notify, onlineSince } from "@/server/hub";
+import { audit, businessHistory } from "@/server/audit";
+import { checkWebsite, claimDocument, claimsOf, claimVisit, startClaim } from "@/server/claims";
+import { CLAIM_METHOD_KEYS } from "@/lib/claims";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -29,7 +32,8 @@ export const GET = route(async () => {
     const taken = new Set((await prisma.business.findMany({ where: { osmId: { in: all.map((p) => p.id) } }, select: { osmId: true } })).map((b) => b.osmId));
     claimable = all.filter((p) => !taken.has(p.id)).sort((a, b) => a.distanceM - b.distanceM).slice(0, 25);
   }
-  return { enabled: S.bizEnabled, businesses: await dashboard(u.id), plans: PLANS, payments: stripeReady(), currency: S.currency, trialDays: S.bizTrialDays, maxCoins: S.bizCampaignMaxCoins, claimable, admin: u.role === "ADMIN" };
+  const businesses = await dashboard(u.id);
+  return { enabled: S.bizEnabled, businesses, claims: await claimsOf(u.id, businesses.map((b: { id: string }) => b.id)), plans: PLANS, payments: stripeReady(), currency: S.currency, trialDays: S.bizTrialDays, maxCoins: S.bizCampaignMaxCoins, claimable, admin: u.role === "ADMIN" };
 });
 
 const text = (n: number) => z.string().trim().max(n);
@@ -78,6 +82,12 @@ const Schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("confirm"), sessionId: z.string().max(200) }),
   z.object({ action: z.literal("checkin"), campaignId: z.string() }),
   z.object({ action: z.literal("view"), businessId: z.string() }),
+  // Proving the store is yours (lib/claims.ts): start, read the website, a visit at the store, a document photo.
+  z.object({ action: z.literal("claim"), businessId: z.string(), method: z.enum(CLAIM_METHOD_KEYS), note: z.string().max(500).default("") }),
+  z.object({ action: z.literal("claim_check"), claimId: z.string(), url: z.string().max(500).optional() }),
+  z.object({ action: z.literal("claim_visit"), claimId: z.string() }),
+  z.object({ action: z.literal("claim_doc"), claimId: z.string(), photo: z.string().max(MAX_PHOTO_DATA_URL), note: z.string().max(500).default("") }),
+  z.object({ action: z.literal("history"), businessId: z.string() }),
   z.object({ action: z.literal("admin"), businessId: z.string(), plan: z.enum(PLAN_KEYS).optional(), days: z.number().int().min(1).max(3650).optional(), verified: z.boolean().optional() }),
 ]);
 
@@ -119,11 +129,17 @@ export const POST = actionRoute(async (req) => {
     const b = await prisma.business.create({
       data: { ownerId: u.id, name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, snappfood: d.snappfood, torob: d.torob, divar: d.divar, lat: at.lat, lng: at.lng, osmId: d.osmId ?? null },
     });
+    await audit(u, "business.create", { type: "business", id: b.id }, b.name, { osmId: d.osmId ?? null, at });
     return { message: t("🏪 {place} is on the map! Create your first mission.", { place: b.name }), id: b.id };
   }
   if (d.action === "update") {
-    await mine(u.id, d.businessId);
-    await prisma.business.update({ where: { id: d.businessId }, data: { name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, snappfood: d.snappfood, torob: d.torob, divar: d.divar } });
+    const was = await mine(u.id, d.businessId);
+    const changed = (["name", "category", "about", "address", "phone", "website", "snappfood", "torob", "divar"] as const).filter((k) => was[k] !== d[k]);
+    // A verified store that changes its name or website proves itself again.
+    const reverify = was.verified && (changed.includes("name") || changed.includes("website")) && u.role !== "ADMIN";
+    if (changed.length) await audit(u, "business.update", { type: "business", id: was.id }, `${was.name}: ${changed.join(", ")}`, Object.fromEntries(changed.map((k) => [k, { from: was[k], to: d[k] }])));
+    if (reverify) await audit(u, "business.unverified", { type: "business", id: was.id }, `${was.name}: name or website changed`);
+    await prisma.business.update({ where: { id: d.businessId }, data: { ...(reverify ? { verified: false, verifiedHow: "" } : {}), name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, snappfood: d.snappfood, torob: d.torob, divar: d.divar } });
     return { message: t("Saved") };
   }
   if (d.action === "look") {
@@ -146,6 +162,7 @@ export const POST = actionRoute(async (req) => {
     const b = await mine(u.id, d.businessId);
     if (activePlan(b).key !== "free") throw new HttpError(400, t("Wait until the paid plan ends before removing the business"));
     await prisma.business.delete({ where: { id: b.id } });
+    await audit(u, "business.delete", { type: "business", id: b.id }, b.name);
     return { message: t("{place} was removed from the map", { place: b.name }) };
   }
   if (d.action === "campaign") {
@@ -166,6 +183,7 @@ export const POST = actionRoute(async (req) => {
       const near = await prisma.user.findMany({ where: { id: { not: u.id }, banned: false, lastSeenAt: { gt: new Date(Date.now() - 86_400_000) }, lastLat: { gte: box.minLat, lte: box.maxLat }, lastLng: { gte: box.minLng, lte: box.maxLng } }, select: { id: true, lastSeenAt: true }, take: 50 });
       for (const p of near) if (!p.lastSeenAt || p.lastSeenAt < onlineSince()) await notify(p.id, () => ({ kind: "event", link: "jobs", title: t("{emoji} New at {place}: {title}", { emoji: b.emoji, place: b.name, title: c.title }), body: t("+{n} 🪙 for checking in", { n: c.rewardCoins }) }));
     }
+    await audit(u, "campaign.create", { type: "business", id: b.id }, `${b.name}: ${c.title}`, { campaignId: c.id, kind: d.kind, rewardCoins: d.rewardCoins, maxVisits: d.maxVisits, days: d.days });
     return { message: t("🎯 “{title}” is live on the map", { title: c.title }) };
   }
   if (d.action === "campaign_state") {
@@ -182,7 +200,25 @@ export const POST = actionRoute(async (req) => {
     }
     return { message: d.state === "end" ? t("Mission ended") : d.state === "pause" ? t("Mission paused") : t("Mission resumed") };
   }
-  if (d.action === "redeem") return redeem(u.id, d.businessId, d.code);
+  if (d.action === "redeem") {
+    const r = await redeem(u.id, d.businessId, d.code);
+    await audit(u, "coupon.redeem", { type: "business", id: d.businessId }, d.code.toUpperCase());
+    return r;
+  }
+  if (d.action === "claim") return { claim: await startClaim(u, d.businessId, d.method, d.note) };
+  if (d.action === "claim_check") {
+    const r = await checkWebsite(u, d.claimId, d.url);
+    return { ...r, message: r.status === "approved" ? t("✅ Found the code — your store is verified") : r.found ? t("Found the code — our team will confirm shortly") : t("The code isn't on that page yet. Save the page and try again in a minute.") };
+  }
+  if (d.action === "claim_visit") {
+    const r = await claimVisit(u, d.claimId, await lastKnownLocation(u.id));
+    return { ...r, message: r.status === "approved" ? t("✅ Second visit done — your store is verified") : r.status === "review" ? t("Both visits done — our team will confirm shortly") : t("Visit 1 of 2 counted. Check in again on another day.") };
+  }
+  if (d.action === "claim_doc") return { ...(await claimDocument(u, d.claimId, d.photo, d.note)), message: t("Sent — our team checks it within 2 days") };
+  if (d.action === "history") {
+    await mine(u.id, d.businessId);
+    return { history: await businessHistory(d.businessId) };
+  }
   if (d.action === "trial") return startTrial(u.id, d.businessId);
   if (d.action === "checkout") return { url: await planCheckout(u.id, d.businessId, d.plan, new URL(req.url).origin) };
   if (d.action === "confirm") {
@@ -191,7 +227,13 @@ export const POST = actionRoute(async (req) => {
   }
   // admin
   if (u.role !== "ADMIN") throw new HttpError(403, t("Admins only"));
-  if (d.plan) await extendPlan(d.businessId, d.plan, d.days ?? 30);
-  if (d.verified !== undefined) await prisma.business.update({ where: { id: d.businessId }, data: { verified: d.verified } });
+  if (d.plan) {
+    await extendPlan(d.businessId, d.plan, d.days ?? 30);
+    await audit(u, "admin.plan", { type: "business", id: d.businessId }, `${d.plan} · ${d.days ?? 30} days`);
+  }
+  if (d.verified !== undefined) {
+    await prisma.business.update({ where: { id: d.businessId }, data: { verified: d.verified, verifiedAt: d.verified ? new Date() : null, verifiedHow: d.verified ? "admin" : "" } });
+    await audit(u, d.verified ? "admin.verify" : "admin.unverify", { type: "business", id: d.businessId }, d.verified ? "verified by hand" : "verification removed");
+  }
   return { message: t("Saved") };
 });

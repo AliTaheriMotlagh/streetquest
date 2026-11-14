@@ -129,7 +129,10 @@ export function Sources({ list, max = 3 }: { list: ListingSource[]; max?: number
   );
 }
 
-/** Stores | Products: the one Search screen's two halves (StoreBrowser, ProductSearch). */
+/** Open the travel planner (components/game/Travel.tsx) from anywhere: the map and the 3D city listen. `to`: a city key. */
+export const openTravel = (to?: string) => window.dispatchEvent(new CustomEvent("sq-travel", { detail: { to } }));
+
+/** Stores | Products | Travel: the one Search screen's three parts (StoreBrowser, ProductSearch, Travel). */
 export function FindTabs({ on, onStores, onProducts }: { on: "stores" | "products"; onStores?: () => void; onProducts?: () => void }) {
   return (
     <div className="fx-seg" role="tablist" aria-label={t("Search")}>
@@ -138,6 +141,9 @@ export function FindTabs({ on, onStores, onProducts }: { on: "stores" | "product
       </button>
       <button type="button" role="tab" aria-selected={on === "products"} className={on === "products" ? "on" : ""} onClick={on === "products" ? undefined : onProducts}>
         {t("Products & prices")}
+      </button>
+      <button type="button" role="tab" aria-selected={false} onClick={() => openTravel()}>
+        {t("Travel")}
       </button>
     </div>
   );

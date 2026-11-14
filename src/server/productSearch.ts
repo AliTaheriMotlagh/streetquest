@@ -13,6 +13,7 @@ import { basalamHits, dealHits, filterProducts, LOCAL_SOURCES, menuHits, product
 import { cachedMany, dealsAround, menuCacheKey, snappProducts, torobSearch, vendorMenu, vendorsAround } from "./localData";
 import { basalamSearch } from "./storeSites";
 import { sourceAt } from "@/lib/region";
+import { shopQuery } from "@/lib/search/query";
 
 /** Restaurants this far round the player are searched (m). */
 export const FOOD_RADIUS_M = 3000;
@@ -29,19 +30,20 @@ export const MENUS_PER_SEARCH = 4;
  */
 const MENU_WAIT_MS = 3500;
 
-export type ProductAnswer = { hits: ProductHit[]; total: number; /** Restaurants whose menus were read. */ stores: number; /** More menus could be read: ask again. */ more: boolean; failed: ProductSource[] };
+export type ProductAnswer = { hits: ProductHit[]; total: number; /** Hits per source with the other filters on. */ bySource: Partial<Record<ProductSource, number>>; /** Restaurants whose menus were read. */ stores: number; /** More menus could be read: ask again. */ more: boolean; failed: ProductSource[] };
 
 const within = <T>(p: Promise<T>, ms: number, none: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(none), ms))]);
 
 async function foodHits(q: string, here: LatLng, read: boolean): Promise<{ hits: ProductHit[]; stores: number; more: boolean }> {
-  const [around, named] = await Promise.all([vendorsAround(here, FOOD_RADIUS_M), q && sourceAt("snappfood", here) ? snappProducts(q, here).catch(() => null) : null]);
+  // Snappfood is searched in Persian ("pizza" → "پیتزا"); the menus are matched in every language.
+  const [around, named] = await Promise.all([vendorsAround(here, FOOD_RADIUS_M), q && sourceAt("snappfood", here) ? snappProducts(shopQuery(q), here).catch(() => null) : null]);
   const byCode = new Map(around.map((v) => [v.code, v]));
   // Vendors the search named (near enough to matter) and those whose own name answers it come first.
   const likely = [
     ...(named?.vendors ?? []).filter((c) => byCode.has(c)),
     ...(named?.dishes ?? []).map((d) => d.code).filter((c) => byCode.has(c)),
     // Its name or what it serves ("Döner, Kebap & Türk Mutfağı"), letters folded (kebap = Kebap, köfte = kofte).
-    ...(q ? around.filter((v) => nameScore(q, v.title) >= 0.5 || normName(`${v.title} ${v.about}`).includes(normName(q))).map((v) => v.code) : []),
+    ...(q ? around.filter((v) => [...new Set([q, shopQuery(q)])].some((w) => nameScore(w, v.title) >= 0.5 || normName(`${v.title} ${v.about}`).includes(normName(w)))).map((v) => v.code) : []),
   ];
   const codes = menusToRead(likely, around, MENUS_READ);
   const have = await cachedMany<Menu>(codes.map(menuCacheKey));
@@ -87,8 +89,9 @@ export async function searchProducts(here: LatLng, f: ProductFilter & { city?: s
         return r.hits;
       }
       if (s === "deal") return dealHits(await dealsAround(here), q, here);
-      if (s === "torob") return torobHits(await torobSearch(q));
-      return basalamHits(await basalamSearch(q, f.city));
+      // Iran's shops are searched in Persian when the words were typed in English or Turkish.
+      if (s === "torob") return torobHits(await torobSearch(shopQuery(q)));
+      return basalamHits(await basalamSearch(shopQuery(q), f.city));
     } catch {
       failed.push(s);
       return [];

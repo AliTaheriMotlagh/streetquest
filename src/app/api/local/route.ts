@@ -53,6 +53,9 @@ const Query = z.union([
     sort: z.enum(PRODUCT_SORT_KEYS).default("match"),
     off: z.enum(["0", "1"]).default("0"),
     read: z.enum(["0", "1"]).default("0"),
+    /** Stores rated at least this (0…5), and at most this far (m). */
+    rating: z.coerce.number().min(0).max(5).optional(),
+    dist: z.coerce.number().int().min(0).max(100_000).optional(),
   }),
   z.object({ near: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ torobNear: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
@@ -108,7 +111,7 @@ export const GET = route(async (req) => {
   if ("products" in q) {
     if (!S.localDataEnabled) return { hits: [], total: 0, stores: 0, more: false, failed: [] };
     const sources = (q.src ?? "").split(",").filter((s): s is ProductSource => (PRODUCT_SOURCE_KEYS as string[]).includes(s));
-    return searchProducts({ lat: q.lat, lng: q.lng }, { q: q.products, min: q.min, max: q.max, sort: q.sort, onlyOff: q.off === "1", sources, read: q.read === "1" });
+    return searchProducts({ lat: q.lat, lng: q.lng }, { q: q.products, min: q.min, max: q.max, sort: q.sort, onlyOff: q.off === "1", sources, read: q.read === "1", minRating: q.rating, maxDist: q.dist });
   }
   if (!S.localDataEnabled) {
     if ("near" in q) return { vendors: [] };

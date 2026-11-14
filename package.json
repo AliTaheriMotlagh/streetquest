@@ -36,7 +36,8 @@
     "assets:sounds": "tsx scripts/sounds.ts",
     "assets:voices": "tsx scripts/voices.ts",
     "transit:build": "tsx scripts/transit-osm.ts",
-    "transit:times": "tsx scripts/transit-gtfs.ts"
+    "transit:times": "tsx scripts/transit-gtfs.ts",
+    "test:lag": "tsx scripts/lag-test.ts"
   },
   "dependencies": {
     "@huggingface/inference": "4.13.32",

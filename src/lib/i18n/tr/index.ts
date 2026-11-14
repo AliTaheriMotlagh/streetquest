@@ -37,6 +37,7 @@ import directory from "./directory";
 import social from "./social";
 import adminobjects from "./adminobjects";
 import scenarios from "./scenarios";
+import travel from "./travel";
 
 const tr: Messages = {
   ...arena,
@@ -68,6 +69,7 @@ const tr: Messages = {
   ...directory,
   ...social,
   ...scenarios,
+  ...travel,
 };
 
 export default tr;

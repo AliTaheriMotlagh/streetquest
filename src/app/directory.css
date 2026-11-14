@@ -99,3 +99,20 @@ a.site-chip.link:hover, a.site-chip.link:focus-visible { background: color-mix(i
 .ps-list .price-tag { flex-direction: column; align-items: flex-end; text-align: end; flex: none; max-width: 42%; }
 .ps-more { align-self: center; }
 @media (prefers-reduced-motion: reduce) { .ps-list.busy { transition: none; } }
+
+/* ---- product search extras (game/ProductSearch.tsx): understood words, trips, grid view */
+.ps-understood .fx-chip { border-style: dashed; }
+.ps-trip { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 14px; margin: 6px 0 2px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--sky) 50%, transparent); background: color-mix(in srgb, var(--sky) 12%, transparent); color: var(--text); font: 700 14px/1.2 var(--body); cursor: pointer; text-align: start; }
+.ps-trip span:first-child { font-size: 20px; }
+.ps-list.ps-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ps-grid li { min-width: 0; }
+.ps-grid .fx-row { display: grid; grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height: 100%; align-items: start; gap: 6px; padding: 8px; }
+.ps-grid .fx-thumb { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 10px; font-size: 32px; }
+.ps-grid .fx-title { -webkit-line-clamp: 2; }
+.ps-grid .fx-price { text-align: start; align-items: flex-start; justify-items: start; max-width: none; }
+@media (min-width: 640px) {
+  .ps-list.ps-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .ps-list.ps-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

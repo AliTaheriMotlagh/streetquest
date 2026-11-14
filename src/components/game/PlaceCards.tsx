@@ -15,6 +15,7 @@ import { Directions } from "./Play";
 import { celebrate } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
 import { RouteButton, StoreExtras } from "./StoreInfo";
+import { DisputeStore } from "./BizClaim";
 
 const catOf = (c: string) => PLACE_CATS[c as PlaceCat] ?? PLACE_CATS.shop;
 
@@ -198,6 +199,7 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
         );
       })}
       <StoreExtras query={{ store: "biz", id: b.id }} at={b} />
+      {!b.mine && <DisputeStore businessId={b.id} name={b.name} />}
     </Sheet>
   );
 }

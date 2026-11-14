@@ -8,6 +8,7 @@
 //    there; the compass sets the route.
 // It keeps its own state: typing here re-renders this list only, never the 3D city's HUD
 // (the search box used to live in Drive, and every key re-rendered all of it).
+import { openTravel } from "../game/Filters";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
@@ -183,6 +184,7 @@ export const DrivePlaces = memo(function DrivePlaces({ rows, here, onQuery, onOp
       </ul>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn small ghost grow" onClick={onProducts}>🔎 {t("Find a product")}</button>
+        <button className="btn small ghost grow" onClick={() => openTravel()}>✈️ {t("Travel")}</button>
         <button className="btn small ghost grow" onClick={onMap}>🗺️ {t("Open the map")}</button>
       </div>
     </div>

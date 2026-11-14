@@ -66,6 +66,10 @@ import { Storefronts, type StorePanel } from "./storefronts";
 import { StoreChip, StoreSheet, type StoreTarget } from "./StoreCard";
 import { DrivePlaces, type PlaceRow } from "./DrivePlaces";
 import { ProductSearch } from "../game/ProductSearch";
+import { Travel } from "../game/Travel";
+import { Planes3D } from "./planes3d";
+import type { Plane } from "@/lib/flights";
+import { benchOn } from "../perf/benchRunner";
 import type { Cinema } from "@/lib/cinema";
 import { DriveNet, type NetState } from "./net";
 import { Landmarks } from "./landmarks";
@@ -339,6 +343,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [storeSheet, setStoreSheet] = useState<StoreTarget | null>(null);
   /** Product search open, round where I was when I opened it. */
   const [productsAt, setProductsAt] = useState<LatLng | null>(null);
+  // The travel planner over the 3D city (Search → Travel, or an airport / station: openTravel).
+  const [tripPlan, setTripPlan] = useState<{ at: LatLng | null; to?: string } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => (setProductsAt(null), setTripPlan({ at: api3d.current?.here() ?? null, to: (e as CustomEvent<{ to?: string }>).detail?.to }));
+    addEventListener("sq-travel", on);
+    return () => removeEventListener("sq-travel", on);
+  }, []);
   const [banner, setBanner] = useState<{ text: string; at: number } | null>(null);
   // "Fly low to pick things up": once waved away, gone for good on this device.
   const [flyHintOff, setFlyHintOff] = useState(() => store.get(FLY_HINT_KEY) === "1");
@@ -939,6 +950,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let skySig = "";
     // Sky Rings (lib/swingRings.ts): the course, where I was last frame (to see a ring crossed), the HUD's signature.
     const swingFx = new Swing3D(scene, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    // Real planes overhead (drive/planes3d.ts): asked for every 20 s round where I am, flown on every frame.
+    const planes3d = new Planes3D(scene, frame);
+    const askPlanes = () => {
+      const here = frame.toLatLng(st.x, st.z);
+      api<{ planes: Plane[] }>(`/api/flights?lat=${here.lat.toFixed(2)}&lng=${here.lng.toFixed(2)}`).then((r) => !disposed && planes3d.set(r.planes), () => {});
+    };
+    const planesTimer = window.setInterval(askPlanes, 20_000);
+    window.setTimeout(askPlanes, 4000);
     let swing: SwingCourse | null = null;
     let swingPrev: { x: number; y: number; z: number } | null = null;
     let swingSig = "";
@@ -1754,6 +1773,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       },
     };
 
+    // The lag test (/dev/lag, components/perf/benchRunner.ts) drives these controls; only during a bench.
+    if (benchOn()) window.__sq3d = { api: api3d.current, input: input.current, combat, stats: () => gfx.stats(), booted: () => booted };
+
     // ---- the loop
     let last = performance.now();
     let wasLow = true;
@@ -1984,6 +2006,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         }
         swingFx.update(now / 1000);
       }
+      planes3d.update(Date.now(), camera.position, night);
       {
         const chain = combat.heroChain;
         const sig = swing ? `${swing.next}|${Math.floor(swing.t)}|${chain}` : chain >= 2 ? `c${chain}` : "";
@@ -2711,6 +2734,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       chuteM.dispose();
       skyFx.dispose();
       swingFx.dispose();
+      window.clearInterval(planesTimer);
+      planes3d.dispose();
       if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose());
       model.dispose();
       cockpit.dispose();
@@ -2728,6 +2753,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       skyNoise?.release();
       gfx.dispose();
       api3d.current = null;
+      if (window.__sq3d) delete window.__sq3d;
     };
   }, [style, names, quality]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3179,6 +3205,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       )}
 
       {productsAt && <ProductSearch at={productsAt} onClose={() => setProductsAt(null)} />}
+      {tripPlan && <Travel at={tripPlan.at} initialTo={tripPlan.to} onClose={() => setTripPlan(null)} />}
       {storeSheet && <StoreSheet s={storeSheet} onClose={() => setStoreSheet(null)} onGo={() => (api3d.current?.setGoal({ lat: storeSheet.lat, lng: storeSheet.lng }), toast({ title: t("🧭 Heading to {place}", { place: storeSheet.name }) }), setStoreSheet(null))} />}
 
       {picked && (
