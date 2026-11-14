@@ -1,6 +1,6 @@
 // Development only (404 in production): /dev/voices saves the lines it speaks here, into
 // assets/voices/raw/<id>-<voice>.wav, for `npm run assets:voices -- --from=assets/voices/raw`.
-//   GET            the lines already saved (Persian: <id>-<v>.wav, English: en/<id>-<v>.wav)
+//   GET            the lines already saved (Persian: <id>-<v>.wav, others: en/ or tr/<id>-<v>.wav)
 //   POST ?file=    one line's WAV (only the game's own file names)
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,8 +14,9 @@ const off = () => process.env.NODE_ENV === "production";
 export async function GET() {
   if (off()) return new Response(null, { status: 404 });
   mkdirSync(DIR, { recursive: true });
-  const en = existsSync(join(DIR, "en")) ? readdirSync(join(DIR, "en")).map((f) => `en/${f}`) : [];
-  return Response.json({ saved: [...readdirSync(DIR), ...en].filter((f) => NAMES.has(f)) });
+  // Persian at the root; every other language in its own folder (en/, tr/).
+  const sub = VOICE_LANGS.filter((l) => l !== "fa").flatMap((l) => (existsSync(join(DIR, l)) ? readdirSync(join(DIR, l)).map((f) => `${l}/${f}`) : []));
+  return Response.json({ saved: [...readdirSync(DIR), ...sub].filter((f) => NAMES.has(f)) });
 }
 
 export async function POST(req: Request) {

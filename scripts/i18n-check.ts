@@ -2,9 +2,10 @@
 // isn't wrapped in t() yet).
 //
 // 1. Every t("…") / msg("…") / translate(l, "…") key in src and realtime must have a
-//    Persian translation, and both sides must use the same {placeholders}. A Persian
-//    entry whose English text appears nowhere in the code is reported as unused
-//    (--unused lists them).
+//    Persian and a Turkish translation, and both sides must use the same {placeholders}.
+//    An entry whose English text appears nowhere in the code is reported as unused
+//    (--unused lists them). `--missing tr` prints just the missing keys of one language,
+//    one JSON string per line (to hand to a translator).
 // 2. Keys must be literal strings — t(`Hi ${name}`) can never be translated; write
 //    t("Hi {name}", { name }) instead.
 // 3. --lint: JSX text, user-facing attributes and messages (toasts, dialogs, errors)
@@ -13,6 +14,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import fa from "../src/lib/i18n/fa";
+
+/** The Turkish catalog (skipped, with a warning, while it can't load — files still being written). */
+const trCatalog = await import("../src/lib/i18n/tr").then((m) => m.default as Record<string, string>).catch((e: Error) => (console.warn(`tr catalog not loaded: ${e.message}`), null));
 
 const ROOT = join(import.meta.dirname, "..");
 const SRC = join(ROOT, "src");
@@ -24,7 +28,7 @@ for (const root of [SRC, join(ROOT, "realtime")]) (function walk(dir: string) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) {
-      if (p !== join(SRC, "lib/i18n/fa")) walk(p);
+      if (p !== join(SRC, "lib/i18n/fa") && p !== join(SRC, "lib/i18n/tr")) walk(p);
     } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) files.push(p);
   }
 })(root);
@@ -169,16 +173,22 @@ for (const file of files) {
   visit(sf);
 }
 
-const catalog = fa as Record<string, string>;
+const catalogs: [string, Record<string, string>][] = [["fa", fa as Record<string, string>], ...(trCatalog ? [["tr", trCatalog] as [string, Record<string, string>]] : [])];
 let missing = 0;
-for (const [key, at] of keys) {
-  const tr = catalog[key];
-  if (tr === undefined) {
-    missing++;
-    problems.push(`${at}  missing fa: ${JSON.stringify(key)}`);
-  } else if (placeholders(key) !== placeholders(tr)) problems.push(`${at}  placeholders differ: ${JSON.stringify(key)} → ${JSON.stringify(tr)}`);
+const unused: string[] = [];
+const only = process.argv.includes("--missing") ? process.argv[process.argv.indexOf("--missing") + 1] : null;
+for (const [lang, catalog] of catalogs) {
+  for (const [key, at] of keys) {
+    const tr = catalog[key];
+    if (tr === undefined) {
+      missing++;
+      if (only === lang) console.log(JSON.stringify(key));
+      problems.push(`${at}  missing ${lang}: ${JSON.stringify(key)}`);
+    } else if (placeholders(key) !== placeholders(tr)) problems.push(`${at}  placeholders differ (${lang}): ${JSON.stringify(key)} → ${JSON.stringify(tr)}`);
+  }
+  for (const k of Object.keys(catalog)) if (!keys.has(k) && !literals.has(k)) unused.push(lang === "fa" ? k : `${lang}: ${k}`);
 }
-const unused = Object.keys(catalog).filter((k) => !keys.has(k) && !literals.has(k));
+if (only) process.exit(0);
 
 if (lint) {
   console.log(candidates.join("\n"));

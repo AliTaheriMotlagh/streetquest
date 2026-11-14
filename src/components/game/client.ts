@@ -10,6 +10,9 @@ import type { Place, PlaceMission } from "@/lib/places";
 import type { WorldBusiness } from "@/server/business";
 import type { Deal, DivarArea, TorobPlace, Vendor } from "@/lib/localData";
 import type { Cinema } from "@/lib/cinema";
+import type { LiveBus } from "@/lib/transit/iett";
+import type { BusStop, City } from "@/lib/transit/network";
+import type { StationPick } from "./TransitCard";
 
 // No login: on the first 401 we mint a guest account (shared by concurrent calls) and retry.
 let guest: Promise<void> | null = null;
@@ -223,7 +226,10 @@ export type Selected =
   | { type: "siktir"; data: SiktirSpot }
   | { type: "dir"; data: DirStore }
   | { type: "ads"; data: AdArea }
-  | { type: "player"; data: WorldPlayer };
+  | { type: "player"; data: WorldPlayer }
+  | { type: "station"; data: StationPick }
+  | { type: "busstop"; data: { city: City; stop: BusStop } }
+  | { type: "bus"; data: LiveBus };
 
 /** A timestamp in the player's language and calendar (Solar Hijri in Persian). */
 export const fmtTime = (iso: string | number | Date) => fmtWhen(iso);

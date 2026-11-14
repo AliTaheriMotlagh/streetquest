@@ -10,6 +10,7 @@
 //  - Vasatyab: the point in the middle of the party, places to meet there, set as the gather point;
 //  - matches nearby, and fighting in the open city (passive mode).
 import { useCallback, useEffect, useState } from "react";
+import { ASKS_CHANGED } from "@/lib/asks";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { fmtNum, t } from "@/lib/i18n";
 import { GATHER_M, PARTY_GAMES, type PartyGame, type PartyView } from "@/lib/party";
@@ -133,7 +134,8 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
   };
 
   const join = async (c: string) => {
-    if (await run({ action: "join", code: c, sim }, t("You joined the party"))) await gather(true);
+    // Joined here: its invite card (game/Asks.tsx) leaves too.
+    if (await run({ action: "join", code: c, sim }, t("You joined the party"))) (window.dispatchEvent(new Event(ASKS_CHANGED)), await gather(true));
   };
 
   const host = party?.members.find((m) => m.userId === party.hostId);

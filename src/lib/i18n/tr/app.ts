@@ -1,0 +1,73 @@
+// App shell: the inbox, install and update prompts, notification permission, video and
+// photo helpers (Inbox.tsx, Pwa.tsx, pwaClient.ts, AutoVideo.tsx, photo.ts, ShareButton.tsx).
+const app: Record<string, string> = {
+  // ---- inbox
+  "just now": "az önce",
+  "{n} min ago": "{n} dakika önce",
+  "{n} h ago": "{n} saat önce",
+  "{n} d ago": "{n} gün önce",
+  "🔔 Inbox": "🔔 Gelen kutusu",
+  "Clear all": "Hepsini temizle",
+  Dismiss: "Sil",
+  Rewards: "Ödüller",
+  Battle: "Savaş",
+  News: "Haberler",
+  Today: "Bugün",
+  Yesterday: "Dün",
+  Earlier: "Daha önce",
+  "All caught up": "Hepsini gördün",
+  "Tap to open": "Açmak için dokun",
+  "Day {n} · +{coins} 🪙": "Gün {n} · +{coins} 🪙",
+  "Day {n} reward": "{n}. gün ödülü",
+  "{n, plural, one {# quest to claim} other {# quests to claim}}": "{n, plural, one {# görev alınmaya hazır} other {# görev alınmaya hazır}}",
+  "{n, plural, one {# goal reward} other {# goal rewards}}": "{n, plural, one {# hedef ödülü} other {# hedef ödülü}}",
+  "Empire dividend": "İmparatorluk temettüsü",
+  "Play → Empire": "Oyun → İmparatorluk",
+  "Empire rank reward": "İmparatorluk sıralama ödülü",
+  "{n, plural, one {# order to hand over} other {# orders to hand over}}": "{n, plural, one {# sipariş teslim edilecek} other {# sipariş teslim edilecek}}",
+  "{progress}/{target}": "{progress}/{target}",
+  "Ready for you": "Senin için hazır",
+  "+{n} more ready": "+{n} tane daha hazır",
+  coins: "jeton",
+  gems: "elmas",
+  Continue: "Devam",
+  "{n} more": "{n} tane daha",
+
+  // ---- install & update prompts
+  "showing your last map": "son kaydettiğin haritayı gösteriyoruz",
+  "Updating…": "Güncelleniyor…",
+  "one moment": "bir dakika",
+  "New version ready": "Yeni sürüm hazır",
+  "Game updated": "Oyun güncellendi",
+  "new features and fixes": "yeni özellikler ve düzeltmeler",
+  "reload to get the latest": "en son sürümü almak için sayfayı yenile",
+  Later: "Sonra",
+  Update: "Güncelle",
+  Reload: "Yeniden yükle",
+
+  // ---- notifications permission
+  "On iPhone, add StreetQuest to your Home Screen first (Share → Add to Home Screen), then turn notifications on from the app.": "iPhone'da önce StreetQuest'i Ana Ekrana ekle (Paylaş → Ana Ekrana Ekle), sonra bildirimleri uygulamadan aç.",
+  "This browser can't show notifications.": "Bu tarayıcı bildirim gösteremiyor.",
+  "Notifications work in the installed / production app.": "Bildirimler yalnızca yüklü / canlı uygulamada çalışır.",
+  "Notifications are blocked — allow them in your browser's site settings.": "Bildirimler engelli — tarayıcının site ayarlarından izin ver.",
+  "Notifications aren't set up on the server yet.": "Bildirimler henüz sunucuda kurulmadı.",
+  "Couldn't turn notifications on": "Bildirimler açılamadı",
+
+  // ---- video & photos
+  "Play video": "Videoyu oynat",
+  "Tap to play": "Oynatmak için dokun",
+  Mute: "Sessiz",
+  "🔊 Sound on": "🔊 Ses açık",
+  "🔇 Tap for sound": "🔇 Ses için dokun",
+  "Pick an image": "Bir resim seç",
+  "Couldn't read that image": "Bu resim okunamadı",
+  "That photo is too detailed — try another one": "Bu fotoğraf çok ayrıntılı — başka birini dene",
+  "Link copied ✓": "Bağlantı kopyalandı ✓",
+  "Story missions": "Hikâye görevleri",
+  Story: "Hikâye",
+  "Story missions on real streets": "Gerçek sokaklarda hikâye görevleri",
+  "Weekly goals with your crew": "Ekibinle haftalık hedefler",
+  "Your city is the map": "Şehrin haritanın ta kendisi",
+};
+
+export default app;

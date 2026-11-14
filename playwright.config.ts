@@ -73,6 +73,8 @@ export default defineConfig({
           BILBOOARD_URL: `http://localhost:${STUB_PORT}/bb`,
           IRANGAAH_URL: `http://localhost:${STUB_PORT}/ig`,
           OKALA_URL: `http://localhost:${STUB_PORT}/ok`,
+          // IETT's live buses (Istanbul) from e2e/api/transit.spec.ts's stub.
+          IETT_URL: `http://localhost:${STUB_PORT}/iett`,
           NETBARG_URL: "off",
           SHEYPOOR_URL: "off",
           BASALAM_URL: `http://localhost:${STUB_PORT}/ba`,

@@ -19,6 +19,8 @@ import type { SignPlace } from "./markers";
 const NEAR_M = 450, MAX = 3;
 /** Redrawn (fades, bulbs) only for boards this near (m). */
 const LIVE_M = 160;
+/** The nearest board this close plays its film's trailer (muted) in the poster's place; frames drawn at most this often. */
+const VIDEO_M = 70, VIDEO_FPS = 15;
 /** The board: metres wide and tall, how high its bottom edge is, and how far past the kerb it stands. */
 const W = 8.4, H = 4.2, LIFT = 2.8, OUT = 2.4;
 const CW = 1024, CH = 512;
@@ -62,6 +64,15 @@ export class CinemaBoards {
   hidden = false;
   /** The clock (a test can pin it). */
   now: () => Date = () => new Date();
+  /** Trailers on the boards (off on the lite tier: a video decoder and a texture upload each frame). */
+  videos = true;
+  private video: HTMLVideoElement | null = null;
+  /** Which board and which of its slides the trailer is playing on. */
+  private playing: { id: number; slide: number; film: number } | null = null;
+  /** Film id → its trailer's MP4 (null: none; absent: not asked yet). */
+  private trailers = new Map<number, string | null>();
+  /** Films whose trailer played to the end here: the board moves on to the next poster. */
+  private played = new Set<number>();
   constructor(private scene: THREE.Scene, private frame: Frame, private place: SignPlace) {}
 
   private spillTexture() {
@@ -179,18 +190,56 @@ export class CinemaBoards {
 
   /** Cross-fades, chasing bulbs: redrawn for the boards you're near, only when something changed. */
   update(time: number) {
-    if (this.hidden) return;
+    if (this.hidden) return void this.stopVideo();
+    this.pickVideo(time);
     for (const b of this.built.values()) {
       if (!b.group.visible || b.dist > LIVE_M) continue;
-      const f = fadeAt(time, b.slides.length);
+      // While its trailer plays the board holds that film.
+      const p = this.playing?.id === b.c.id ? this.playing : null;
+      const f = p ? { i: p.slide, j: p.slide, k: 0 } : fadeAt(time, b.slides.length);
       this.draw(b, time, f);
     }
+  }
+
+  /** The nearest board in reach plays its current film's trailer; everything else stops. */
+  private pickVideo(time: number) {
+    if (!this.videos) return;
+    let near: Board | null = null;
+    for (const b of this.built.values()) if (b.group.visible && b.slides.length && b.dist < VIDEO_M && (!near || b.dist < near.dist)) near = b;
+    if (!near || (this.playing && this.playing.id !== near.c.id)) this.stopVideo();
+    if (!near || this.playing) return;
+    const slide = fadeAt(time, near.slides.length).i;
+    const film = near.slides[slide]?.film.id;
+    if (film == null || this.played.has(film)) return;
+    if (!this.trailers.has(film)) {
+      this.trailers.set(film, null);
+      void api<{ url: string | null }>(`/api/cinema?trailer=${film}`)
+        .then((r) => this.trailers.set(film, r.url))
+        .catch(() => {});
+      return;
+    }
+    const url = this.trailers.get(film);
+    if (!url) return;
+    const v = (this.video ??= Object.assign(document.createElement("video"), { muted: true, playsInline: true, crossOrigin: "anonymous", preload: "auto" }));
+    v.src = url;
+    v.onended = () => (this.played.add(film), this.stopVideo());
+    v.onerror = () => (this.trailers.set(film, null), this.stopVideo());
+    this.playing = { id: near.c.id, slide, film };
+    void v.play().catch(() => this.stopVideo());
+  }
+
+  private stopVideo() {
+    if (!this.playing) return;
+    this.playing = null;
+    const v = this.video;
+    if (v) (v.pause(), v.removeAttribute("src"), v.load());
   }
 
   /** The board's face: marquee with its bulbs, the poster (cross-fading), that film's title and next sessions. */
   private draw(b: Board, time: number, f = { i: 0, j: 0, k: 0 }) {
     const phase = Math.floor(time * 2.5) % 4;
-    const sig = `${f.i}|${f.j}|${f.k.toFixed(2)}|${phase}|${b.slides.length}`;
+    const v = this.playing?.id === b.c.id && this.video && this.video.readyState >= 2 ? this.video : null;
+    const sig = `${f.i}|${f.j}|${f.k.toFixed(2)}|${phase}|${b.slides.length}|${v ? Math.floor(v.currentTime * VIDEO_FPS) : -1}`;
     if (sig === b.sig) return;
     b.sig = sig;
     const g = b.canvas.getContext("2d")!;
@@ -243,6 +292,16 @@ export class CinemaBoards {
       g.strokeStyle = "rgba(255,255,255,.55)";
       g.lineWidth = 4;
       g.strokeRect(px, py, pw, ph);
+      if (v && i === this.playing?.slide) {
+        // Its trailer where the sessions are (whole, letterboxed): the poster stays beside it.
+        const vx = 350, vy = 112, vw = CW - 36 - vx, vh = 380;
+        const r = Math.min(vw / v.videoWidth, vh / v.videoHeight), dw = v.videoWidth * r, dh = v.videoHeight * r;
+        g.fillStyle = "#000";
+        g.fillRect(vx, vy, vw, vh);
+        g.drawImage(v, vx + (vw - dw) / 2, vy + (vh - dh) / 2, dw, dh);
+        g.restore();
+        return;
+      }
       // The title and its next sessions.
       const x0 = 350, x1 = CW - 36, mid = (x0 + x1) / 2;
       g.fillStyle = "#ffffff";
@@ -325,6 +384,8 @@ export class CinemaBoards {
   }
 
   dispose() {
+    this.stopVideo();
+    this.video = null;
     for (const [id, b] of this.built) this.drop(id, b);
     for (const g of Object.values(this.geo)) g.dispose();
     this.steel.dispose();

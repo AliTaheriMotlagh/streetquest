@@ -5,11 +5,16 @@
 // file names and the device-voice choice.
 import { BARKS, textOf, type Bark, type VoiceKind } from "./barks";
 
-export type VoiceLang = "fa" | "en";
-export const VOICE_LANGS: VoiceLang[] = ["fa", "en"];
+export type VoiceLang = "fa" | "en" | "tr";
+export const VOICE_LANGS: VoiceLang[] = ["fa", "en", "tr"];
 
-/** The language the player hears: Persian for a Persian game, English for everything else. */
-export const voiceLangOf = (locale: string): VoiceLang => (/^fa(-|_|$)/i.test(locale) ? "fa" : "en");
+/**
+ * The language the player hears: people in Turkey (`country` "TR", from region.ts) speak Turkish whatever the game's
+ * language is (the bubble's subtitle follows the game's language); elsewhere Persian for a Persian game, Turkish for a
+ * Turkish one, English for the rest.
+ */
+export const voiceLangOf = (locale: string, country?: string | null): VoiceLang =>
+  country === "TR" ? "tr" : /^fa(-|_|$)/i.test(locale) ? "fa" : /^tr(-|_|$)/i.test(locale) ? "tr" : "en";
 
 /** Folder of a language's files (Persian: the root, as it always was). */
 const dirOf = (lang: VoiceLang) => (lang === "fa" ? "" : `${lang}/`);
@@ -24,6 +29,7 @@ export const lineText = (b: Bark, v: VoiceKind, lang: VoiceLang) => textOf(b, v)
 /** One Piper (or Mimic 3) voice and where it comes from. `hf`: path in rhasspy/piper-voices. */
 export type VoiceModel = { id: string; kind: VoiceKind; lang: VoiceLang; label: string; hf?: string; licence: string; source: string };
 
+const OWN_TR = "Own recordings (no permissive Piper tr_TR voice exists)";
 const HFS = "https://huggingface.co/rhasspy/piper-voices/tree/main";
 /** Only permissive voices (every MODEL_CARD checked: public domain, CC0, CC BY) — never NC/SA. */
 export const MODELS: VoiceModel[] = [
@@ -35,6 +41,12 @@ export const MODELS: VoiceModel[] = [
   { id: "en_US-ljspeech-medium", kind: "f", lang: "en", label: "LJ Speech (US woman)", hf: "en/en_US/ljspeech/medium", licence: "Public domain (LJ Speech)", source: `${HFS}/en/en_US/ljspeech/medium` },
   { id: "en_GB-alba-medium", kind: "f", lang: "en", label: "Alba (Scottish woman)", hf: "en/en_GB/alba/medium", licence: "CC BY 4.0 (CSTR, University of Edinburgh)", source: `${HFS}/en/en_GB/alba/medium` },
   { id: "en_US-bryce-medium", kind: "cop", lang: "en", label: "Bryce (US man, through a radio)", hf: "en/en_US/bryce/medium", licence: "Public domain", source: `${HFS}/en/en_US/bryce/medium` },
+  // Turkish: Piper's own tr_TR voice (dfki) is CC BY-NC-SA and fettah/fahrettin were withdrawn from rhasspy/piper-voices, so no
+  // permissive Piper model is used. Until clips exist the device's tr-TR speech reads the line (drive/voices.ts); clips made from your
+  // own recordings or a permissively licensed voice go in with `npm run assets:voices -- --import=<dir> --lang=tr` (files in <dir>/tr/).
+  { id: "tr-own-m", kind: "m", lang: "tr", label: "Turkish man (own recording / device voice)", licence: OWN_TR, source: `${HFS}/tr/tr_TR` },
+  { id: "tr-own-f", kind: "f", lang: "tr", label: "Turkish woman (own recording / device voice)", licence: OWN_TR, source: `${HFS}/tr/tr_TR` },
+  { id: "tr-own-cop", kind: "cop", lang: "tr", label: "Turkish police (own recording / device voice)", licence: OWN_TR, source: `${HFS}/tr/tr_TR` },
 ];
 
 /** The voices that can say a line of this kind in this language (at least one each). */
@@ -58,14 +70,14 @@ export type Job = { b: Bark; v: VoiceKind; lang: VoiceLang; file: string; raw: s
 export const jobsFor = (lang: VoiceLang): Job[] =>
   BARKS.flatMap((b) => b.voices.map((v) => ({ b, v, lang, file: lineFile(b, v, lang), raw: rawFile(b, v, lang), text: lineText(b, v, lang), model: voiceFor(b, v, lang) })));
 
-/** Manifest entries of the shipped files: `files` (Persian, as before) and `en` (folder-relative names). */
-export function manifestPaths(m: { files?: unknown; en?: unknown }): string[] {
+/** Manifest entries of the shipped files: `files` (Persian, as before), `en` and `tr` (folder-relative names). */
+export function manifestPaths(m: { files?: unknown; en?: unknown; tr?: unknown }): string[] {
   const ok = (f: unknown): f is string => typeof f === "string" && /^[\w-]+\.mp3$/.test(f);
-  return [...(Array.isArray(m.files) ? m.files.filter(ok) : []), ...(Array.isArray(m.en) ? m.en.filter(ok).map((f) => `en/${f}`) : [])];
+  return [...(Array.isArray(m.files) ? m.files.filter(ok) : []), ...(Array.isArray(m.en) ? m.en.filter(ok).map((f) => `en/${f}`) : []), ...(Array.isArray(m.tr) ? m.tr.filter(ok).map((f) => `tr/${f}`) : [])];
 }
 
-const FEMALE = /female|woman|samantha|karen|victoria|zira|susan|moira|tessa|fiona|serena|kate|hazel|catherine|allison|ava|joanna|kendra|salli|amy|emma|libby|sonia/i;
-const MALE = /\bmale\b|\bman\b|daniel|alex|fred|david|mark|george|oliver|arthur|rishi|aaron|guy|ryan|matthew|james|thomas|brian|joey|justin/i;
+const FEMALE = /female|woman|yelda|seda|filiz|samantha|karen|victoria|zira|susan|moira|tessa|fiona|serena|kate|hazel|catherine|allison|ava|joanna|kendra|salli|amy|emma|libby|sonia/i;
+const MALE = /\bmale\b|\bman\b|tolga|cem|daniel|alex|fred|david|mark|george|oliver|arthur|rishi|aaron|guy|ryan|matthew|james|thomas|brian|joey|justin/i;
 /** A voice by name and language, as speechSynthesis lists them. */
 export type DeviceVoice = { name: string; lang: string };
 
@@ -75,9 +87,9 @@ export type DeviceVoice = { name: string; lang: string };
  * before other English, local voices before network ones. Null if there is none in the language.
  */
 export function pickDeviceVoice<T extends DeviceVoice & { localService?: boolean }>(voices: readonly T[], lang: VoiceLang, v: VoiceKind): T | null {
-  const inLang = voices.filter((x) => (lang === "fa" ? /^fa(-|_|$)/i.test(x.lang) : /^en(-|_|$)/i.test(x.lang)));
+  const inLang = voices.filter((x) => new RegExp(`^${lang}(-|_|$)`, "i").test(x.lang));
   if (!inLang.length) return null;
   const want = v === "f" ? FEMALE : MALE;
-  const score = (x: T) => (want.test(x.name) ? 4 : (v === "f" ? MALE : FEMALE).test(x.name) ? -4 : 0) + (/^en[-_]us/i.test(x.lang) ? 2 : /^en[-_]gb/i.test(x.lang) ? 1 : 0) + (x.localService ? 0.5 : 0);
+  const score = (x: T) => (want.test(x.name) ? 4 : (v === "f" ? MALE : FEMALE).test(x.name) ? -4 : 0) + (/^(en[-_]us|tr[-_]tr)/i.test(x.lang) ? 2 : /^en[-_]gb/i.test(x.lang) ? 1 : 0) + (x.localService ? 0.5 : 0);
   return inLang.reduce((a, x) => (score(x) > score(a) ? x : a));
 }

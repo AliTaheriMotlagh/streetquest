@@ -17,8 +17,10 @@ import {
   type Vars,
 } from "../lib/i18n";
 import fa from "../lib/i18n/fa";
+import tr from "../lib/i18n/tr";
 
 registerMessages("fa", fa);
+registerMessages("tr", tr);
 
 const als = new AsyncLocalStorage<Locale>();
 setLocaleResolver(() => als.getStore() ?? DEFAULT_LOCALE);
@@ -34,7 +36,7 @@ const cookieValue = (header: string | null, name: string) =>
 
 /** The language an API request asked for: the player's choice, else their browser's. */
 export function localeOfRequest(req: Request): Locale {
-  return resolveLocale(cookieValue(req.headers.get("cookie"), LOCALE_COOKIE), req.headers.get("accept-language"));
+  return resolveLocale(cookieValue(req.headers.get("cookie"), LOCALE_COOKIE), req.headers.get("accept-language"), req.headers.get("x-vercel-ip-country"));
 }
 
 /** The current page request's language (server components, metadata). */
@@ -42,7 +44,7 @@ export async function pageLocale(): Promise<Locale> {
   const h = await headers();
   const forced = h.get(LOCALE_HEADER); // ?lang= in the URL (middleware)
   if (isLocale(forced)) return forced;
-  return resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value, h.get("accept-language"));
+  return resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value, h.get("accept-language"), h.get("x-vercel-ip-country"));
 }
 
 /**

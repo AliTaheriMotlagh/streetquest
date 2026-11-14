@@ -1,10 +1,11 @@
 // Loads a language's messages on demand, so English players never download the
-// Persian catalog (and vice versa when more languages arrive). The server's API and
+// Persian or Turkish catalog. The server's API and
 // page code registers every catalog up front instead (server/i18n.ts).
 import { DEFAULT_LOCALE, registerMessages, type Locale, type Messages } from "./index";
 
 const LOADERS: Record<Exclude<Locale, "en">, () => Promise<{ default: Messages }>> = {
   fa: () => import("./fa"),
+  tr: () => import("./tr"),
 };
 
 /** Languages whose load has finished — registered, or given up on for this page. */

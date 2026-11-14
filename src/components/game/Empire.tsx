@@ -56,7 +56,7 @@ type View = {
 };
 
 const BUY_STEPS = [1, 10, 100, -1] as const;
-const fa = () => getLocale() === "fa";
+const fa = () => (getLocale() === "tr" ? "tr" : getLocale() === "fa");
 /** Idle-game number: 1.23M (۱٫۲۳ میلیون). */
 export const money = (n: number) => bigNum(n, fa(), (x, o) => fmtNum(x, undefined, o));
 const clock = (secs: number) => {

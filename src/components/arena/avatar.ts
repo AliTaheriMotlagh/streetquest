@@ -13,6 +13,7 @@ import { WEAPON_KEYS, type WeaponKey } from "@/lib/arena/weapons";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { loadModel } from "../drive/gltf";
+import { toonRamp } from "../drive/world3d";
 import { modelUrl } from "../drive/modelOverride";
 
 const SOLDIER_URL = "/models/arena/soldier.glb";
@@ -119,16 +120,53 @@ type Clip = "Idle" | "Walk" | "Run" | "Back" | "StrafeL" | "StrafeR" | "Crouch" 
 /** Ground speed (m/s) each cycle was keyed for: playback speeds up to match. */
 const NATURAL: Partial<Record<Clip, number>> = { Walk: 1.5, Run: 3.6, Back: 1.4, StrafeL: 1.8, StrafeR: 1.8, CrouchWalk: 1.2 };
 
+/**
+ * The city's look: "toon" draws everything with flat banded light, so a soldier in the model's
+ * own physically based materials stood out as if lit by another game. Drive.tsx sets it once.
+ */
+let avatarStyle: "real" | "toon" = "real";
+export const setAvatarStyle = (s: "real" | "toon") => void (avatarStyle = s);
+/** Soldiers this close cast shadows; further off the shadow is a few pixels, and each one is another skinned pass. */
+const SHADOW_M = 45;
+
+/** One material per (model material, look): every soldier shares it, so its shader is built once. */
+const lookCache = new Map<string, THREE.Material>();
+function looked(mat: THREE.Material): THREE.Material {
+  if (avatarStyle !== "toon" || mat.userData.look) return mat;
+  const key = `${mat.uuid}|toon`;
+  let m = lookCache.get(key);
+  if (!m) {
+    const src = mat as THREE.MeshStandardMaterial;
+    m = new THREE.MeshToonMaterial({ name: src.name, color: src.color?.clone() ?? new THREE.Color("#ffffff"), map: src.map ?? null, gradientMap: toonRamp(), transparent: src.transparent, alphaTest: src.alphaTest, side: src.side });
+    m.userData = { ...src.userData, look: true, base: src.userData.base ?? src.name };
+    lookCache.set(key, m);
+  }
+  return m;
+}
+
 const tintCache = new Map<string, THREE.Material>();
 function tinted(base: THREE.Material, color: string) {
-  const key = `${base.uuid}|${color}`;
+  const key = `${base.uuid}|${color}|${avatarStyle}`;
   let m = tintCache.get(key);
   if (!m) {
-    m = base.clone();
+    m = looked(base).clone();
     (m as THREE.MeshStandardMaterial).color.set(color);
+    m.userData = { ...m.userData, look: true };
     tintCache.set(key, m);
   }
   return m;
+}
+/** A sphere round the whole body in any pose, shared per geometry: frustum culling without per-frame skinned bounds. */
+const spheres = new WeakMap<THREE.BufferGeometry, THREE.Sphere>();
+function bodySphere(g: THREE.BufferGeometry): THREE.Sphere {
+  let s = spheres.get(g);
+  if (!s) {
+    if (!g.boundingBox) g.computeBoundingBox();
+    s = g.boundingBox!.getBoundingSphere(new THREE.Sphere());
+    s.radius *= 2;
+    spheres.set(g, s);
+  }
+  return s.clone();
 }
 
 const right = new THREE.Vector3();
@@ -150,20 +188,29 @@ export class Avatar {
   private meshes: THREE.SkinnedMesh[] = [];
   private uniformBase: THREE.Material | null = null;
   private accentBase: THREE.Material | null = null;
+  private shadows: boolean;
+  private shadowOn: boolean;
 
   constructor(t: Template, uniform: string, accent: string, shadows: boolean) {
     const root = cloneSkinned(t.scene);
     this.group.add(root);
+    this.shadows = this.shadowOn = shadows;
     root.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
       if (m.isMesh) {
         m.castShadow = shadows;
-        m.frustumCulled = false; // skinned bounds don't follow the animation
-        if ((m as THREE.SkinnedMesh).isSkinnedMesh) this.meshes.push(m);
+        if ((m as THREE.SkinnedMesh).isSkinnedMesh) {
+          this.meshes.push(m);
+          // Skinned bounds don't follow the animation; a fixed sphere round the body does, so a
+          // soldier behind the camera is neither skinned nor drawn (it used to be: culling was off).
+          // From the bind pose's box, in the mesh's own space, doubled to hold any pose (lying dead too).
+          m.boundingSphere = bodySphere(m.geometry);
+        }
         for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
           if (mat.name === "Uniform") this.uniformBase = mat;
           if (mat.name === "Accent") this.accentBase = mat;
         }
+        m.material = Array.isArray(m.material) ? m.material.map(looked) : looked(m.material);
       }
       if ((o as THREE.Bone).isBone) {
         if (o.name === "spine") this.spine = o as THREE.Bone;
@@ -248,6 +295,12 @@ export class Avatar {
     const a = this.actions.get(clip);
     if (a) a.timeScale = nat ? Math.max(0.6, Math.min(2.2, sp / nat)) : 1;
 
+    // Shadows only near the camera (toggling castShadow needs no shader rebuild).
+    const cast = this.shadows && far < SHADOW_M;
+    if (cast !== this.shadowOn) {
+      this.shadowOn = cast;
+      this.group.traverse((o) => void ((o as THREE.Mesh).isMesh && ((o as THREE.Mesh).castShadow = cast)));
+    }
     this.acc += dt;
     const every = far > 140 ? 1 / 12 : far > 60 ? 1 / 24 : 0;
     if (this.acc < every) return;

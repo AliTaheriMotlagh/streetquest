@@ -43,3 +43,16 @@ export function mergeAsks(have: Ask[], more: Ask[], done: ReadonlySet<string>): 
   }
   return out.slice(-MAX_ASKS);
 }
+
+/**
+ * The cards after asking the server what is still open (`open`: its friend requests and
+ * invites, the truth): ones answered elsewhere — in the Crew panel, on another device, a party
+ * that ended — leave, new ones join.
+ */
+export function syncAsks(have: Ask[], open: Ask[], done: ReadonlySet<string>): Ask[] {
+  const still = new Set(open.map((a) => a.key));
+  return mergeAsks(have.filter((a) => still.has(a.key)), open, done);
+}
+
+/** Fired on window when a request was answered anywhere (the Crew panel, a card): everything showing them reloads. */
+export const ASKS_CHANGED = "sq:asks-changed";

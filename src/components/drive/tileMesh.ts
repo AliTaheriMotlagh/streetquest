@@ -9,6 +9,7 @@
 // furniture (a car stops at a tree or a lamp post), and the text to show: street names,
 // corner street-name signs, every shop and house number.
 import * as THREE from "three";
+import { countryAt } from "@/lib/region";
 import { hashStr, rng, type LatLng } from "@/lib/geo";
 import { crossSigns, KIT_KINDS, kitObstacles, placeKit, type Crossing, type KitKind, type KitRoad } from "./streetKit";
 import { insidePacked, makeFrame, PROP, tileSW, type BuildingKind, type CityPitch, type CityTile, type RoadKind, type RoofShape } from "@/lib/city";
@@ -282,6 +283,10 @@ const color = (hex: string) => new THREE.Color(hex);
 const pick = (list: string[], seed: number) => color(list[seed % list.length]);
 /** Mosque domes: turquoise and blue tile, now and then gold. */
 const DOMES = ["#2f8f9d", "#2c6fb0", "#3a9bb0", "#1f7a8c", "#c9a227"];
+/** Ottoman domes (Istanbul, all of Turkey): sheet lead, grey with a little blue or green from the weather. */
+const LEAD_DOMES = ["#7f868e", "#8a9199", "#737a83", "#7d8a86"];
+/** Ottoman minarets: pale cut stone. */
+const OTTOMAN_STONE = color("#dcd6c8");
 /** Balcony railings: dark steel, white, grey, blue-grey glass. */
 const RAILS = ["#3b3f45", "#e9e7e2", "#5b6168", "#8fa3b0"];
 const COOLER = color("#c9cbcd"), TANK_WHITE = color("#e8eaec"), TANK_BLUE = color("#3f78b5"), GOLD = color("#d4af37");
@@ -632,20 +637,24 @@ function spike(b: Builder, x: number, z: number, r: number, y0: number, y1: numb
   }
 }
 
-/** A minaret on the roof: a shaft, the muezzin's balcony, a slimmer top, a tiled cap and a gold finial. */
-function minaret(b: Builder, x: number, z: number, y0: number, y1: number, body: THREE.Color, cap: THREE.Color) {
-  prism(b, x, z, 0.9, y0, y1 - 3, body);
-  prism(b, x, z, 1.35, y1 - 3, y1 - 2.6, body.clone().multiplyScalar(0.85));
-  prism(b, x, z, 0.7, y1 - 2.6, y1, body);
-  spike(b, x, z, 0.85, y1, y1 + 2.8, cap);
-  spike(b, x, z, 0.08, y1 + 2.8, y1 + 4, GOLD);
+/**
+ * A minaret on the roof: a shaft, the muezzin's balcony, a slimmer top, a tiled cap and a gold
+ * finial. Ottoman (`slim`): a pencil — thinner, with a long lead cone.
+ */
+function minaret(b: Builder, x: number, z: number, y0: number, y1: number, body: THREE.Color, cap: THREE.Color, slim = false) {
+  const r = slim ? 0.65 : 0.9, coneH = slim ? 6 : 2.8;
+  prism(b, x, z, r, y0, y1 - 3, body);
+  prism(b, x, z, r * 1.5, y1 - 3, y1 - 2.6, body.clone().multiplyScalar(0.85));
+  prism(b, x, z, r * 0.78, y1 - 2.6, y1, body);
+  spike(b, x, z, r * 0.95, y1, y1 + coneH, cap);
+  spike(b, x, z, 0.08, y1 + coneH, y1 + coneH + 1.2, GOLD);
 }
 
 /**
  * A mosque's roof: a drum (with the walls' windows) and an onion-shaped tiled dome over
  * the middle with a gold finial, and two minarets at the two corners furthest apart.
  */
-function drawMosque(roofs: Builder, walls: Builder, contour: THREE.Vector2[], pts: Float32Array, cx: number, cz: number, area: number, h: number, wall: THREE.Color, dome: THREE.Color) {
+function drawMosque(roofs: Builder, walls: Builder, contour: THREE.Vector2[], pts: Float32Array, cx: number, cz: number, area: number, h: number, wall: THREE.Color, dome: THREE.Color, ottoman = false) {
   const r = Math.max(2.5, Math.min(11, Math.sqrt(area / Math.PI) * 0.55));
   const drumTop = h + r * 0.4, segs = 16;
   const ring = (rad: number, y: number, k: number): V3 => [cx + Math.cos((k / segs) * Math.PI * 2) * rad, y, cz + Math.sin((k / segs) * Math.PI * 2) * rad];
@@ -655,7 +664,10 @@ function drawMosque(roofs: Builder, walls: Builder, contour: THREE.Vector2[], pt
     walls.tri(ring(r, h, k), ring(r, drumTop, k + 1), ring(r, drumTop, k), wall, drumIn);
   }
   // The onion: (radius, height) in dome radii, bulging past the drum, then to a point.
-  const PROFILE: [number, number][] = [[1, 0], [1.08, 0.28], [1.02, 0.55], [0.84, 0.8], [0.56, 1.02], [0.24, 1.22], [0, 1.4]];
+  // Ottoman: a plain hemisphere of lead (Süleymaniye, the Blue Mosque) instead of the tiled onion.
+  const PROFILE: [number, number][] = ottoman
+    ? [[1, 0], [0.97, 0.25], [0.87, 0.5], [0.71, 0.71], [0.5, 0.87], [0.26, 0.97], [0, 1]]
+    : [[1, 0], [1.08, 0.28], [1.02, 0.55], [0.84, 0.8], [0.56, 1.02], [0.24, 1.22], [0, 1.4]];
   const at = (i: number, k: number) => ring(PROFILE[i][0] * r, drumTop + PROFILE[i][1] * r, k);
   const inside: V3 = [cx, drumTop + r * 0.5, cz];
   for (let i = 0; i + 1 < PROFILE.length; i++)
@@ -663,7 +675,7 @@ function drawMosque(roofs: Builder, walls: Builder, contour: THREE.Vector2[], pt
       roofs.tri(at(i, k), at(i, k + 1), at(i + 1, k + 1), dome, inside);
       if (PROFILE[i + 1][0] > 0) roofs.tri(at(i, k), at(i + 1, k + 1), at(i + 1, k), dome, inside);
     }
-  const tip = drumTop + 1.4 * r;
+  const tip = drumTop + PROFILE[PROFILE.length - 1][1] * r;
   spike(roofs, cx, cz, 0.18, tip, tip + Math.max(1.5, r * 0.3), GOLD);
   let pair = [0, 0], far = -1;
   for (let i = 0; i < contour.length; i++)
@@ -671,12 +683,13 @@ function drawMosque(roofs: Builder, walls: Builder, contour: THREE.Vector2[], pt
       const d = (contour[i].x - contour[j].x) ** 2 + (contour[i].y - contour[j].y) ** 2;
       if (d > far) (far = d), (pair = [i, j]);
     }
-  const tall = h + Math.max(12, h * 1.3);
+  // Ottoman minarets stand far above the dome.
+  const tall = h + (ottoman ? Math.max(20, h * 2.2) : Math.max(12, h * 1.3));
   for (const i of pair) {
     // 2.2 m in from the corner, towards the middle.
     const c = contour[i], dx = cx - c.x, dz = cz - c.y, dl = Math.hypot(dx, dz) || 1;
     const mx = c.x + (dx / dl) * 2.2, mz = c.y + (dz / dl) * 2.2;
-    if (insidePacked(pts, mx, mz)) minaret(roofs, mx, mz, h, tall, wall, dome);
+    if (insidePacked(pts, mx, mz)) minaret(roofs, mx, mz, h, tall, ottoman ? OTTOMAN_STONE : wall, dome, ottoman);
   }
 }
 
@@ -688,6 +701,75 @@ function cuboid(b: Builder, x: number, z: number, hx: number, hz: number, y0: nu
   const q = (a: V3, b2: V3, c2: V3, d: V3) => (b.tri(a, b2, c2, c, out), b.tri(a, c2, d, c, out));
   q(P(-1, -1, y1), P(1, -1, y1), P(1, 1, y1), P(-1, 1, y1));
   for (const [i0, j0, i1, j1] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) q(P(i0, j0, y0), P(i1, j1, y0), P(i1, j1, y1), P(i0, j0, y1));
+}
+
+// ---------------------------------------------------------------- bridges
+const BRIDGE_CONCRETE = color("#b8b4ab"), BRIDGE_PARAPET = color("#d7d4cc"), BRIDGE_STEEL = color("#d3d8dc"), BRIDGE_CABLE = color("#9aa1a8");
+/** A pier under a bridge deck this often (m). */
+const PIER_EVERY_M = 40;
+
+/**
+ * Bridges (vectorTile.ts: roads with `br`, spans `bs`, towers `bt`). The deck stays where the road
+ * is (so driving is unchanged); around it: low concrete parapets on both edges, the deck's edge
+ * below, piers down into the water or the valley; over a long bridge the suspension structure —
+ * two towers of two legs with cross beams, the main cables sagging between them, hangers down to
+ * the deck. A carriageway of two (`ow`) has the structure to its left, over both (driving on the right).
+ */
+function drawBridges(tile: CityTile, frame: ReturnType<typeof makeFrame>, unpacked: Float32Array[], trim: Builder, walls: Builder, lite: boolean) {
+  tile.r.forEach((r, ri) => {
+    if (!r.br) return;
+    const pts = unpacked[ri];
+    if (pts.length < 4) return;
+    const half = r.w / 2 + 0.25;
+    let along = 0, nextPier = PIER_EVERY_M / 2;
+    for (let i = 2; i < pts.length; i += 2) {
+      const ax = pts[i - 2], az = pts[i - 1], bx = pts[i], bz = pts[i + 1];
+      const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+      if (len < 0.5) continue;
+      const nx = -dz / len, nz = dx / len;
+      for (const sd of [-1, 1]) {
+        const ox = nx * half * sd, oz = nz * half * sd;
+        beam(trim, [ax + ox, 0.55, az + oz], [bx + ox, 0.55, bz + oz], 0.5, BRIDGE_PARAPET);
+        beam(walls, [ax + ox, -0.9, az + oz], [bx + ox, -0.9, bz + oz], 1.4, BRIDGE_CONCRETE);
+      }
+      // A pier every PIER_EVERY_M along the bridge (not on the lite tier).
+      for (; !lite && nextPier <= along + len; nextPier += PIER_EVERY_M) {
+        const k = (nextPier - along) / len;
+        beam(walls, [ax + dx * k, -30, az + dz * k], [ax + dx * k, -1.6, az + dz * k], Math.min(3, r.w * 0.35), BRIDGE_CONCRETE);
+      }
+      along += len;
+    }
+  });
+  /** The middle of the structure and how far its sides stand out, for a deck of width `w`. */
+  const across = (w: number, ow?: 1) => ({ shift: ow ? w / 2 + 1.5 : 0, half: (ow ? w + 1.5 : w / 2) + 1.4 });
+  for (const sp of tile.bs ?? []) {
+    const p = frame.unpack(tile.cx, tile.cy, sp.l);
+    const { shift, half } = across(sp.w, sp.ow);
+    for (let i = 1; i < sp.h.length && 2 * i + 1 < p.length; i++) {
+      const ax = p[2 * i - 2], az = p[2 * i - 1], bx = p[2 * i], bz = p[2 * i + 1];
+      const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1;
+      // Left of the way the road runs (x east, z south), and square to it.
+      const lx = dz / len, lz = -dx / len;
+      const cax = ax + lx * shift, caz = az + lz * shift, cbx = bx + lx * shift, cbz = bz + lz * shift;
+      for (const sd of [-1, 1]) {
+        const ox = lx * half * sd, oz = lz * half * sd;
+        beam(trim, [cax + ox, sp.h[i - 1], caz + oz], [cbx + ox, sp.h[i], cbz + oz], 0.45, BRIDGE_CABLE);
+        if (!lite && sp.h[i - 1] > 2) beam(trim, [cax + ox, sp.h[i - 1], caz + oz], [cax + ox, 0.9, caz + oz], 0.1, BRIDGE_CABLE);
+      }
+    }
+  }
+  for (const tw of tile.bt ?? []) {
+    const p = frame.unpack(tile.cx, tile.cy, tw.l);
+    if (p.length < 4) continue;
+    const dx = p[2] - p[0], dz = p[3] - p[1], len = Math.hypot(dx, dz) || 1;
+    const lx = dz / len, lz = -dx / len;
+    const { shift, half } = across(tw.w, tw.ow);
+    const cx = p[0] + lx * shift, cz = p[1] + lz * shift;
+    const leg = (sd: number): [number, number] => [cx + lx * (half + 0.6) * sd, cz + lz * (half + 0.6) * sd];
+    const [l0, l1] = [leg(-1), leg(1)];
+    for (const [x, z] of [l0, l1]) beam(walls, [x, -30, z], [x, tw.h, z], 3.2, BRIDGE_STEEL);
+    for (const y of [-2.2, tw.h * 0.55, tw.h - 2]) beam(walls, [l0[0], y, l0[1]], [l1[0], y, l1[1]], 2.2, BRIDGE_STEEL);
+  }
 }
 
 // ---------------------------------------------------------------- street-level and façade detail
@@ -897,6 +979,8 @@ function drawPitch(f: CityPitch, at: Float32Array, ground: Builder, marks: Build
 export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, lite: boolean, cuts: Cut[] = []): TileArrays {
   const frame = makeFrame(origin);
   const pal = PALETTES[style];
+  // Mosques in Turkey are Ottoman: lead domes and pencil minarets (the rest of the region: tiled onions).
+  const ottoman = countryAt(origin.lat, origin.lng) === "TR";
   const realStyle = style === "real";
   const ground = new Builder(), water = new Builder(), roads = new Builder(), marks = new Builder(), walls = new Builder(), glass = new Builder(), roofs = new Builder(), trim = new Builder(), kerbs = new Builder(), decals = new Builder();
   const footprints: Footprint[] = [];
@@ -971,7 +1055,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
     let shape: RoofShape = mosque ? "dome" : b.rf ?? (b.k === "house" && area < 450 ? (n === 4 ? "gabled" : n <= 10 ? "hipped" : "flat") : b.k === "church" && n === 4 ? "gabled" : "flat");
     if (((shape === "gabled" || shape === "skillion") && n !== 4) || ((shape === "hipped" || shape === "pyramidal") && n > 12)) shape = n <= 12 && shape !== "skillion" ? "hipped" : "flat";
     const flatRoof = pick(pal.flatRoofs, seed >>> 3);
-    const roof = b.rc ? color(b.rc) : mosque ? pick(DOMES, seed >>> 5) : shape === "flat" ? flatRoof : pick(pal.roofs[b.k] ?? pal.roofs.house, seed >>> 3);
+    const roof = b.rc ? color(b.rc) : mosque ? pick(ottoman ? LEAD_DOMES : DOMES, seed >>> 5) : shape === "flat" ? flatRoof : pick(pal.roofs[b.k] ?? pal.roofs.house, seed >>> 3);
 
     // Walls, one quad per edge — split at the first floor where shops line the street, with
     // balconies on the street side of blocks of flats.
@@ -1113,7 +1197,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
       const base = roofs.pos.length / 3;
       for (const v of contour) roofs.vert(v.x, h, v.y, 0, 1, 0, mosque ? flatRoof : roof);
       for (const tri of tris) up(roofs, base + tri[0], base + tri[1], base + tri[2]);
-      if (mosque) drawMosque(roofs, walls, contour, pts, cx, cz, area, h, wall, roof);
+      if (mosque) drawMosque(roofs, walls, contour, pts, cx, cz, area, h, wall, roof, ottoman);
       else {
         const r = Math.min(Math.sqrt(area / Math.PI), 18);
         const rings = 5, segs = 14;
@@ -1559,6 +1643,9 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const d of dumpsters) obstacles.push(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
   if (iranKit) obstacles.push(...iranKit.obstacles, ...kitObstacles({ box, post }, iranKit));
+
+  // Bridges: parapets, deck edges and piers on every bridge road; towers and cables over the long ones.
+  drawBridges(tile, frame, unpacked, trim, walls, lite);
 
   const layers = [ground.layer("ground"), water.layer("water"), roads.layer("roads"), marks.layer("marks"), walls.layer("walls"), glass.layer("glass"), roofs.layer("roofs"), trim.layer("trim"), kerbs.layer("kerbs"), decals.layer("decals")].filter((l): l is Layer => !!l);
   cornerSigns(tile, unpacked, road, blocked, labels, obstacles, lite, region === "me" && realStyle);

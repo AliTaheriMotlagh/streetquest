@@ -146,6 +146,22 @@ export type LiveRoute = { line: [number, number][]; distanceM: number; durationS
  * service, or it's failing). The route's own speeds feed the traffic map too.
  */
 export async function liveRoute(from: LatLng, to: LatLng): Promise<LiveRoute | null> {
+  // The same trip asked again within minutes (a player re-planning, play-from-home walks, the
+  // traffic panel) is answered from memory: a keyed, metered API. ~100 m and 5 min.
+  const k = `${from.lat.toFixed(3)},${from.lng.toFixed(3)}>${to.lat.toFixed(3)},${to.lng.toFixed(3)}`;
+  const hit = routeMemo.get(k);
+  if (hit && Date.now() - hit.at < ROUTE_MEMO_MS) return hit.route;
+  const route = await fetchRoute(from, to);
+  if (route) {
+    if (routeMemo.size > 500) routeMemo.delete(routeMemo.keys().next().value!);
+    routeMemo.set(k, { at: Date.now(), route });
+  }
+  return route;
+}
+const ROUTE_MEMO_MS = 5 * 60_000;
+const routeMemo = new Map<string, { at: number; route: LiveRoute }>();
+
+async function fetchRoute(from: LatLng, to: LatLng): Promise<LiveRoute | null> {
   const key = process.env.NESHAN_API_KEY;
   if (!key || Date.now() < neshanOffUntil) return null;
   const url = `${NESHAN}/v4/direction?type=car&origin=${from.lat.toFixed(6)},${from.lng.toFixed(6)}&destination=${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;

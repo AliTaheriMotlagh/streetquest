@@ -7,11 +7,11 @@
 //   t("Go to {name} to buy tickets", { name })
 //   t("{n, plural, one {# ticket} other {# tickets}} bought", { n })
 //
-// Numbers passed as variables are formatted for the locale (Persian digits in fa).
+// Numbers passed as variables are formatted for the locale (Persian digits in fa, 12.345,6 in tr).
 // Data tables (item names, unit names…) keep their English text and are wrapped with
 // msg() so the checker finds them; they are translated where they're shown: t(item.name).
 
-export const LOCALES = ["en", "fa"] as const;
+export const LOCALES = ["en", "fa", "tr"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 /** The player's language choice (1 year). Read by pages, API routes and the middleware. */
@@ -22,13 +22,14 @@ export const LOCALE_HEADER = "x-sq-locale";
 export const LOCALE_META: Record<Locale, { name: string; dir: "ltr" | "rtl"; intl: string; og: string }> = {
   en: { name: "English", dir: "ltr", intl: "en-US", og: "en_US" },
   fa: { name: "فارسی", dir: "rtl", intl: "fa-IR", og: "fa_IR" },
+  tr: { name: "Türkçe", dir: "ltr", intl: "tr-TR", og: "tr_TR" },
 };
 
 export const isLocale = (v: unknown): v is Locale => typeof v === "string" && (LOCALES as readonly string[]).includes(v);
 export const dirOf = (l: Locale) => LOCALE_META[l].dir;
 
 /** Best match from an Accept-Language header ("fa-IR,fa;q=0.9,en;q=0.8"). */
-export function pickLocale(acceptLanguage: string | null | undefined): Locale {
+export function pickLocale(acceptLanguage: string | null | undefined, country?: string | null): Locale {
   if (!acceptLanguage) return DEFAULT_LOCALE;
   const wanted = acceptLanguage
     .split(",")
@@ -39,13 +40,15 @@ export function pickLocale(acceptLanguage: string | null | undefined): Locale {
     })
     .filter((x) => x.lang && x.q > 0)
     .sort((a, b) => b.q - a.q);
+  // Someone in Turkey whose browser lists Turkish anywhere gets Turkish, even if English is listed first (many phones ship that way).
+  if (country?.toUpperCase() === "TR" && wanted.some((w) => w.lang === "tr")) return "tr";
   for (const w of wanted) if (isLocale(w.lang)) return w.lang;
   return DEFAULT_LOCALE;
 }
 
 /** Cookie value wins; otherwise the browser's preferred languages. */
-export const resolveLocale = (cookie: string | null | undefined, acceptLanguage?: string | null): Locale =>
-  isLocale(cookie) ? cookie : pickLocale(acceptLanguage);
+export const resolveLocale = (cookie: string | null | undefined, acceptLanguage?: string | null, country?: string | null): Locale =>
+  isLocale(cookie) ? cookie : pickLocale(acceptLanguage, country);
 
 // ---------------------------------------------------------------- catalogs & current locale
 export type Messages = Record<string, string>;
@@ -218,7 +221,7 @@ export const msg = <T extends string>(s: T): T => s;
 
 // ---------------------------------------------------------------- dates
 const dateFmt = new Map<string, Intl.DateTimeFormat>();
-/** Dates in the locale's calendar (Solar Hijri for Persian). */
+/** Dates in the locale's calendar (Solar Hijri for Persian, Gregorian for English and Turkish). */
 export function fmtDate(d: Date | string | number, opts: Intl.DateTimeFormatOptions, locale: Locale = getLocale()) {
   const key = `${locale}|${JSON.stringify(opts)}`;
   let f = dateFmt.get(key);

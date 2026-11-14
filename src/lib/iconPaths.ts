@@ -38,6 +38,8 @@ export const ICON_PATHS = {
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0",
   sliders: "M4 7h9m4 0h3M4 17h3m4 0h9M15 4v6m-6 4v6",
   bolt: "M13 3 5 13.5h6L10 21l8-10.5h-6L13 3Z",
+  // A metro train from the front: body, windows, lights, the two rails.
+  train: "M7 3h10a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2Zm-2 7h14M8.5 14h.01m7 0h.01M8 17l-2 4m10-4 2 4",
   plane: "M21 15.5 13.5 11V5.5a1.5 1.5 0 0 0-3 0V11L3 15.5V18l7.5-2v3L8.5 20.5V22l3.5-1 3.5 1v-1.5L13.5 19v-3l7.5 2v-2.5Z",
   bike: "M6 18a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 15l4-7h5l3 7M9 8H7m5.5 7-2-3.5",
   lock: "M6 11h12v9H6v-9Zm3 0V8a3 3 0 0 1 6 0v3",

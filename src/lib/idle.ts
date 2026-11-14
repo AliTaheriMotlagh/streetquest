@@ -196,8 +196,9 @@ export const dividendCoins = (rank: number) => 25 + 15 * rank;
 // ---------------------------------------------------------------- numbers
 const SUFFIX_EN = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
 const SUFFIX_FA = ["", "هزار", "میلیون", "میلیارد", "تریلیون", "کوادریلیون", "کوینتیلیون", "سکستیلیون", "سپتیلیون", "اکتیلیون", "نونیلیون", "دسیلیون"];
-/** 1.23M / ۱٫۲۳ میلیون — idle-game numbers. */
-export function bigNum(n: number, fa = false, fmt: (x: number, o?: Intl.NumberFormatOptions) => string = (x, o) => x.toLocaleString("en-US", o)) {
+const SUFFIX_TR = ["", "bin", "milyon", "milyar", "trilyon", "katrilyon", "kentilyon", "sekstilyon", "septilyon", "oktilyon", "nonilyon", "desilyon"];
+/** 1.23M / ۱٫۲۳ میلیون / 1,23 milyon — idle-game numbers (`lang` picks the suffix words; digits come from `fmt`). */
+export function bigNum(n: number, fa: boolean | "tr" = false, fmt: (x: number, o?: Intl.NumberFormatOptions) => string = (x, o) => x.toLocaleString("en-US", o)) {
   if (!Number.isFinite(n)) return "∞";
   const neg = n < 0;
   n = Math.abs(n);
@@ -207,5 +208,5 @@ export function bigNum(n: number, fa = false, fmt: (x: number, o?: Intl.NumberFo
   if (v >= 999.995 && i < SUFFIX_EN.length - 1) (v /= 1000), i++;
   const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
   const body = fmt(Math.floor(v * 10 ** digits) / 10 ** digits, { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${neg ? "-" : ""}${body}${fa ? ` ${SUFFIX_FA[i]}` : SUFFIX_EN[i]}`;
+  return `${neg ? "-" : ""}${body}${fa === "tr" ? ` ${SUFFIX_TR[i]}`.trimEnd() : fa ? ` ${SUFFIX_FA[i]}` : SUFFIX_EN[i]}`;
 }

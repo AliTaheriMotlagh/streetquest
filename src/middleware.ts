@@ -1,6 +1,6 @@
 // Marketing attribution: remember ?ref= and UTM params for 30 days so they can be
 // credited when the visitor's guest account is created. There is no login gate.
-// Language: ?lang=fa|en picks the language for this page and remembers it (links
+// Language: ?lang=fa|en|tr picks the language for this page and remembers it (links
 // shared in Persian open in Persian; search engines index both versions).
 import { NextResponse, type NextRequest } from "next/server";
 import { isLocale, LOCALE_COOKIE, LOCALE_HEADER } from "@/lib/i18n";

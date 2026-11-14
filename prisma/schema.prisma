@@ -90,6 +90,7 @@ model User {
   locSim    Boolean @default(false)
   moneyTier Int     @default(0)
 
+  apiKeys         ApiKey[]
   inventory       InventoryItem[]
   claims          Claim[]
   runs            MissionRun[]
@@ -1666,4 +1667,22 @@ model PlaceDislike {
   @@index([lat, lng])
   @@index([placeKey])
   @@index([userId, createdAt])
+}
+
+// A key for the public read-only data API (/api/v1, server/apiKeys.ts). Only the SHA-256 of the
+// key is kept (the key itself is shown once, when made); `prefix` is the readable start of it.
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String // who made it (a player, or an admin)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  prefix     String
+  hash       String    @unique
+  perMinute  Int       @default(60) // its rate limit; admins can raise it
+  uses       Int       @default(0)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }

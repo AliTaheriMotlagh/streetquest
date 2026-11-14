@@ -27,6 +27,11 @@ import { Button } from "@/components/Button";
 import { Art } from "@/components/art/Art";
 import { api, type Selected, type World, type WorldPlayer } from "../game/client";
 import { PARTY_JOINED, takePartyJoined } from "../game/Asks";
+import { setAvatarStyle } from "../arena/avatar";
+import { LiveBuses } from "./liveBuses";
+import { Shopkeepers } from "./shopkeepers";
+import { setVoiceCountry } from "./voices";
+import { countryAt } from "@/lib/region";
 import { useGame } from "../game/ui";
 import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { setEars } from "../game/spatial";
@@ -410,6 +415,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- renderer & scene
     // graphics/engine.ts: the quality tier, dynamic resolution, the HDR pipeline (high/ultra).
     const gfx = new GraphicsEngine(el, { lite, direct: style === "toon" });
+    setAvatarStyle(style); // soldiers, police and players drawn in the city's look
     const renderer = gfx.renderer;
     let prof = gfx.profile;
     let shadows = prof.shadows;
@@ -761,6 +767,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let navGoal: LatLng | null = live.current.goal;
     let wpNav: { x: number; z: number; label: string } | null = null;
     const others = new Others(scene, frame, style, lite);
+    // Istanbul's real buses where they are now (IETT; nothing elsewhere).
+    const liveBuses = new LiveBuses(scene, frame, style, lite);
+    liveBuses.start(() => frame.toLatLng(st.x, st.z));
     // Live traffic: street speeds for the minimap and the cars on the streets.
     const feed = new TrafficFeed();
     // Clear-coated paint on every car in traffic only on ultra (instanced, but many pixels).
@@ -869,8 +878,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const markers = new Markers(scene, frame, lite ? 16 : 32, style, placeSign);
     // Cinemas' billboards (what's on, from cinematicket.org): the list is read again after 3 km.
     const cinemaBoards = new CinemaBoards(scene, frame, placeSign);
+    // Trailers on the nearest board: not on the lite tier (a decoder and a texture upload a frame).
+    cinemaBoards.videos = !lite;
     // Every store: one lit sign each (an atlas), dressed fronts, and the panel by the one you pass (storefronts.ts).
     const storefronts = new Storefronts(scene, lite ? "lite" : prof.tier, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    // A shopkeeper at the door of each open shop near you (their calls come from the same spot).
+    const shopkeepers = new Shopkeepers(scene, storefronts, lite);
     storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
     storefronts.at = start;
     // The parachute (chute3d.ts): jumping from the helicopter high up. The helicopter flies itself
@@ -883,6 +896,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (cinemasAt && Math.hypot(st.x - cinemasAt.x, st.z - cinemasAt.z) < 3000) return;
       cinemasAt = { x: st.x, z: st.z };
       const at = frame.toLatLng(st.x, st.z);
+      // Which language the street speaks here (Turkish in Turkey).
+      setVoiceCountry(countryAt(at.lat, at.lng));
       void api<{ cinemas: Cinema[] }>(`/api/cinema?near=1&lat=${at.lat.toFixed(3)}&lng=${at.lng.toFixed(3)}`)
         .then((r) => cinemaBoards.set(r.cinemas))
         .catch(() => (cinemasAt = null));
@@ -2097,8 +2112,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const g of gates) g.tick(time);
       for (const cn of coins) cn.tick(time);
       others.tick(rdt, serverNow, st.x, st.z);
+      liveBuses.tick(st.x, st.z);
       feed.update(frame.toLatLng(st.x, st.z));
-      traffic.enabled = crowd.enabled = !matchOn;
+      traffic.enabled = crowd.enabled = shopkeepers.enabled = !matchOn;
       // The streets traffic and people use, re-read when tiles came or went: not while a batch of
       // tiles is still arriving (every one would set it off again — the parked rows are the
       // costly part), and never both on the same frame.
@@ -2118,6 +2134,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const flat = Math.hypot(camFwd.x, camFwd.z);
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
       crowd.tick(dt, st.x, st.z);
+      shopkeepers.tick(dt, st.x, st.z);
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
       // Shopkeepers: walking or cruising past an open store, its keeper calls you in (once in two minutes per store).
       if (!matchOn && now - lastShopCall > 1500 && !(D.flies && st.alt > 0.5) && Math.hypot(st.vx, st.vz) < 14) {
@@ -2375,7 +2392,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           for (const o of [...others.positions(), ...combat.dots()]) {
             g.strokeStyle = "#111";
             g.lineWidth = 1.5;
-            dot(o.x, o.z, o.color, 4.5);
+            const len = Math.hypot(o.x - st.x, o.z - st.z) * scale;
+            // Teammates and friends past the minimap's edge sit on its rim, pointing the way.
+            if ("mate" in o && o.mate && len > R - 8) {
+              const ang = Math.atan2(o.z - st.z, o.x - st.x);
+              g.fillStyle = o.color;
+              g.beginPath();
+              g.arc(Math.cos(ang) * (R - 8), Math.sin(ang) * (R - 8), 4.5, 0, Math.PI * 2);
+              g.fill();
+            } else dot(o.x, o.z, o.color, 4.5);
             g.stroke();
           }
           // The party's meeting point: on the rim when it's further than the minimap reaches.
@@ -2467,6 +2492,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       traffic.dispose();
       nightLights.dispose();
       crowd.dispose();
+      shopkeepers.dispose();
       skyline.dispose();
       pool.dispose();
       vtPool.dispose();
@@ -2499,6 +2525,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const g of gates) g.dispose();
       for (const cn of coins) cn.dispose();
       others.dispose();
+      liveBuses.dispose();
       landmarks.dispose();
       markers.dispose();
       cinemaBoards.dispose();

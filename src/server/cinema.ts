@@ -7,6 +7,10 @@
 // It answers from abroad (Vercel's US servers), so it needs no relay in Iran.
 import { distanceM, type LatLng } from "../lib/geo";
 import { filmsFrom, parseCinema, sessionWindow, type Cinema, type CinemaShows } from "../lib/cinema";
+import { osmCinemaQuery, parseOsmCinema, trailerOf, type Trailer } from "../lib/cinemaTr";
+import { sourceAt } from "../lib/region";
+import { overpass } from "./city";
+import { cityAt } from "../lib/transit/network";
 import { cached, getJson } from "./localData";
 import { siteBase } from "../lib/relayUrl";
 
@@ -38,9 +42,24 @@ export async function allCinemas(): Promise<Cinema[]> {
   return list ?? [];
 }
 
-/** The cinemas within `radiusM` of a point, nearest first (at most `max`). */
+/** Istanbul's cinemas, read from the open map's extract at build time (scripts/transit-osm.ts): no Overpass needed. */
+const ISTANBUL = () => import("@/data/transit/istanbul-cinemas.json").then((m) => m.default as unknown as Cinema[]);
+
+/** Turkey: the open map's cinemas round a point — Istanbul's shipped list, elsewhere Overpass (cached a week per 0.1° cell; OVERPASS_URL "off" disables it). */
+async function osmCinemas(here: LatLng): Promise<Cinema[]> {
+  if (cityAt(here) === "istanbul") return ISTANBUL();
+  const lat = Math.round(here.lat * 10) / 10, lng = Math.round(here.lng * 10) / 10;
+  const list = await cached<Cinema[]>(`osmcin:${lat}:${lng}`, 7 * DAY_MS, async () => {
+    const r = await overpass(osmCinemaQuery(lat, lng, 25_000));
+    return r ? r.elements.map(parseOsmCinema).filter((c): c is Cinema => !!c) : null;
+  });
+  return list ?? [];
+}
+
+/** The cinemas within `radiusM` of a point, nearest first (at most `max`): Cinematicket's in Iran, the open map's in Turkey, none elsewhere. */
 export async function cinemasNear(here: LatLng, radiusM = 20_000, max = 40): Promise<Cinema[]> {
-  return (await allCinemas())
+  const pool = sourceAt("cinematicket", here) ? await allCinemas() : sourceAt("sinema", here) ? await osmCinemas(here) : [];
+  return pool
     .map((c) => ({ c, d: distanceM(here, c) }))
     .filter((x) => x.d <= radiusM)
     .sort((a, b) => a.d - b.d)
@@ -59,4 +78,15 @@ export async function cinemaShows(id: number): Promise<CinemaShows> {
     return r?.results ?? null;
   });
   return { cinema, films: filmsFrom(raw ?? []), fetchedAt: new Date().toISOString() };
+}
+
+/** A film's trailer (its MP4 and Aparat's page; the signed file link is cached an hour). */
+export async function filmTrailer(id: number): Promise<Trailer> {
+  const b = base();
+  if (!b) return { url: null, page: null };
+  const t = await cached<Trailer>(`ct:t:${id}`, 60 * 60_000, async () => {
+    const r = await getJson<unknown>(`${b}/cinematicket/home/movies/${id}/`);
+    return r ? trailerOf(r) : null;
+  });
+  return t ?? { url: null, page: null };
 }

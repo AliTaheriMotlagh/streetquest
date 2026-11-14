@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { distanceM } from "@/lib/geo";
-import { pointAlong, restOf, stepWalk, walkOf } from "@/lib/homeWalk";
+import { homeSpeedKmh, pointAlong, restOf, stepWalk, walkOf } from "@/lib/homeWalk";
 
 const A = { lat: 35.7, lng: 51.4 };
 const B = { lat: 35.701, lng: 51.4 }; // ~111 m north
@@ -41,5 +41,14 @@ describe("play from home: walking a path", () => {
     assert.equal(r.length, 3);
     assert.ok(Math.abs(distanceM(A, r[0]) - 30) < 0.5);
     assert.deepEqual(r[2], C);
+  });
+});
+
+describe("play from home: speed by distance", () => {
+  it("walks short hops, speeds up for long trips, respects the cap", () => {
+    assert.equal(homeSpeedKmh(100, 40), 6);
+    assert.equal(homeSpeedKmh(500, 40), 30);
+    assert.equal(homeSpeedKmh(5000, 40), 40);
+    assert.equal(homeSpeedKmh(100, 4), 4);
   });
 });

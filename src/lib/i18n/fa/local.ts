@@ -265,6 +265,14 @@ const local: Record<string, string> = {
   Declined: "رد شد",
   Removed: "حذف شد",
   "Tap Join on the invite — or enter code {code} in Play together.": "روی «پیوستن» در دعوت بزنید — یا کد {code} را در «بازی با هم» وارد کنید.",
+  // Cinemas in Turkey (open map) and films' trailers (game/Trailer.tsx)
+  "What's on — the cinema's page": "چی پخش می‌شه — صفحه‌ی خود سینما",
+  "Sessions and tickets are on the cinema's own page. From OpenStreetMap.": "سانس‌ها و بلیت روی صفحه‌ی خود سینماست. از OpenStreetMap.",
+  "Trailer: {film}": "تیزر: {film}",
+  "Loading the trailer…": "در حال آوردن تیزر…",
+  "Watch the trailer on Aparat": "تیزر رو توی آپارات ببین",
+  "No trailer for this film": "این فیلم تیزر نداره",
+  "Trailer": "تیزر",
 };
 
 export default local;

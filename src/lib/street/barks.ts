@@ -6,6 +6,7 @@
 // from the speaker with a speech bubble over their head (drive/voices.ts). The English is
 // the subtitle for players not playing in Persian.
 import type { StoreKind } from "../storeKinds";
+import { BARKS_TR } from "./barksTr";
 
 export type Situation =
   | "flee" | "nearMiss" | "crashDriver" | "honk" | "carjack" | "greet" | "hurt" | "copStop" | "copHands" | "copDown" | "copBusted"
@@ -19,10 +20,13 @@ export type VoiceKind = "m" | "f" | "cop";
  * A line: what a man says (`fa`, `en`) and, where women put it their own way, what a woman
  * says (`faF`, `enF`) — said by the same person in the same moment, just not in the same words.
  */
-export type Bark = { id: string; s: Situation; voices: VoiceKind[]; fa: string; en: string; faF?: string; enF?: string };
+export type Bark = { id: string; s: Situation; voices: VoiceKind[]; fa: string; en: string; faF?: string; enF?: string; /** Turkish (barksTr.ts); the English where there is none yet. */ tr?: string; trF?: string };
 
 /** What this voice says for the line (a woman's own words where there are some). */
-export const textOf = (b: Bark, v: VoiceKind) => (v === "f" && b.faF ? { fa: b.faF, en: b.enF ?? b.en } : { fa: b.fa, en: b.en });
+export const textOf = (b: Bark, v: VoiceKind) => {
+  const f = v === "f" && b.faF;
+  return { fa: f ? b.faF! : b.fa, en: f ? b.enF ?? b.en : b.en, tr: (v === "f" ? b.trF : undefined) ?? b.tr ?? (f ? b.enF ?? b.en : b.en) };
+};
 
 const MF: VoiceKind[] = ["m", "f"], COP: VoiceKind[] = ["cop"];
 /** [situation, voices, a man's words, English, a woman's words, English]. */
@@ -127,7 +131,10 @@ const lines: [Situation, VoiceKind[], string, string, string?, string?][] = [
 /** Every line, with a stable id (situation and number: the recording's file name). */
 export const BARKS: Bark[] = (() => {
   const n: Partial<Record<Situation, number>> = {};
-  return lines.map(([s, voices, fa, en, faF, enF]) => ({ id: `${s}-${(n[s] = (n[s] ?? 0) + 1)}`, s, voices, fa, en, ...(faF ? { faF, enF } : {}) }));
+  return lines.map(([s, voices, fa, en, faF, enF]) => {
+    const id = `${s}-${(n[s] = (n[s] ?? 0) + 1)}`, tr = BARKS_TR[id];
+    return { id, s, voices, fa, en, ...(faF ? { faF, enF } : {}), ...(tr ? (typeof tr === "string" ? { tr } : { tr: tr[0], trF: tr[1] }) : {}) };
+  });
 })();
 
 /** A short hash of what a line says (FNV-1a): the spoken copy's address changes when the words do. */

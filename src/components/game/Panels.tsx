@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ASKS_CHANGED } from "@/lib/asks";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
@@ -785,7 +786,9 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
     load();
     api<{ events: WorldEvent[] }>("/api/events").then((r) => setEvents(r.events.filter((e) => e.joined))).catch(() => {});
     const t = setInterval(load, 15_000); // refresh online dots
-    return () => clearInterval(t);
+    // Accepted on a card: the list shows the new friend at once.
+    window.addEventListener(ASKS_CHANGED, load);
+    return () => (clearInterval(t), window.removeEventListener(ASKS_CHANGED, load));
   }, [load]);
   useEffect(() => {
     if (chat) setTab("chat");
@@ -794,7 +797,8 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
     if (tab === "ranks") api<NonNullable<typeof board>>(`/api/leaderboard?scope=${scope}&by=${by}`).then(setBoard).catch(() => {});
   }, [tab, scope, by]);
 
-  const fr = async (body: object) => (await act(() => api("/api/friends", { body }))) && load();
+  // Answered here: the cards over the map (Asks.tsx) drop it too.
+  const fr = async (body: object) => (await act(() => api("/api/friends", { body }))) && (load(), window.dispatchEvent(new Event(ASKS_CHANGED)));
   const dm = (f: Friend) => setChat({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` });
 
   const rooms: { room: string; label: string }[] = [

@@ -35,7 +35,7 @@ describe("one-country sources", () => {
       assert.equal(sourceAt(s, istanbul), false, s);
       assert.equal(sourceAt(s, berlin), false, s);
     }
-    for (const s of ["yemeksepeti", "getir"] as const) {
+    for (const s of ["yemeksepeti", "getir", "iett"] as const) {
       assert.equal(sourceAt(s, istanbul), true, s);
       assert.equal(sourceAt(s, tehran), false, s);
     }

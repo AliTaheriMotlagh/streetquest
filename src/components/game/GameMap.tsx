@@ -3,13 +3,15 @@ import L from "leaflet";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { PLACE_CATS } from "@/lib/places";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { distanceM } from "@/lib/geo";
 import { EXPLORE_ZOOM } from "@/lib/explore";
 import { CONGESTION_COLORS, congestion, type TrafficCellOut } from "@/lib/traffic";
 import { VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import type { Cinema } from "@/lib/cinema";
+import type { LiveBus } from "@/lib/transit/iett";
+import type { BusStop, City, Station } from "@/lib/transit/network";
 import type { LiveRoute } from "@/server/traffic";
 import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
 import { esc, icon } from "./mapIcons";
@@ -76,6 +78,8 @@ type Props = {
   torob?: TorobPlace[];
   /** Cinemas (cinematicket.org): a few per district, each always on the map with its name. */
   cinemas?: Cinema[];
+  /** Public transport (game/transit.ts): metro stations (always shown, like cinemas), bus stops and live buses. */
+  transit?: TransitPins;
   /** Stores with a deal or cashback on Takhfifan (a badge with the % off). */
   deals?: Deal[];
   /** Directory stores (Bilbooard, Irangaah, Okala, Netbarg) and Sheypoor's ads by neighbourhood. */
@@ -115,7 +119,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, dir, ads, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, transit, deals, dir, ads, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -174,7 +178,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
         {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
         {vasatyab && <VasatyabLayer view={vasatyab} />}
-        <Layers world={world} me={me} game={game} travelTo={travelTo} travelPath={onStreets ? travelPath : null} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} deals={deals} dir={dir} ads={ads} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
+        <Layers world={world} me={me} game={game} travelTo={travelTo} travelPath={onStreets ? travelPath : null} vendors={vendors} spots={spots} divar={divar} torob={torob} cinemas={cinemas} transit={transit} deals={deals} dir={dir} ads={ads} others={others} onSelect={onSelect} onUnfollow={onUnfollow} lite={tuning.lite} />
       </MapContainer>
       {look.fx && (
         <div className="fantasy-fx" aria-hidden>
@@ -361,7 +365,9 @@ const VENDOR_TYPE: Record<VendorKind, StoreType> = { food: "food", cafe: "cafe",
 const AREA_COLOR = { divar: "#c0392b", sheypoor: "#7a3cff" };
 
 /** Every place-like thing as a pin: Snappfood vendors, real places, Torob walk-ins, directory stores, cinemas, deals. Colour = what kind of place. */
-function placeItems({ vendors, spots, torob, dir, cinemas, deals }: Pick<Props, "vendors" | "spots" | "torob" | "dir" | "cinemas" | "deals">): { cinemas: Item[]; places: Item[] } {
+export type TransitPins = { city: City; stations: { s: Station; colour: string }[]; stops: BusStop[]; buses: LiveBus[] };
+
+function placeItems({ vendors, spots, torob, dir, cinemas, deals, transit }: Pick<Props, "vendors" | "spots" | "torob" | "dir" | "cinemas" | "deals" | "transit">): { cinemas: Item[]; places: Item[] } {
   const places: Item[] = [];
   for (const v of vendors ?? []) {
     const k = VENDOR_KINDS[v.kind];
@@ -381,11 +387,17 @@ function placeItems({ vendors, spots, torob, dir, cinemas, deals }: Pick<Props, 
     const c = PLACE_CATS[p.cat] ?? PLACE_CATS.shop;
     places.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, z: 200, dot: true, sel: { type: "spot", data: p }, spec: { family: "place", face: c.emoji, color: c.color, label: p.name } });
   }
+  if (transit) {
+    for (const b of transit.stops) places.push({ id: `bs${b.id}`, lat: b.lat, lng: b.lng, z: 150, dot: true, sel: { type: "busstop", data: { city: transit.city, stop: b } }, spec: { family: "place", face: "🚏", color: "#2d8cff", label: b.name } });
+    for (const b of transit.buses) places.push({ id: `lb${b.id}`, lat: b.lat, lng: b.lng, z: 235, dot: true, sel: { type: "bus", data: b }, spec: { family: "place", face: "🚌", color: "#e2231a", label: b.line ?? "" } });
+  }
   const cin = (cinemas ?? []).map<Item>((c) => ({ id: `ct${c.id}`, lat: c.lat, lng: c.lng, z: 300, dot: false, sel: { type: "cinema", data: c }, spec: { family: "place", face: "🎬", color: "#f5c518", label: c.name, badge: c.rate >= 4.5 ? { text: "⭐", kind: "star" } : undefined } }));
   // Places wear a white line glyph on a solid disc (one icon language with the HUD and the 3D city);
   // a face no glyph fits (a rare Torob category) stays drawn art.
   for (const it of places) it.spec.glyph = glyphFor(it.spec.face) ?? undefined;
   for (const it of cin) it.spec.glyph = "film";
+  // Metro stations stay on the map at city zoom too (with the cinemas): the city's landmarks.
+  for (const { s, colour } of transit?.stations ?? []) cin.push({ id: `ms${s.id}`, lat: s.lat, lng: s.lng, z: 310, dot: false, sel: { type: "station", data: { city: transit!.city, station: s } }, spec: { family: "place", face: "🚇", color: colour, label: getLocale() === "fa" ? s.name : s.en || s.name } });
   return { cinemas: cin, places };
 }
 
@@ -397,7 +409,7 @@ function placeItems({ vendors, spots, torob, dir, cinemas, deals }: Pick<Props, 
  * and a name shows only where it has room (declutter.ts). At city zoom only the game, cinemas and
  * bubbles show — the map stays readable over a whole city.
  */
-function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, deals, dir, ads, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "travelPath" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "deals" | "dir" | "ads" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
+function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, transit, deals, dir, ads, others, onSelect, onUnfollow, lite }: Pick<Props, "world" | "me" | "game" | "travelTo" | "travelPath" | "vendors" | "spots" | "divar" | "torob" | "cinemas" | "transit" | "deals" | "dir" | "ads" | "others" | "onSelect" | "onUnfollow"> & { lite: boolean }) {
   const players = others ?? world?.players;
   const map = useMap();
   const view = useMapView();
@@ -424,7 +436,7 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
   );
 
   // ---- what there is (rebuilt only when the data changes, not on every pan)
-  const all = useMemo(() => placeItems({ vendors, spots, torob, dir, cinemas, deals }), [vendors, spots, torob, dir, cinemas, deals]);
+  const all = useMemo(() => placeItems({ vendors, spots, torob, dir, cinemas, deals, transit }), [vendors, spots, torob, dir, cinemas, deals, transit]);
   const areaList = useMemo<Item[]>(
     () => [
       ...(divar ?? []).map<Item>((a) => ({ id: `dv${a.city}-${a.id}`, lat: a.lat, lng: a.lng, z: 180, dot: false, sel: { type: "divar", data: a }, spec: { family: "area", face: "📢", glyph: "megaphone", color: AREA_COLOR.divar, label: t("Divar · {area}", { area: a.name }), badge: { text: countText(a.posts.length, fmtNum), kind: "count" } } })),

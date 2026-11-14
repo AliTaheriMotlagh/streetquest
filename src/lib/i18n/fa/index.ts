@@ -18,6 +18,8 @@ import market from "./market";
 import help from "./help";
 import data from "./data";
 import server from "./server";
+import transit from "./transit";
+import developer from "./developer";
 import panels from "./panels";
 import play from "./play";
 import lottery from "./lottery";
@@ -65,6 +67,8 @@ const fa: Messages = {
   ...money,
   ...landmarks,
   ...local,
+  ...transit,
+  ...developer,
   ...directory,
   ...social,
   ...scenarios,

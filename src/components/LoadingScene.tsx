@@ -1,12 +1,13 @@
 "use client";
 // The one loading scene, wherever the game waits (the app starting, the 3D code downloading, the
 // city being drawn): a dusk sky over Tehran — the Alborz behind, Milad and Azadi towers on the
-// skyline — whose windows light up one by one as loading goes on, a car driving down a road that
+// skyline (over Istanbul for Turkish players: hills, a domed mosque with minarets, Galata Tower) — whose windows light up one by one as loading goes on, a car driving down a road that
 // scrolls under it, the title with a light sweeping across, the bar, what's happening and a tip.
 // `out`: the scene lifts away like a curtain (the city is ready). All SVG + CSS (app/loading.css),
 // nothing to download; still when the device asks for less motion.
 import type { ReactNode } from "react";
 import { fmtNum } from "@/lib/i18n";
+import { useLocale } from "./I18nProvider";
 
 /** A small deterministic random (the skyline is the same every time). */
 const rnd = (i: number) => {
@@ -27,6 +28,7 @@ const WINDOWS = BLOCKS.flatMap((b, bi) => {
 }).sort((a, b) => a.k - b.k);
 
 export function LoadingScene({ pct, title, sub, stage, tip, out, className, children }: { pct?: number | null; title: string; sub?: string; stage?: string; tip?: string; out?: boolean; className?: string; children?: ReactNode }) {
+  const istanbul = useLocale() === "tr";
   const known = typeof pct === "number";
   const lit = Math.round(WINDOWS.length * (known ? Math.max(0.06, pct! / 100) : 0.35));
   return (
@@ -36,20 +38,41 @@ export function LoadingScene({ pct, title, sub, stage, tip, out, className, chil
         <i className="ls-stars" />
       </div>
       <svg className="ls-city" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMax slice" aria-hidden>
+        {istanbul ? (
+          <>
+            {/* The hills above the Bosphorus. */}
+            <path className="ls-mtn" d="M0 190 Q120 140 260 175 T520 160 T800 170 T1060 150 T1200 170 V300 H0Z" />
+            <g className="ls-far">
+              {/* A domed mosque: the dome, half-domes and two pencil minarets. */}
+              <path d="M440 266 V205 Q440 160 500 160 Q560 160 560 205 V266Z M424 266 V190 l6 -22 l6 22 V266Z M564 266 V190 l6 -22 l6 22 V266Z M440 215 Q440 188 466 188 V215Z M560 215 Q560 188 534 188 V215Z" />
+              <rect x="498" y="140" width="4" height="22" />
+              {/* Galata Tower: the drum, the gallery, the cone. */}
+              <rect x="684" y="150" width="22" height="116" />
+              <rect x="679" y="146" width="32" height="8" />
+              <path d="M684 146 L695 104 L706 146Z" />
+              <circle cx="695" cy="100" r="3" className="ls-blink" />
+              {/* Low far blocks. */}
+              <path d="M0 266 V214 h60 V200 h50 V222 h70 V206 h60 V266Z M780 266 V208 h70 V194 h60 V216 h90 V202 h80 V266Z M1000 266 V212 h70 V198 h60 V218 h70 V266Z" />
+            </g>
+          </>
+        ) : (
+          <>
         {/* The Alborz, snow on the tops. */}
-        <path className="ls-mtn" d="M0 170 L90 120 L160 150 L260 80 L340 130 L430 95 L520 140 L610 70 L700 125 L790 100 L880 145 L980 85 L1080 135 L1200 105 L1200 300 L0 300Z" />
-        <path className="ls-snow" d="M245 90 L260 80 L276 92 L266 96Z M597 80 L610 70 L626 82 L614 86Z M966 95 L980 85 L995 97 L984 100Z" />
-        {/* Milad Tower: the shaft, the pod, the mast. */}
-        <g className="ls-far">
-          <rect x="688" y="96" width="10" height="170" />
-          <path d="M672 120 h42 l-6 22 h-30z" />
-          <rect x="691" y="40" width="4" height="58" />
-          <circle cx="693" cy="40" r="3" className="ls-blink" />
-          {/* Azadi Tower: the arch on its wide feet, the flared crown. */}
-          <path d="M470 266 L490 150 Q525 108 560 150 L580 266 L554 266 Q525 190 496 266Z M482 152 h86 l-7 -16 h-72z" />
-          {/* Low far blocks. */}
-          <path d="M0 266 V214 h60 V200 h50 V222 h70 V206 h60 V266Z M380 266 V208 h70 V194 h60 V216 h90 V202 h80 V266Z M940 266 V210 h80 V196 h70 V218 h110 V266Z" />
-        </g>
+          <path className="ls-mtn" d="M0 170 L90 120 L160 150 L260 80 L340 130 L430 95 L520 140 L610 70 L700 125 L790 100 L880 145 L980 85 L1080 135 L1200 105 L1200 300 L0 300Z" />
+          <path className="ls-snow" d="M245 90 L260 80 L276 92 L266 96Z M597 80 L610 70 L626 82 L614 86Z M966 95 L980 85 L995 97 L984 100Z" />
+          {/* Milad Tower: the shaft, the pod, the mast. */}
+          <g className="ls-far">
+            <rect x="688" y="96" width="10" height="170" />
+            <path d="M672 120 h42 l-6 22 h-30z" />
+            <rect x="691" y="40" width="4" height="58" />
+            <circle cx="693" cy="40" r="3" className="ls-blink" />
+            {/* Azadi Tower: the arch on its wide feet, the flared crown. */}
+            <path d="M470 266 L490 150 Q525 108 560 150 L580 266 L554 266 Q525 190 496 266Z M482 152 h86 l-7 -16 h-72z" />
+            {/* Low far blocks. */}
+            <path d="M0 266 V214 h60 V200 h50 V222 h70 V206 h60 V266Z M380 266 V208 h70 V194 h60 V216 h90 V202 h80 V266Z M940 266 V210 h80 V196 h70 V218 h110 V266Z" />
+          </g>
+          </>
+        )}
         {/* Near blocks of flats, their windows lighting up as it loads. */}
         <g className="ls-near">
           {BLOCKS.map((b, i) => (

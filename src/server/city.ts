@@ -29,7 +29,7 @@ let running = 0;
 const queue: (() => void)[] = [];
 const slot = () => (running < MAX_PARALLEL ? Promise.resolve() : new Promise<void>((r) => queue.push(r)));
 
-async function overpass(query: string): Promise<{ elements: unknown[] } | null> {
+export async function overpass(query: string): Promise<{ elements: unknown[] } | null> {
   const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
   for (const url of endpoints()) {
     const ctl = new AbortController();

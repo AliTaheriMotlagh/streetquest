@@ -21,6 +21,10 @@ import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
 
+/** The country the player is in (Drive sets it as they move): people in Turkey speak Turkish (voiceLangOf). */
+let voiceCountry: string | null = null;
+export const setVoiceCountry = (c: string | null) => void (voiceCountry = c);
+
 type Where = () => { x: number; y: number; z: number } | null;
 type Bubble = { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; tex: THREE.CanvasTexture; c: HTMLCanvasElement; where: Where | null; t: number };
 
@@ -105,8 +109,8 @@ export class Voices {
       this.bubbles.push({ sprite, mat, tex, c, where: null, t: 0 });
     }
     // The recordings of the player's language, in the background (they're small).
-    const en = voiceLangOf(getLocale()) === "en";
-    void files().then((s) => s.forEach((f) => f.startsWith("en/") === en && void load(f)));
+    const lang = voiceLangOf(getLocale(), voiceCountry);
+    void files().then((s) => s.forEach((f) => (lang === "fa" ? !/^(en|tr)\//.test(f) : f.startsWith(`${lang}/`)) && void load(f)));
   }
 
   /**
@@ -177,12 +181,12 @@ export class Voices {
     if (isMuted()) return;
     // The phone's own speech has no place in the mix: just its volume at that distance.
     const vol = gainAt(d, "voice");
-    const lang = voiceLangOf(getLocale());
+    const lang = voiceLangOf(getLocale(), voiceCountry);
     const buf = bufs.get(lineFile(b, v, lang));
     // A recording (already filtered for the police).
     if (buf) return this.play(buf, at, false);
-    // English has no speech service: the device's voice, else the bubble.
-    if (lang === "en") return this.device(b, v, vol, lang);
+    // Only Persian has the speech service: English and Turkish get the device's voice, else the bubble.
+    if (lang !== "fa") return this.device(b, v, vol, lang);
     // The server's spoken copy: now if it's here, else as soon as it arrives (if that's soon).
     const spoken = ttsLine(b, v);
     if (spoken instanceof AudioBuffer) return this.play(spoken, at, v === "cop");
@@ -217,7 +221,7 @@ export class Voices {
   /** The line in a bubble over the speaker's head. */
   private bubble(b: Bark, v: VoiceKind, where: Where, caption?: string) {
     const bub = this.bubbles.reduce((a, x) => (x.t < a.t ? x : a));
-    const fa = getLocale() === "fa", words = textOf(b, v), text = caption ?? (fa ? words.fa : words.en);
+    const loc = getLocale(), fa = loc === "fa", words = textOf(b, v), text = caption ?? (fa ? words.fa : loc === "tr" ? words.tr : words.en);
     const g = bub.c.getContext("2d")!;
     const W = bub.c.width, H = bub.c.height;
     g.clearRect(0, 0, W, H);

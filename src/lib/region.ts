@@ -52,7 +52,7 @@ const LANG: Record<Country, Lang> = { IR: "fa", AF: "fa", TR: "tr", IQ: "ar", AE
 export const SOURCE_COUNTRY = {
   snappfood: "IR", torob: "IR", divar: "IR", takhfifan: "IR", balad: "IR", cinematicket: "IR",
   sheypoor: "IR", basalam: "IR", okala: "IR", netbarg: "IR", bilbooard: "IR", irangaah: "IR",
-  yemeksepeti: "TR", getir: "TR",
+  yemeksepeti: "TR", getir: "TR", iett: "TR", sinema: "TR",
 } as const satisfies Record<string, Country>;
 export type CountrySource = keyof typeof SOURCE_COUNTRY;
 /** Whether a one-country source answers at a point. Before a position is known (0,0 or none) Iran is assumed, as wordsAt does. */

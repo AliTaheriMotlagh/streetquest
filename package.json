@@ -34,7 +34,8 @@
     "test:e2e:ui": "playwright test --project=mobile",
     "assets:people": "tsx scripts/people.ts",
     "assets:sounds": "tsx scripts/sounds.ts",
-    "assets:voices": "tsx scripts/voices.ts"
+    "assets:voices": "tsx scripts/voices.ts",
+    "transit:build": "tsx scripts/transit-osm.ts"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

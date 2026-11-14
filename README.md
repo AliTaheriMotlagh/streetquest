@@ -143,6 +143,66 @@ mood scales XP; loot funds research; territory funds the army.
   are asked only for points in Iran, Turkey's (Yemeksepeti, Getir) only in Turkey. The map's filter hides layers that
   can't have anything where you are (the delivery group reads «Menus from Yemeksepeti» in Turkey), and product search
   offers only the sites that answer there — in Istanbul that's Yemeksepeti's dishes, priced in lira.
+- **One way to answer a friend request or a party invite** (`lib/asks.ts`, `game/Asks.tsx`): it arrives as a card over
+  the map or the 3D city with Accept / Decline (Join / Not now). The cards follow what the server still has open
+  (`syncAsks`), so answering in the Crew panel or Play together clears the card too, and a new friend shows on the
+  map at once. Friends are on the map in every view (List · Map · Game); other players only in the game's.
+- **Metro & buses** (`lib/transit/*`, `game/TransitCard.tsx`, `server/transit.ts`, `/api/transit`): a map layer in
+  Tehran and Istanbul with every metro, tram and funicular station (always on the map, in the line's colour), the bus
+  stops round you and, in Istanbul, the buses live. A station's card lists its lines and the next trains each way; a
+  bus stop's card says when each line's next bus comes — live from IETT in Istanbul (the nearest bus of that line,
+  minutes estimated from its distance), else "about every N min". The **Metro** sheet (⋯ menu, or a station's
+  "Metro map" / "Trip to here") shows each line as a strip of stations with its interchanges, plans a trip from where
+  you are (walk, ride, change, walk — Dijkstra over station × line, waits of half a headway, 4 min to change), and has
+  a short guide (cards, women's carriages in Tehran, Marmaray…). Lines and stops come from OpenStreetMap's route
+  relations: `npm run transit:build -- tehran <iran.osm.pbf>` / `-- istanbul <turkey.osm.pbf>` (Geofabrik extracts)
+  writes `src/data/transit/*.json`; times are each line's `interval` / `opening_hours` in OSM, else the city's usual,
+  and labelled as estimates. In the 3D city, Istanbul's nearest real buses drive where the real ones are
+  (`drive/liveBuses.ts`, red IETT buses with their line number, ≤10, ≤4 on lite). `IETT_URL` in `.env.example`
+  (IBB answers from Turkey only: a relay there).
+- **Türkçe** (`lib/i18n/tr/*`, the same split as `fa/`): a third language everywhere, checked by `npm run i18n:check`
+  like Persian (`--missing tr` lists what a new string still needs). A browser in Turkey that lists Turkish gets it;
+  a saved choice always wins. Numbers the Turkish way (12.345,5; idle numbers in «milyon», «milyar»), fonts with
+  Turkish letters (latin-ext), flags beside each language and an Istanbul emblem (`components/art/Symbols.tsx`).
+  People in Turkey speak Turkish in the 3D city whatever the game's language (`lib/street/barksTr.ts`: the same lines,
+  Tehran's local ones swapped for Istanbul's — simit, Kadıköy, döner) through the phone's tr-TR voice until recorded
+  clips exist (no permissively licensed Turkish Piper voice: `npm run assets:voices -- --import=<dir> --lang=tr`).
+- **Istanbul looks like Istanbul**: mosques in Turkey are Ottoman — grey lead hemispheres and tall pencil minarets of
+  pale stone with long lead cones (`tileMesh.ts`, by the tile's country) — not Tehran's tiled onion domes.
+- **Cinemas in Turkey and trailers** (`lib/cinemaTr.ts`): Istanbul's cinemas are the open map's (built with the transit
+  data, `src/data/transit/istanbul-cinemas.json`; elsewhere in Turkey Overpass), each with a link to its own page for
+  sessions. A film with a trailer on Cinematicket gets ▶ Trailer on the cinema card (with sound), and the 3D billboard
+  nearest you (≤70 m) plays it muted where the sessions are, poster beside it (Aparat's MP4s allow it as a texture; ≤15
+  frames a second; not on the lite tier).
+- **A shopkeeper in every open shop** (`drive/shopkeepers.ts`, `storefronts.openNear`): one of the street's people
+  stands in the doorway facing the street, idling — closed shops, mosques, schools and hospitals have none (≤10 within
+  60 m, ≤4 on lite); their calls (already spoken from the door) are that person's voice.
+- **Public data API for other apps** (`/api/v1`, `server/apiV1.ts`, `lib/apiV1.ts`; docs at `/developers`, OpenAPI at
+  `/api/v1/openapi.json`): stores, a store's menu, deals, cinemas and sessions, Divar ads, product search, bus stops and
+  arrivals, Istanbul's live buses and each city's metro — read-only, answered from our cache (a source's normal paced
+  free fetch may fill a gap; never a paid lookup), each answer credits its sources and their licences, one-country
+  sources only in their country, never sellers or phone numbers. Keys are made and revoked on `/developers` (only their
+  SHA-256 is stored; 5 each, 60 requests a minute, admins can raise it); CORS for GET.
+- **Everything outside is cached**: every store site, cinema, IETT and the other maps go through `ExtCache` with a TTL
+  (one answer for everyone), and Neshan's live routes are remembered 5 minutes per ~100 m start/end.
+- **Bridges in the 3D city** (`tileMesh.ts` drawBridges; `vectorTile.ts` bridgeSpan): every bridge road (`brunnel=bridge`)
+  gets low concrete parapets, its deck's edge and a pier every 40 m (none on lite); a long one (≥ 450 m on its tile —
+  the Bosphorus bridges, Tehran's long overpasses) becomes a suspension span: two towers of two legs with cross beams
+  at about a fifth in from each end, main cables sagging between them down to anchors, hangers to the deck. The road
+  surface stays where it was, so driving is unchanged; a twin carriageway shares one structure. Tiles are version 3
+  (`TILE_V`): stored tiles refresh in the background.
+- **/dev/voices: every line, any voice** (`app/dev/voices/VoiceMaker.tsx`, `lib/voiceTools.ts`): all the game's lines in
+  Persian, English and Turkish, searchable. Per voice (men, women, police, per language) choose how it's made: Piper in
+  the browser, the game's speech server (Persian), any other TTS with an HTTP GET (`{text}`, `{lang}`, `{voice}` in its
+  address: a local Coqui, an OpenAI-compatible server…), or by hand — then generate, ▶ Try a voice before choosing,
+  🎙 record a line with the microphone (silence trimmed), ⤒ upload any audio for one line or many at once (named like
+  `greet-3-f.mp3`). Everything is saved as the 16-bit mono WAV `npm run assets:voices` reads.
+- **Players in a match find each other**: teammates (and friends in the open city) beyond the minimap's edge sit on
+  its rim, pointing the way.
+- **Soldiers drawn like the rest of the city, and cheaper** (`arena/avatar.ts`): in the cartoon look they use the
+  city's banded toon light instead of the model's own PBR materials; each soldier has a fixed sphere round the body,
+  so ones behind the camera are neither skinned nor drawn (culling used to be off), and only soldiers within 45 m
+  cast shadows. Shared by remote players, police and your own third-person soldier.
 - **One loading scene everywhere** (`components/LoadingScene.tsx`, `app/loading.css`): the app starting, the 3D
   code downloading and the city being drawn all show dusk over Tehran — the Alborz, Milad and Azadi towers — whose
   windows light up as it loads, a car on a scrolling road, the title with a light sweeping across, the bar, the

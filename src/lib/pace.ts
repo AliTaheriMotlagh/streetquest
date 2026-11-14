@@ -41,6 +41,8 @@ export const PACE_RULES: { site: string; host: RegExp; rule: PaceRule }[] = [
   { site: "irangaah", host: /irangaah\.ir/i, rule: PACE_DEFAULT },
   { site: "netbarg", host: /netbarg\.com/i, rule: PACE_DEFAULT },
   { site: "sheypoor", host: /sheypoor\.com/i, rule: PACE_DEFAULT },
+  // IETT's live bus feed (IBB open data): the whole fleet is one answer, cached 20 s; lines per stop card.
+  { site: "iett", host: /ibb\.gov\.tr/i, rule: { gapMs: 200, perMin: 30, coolOn: [429, 503], strikes: 2, coolMs: 5 * MIN } },
 ];
 /** A request that would have to wait longer than this isn't queued: the cache answers instead. */
 export const PACE_MAX_WAIT_MS = 6000;

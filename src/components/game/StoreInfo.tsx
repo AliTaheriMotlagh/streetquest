@@ -10,6 +10,7 @@
 // now), a short cover, the actions in one row, then tabs that stick to the top of the
 // sheet while scrolling (Menu / Reviews / Info, or Catalog / Info) with compact rows.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TrailerButton } from "./Trailer";
 import { menuSearch, storeKind, usuallyAt } from "@/lib/storeKinds";
 import { createPortal } from "react-dom";
 import { isYsCode } from "@/lib/yemeksepeti";
@@ -21,6 +22,8 @@ import {
 } from "@/lib/localData";
 import { cinemaUrl, showTime, tehranDay, type Cinema, type CinemaShows, type Film } from "@/lib/cinema";
 import { Button } from "@/components/Button";
+import { RegionChip } from "@/components/art/Symbols";
+import { countryAt } from "@/lib/region";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
@@ -201,6 +204,7 @@ export function InfoView({ at, store = null, week, hours, address, area, phones,
   const empty = !week && !hours && !address && !phones?.length && !store?.name;
   return (
     <div className="store-info">
+      {at && (at.lat || at.lng) && countryAt(at.lat, at.lng) === "TR" && <div className="info-row"><RegionChip country="TR" label={city || undefined} /></div>}
       {week ? (
         <section>
           <h4>🕒 {t("Hours")}</h4>
@@ -1128,6 +1132,8 @@ export function CinemaCard({ c, onClose }: { c: Cinema; onClose: () => void }) {
   const [tries, setTries] = useState(0);
   useEffect(() => {
     let live = true;
+    // The open map's cinemas (Turkey) have no sessions to ask for: their own page has them.
+    if (c.osm) return void setState({ data: { cinema: c, films: [], fetchedAt: new Date().toISOString() }, error: null });
     api<CinemaShows>(`/api/cinema?id=${c.id}`)
       .then((data) => live && setState({ data, error: null }))
       .catch((e) => live && setState({ data: null, error: (e as Error).message }));
@@ -1143,7 +1149,11 @@ export function CinemaCard({ c, onClose }: { c: Cinema; onClose: () => void }) {
       <StoreHead logo={c.photo} emoji="🎬" name={c.name} sub={sub} at={c} />
       {c.address && <p className="small muted store-about" dir="auto">📍 {c.address}</p>}
       <div className="store-actions">
-        <a className="btn small yellow ext-link" href={cinemaUrl(c.id)} target="_blank" rel="noopener noreferrer">🎟️ {t("Buy tickets on Cinematicket")}</a>
+        {c.osm ? (
+          c.site && <a className="btn small yellow ext-link" href={c.site} target="_blank" rel="noopener noreferrer">🎟️ {t("What's on — the cinema's page")}</a>
+        ) : (
+          <a className="btn small yellow ext-link" href={cinemaUrl(c.id)} target="_blank" rel="noopener noreferrer">🎟️ {t("Buy tickets on Cinematicket")}</a>
+        )}
         <GoButtons to={c} name={c.name} dist={dist} />
       </div>
       {state.error ? (
@@ -1151,6 +1161,8 @@ export function CinemaCard({ c, onClose }: { c: Cinema; onClose: () => void }) {
           <p className="small warn-text">{state.error}</p>
           <Button className="btn small cyan" onClick={() => (setState({ data: null, error: null }), setTries((n) => n + 1))}>🔄 {t("Try again")}</Button>
         </div>
+      ) : c.osm ? (
+        <p className="small muted">{t("Sessions and tickets are on the cinema's own page. From OpenStreetMap.")}</p>
       ) : state.data ? (
         <StoreTabs
           tabs={[
@@ -1176,6 +1188,7 @@ function FilmList({ films, day }: { films: Film[]; day: string }) {
           <Pic src={f.poster} className="film-poster" />
           <div className="film-tx">
             <b dir="auto">{f.name}</b>
+            <TrailerButton film={f.id} name={f.name} />
             <div className="film-times">
               {f.showings.map((s, i) => (
                 <span key={i} className={`film-time ${s.vip ? "vip" : ""}`} title={s.hall}>

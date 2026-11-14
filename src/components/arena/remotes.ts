@@ -225,12 +225,14 @@ export class Remotes {
     return av?.group.visible ? av.muzzle(out) : null;
   }
 
+  /** Players for the minimap; `mate`: my teammate in a match, or a friend — kept on the rim when out of its reach. */
   dots() {
-    const out: { x: number; z: number; color: string }[] = [];
+    const out: { x: number; z: number; color: string; mate: boolean }[] = [];
     for (const e of this.ents.values()) {
       const p = e.pose;
       if (!e.snaps.length || !p.foot || p.dead) continue;
-      out.push({ x: p.x, z: p.z, color: this.inMatch && p.team ? TEAM_COLORS[p.team as 1 | 2] : e.info?.friend ? "#5bd38c" : "#ffffff" });
+      const mate = this.inMatch ? !!p.team && p.team === this.myTeam : !!e.info?.friend;
+      out.push({ x: p.x, z: p.z, color: this.inMatch && p.team ? TEAM_COLORS[p.team as 1 | 2] : e.info?.friend ? "#5bd38c" : "#ffffff", mate });
     }
     return out;
   }

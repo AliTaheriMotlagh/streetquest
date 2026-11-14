@@ -55,11 +55,12 @@ function* blocks(file: Buffer): Generator<Block> {
 }
 
 type Way = { id: number; keys: number[]; vals: number[]; refs: number[] };
+type Rel = { id: number; keys: number[]; vals: number[]; roles: number[]; memids: number[]; types: number[] };
 type Plain = { id: number; keys: number[]; vals: number[]; lat: number; lon: number };
 type Dense = { id: number[]; lat: number[]; lon: number[]; kv: number[] };
 
 /** Call back for each node (id, lat, lon, tags or null) and way in a block. */
-function walk(b: Block, onNode: (id: number, lat: number, lon: number, tags: Record<string, string> | null) => void, onWay: ((w: Way) => void) | null) {
+function walk(b: Block, onNode: (id: number, lat: number, lon: number, tags: Record<string, string> | null) => void, onWay: ((w: Way) => void) | null, onRel: ((r: Rel) => void) | null = null) {
   const deg = (off: number, v: number) => 1e-9 * (off + b.gran * v);
   const tags = (keys: number[], vals: number[]) => {
     if (!keys.length) return null;
@@ -112,6 +113,18 @@ function walk(b: Block, onNode: (id: number, lat: number, lon: number, tags: Rec
         }, w, q.readVarint() + q.pos);
         for (let i = 1; i < w.refs.length; i++) w.refs[i] += w.refs[i - 1];
         onWay(w);
+      } else if (tag === 4 && onRel) {
+        const rl: Rel = { id: 0, keys: [], vals: [], roles: [], memids: [], types: [] };
+        q.readFields((t, rr: Rel, r) => {
+          if (t === 1) rr.id = r.readVarint();
+          else if (t === 2) r.readPackedVarint(rr.keys);
+          else if (t === 3) r.readPackedVarint(rr.vals);
+          else if (t === 8) r.readPackedVarint(rr.roles);
+          else if (t === 9) r.readPackedSVarint(rr.memids);
+          else if (t === 10) r.readPackedVarint(rr.types);
+        }, rl, q.readVarint() + q.pos);
+        for (let i = 1; i < rl.memids.length; i++) rl.memids[i] += rl.memids[i - 1];
+        onRel(rl);
       }
     }, {}, end);
   }
@@ -148,4 +161,46 @@ export function readOsm(path: string, want: Want, progress?: (pass: number, mb: 
     if (geometry.length >= 2 && geometry.some((p) => want.inside(p.lat, p.lon))) out.push({ type: "way", id: w.id, tags: w.tags, geometry });
   }
   return out;
+}
+
+export type OsmMember = { type: "node" | "way" | "relation"; ref: number; role: string };
+export type OsmRelation = { id: number; tags: Record<string, string>; members: OsmMember[] };
+export type OsmNode = { id: number; lat: number; lon: number; tags: Record<string, string> | null };
+
+/**
+ * Relations (bus and metro routes, their route masters) and nodes of an extract: the relations
+ * `rel` wants, the tagged nodes `node` wants inside `inside`, and every node any wanted relation
+ * names (where its stops are). Two passes, like readOsm. Ways are skipped (members only).
+ */
+export function readRelations(path: string, want: { rel: (tags: Record<string, string>) => boolean; node: (tags: Record<string, string>) => boolean; inside: (lat: number, lon: number) => boolean }): { relations: OsmRelation[]; nodes: Map<number, OsmNode> } {
+  const file = readFileSync(path);
+  const relations: OsmRelation[] = [];
+  const nodes = new Map<number, OsmNode>();
+  const TYPES = ["node", "way", "relation"] as const;
+  for (const b of blocks(file))
+    walk(
+      b,
+      (id, lat, lon, tags) => {
+        if (tags && want.node(tags) && want.inside(lat, lon)) nodes.set(id, { id, lat, lon, tags });
+      },
+      null,
+      (r) => {
+        const tags: Record<string, string> = {};
+        for (let i = 0; i < r.keys.length; i++) tags[b.strings[r.keys[i]]] = b.strings[r.vals[i]];
+        if (!want.rel(tags)) return;
+        relations.push({ id: r.id, tags, members: r.memids.map((ref, i) => ({ type: TYPES[r.types[i]] ?? "node", ref, role: b.strings[r.roles[i]] ?? "" })) });
+      },
+    );
+  const needed = new Set<number>();
+  for (const r of relations) for (const m of r.members) if (m.type === "node" && !nodes.has(m.ref)) needed.add(m.ref);
+  if (needed.size)
+    for (const b of blocks(file))
+      walk(
+        b,
+        (id, lat, lon, tags) => {
+          if (needed.has(id)) nodes.set(id, { id, lat, lon, tags });
+        },
+        null,
+      );
+  return { relations, nodes };
 }

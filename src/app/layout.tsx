@@ -24,11 +24,11 @@ import "./loading.css";
 import "./compact.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.
-const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "800"], display: "swap", variable: "--font-inter" });
+const inter = Inter({ subsets: ["latin", "latin-ext"], weight: ["400", "600", "800"], display: "swap", variable: "--font-inter" });
 // Display: rounded and friendly for numbers, buttons and labels. Titles: an engraved serif for the fantasy feel.
 // One weight each, so every weight a rule asks for renders the same face.
-const fredoka = Fredoka({ subsets: ["latin"], weight: "600", display: "swap", variable: "--font-fredoka" });
-const cinzel = Cinzel({ subsets: ["latin"], weight: "700", display: "swap", variable: "--font-cinzel" });
+const fredoka = Fredoka({ subsets: ["latin", "latin-ext"], weight: "600", display: "swap", variable: "--font-fredoka" });
+const cinzel = Cinzel({ subsets: ["latin", "latin-ext"], weight: "700", display: "swap", variable: "--font-cinzel" });
 
 /** Persian UI font (public/fonts, @font-face in globals.css). Only Persian pages fetch it. */
 const VAZIRMATN = ["/fonts/Vazirmatn-UI-FD-Regular.woff2", "/fonts/Vazirmatn-UI-FD-Black.woff2"];

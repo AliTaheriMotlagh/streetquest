@@ -354,7 +354,7 @@ export class StreetLife {
     const b = shopCallFor(kind, Math.random, this.shopRecent);
     if (!b) return false;
     const v = b.voices.includes("f") && Math.random() < 0.3 ? "f" : "m";
-    const words = textOf(b, v), line = getLocale() === "fa" ? words.fa : words.en;
+    const loc = getLocale(), words = textOf(b, v), line = loc === "fa" ? words.fa : loc === "tr" ? words.tr : words.en;
     const ok = this.voices.line(b.id, v, () => ({ x: at.x, y: 1.75, z: at.z }), me, performance.now(), name ? `«${name}» ${line}` : line);
     if (ok) this.shopRecent = [b.id, ...this.shopRecent].slice(0, 4);
     return ok;

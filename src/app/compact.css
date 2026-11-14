@@ -6,6 +6,18 @@
    the driving and on-foot pads (which read touch positions against their own boxes) get
    explicit sizes instead. */
 
+/* ---------- Every size: labels never clip (Persian / Turkish run long) ----------
+   One rule set for the shared button, the bottom bar and button rows: text wraps (two lines
+   look fine), a button may shrink below its label's width, and a row of buttons wraps instead
+   of running off the screen. Icon + short label; the label is what gives way. */
+.btn { white-space: normal; text-align: center; line-height: 1.25; min-width: 0; max-width: 100%; overflow-wrap: break-word; text-wrap: balance; }
+.btn > :is(svg, .art, .ic) { flex: none; }
+.row:has(> .btn) { flex-wrap: wrap; }
+.seg button, .pm .seg button { min-width: 0; white-space: normal; line-height: 1.2; overflow-wrap: break-word; }
+.nav button { min-width: 0; text-align: center; line-height: 1.15; overflow-wrap: break-word; }
+.chip { max-width: 100%; }
+.toast-txt, .tb-txt { min-width: 0; overflow-wrap: break-word; }
+
 /* ---------- small: ≤ 380 px wide, or short (≤ 680 px tall, portrait) ---------- */
 @media (max-width: 380px), (orientation: portrait) and (max-height: 680px) {
   /* Map: the HUD chips, the ready tray, the round buttons */

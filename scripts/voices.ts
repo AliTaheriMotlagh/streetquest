@@ -40,7 +40,7 @@ const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.sl
 const only = arg("only")?.split(",");
 const from = arg("from"), imported = arg("import");
 const oneLang = arg("lang") as VoiceLang | undefined;
-if (oneLang && !VOICE_LANGS.includes(oneLang)) throw new Error(`--lang=${oneLang}: fa or en`);
+if (oneLang && !VOICE_LANGS.includes(oneLang)) throw new Error(`--lang=${oneLang}: fa, en or tr`);
 const LANGS: VoiceLang[] = oneLang ? [oneLang] : VOICE_LANGS;
 
 /** Each kind of voice: how fast it speaks (Piper length scale) and the sound of it after (ffmpeg), per language. */
@@ -56,6 +56,12 @@ export const VOICES: Record<VoiceLang, Record<VoiceKind, { speed: number; filter
     m: { speed: 0.95, filter: "highpass=f=70" },
     f: { speed: 0.95, filter: "highpass=f=90" },
     // A police radio: a narrower band than the megaphone, driven hard.
+    cop: { speed: 0.9, filter: "highpass=f=450,lowpass=f=3000,volume=9dB,alimiter=limit=0.7" },
+  },
+  // Turkish clips are imported (own recordings, no permissive Piper voice): the same treatment as English.
+  tr: {
+    m: { speed: 0.95, filter: "highpass=f=70" },
+    f: { speed: 0.95, filter: "highpass=f=90" },
     cop: { speed: 0.9, filter: "highpass=f=450,lowpass=f=3000,volume=9dB,alimiter=limit=0.7" },
   },
 };

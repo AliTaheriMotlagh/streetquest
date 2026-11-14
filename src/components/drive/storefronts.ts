@@ -896,6 +896,27 @@ export class Storefronts {
     return { id: best.id, name, kind: storeKind(best.cls, name), x: best.x + nx * 1.2, z: best.z + nz * 1.2 };
   }
 
+  /**
+   * The open stores within `maxM` of (x, z), nearest first (at most `max`): each one's door spot
+   * (a step out from the sign) and the way it faces (toward the street) — where its shopkeeper stands.
+   */
+  openNear(x: number, z: number, maxM: number, max: number): { id: string; kind: StoreKind; x: number; z: number; yaw: number }[] {
+    const out: { id: string; kind: StoreKind; x: number; z: number; yaw: number; d: number }[] = [];
+    const r2 = maxM * maxM;
+    for (const l of this.order) {
+      const d = (l.x - x) ** 2 + (l.z - z) ** 2;
+      if (d >= r2) continue;
+      const name = this.infos.get(l.id)?.name || nameLines(l.text)[0];
+      if (!isShop(l.cls, name)) continue;
+      const kind = storeKind(l.cls, name);
+      if (!this.isOpen(l.id, kind, this.infos.get(l.id)?.week)) continue;
+      const nx = Math.sin(l.angle), nz = Math.cos(l.angle);
+      // Facing out: the person's forward (−z) turned to the sign's normal.
+      out.push({ id: l.id, kind, x: l.x + nx * 1.2, z: l.z + nz * 1.2, yaw: Math.atan2(-nx, -nz), d });
+    }
+    return out.sort((a, b) => a.d - b.d).slice(0, max).map(({ d: _d, ...o }) => o);
+  }
+
   /** A store's sign spot (to find it again by id). */
   labelOf(id: string) {
     return this.order.find((o) => o.id === id) ?? null;

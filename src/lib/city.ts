@@ -16,7 +16,7 @@ const Q = 1e6;
  * buildings, footways, rail, land use and street furniture; older stored tiles are
  * still served while a fresh copy is fetched in the background.
  */
-export const TILE_V = 2;
+export const TILE_V = 3; // 3: bridges (roads `br`, suspension spans `bs` / towers `bt`)
 
 export type BuildingKind = "house" | "apartments" | "shop" | "office" | "industrial" | "civic" | "church" | "tower";
 export type RoadKind = "major" | "minor" | "path" | "foot" | "rail";
@@ -61,7 +61,17 @@ export type CityRoad = {
   ow?: 1;
   /** Only carries the street's name (the asphalt is drawn from another line). */
   x?: 1;
+  /** On a bridge: drawn with its deck edge, parapets and piers (tileMesh.ts drawBridges). */
+  br?: 1;
 };
+/**
+ * A long bridge's main cable over its deck (a suspension span, like the Bosphorus bridges):
+ * points packed like a road's, the cable's height (m) at each, the deck's width; `ow`: the deck is
+ * one carriageway of two (the structure stands to its left, over both).
+ */
+export type CitySpan = { l: number[]; h: number[]; w: number; ow?: 1 };
+/** A bridge tower: two packed points (the tower, then a step along the road: its direction), its height, the deck's width. */
+export type CityTower = { l: number[]; h: number; w: number; ow?: 1 };
 export type CityArea = { r: number[]; k: AreaKind };
 export type CityTile = {
   v: number;
@@ -78,6 +88,9 @@ export type CityTile = {
   o?: number[];
   /** Sports pitches (lines and goals over the "pitch" area). */
   f?: CityPitch[];
+  /** Suspension bridges' cables and towers (vectorTile.ts, from the whole bridge before it's split into cells). */
+  bs?: CitySpan[];
+  bt?: CityTower[];
 };
 
 /** A tile with a city pack's detail laid over it (the pack is the fuller, checked source). */

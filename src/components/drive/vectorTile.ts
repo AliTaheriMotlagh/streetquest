@@ -117,6 +117,8 @@ const flatRoofRegion = (lat: number, lng: number) => lat > 12 && lat < 42 && lng
 
 export type Storefront = { x: number; y: number; n: string; c: string };
 export type HouseNumber = { x: number; y: number; n: string };
+/** A bridge this long (m, as much of it as one tile holds) is drawn as a suspension span; its cable sampled this often. */
+const BRIDGE_SPAN_M = 450, BRIDGE_STEP_M = 12;
 export type VtCell = CityTile & { s?: Storefront[]; hn?: HouseNumber[] };
 /** Which name streets and shops show: the player's language, the local one, or both. */
 export type NameMode = "mine" | "local" | "both";
@@ -227,6 +229,57 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
 
   // ---- streets, rail and paths (geometry), then their names (label-only lines)
   const tl = vt.layers.transportation;
+  /** Every point as it is (bridge cables: one height per point, so nothing is merged away). */
+  const packAll = (c: VtCell, pts: P[], E: number) => pts.flatMap((q) => [Math.round((lngOf(q.x, E) - c.cx * TILE_DEG) * Q), Math.round((latOf(q.y, E) - c.cy * TILE_DEG) * Q)]);
+  /** Towers placed so far (metres in the tile): a twin carriageway's towers are the same towers. */
+  const towersAt: P[] = [];
+  /**
+   * A long bridge (≥ BRIDGE_SPAN_M on this tile) as a suspension span: two towers at about a
+   * fifth in from each end, the main cable sagging between them and running down to anchors at the
+   * ends, sampled every few metres and split into the cells it crosses (with the boundary point in
+   * both, so the cable is continuous).
+   */
+  const bridgeSpan = (run: P[], w: number, ow: boolean, E: number) => {
+    const m = run.map((q) => toM(q, E));
+    const at: number[] = [0];
+    for (let i = 1; i < m.length; i++) at.push(at[i - 1] + Math.hypot(m[i].x - m[i - 1].x, m[i].y - m[i - 1].y));
+    const L = at[at.length - 1];
+    if (L < BRIDGE_SPAN_M) return;
+    const point = (d: number): P => {
+      let i = 1;
+      while (i < at.length - 1 && at[i] < d) i++;
+      const k = (d - at[i - 1]) / Math.max(1e-6, at[i] - at[i - 1]);
+      return { x: run[i - 1].x + (run[i].x - run[i - 1].x) * k, y: run[i - 1].y + (run[i].y - run[i - 1].y) * k };
+    };
+    const t1 = L * 0.22, t2 = L * 0.78, H = Math.max(45, Math.min(165, L * 0.1));
+    const tm = [toM(point(t1), E), toM(point(t2), E)];
+    if (tm.some((q) => towersAt.some((o) => Math.hypot(o.x - q.x, o.y - q.y) < 60))) return; // the other carriageway's
+    towersAt.push(...tm);
+    // The cable: anchored at the ends, up to the towers, sagging to just over the deck mid-span.
+    const mid = (t1 + t2) / 2, half = (t2 - t1) / 2;
+    const hAt = (d: number) => (d < t1 ? 1 + (H - 1) * (d / t1) ** 1.4 : d > t2 ? 1 + (H - 1) * ((L - d) / (L - t2)) ** 1.4 : 3 + (H - 3) * ((d - mid) / half) ** 2);
+    const flag = ow ? { ow: 1 as const } : {};
+    for (const d of [t1, t2]) {
+      const a = point(d), b = point(Math.min(L, d + 5));
+      const c = cellAt(latOf(a.y, E), lngOf(a.x, E));
+      if (c) (c.bt ??= []).push({ l: packAll(c, [a, b], E), h: Math.round(H + 4), w: Math.round(w * 10) / 10, ...flag });
+    }
+    let cur: { c: VtCell; pts: P[]; h: number[] } | null = null;
+    const flush = () => cur && cur.pts.length >= 2 && (cur.c.bs ??= []).push({ l: packAll(cur.c, cur.pts, E), h: cur.h.map((x) => Math.round(x * 10) / 10), w: Math.round(w * 10) / 10, ...flag });
+    for (let d = 0; d <= L + 0.01; d += BRIDGE_STEP_M) {
+      const q = point(Math.min(d, L)), h = hAt(Math.min(d, L));
+      const c = cellAt(latOf(q.y, E), lngOf(q.x, E));
+      if (!c) continue;
+      if (!cur || cur.c !== c) {
+        const last: { p: P; h: number } | null = cur && cur.pts.length ? { p: cur.pts[cur.pts.length - 1], h: cur.h[cur.h.length - 1] } : null;
+        flush();
+        cur = { c, pts: last ? [last.p] : [], h: last ? [last.h] : [] };
+      }
+      cur.pts.push(q);
+      cur.h.push(h);
+    }
+    flush();
+  };
   for (let i = 0; i < (tl?.length ?? 0); i++) {
     const f = tl.feature(i);
     const p = f.properties;
@@ -236,14 +289,16 @@ export function sliceVectorTile(buf: ArrayBuffer, tx: number, ty: number, locale
     if (!def || f.type !== 2) continue;
     const oneway = Number(p.oneway) === 1 || Number(p.oneway) === -1;
     const w = p.ramp ? 6.5 : def.k === "major" && oneway ? def.w * 0.55 : def.w;
+    const bridge = p.brunnel === "bridge";
     for (const line of f.loadGeometry() as Geom)
       for (const run of clipLine(line, tl.extent)) {
+        if (bridge && def.k !== "path") bridgeSpan(run, w, oneway, tl.extent);
         // Split into one run per cell by segment midpoints.
         let cur: P[] = [], curCell: VtCell | null = null;
         const flush = () => {
           if (curCell && cur.length >= 2) {
             const l = pack(curCell, cur, tl.extent);
-            if (l.length >= 4) curCell.r.push({ l, w: Math.round(w * 10) / 10, k: def.k, ...(oneway ? { ow: 1 as const } : {}) });
+            if (l.length >= 4) curCell.r.push({ l, w: Math.round(w * 10) / 10, k: def.k, ...(oneway ? { ow: 1 as const } : {}), ...(bridge ? { br: 1 as const } : {}) });
           }
           cur = [];
         };

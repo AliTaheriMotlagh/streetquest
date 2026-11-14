@@ -399,3 +399,28 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
 @media (max-width: 380px) { .ask { flex-wrap: wrap; } .ask-btns { width: 100%; justify-content: flex-end; } }
 @keyframes ask-in { from { transform: translateY(12px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .ask { animation: none; } }
+
+/* ---------- public transport (game/TransitCard.tsx): line chips, departures, the metro's station strips ---------- */
+.tr-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 2.1em; padding: 1px 7px; border-radius: 6px; background: var(--line, #2d8cff); color: #fff; font-weight: 700; font-size: 12px; line-height: 1.5; white-space: nowrap; text-shadow: 0 1px 1px rgba(0, 0, 0, .35); }
+.tr-chip.bus { background: #2d8cff; }
+.tr-line { display: grid; gap: 6px; padding: 10px 12px; }
+.tr-line-head { gap: 8px; align-items: center; width: 100%; background: none; border: 0; color: inherit; font: inherit; text-align: start; padding: 0; }
+.tr-dep { display: flex; gap: 8px; align-items: baseline; }
+.tr-arrivals, .tr-found, .tr-legs, .tr-guide { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.tr-arrivals li { gap: 8px; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--line-soft, rgba(127, 127, 127, .18)); }
+.tr-live { color: #2fbf71; }
+.tr-found button, .tr-strip button { width: 100%; gap: 6px; align-items: center; background: none; border: 0; color: inherit; font: inherit; text-align: start; padding: 6px 2px; }
+.tr-trip { display: grid; gap: 8px; padding: 12px; }
+.tr-legs li { line-height: 1.6; }
+.tr-guide li { padding-inline-start: 1em; text-indent: -1em; }
+.tr-guide li::before { content: "• "; }
+/* A line drawn down the side of its stations, in its own colour. */
+.tr-strip { list-style: none; margin: 4px 0 0; padding: 0 0 0 0; border-inline-start: 4px solid var(--line, #888); }
+.tr-strip li { position: relative; padding-inline-start: 12px; }
+.tr-strip li::before { content: ""; position: absolute; inset-inline-start: -8px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--bg, #fff); border: 3px solid var(--line, #888); box-sizing: border-box; }
+
+/* ---------- a film's trailer (game/Trailer.tsx): over everything, the video as wide as the phone ---------- */
+.trailer-overlay { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .78); }
+.trailer-box { display: grid; gap: 10px; width: min(640px, 100%); padding: 12px; border-radius: 14px; background: var(--panel, #15161c); color: var(--text, #fff); }
+.trailer-box video { width: 100%; max-height: 70vh; border-radius: 10px; background: #000; }
+.film-trailer { justify-self: start; margin: 2px 0 4px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 999px; background: none; color: inherit; font: inherit; font-size: 12px; opacity: .85; }

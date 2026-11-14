@@ -6,7 +6,8 @@
 //  - its sessions (سانس): each film with its poster and its showings today and tomorrow —
 //    time, hall, price (the API's prices are in rials; the game shows toman).
 
-export type Cinema = { id: number; name: string; lat: number; lng: number; address: string; rate: number; rates: number; photo: string };
+/** `osm`: from the open map (Turkey) — no sessions; `site` is its own page (or a search for its programme). */
+export type Cinema = { id: number; name: string; lat: number; lng: number; address: string; rate: number; rates: number; photo: string; osm?: boolean; site?: string };
 export type Showing = { at: string; hall: string; toman: number; vip: boolean };
 export type Film = { id: number; name: string; poster: string; showings: Showing[] };
 export type CinemaShows = { cinema: Cinema | null; films: Film[]; fetchedAt: string };

@@ -5,6 +5,10 @@
 import { LOCALE_COOKIE, LOCALE_META, LOCALES, type Locale } from "@/lib/i18n";
 import { useLocale, useT } from "./I18nProvider";
 import { Button } from "./Button";
+import { FlagIR, FlagTR, IstanbulEmblem } from "./art/Symbols";
+
+/** A tiny mark beside a language's name: Iran's and Turkey's flags; English has none. */
+const LangMark = ({ l }: { l: Locale }) => (l === "fa" ? <FlagIR size={12} /> : l === "tr" ? <FlagTR size={12} /> : null);
 
 export async function setLanguage(locale: Locale) {
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${365 * 86_400}; samesite=lax`;
@@ -25,21 +29,24 @@ export function LanguagePicker() {
     <div className="lang-pick" role="radiogroup">
       {LOCALES.map((l) => (
         <Button key={l} role="radio" aria-checked={l === locale} lang={l} className={`btn small ${l === locale ? "yellow" : "ghost"}`} onClick={() => l !== locale && setLanguage(l)}>
-          {LOCALE_META[l].name}
+          <LangMark l={l} /> {LOCALE_META[l].name}
         </Button>
       ))}
     </div>
   );
 }
 
-/** One button that switches to the other language, labelled in that language (site header). */
+/** Buttons that switch to each other language, labelled in that language (site header). */
 export function LanguageToggle({ className = "btn ghost small" }: { className?: string }) {
   const locale = useLocale();
   const t = useT();
-  const other = LOCALES.find((l) => l !== locale)!;
   return (
-    <Button className={className} lang={other} title={t("Language")} aria-label={`${t("Language")}: ${LOCALE_META[other].name}`} onClick={() => setLanguage(other)}>
-      🌐 {LOCALE_META[other].name}
-    </Button>
+    <>
+      {LOCALES.filter((l) => l !== locale).map((l) => (
+        <Button key={l} className={className} lang={l} title={t("Language")} aria-label={`${t("Language")}: ${LOCALE_META[l].name}`} onClick={() => setLanguage(l)}>
+          {l === "tr" ? <IstanbulEmblem size={12} /> : "🌐"} {LOCALE_META[l].name}
+        </Button>
+      ))}
+    </>
   );
 }

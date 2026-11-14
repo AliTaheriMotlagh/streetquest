@@ -6,7 +6,7 @@ import { useT } from "@/components/I18nProvider";
 import { applyConfig } from "@/lib/config";
 import { S } from "@/lib/settings";
 import { distanceM, formatDistance } from "@/lib/geo";
-import { stepWalk, walkOf, type Walk } from "@/lib/homeWalk";
+import { homeSpeedKmh, stepWalk, walkOf, type Walk } from "@/lib/homeWalk";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import type { HeroTabId } from "./Panels";
 import { countryAt, deliveryAt, sourceAt, type CountrySource } from "@/lib/region";
@@ -32,7 +32,7 @@ import { AdModal, type AdOffer, celebrate, CelebrationLayer, Directions, GpsBann
 import { flyRewards, parseRewards } from "./Rewards";
 import { Toasts, toastLife } from "./Toasts";
 import { AskCards } from "./Asks";
-import { askOfTag, asksFrom, mergeAsks, type Ask } from "@/lib/asks";
+import { ASKS_CHANGED, askOfTag, asksFrom, mergeAsks, syncAsks, type Ask } from "@/lib/asks";
 import { ReadyTray, Wallet } from "./Hud";
 import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
@@ -50,6 +50,10 @@ import { VasatyabDock } from "./Vasatyab";
 import type { MidView } from "@/server/midpoint";
 import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCard } from "./StoreInfo";
 import type { Cinema } from "@/lib/cinema";
+import { cityAt as transitCityAt } from "@/lib/transit/network";
+import { useTransit } from "./transit";
+import { BusStopCard, LiveBusCard, MetroSheet, StationCard } from "./TransitCard";
+import type { TransitPins } from "./GameMap";
 import { OnlineChip, OnlineSheet } from "./Online";
 import { oneEach, VENDOR_KIND_KEYS, VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, type VendorKind } from "@/lib/localData";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
@@ -91,7 +95,7 @@ const TEST_MODE_KEY = "sq_test_mode";
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "deals" | "divar" | "traffic" | "siktir" | ReturnType<typeof siteLayer>;
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "transit" | "deals" | "divar" | "traffic" | "siktir" | ReturnType<typeof siteLayer>;
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -101,6 +105,7 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   { key: "places", emoji: "📍", label: msg("Real places"), group: msg("Around you") },
   { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)"), group: msg("Around you") },
   { key: "cinema", emoji: "🎬", label: msg("Cinemas (Cinematicket)"), group: msg("Around you") },
+  { key: "transit", emoji: "🚇", label: msg("Metro & buses"), group: msg("Around you") },
   { key: "deals", emoji: "🏷️", label: msg("Deals (Takhfifan)"), group: msg("Around you") },
   { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
@@ -115,7 +120,7 @@ const DELIVERY_GROUP = MAP_LAYERS.find((l) => l.key === VENDOR_KIND_KEYS[0])!.gr
 const LAYER_SOURCE: Partial<Record<MapLayer, CountrySource>> = { torob: "torob", cinema: "cinematicket", deals: "takhfifan", divar: "divar", ...Object.fromEntries([...MAP_SITES, "sheypoor" as const].map((id) => [siteLayer(id), id])) };
 /** Whether a layer has anything where the player is: Iran's sites in Iran, the delivery menus in Iran or Turkey. */
 const layerHere = (k: MapLayer, at: LatLng | null | undefined) =>
-  (VENDOR_KIND_KEYS as readonly string[]).includes(k) ? !!deliveryAt(at) : !LAYER_SOURCE[k] || sourceAt(LAYER_SOURCE[k]!, at);
+  k === "transit" ? !at || !!transitCityAt(at) : (VENDOR_KIND_KEYS as readonly string[]).includes(k) ? !!deliveryAt(at) : !LAYER_SOURCE[k] || sourceAt(LAYER_SOURCE[k]!, at);
 const LAYER_GROUPS = [...new Set(MAP_LAYERS.map((l) => l.group))];
 /** The layers there were when the player saved their choice (the ones since then start on). */
 const MAP_LAYERS_KNOWN_KEY = "sq_map_layers_known";
@@ -416,6 +421,15 @@ export default function Game() {
       .catch(() => {});
   }, [dealsOn, look, now]);
   const cinemaOn = layers.includes("cinema");
+  // Metro stations, bus stops and (Istanbul) live buses: game/transit.ts.
+  const transitOn = layers.includes("transit");
+  const transit = useTransit(look, transitOn);
+  const transitPins = useMemo<TransitPins | undefined>(() => {
+    if (!transitOn || !transit.city) return undefined;
+    const colour = new Map(transit.metro?.lines.map((l) => [l.id, l.colour]) ?? []);
+    return { city: transit.city, stations: (transit.metro?.stations ?? []).map((s) => ({ s, colour: colour.get(s.lines[0]) ?? "#555" })), stops: transit.stops, buses: transit.buses };
+  }, [transitOn, transit]);
+  const [metroOpen, setMetroOpen] = useState(false);
   const siktirOn = layers.includes("siktir");
   const siktirSpots = useSiktirSpots(siktirOn, look ?? null);
   const [siktirAt, setSiktirAt] = useState<SiktirTarget | null>(null);
@@ -535,7 +549,8 @@ export default function Game() {
         ...world,
         money: isGame && layers.includes("money") ? world.money : [],
         places: isGame && layers.includes("jobs") ? world.places : [],
-        players: isGame && layers.includes("players") ? world.players : [],
+        // Friends are on the map in every view (others only in the game's): you can always find your crew.
+        players: isGame && layers.includes("players") ? world.players : world.players.filter((p) => p.friend),
         businesses: isGame && layers.includes("biz") ? world.businesses : [],
       },
     [world, layers, isGame],
@@ -550,6 +565,7 @@ export default function Game() {
       places: (world?.spots ?? []).length,
       torob: torobShops.length,
       cinema: cinemas.length,
+      transit: transit.stops.length + (transit.metro?.stations.length ?? 0),
       deals: deals.length,
       divar: divar.length,
       siktir: siktirSpots.length,
@@ -560,7 +576,7 @@ export default function Game() {
     // In Turkey the menus are Yemeksepeti's.
     const title = (g: string) => (g === DELIVERY_GROUP && deliveryAt(pos) === "yemeksepeti" ? msg("Menus from Yemeksepeti") : g);
     return LAYER_GROUPS.map((g) => ({ title: title(g), items: MAP_LAYERS.filter((l) => l.group === g && layerShown(view, l.key) && layerHere(l.key, pos)).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) })).filter((g) => g.items.length);
-  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots, dirData, view, posCountry]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [world, vendors, torobShops, cinemas, transit, deals, divar, siktirSpots, dirData, view, posCountry]); // eslint-disable-line react-hooks/exhaustive-deps
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -659,10 +675,17 @@ export default function Game() {
       api<{ incoming: { friendshipId: string; username: string; avatar: string }[] }>("/api/friends").catch(() => null),
       api<{ invites: { code: string; host: string; players: number }[] }>("/api/party").catch(() => null),
     ]);
-    setAsks((a) => mergeAsks(a, asksFrom(f?.incoming, p?.invites), asksDone.current));
+    // Only when both answered: a failed request mustn't clear the cards.
+    if (f && p) setAsks((a) => syncAsks(a, asksFrom(f.incoming, p.invites), asksDone.current));
+    else setAsks((a) => mergeAsks(a, asksFrom(f?.incoming, p?.invites), asksDone.current));
   }, []);
   useEffect(() => {
-    if (me?.id) void refreshAsks();
+    if (!me?.id) return;
+    void refreshAsks();
+    // Answered in the Crew panel or Play together: the cards follow.
+    const on = () => void refreshAsks();
+    window.addEventListener(ASKS_CHANGED, on);
+    return () => window.removeEventListener(ASKS_CHANGED, on);
   }, [me?.id, refreshAsks]);
   const lookFailed = useCallback(
     (s: MapStyle, fellBack: boolean) =>
@@ -1093,7 +1116,7 @@ export default function Game() {
     const t = setInterval(() => {
       const w = walkRef.current;
       if (!w) return;
-      const step = stepWalk(w, (S.remoteSpeedKmh / 3.6) * (TICK / 1000));
+      const step = stepWalk(w, (homeSpeedKmh(w.total, S.remoteSpeedKmh) / 3.6) * (TICK / 1000));
       walkRef.current = step.walk;
       setHomePos(step.at);
       if (step.arrived) {
@@ -1314,6 +1337,7 @@ export default function Game() {
           divar={divarOn ? divar : undefined}
           torob={torobOn ? torobShops : undefined}
           cinemas={cinemaOn ? cinemas : undefined}
+          transit={transitPins}
           deals={dealsOn ? deals : undefined}
           dir={shownDir}
           ads={layers.includes(siteLayer("sheypoor")) ? dirData.ads : undefined}
@@ -1454,7 +1478,7 @@ export default function Game() {
               </span>
               <span className="tb-txt">
                 <b>{w && w.path.length > 2 ? t("Walking there by the streets") : t("Walking there")}</b>
-                <span>{t("{d} · {n} min", { d: formatDistance(left), n: Math.max(1, Math.ceil(left / (S.remoteSpeedKmh / 3.6) / 60)) })}</span>
+                <span>{t("{d} · {n} min", { d: formatDistance(left), n: Math.max(1, Math.ceil(left / (homeSpeedKmh(w?.total ?? left, S.remoteSpeedKmh) / 3.6) / 60)) })}</span>
               </span>
               <button type="button" className="tb-stop" onClick={() => setTravel(null)}>{t("Stop")}</button>
               <i className="tb-bar" style={{ transform: `scaleX(${part})` }} />
@@ -1515,6 +1539,12 @@ export default function Game() {
                 <Icon name="compass" size={18} />
                 <span className="mm-t">{exploreOn ? t("Exploring — tap to go back to me") : t("Explore the map (no location needed)")}</span>
               </Button>
+              {look && transitCityAt(look) && (
+                <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setMetroOpen(true), setMoreOpen(false))}>
+                  <Icon name="train" size={18} />
+                  <span className="mm-t">{t("Metro")}<span className="small mm-sub">{t("lines, trip planner, guide")}</span></span>
+                </Button>
+              )}
               <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setVasaOpen(true), setMoreOpen(false))}>
                 <Icon name="people" size={18} />
                 <span className="mm-t">{t("Vasatyab")}<span className="small mm-sub">{t("where to meet your friends")}</span></span>
@@ -1658,7 +1688,8 @@ export default function Game() {
         )}
 
         {/* Above the 3D city too: a request is answered wherever the player is. */}
-        <AskCards asks={asks} onDone={askDone} toast={toast} onJoined={() => !driveOn && setDriveOn({ goal: null })} />
+        {metroOpen && look && transitCityAt(look) && <MetroSheet city={transitCityAt(look)!} onClose={() => setMetroOpen(false)} />}
+        <AskCards asks={asks} onDone={askDone} toast={toast} onJoined={() => !driveOn && setDriveOn({ goal: null })} onFriends={() => (window.dispatchEvent(new Event(ASKS_CHANGED)), loadWorld(true))} />
 
         {call && (
           <CallScreen
@@ -1777,7 +1808,7 @@ function RouteChip({ route, pos, onClear }: { route: LiveRoute & { to: LatLng; n
 // ---------------------------------------------------------------- tap-on-map detail card
 function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => void; onCollect: (id: string) => void }) {
   const { pos, act, me, world, openChat, startCall, setPanel, teleport, openShop, openProfile } = useGame();
-  const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "place" ? sel.data.place : sel.data;
+  const target = sel.type === "delivery" || sel.type === "ride" ? { lat: sel.data.pickupLat, lng: sel.data.pickupLng } : sel.type === "place" ? sel.data.place : sel.type === "station" ? sel.data.station : sel.type === "busstop" ? sel.data.stop : sel.data;
   const dist = pos ? distanceM(pos, target) : Infinity;
   const inRange = dist <= INTERACT_RADIUS_M;
   const tooFar = teleport ? (
@@ -1804,6 +1835,9 @@ function InfoCard({ sel, onClose, onCollect }: { sel: Selected; onClose: () => v
   if (sel.type === "torob") return <TorobPlaceCard p={sel.data} onClose={onClose} />;
   if (sel.type === "siktir") return <SiktirSheet target={{ lat: sel.data.lat, lng: sel.data.lng, placeKey: sel.data.placeKey, name: sel.data.name }} onClose={onClose} />;
   if (sel.type === "cinema") return <CinemaCard c={sel.data} onClose={onClose} />;
+  if (sel.type === "station") return <StationCard pick={sel.data} onClose={onClose} />;
+  if (sel.type === "busstop") return <BusStopCard city={sel.data.city} stop={sel.data.stop} onClose={onClose} />;
+  if (sel.type === "bus") return <LiveBusCard bus={sel.data} onClose={onClose} />;
   if (sel.type === "deal") return <DealCard d={sel.data} onClose={onClose} />;
   if (sel.type === "dir") return <DirStoreCard s={sel.data} onClose={onClose} />;
   if (sel.type === "ads") return <AdAreaCard area={sel.data} onClose={onClose} />;

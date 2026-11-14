@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { askOfTag, asksFrom, friendTag, MAX_ASKS, mergeAsks, partyTag } from "@/lib/asks";
+import { syncAsks } from "@/lib/asks";
 
 describe("requests answered in place", () => {
   it("reads the server's tags, and nothing else", () => {
@@ -16,5 +17,14 @@ describe("requests answered in place", () => {
     assert.deepEqual(mergeAsks([], open, new Set([partyTag("ABC123")])).map((x) => x.key), ["friendreq:f1"]);
     const many = asksFrom(Array.from({ length: 6 }, (_, i) => ({ friendshipId: `f${i}`, username: `u${i}`, avatar: "" })), []);
     assert.equal(mergeAsks([], many, new Set()).length, MAX_ASKS);
+  });
+});
+
+describe("cards follow what the server still has open", () => {
+  it("drops requests answered elsewhere, adds new ones, never brings back dismissed ones", () => {
+    const a = asksFrom([{ friendshipId: "f1", username: "Ali", avatar: "😀" }, { friendshipId: "f2", username: "Sara", avatar: "🙂" }], []);
+    const open = asksFrom([{ friendshipId: "f2", username: "Sara", avatar: "🙂" }, { friendshipId: "f3", username: "Reza", avatar: "😎" }], [{ code: "ABC123", host: "Mina", players: 2 }]);
+    const out = syncAsks(a, open, new Set(["partyinv:ABC123"]));
+    assert.deepEqual(out.map((x) => x.key), ["friendreq:f2", "friendreq:f3"]);
   });
 });
