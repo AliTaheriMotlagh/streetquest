@@ -22,7 +22,7 @@ let ended: MatchResult[] | null = null;
 let gone = false;
 const host = new Player({ sid: sid++, userId: "host", name: "Host", avatar: "🙂", level: 5, ws: null, anchor: ORIGIN });
 host.moveTo(ORIGIN, 0, now);
-const m = new Match("sim", host, mode, 150, 9, "normal", { roads, buildings }, { newSid: () => sid++, ended: (_m, r) => (ended = r), disband: () => (gone = true) });
+const m = new Match("sim", host, mode, 120, 9, "normal", { roads, buildings }, { newSid: () => sid++, ended: (_m, r) => (ended = r), disband: () => (gone = true) });
 console.log(`${mode}: nav nodes ${m.nav.nodes.length}, sites ${m.sites.map((s) => `${s.name}(${Math.round(s.x)},${Math.round(s.z)})`).join(" ")}`);
 m.join(host, now);
 // The host stands at spawn, out of the way: on defence first in bomb.

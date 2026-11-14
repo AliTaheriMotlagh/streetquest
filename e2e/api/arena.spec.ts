@@ -31,8 +31,8 @@ test.describe("Street Arena through the game server", () => {
     const id = newId();
 
     // A match far from where the host is can't be opened; one where they stand can.
-    expect((await host.post("/api/arena", { action: "open", id, mode: "tdm", radius: 250, ...offset(here, 9000), bots: 4, anchor: here })).status).toBe(400);
-    expectOk(await host.post("/api/arena", { action: "open", id, mode: "tdm", radius: 250, ...here, bots: 4, anchor: here }));
+    expect((await host.post("/api/arena", { action: "open", id, mode: "tdm", radius: 120, ...offset(here, 9000), bots: 4, anchor: here })).status).toBe(400);
+    expectOk(await host.post("/api/arena", { action: "open", id, mode: "tdm", radius: 120, ...here, bots: 4, anchor: here }));
 
     // Listed for players close by, not for someone 6 km away (who can't join either).
     const list = expectOk(await guest.post<{ rooms: Room[] }>("/api/arena", { action: "list", ...offset(here, 120) })).data.rooms;
@@ -98,7 +98,7 @@ test.describe("Street Arena through the game server", () => {
     const host = await homePlayer(baseURL!, here);
     const me = await host.me();
     const id = newId();
-    expectOk(await host.post("/api/arena", { action: "open", id, mode: "ffa", radius: 150, ...here, bots: 6, anchor: here }));
+    expectOk(await host.post("/api/arena", { action: "open", id, mode: "ffa", radius: 70, ...here, bots: 6, anchor: here }));
     const r = expectOk(await host.post<{ practice: boolean; rewards: object }>("/api/arena", { action: "result", id, mode: "ffa", players: 7, results: [{ userId: me.id, kills: 9, botKills: 9, deaths: 0, score: 90, place: 1, won: true, rounds: 0 }] })).data;
     expect(r.practice).toBe(true);
     expect(r.rewards).toEqual({});
@@ -127,7 +127,7 @@ test.describe("Street Arena through the game server", () => {
 
     // The host's match is the party's: members see it (and may join from anywhere).
     const id = newId();
-    expectOk(await host.post("/api/arena", { action: "open", id, mode: "bomb", radius: 250, ...here, bots: 2, anchor: here, party: true }));
+    expectOk(await host.post("/api/arena", { action: "open", id, mode: "bomb", radius: 120, ...here, bots: 2, anchor: here, party: true }));
     const seen = expectOk(await member.post<{ party: PartyView }>("/api/drive", { ...went, speed: 0, vehicle: "car" })).data.party;
     expect(seen.arena).toEqual({ id, kind: "relay", mode: "bomb" });
     const rooms = expectOk(await member.post<{ rooms: Room[] }>("/api/arena", { action: "list", ...offset(here, 20000) })).data.rooms;

@@ -47,7 +47,8 @@ export const TEAM_NAMES: Record<Team, string> = { 0: "", 1: msg("Red"), 2: msg("
 export const TEAM_COLORS: Record<Team, string> = { 0: "#f0c05a", 1: "#e5484d", 2: "#3e8ef7" };
 
 // ---- arena
-export const RADII = [150, 250, 400] as const;
+/** Arena sizes (radius, m): small enough that players meet — a street fight, not a hike. */
+export const RADII = [70, 120, 200] as const;
 export type Radius = (typeof RADII)[number];
 export const MAX_PLAYERS = 16;
 export const MAX_BOTS = 10;

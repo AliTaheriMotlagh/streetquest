@@ -226,8 +226,11 @@ export class Crowd {
   /** Inside a building (or right against its wall)? */
   private walled(x: number, z: number) {
     for (const f of this.walls.get(this.cell(x, z, GRID)) ?? []) if (x >= f.minX - 0.3 && x <= f.maxX + 0.3 && z >= f.minZ - 0.3 && z <= f.maxZ + 0.3 && insidePacked(f.pts, x, z)) return true;
-    return false;
+    // Cars count as walls too (parked, in traffic, the police, mine): nobody runs through one.
+    return this.solid?.(x, z) ?? false;
   }
+  /** Set by the city: is there a car (or a pole) at this spot? */
+  solid: ((x: number, z: number) => boolean) | null = null;
 
   /** Where a walker stands: along its road, out on its pavement. */
   private place(w: { road: Road; seg: number; along: number; side: 1 | -1; off: number; dir: 1 | -1 }) {

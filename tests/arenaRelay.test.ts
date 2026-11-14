@@ -239,7 +239,7 @@ async function hosted(server: ReturnType<typeof fakeServer>) {
   const hostSock = { readyState: 1, bufferedAmount: 0, close() {}, send() {} };
   const host = hub.join(hostSock, { id: "host", name: "Host", avatar: "😎", level: 5, friends: [], virtual: true }, A);
   hub.state(host, state(0, 0));
-  hub.message(host, { t: "create", mode: "ffa", radius: 250, bots: 0, difficulty: "normal", geo: geo() });
+  hub.message(host, { t: "create", mode: "ffa", radius: 120, bots: 0, difficulty: "normal", geo: geo() });
   const match = [...hub.matches.values()][0];
   assert.ok(match, "match made");
   const trails: string[] = [];

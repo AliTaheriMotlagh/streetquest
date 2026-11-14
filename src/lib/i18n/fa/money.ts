@@ -169,7 +169,6 @@ const money: Record<string, string> = {
   "Every pickup lands here. Tap it to see your wallet and cash out to your bank card.": "هر پولی برداری اینجا میاد. بزن روش تا کیف پولت رو ببینی و به کارت بانکی برداشت کنی.",
   "The dashed circle is your reach. Money inside it can be picked up — tap any 💵 on the map.": "دایرهٔ خط‌چین محدودهٔ دسترسی توئه. پول‌های داخلش رو می‌تونی برداری — روی هر 💵 روی نقشه بزن.",
   "The money and store missions closest to you, in one list.": "نزدیک‌ترین پول‌ها و مأموریت‌های فروشگاهی، تو یه فهرست.",
-  "Your toman, how to earn more, and cash-out.": "تومان‌هات، راه‌های درآمد بیشتر و برداشت.",
   "See your real streets in 3D. Playing from home, you drive through the city and pick money up as you pass.": "خیابون‌های واقعی‌ات رو سه‌بعدی ببین. اگه از خونه بازی کنی، تو شهر رانندگی می‌کنی و سر راه پول برمی‌داری.",
   "Every reward, cash-out and message lands here.": "همهٔ جایزه‌ها، برداشت‌ها و پیام‌ها اینجا میان.",
   "Walk the real streets with GPS for the full amount on every pickup, or play from home: tap the map and you travel there, for less. You can switch any time in Profile → Settings.":

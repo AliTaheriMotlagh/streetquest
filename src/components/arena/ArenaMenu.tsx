@@ -10,12 +10,12 @@ import { PRIMARIES, SECONDARIES, WEAPONS, type WeaponKey } from "@/lib/arena/wea
 import { Button } from "@/components/Button";
 import type { Combat, CombatHud as Hud } from "./combat";
 
-const SIZE_LABEL: Record<number, string> = { 150: "Small", 250: "Medium", 400: "Large" };
+const SIZE_LABEL: Record<number, string> = { 70: "Small", 120: "Medium", 200: "Large" };
 const DIFF: Difficulty[] = ["easy", "normal", "hard"];
 const DIFF_LABEL: Record<Difficulty, string> = { easy: "Easy", normal: "Normal", hard: "Hard" };
 
 export type ArenaSettings = { radius: number; bots: number; diff: Difficulty };
-export const ARENA_DEFAULTS: ArenaSettings = { radius: 250, bots: 6, diff: "normal" };
+export const ARENA_DEFAULTS: ArenaSettings = { radius: 120, bots: 6, diff: "normal" };
 
 /** The main gun I take into matches, and the sidearm that goes with it. */
 export function GunPicker({ combat }: { combat: Combat }) {

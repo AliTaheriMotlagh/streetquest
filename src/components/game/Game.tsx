@@ -35,6 +35,7 @@ import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
 import { Icon, type IconName } from "../drive/icons";
+import { APP_VIEWS, layerShown, parseView, VIEW_KEY, type AppView } from "@/lib/appView";
 import { queueScenario } from "../drive/scenarioLink";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
@@ -208,6 +209,25 @@ export default function Game() {
   // The 3D city (drive mode), optionally heading somewhere; and a profile to open in Social.
   const [driveOn, setDriveOn] = useState<{ goal: LatLng | null } | null>(null);
   const [vasaOpen, setVasaOpen] = useState(false);
+  // List · Map · Game (lib/appView.ts): shopping only, the stores on the map, or the whole game.
+  const [view, setViewState] = useState<AppView>("game");
+  useEffect(() => {
+    try {
+      setViewState(parseView(localStorage.getItem(VIEW_KEY)));
+    } catch {}
+  }, []);
+  const isGame = view === "game";
+  const setView = (v: AppView) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {}
+    setPanel(null);
+    setSelected(null);
+    setDirOpen(false);
+    setMoreOpen(false);
+    setFilterOpen(false);
+  };
   const [profileFocus, setProfileFocus] = useState<string | null>(null);
   // How the map looks: the illustrated fantasy map (default), satellite, terrain… (mapStyles.ts).
   const [mapStyle, setMapStyle] = useState<MapStyle>(styleById(null));
@@ -443,6 +463,18 @@ export default function Game() {
   const shownVendors = useMemo(() => (mapAsleep ? [] : vendors.filter((v) => layers.includes(v.kind))), [vendors, layers, mapAsleep]);
   // Iran's store directories (Bilbooard, Irangaah, Okala, Netbarg) and Sheypoor's ads, for the site layers that are on.
   const dirData = useDirectory((k) => layers.includes(k as MapLayer), look ?? null, now);
+  // The stores the map has loaded, for the 3D city's signs (a store only a site knows of gets one at the kerb).
+  const driveStores = useMemo(
+    () =>
+      driveOn
+        ? [
+            ...vendors.map((v) => ({ id: `v${v.code}`, name: v.title, lat: v.lat, lng: v.lng, cls: v.kind as string })),
+            ...torobShops.map((s) => ({ id: `t${s.id}`, name: s.name, lat: s.lat, lng: s.lng, cls: "shop" })),
+            ...dirData.stores.map((d) => ({ id: d.id, name: d.name, lat: d.lat, lng: d.lng, cls: d.type as string })),
+          ]
+        : [],
+    [driveOn, vendors, torobShops, dirData.stores],
+  );
   const dirOn = MAP_SITES.some((s) => layers.includes(siteLayer(s)));
   const siteShown = (d: DirStore) => layers.includes(siteLayer(d.site)) || (d.also ?? []).some((a) => layers.includes(siteLayer(a)));
   // A directory store that is a Snappfood vendor on the map keeps one marker: the vendor's (its card has the menu and links to the directory page).
@@ -477,7 +509,7 @@ export default function Game() {
   // Every store from every site as one list (StoreBrowser): best source first, each store once.
   const listings = useMemo(
     () =>
-      dirOpen
+      dirOpen || view === "list"
         ? mergeListings(
             vendors.map(fromVendor),
             torobShops.map(fromTorob),
@@ -487,7 +519,7 @@ export default function Game() {
             (exploreOn ? exploreData?.spots ?? [] : world?.spots ?? []).map(fromSpot),
           )
         : [],
-    [dirOpen, vendors, torobShops, deals, dirData.stores, cinemas, exploreOn, exploreData, world?.spots],
+    [dirOpen, view, vendors, torobShops, deals, dirData.stores, cinemas, exploreOn, exploreData, world?.spots],
   );
   const shownSpots = useMemo(() => (hiddenKinds.length ? spotsAround.filter((p) => !hiddenKinds.includes(p.cat)) : spotsAround), [spotsAround, hiddenKinds]);
   // The game's own markers, as the filter has them.
@@ -495,12 +527,12 @@ export default function Game() {
     () =>
       world && {
         ...world,
-        money: layers.includes("money") ? world.money : [],
-        places: layers.includes("jobs") ? world.places : [],
-        players: layers.includes("players") ? world.players : [],
-        businesses: layers.includes("biz") ? world.businesses : [],
+        money: isGame && layers.includes("money") ? world.money : [],
+        places: isGame && layers.includes("jobs") ? world.places : [],
+        players: isGame && layers.includes("players") ? world.players : [],
+        businesses: isGame && layers.includes("biz") ? world.businesses : [],
       },
-    [world, layers],
+    [world, layers, isGame],
   );
   /** The filter's chips, each with how many there are around. */
   const filterGroups = useMemo(() => {
@@ -519,8 +551,8 @@ export default function Game() {
     };
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
     for (const k of MAP_SITES) count[siteLayer(k)] = dirData.stores.filter((d) => d.site === k || d.also?.includes(k)).length;
-    return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) }));
-  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots, dirData]);
+    return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g && layerShown(view, l.key)).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) })).filter((g) => g.items.length);
+  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots, dirData, view]);
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -1207,7 +1239,7 @@ export default function Game() {
   return (
     <Ctx.Provider value={ctx}>
       <EmojiArtLayer />
-      <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle.id}`}>
+      <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle.id} view-${view}`}>
         <GameMap
           asleep={mapAsleep}
           world={mapWorld}
@@ -1459,13 +1491,13 @@ export default function Game() {
         <Toasts toasts={toasts} onDismiss={dismissToast} onOpen={(l) => ctx.openLink(l)} />
 
         <LeaveGuard />
-        {dirOpen && !panel && (
+        {(dirOpen || view === "list") && !panel && (
           <StoreBrowser
             listings={listings}
             at={look ?? null}
             loading={dirData.pending}
             onPick={(ref) => (setDirOpen(false), setSelected(ref as Selected))}
-            onClose={() => setDirOpen(false)}
+            onClose={() => (view === "list" ? setView("map") : setDirOpen(false))}
             onServices={() => (setDirOpen(false), setServicesOpen(true))}
             onProducts={() => (setDirOpen(false), setProductsOpen(true))}
           />
@@ -1507,7 +1539,14 @@ export default function Game() {
 
         {/* Phones hide it under an open panel; tablets/desktop keep it beside the side panel (CSS). */}
         <nav className={`nav ${panel || selected ? "with-sheet" : ""}`}>
-          {NAV.map(([id, ic, label]) => {
+          {/* Outside the game: List · Map · Game, and Profile. In the game: Map (back out) first, the wallet stays on its chip up top. */}
+          {(isGame ? APP_VIEWS.filter((v) => v.key === "map") : APP_VIEWS).map((v) => (
+            <Button key={v.key} data-tour={`nav-view-${v.key}`} title={t(v.hint)} aria-label={t(v.hint)} aria-current={view === v.key && !panel ? "page" : undefined} className={view === v.key && !panel ? "on" : ""} onClick={() => setView(v.key)}>
+              <span className="ic"><Icon name={v.icon} size={22} /></span>
+              <span className="nav-lb">{t(v.label)}</span>
+            </Button>
+          ))}
+          {NAV.filter(([id]) => (isGame ? id !== "wallet" : id === "me")).map(([id, ic, label]) => {
             const b = showBadge(id);
             // Crew & chat opens from Social, so Social stays lit (and closes it) while it's open.
             const showing = panelPending && navTo ? navTo : panel;
@@ -1554,6 +1593,7 @@ export default function Game() {
             onSelect={driveCbs.onSelect}
             onProfile={driveCbs.onProfile}
             onExit={driveCbs.onExit}
+            stores={driveStores}
           />
         )}
 

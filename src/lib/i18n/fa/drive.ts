@@ -320,13 +320,17 @@ const drive: Record<string, string> = {
   "Radio: {name} — tap for the next station": "رادیو: {name} — بزن برای ایستگاه بعدی",
   "Car radio": "رادیوی ماشین",
   "Car radio (N)": "رادیوی ماشین (N)",
-  "FA": "فا",
-  "INT": "خارجی",
   "where to meet your friends": "کجا با دوستات قرار بذاری",
   "Persian pop": "پاپ ایرانی",
   "Iranian traditional": "سنتی ایرانی",
   "Hits": "آهنگ‌های روز",
   "Classic rock": "راک کلاسیک",
+  "Persian": "ایرانی",
+  "International": "خارجی",
+  "Tuning…": "در حال تنظیم…",
+  "No signal": "سیگنال نیست",
+  "Turn the radio off": "خاموش کردن رادیو",
+  "Finding stations…": "در حال پیدا کردن ایستگاه‌ها…",
 };
 
 export default drive;

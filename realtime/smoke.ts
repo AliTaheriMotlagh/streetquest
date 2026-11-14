@@ -79,7 +79,7 @@ async function main() {
   const buildings: { p: number[]; h: number; mh: number }[] = [];
   for (let x = -300; x < 300; x += 40) for (let z = -300; z < 300; z += 40) buildings.push({ p: [x + 8, z + 8, x + 32, z + 8, x + 32, z + 32, x + 8, z + 32], h: 12, mh: 0 });
   const MODE = process.env.SMOKE_MODE ?? "tdm";
-  a.ws.send(JSON.stringify({ t: "create", mode: MODE, radius: 150, bots: 6, difficulty: "hard", geo: { roads, buildings } }));
+  a.ws.send(JSON.stringify({ t: "create", mode: MODE, radius: 120, bots: 6, difficulty: "hard", geo: { roads, buildings } }));
   await sleep(500);
   const err = a.msgs.filter((m) => m.t === "err");
   if (err.length) console.log("errors", err);

@@ -642,3 +642,32 @@ html[lang="fa"] .scn-k { letter-spacing: 0; }
 .chud-buy-row { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 2px; }
 .chud-buy-row .chip { flex: none; min-height: 40px; background: rgba(10, 14, 20, .85); }
 .chud-buy-row .chip:disabled { opacity: .45; }
+
+/* List · Map · Game (lib/appView.ts): outside the game, none of its HUD — no wallet, profile card,
+   quest tray, quest banners or 3D button. The list view is the store browser over everything. */
+.game:not(.view-game) > .hud, .game:not(.view-game) .ready-wrap, .game:not(.view-game) > .run-banner,
+.game:not(.view-game) > .quest-hud, .game:not(.view-game) > .drive-fab, .game:not(.view-game) .ready-tray, .game:not(.view-game) .travel-banner { display: none !important; }
+.game.view-list > .fab-col, .game.view-list .compass-rose { display: none; }
+/* List view: the store browser is the screen (above the map, below the bar), no slide-up, no grip. */
+.game.view-list > .sheet.tall { top: calc(8px + var(--safe-t, 0px)); max-height: none; border-radius: 24px; padding-bottom: calc(84px + var(--safe-b, 0px)); animation: none; }
+.game.view-list > .sheet.tall .sheet-grip { display: none; }
+.game.view-list > .nav:not(.with-sheet) { z-index: 750; }
+
+/* Car radio: a station list beside the tools, grouped Persian / international, the playing one bouncing. */
+.radio-pop { position: absolute; inset-inline-end: calc(76px + var(--safe-e, 0px)); top: 150px; z-index: 30; width: min(280px, calc(100vw - 110px)); max-height: min(60vh, 420px); overflow-y: auto; padding: 10px; border-radius: 18px; background: rgba(12, 16, 24, .94); border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 16px 40px rgba(0, 0, 0, .5); color: #fff; pointer-events: auto; animation: menuIn .18s ease-out; }
+.radio-pop-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.radio-pop-head .grow { flex: 1; }
+.radio-x { width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .08); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.radio-grp { display: grid; gap: 4px; margin-top: 6px; }
+.radio-grp-t { font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, .5); padding-inline: 4px; }
+.radio-row { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 0; background: rgba(255, 255, 255, .05); color: #fff; font: inherit; text-align: start; cursor: pointer; }
+.radio-row.on { background: rgba(240, 192, 90, .18); box-shadow: inset 0 0 0 1.5px #f0c05a; }
+.radio-row.off { width: 100%; margin-top: 8px; justify-content: center; color: rgba(255, 255, 255, .75); }
+.radio-name { font-weight: 700; flex: 1; }
+.radio-genre { font-size: 12px; color: rgba(255, 255, 255, .55); }
+.radio-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.radio-eq i { width: 3px; height: 100%; border-radius: 2px; background: #f0c05a; animation: radioEq .9s ease-in-out infinite; transform-origin: bottom; }
+.radio-eq i:nth-child(2) { animation-delay: -.3s; }
+.radio-eq i:nth-child(3) { animation-delay: -.6s; }
+@keyframes radioEq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .radio-eq i { animation: none; transform: scaleY(.7); } }

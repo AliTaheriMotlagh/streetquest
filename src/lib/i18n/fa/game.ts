@@ -128,6 +128,11 @@ const game: Record<string, string> = {
   "Isfahan": "اصفهان",
   "Shiraz": "شیراز",
   "Tabriz": "تبریز",
+  "Three ways to use it: List for shopping, Map for the stores around you, Game for everything. Your wallet is the green chip up top.": "سه جور می‌شه استفاده کرد: «فهرست» برای خرید، «نقشه» برای مغازه‌های اطرافت، «بازی» برای همه‌چیز. کیف پولت همون دکمهٔ سبز بالاست.",
+  "List": "فهرست",
+  "Stores and prices, no map": "مغازه‌ها و قیمت‌ها، بدون نقشه",
+  "Stores and places on the map": "مغازه‌ها و جاها روی نقشه",
+  "Money on the streets, missions, the 3D city": "پول توی خیابون‌ها، مأموریت‌ها، شهر سه‌بعدی",
 };
 
 export default game;

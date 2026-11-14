@@ -47,6 +47,16 @@ export class CarRadio {
     this.tune(stationAfter(this.current, this.list));
   }
 
+  /** The stations there are (loaded in the background on start). */
+  stations(): LiveStation[] {
+    return this.list;
+  }
+  /** Straight to a station (the list), or off (null). */
+  pick(id: string | null) {
+    if (!this.list.length && id) return void this.load().then(() => this.tune(id));
+    this.tune(id);
+  }
+
   private tune(id: string | null) {
     this.current = id;
     const st = this.list.find((s) => s.id === id);

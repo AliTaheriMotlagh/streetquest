@@ -456,10 +456,10 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
 
   // ---- grouped where they'd overlap, for this zoom and what's (about) on screen
   const inView = useCallback((l: Item[]) => l.filter((x) => view.bounds.contains([x.lat, x.lng])), [view]);
-  // At city zoom the hundreds of stores leave the map to the game and the cinemas.
-  // At street level places aren't grouped: the ones too close to another become dots instead (a
-  // map of "2" and "3" bubbles reads worse than pins with dots between them).
-  const placeCell = lod === "near" ? 0 : cell && Math.round(cell * POI_SPACING);
+  // At city zoom the hundreds of stores leave the map to the game and the cinemas. Closer in,
+  // stores that would sit on top of each other become one bubble with a count (tap: zoom in) —
+  // not dots, which read as "something's broken". Only at the closest zoom does every pin stand alone.
+  const placeCell = cell && Math.round(cell * POI_SPACING);
   const placeGroups = useMemo(() => cluster(inView(lod === "far" ? all.cinemas : [...all.cinemas, ...all.places]), view.zoom, placeCell, "poi"), [all, inView, lod, view.zoom, placeCell]);
   const areaGroups = useMemo(() => (lod === "far" ? [] : cluster(inView(areaList), view.zoom, placeCell, "ar")), [areaList, inView, lod, view.zoom, placeCell]);
   const gameGroups = useMemo(() => cluster(gameList, view.zoom, cell && Math.round(cell * GAME_SPACING), "g"), [gameList, view.zoom, cell]);

@@ -154,7 +154,7 @@ export const TOUR: TourStep[] = [
   { target: "[data-tour=toman]", title: msg("Your toman"), body: msg("Every pickup lands here. Tap it to see your wallet and cash out to your bank card.") },
   { target: ".me-wrap", title: msg("Your reach"), body: msg("The dashed circle is your reach. Money inside it can be picked up — tap any 💵 on the map.") },
   { target: "[data-tour=nav-nearby]", title: msg("Nearby"), body: msg("The money and store missions closest to you, in one list.") },
-  { target: "[data-tour=nav-wallet]", title: msg("Wallet"), body: msg("Your toman, how to earn more, and cash-out.") },
+  { target: "[data-tour=nav-view-map]", title: msg("Map"), body: msg("Three ways to use it: List for shopping, Map for the stores around you, Game for everything. Your wallet is the green chip up top.") },
   { target: "[data-tour=nav-play]", title: msg("Play"), body: msg("Your Street Empire idle game, story missions, GPS games and weekly goals with big rewards.") },
   { target: "[data-tour=nav-market]", title: msg("Market"), body: msg("Shops run by players around you — buy with coins, or open your own shop and sell.") },
   { target: "[data-tour=nav-social]", title: msg("Social"), body: msg("Your city's social network: posts, check-ins at real places, followers — and your crew's chat and calls. Red badges mean something new.") },

@@ -124,6 +124,12 @@ mood scales XP; loot funds research; territory funds the army.
 - **Real places** — restaurants, cafés, shops, pharmacies, gyms and parks come from OpenStreetMap, with their real
   names. Jobs happen *at* them: a 🍔 burger delivery starts at a real burger joint and ends at another real place, a ☕
   check-in is at a real café, and food spawns sit on real restaurants instead of random street corners.
+- **List · Map · Game** — three ways to use it, switched from the bottom bar and remembered on the device
+  (`lib/appView.ts`): **List** is shopping only — every store and product around, searched and filtered, full
+  screen; **Map** is the stores and places on the map without the game (no money, jobs, players, wallet, quests or
+  3D button; the filter has no "The game" group); **Game** is everything, with a Map tab first in its bar to step out
+  (the wallet lives on its chip up top). On the map, stores that would sit on each other become one bubble with a
+  count at every zoom but the closest (tap: zoom in) — never dots.
 - **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). A loading screen
   (`src/components/drive/DriveBoot.tsx`, rules `src/lib/bootGate.ts`) covers the city — progress, what it's doing, a tip —
@@ -446,7 +452,8 @@ mood scales XP; loot funds research; territory funds the army.
   the right stick (a vertical slot) tips the nose — up flies forward, down backs off — as far as you push it. **Jump from the helicopter** above 12 m (Get out, or F):
   a moment of free fall, then a green-white-red canopy opens by itself — gas to dive, brake to flare, steer as usual —
   and you land on foot while the helicopter flies itself down under where you jumped and waits there
-  (`physics.ts` `stepChute`, `chute3d.ts`). **Car radio** (📻 button beside the camera, or N): real music stations,
+  (`physics.ts` `stepChute`, `chute3d.ts`). **Car radio** (📻 button beside the camera opens the station list — Persian and international, the playing one
+  bouncing — or N steps through them): real music stations,
   Persian (Navahang, Radio Faaz, Radio Simorgh) and international (Capital UK, NRJ Paris, classic rock), picked from
   radio-browser.info's open directory — music only, no news, talk, politics or religion — kept by the directory's stable
   ids; `/api/radio` looks up today's https stream addresses (`lib/radio.ts`, `server/radio.ts`, `drive/radio.ts`). It plays in the
@@ -455,7 +462,9 @@ mood scales XP; loot funds research; territory funds the army.
   line spoken («نون تازه، نون داغ!», «هندونه به شرط چاقو!») with the store's real name in the bubble (`barks.ts`
   `shopCall` lines, `SHOP_CALLS`, `street.ts` `shopCall`, `storefronts.ts` `nearestOpen`); signs carry a readable
   «باز» / «بسته» tag and a shut store's sign dims; carpet and general stores hang a Persian rug by the door, cafés
-  and restaurants keep a brass samovar on the sill. A store whose menu isn't online shows what that kind of store usually has (never
+  and restaurants keep a brass samovar on the sill. Stores only the store sites know of (Snappfood, Torob, the directories) get a sign on a pole at the nearest
+  kerb, so the city shows the same stores the List does. People step round cars, never through them. The driving pad
+  follows the vehicle you're actually in (a car you jumped into, not the garage pick). A store whose menu isn't online shows what that kind of store usually has (never
   made-up prices) and two ways to find the real one — a web search for its name + «منو» and the place on the map
   (`storeKinds.ts` `USUALLY`, `menuSearch`). **Tap the
   minimap (or press M) for a bigger map** — the same live map over the game, twice the reach, with a button to the
@@ -515,7 +524,7 @@ mood scales XP; loot funds research; territory funds the army.
   first; die and the next round starts you on the free SMG and pistol; money starts over at half time; bots buy too —
   `lib/arena/economy.ts`, `realtime/match.ts`), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
   pistol; first through all 10 wins) or 🚩 Hardpoint (a glowing zone on a street, coloured by who holds it, moves every
-  minute; a point a second for the team alone in it, first to 120), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
+  minute; a point a second for the team alone in it, first to 120), small / medium / large arena (70 / 120 / 200 m — small enough that you meet; its edge is a dashed red ring on the minimap), with up to 10 bots (easy / normal / hard) so it's
   fun with one friend or none. Nine guns built from real low-poly models (CC BY, credited on /credits): pick a primary —
   AR-7 rifle, KR-47 battle rifle (three heavy rounds, kicks harder; best just past SMG range), Vex SMG, Breacher shotgun,
   Bulldog LMG (a 100-round belt, slow to move and reload), Marksman DMR (semi-auto, owns 100–200 m) or the Longshot

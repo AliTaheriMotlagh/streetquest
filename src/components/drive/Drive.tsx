@@ -123,6 +123,8 @@ type Props = {
   /** Open my profile (leaves the 3D city). */
   onProfile: () => void;
   onExit: () => void;
+  /** Stores the sites know of (Snappfood, Torob, the directories) — each gets a sign where the map has none. */
+  stores?: { id: string; name: string; lat: number; lng: number; cls?: string }[];
 };
 
 type Job = {
@@ -197,7 +199,9 @@ const store = {
   },
 };
 
-export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCollect, onSelect, onProfile, onExit }: Props) {
+export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCollect, onSelect, onProfile, onExit, stores }: Props) {
+  const storesRef = useRef(stores);
+  storesRef.current = stores;
   const { me, world, act, refresh, toast } = useGame();
   const mount = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
@@ -225,6 +229,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   // The car radio (radio.ts): plays in the car, waits on foot and in a match.
   const radioRef = useRef<CarRadio | null>(null);
   const [radio, setRadio] = useState<RadioState>({ station: null, status: "off" });
+  const [radioOpen, setRadioOpen] = useState(false);
   useEffect(() => {
     const r = new CarRadio(setRadio);
     radioRef.current = r;
@@ -252,6 +257,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [timeOfDay, setTimeOfDay] = useState<TimePick>(() => timePick());
   const [weather, setWeather] = useState<Weather>(() => weatherPick());
   const [vehicle, setVehicle] = useState<VehicleKey>(() => startVehicle(store.get(VEHICLE_KEY), me?.level ?? 1));
+  const [drivenKey, setDrivenKey] = useState<VehicleKey | null>(null);
   const [paint, setPaint] = useState(() => {
     const c = store.get(COLOR_KEY);
     return isPaint(c) ? c : PAINTS[0];
@@ -740,6 +746,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     });
     // People on the pavements: they run from trouble, and cars knock them down.
     const crowd = new Crowd(scene, style, lite);
+    // People step round cars, never through them (the cars' and poles' colliders; the police and mine once street life is up).
+    crowd.solid = (x, z) => !!obstacles.collide(x, z, 0.3).hit || !!street.solid.collide(x, z, 0.3).hit;
     // Street life outside matches: crashes and damage, crime and the police (street.ts).
     let shakeK = 0;
     const street: StreetLife = new StreetLife({
@@ -927,8 +935,25 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       others.setWalkers(w?.players ?? []);
     };
 
-    /** A shop label by its id (`tile key:index`), from the tile it's on. */
+    /**
+     * Stores only the sites know of: a sign on a pole at the kerb nearest each, facing the street
+     * (stepping out from the road until it's on the pavement, not in the road or a building).
+     */
+    const dataLabels = new Map<string, Label>();
+    const kerbFor = (x: number, z: number) => {
+      const s = nearestStreet(x, z, 60);
+      if (!s) return null;
+      const dx = x - s.x, dz = z - s.z, dd = Math.hypot(dx, dz) || 1;
+      for (const off of [4.5, 6, 7.5, 3.5, 9]) {
+        const px = s.x + (dx / dd) * off, pz = s.z + (dz / dd) * off;
+        if (streets().on(px, pz, 0.7) || collision.collide(px, pz, 0.5).hit) continue;
+        return { x: px, z: pz, yaw: Math.atan2(-dx, -dz) };
+      }
+      return null;
+    };
+    /** A shop label by its id (`tile key:index`, or `d:` for a site's store), from the tile it's on. */
     const shopById = (id: string): Label | null => {
+      if (id.startsWith("d:")) return dataLabels.get(id) ?? null;
       const cut = id.lastIndexOf(":");
       const l = tiles.get(id.slice(0, cut))?.mesh?.labels[Number(id.slice(cut + 1))];
       return l?.kind === "shop" ? l : null;
@@ -945,6 +970,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d < (l.kind === "num" ? 55 : 150)) want.push({ id: `${s.key}:${i}`, l, d });
         });
+      }
+      // The sites' stores near enough (the map's own sign wins when it has the same store: oncePerStore).
+      for (const sd of storesRef.current ?? []) {
+        const p = frame.toXZ(sd.lat, sd.lng), d = Math.hypot(p.x - st.x, p.z - st.z);
+        if (d > 150) continue;
+        const id = `d:${sd.id}`;
+        let l = dataLabels.get(id);
+        if (!l) {
+          const k = kerbFor(p.x, p.z);
+          if (!k) continue;
+          l = { text: sd.name, x: k.x, z: k.z, angle: k.yaw, w: Math.min(4, Math.max(2.6, sd.name.length * 0.36 + 1.6)), y: 2.6, kind: "shop", cls: sd.cls, pole: true, top: 3.2 };
+          dataLabels.set(id, l);
+        }
+        want.push({ id, l, d: d + 8 });
       }
       want.sort((a, b) => a.d - b.d);
       // (One sign per store: the map has some twice — oncePerStore.)
@@ -1543,6 +1582,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let wasLow = true;
     /** The store whose card is up (kept while it's still about as near as the best: no flicker). */
     let lastStore: string | null = null;
+    let shownKey: VehicleKey | null = null;
     let lastShopCall = 0;
     const shopCalled = new Map<string, number>();
     let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, fps = 60, lastWorld: World | null = null;
@@ -2171,6 +2211,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
 
       // -- HUD (React, ~6 Hz — and only when something on it actually changed)
+      if (currentKey() !== shownKey) setDrivenKey((shownKey = currentKey()));
       if (now - lastHud > 160) {
         lastHud = now;
         const here = frame.toLatLng(st.x, st.z);
@@ -2267,6 +2308,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                 g.stroke();
               });
             });
+          }
+          // In a match: the arena's edge, so you know where the fight is (and which way back in).
+          const mv = combat.getSnapshot().match;
+          if (mv && mv.phase !== "lobby" && mv.phase !== "ended") {
+            const c = frame.toXZ(mv.center.lat, mv.center.lng);
+            g.strokeStyle = "rgba(255,90,90,.9)";
+            g.lineWidth = 2.5 * lw;
+            g.setLineDash([6 * lw, 5 * lw]);
+            g.beginPath();
+            g.arc((c.x - st.x) * scale, (c.z - st.z) * scale, mv.radius * scale, 0, Math.PI * 2);
+            g.stroke();
+            g.setLineDash([]);
           }
           const dot = (x: number, z: number, col: string, r = 4) => {
             g.fillStyle = col;
@@ -2527,7 +2580,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const touchPrefs = useTouchPrefs();
   // The arrow points up; 0° relative bearing is straight ahead.
   const arrowStyle = hud?.nav ? { transform: `rotate(${hud.nav.rel}deg)` } : undefined;
-  const v = VEHICLES[vehicle];
+  // What I'm actually driving (a street car I got into, a server-set ride), not just the garage pick:
+  // the pad, the key hints and the radio follow it.
+  const v = VEHICLES[drivenKey ?? vehicle];
   const live2 = party?.status === "LIVE";
   const countdown = live2 && party?.startsAt && hud ? Math.ceil((party.startsAt - hud.serverNow) / 1000) : 0;
   // The start grid: a beep on 3, 2, 1 and "go!" when it lets go.
@@ -2639,6 +2694,38 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             <span className="dg-unit">{t("km/h")}</span>
             <i className="dg-gear" />
           </div>
+          {radioOpen && !onFoot && (
+            <div className="radio-pop" role="menu" aria-label={t("Car radio")}>
+              <div className="radio-pop-head">
+                <Icon name="radio" size={18} /> <b>{t("Car radio")}</b>
+                <span className="grow" />
+                <button type="button" className="radio-x" onClick={() => setRadioOpen(false)} aria-label={t("Close")}>
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+              {(["persian", "world"] as const).map((grp) => (
+                <div key={grp} className="radio-grp">
+                  <span className="radio-grp-t">{grp === "persian" ? t("Persian") : t("International")}</span>
+                  {(radioRef.current?.stations() ?? []).filter((st) => st.group === grp).map((st) => {
+                    const on = radio.station?.id === st.id && radio.status !== "off";
+                    return (
+                      <button key={st.id} type="button" role="menuitemradio" aria-checked={on} className={`radio-row ${on ? "on" : ""}`} onClick={() => radioRef.current?.pick(on ? null : st.id)}>
+                        <span className="radio-name">{st.name}</span>
+                        <span className="radio-genre">{t(st.genre)}</span>
+                        {on && (radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <span className="radio-genre">{radio.status === "tuning" ? t("Tuning…") : t("No signal")}</span>)}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              {radio.status !== "off" && (
+                <button type="button" className="radio-row off" onClick={() => radioRef.current?.pick(null)}>
+                  <Icon name="mute" size={16} /> {t("Turn the radio off")}
+                </button>
+              )}
+              {!(radioRef.current?.stations().length) && <p className="small muted">{t("Finding stations…")}</p>}
+            </div>
+          )}
           <div className="drive-side" role="toolbar" aria-label={t("Tools")}>
             <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} data-tip={t("Camera")}>
               <Icon name="camera" size={22} />
@@ -2647,12 +2734,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             {!onFoot && !fight?.inMatch && (
               <Button
                 className={`drive-round radio ${radio.status !== "off" ? "on" : ""}`}
-                onClick={() => radioRef.current?.next()}
+                onClick={() => setRadioOpen((o) => !o)}
+                aria-expanded={radioOpen}
                 aria-label={radio.station ? t("Radio: {name} — tap for the next station", { name: radio.station.name }) : t("Car radio")}
                 data-tip={radio.station ? `${radio.station.name} · ${t(radio.station.genre)}` : t("Car radio (N)")}
               >
                 <Icon name="radio" size={22} />
-                <small>{radio.status === "off" ? t("Off") : radio.status === "tuning" ? "…" : radio.status === "error" ? "!" : radio.station?.group === "persian" ? t("FA") : t("INT")}</small>
+                {radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <small>{radio.status === "off" ? t("Off") : radio.status === "tuning" ? "…" : "!"}</small>}
               </Button>
             )}
             {canDrive && combat && !fight?.inMatch && (onFoot ? (
