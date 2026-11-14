@@ -9,7 +9,7 @@
 import { siteBase } from "@/lib/relayUrl";
 import { pacerFor } from "@/lib/pace";
 import { sourceAt } from "@/lib/region";
-import { busOf, etaMin, IETT_PATH, soapBody, soapJson, STALE_MS, type IettMethod, type LiveBus } from "@/lib/transit/iett";
+import { arrivalsAt, busOf, IETT_PATH, soapBody, soapJson, STALE_MS, type Arrival, type IettMethod, type LiveBus } from "@/lib/transit/iett";
 import { cityAt, metres, type BusLine, type BusNetwork, type BusStop, type City } from "@/lib/transit/network";
 import { cached } from "./localData";
 
@@ -110,11 +110,9 @@ export async function busesAround(at: { lat: number; lng: number }, radiusM = 25
   };
 }
 
-export type Arrival = { line: string; minutes: number | null; live: boolean; headway: number; towards?: string };
+export type { Arrival } from "@/lib/transit/iett";
 /** Lines read live per stop card at most (each is a request on a cold cache). */
 const LIVE_LINES = 8;
-/** A live bus further than this from the stop isn't "the next one" (it's a far end of the route). */
-const NEXT_BUS_M = 8000;
 
 /**
  * When each line's next bus comes to a stop: live in Istanbul when IETT answers (the nearest
@@ -129,13 +127,6 @@ export async function arrivals(stopId: string, at: { lat: number; lng: number })
   if (!stop) return { stop: null, arrivals: [], live: false };
   const canLive = city === "istanbul" && sourceAt("iett", stop) && !!iettBase();
   const live = canLive ? await Promise.all(stop.lines.slice(0, LIVE_LINES).map((l) => lineBuses(l).catch(() => null))) : [];
-  const out = stop.lines.map<Arrival>((line, i) => {
-    const headway = net.lines[line]?.headway ?? 15;
-    const buses = live[i];
-    if (!buses) return { line, minutes: null, live: false, headway };
-    const near = buses.map((b) => ({ b, m: metres(stop, b) })).filter((x) => x.m <= NEXT_BUS_M).sort((a, b) => a.m - b.m)[0];
-    return near ? { line, minutes: etaMin(near.b, stop), live: true, headway, ...(near.b.towards ? { towards: near.b.towards } : {}) } : { line, minutes: null, live: true, headway };
-  });
-  out.sort((a, b) => (a.minutes ?? 1e9) - (b.minutes ?? 1e9) || a.line.localeCompare(b.line, "en", { numeric: true }));
-  return { stop, arrivals: out, live: live.some((x) => !!x) };
+  const headways = Object.fromEntries(stop.lines.map((l) => [l, net.lines[l]?.headway ?? 15]));
+  return { stop, arrivals: arrivalsAt(stop, stop.lines, live, headways), live: live.some((x) => !!x) };
 }

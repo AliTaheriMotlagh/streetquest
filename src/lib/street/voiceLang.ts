@@ -26,11 +26,14 @@ export const rawFile = (b: Bark, v: VoiceKind, lang: VoiceLang) => lineFile(b, v
 /** What is said, in that language. */
 export const lineText = (b: Bark, v: VoiceKind, lang: VoiceLang) => textOf(b, v)[lang];
 
-/** One Piper (or Mimic 3) voice and where it comes from. `hf`: path in rhasspy/piper-voices. */
-export type VoiceModel = { id: string; kind: VoiceKind; lang: VoiceLang; label: string; hf?: string; licence: string; source: string };
-
-const OWN_TR = "Own recordings (no permissive Piper tr_TR voice exists)";
+/**
+ * One Piper (or Mimic 3) voice and where it comes from. `hf`: path in rhasspy/piper-voices. `url`: a
+ * Piper voice kept elsewhere (a folder with `files`: its .onnx and .onnx.json, by default <id>.onnx[.json]),
+ * run by /dev/voices's own runner (piperRun.ts) rather than the piper-tts-web library.
+ */
+export type VoiceModel = { id: string; kind: VoiceKind; lang: VoiceLang; label: string; hf?: string; url?: string; files?: [string, string]; licence: string; source: string };
 const HFS = "https://huggingface.co/rhasspy/piper-voices/tree/main";
+const TR_MIRROR = "https://huggingface.co/csukuangfj/vits-piper-tr_TR";
 /** Only permissive voices (every MODEL_CARD checked: public domain, CC0, CC BY) — never NC/SA. */
 export const MODELS: VoiceModel[] = [
   { id: "fa_IR-amir-medium", kind: "m", lang: "fa", label: "amir", hf: "fa/fa_IR/amir/medium", licence: "CC0", source: `${HFS}/fa/fa_IR` },
@@ -41,12 +44,11 @@ export const MODELS: VoiceModel[] = [
   { id: "en_US-ljspeech-medium", kind: "f", lang: "en", label: "LJ Speech (US woman)", hf: "en/en_US/ljspeech/medium", licence: "Public domain (LJ Speech)", source: `${HFS}/en/en_US/ljspeech/medium` },
   { id: "en_GB-alba-medium", kind: "f", lang: "en", label: "Alba (Scottish woman)", hf: "en/en_GB/alba/medium", licence: "CC BY 4.0 (CSTR, University of Edinburgh)", source: `${HFS}/en/en_GB/alba/medium` },
   { id: "en_US-bryce-medium", kind: "cop", lang: "en", label: "Bryce (US man, through a radio)", hf: "en/en_US/bryce/medium", licence: "Public domain", source: `${HFS}/en/en_US/bryce/medium` },
-  // Turkish: Piper's own tr_TR voice (dfki) is CC BY-NC-SA and fettah/fahrettin were withdrawn from rhasspy/piper-voices, so no
-  // permissive Piper model is used. Until clips exist the device's tr-TR speech reads the line (drive/voices.ts); clips made from your
-  // own recordings or a permissively licensed voice go in with `npm run assets:voices -- --import=<dir> --lang=tr` (files in <dir>/tr/).
-  { id: "tr-own-m", kind: "m", lang: "tr", label: "Turkish man (own recording / device voice)", licence: OWN_TR, source: `${HFS}/tr/tr_TR` },
-  { id: "tr-own-f", kind: "f", lang: "tr", label: "Turkish woman (own recording / device voice)", licence: OWN_TR, source: `${HFS}/tr/tr_TR` },
-  { id: "tr-own-cop", kind: "cop", lang: "tr", label: "Turkish police (own recording / device voice)", licence: OWN_TR, source: `${HFS}/tr/tr_TR` },
+  // Turkish: Piper's listed tr_TR voice (dfki) is CC BY-NC-SA — not used. Fahrettin and Fettah were trained on NabuCasa's CC0
+  // voice dataset (their MODEL_CARDs), dropped from rhasspy/piper-voices' list but kept on sherpa-onnx's mirror; ilkiz is MIT by its author.
+  { id: "tr_TR-fahrettin-medium", kind: "m", lang: "tr", label: "Fahrettin (Turkish man)", url: `${TR_MIRROR}-fahrettin-medium/resolve/main`, licence: "CC0 (NabuCasa voice-datasets)", source: `${TR_MIRROR}-fahrettin-medium` },
+  { id: "tr-ilkiz-medium", kind: "f", lang: "tr", label: "İlkiz (Turkish woman)", url: "https://huggingface.co/ilkeraktuna/piper-tts-tr-ilkiz-medium/resolve/main", files: ["ilkiz.onnx", "ilkiz.onnx.json"], licence: "MIT (its author's model card; the recordings' source isn't stated)", source: "https://huggingface.co/ilkeraktuna/piper-tts-tr-ilkiz-medium" },
+  { id: "tr_TR-fettah-medium", kind: "cop", lang: "tr", label: "Fettah (Turkish man, through a megaphone)", url: `${TR_MIRROR}-fettah-medium/resolve/main`, licence: "CC0 (NabuCasa voice-datasets)", source: `${TR_MIRROR}-fettah-medium` },
 ];
 
 /** The voices that can say a line of this kind in this language (at least one each). */

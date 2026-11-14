@@ -759,7 +759,7 @@ export class StreetLife {
     const d = Math.hypot(e.x - me.x, e.z - me.z);
     this.fx.vfx.tracer(m.x, m.y, m.z, e.tx, e.ty, e.tz);
     this.fx.vfx.flash(m.x, m.y, m.z);
-    shotSound(WEAPONS.pistol.sound, m);
+    shotSound(WEAPONS.pistol.sound, m, "pistol");
     if (!e.hit) return this.fx.vfx.impact(e.tx, Math.max(0.05, e.ty), e.tz, e.ty < 0.3 ? "ground" : "wall");
     if (e.onCar) {
       this.hurtMyCar(3.5);

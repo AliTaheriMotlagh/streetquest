@@ -58,7 +58,7 @@ export function busOfKind(kind: SoundKind): MixBus {
 
 /** Which slider a recorded sound (soundSlots.ts) answers to. */
 export function busOfSlot(key: string): MixBus {
-  if (key === "explosion" || key === "fire") return "weapons";
+  if (key === "explosion" || key === "fire" || key.startsWith("gun_") || /^(reload|hitMarker|kill|hurt|empty|bombBeep|throw|flashbang)$/.test(key)) return "weapons";
   if (key === "city") return "ambience";
   if (/^(siren|horn|skid|carAlarm|carLock|engine|crash)/.test(key)) return "vehicles";
   return "effects";

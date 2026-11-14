@@ -16,6 +16,7 @@ import { jobsFor, lineText, MODELS, VOICE_LANGS, type Job, type VoiceLang } from
 import { barkKey, type VoiceKind } from "@/lib/street/barks";
 import { encodeWav, ENGINE_TYPES, rawNameOf, toMono, trimSilence, ttsUrl, validTemplate, type VoiceEngine } from "@/lib/voiceTools";
 import { haaniye } from "./haaniye";
+import { piperRun } from "./piperRun";
 
 const LIB = "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm";
 /** This server's copies of the big files (absolute: the runtime resolves them from its own address). */
@@ -55,7 +56,9 @@ async function toWav(data: ArrayBuffer, trim = false): Promise<ArrayBuffer> {
 }
 
 /** The default way each voice is made: Piper where there's a permissive model, else by hand (Turkish). */
-const defaultEngine = (lang: VoiceLang, kind: VoiceKind): VoiceEngine => (MODELS.some((m) => m.lang === lang && m.kind === kind && m.hf) || (lang === "fa" && kind === "f") ? { type: "piper" } : { type: "record" });
+const defaultEngine = (lang: VoiceLang, kind: VoiceKind): VoiceEngine => (MODELS.some((m) => m.lang === lang && m.kind === kind && (m.hf || m.url)) || (lang === "fa" && kind === "f") ? { type: "piper" } : { type: "server" });
+/** A saved choice of Piper where there is no Piper voice (the old page offered it for Turkish) is the default instead. */
+const usable = (e: VoiceEngine | undefined, lang: VoiceLang, kind: VoiceKind) => (e && !(e.type === "piper" && defaultEngine(lang, kind).type !== "piper") ? e : defaultEngine(lang, kind));
 
 /** Shared look: dark buttons with light icons (the browser's own were white on white). */
 const iconBtn: React.CSSProperties = { verticalAlign: "middle", minWidth: 34, height: 30, padding: "0 8px", marginInlineEnd: 4, borderRadius: 6, border: "1px solid #3a3f49", background: "#23262d", color: "#f2f2f2", fontSize: 14, cursor: "pointer" };
@@ -116,7 +119,7 @@ export default function VoiceMaker() {
       setEngines(JSON.parse(localStorage.getItem(ENGINES_KEY) ?? "{}"));
     } catch {}
   }, []);
-  const engineOf = (l: VoiceLang, k: VoiceKind): VoiceEngine => engines[`${l}:${k}`] ?? defaultEngine(l, k);
+  const engineOf = (l: VoiceLang, k: VoiceKind): VoiceEngine => usable(engines[`${l}:${k}`], l, k);
   const setEngine = (l: VoiceLang, k: VoiceKind, e: VoiceEngine) => {
     const next = { ...engines, [`${l}:${k}`]: e };
     setEngines(next);
@@ -155,6 +158,17 @@ export default function VoiceMaker() {
         json: async (n) => (await fetch(local(`model/${n}`))).json(),
       });
       session = { predict: say };
+    } else if (MODELS.find((m) => m.id === model)?.url) {
+      // A Piper voice the library doesn't list (the Turkish ones): this page's own runner.
+      const say = await piperRun({
+        model,
+        ortUrl: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ver}/wasm/+esm`,
+        phonemizerUrl: PHONEMIZER,
+        ...paths,
+        file: async (n) => (await fetch(local(`model/${n}`))).arrayBuffer(),
+        json: async (n) => (await fetch(local(`model/${n}`))).json(),
+      });
+      session = { predict: say };
     } else {
       await prime(model, setStatus);
       tts.TtsSession._instance = null;
@@ -169,8 +183,8 @@ export default function VoiceMaker() {
     const e = engineOf(j.lang, j.v);
     if (e.type === "record") return null;
     if (e.type === "server") {
-      const r = await fetch(`/api/tts?id=${encodeURIComponent(j.b.id)}&v=${j.v}&k=${barkKey(j.b, j.v)}`);
-      if (!r.ok || r.status === 204) throw new Error(`the speech server has no voice for ${j.raw} (${r.status})`);
+      const r = await fetch(`/api/tts?id=${encodeURIComponent(j.b.id)}&v=${j.v}&k=${barkKey(j.b, j.v, j.lang)}${j.lang === "fa" ? "" : `&l=${j.lang}`}`);
+      if (!r.ok) throw new Error(r.status === 404 ? "the speech server isn't set up: put AZURE_SPEECH_KEY + AZURE_SPEECH_REGION (or OPENAI_API_KEY) in .env and restart" : `the speech server answered ${r.status} for ${j.raw}`);
       return toWav(await r.arrayBuffer());
     }
     if (e.type === "http") {
@@ -302,6 +316,9 @@ export default function VoiceMaker() {
   return (
     <main style={{ maxWidth: 980, margin: "24px auto", padding: 16, fontFamily: "system-ui, sans-serif", color: "#eee", background: "#16181d", borderRadius: 12 }}>
       <h1 style={{ marginTop: 0 }}>Make the street voices</h1>
+      <p style={{ opacity: 0.8 }}>
+        Every other sound (crashes, guns, the interface…) is on <a href="/dev/sounds" style={{ color: "#f0c05a" }}>/dev/sounds</a>.
+      </p>
       <p>
         Every line people say in the game, in each language. Choose how each voice is made — Piper in this browser, the game&apos;s speech server, any other TTS you can reach over HTTP, or your own
         recordings — then generate, record (🎙) or upload (⤒). Each take is saved to <code>assets/voices/raw/</code>; then run <code>npm run assets:voices -- --from=assets/voices/raw</code> (add{" "}
@@ -324,14 +341,17 @@ export default function VoiceMaker() {
             <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ minWidth: 92 }}>{KIND_LABEL[k]}</span>
               <select value={e.type} onChange={(ev) => setEngine(lang, k, ev.target.value === "http" ? { type: "http", url: (e.type === "http" && e.url) || "" } : ({ type: ev.target.value } as VoiceEngine))} style={field} aria-label={`How ${k} lines are made`}>
-                {ENGINE_TYPES.filter((t) => t !== "server" || lang === "fa").map((t) => (
+                {/* Piper only where there's a permissive model for this voice (none for Turkish). */}
+                {ENGINE_TYPES.filter((t) => t !== "piper" || models.some((m) => m.hf || m.url) || (lang === "fa" && k === "f")).map((t) => (
                   <option key={t} value={t}>{ENGINE_LABEL[t]}</option>
                 ))}
               </select>
               {e.type === "http" && (
                 <input value={e.url} onChange={(ev) => setEngine(lang, k, { type: "http", url: ev.target.value })} placeholder="http://localhost:5002/api/tts?text={text}&speaker_id={voice}&language_id={lang}" style={{ ...field, flex: "1 1 320px" }} dir="ltr" aria-label="TTS address" />
               )}
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{e.type === "piper" ? models.map((m) => `${m.label} — ${m.licence}`).join(" · ") || "no Piper model: pick another way" : ""}</span>
+              <span style={{ opacity: 0.6, fontSize: 12 }}>
+                {e.type === "piper" ? models.filter((m) => m.hf || m.url || m.id === "haaniye").map((m) => `${m.label} — ${m.licence}`).join(" · ") : e.type === "server" ? `Azure ${lang}-… neural voices, else OpenAI (keys in .env)` : ""}
+              </span>
               {sample && e.type !== "record" && (
                 <button style={iconBtn} disabled={busy} onClick={() => void tryLine(sample)} title="Hear a line in this voice (not saved)">▶ Try</button>
               )}

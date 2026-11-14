@@ -1,4 +1,4 @@
-// Spoken Persian for what people in the open city say (lib/street/barks.ts), made on the
+// Spoken Persian (and Turkish, English) for what people in the open city say (lib/street/barks.ts), made on the
 // server — Vercel's servers abroad can reach the speech services that phones in Iran can't —
 // and then cached by everyone: /api/tts answers each line once per voice with a year-long,
 // immutable cache header, so Vercel's CDN keeps it and every phone keeps its own copy.
@@ -32,14 +32,29 @@ async function post(url: string, headers: Record<string, string>, body: string):
   }
 }
 
-function azure(b: Bark, v: VoiceKind) {
+export type TtsLang = "fa" | "en" | "tr";
+/** Azure's neural voices per language: [a man (and the police), a woman]. */
+const AZURE_VOICES: Record<TtsLang, { xml: string; m: string; f: string }> = {
+  fa: { xml: "fa-IR", m: "fa-IR-FaridNeural", f: "fa-IR-DilaraNeural" },
+  tr: { xml: "tr-TR", m: "tr-TR-AhmetNeural", f: "tr-TR-EmelNeural" },
+  en: { xml: "en-US", m: "en-US-GuyNeural", f: "en-US-JennyNeural" },
+};
+/** How OpenAI is told to say it, per language and voice. */
+const PEOPLE: Record<TtsLang, { m: string; f: string; cop: string; speak: string }> = {
+  fa: { m: "a man from Tehran", f: "a woman from Tehran", cop: "a Tehran police officer giving orders, firm and loud", speak: "natural, colloquial Tehrani Persian (Farsi)" },
+  tr: { m: "a man from Istanbul", f: "a woman from Istanbul", cop: "an Istanbul police officer giving orders, firm and loud", speak: "natural, everyday Istanbul Turkish" },
+  en: { m: "a man in the city", f: "a woman in the city", cop: "a police officer giving orders, firm and loud", speak: "natural, everyday English" },
+};
+
+function azure(b: Bark, v: VoiceKind, lang: TtsLang) {
   const key = process.env.AZURE_SPEECH_KEY, region = process.env.AZURE_SPEECH_REGION;
   if (!key || !region) return Promise.resolve(null);
-  const voice = v === "f" ? "fa-IR-DilaraNeural" : "fa-IR-FaridNeural";
+  const av = AZURE_VOICES[lang];
+  const voice = v === "f" ? av.f : av.m;
   // A shout a touch faster; the police firmer and lower.
-  const text = textOf(b, v).fa;
+  const text = textOf(b, v)[lang];
   const rate = text.includes("!") ? "+8%" : "+0%", pitch = v === "cop" ? "-6%" : "+0%";
-  const ssml = `<speak version="1.0" xml:lang="fa-IR"><voice name="${voice}"><prosody rate="${rate}" pitch="${pitch}">${esc(text)}</prosody></voice></speak>`;
+  const ssml = `<speak version="1.0" xml:lang="${av.xml}"><voice name="${voice}"><prosody rate="${rate}" pitch="${pitch}">${esc(text)}</prosody></voice></speak>`;
   return post(
     `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,
     { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/ssml+xml", "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3", "User-Agent": "StreetQuest" },
@@ -47,24 +62,24 @@ function azure(b: Bark, v: VoiceKind) {
   );
 }
 
-function openai(b: Bark, v: VoiceKind) {
+function openai(b: Bark, v: VoiceKind, lang: TtsLang) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return Promise.resolve(null);
-  const who = v === "f" ? "a woman from Tehran" : v === "cop" ? "a Tehran police officer giving orders, firm and loud" : "a man from Tehran";
+  const who = PEOPLE[lang][v];
   return post(
     "https://api.openai.com/v1/audio/speech",
     { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     JSON.stringify({
       model: "gpt-4o-mini-tts",
       voice: v === "f" ? "nova" : "onyx",
-      input: textOf(b, v).fa,
-      instructions: `Speak in natural, colloquial Tehrani Persian (Farsi), as ${who} on the street. Short and expressive, not like a newsreader.`,
+      input: textOf(b, v)[lang],
+      instructions: `Speak in ${PEOPLE[lang].speak}, as ${who} on the street. Short and expressive, not like a newsreader.`,
       response_format: "mp3",
     }),
   );
 }
 
-/** The line spoken in this voice (mp3), or null (no provider, or it failed). */
-export async function speakBark(b: Bark, v: VoiceKind): Promise<ArrayBuffer | null> {
-  return (await azure(b, v)) ?? (await openai(b, v));
+/** The line spoken in this voice and language (mp3), or null (no provider, or it failed). */
+export async function speakBark(b: Bark, v: VoiceKind, lang: TtsLang = "fa"): Promise<ArrayBuffer | null> {
+  return (await azure(b, v, lang)) ?? (await openai(b, v, lang));
 }

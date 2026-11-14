@@ -80,3 +80,51 @@ export function etaMin(bus: LiveBus, stop: { lat: number; lng: number }): number
   const kmh = Math.max(BUS_KMH, Math.min(40, bus.kmh ?? 0));
   return Math.max(0, Math.round(m / ((kmh * 1000) / 60)));
 }
+
+/** The JSON array in an ASMX HTTP-GET answer (`<string xmlns="http://tempuri.org/">[…]</string>`), or a SOAP one; [] if neither. */
+export function asmxJson(xml: string, method: IettMethod): unknown[] {
+  const soap = soapJson(xml, method);
+  if (soap.length) return soap;
+  const m = /<string[^>]*>([\s\S]*?)<\/string>/.exec(xml);
+  if (!m) return [];
+  const text = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, "&");
+  try {
+    const v = JSON.parse(text);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export type Arrival = { line: string; minutes: number | null; live: boolean; headway: number; towards?: string };
+/** A live bus further than this from the stop isn't "the next one" (it's at a far end of the route). */
+export const NEXT_BUS_M = 8000;
+/**
+ * When each line's next bus comes to a stop: from its live buses when there are some (`live[i]`:
+ * that line's buses, null = no live answer for it), the nearest one's distance as minutes; else
+ * every `headway`. Soonest first.
+ */
+export function arrivalsAt(stop: { lat: number; lng: number }, lines: string[], live: (LiveBus[] | null)[], headways: Record<string, number>): Arrival[] {
+  const R = 6371000, toR = Math.PI / 180;
+  const metres = (b: { lat: number; lng: number }) => {
+    const dLat = (b.lat - stop.lat) * toR, dLng = (b.lng - stop.lng) * toR;
+    return 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(stop.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2));
+  };
+  const out = lines.map<Arrival>((line, i) => {
+    const headway = headways[line] ?? 15, buses = live[i];
+    if (!buses) return { line, minutes: null, live: false, headway };
+    const near = buses.map((b) => ({ b, m: metres(b) })).filter((x) => x.m <= NEXT_BUS_M).sort((a, b) => a.m - b.m)[0];
+    return near ? { line, minutes: etaMin(near.b, stop), live: true, headway, ...(near.b.towards ? { towards: near.b.towards } : {}) } : { line, minutes: null, live: true, headway };
+  });
+  return out.sort((a, b) => (a.minutes ?? 1e9) - (b.minutes ?? 1e9) || a.line.localeCompare(b.line, "en", { numeric: true }));
+}
+
+/** Live buses round a point from a list (the phone's own IETT answer), nearest first. */
+export function busesNear(all: LiveBus[], at: { lat: number; lng: number }, radiusM = 2500, max = 80): LiveBus[] {
+  const R = 6371000, toR = Math.PI / 180;
+  const m = (b: LiveBus) => {
+    const dLat = (b.lat - at.lat) * toR, dLng = (b.lng - at.lng) * toR;
+    return 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(at.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2));
+  };
+  return all.map((b) => ({ b, d: m(b) })).filter((x) => x.d <= radiusM).sort((a, b) => a.d - b.d).slice(0, max).map((x) => x.b);
+}

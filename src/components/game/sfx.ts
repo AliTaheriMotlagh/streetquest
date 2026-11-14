@@ -720,8 +720,16 @@ let waiting: { name: Sfx; at: number } | null = null;
 let waking = false;
 
 /** Play a sound. Never throws; silently does nothing when muted or audio is blocked. */
-/** Build `name` now, on its own slider's bus (it's all scheduled synchronously). */
+/**
+ * A recording that replaces a synthesized sound (its `ui_<name>` slot — samples.ts registers this,
+ * so this module needn't import it: samples imports from here).
+ */
+let recorded: ((name: Sfx) => boolean) | null = null;
+export const setRecorded = (f: (name: Sfx) => boolean) => void (recorded = f);
+
+/** Build `name` now, on its own slider's bus (it's all scheduled synchronously) — or its recording, when there is one. */
 function synth(name: Sfx) {
+  if (recorded?.(name)) return;
   const b = SFX_BUS[name];
   synthTo = b ? buses[b]?.synth ?? null : null;
   try {

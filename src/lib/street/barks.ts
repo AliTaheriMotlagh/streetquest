@@ -137,10 +137,13 @@ export const BARKS: Bark[] = (() => {
   });
 })();
 
-/** A short hash of what a line says (FNV-1a): the spoken copy's address changes when the words do. */
-export function barkKey(b: Bark, v: VoiceKind) {
+/**
+ * A short hash of what a line says in a language (FNV-1a): the spoken copy's address changes when
+ * the words do. Persian hashes as it always did (its spoken copies stay cached).
+ */
+export function barkKey(b: Bark, v: VoiceKind, lang: "fa" | "en" | "tr" = "fa") {
   let h = 0x811c9dc5;
-  for (const ch of `${v}|${textOf(b, v).fa}`) h = Math.imul(h ^ ch.codePointAt(0)!, 0x01000193) >>> 0;
+  for (const ch of `${v}|${lang === "fa" ? "" : `${lang}|`}${textOf(b, v)[lang]}`) h = Math.imul(h ^ ch.codePointAt(0)!, 0x01000193) >>> 0;
   return h.toString(36);
 }
 

@@ -60,14 +60,14 @@ const tts = new Map<string, AudioBuffer | Promise<AudioBuffer | null> | "none">(
 let ttsOff = false;
 
 /** The server's spoken copy of a line (fetched once; the HTTP cache keeps it after that). */
-function ttsLine(b: Bark, v: VoiceKind): AudioBuffer | Promise<AudioBuffer | null> | null {
+function ttsLine(b: Bark, v: VoiceKind, lang: VoiceLang = "fa"): AudioBuffer | Promise<AudioBuffer | null> | null {
   if (ttsOff) return null;
-  const key = `${b.id}-${v}`, have = tts.get(key);
+  const key = `${lang}:${b.id}-${v}`, have = tts.get(key);
   if (have === "none") return null;
   if (have) return have;
   const o = audioOut("voices");
   if (!o) return null;
-  const p = fetch(`/api/tts?id=${encodeURIComponent(b.id)}&v=${v}&k=${barkKey(b, v)}`)
+  const p = fetch(`/api/tts?id=${encodeURIComponent(b.id)}&v=${v}&k=${barkKey(b, v, lang)}${lang === "fa" ? "" : `&l=${lang}`}`)
     .then(async (r) => {
       // No service set up on the server: stop asking for the rest of the session.
       if (r.status === 404) ttsOff = true;
@@ -185,10 +185,10 @@ export class Voices {
     const buf = bufs.get(lineFile(b, v, lang));
     // A recording (already filtered for the police).
     if (buf) return this.play(buf, at, false);
-    // Only Persian has the speech service: English and Turkish get the device's voice, else the bubble.
-    if (lang !== "fa") return this.device(b, v, vol, lang);
-    // The server's spoken copy: now if it's here, else as soon as it arrives (if that's soon).
-    const spoken = ttsLine(b, v);
+    // English: the device's voice (it always has one). Persian and Turkish: the server's spoken copy
+    // (Azure / OpenAI) — now if it's here, else as soon as it arrives (if that's soon) — then the device's.
+    if (lang === "en") return this.device(b, v, vol, lang);
+    const spoken = ttsLine(b, v, lang);
     if (spoken instanceof AudioBuffer) return this.play(spoken, at, v === "cop");
     if (spoken) {
       const asked = performance.now();

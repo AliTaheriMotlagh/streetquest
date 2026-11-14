@@ -4,7 +4,8 @@
 // (/api/transit?stops), and in Istanbul its buses live (/api/transit?buses, every 20 s).
 import { useEffect, useRef, useState } from "react";
 import { distanceM, type LatLng } from "@/lib/geo";
-import type { LiveBus } from "@/lib/transit/iett";
+import { busesNear, type LiveBus } from "@/lib/transit/iett";
+import { clientFleet } from "./iettClient";
 import { cityAt, type BusLine, type BusStop, type City, type Network } from "@/lib/transit/network";
 import { api } from "./client";
 
@@ -64,7 +65,14 @@ export function useTransit(look: LatLng | null, on: boolean): TransitData {
       const at = lookRef.current;
       if (!at || document.hidden) return;
       api<{ live: boolean; buses: LiveBus[] }>(`/api/transit?buses=1&lat=${at.lat.toFixed(4)}&lng=${at.lng.toFixed(4)}`)
-        .then((r) => live && setD((x) => ({ ...x, buses: r.buses, live: r.live })))
+        .then(async (r) => {
+          // The server can't reach IETT (no relay in Turkey): this phone, in Istanbul, may.
+          if (!r.live) {
+            const mine = await clientFleet();
+            if (mine) r = { live: true, buses: busesNear(mine, at) };
+          }
+          if (live) setD((x) => ({ ...x, buses: r.buses, live: r.live }));
+        })
         .catch(() => {});
     };
     poll();

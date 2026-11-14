@@ -114,9 +114,15 @@ for (const key of SOUND_KEYS) {
   const files = readdirSync(join(SRC, key)).filter((f) => AUDIO.test(f)).sort();
   console.log(`${files.length ? "✔" : "·"} ${key.padEnd(11)} ${files.length} file(s)  — ${slot.what}${files.length ? "" : `  (search: "${slot.search}")`}`);
   if (check) continue;
+  // No sources here for a slot that ships files (a fresh checkout: assets/sounds is gitignored, or
+  // /dev/sounds building on another machine): keep what ships rather than silence it.
+  if (!files.length) {
+    const shipped = (before as Record<string, string[] | undefined>)[key]?.filter((f) => existsSync(join(OUT, f)));
+    if (shipped?.length) (manifest[key] = shipped), console.log(`  (no sources here: kept its ${shipped.length} shipped file(s))`);
+    continue;
+  }
   // Old conversions of this slot go (a file removed from the sources disappears from the game).
   for (const f of existsSync(OUT) ? readdirSync(OUT) : []) if (f.startsWith(`${key}-`) && f.endsWith(".mp3")) rmSync(join(OUT, f));
-  if (!files.length) continue;
   manifest[key] = files.map((f, n) => {
     const out = slotFile(key, n);
     const loop = "loop" in slot && !!slot.loop, stereo = "stereo" in slot && !!slot.stereo;

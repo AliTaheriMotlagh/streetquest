@@ -159,7 +159,9 @@ mood scales XP; loot funds research; territory funds the army.
   writes `src/data/transit/*.json`; times are each line's `interval` / `opening_hours` in OSM, else the city's usual,
   and labelled as estimates. In the 3D city, Istanbul's nearest real buses drive where the real ones are
   (`drive/liveBuses.ts`, red IETT buses with their line number, ≤10, ≤4 on lite). `IETT_URL` in `.env.example`
-  (IBB answers from Turkey only: a relay there).
+  (IBB answers from Turkey only: a relay there). Without one, the player's own phone asks IETT (`game/iettClient.ts`:
+  ASMX's plain GET first, then SOAP) — a phone in Istanbul is in Turkey — for the map, the stop cards and the 3D
+  buses; if IBB doesn't let browsers read its answers (CORS), it backs off and the cards keep "about every N min".
 - **Türkçe** (`lib/i18n/tr/*`, the same split as `fa/`): a third language everywhere, checked by `npm run i18n:check`
   like Persian (`--missing tr` lists what a new string still needs). A browser in Turkey that lists Turkish gets it;
   a saved choice always wins. Numbers the Turkish way (12.345,5; idle numbers in «milyon», «milyar»), fonts with
@@ -191,12 +193,22 @@ mood scales XP; loot funds research; territory funds the army.
   at about a fifth in from each end, main cables sagging between them down to anchors, hangers to the deck. The road
   surface stays where it was, so driving is unchanged; a twin carriageway shares one structure. Tiles are version 3
   (`TILE_V`): stored tiles refresh in the background.
+- **/dev/sounds: every sound in the game** (`app/dev/sounds/SoundsPanel.tsx`, `/api/dev/sounds`): the street (crashes,
+  horns, sirens, doors…), the fight (reload, hit, kill, hurt, empty click, bomb beep, throw, flashbang), each gun's shot
+  and the 25 interface sounds — each a slot in `lib/soundSlots.ts` that plays its recordings, or the game's synth while
+  it has none (guns and the interface can now be recorded too). ▶ In game plays it exactly as players hear it; ⤒ add
+  takes, 🎙 record one, ✎ edit (trim, gain, fades, normalise; saved as a WAV source), 🗑 drop one, then ⚙ Build (runs
+  `npm run assets:sounds`; a slot whose sources aren't on this machine keeps what ships). Voices and radio are linked.
 - **/dev/voices: every line, any voice** (`app/dev/voices/VoiceMaker.tsx`, `lib/voiceTools.ts`): all the game's lines in
   Persian, English and Turkish, searchable. Per voice (men, women, police, per language) choose how it's made: Piper in
   the browser, the game's speech server (Persian), any other TTS with an HTTP GET (`{text}`, `{lang}`, `{voice}` in its
   address: a local Coqui, an OpenAI-compatible server…), or by hand — then generate, ▶ Try a voice before choosing,
   🎙 record a line with the microphone (silence trimmed), ⤒ upload any audio for one line or many at once (named like
   `greet-3-f.mp3`). Everything is saved as the 16-bit mono WAV `npm run assets:voices` reads.
+  Turkish is spoken by Piper too: Fahrettin (men) and Fettah (police) — CC0, trained on NabuCasa's dataset, kept on
+  sherpa-onnx's mirror since Piper's list dropped them — and İlkiz (women, MIT by its author), run by the page's own
+  Piper runner (`piperRun.ts`; piper-tts-web only knows its own list). The speech server (`/api/tts`, Azure or OpenAI)
+  now speaks Turkish and English as well (`&l=tr`), so Turkish players hear neural voices in the game, not the phone's.
 - **Players in a match find each other**: teammates (and friends in the open city) beyond the minimap's edge sit on
   its rim, pointing the way.
 - **Soldiers drawn like the rest of the city, and cheaper** (`arena/avatar.ts`): in the cartoon look they use the

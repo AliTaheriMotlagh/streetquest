@@ -7,7 +7,7 @@
 import { readManifest, SOUND_SLOTS, type SoundKey, type SoundManifest } from "@/lib/soundSlots";
 import { busOfSlot } from "@/lib/audio/mix";
 import type { SoundKind, Vec } from "@/lib/audio/spatial";
-import { audioOut, isMuted } from "./sfx";
+import { audioOut, isMuted, setRecorded } from "./sfx";
 import { Emitter, place } from "./spatial";
 
 let manifest: Promise<SoundManifest> | null = null;
@@ -177,3 +177,6 @@ export function holdSample(key: SoundKey, vol: number, pick = 0): (() => void) |
     src.onended = () => g.disconnect();
   };
 }
+
+// The interface sounds (sfx.ts) play their recording when their ui_ slot has one.
+setRecorded((name) => playSample(`ui_${name}` as SoundKey, { vol: 0.8 }));

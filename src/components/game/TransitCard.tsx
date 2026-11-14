@@ -12,6 +12,8 @@ import { departures, localMinutes, nearStations, planTrip, type Trip } from "@/l
 import { Button } from "@/components/Button";
 import { api } from "./client";
 import { metroOf } from "./transit";
+import { clientLine } from "./iettClient";
+import { arrivalsAt } from "@/lib/transit/iett";
 import { Sheet, Tabs, useGame } from "./ui";
 
 export type StationPick = { city: City; station: Station };
@@ -100,6 +102,8 @@ export function StationCard({ pick, onClose }: { pick: StationPick; onClose: () 
 }
 
 type Arrival = { line: string; minutes: number | null; live: boolean; headway: number; towards?: string };
+/** Lines asked live per card from the phone (one request each). */
+const PHONE_LINES = 8;
 /** A bus stop: its lines and when each comes next. */
 export function BusStopCard({ city, stop, onClose }: { city: City; stop: BusStop; onClose: () => void }) {
   const { pos } = useGame();
@@ -109,7 +113,18 @@ export function BusStopCard({ city, stop, onClose }: { city: City; stop: BusStop
   useEffect(() => {
     let live = true;
     api<{ arrivals: Arrival[]; live: boolean }>(`/api/transit?stop=${stop.id}&lat=${stop.lat}&lng=${stop.lng}`)
-      .then((r) => live && (setData(r), setError("")))
+      .then(async (r) => {
+        if (live) (setData(r), setError(""));
+        // Istanbul, and the server can't reach IETT (no relay yet): ask from this phone.
+        if (r.live || city !== "istanbul") return;
+        const lines = stop.lines.slice(0, PHONE_LINES);
+        const buses = await Promise.all(lines.map((l) => clientLine(l).catch(() => null)));
+        if (!live || !buses.some(Boolean)) return;
+        const headways = Object.fromEntries(r.arrivals.map((a) => [a.line, a.headway]));
+        const got = arrivalsAt(stop, lines, buses, headways);
+        // Lines past the first few keep their usual frequency.
+        setData({ live: true, arrivals: [...got, ...r.arrivals.filter((a) => !lines.includes(a.line))] });
+      })
       .catch((e) => live && setError((e as Error).message));
     return () => void (live = false);
   }, [stop.id, stop.lat, stop.lng, now]);

@@ -7,6 +7,7 @@
 //   piper/piper_phonemize.{wasm,data}                  Piper's phonemizer (espeak-ng)
 //   model/<voice>.onnx[.json]                          Piper's voices in voiceLang.ts (Persian men; English men, women, police)
 //   model/fa-haaniye-low.onnx[.json]                   Mimic 3's Persian woman's voice
+//   model/<id>.onnx[.json] of a voice with `url`       Piper voices kept elsewhere (Turkish)
 import { createReadStream, existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
@@ -24,6 +25,9 @@ function sourceOf(parts: string[]): string | null {
   const m = kind === "model" && parts.length === 2 ? (a ?? "").match(/^(.+)\.onnx(\.json)?$/) : null;
   const piper = m ? MODELS.find((x) => x.id === m[1] && x.hf) : null;
   if (piper) return `https://huggingface.co/diffusionstudio/piper-voices/resolve/main/${piper.hf}/${a}`;
+  // A Piper voice kept elsewhere (the Turkish ones): its own folder and file names.
+  const other = m ? MODELS.find((x) => x.id === m[1] && x.url) : null;
+  if (other) return `${other.url}/${(other.files ?? [`${other.id}.onnx`, `${other.id}.onnx.json`])[m![2] ? 1 : 0]}`;
   // A woman's voice (Piper has none in Persian): Mycroft Mimic 3's «haaniye», CC0.
   const w = kind === "model" && parts.length === 2 ? (a ?? "").match(/^fa-haaniye-low\.onnx(\.json)?$/) : null;
   // (The model is in Git LFS: github.com/…/raw/ gives the file, raw.githubusercontent only a pointer.)

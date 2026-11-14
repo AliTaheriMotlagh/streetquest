@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildBuses, buildNetwork, cityAt, cleanLine, cleanStation, hoursOf, minutesOf, modeOf, type RawNode, type RawRel } from "@/lib/transit/network";
 import { departures, localMinutes, nearStations, planTrip } from "@/lib/transit/plan";
-import { busOf, etaMin, soapBody, soapJson } from "@/lib/transit/iett";
+import { arrivalsAt, asmxJson, busesNear, busOf, etaMin, soapBody, soapJson } from "@/lib/transit/iett";
 
 // A small Tehran: Line 1 runs north–south through A B C D, Line 2 west–east through E C F;
 // they meet at C. Each station has two stop nodes (the two platforms), ~40 m apart.
@@ -141,5 +141,24 @@ describe("transit: Istanbul's live buses (IETT)", () => {
     // ~1.1 km away ×1.4 at 17 km/h → about 5–6 minutes.
     const m = etaMin(bus, { lat: 41.01, lng: 29.0 });
     assert.ok(m >= 5 && m <= 6, String(m));
+  });
+});
+
+describe("transit: Istanbul's buses from the phone (no relay)", () => {
+  it("reads ASMX's HTTP GET answer as well as the SOAP one", () => {
+    const rows = [{ kapino: "X-1", enlem: "41.01", boylam: "29.0" }];
+    const xml = `<?xml version="1.0"?><string xmlns="http://tempuri.org/">${JSON.stringify(rows).replace(/"/g, "&quot;")}</string>`;
+    assert.equal(asmxJson(xml, "GetFiloAracKonum_json").length, 1);
+    assert.deepEqual(asmxJson("<html>no</html>", "GetFiloAracKonum_json"), []);
+  });
+  it("arrivals: live lines by their nearest bus, the rest every headway, soonest first", () => {
+    const stop = { lat: 41.0, lng: 29.0 };
+    const a = arrivalsAt(stop, ["500T", "15F", "E-10"], [[{ id: "a", lat: 41.01, lng: 29.0 }, { id: "far", lat: 41.5, lng: 29.0 }], null, []], { "500T": 10, "15F": 12, "E-10": 20 });
+    assert.deepEqual(a.map((x) => [x.line, x.live, x.minutes === null ? null : x.minutes > 0]), [["500T", true, true], ["15F", false, null], ["E-10", true, null]]);
+  });
+  it("keeps the buses round a point, nearest first", () => {
+    const at = { lat: 41.0, lng: 29.0 };
+    const near = busesNear([{ id: "b", lat: 41.02, lng: 29.0 }, { id: "a", lat: 41.001, lng: 29.0 }, { id: "x", lat: 42, lng: 29 }], at);
+    assert.deepEqual(near.map((b) => b.id), ["a", "b"]);
   });
 });

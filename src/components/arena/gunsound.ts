@@ -8,6 +8,7 @@
 import type { SoundKind, Vec } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { playSample, SampleLoop } from "../game/samples";
+import type { SoundKey } from "@/lib/soundSlots";
 import { earDistance, Emitter, place, type Placed } from "../game/spatial";
 
 type At = Vec | null | undefined;
@@ -72,8 +73,9 @@ function hiss(freq: number, len: number, vol: number, type: BiquadFilterType = "
   if (p) burst(p, freq, len, vol, type, attack);
 }
 
-/** A gunshot at `at` (nothing: my own gun). */
-export function shotSound(s: { body: number; crack: number; tail: number }, at?: At) {
+/** A gunshot at `at` (nothing: my own gun): the weapon's recording (`gun` key) when there is one, else synthesized from its numbers. */
+export function shotSound(s: { body: number; crack: number; tail: number }, at?: At, gun?: string) {
+  if (gun && playSample(`gun_${gun}` as SoundKey, { vol: 0.9, at, kind: "gun" })) return;
   const p = place(at, "gun", 0.6);
   if (!p) return;
   const { ctx, dest, t } = p, vol = 0.55;
@@ -104,18 +106,20 @@ export function shotSound(s: { body: number; crack: number; tail: number }, at?:
   o2.stop(t + 0.2);
 }
 
-export const hitSound = (head: boolean) => (head ? blip(2400, 0.08, 0.12, "triangle", 1.3) : blip(1500, 0.05, 0.09, "square"));
+export const hitSound = (head: boolean) => playSample("hitMarker", { vol: head ? 0.7 : 0.5, rate: head ? 1.25 : 1 }) || (head ? blip(2400, 0.08, 0.12, "triangle", 1.3) : blip(1500, 0.05, 0.09, "square"));
 export const killSound = () => {
+  if (playSample("kill", { vol: 0.7 })) return;
   const p = place(null, "small", 0.35);
   if (!p) return;
   tone(p, 880, 0.12, 0.12, "triangle");
   tone(p, 1320, 0.18, 0.12, "triangle", 1, 0.09);
 };
-export const hurtSound = () => blip(120, 0.18, 0.25, "sawtooth", 0.5);
-export const emptySound = () => blip(2200, 0.03, 0.06, "square");
-export const beepSound = (urgent: boolean) => blip(urgent ? 1900 : 1600, 0.06, 0.08, "sine");
+export const hurtSound = () => playSample("hurt", { vol: 0.8 }) || blip(120, 0.18, 0.25, "sawtooth", 0.5);
+export const emptySound = () => playSample("empty", { vol: 0.6 }) || blip(2200, 0.03, 0.06, "square");
+export const beepSound = (urgent: boolean) => playSample("bombBeep", { vol: 0.6, rate: urgent ? 1.2 : 1 }) || blip(urgent ? 1900 : 1600, 0.06, 0.08, "sine");
 
 export function reloadSound(seconds: number) {
+  if (playSample("reload", { vol: 0.7, rate: 2.3 / Math.max(0.6, seconds) })) return;
   blip(700, 0.04, 0.08, "square", 0.6);
   setTimeout(() => blip(500, 0.05, 0.1, "square", 0.7), seconds * 450);
   setTimeout(() => blip(900, 0.05, 0.1, "square", 1.2), seconds * 880);
@@ -150,6 +154,7 @@ export function boomSound(at?: At, power = 1) {
 
 /** The pin and the throw: a click and a swish. */
 export function throwSound() {
+  if (playSample("throw", { vol: 0.7 })) return;
   const p = place(null, "small", 0.35);
   if (!p) return;
   tone(p, 2600, 0.025, 0.06, "square");
@@ -173,7 +178,7 @@ export function fireSound(at: At, seconds: number) {
 
 /** A flashbang's bang, then the ringing in your ears for as long as you're blind. */
 export function flashSound(at: At, blindS: number) {
-  const p = place(at, "blast", 0.5);
+  const p = playSample("flashbang", { vol: 1, at, kind: "blast" }) ? null : place(at, "blast", 0.5);
   if (p) (burst(p, 3000, 0.35, 0.5, "highpass", 0.005), tone(p, 180, 0.25, 0.4, "sine", 0.4));
   if (blindS > 0.3) blip(3600 + Math.random() * 400, blindS, 0.05, "sine", 0.98);
 }

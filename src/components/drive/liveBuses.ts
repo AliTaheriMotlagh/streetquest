@@ -5,7 +5,8 @@
 // isn't reachable) nothing is drawn: the traffic's own buses (traffic.ts) fill the streets.
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
-import type { LiveBus } from "@/lib/transit/iett";
+import { busesNear, type LiveBus } from "@/lib/transit/iett";
+import { clientFleet } from "../game/iettClient";
 import { cityAt } from "@/lib/transit/network";
 import { api } from "../game/client";
 import { makeSign, type Style } from "./world3d";
@@ -36,7 +37,9 @@ export class LiveBuses {
       this.busy = true;
       try {
         const r = await api<{ live: boolean; buses: LiveBus[] }>(`/api/transit?buses=1&lat=${at.lat.toFixed(4)}&lng=${at.lng.toFixed(4)}`);
-        if (!this.disposed) this.set(r.buses);
+        // No relay: this phone asks IETT itself (it's in Istanbul).
+        const mine = r.live ? null : await clientFleet();
+        if (!this.disposed) this.set(mine ? busesNear(mine, at, 1500) : r.buses);
       } catch {
         // Feed down: keep what's drawn until it goes stale below.
       } finally {

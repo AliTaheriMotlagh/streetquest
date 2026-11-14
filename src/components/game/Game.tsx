@@ -52,6 +52,8 @@ import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCar
 import type { Cinema } from "@/lib/cinema";
 import { cityAt as transitCityAt } from "@/lib/transit/network";
 import { useTransit } from "./transit";
+// Recorded interface sounds replace the synthesized ones (samples.ts registers with sfx.ts).
+import "./samples";
 import { BusStopCard, LiveBusCard, MetroSheet, StationCard } from "./TransitCard";
 import type { TransitPins } from "./GameMap";
 import { OnlineChip, OnlineSheet } from "./Online";

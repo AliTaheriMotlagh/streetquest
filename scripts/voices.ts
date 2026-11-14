@@ -58,7 +58,7 @@ export const VOICES: Record<VoiceLang, Record<VoiceKind, { speed: number; filter
     // A police radio: a narrower band than the megaphone, driven hard.
     cop: { speed: 0.9, filter: "highpass=f=450,lowpass=f=3000,volume=9dB,alimiter=limit=0.7" },
   },
-  // Turkish clips are imported (own recordings, no permissive Piper voice): the same treatment as English.
+  // Turkish (Fahrettin, İlkiz, Fettah via /dev/voices, or imported takes): the same treatment as English.
   tr: {
     m: { speed: 0.95, filter: "highpass=f=70" },
     f: { speed: 0.95, filter: "highpass=f=90" },

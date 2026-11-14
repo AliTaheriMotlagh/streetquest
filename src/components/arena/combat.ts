@@ -888,7 +888,7 @@ export class Combat {
     const len = Math.min(W.range, 60);
     this.vfx.flash(from.x, from.y, from.z);
     this.vfx.tracer(from.x, from.y, from.z, from.x + d.dx * len, from.y + d.dy * len, from.z + d.dz * len);
-    shotSound(W.sound, from);
+    shotSound(W.sound, from, W.key);
   }
 
   private pushFeed(killer: string, victim: string, w: string, head: boolean, mine: boolean, me: boolean) {
@@ -1108,7 +1108,7 @@ export class Combat {
         const ex = m.x + ux * end, ey = m.y + uy * end, ez = m.z + uz * end;
         this.vfx.tracer(from.x, from.y, from.z, ex, ey, ez);
         if (Number.isFinite(wall) || body) this.impact(ex, ey, ez, ux, uy, uz, body, W.key === "sniper", W.pellets > 1 ? 0.6 : 1);
-        shotSound(WEAPONS[m.w]?.sound ?? WEAPONS.rifle.sound, from);
+        shotSound(WEAPONS[m.w]?.sound ?? WEAPONS.rifle.sound, from, WEAPONS[m.w]?.key ?? "rifle");
         break;
       }
       case "nade":
@@ -1631,7 +1631,7 @@ export class Combat {
     // Every shot punches the view a little (more for the big guns, less with the sights up).
     this.shake = Math.max(this.shake, Math.min(0.5, W.kick * 4 * ads));
     rumble(Math.min(1, W.kick * 6), 0.35, 50);
-    shotSound(W.sound);
+    shotSound(W.sound, undefined, W.key);
     this.publish(true);
   }
 
