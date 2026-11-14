@@ -31,15 +31,17 @@ type Props = {
   onFocus: (on: boolean) => void;
   nearCar: boolean;
   inMatch: boolean;
+  /** Hero moves on: the hook replaces aim, crouch dives in the air. */
+  hero?: boolean;
 };
 
 const TAP_MS = 220;
 const TAP_PX = 12;
 
 type Look = { x: number; y: number; t: number; x0: number; y0: number; t0: number; moved: boolean; fire: boolean };
-const SLOTS: FootSlot[] = ["swap", "reload", "crouch", "jump", "aim", "car"];
+const SLOTS: (FootSlot | "hook")[] = ["reload", "crouch", "jump", "aim", "hook", "car"];
 
-export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap, onJump, onCar, onFocus, nearCar, inMatch }: Props) {
+export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap, onJump, onCar, onFocus, nearCar, inMatch, hero = false }: Props) {
   const prefs = useTouchPrefs();
   const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
@@ -219,9 +221,9 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
 
   const slots = footLayout(prefs.left);
   // Switching guns is a tap on the gun's name and ammo (CombatHud), as in mobile shooters — one button fewer here.
-  const shown = new Set<string>(footActions({ nearCar, inMatch }));
+  const shown = new Set<string>(footActions({ nearCar, inMatch, hero }));
   const rootCls = `cpad ${prefs.left ? "lh" : ""}`;
-  const label: Record<string, string> = { swap: t("Switch gun"), reload: t("Reload"), crouch: t("Crouch"), jump: t("Jump"), aim: t("Aim"), car: t("Get in the car") };
+  const label: Record<string, string> = { swap: t("Switch gun"), reload: t("Reload"), crouch: hero ? t("Dive (in the air)") : t("Crouch"), jump: t("Jump"), aim: t("Aim"), car: t("Get in the car"), hook: t("Hook: tap to zip, hold to swing") };
   const onDown: Record<string, (e: RPointerEvent<HTMLElement>) => void> = {
     swap: tap(onSwap),
     reload: tap(onReload),
@@ -229,6 +231,17 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
     jump: tap(onJump, 14),
     aim: aimDown,
     car: tap(onCar, 18),
+    hook: (e) => {
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      input.grapple = true;
+      e.currentTarget.classList.add("on");
+      buzz(10);
+    },
+  };
+  const hookUp = (e: RPointerEvent<HTMLElement>) => {
+    input.grapple = false;
+    e.currentTarget.classList.remove("on");
   };
 
   return (
@@ -254,7 +267,15 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
         )}
         {SLOTS.map((k) =>
           shown.has(k) ? (
-            <button key={k} className={`cp-btn ${k}`} style={{ "--ax": `${slots[k].x.toFixed(1)}px`, "--ay": `${slots[k].y.toFixed(1)}px` } as CSSProperties} aria-label={label[k]} onPointerDown={onDown[k]}>
+            <button
+              key={k}
+              className={`cp-btn ${k}`}
+              style={{ "--ax": `${slots[k === "hook" ? "aim" : k].x.toFixed(1)}px`, "--ay": `${slots[k === "hook" ? "aim" : k].y.toFixed(1)}px` } as CSSProperties}
+              aria-label={label[k]}
+              onPointerDown={onDown[k]}
+              onPointerUp={k === "hook" ? hookUp : undefined}
+              onPointerCancel={k === "hook" ? hookUp : undefined}
+            >
               <Icon d={k} />
             </button>
           ) : null,
@@ -287,6 +308,7 @@ const PATHS: Record<string, React.ReactNode> = {
   crouch: <path d="M6 10l6 6 6-6M6 5h12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />,
   reload: <path d="M19 12a7 7 0 1 1-2.1-5M19 4v4h-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />,
   swap: <path d="M4 9h13l-3-3M20 15H7l3 3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />,
+  hook: <path d="M12 6.5V19M12 19a5 5 0 0 1-6-4.5M12 19a5 5 0 0 0 6-4.5M4.5 16l1.5-1.5 1.5 1.5M16.5 16l1.5-1.5 1.5 1.5M9 9.5h6M12 2.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
   car: <path d="M4 15l1.6-5A2 2 0 0 1 7.5 8.5h9a2 2 0 0 1 1.9 1.5L20 15v3h-2.5v-1.5h-11V18H4zM7 12.5h10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
 };
 function Icon({ d }: { d: string }) {

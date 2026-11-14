@@ -8,16 +8,16 @@ import { spawn } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { devAllowed, diskOnly, isDevServer } from "@/server/devAccess";
 import { readManifest, slotGroup, SOUND_KEYS, SOUND_SLOTS, type SoundKey } from "@/lib/soundSlots";
 
 const SRC = join(process.cwd(), "assets/sounds");
-const off = () => process.env.NODE_ENV === "production";
 const FILE = /^[\w .()-]{1,80}\.(wav|mp3|ogg|flac|m4a|aiff?)$/i;
 const isSlot = (k: string | null): k is SoundKey => !!k && (SOUND_KEYS as string[]).includes(k);
 const TYPES: Record<string, string> = { wav: "audio/wav", mp3: "audio/mpeg", ogg: "audio/ogg", flac: "audio/flac", m4a: "audio/mp4", aif: "audio/aiff", aiff: "audio/aiff" };
 
 export async function GET(req: Request) {
-  if (off()) return new Response(null, { status: 404 });
+  if (!(await devAllowed())) return new Response(null, { status: 404 });
   const src = new URL(req.url).searchParams.get("src");
   if (src) {
     const [slot, name] = src.split("/");
@@ -36,7 +36,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (off()) return new Response(null, { status: 404 });
+  if (!(await devAllowed())) return new Response(null, { status: 404 });
+  if (!isDevServer()) return diskOnly();
   const q = new URL(req.url).searchParams;
   if (q.get("build")) return Response.json(await build());
   const slot = q.get("slot"), name = q.get("name") ?? "";
@@ -49,7 +50,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  if (off()) return new Response(null, { status: 404 });
+  if (!(await devAllowed())) return new Response(null, { status: 404 });
+  if (!isDevServer()) return diskOnly();
   const q = new URL(req.url).searchParams;
   const slot = q.get("slot"), name = q.get("name") ?? "";
   if (!isSlot(slot) || !FILE.test(name)) return new Response("Not a slot or a file name", { status: 400 });

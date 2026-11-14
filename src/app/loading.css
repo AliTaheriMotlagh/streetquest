@@ -28,6 +28,7 @@ html[dir="rtl"] .ls-car { transform: scaleX(-1); }
 .ls-body { fill: #e53950; }
 .ls-glass { fill: #9fd3ff; opacity: .85; }
 .ls-lamp { fill: #fff6c8; }
+.ls-tail { fill: #ff3b3b; }
 .ls-beam { fill: rgba(255, 240, 180, .22); }
 .ls-wheel circle { fill: #15161c; stroke: #8a8fa3; stroke-width: 2; }
 .ls-wheel path { stroke: #8a8fa3; stroke-width: 2; }

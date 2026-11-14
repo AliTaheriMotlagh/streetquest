@@ -18,20 +18,32 @@ export type VoiceEngine =
 export const ENGINE_TYPES = ["piper", "server", "hf", "http", "record"] as const;
 
 /**
- * Text-to-speech models on Hugging Face worth trying, with their licence: only `ok` ones may
- * ship in the game (the rest are for hearing what's possible — the game never ships
- * non-commercial voices). Any other model id can be typed in.
+ * Text-to-speech models Hugging Face's Inference Providers actually host (checked 2026-11-14;
+ * hf-inference itself hosts none any more), with their licence: only `ok` ones may ship in
+ * the game. No provider hosts a Persian or Turkish TTS model — for those, use Piper in the
+ * browser (the default engine). Any other model id can be typed in.
  */
 export const HF_MODELS: { id: string; langs: VoiceLang[]; licence: string; ok: boolean; note: string }[] = [
-  { id: "facebook/mms-tts-fas", langs: ["fa"], licence: "CC BY-NC 4.0", ok: false, note: "Meta MMS, Persian (non-commercial: try only)" },
-  { id: "facebook/mms-tts-tur", langs: ["tr"], licence: "CC BY-NC 4.0", ok: false, note: "Meta MMS, Turkish (non-commercial: try only)" },
-  { id: "facebook/mms-tts-eng", langs: ["en"], licence: "CC BY-NC 4.0", ok: false, note: "Meta MMS, English (non-commercial: try only)" },
-  { id: "hexgrad/Kokoro-82M", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Kokoro, natural English" },
-  { id: "parler-tts/parler-tts-mini-v1", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Parler, English, described voices" },
-  { id: "microsoft/speecht5_tts", langs: ["en"], licence: "MIT", ok: true, note: "SpeechT5, English" },
-  { id: "suno/bark", langs: ["en", "tr"], licence: "MIT", ok: true, note: "Bark, expressive (English, Turkish)" },
-  { id: "espnet/kan-bayashi_ljspeech_vits", langs: ["en"], licence: "CC BY 4.0", ok: true, note: "VITS, LJ Speech (credit it)" },
+  { id: "hexgrad/Kokoro-82M", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Kokoro, natural English (fal-ai, DeepInfra)" },
+  { id: "ResembleAI/chatterbox", langs: ["en"], licence: "MIT", ok: true, note: "Chatterbox, expressive English (fal-ai, DeepInfra)" },
+  { id: "ResembleAI/chatterbox-turbo", langs: ["en"], licence: "MIT", ok: true, note: "Chatterbox Turbo, fast English (DeepInfra, Replicate)" },
+  { id: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Qwen3 TTS, custom voices (Together)" },
+  { id: "sesame/csm-1b", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Sesame CSM, conversational English (DeepInfra)" },
 ];
+/**
+ * A Hugging Face failure in words a developer can act on: no credits left, a model nobody
+ * hosts, a bad token — each with what to do (status for the response).
+ */
+export function hfError(raw: string): { status: number; message: string } {
+  if (/pre-?paid credits|subscribe to PRO|exceeded your monthly included credits/i.test(raw))
+    return { status: 402, message: "Hugging Face: this account's Inference Providers credits are used up — add credits at huggingface.co/settings/billing (or get PRO for monthly credits), or use Piper (free, in the browser)" };
+  if (/not supported by provider|No inference provider|isn't (deployed|supported)|not available/i.test(raw))
+    return { status: 404, message: "Hugging Face: no provider hosts this model for text-to-speech — pick one from the list" };
+  if (/401|403|Invalid (credentials|username or password)|permission/i.test(raw))
+    return { status: 401, message: "Hugging Face: the token was refused — make one with \"Make calls to Inference Providers\" at huggingface.co/settings/tokens" };
+  if (/abort|timeout/i.test(raw)) return { status: 504, message: "Hugging Face didn't answer in 90 s — try again" };
+  return { status: 502, message: `Hugging Face: ${raw.slice(0, 300)}` };
+}
 /** A Hugging Face model id ("owner/name"). */
 export const validHfModel = (m: string) => /^[\w.-]+\/[\w.-]+$/.test(m.trim());
 /** What a model's licence allows (unknown models: check its card before shipping). */

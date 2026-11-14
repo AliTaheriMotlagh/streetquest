@@ -44,11 +44,11 @@ describe("play from home: walking a path", () => {
   });
 });
 
-describe("play from home: speed by distance", () => {
-  it("walks short hops, speeds up for long trips, respects the cap", () => {
-    assert.equal(homeSpeedKmh(100, 40), 6);
-    assert.equal(homeSpeedKmh(500, 40), 30);
+describe("play from home: speed from the admin", () => {
+  it("travels at exactly the admin's speed, short hop or long trip", () => {
+    assert.equal(homeSpeedKmh(100, 40), 40);
     assert.equal(homeSpeedKmh(5000, 40), 40);
-    assert.equal(homeSpeedKmh(100, 4), 4);
+    assert.equal(homeSpeedKmh(100, 120), 120);
+    assert.equal(homeSpeedKmh(100, 0), 1, "never stands still");
   });
 });

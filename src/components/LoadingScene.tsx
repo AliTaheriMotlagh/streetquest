@@ -89,11 +89,13 @@ export function LoadingScene({ pct, title, sub, stage, tip, out, className, chil
         <i className="ls-dash" />
         <svg className="ls-car" viewBox="0 0 120 50" aria-hidden>
           <path className="ls-beam" d="M112 30 L240 14 L240 52Z" />
-          <path className="ls-body" d="M6 34 Q6 26 16 25 L34 23 L48 12 Q54 8 64 8 L84 9 Q92 10 98 18 L104 24 Q114 25 114 32 L114 38 L6 38Z" />
-          <path className="ls-glass" d="M50 13 Q55 11 63 11 L72 11 L72 23 L40 23Z M76 11 L84 12 Q90 13 94 19 L97 23 L76 23Z" />
+          {/* Long bonnet and headlight on the right, the way it drives (the dashes run left); short boot and tail light on the left. */}
+          <path className="ls-body" d="M114 34 Q114 26 104 25 L86 23 L72 12 Q66 8 56 8 L36 9 Q28 10 22 18 L16 24 Q6 25 6 32 L6 38 L114 38Z" />
+          <path className="ls-glass" d="M70 13 Q65 11 57 11 L48 11 L48 23 L80 23Z M44 11 L36 12 Q30 13 26 19 L23 23 L44 23Z" />
           <circle className="ls-lamp" cx="111" cy="29" r="2.5" />
-          <g className="ls-wheel" style={{ transformOrigin: "30px 38px" }}><circle cx="30" cy="38" r="9" /><path d="M30 31v14M23 38h14" /></g>
-          <g className="ls-wheel" style={{ transformOrigin: "92px 38px" }}><circle cx="92" cy="38" r="9" /><path d="M92 31v14M85 38h14" /></g>
+          <rect className="ls-tail" x="5" y="27" width="3" height="5" rx="1" />
+          <g className="ls-wheel" style={{ transformOrigin: "90px 38px" }}><circle cx="90" cy="38" r="9" /><path d="M90 31v14M83 38h14" /></g>
+          <g className="ls-wheel" style={{ transformOrigin: "28px 38px" }}><circle cx="28" cy="38" r="9" /><path d="M28 31v14M21 38h14" /></g>
         </svg>
       </div>
       <div className="ls-card">

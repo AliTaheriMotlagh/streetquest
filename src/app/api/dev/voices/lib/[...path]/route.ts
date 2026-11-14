@@ -11,6 +11,7 @@
 import { createReadStream, existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
+import { devAllowed, isDevServer } from "@/server/devAccess";
 import { MODELS } from "@/lib/street/voiceLang";
 
 const DIR = join(process.cwd(), "assets/voices/lib");
@@ -63,10 +64,16 @@ function fetchTo(url: string, file: string) {
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ path: string[] }> }) {
-  if (process.env.NODE_ENV === "production") return new Response(null, { status: 404 });
+  if (!(await devAllowed())) return new Response(null, { status: 404 });
   const parts = (await ctx.params).path;
   const src = sourceOf(parts);
   if (!src) return new Response(null, { status: 404 });
+  // The live site can't keep a copy (read-only disk): pass the file straight through.
+  if (!isDevServer()) {
+    const res = await fetch(src, { signal: AbortSignal.timeout(10 * 60_000) }).catch(() => null);
+    if (!res?.ok || !res.body) return new Response(`Couldn't download ${src}`, { status: 502 });
+    return new Response(res.body, { headers: { "content-type": res.headers.get("content-type") ?? "application/octet-stream", "cache-control": "public, max-age=86400" } });
+  }
   const file = join(DIR, ...parts);
   if (!existsSync(file)) {
     try {

@@ -114,6 +114,12 @@ export type Pose = {
   crouch: boolean;
   air: boolean;
   dead: boolean;
+  /**
+   * Hero moves (combat.ts heroLean): where the head points in the world (along the line on a
+   * swing, flat in a glide, head first in a dive), and a flip or roll under way (0…1). The body
+   * turns about the hips, eased, on top of whatever clip plays.
+   */
+  stunt?: { up: { x: number; y: number; z: number } | null; spin: number; kind: "flip" | "roll" } | null;
 };
 
 type Clip = "Idle" | "Walk" | "Run" | "Back" | "StrafeL" | "StrafeR" | "Crouch" | "CrouchWalk" | "Jump" | "Death";
@@ -173,6 +179,10 @@ const right = new THREE.Vector3();
 const qa = new THREE.Quaternion();
 const qp = new THREE.Quaternion();
 const axisL = new THREE.Vector3();
+const upL = new THREE.Vector3();
+const Y = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
+/** Hip height (m): hero moves turn the body about it. */
+const HIP_Y = 0.95;
 
 export class Avatar {
   readonly group = new THREE.Group();
@@ -190,10 +200,15 @@ export class Avatar {
   private accentBase: THREE.Material | null = null;
   private shadows: boolean;
   private shadowOn: boolean;
+  /** The hips: hero moves lean and flip the body about this (the group's origin is the feet). */
+  private hips = new THREE.Group();
 
   constructor(t: Template, uniform: string, accent: string, shadows: boolean) {
     const root = cloneSkinned(t.scene);
-    this.group.add(root);
+    this.hips.position.y = HIP_Y;
+    root.position.y -= HIP_Y;
+    this.hips.add(root);
+    this.group.add(this.hips);
     this.shadows = this.shadowOn = shadows;
     root.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
@@ -275,6 +290,7 @@ export class Avatar {
   /** Advance the animation. `far` (metres from the camera) thins out updates. */
   update(dt: number, p: Pose, far: number) {
     this.group.rotation.y = p.yaw;
+    this.lean(dt, p);
     const sp = Math.hypot(p.vx, p.vz);
     // Velocity in the body's frame: forward is -z at yaw 0.
     const fwd = -Math.sin(p.yaw) * p.vx + -Math.cos(p.yaw) * p.vz;
@@ -317,6 +333,27 @@ export class Avatar {
     axisL.copy(right).applyQuaternion(qp.invert());
     qa.setFromAxisAngle(axisL, p.pitch * 0.9);
     b.quaternion.premultiply(qa);
+  }
+
+  /** Hero moves: turn the hips toward `stunt.up` (in the body's own frame), then spin a flip or a roll. */
+  private lean(dt: number, p: Pose) {
+    const st = p.stunt;
+    if (!st && this.hips.quaternion.w > 0.9999) return;
+    if (st?.up) {
+      // The world direction into the body's frame (undo the yaw).
+      const c = Math.cos(-p.yaw), s = Math.sin(-p.yaw);
+      const u = st.up, l = Math.hypot(u.x, u.y, u.z) || 1;
+      upL.set((u.x * c + u.z * s) / l, u.y / l, (-u.x * s + u.z * c) / l);
+      qa.setFromUnitVectors(Y, upL);
+    } else qa.identity();
+    this.hips.quaternion.slerp(qa, 1 - Math.exp(-dt * (st ? 10 : 8)));
+    if (st && st.spin > 0) {
+      // A forward flip (a full turn about the hips' right axis), or a roll that tucks low.
+      const k = st.spin, ease = k * k * (3 - 2 * k);
+      qp.setFromAxisAngle(X, -Math.PI * 2 * ease);
+      this.hips.quaternion.multiply(qp);
+      this.hips.position.y = st.kind === "roll" ? HIP_Y * (1 - 0.45 * Math.sin(Math.PI * k)) : HIP_Y;
+    } else this.hips.position.y = HIP_Y;
   }
 
   dispose() {

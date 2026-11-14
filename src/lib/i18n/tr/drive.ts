@@ -369,7 +369,16 @@ const drive: Record<string, string> = {
   "Hero moves on: hold the hook (T) to swing, run up walls, jump in the air to glide": "Kahraman hareketleri açık: sallanmak için kancayı (T) basılı tut, duvarlara koş, havada süzülmek için zıpla",
   "Hero moves": "Kahraman hareketleri",
   "Hero moves: swing, wall-run, glide": "Kahraman hareketleri: sallan, duvarda koş, süzül",
-  "Hold to swing on the line (T)": "İple sallanmak için basılı tut (T)",
+  "Dive (in the air)": "Dalış (havada)",
+  "Hook: tap to zip, hold to swing": "Kanca: dokun fırla, basılı tut sallan",
+  "🏁 Sky Rings done in {t}": "🏁 Gökyüzü Halkaları {t} içinde bitti",
+  "⏱ Time's up": "⏱ Süre doldu",
+  "+{n} 🪙 for the course": "Parkur için +{n} 🪙",
+  "Sky Rings! Swing through the gold rings in order": "Gökyüzü Halkaları! Altın halkalardan sırayla geç",
+  "Tap the hook to zip, hold it to swing — let go on the way up for a boost; crouch in the air to dive": "Kancaya dokun fırla, basılı tut sallan — yükselirken bırak, hız kazan; havada çömel, dalış yap",
+  "Stop the course": "Parkuru bırak",
+  "Sky Rings": "Gökyüzü Halkaları",
+  "Swing, zip and glide through gold rings over the rooftops, against the clock": "Çatıların üstünde sallan, fırla, süzül ve altın halkalardan geç — zamana karşı",
 };
 
 export default drive;

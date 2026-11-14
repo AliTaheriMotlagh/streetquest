@@ -201,3 +201,27 @@
   .pm .seg.seg-fill { grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)); gap: 6px; }
   .pm .seg.seg-fill button { font-size: 12px; }
 }
+
+/* ---------- phones on their side (≤ 500 px tall): everything up top is one row, the thumbs own the rest ----------
+   The right tool rail used to hang down into the right thumb's space and the drive / action buttons ran into it. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .drive-end { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; }
+  .drive-side { flex-direction: row; }
+  .drive-side .drive-round { width: 44px; height: 44px; }
+  .drive-side .drive-round:first-child { border-start-end-radius: 0; border-end-start-radius: var(--hud-r); }
+  .drive-side .drive-round:last-child { border-end-start-radius: 0; border-start-end-radius: var(--hud-r); }
+  .drive-side .drive-round:only-child { border-radius: var(--hud-r); }
+  .drive-side .drive-round + .drive-round { border-top: 0; border-inline-start: 1px solid var(--hud-line); }
+  .drive-mini { width: 70px; height: 70px; }
+  .dgauge { width: 66px; height: 66px; }
+  /* Driving: horn · drift over focus · nitro, a 2 × 2 block of icon buttons beside the pedals (not two wide rows above them). */
+  .dpad-right { flex-direction: row; align-items: flex-end; gap: 8px; }
+  .dpad-right > .dpad-tools { flex-direction: column; gap: 8px; }
+  .dpad .dpad-tool, .dpad .dpad-tools.ab .dpad-tool { width: 46px; height: 46px; min-width: 46px; padding: 0; flex: none; }
+  .dpad .dpad-tool span { display: none; }
+  .dpad.air .dpad-tool.wide { width: auto; padding: 0 12px; }
+  .dpad.air .dpad-tool span { display: inline; }
+  /* On foot: the second trigger rides above the stick's ring, not on its rim; the map credit leaves the health bar alone. */
+  .cp-fire2 { bottom: calc(196px + var(--safe-b)); }
+  .drive-credit { left: auto; right: calc(8px + var(--safe-r)); transform: none; }
+}

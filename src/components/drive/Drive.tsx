@@ -76,6 +76,8 @@ import { nearStore, oncePerStore, onRoads, RoadGrid, signSpot, type StoreSpot } 
 import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { makeChute } from "./chute3d";
 import { Skydive3D } from "./skydive3d";
+import { Swing3D } from "./swing3d";
+import { passSwing, scoreSwing, SWING_LIMIT_S, swingCourse, tickSwing, type SwingCourse } from "@/lib/swingRings";
 import { courseFor, DROP_ALT, landingHurt, landingOf, OPEN_S, passRings, scoreJump, startSky, stepSky, type Course, type Landing, type SkyState } from "@/lib/skydive";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
@@ -245,6 +247,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   /** Hero moves on foot (lib/hero.ts): the grapple line, wall runs, gliding over the rooftops. */
   const [hero, setHero] = useState(false);
   /** A skydive under way: height over the ground, speed, freefall or canopy, rings, how far the target is. */
+  /** Hero moves: the chain of lines (×n), and a Sky Rings course under way (the next ring, how many, the clock). */
+  const [swingHud, setSwingHud] = useState<{ chain: number; ring: number; of: number; secs: number } | null>(null);
   const [sky, setSky] = useState<{ agl: number; kmh: number; free: boolean; rings: number; of: number; target: number | null } | null>(null);
   useEffect(() => {
     const r = new CarRadio(setRadio);
@@ -398,6 +402,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     /** Skydive: jump from high over here (from the car), or pull the cord while falling. */
     skydive: () => void;
     pull: () => void;
+    /** Sky Rings: a hero course over the rooftops from here (gets out of the car, hero moves on), or give it up. */
+    swingRings: () => void;
+    quitSwing: () => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -930,6 +937,26 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let chute: { t: number; hx: number; hz: number; hyaw: number; halt: number; sky: SkyState; course: Course | null; pull: boolean; heli: boolean } | null = null;
     const skyFx = new Skydive3D(scene, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     let skySig = "";
+    // Sky Rings (lib/swingRings.ts): the course, where I was last frame (to see a ring crossed), the HUD's signature.
+    const swingFx = new Swing3D(scene, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    let swing: SwingCourse | null = null;
+    let swingPrev: { x: number; y: number; z: number } | null = null;
+    let swingSig = "";
+    const endSwing = (how: "done" | "time" | "quit") => {
+      const c = swing;
+      swing = null;
+      swingPrev = null;
+      swingFx.set(null);
+      if (!c || how === "quit") return;
+      const sc = scoreSwing(c);
+      const secs = `${Math.floor(sc.secs / 60)}:${String(Math.floor(sc.secs % 60)).padStart(2, "0")}`;
+      live.current.toast({
+        title: how === "done" ? t("🏁 Sky Rings done in {t}", { t: secs }) : t("⏱ Time's up"),
+        body: [t("{n} of {m} rings", { n: fmtNum(sc.rings), m: fmtNum(c.rings.length) }), sc.stars ? "★".repeat(sc.stars) : ""].filter(Boolean).join(" · "),
+      });
+      sfx(sc.stars >= 4 ? "win" : "tap");
+      if (sc.stars) void api<{ reward: { xp: number; coins: number } }>("/api/drive/street", { body: { job: "swing", stars: sc.stars } }).then((r) => r.reward.coins && live.current.toast({ title: t("+{n} 🪙 for the course", { n: fmtNum(r.reward.coins) }) })).catch((e) => live.current.toast({ title: (e as Error).message }));
+    };
     /** Down: graded, scored, hurt if it was hard, paid for a course. */
     const landJump = (h: NonNullable<typeof chute>) => {
       const l: Landing = landingOf(h.sky, st.vy, Math.hypot(st.vx, st.vz));
@@ -1681,6 +1708,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         sfx("whoosh");
         live.current.toast({ title: t("Skydive! Fly through the gold rings, then land on the target"), body: t("Gas to dive, brake to spread out — pull the cord (Space) to open; brake just before the ground") });
       },
+      swingRings: () => {
+        if (combat.inMatch || chute) return;
+        if (!combat.onFoot) combat.getOut();
+        combat.hero = true;
+        setHero(true);
+        const me = combat.me;
+        const x = me?.x ?? st.x, z = me?.z ?? st.z, yaw = me?.yaw ?? st.yaw;
+        swing = swingCourse(x, z, yaw, Math.floor(Math.random() * 1e6), (rx, rz) => collision.floor(rx, rz, 999));
+        swingPrev = null;
+        swingFx.set(swing);
+        sfx("whoosh");
+        live.current.toast({ title: t("Sky Rings! Swing through the gold rings in order"), body: t("Tap the hook to zip, hold it to swing — let go on the way up for a boost; crouch in the air to dive") });
+      },
+      quitSwing: () => endSwing("quit"),
       cycleCam,
       horn,
       land,
@@ -1931,6 +1972,26 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const onFoot = combat.tick(dt, now);
       const soldier = combat.me;
       if (onFoot && soldier) Object.assign(st, { x: soldier.x, z: soldier.z, vx: soldier.vx, vz: soldier.vz, yaw: soldier.yaw, speed: Math.hypot(soldier.vx, soldier.vz), steer: 0 });
+      // -- Sky Rings: through the next ring (body centre, prev → now), the clock; the HUD when it changes.
+      if (swing) {
+        if (!onFoot || !soldier || combat.inMatch) endSwing("quit");
+        else {
+          const at = { x: soldier.x, y: soldier.y + 1, z: soldier.z };
+          if (swingPrev && passSwing(swing, swingPrev, at) >= 0) (sfx("coin"), navigator.vibrate?.(10));
+          swingPrev = at;
+          if (swing.done) endSwing("done");
+          else if (tickSwing(swing, dt)) endSwing("time");
+        }
+        swingFx.update(now / 1000);
+      }
+      {
+        const chain = combat.heroChain;
+        const sig = swing ? `${swing.next}|${Math.floor(swing.t)}|${chain}` : chain >= 2 ? `c${chain}` : "";
+        if (sig !== swingSig) {
+          swingSig = sig;
+          setSwingHud(sig ? { chain, ring: swing?.next ?? 0, of: swing?.rings.length ?? 0, secs: swing ? Math.max(0, SWING_LIMIT_S - swing.t) : 0 } : null);
+        }
+      }
 
       // -- driving / flying
       const keys = input.current.keys;
@@ -2649,6 +2710,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       scene.remove(chuteM.group);
       chuteM.dispose();
       skyFx.dispose();
+      swingFx.dispose();
       if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose());
       model.dispose();
       cockpit.dispose();
@@ -2923,6 +2985,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               )}
             </div>
           )}
+          {swingHud && (
+            <div className="swing-hud" aria-live="polite">
+              {swingHud.of > 0 && (
+                <>
+                  <span className="sw-ring">◯ {fmtNum(Math.min(swingHud.ring + 1, swingHud.of))}/{fmtNum(swingHud.of)}</span>
+                  <span className="sw-time">{`${Math.floor(swingHud.secs / 60)}:${String(Math.floor(swingHud.secs % 60)).padStart(2, "0")}`}</span>
+                </>
+              )}
+              {swingHud.chain >= 2 && <b className="sw-chain" key={swingHud.chain}>×{fmtNum(swingHud.chain)}</b>}
+              {swingHud.of > 0 && (
+                <button type="button" className="sw-quit" onClick={() => api3d.current?.quitSwing()} aria-label={t("Stop the course")}>
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
           <div className="drive-side" role="toolbar" aria-label={t("Tools")}>
             <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} data-tip={t("Camera")}>
               <Icon name="camera" size={22} />
@@ -2954,20 +3032,6 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               >
                 <span aria-hidden style={{ fontSize: 20 }}>🦸</span>
               </Button>
-            )}
-            {combat && onFoot && hero && !fight?.inMatch && (
-              <button
-                type="button"
-                className="drive-round hook"
-                onPointerDown={(e) => (e.preventDefault(), (combat.input.grapple = true))}
-                onPointerUp={() => (combat.input.grapple = false)}
-                onPointerCancel={() => (combat.input.grapple = false)}
-                onPointerLeave={() => (combat.input.grapple = false)}
-                aria-label={t("Hold to swing on the line (T)")}
-                data-tip={t("Hold to swing on the line (T)")}
-              >
-                <span aria-hidden style={{ fontSize: 20 }}>🪝</span>
-              </button>
             )}
             {canDrive && combat && !fight?.inMatch && (onFoot ? (
               <Button className={`drive-round ${fight?.nearCar ? "on" : ""}`} disabled={!fight?.nearCar} onClick={() => combat.getIn()} aria-label={t("Get in the car")} data-tip={fight?.nearCar ? t("Get in the car (F)") : t("No car close by")}>
@@ -3018,6 +3082,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                 <span className="grow">
                   <b>{t("Skydive from here")}</b>
                   <span className="small muted">{t("Jump from {n} m: gold rings, then land on the target", { n: fmtNum(DROP_ALT) })}</span>
+                </span>
+              </button>
+            )}
+            {!fight?.inMatch && canDrive && (
+              <button className="drive-job sky-start" onClick={() => (setMenu(null), api3d.current?.swingRings())}>
+                <span className="ic">🦸</span>
+                <span className="grow">
+                  <b>{t("Sky Rings")}</b>
+                  <span className="small muted">{t("Swing, zip and glide through gold rings over the rooftops, against the clock")}</span>
                 </span>
               </button>
             )}
@@ -3139,7 +3212,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {canDrive && !fight?.inMatch && <AbilityHud el={abilityEl} />}
       {scenarios && !fight?.inMatch && <ScenarioHud scenarios={scenarios} />}
       {combat && <CombatHud combat={combat} touch={touch} />}
-      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} onCar={() => combat.getIn()} onFocus={onFocus} nearCar={!!fight?.nearCar} inMatch={inMatch} />}
+      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} onCar={() => combat.getIn()} onFocus={onFocus} nearCar={!!fight?.nearCar} inMatch={inMatch} hero={hero} />}
       {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.bike ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
       {canDrive && !touch && onFoot && footKeys && (
         <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Z dead-eye · Tab scores · F car")}</div>

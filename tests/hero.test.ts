@@ -1,7 +1,7 @@
 // Hero moves (lib/hero.ts) in a toy city: one block 20 × 20 m and 30 m tall, its south face at z = -20.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aimLine, HERO, newHero, stepHero, type HeroBody, type HeroInput, type HeroWorld } from "@/lib/hero";
+import { aimLine, chainPump, HERO, newHero, stepHero, ZIP_TAP_S, type HeroBody, type HeroInput, type HeroWorld } from "@/lib/hero";
 
 const B = { x0: -10, x1: 10, z0: -40, z1: -20, h: 30 };
 const world: HeroWorld = {
@@ -52,7 +52,7 @@ describe("hero moves", () => {
     assert.ok(b.z < 60 && b.y > 0.5, `swung forward and up: ${JSON.stringify(b)}`);
     const vy = b.vy;
     const e = stepHero(b, s, idle, 1 / 60, world);
-    assert.equal(e?.kind, "release");
+    assert.ok(e?.kind === "release" || e?.kind === "perfect", String(e?.kind));
     assert.ok(b.vy > vy && s.anchor === null);
   });
   it("runs up the wall, vaults onto the roof and lands on it", () => {
@@ -81,5 +81,72 @@ describe("hero moves", () => {
     assert.ok(out.events.includes("land"));
     assert.equal(w.y, 0);
     assert.equal(ws.mode, "ground");
+  });
+  it("a tap on the hook zips to the wall it caught and grabs it; looking up at the edge, it perches on the roof", () => {
+    const b: HeroBody = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0 };
+    const s = newHero();
+    stepHero(b, s, { ...idle, grapple: true }, 1 / 60, world);
+    assert.ok(s.anchor?.wall, "caught the block");
+    assert.equal(stepHero(b, s, idle, 1 / 60, world)?.kind, "zip");
+    const r = run(b, s, 3, {});
+    assert.ok(r.events.includes("wall") || r.events.includes("perch"), r.events.join(","));
+    assert.ok(b.z < -17, `pulled to the wall: ${b.z}`);
+    // From the roof's height, the line catches the top of the wall: the zip ends standing on the roof.
+    const p: HeroBody = { x: 0, y: 18, z: -6, vx: 0, vy: 0, vz: 0, yaw: 0 };
+    const ps = { ...newHero(), mode: "air" as const };
+    stepHero(p, ps, { ...idle, grapple: true, camPitch: -0.5 }, 1 / 60, world);
+    assert.ok(ps.anchor?.wall && ps.anchor.y > B.h - 2.5, JSON.stringify(ps.anchor));
+    stepHero(p, ps, idle, 1 / 60, world);
+    const pr = run(p, ps, 3, {});
+    assert.ok(pr.events.includes("perch"), pr.events.join(","));
+    assert.equal(p.y, B.h);
+    assert.equal(ps.mode, "ground");
+  });
+  it("a long hold is a swing, not a zip; a sky line can't be zipped to", () => {
+    const b: HeroBody = { x: 0, y: 0, z: 60, vx: 0, vy: 0, vz: -8, yaw: 0 };
+    const s = newHero();
+    run(b, s, ZIP_TAP_S + 0.2, { grapple: true });
+    assert.notEqual(stepHero(b, s, idle, 1 / 60, world)?.kind, "zip");
+    const k: HeroBody = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0 };
+    const ks = newHero();
+    stepHero(k, ks, { ...idle, grapple: true, camYaw: Math.PI }, 1 / 60, world);
+    assert.equal(ks.anchor?.wall, false);
+    assert.equal(stepHero(k, ks, idle, 1 / 60, world)?.kind, "release");
+  });
+  it("crouch in the air dives fast; a line out of the dive carries the speed on", () => {
+    const b: HeroBody = { x: 0, y: 120, z: 200, vx: 0, vy: 0, vz: 0, yaw: 0 };
+    const s = { ...newHero(), mode: "air" as const };
+    assert.equal(stepHero(b, s, { ...idle, dive: true }, 1 / 60, world)?.kind, "dive");
+    run(b, s, 1.5, {});
+    assert.equal(s.mode, "dive");
+    assert.ok(b.vy < -20, `diving at ${b.vy}`);
+    const before = Math.hypot(b.vx, b.vz);
+    stepHero(b, s, { ...idle, grapple: true, camYaw: Math.PI }, 1 / 60, world);
+    assert.equal(s.mode, "swing");
+    assert.ok(Math.hypot(b.vx, b.vz) > before + 8, "the fall turned forward");
+  });
+  it("letting go fast on the upswing is a perfect release: more fling than a plain one", () => {
+    const mk = (): HeroBody => ({ x: 0, y: 10, z: 100, vx: 0, vy: 6, vz: -16, yaw: 0 });
+    const a = mk(), sa = { ...newHero(), mode: "swing" as const, anchor: { x: 0, y: 30, z: 95, len: 25, wall: false }, lineT: 1 };
+    assert.equal(stepHero(a, sa, idle, 1 / 60, world)?.kind, "perfect");
+    const p = { ...mk(), vy: -6 }, sp = { ...newHero(), mode: "swing" as const, anchor: { x: 0, y: 30, z: 95, len: 25, wall: false }, lineT: 1 };
+    assert.equal(stepHero(p, sp, idle, 1 / 60, world)?.kind, "release");
+    assert.ok(Math.hypot(a.vx, a.vz) > Math.hypot(p.vx, p.vz) + 4);
+  });
+  it("lines fired before touching down build a chain that pumps harder; landing ends it", () => {
+    assert.equal(chainPump(1), 1);
+    assert.ok(chainPump(4) > chainPump(2) && chainPump(50) === HERO.chainMax);
+    const b: HeroBody = { x: 0, y: 30, z: 300, vx: 0, vy: 0, vz: -10, yaw: 0 };
+    const s = { ...newHero(), mode: "air" as const };
+    for (let i = 0; i < 3; i++) {
+      run(b, s, 0.6, { grapple: true, camYaw: Math.PI, mz: 1 });
+      run(b, s, 0.1, {});
+    }
+    assert.equal(s.chain, 3);
+    assert.equal(s.best, 3);
+    run(b, s, 20, {});
+    assert.equal(s.mode, "ground");
+    assert.equal(s.chain, 0);
+    assert.equal(s.best, 3, "the best stays for the HUD");
   });
 });

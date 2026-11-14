@@ -89,7 +89,7 @@ describe("touch controls", () => {
   it("the on-foot buttons clear each other and the fire button, stay on the screen, and mirror", () => {
     const r = footLayout(), l = footLayout(true);
     const keys = Object.keys(r) as (keyof typeof r)[];
-    assert.deepEqual([...keys].sort(), ["aim", "car", "crouch", "jump", "reload", "swap"]);
+    assert.deepEqual([...keys].sort(), ["aim", "car", "crouch", "jump", "reload"]);
     for (const a of keys) {
       assert.ok(Math.hypot(r[a].x, r[a].y) >= 44 + FOOT_BTN / 2 + 8, `${a} clears the fire button`);
       assert.ok(r[a].y <= FOOT_BELOW_MAX, `${a} is whole above the bottom edge (${r[a].y.toFixed(0)})`);
@@ -104,5 +104,11 @@ describe("touch controls", () => {
     assert.ok(!footActions({ nearCar: false, inMatch: false }).includes("car"));
     assert.ok(footActions({ nearCar: true, inMatch: false }).includes("car"));
     assert.ok(!footActions({ nearCar: true, inMatch: true }).includes("car"));
+  });
+  it("hero moves put the hook where aim was, but never in a match", () => {
+    const h = footActions({ nearCar: false, inMatch: false, hero: true });
+    assert.ok(h.includes("hook") && !h.includes("aim"));
+    const m = footActions({ nearCar: false, inMatch: true, hero: true });
+    assert.ok(m.includes("aim") && !m.includes("hook"));
   });
 });

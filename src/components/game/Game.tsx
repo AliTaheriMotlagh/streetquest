@@ -598,6 +598,8 @@ export default function Game() {
   // phones don't answer in order: each response carries a ticket and only one newer
   // than what's on screen is applied, so a slow old answer can't undo a fresh one.
   const meTicket = useRef({ issued: 0, shown: 0 });
+  /** The admin settings' version last seen on /api/sync (null: not yet). */
+  const cfgSeen = useRef<number | null>(null);
   const worldTicket = useRef({ issued: 0, shown: 0 });
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadMe = useCallback(() => {
@@ -892,9 +894,14 @@ export default function Game() {
       if (document.hidden || busy) return;
       busy = true;
       try {
-        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; video: boolean; peer: CallPeer } | null }>(`/api/sync?since=${syncSince.current}`);
+        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; video: boolean; peer: CallPeer } | null; cfg?: number }>(`/api/sync?since=${syncSince.current}`);
         if (stop) return;
         syncSince.current = r.now;
+        // The admin saved new game settings: reload them (and me) now, not at the next tap.
+        if (r.cfg != null) {
+          if (cfgSeen.current != null && r.cfg !== cfgSeen.current) loadMe();
+          cfgSeen.current = r.cfg;
+        }
         if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, video: r.call.video, role: "callee" });
         setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
         // A friend request or a party invite is a card with its buttons, not a toast.

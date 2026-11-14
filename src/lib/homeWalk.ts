@@ -38,9 +38,13 @@ export function stepWalk(w: Walk, m: number): { at: LatLng; walk: Walk; arrived:
   return { at: pointAlong(w, done).at, walk: { ...w, done }, arrived: done >= w.total - 0.01 };
 }
 
-/** How fast to go (km/h): a short hop is walked (about 6 km/h), a longer trip takes about a minute at most, never above `capKmh` (what the server accepts). */
-export function homeSpeedKmh(totalM: number, capKmh: number): number {
-  return Math.min(capKmh, Math.max(6, (totalM * 3.6) / 60));
+/**
+ * How fast to go (km/h): exactly the admin's play-from-home speed (Admin → Game settings →
+ * "Travel speed at home", S.remoteSpeedKmh — also what the server accepts), whatever the
+ * distance. `_totalM` is kept for callers; the speed no longer depends on it.
+ */
+export function homeSpeedKmh(_totalM: number, capKmh: number): number {
+  return Math.max(1, capKmh);
 }
 
 /** What's left to walk (for the line on the map): where you are, then the points still ahead. */

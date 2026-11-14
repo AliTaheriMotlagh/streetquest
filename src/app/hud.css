@@ -225,3 +225,15 @@ html[lang="en"] .pm-scroll b.small { text-transform: uppercase; letter-spacing: 
 .sky-hint { margin: 0; padding: 6px 12px; border-radius: 10px; background: rgba(229, 57, 53, .85); color: #fff; font-weight: 900; }
 .drive-job.sky-start { border: 1px solid rgba(255, 210, 63, .35); }
 .drive-job.sky-start .grow { display: grid; text-align: start; }
+
+/* ---- hero moves: the Sky Rings course (ring n/m, the clock, ✕) and the chain of lines (×n), top centre under the bar */
+.swing-hud { position: absolute; top: calc(66px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; border-radius: var(--hud-r); background: var(--hud-bg); border: 1px solid var(--hud-line); color: #fff; font: 600 15px/1 var(--body); font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+.swing-hud .sw-ring { color: #ffc93c; }
+.swing-hud .sw-time { color: var(--hud-mute); }
+.swing-hud .sw-chain { color: var(--dpad-accent); font-weight: 800; animation: swPop .25s var(--hud-ease); }
+.swing-hud .sw-quit { pointer-events: auto; width: 36px; height: 36px; border: 0; border-radius: 8px; background: var(--hud-hi); color: #fff; font-size: 14px; }
+@keyframes swPop { from { transform: scale(1.6); } }
+@media (prefers-reduced-motion: reduce) { .swing-hud .sw-chain { animation: none; } }
+@media (orientation: landscape) and (max-height: 500px) { .swing-hud { top: calc(60px + var(--safe-t)); padding-block: 2px; font-size: 14px; } }
+.cp-btn.hook { border-color: #ffc93c; }
+.cp-btn.hook.on { background: #ffc93c; color: #1a1200; }

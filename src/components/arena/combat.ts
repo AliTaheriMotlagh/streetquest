@@ -217,6 +217,11 @@ export class Combat {
    */
   hero = false;
   private heroS: HeroState = newHero();
+  /** A trick under way (a flip after a perfect release, a roll on a hard landing): 0…1, or -1. */
+  private stuntT = -1;
+  private stuntKind: "flip" | "roll" = "flip";
+  /** Hero events for the 3D view (Sky Rings, the HUD's chain): the last one and when. */
+  heroEvent: { kind: string; at: number } | null = null;
   private rope: THREE.Line | null = null;
   readonly rt: RtClient;
   readonly remotes: Remotes;
@@ -529,13 +534,24 @@ export class Combat {
       ray: (o, d, max) => H.collision.raycast({ ox: o.x, oy: o.y, oz: o.z, dx: d.x, dy: d.y, dz: d.z }, max),
     };
     const body = { x: me.x, y: me.y, z: me.z, vx: me.vx, vy: me.vy, vz: me.vz, yaw: me.yaw };
-    const ev = stepHero(body, this.heroS, { mx: inp.mx, mz: inp.mz, camYaw: me.yaw, camPitch: me.pitch, jump: inp.jump, jumpPressed: inp.jump, grapple: !!inp.grapple }, dt, world);
+    // Crouch is a dive in hero moves (there's no crouching on the go): used up once read, so the
+    // touch toggle doesn't stay on (and its button doesn't stay lit).
+    const dive = !!inp.crouch;
+    if (inp.crouch) {
+      this.input.crouch = false;
+      if (typeof document !== "undefined") document.querySelector(".cp-btn.crouch.on")?.classList.remove("on");
+    }
+    const ev = stepHero(body, this.heroS, { mx: inp.mx, mz: inp.mz, camYaw: me.yaw, camPitch: me.pitch, jump: inp.jump, jumpPressed: inp.jump, grapple: !!inp.grapple, dive }, dt, world);
     Object.assign(me, { x: body.x, y: body.y, z: body.z, vx: body.vx, vy: body.vy, vz: body.vz });
     me.air = this.heroS.mode !== "ground";
     me.sprint = this.heroS.mode === "ground" && Math.hypot(me.vx, me.vz) > 5;
     me.crouch = false;
-    if (ev?.kind === "fire" || ev?.kind === "kick" || ev?.kind === "vault") sfx("whoosh");
-    if (ev?.kind === "land" && (ev.hard ?? 0) > 9) (thudSound(), navigator.vibrate?.(25));
+    if (ev?.kind === "fire" || ev?.kind === "kick" || ev?.kind === "vault" || ev?.kind === "zip" || ev?.kind === "dive") sfx("whoosh");
+    if (ev?.kind === "perfect") (sfx("whoosh"), sfx("coin"), (this.stuntT = 0), (this.stuntKind = "flip"), navigator.vibrate?.(15));
+    if (ev?.kind === "perch") (thudSound(), navigator.vibrate?.(12));
+    if (ev?.kind === "land" && (ev.hard ?? 0) > 9) (thudSound(), navigator.vibrate?.(25), (this.stuntT = 0), (this.stuntKind = "roll"));
+    if (ev) this.heroEvent = { kind: ev.kind, at: performance.now() };
+    if (this.stuntT >= 0) this.stuntT = this.stuntT + dt / (this.stuntKind === "flip" ? 0.6 : 0.45) >= 1 ? -1 : this.stuntT + dt / (this.stuntKind === "flip" ? 0.6 : 0.45);
     // The line.
     const a = this.heroS.anchor;
     if (a) {
@@ -557,6 +573,27 @@ export class Combat {
   /** Where hero moves are now (the HUD): on a line, a wall, gliding, in the air, on the ground. */
   get heroMode() {
     return this.hero ? this.heroS.mode : null;
+  }
+  /** The chain of lines since you last touched down (the HUD's ×n). */
+  get heroChain() {
+    return this.hero ? this.heroS.chain : 0;
+  }
+  /**
+   * How the body leans for hero moves (avatar.ts): `up` is where the head points (hanging along
+   * the line, flat in a glide, head first in a dive or a zip, into the wall on a run), `spin` a
+   * flip or a roll under way (0…1). Null when it just stands, walks or jumps.
+   */
+  private heroLean(me: FootBody): { up: { x: number; y: number; z: number } | null; spin: number; kind: "flip" | "roll" } | null {
+    if (!this.hero || this.inMatch || this.down) return null;
+    const s = this.heroS;
+    let up: { x: number; y: number; z: number } | null = null;
+    const v = Math.hypot(me.vx, me.vy, me.vz);
+    if (s.mode === "swing" && s.anchor) up = { x: s.anchor.x - me.x, y: s.anchor.y - (me.y + 1.5), z: s.anchor.z - me.z };
+    else if (s.mode === "glide") up = { x: -Math.sin(me.yaw), y: 0.35, z: -Math.cos(me.yaw) };
+    else if ((s.mode === "dive" || s.mode === "zip") && v > 1) up = { x: me.vx, y: me.vy, z: me.vz };
+    else if (s.mode === "wall" && s.wall) up = { x: -s.wall.nx * 0.35, y: 1, z: -s.wall.nz * 0.35 };
+    if (!up && this.stuntT < 0) return null;
+    return { up, spin: Math.max(0, this.stuntT), kind: this.stuntKind };
   }
 
   getOut() {
@@ -1510,7 +1547,7 @@ export class Combat {
         this.avatar.group.visible = !fps;
         this.avatar.group.position.set(me.x, me.y, me.z);
         this.face = faceYaw(this.face, me.yaw, me.vx, me.vz, squared, dt);
-        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: this.face, pitch: squared ? me.pitch : 0, crouch: me.crouch, air: me.air, dead: this.down }, 0);
+        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: this.face, pitch: squared ? me.pitch : 0, crouch: me.crouch, air: me.air, dead: this.down, stunt: heroOn ? this.heroLean(me) : null }, 0);
       }
       this.placeCamera(me, dt, fps);
       const scoped = this.snapshot.scoped;
@@ -1756,7 +1793,9 @@ export class Combat {
       cam.rotateY((Math.random() - 0.5) * k);
       cam.rotateZ((Math.random() - 0.5) * k * 0.6);
     }
-    const fov = fovFor(aiming ? (fps ? W.adsFov : Math.max(40, W.adsFov + 12)) : fps ? 72 : 66, cam.aspect);
+    // Hero moves: the view opens up with speed (a swing at 30 m/s feels like one).
+    const rush = this.hero && !this.inMatch && !aiming ? Math.min(14, Math.max(0, Math.hypot(me.vx, me.vy, me.vz) - 8) * 0.55) : 0;
+    const fov = fovFor(aiming ? (fps ? W.adsFov : Math.max(40, W.adsFov + 12)) : (fps ? 72 : 66) + rush, cam.aspect);
     const near = fps ? 0.05 : 0.15;
     const f = cam.fov + (fov - cam.fov) * Math.min(1, dt * 14);
     if (Math.abs(cam.fov - f) > 0.01 || cam.near !== near) {

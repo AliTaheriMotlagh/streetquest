@@ -39,6 +39,7 @@
     "transit:times": "tsx scripts/transit-gtfs.ts"
   },
   "dependencies": {
+    "@huggingface/inference": "4.13.32",
     "@mapbox/vector-tile": "^3.0.0",
     "@prisma/client": "^6.19.3",
     "@vercel/blob": "^1.1.1",

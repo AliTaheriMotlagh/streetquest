@@ -4,23 +4,25 @@
 //   POST ?file=    one line's WAV (only the game's own file names)
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { devAllowed, diskOnly, isDevServer } from "@/server/devAccess";
 import { jobsFor, VOICE_LANGS } from "@/lib/street/voiceLang";
 
 const DIR = join(process.cwd(), "assets/voices/raw");
 /** Persian: <id>-<v>.wav; English: en/<id>-<v>.wav (lib/street/voiceLang.ts). */
 const NAMES = new Set(VOICE_LANGS.flatMap((l) => jobsFor(l).map((j) => j.raw)));
-const off = () => process.env.NODE_ENV === "production";
 
 export async function GET() {
-  if (off()) return new Response(null, { status: 404 });
-  mkdirSync(DIR, { recursive: true });
+  if (!(await devAllowed())) return new Response(null, { status: 404 });
+  if (!isDevServer() && !existsSync(DIR)) return Response.json({ saved: [] });
+  if (isDevServer()) mkdirSync(DIR, { recursive: true });
   // Persian at the root; every other language in its own folder (en/, tr/).
   const sub = VOICE_LANGS.filter((l) => l !== "fa").flatMap((l) => (existsSync(join(DIR, l)) ? readdirSync(join(DIR, l)).map((f) => `${l}/${f}`) : []));
   return Response.json({ saved: [...readdirSync(DIR), ...sub].filter((f) => NAMES.has(f)) });
 }
 
 export async function POST(req: Request) {
-  if (off()) return new Response(null, { status: 404 });
+  if (!(await devAllowed())) return new Response(null, { status: 404 });
+  if (!isDevServer()) return diskOnly();
   const file = new URL(req.url).searchParams.get("file") ?? "";
   if (!NAMES.has(file)) return new Response("Not a line", { status: 400 });
   const buf = Buffer.from(await req.arrayBuffer());

@@ -58,8 +58,9 @@ export function arc(n: number, radius: number, from = 100, to = 190, mirror = fa
   return out;
 }
 
-export type FootAction = "fire" | "aim" | "jump" | "crouch" | "reload" | "car";
-export type FootSlot = Exclude<FootAction, "fire"> | "swap";
+export type FootAction = "fire" | "aim" | "jump" | "crouch" | "reload" | "car" | "hook";
+/** Arc slots: the hook (hero moves) takes aim's place, so it has none of its own. */
+export type FootSlot = Exclude<FootAction, "fire" | "hook">;
 /** A round action button's size (px): every one clears its neighbours by this much. */
 export const FOOT_BTN = 52;
 /** How far below the fire button's centre a button may sit and still be whole on the screen (the fire button is 80 px up from the bottom edge). */
@@ -70,8 +71,7 @@ const FOOT_RING: Record<FootSlot, [number, number]> = {
   crouch: [112, 124],
   jump: [112, 156],
   aim: [112, 188],
-  swap: [180, 122],
-  car: [180, 150],
+  car: [180, 122],
 };
 /**
  * Where the on-foot buttons sit, in px from the fire button's centre (x right, y down): two
@@ -87,9 +87,12 @@ export function footLayout(mirror = false): Record<FootSlot, { x: number; y: num
   }
   return out;
 }
-/** Which buttons the arc shows right now (the car only when one is close). */
-export function footActions(o: { nearCar: boolean; inMatch: boolean }): FootAction[] {
-  const list: FootAction[] = ["aim", "jump", "crouch", "reload"];
+/**
+ * Which buttons the arc shows right now (the car only when one is close). With hero moves on
+ * (never in a match) the hook — tap to zip, hold to swing — sits where aim was: under the thumb.
+ */
+export function footActions(o: { nearCar: boolean; inMatch: boolean; hero?: boolean }): FootAction[] {
+  const list: FootAction[] = [o.hero && !o.inMatch ? "hook" : "aim", "jump", "crouch", "reload"];
   if (o.nearCar && !o.inMatch) list.push("car");
   return list;
 }

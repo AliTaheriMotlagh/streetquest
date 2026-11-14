@@ -4,6 +4,7 @@ import { requireUser } from "@/server/auth";
 import { route } from "@/server/http";
 import { RING_MS } from "@/server/calls";
 import { readyAlerts } from "@/server/alerts";
+import { settingsVersion } from "@/server/settings";
 
 /** When this server instance last checked each player's timers (keys stop repeats across instances). */
 const alertsAt = new Map<string, number>();
@@ -43,5 +44,6 @@ export const GET = route(async (req) => {
     orderBy: { createdAt: "desc" },
     select: { id: true, video: true, caller: { select: { id: true, username: true, avatar: true } } },
   });
-  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, video: ring.video, peer: ring.caller } };
+  // cfg: the admin settings' version — a client that sees it change reloads them (/api/me), so a save reaches every open game in seconds.
+  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, video: ring.video, peer: ring.caller }, cfg: await settingsVersion() };
 });

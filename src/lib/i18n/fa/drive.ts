@@ -369,7 +369,16 @@ const drive: Record<string, string> = {
   "Hero moves on: hold the hook (T) to swing, run up walls, jump in the air to glide": "حرکات قهرمانی روشن شد: قلاب (T) را نگه دار تا تاب بخوری، از دیوارها بالا بدو، در هوا بپر تا سُر بخوری",
   "Hero moves": "حرکات قهرمانی",
   "Hero moves: swing, wall-run, glide": "حرکات قهرمانی: تاب، دویدن روی دیوار، سُرخوردن",
-  "Hold to swing on the line (T)": "نگه دار تا با طناب تاب بخوری (T)",
+  "Dive (in the air)": "شیرجه (در هوا)",
+  "Hook: tap to zip, hold to swing": "قلاب: بزن تا بپری سمتش، نگه دار تا تاب بخوری",
+  "🏁 Sky Rings done in {t}": "🏁 حلقه‌های آسمان در {t} تمام شد",
+  "⏱ Time's up": "⏱ وقت تمام شد",
+  "+{n} 🪙 for the course": "+{n} 🪙 برای این مسیر",
+  "Sky Rings! Swing through the gold rings in order": "حلقه‌های آسمان! به ترتیب از حلقه‌های طلایی رد شو",
+  "Tap the hook to zip, hold it to swing — let go on the way up for a boost; crouch in the air to dive": "قلاب را بزن تا بپری سمتش، نگه دار تا تاب بخوری — در اوج رها کن تا شتاب بگیری؛ در هوا خم شو تا شیرجه بزنی",
+  "Stop the course": "توقف مسیر",
+  "Sky Rings": "حلقه‌های آسمان",
+  "Swing, zip and glide through gold rings over the rooftops, against the clock": "روی پشت‌بام‌ها تاب بخور، بپر و سُر بخور و از حلقه‌های طلایی رد شو — با زمان مسابقه بده",
 };
 
 export default drive;
