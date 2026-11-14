@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { bombSide, GUN_KILLS_PER_STEP, GUN_LADDER, gunFor, MODES, TEAM_COLORS, TEAM_NAMES, type MatchView } from "@/lib/arena/modes";
-import { WEAPONS } from "@/lib/arena/weapons";
+import { PRIMARIES, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
+import { costOf, PRICES } from "@/lib/arena/economy";
 import { THROW_KEYS, THROWABLES } from "@/lib/arena/throwables";
 import { ActButton, ThrowButton } from "./CombatPad";
 import type { Combat, CombatHud as Hud } from "./combat";
@@ -165,7 +166,35 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
         </div>
       )}
 
+      {m?.mode === "bomb" && m.phase !== "lobby" && m.phase !== "ended" && <BuyStrip money={s.money} loadout={s.loadout} open={m.phase === "warmup" && !s.dead} onBuy={(w) => combat.buy(w)} />}
       {(board || ended) && m && <Scoreboard m={m} me={me} now={now} onLeave={() => combat.leave()} />}
+    </div>
+  );
+}
+
+/** The guns to buy, cheapest first: what you can afford comes first. */
+const BY_PRICE = [...PRIMARIES].sort((a, b) => PRICES[a] - PRICES[b]);
+
+/**
+ * Bomb mode's money, always in the corner; in the freeze time before a round, the guns you can buy
+ * with it in one row (what you hold is marked, what you can't afford is greyed out).
+ */
+function BuyStrip({ money, loadout, open, onBuy }: { money: number; loadout: WeaponKey[]; open: boolean; onBuy: (w: WeaponKey) => void }) {
+  return (
+    <div className={`chud-buy ${open ? "open" : ""}`}>
+      <b className="chud-money">💵 {fmtNum(money)}</b>
+      {open && (
+        <div className="chud-buy-row" role="toolbar" aria-label={t("Buy a gun")}>
+          {BY_PRICE.map((w) => {
+            const have = loadout.includes(w), cost = costOf(loadout, w);
+            return (
+              <button key={w} type="button" className={`chip small ${have ? "on" : ""}`} disabled={!have && cost > money} onClick={() => onBuy(w)}>
+                {t(WEAPONS[w].name)} <span className="small">{have ? "✓" : PRICES[w] ? fmtNum(PRICES[w]) : t("Free")}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

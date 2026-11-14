@@ -10,6 +10,7 @@
 // now), a short cover, the actions in one row, then tabs that stick to the top of the
 // sheet while scrolling (Menu / Reviews / Info, or Catalog / Info) with compact rows.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { menuSearch, storeKind, USUALLY } from "@/lib/storeKinds";
 import { createPortal } from "react-dom";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
@@ -680,8 +681,36 @@ export function StoreExtras({ query, at, bare }: { query: Record<string, string 
         </div>
       )}
       {at && query.id && <SiktirBar placeKey={query.store === "place" ? String(query.id) : `${query.store}:${query.id}`} name={a.name || String(query.name ?? "")} at={at} />}
-      {!data.menu && !onTorob && <p className="small muted">{t("No online menu found for this place yet.")}</p>}
+      {!data.menu && !onTorob && <NoMenu name={a.name || String(query.name ?? "")} cls={String(query.cls ?? query.cat ?? "")} at={at ?? null} />}
       <StoreTabs tabs={tabs} />
+    </div>
+  );
+}
+
+/**
+ * No menu online (most walk-in stores aren't on a delivery site): say so in one line, show what
+ * this kind of store usually has, and two ways to find the real one — never a dead end.
+ */
+function NoMenu({ name, cls, at }: { name: string; cls: string; at: LatLng | null }) {
+  const kind = storeKind(cls, name);
+  const search = menuSearch(name, at);
+  return (
+    <div className="no-menu">
+      <p className="small muted">{t("Their menu isn't online yet. Usually here:")}</p>
+      <div className="no-menu-chips">
+        {USUALLY[kind].map((w) => (
+          <span key={w} className="chip small">{t(w)}</span>
+        ))}
+      </div>
+      {!!search.length && (
+        <div className="store-actions">
+          {search.map((l) => (
+            <a key={l.kind} className="btn small ghost" href={l.url} target="_blank" rel="noopener noreferrer">
+              {l.kind === "web" ? "🔎" : "📍"} {t(l.label)}
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

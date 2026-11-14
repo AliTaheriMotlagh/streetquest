@@ -259,14 +259,17 @@ function PartyStart({ inParty, onChanged }: { inParty: boolean; onChanged: () =>
   );
 }
 
-export function VasatyabDock({ onView }: { onView: (v: MidView | null) => void }) {
-  const [open, setOpen] = useState(false);
+/**
+ * Vasatyab on the map: its round button only while you're in a party (otherwise it lives in the
+ * ⋯ menu, which opens it through `open`/`setOpen`), and its panel.
+ */
+export function VasatyabDock({ onView, open, setOpen }: { onView: (v: MidView | null) => void; open: boolean; setOpen: (o: boolean) => void }) {
   const v = useVasatyab(open);
   // The map draws the point while the panel is open, and the gather point whenever there is one.
   useEffect(() => onView(v.inParty && v.view && (open || v.view.meet) ? v.view : null), [v.view, open, v.inParty]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <Button className={`fab vasa-fab ${open ? "on" : ""} ${v.inParty ? "" : "idle"}`} title={t("Vasatyab")} aria-label={t("Vasatyab — where to meet")} aria-expanded={open} onClick={() => setOpen(!open)}>
+      {(v.inParty || open) && <Button className={`fab vasa-fab ${open ? "on" : ""} ${v.inParty ? "" : "idle"}`} title={t("Vasatyab")} aria-label={t("Vasatyab — where to meet")} aria-expanded={open} onClick={() => setOpen(!open)}>
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="5" cy="6" r="2" />
           <circle cx="19" cy="7" r="2" />
@@ -274,7 +277,7 @@ export function VasatyabDock({ onView }: { onView: (v: MidView | null) => void }
           <path d="M6.6 7.2 10.8 11M17.5 8.6 13.4 11M12 14v3" />
           <circle cx="12" cy="12" r="1.6" fill="currentColor" />
         </svg>
-      </Button>
+      </Button>}
       {open && (
         <div className="map-filter vasa-panel" role="dialog" aria-label={t("Vasatyab")}>
           <div className="row">

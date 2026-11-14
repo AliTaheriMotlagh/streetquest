@@ -88,6 +88,8 @@ export class Player {
   /** Where to put them back when their match ends. */
   returnLL: LL | null = null;
   carrying = false;
+  /** Bomb mode's round money (lib/arena/economy.ts); 0 elsewhere. */
+  money = 0;
   actingUntil = 0;
   actingAt: LL | null = null;
 
@@ -213,6 +215,6 @@ export class Player {
   }
 
   status(space: string) {
-    this.send({ t: "you", hp: this.hp, dead: this.dead, respawnAt: this.respawnAt, passive: this.passive, ammo: this.ammo.get(WEAPON_BY_IDX[this.weapon]) ?? 0, reloadUntil: this.reloadUntil, loadout: this.loadout, team: this.team, space, gear: this.gear });
+    this.send({ t: "you", hp: this.hp, dead: this.dead, respawnAt: this.respawnAt, passive: this.passive, ammo: this.ammo.get(WEAPON_BY_IDX[this.weapon]) ?? 0, reloadUntil: this.reloadUntil, loadout: this.loadout, team: this.team, space, gear: this.gear, money: this.money });
   }
 }

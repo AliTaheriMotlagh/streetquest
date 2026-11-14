@@ -207,6 +207,7 @@ export default function Game() {
   const [now, setNow] = useState(Date.now());
   // The 3D city (drive mode), optionally heading somewhere; and a profile to open in Social.
   const [driveOn, setDriveOn] = useState<{ goal: LatLng | null } | null>(null);
+  const [vasaOpen, setVasaOpen] = useState(false);
   const [profileFocus, setProfileFocus] = useState<string | null>(null);
   // How the map looks: the illustrated fantasy map (default), satellite, terrain… (mapStyles.ts).
   const [mapStyle, setMapStyle] = useState<MapStyle>(styleById(null));
@@ -1377,7 +1378,7 @@ export default function Game() {
 
         {/* Floating buttons: only what you need right now; the rest lives behind ⋯ */}
         <div className="fab-col">
-          <VasatyabDock onView={setVasa} />
+          <VasatyabDock onView={setVasa} open={vasaOpen} setOpen={(o) => (setVasaOpen(o), o && (setMoreOpen(false), setFilterOpen(false)))} />
           <Button className="fab" title={t("Search stores & products")} aria-label={t("Search stores & products")} aria-haspopup="dialog" onClick={() => (setDirOpen(true), setFilterOpen(false), setMoreOpen(false))}>
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M16 16l4.5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
           </Button>
@@ -1428,21 +1429,13 @@ export default function Game() {
                 <Icon name="compass" size={18} />
                 <span className="mm-t">{exploreOn ? t("Exploring — tap to go back to me") : t("Explore the map (no location needed)")}</span>
               </Button>
+              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setVasaOpen(true), setMoreOpen(false))}>
+                <Icon name="people" size={18} />
+                <span className="mm-t">{t("Vasatyab")}<span className="small mm-sub">{t("where to meet your friends")}</span></span>
+              </Button>
               <Button role="menuitem" aria-haspopup="menu" onClick={() => setStylesOpen(true)}>
                 <Icon name="palette" size={18} />
                 <span className="mm-t">{t("Map style")} <span className="small mm-sub">{t(mapStyle.name)}</span></span>
-              </Button>
-              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setProductsOpen(true), setMoreOpen(false))}>
-                <Icon name="search" size={18} />
-                <span className="mm-t">{t("Find a product")} <span className="small mm-sub">{t("prices in every store")}</span></span>
-              </Button>
-              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setDirOpen(true), setMoreOpen(false))}>
-                <Icon name="list" size={18} />
-                <span className="mm-t">{t("List all stores")} <span className="small mm-sub">{t("no map needed")}</span></span>
-              </Button>
-              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setFilterOpen(true), setMoreOpen(false))}>
-                <Icon name="layers" size={18} />
-                <span className="mm-t">{t("On the map")} <span className="small mm-sub">{fmtNum(layers.length)}/{fmtNum(ALL_LAYERS.length)}</span></span>
               </Button>
               <Button role="menuitem" onClick={() => setMuted(!muted)}>
                 <Icon name={muted ? "mute" : "sound"} size={18} />

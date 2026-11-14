@@ -96,7 +96,6 @@ const local: Record<string, string> = {
   "This store lists no products on Torob right now.": "این فروشگاه فعلاً محصولی توی ترب نداره.",
   "A walk-in store from Torob's map of sellers": "یه فروشگاه حضوری از نقشهٔ فروشنده‌های ترب",
   "Looking up the menu and prices…": "در حال پیدا کردن منو و قیمت‌ها…",
-  "No online menu found for this place yet.": "هنوز منوی آنلاینی برای اینجا پیدا نشد.",
   Catalog: "کاتالوگ",
   "Search the menu": "جستجو توی منو",
   "Nothing matches": "چیزی پیدا نشد",
@@ -182,8 +181,6 @@ const local: Record<string, string> = {
   "Route to {name}": "مسیر تا {name}",
   // ---- product search (game/ProductSearch.tsx, lib/productSearch.ts)
   "Find a product": "پیدا کردن کالا",
-  "prices in every store": "قیمت در همه‌ی مغازه‌ها",
-  "no map needed": "بدون نقشه",
   "Search products": "جست‌وجوی کالا",
   "Pizza, coffee, phone case…": "پیتزا، قهوه، قاب گوشی…",
   Ideas: "پیشنهادها",

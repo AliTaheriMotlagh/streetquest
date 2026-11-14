@@ -2,7 +2,7 @@
 // voices that speak in it, the recordings have safe unique names, and nobody repeats the
 // line they just said.
 import assert from "node:assert/strict";
-import { it } from "node:test";
+import { describe, it } from "node:test";
 import { BARKS, barkById, barkFile, barkKey, pickBark, QUIET_S, sayFor, textOf, type Situation } from "@/lib/street/barks";
 import { pickScene, SCENES, sceneLength, sceneScript } from "@/lib/street/scenes";
 
@@ -98,4 +98,22 @@ it("women say it their own way: a woman's words where there are some, a man's ot
   assert.equal(textOf(greet, "m").fa, greet.fa);
   assert.equal(textOf(greet, "cop").fa, greet.fa);
   assert.notEqual(barkKey(greet, "m"), barkKey(greet, "f"));
+});
+
+describe("shopkeepers", () => {
+  it("every kind of store has its own calls, all real shop-call lines", async () => {
+    const { SHOP_CALLS, shopCallFor, barkById, BARKS } = await import("@/lib/street/barks");
+    const { STORE_KINDS } = await import("@/lib/storeKinds");
+    for (const k of STORE_KINDS) {
+      assert.ok(SHOP_CALLS[k].length, k);
+      for (const n of SHOP_CALLS[k]) assert.equal(barkById(`shopCall-${n}`)?.s, "shopCall", `${k} → shopCall-${n}`);
+      let seed = 3;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 20; i++) assert.equal(shopCallFor(k, rnd)?.s, "shopCall");
+    }
+    assert.equal(BARKS.filter((b) => b.s === "shopCall").length, 18);
+    // Older lines keep their ids (their recordings are named after them).
+    assert.equal(barkById("greet-1")?.fa, "سلام، خسته نباشی.");
+    assert.equal(barkById("vendor-1")?.fa, "فال حافظ! فال! بیا فال بگیر!");
+  });
 });

@@ -133,14 +133,14 @@ export class Voices {
    * A street scene's line (lib/street/scenes.ts): this exact line, now — the scene keeps
    * its own timing, so nobody's quiet spell holds it back. False if it's too far to matter.
    */
-  line(id: string, v: VoiceKind, where: Where, me: { x: number; z: number; yaw?: number }, now = performance.now()) {
+  line(id: string, v: VoiceKind, where: Where, me: { x: number; z: number; yaw?: number }, now = performance.now(), caption?: string) {
     const b = barkById(id), at = where();
     if (!b || !at) return false;
     const d = Math.hypot(at.x - me.x, at.z - me.z);
     if (d > SEE_M) return false;
     this.busyUntil = Math.max(this.busyUntil, now + sayFor(b, v) * 600);
     if (d < HEAR_M) this.speak(b, v, d, at, me);
-    this.bubble(b, v, where);
+    this.bubble(b, v, where, caption);
     return true;
   }
 
@@ -215,9 +215,9 @@ export class Voices {
   }
 
   /** The line in a bubble over the speaker's head. */
-  private bubble(b: Bark, v: VoiceKind, where: Where) {
+  private bubble(b: Bark, v: VoiceKind, where: Where, caption?: string) {
     const bub = this.bubbles.reduce((a, x) => (x.t < a.t ? x : a));
-    const fa = getLocale() === "fa", words = textOf(b, v), text = fa ? words.fa : words.en;
+    const fa = getLocale() === "fa", words = textOf(b, v), text = caption ?? (fa ? words.fa : words.en);
     const g = bub.c.getContext("2d")!;
     const W = bub.c.width, H = bub.c.height;
     g.clearRect(0, 0, W, H);

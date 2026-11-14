@@ -631,3 +631,14 @@ html[lang="fa"] .scn-k { letter-spacing: 0; }
 .dbm-bar { display: flex; gap: 8px; }
 .dbm-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, .2); background: var(--hud-solid, rgba(16, 20, 28, .92)); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
 .dbm-btn.round { width: 44px; padding: 0; justify-content: center; }
+
+/* A store card without an online menu: one line, what it usually has, two ways to find the real one. */
+.no-menu { display: grid; gap: 8px; margin-top: 6px; }
+.no-menu-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Bomb mode: money in the corner; in the freeze time, the guns to buy in one sideways-scrolling row. */
+.chud-buy { position: absolute; left: calc(12px + env(safe-area-inset-left, 0px)); top: calc(172px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: calc(100vw - 108px); pointer-events: none; }
+.chud-money { align-self: flex-start; padding: 4px 10px; border-radius: 12px; background: rgba(10, 14, 20, .78); color: #9ff0c0; font-weight: 800; }
+.chud-buy-row { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 2px; }
+.chud-buy-row .chip { flex: none; min-height: 40px; background: rgba(10, 14, 20, .85); }
+.chud-buy-row .chip:disabled { opacity: .45; }

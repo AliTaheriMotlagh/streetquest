@@ -88,6 +88,8 @@ export type CombatHud = {
   onHill: boolean;
   /** Grenades and C4 left this life, the one in hand, and whether my C4 is out (the button sets it off). */
   gear: Record<ThrowKey, number>;
+  /** Bomb mode's round money (spent in the freeze time). */
+  money: number;
   throwKey: ThrowKey;
   c4Out: boolean;
   /** Lining a throw up (the arc is showing). */
@@ -110,6 +112,8 @@ const EXIT_MAX_V = 6;
 const EXIT_WAIT_MS = 6000;
 
 export type CombatHost = {
+  /** Jump out of the helicopter with a parachute: true if it happened (high enough, a helicopter). */
+  bail?: () => boolean;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
@@ -442,6 +446,7 @@ export class Combat {
       cam: this.cam,
       feed: this.feed,
       match: m,
+      money: this.money,
       lobbies: this.lobbies,
       act,
       outside: !!m && m.phase === "live" && !this.dead && this.distTo(m.center) > m.radius,
@@ -494,7 +499,8 @@ export class Combat {
   getOut() {
     if (this.me || !this.h.canDrive()) return;
     const v = this.h.vehicle();
-    if (v.flies && v.alt > 0.8) return this.h.toast(t("Land first to get out"));
+    // High in the helicopter: jump with the parachute (the host says if it can); otherwise land first.
+    if (v.flies && v.alt > 0.8) return void (this.h.bail?.() || this.h.toast(t("Land first to get out")));
     if (Math.hypot(v.vx, v.vz) > EXIT_MAX_V) {
       // Still rolling: brake to a stop first, then the door opens by itself (tick). Asked again: never mind, drive on.
       if (this.exitUntil) return this.stopExit();
@@ -942,6 +948,11 @@ export class Combat {
     store.set(PRIMARY_KEY, w);
     this.rt.send({ t: "loadout", primary: w, secondary: this.secondary });
   }
+  /** Bomb mode, freeze time: buy this gun for the round (the match takes the money; my usual pick stays). */
+  buy(w: WeaponKey) {
+    this.rt.send({ t: "loadout", primary: w, secondary: this.secondary });
+  }
+  money = 0;
   setSecondary(w: WeaponKey) {
     this.secondary = w;
     store.set(SECONDARY_KEY, w);
@@ -984,6 +995,7 @@ export class Combat {
         } else if (wasDead && this.space !== "world") (this.dead = false), (this.hp = MAX_HP);
         this.team = m.team;
         this.space = m.space;
+        this.money = m.money ?? 0;
         if (m.gear) this.gear = { ...m.gear };
         if (loadoutChanged) {
           this.loadout = m.loadout;
@@ -1255,7 +1267,7 @@ export class Combat {
       const k = e.key.toLowerCase();
       if (k === "f" && !e.repeat) {
         if (this.me) this.getIn();
-        else if (!this.h.vehicle().flies) this.getOut();
+        else this.getOut();
       }
       if (!this.me) return;
       if ([" ", "tab"].includes(k)) e.preventDefault();

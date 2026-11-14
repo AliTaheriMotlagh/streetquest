@@ -157,7 +157,7 @@ mood scales XP; loot funds research; territory funds the army.
   you). A browser can't encode Dolby itself — over HDMI the 5.1 mix reaches the receiver as multichannel PCM, and on
   headphones the 3D mode is the same idea as Dolby's headphone rendering (`src/components/game/spatial.ts`).
   **Settings → Sound** (on the map, and in the 3D city's menu → Settings) also has a mixer: one slider for everything and one each for *effects & menus*, *cars & sirens*,
-  *guns & explosions*, *voices* and *city ambience* (music keeps its own) — heard as you drag, saved on the device
+  *guns & explosions*, *voices*, *city ambience* and the *car radio* (music keeps its own) — heard as you drag, saved on the device
   (`sq_mix`; which sound answers to which slider: `src/lib/audio/mix.ts`).
 - **The film look** (High and Ultra, realistic style) — camera motion blur: each pixel is traced back to where it was
   a frame ago from its depth and the two cameras, and smeared along the way; whatever is nearer than the player's car
@@ -443,7 +443,21 @@ mood scales XP; loot funds research; territory funds the army.
   thumb is, the deeper it's pushed (45 % at its foot, full at its top — feather the throttle round a corner, brake
   lightly in traffic), with a meter on each pedal's edge; the horn sounds as long as it's held. **Drone and
   helicopter fly on two sticks** laid out like a real radio ("mode 2"): the left stick turns and climbs or sinks,
-  the right stick (a vertical slot) tips the nose — up flies forward, down backs off — as far as you push it. **Tap the
+  the right stick (a vertical slot) tips the nose — up flies forward, down backs off — as far as you push it. **Jump from the helicopter** above 12 m (Get out, or F):
+  a moment of free fall, then a green-white-red canopy opens by itself — gas to dive, brake to flare, steer as usual —
+  and you land on foot while the helicopter flies itself down under where you jumped and waits there
+  (`physics.ts` `stepChute`, `chute3d.ts`). **Car radio** (📻 button beside the camera, or N): real music stations,
+  Persian (Navahang, Radio Faaz, Radio Simorgh) and international (Capital UK, NRJ Paris, classic rock), picked from
+  radio-browser.info's open directory — music only, no news, talk, politics or religion — kept by the directory's stable
+  ids; `/api/radio` looks up today's https stream addresses (`lib/radio.ts`, `server/radio.ts`, `drive/radio.ts`). It plays in the
+  car only and pauses when you get out; its own slider in the mixer (iOS ignores a media element's volume, so there
+  the slider only mutes it at 0). **Shopkeepers** call you in as you walk or cruise past an open store — their trade's
+  line spoken («نون تازه، نون داغ!», «هندونه به شرط چاقو!») with the store's real name in the bubble (`barks.ts`
+  `shopCall` lines, `SHOP_CALLS`, `street.ts` `shopCall`, `storefronts.ts` `nearestOpen`); signs carry a readable
+  «باز» / «بسته» tag and a shut store's sign dims; carpet and general stores hang a Persian rug by the door, cafés
+  and restaurants keep a brass samovar on the sill. A store whose menu isn't online shows what that kind of store usually has (never
+  made-up prices) and two ways to find the real one — a web search for its name + «منو» and the place on the map
+  (`storeKinds.ts` `USUALLY`, `menuSearch`). **Tap the
   minimap (or press M) for a bigger map** — the same live map over the game, twice the reach, with a button to the
   full 2D map. Your driver sits at the wheel —
   seen through the glass from the chase camera — in the same cabin the traffic's drivers have.
@@ -457,7 +471,7 @@ mood scales XP; loot funds research; territory funds the army.
   a deliberate jump of the car (start line, going to the host) is announced to the referee so it isn't taken for a
   speed hack (`warp`). `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts`, `src/app/api/party`.
 - **Vasatyab (وسط‌یاب) — where should the party meet?** Works with any friends — on their real GPS or playing from
-  home: the 📍 button on the map opens a party (or joins one by code or invite) and invites friends right there; only
+  home: ⋯ → Vasatyab on the map (its own round button only while you're in a party) opens a party (or joins one by code or invite) and invites friends right there; only
   *driving* there together is a from-home game. A group finds the point in the middle of all its members,
   from where each was last seen (the 3D city position while driving, else the last GPS report; positions older than
   10 minutes are marked stale, older than 6 hours ignored). Three ways to pick it: **Balanced** (the geometric median,
@@ -496,7 +510,10 @@ mood scales XP; loot funds research; territory funds the army.
   (`TrafficCars.take/leave`, `carToTake` in `src/lib/vehicles.ts`; the server accepts any street car in a report). In the open city fighting is opt-in:
   everyone starts in 🕊️ passive mode, fighting unlocks at level 3, and you can't drop back to passive mid-fight. Or start a
   **match** on the streets around you (Menu → Street Arena): 💀 Deathmatch, ⚔️ Team Deathmatch, 💣 Bomb Defusal (plant at
-  site A or B, defuse, rounds, side swap), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
+  site A or B, defuse, rounds, side swap, and **round money**: $800 to start, $300 a kill or a plant, $3,250 for a won
+  round and $1,400 + $500 for each round lost in a row (up to $3,400) — spent in the freeze time on the buy strip, cheapest
+  first; die and the next round starts you on the free SMG and pistol; money starts over at half time; bots buy too —
+  `lib/arena/economy.ts`, `realtime/match.ts`), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
   pistol; first through all 10 wins) or 🚩 Hardpoint (a glowing zone on a street, coloured by who holds it, moves every
   minute; a point a second for the team alone in it, first to 120), small / medium / large arena, with up to 10 bots (easy / normal / hard) so it's
   fun with one friend or none. Nine guns built from real low-poly models (CC BY, credited on /credits): pick a primary —
@@ -713,6 +730,7 @@ shots and hits where the browser supports it (Chrome / Edge; Safari has no rumbl
 | | Keyboard | Controller | Touch |
 |---|---|---|---|
 | **Drive** | W/↑ gas · S/↓ brake · A D steer · Space handbrake | left stick steer · R2 gas (analog) · L2 brake / reverse · B/○ handbrake | wheel, buttons or tilt on the left, analog pedals on the right |
+| Bigger map · car radio | M · N | — | tap the minimap · 📻 button |
 | Horn / camera | H · C | D-pad up (hold) · Y/△ or D-pad left/right | horn and camera buttons |
 | Get out / in | F | A/✕ out · Y/△ in (near a car) | HUD button, or the car button in the action arc |
 | Menu | on-screen ☰ | Start | on-screen ☰ |

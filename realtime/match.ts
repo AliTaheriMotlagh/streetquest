@@ -7,10 +7,11 @@
 // bomb sites and bots, and a building index for line of sight — bullets and bots don't
 // go through walls. Results are posted to the game server (/api/rt/result), which pays
 // out with a daily cap.
+import { botBuy, buy, costOf, earn, FREE_PRIMARY, FREE_SECONDARY, KILL_PAY, lossPay, PLANT_PAY, PRICES, START_MONEY, WIN_PAY } from "../src/lib/arena/economy";
 import { distanceM } from "../src/lib/geo";
 import { FootprintIndex } from "../src/lib/arena/geom";
 import {
-  BOMB_REACH_M, BOMB_TIMER_S, bombSide, DEFUSE_S, earnsUav, FREEZE_S, gunFor, HILL_MAX_OUT, HILL_MIN_OUT, HILL_MOVE_S, HILL_PLAYER_SCORE, HILL_PTS, HILL_R, hillOwner, JOIN_MARGIN_M, UAV_S, MAX_BOTS, MAX_PLAYERS, MODES, OUTSIDE_DPS, OUTSIDE_GRACE_S, PLANT_S, RESPAWN_S, RESULTS_S,
+  BOMB_REACH_M, BOMB_TIMER_S, bombSide, DEFUSE_S, earnsUav, FREEZE_S, gunFor, HALF_ROUNDS, HILL_MAX_OUT, HILL_MIN_OUT, HILL_MOVE_S, HILL_PLAYER_SCORE, HILL_PTS, HILL_R, hillOwner, JOIN_MARGIN_M, UAV_S, MAX_BOTS, MAX_PLAYERS, MODES, OUTSIDE_DPS, OUTSIDE_GRACE_S, PLANT_S, RESPAWN_S, RESULTS_S,
   ROUND_END_S, ROUND_S, ROUNDS_TO_WIN, SITE_R, SPAWN_SHIELD_S, WARMUP_S,
   type Difficulty, type LobbyView, type MatchView, type ModeDef, type ModeKey, type Phase, type Team,
 } from "../src/lib/arena/modes";
@@ -40,6 +41,8 @@ export class Match extends Space {
   until = 0;
   round = 0;
   teamScore: [number, number, number] = [0, 0, 0];
+  /** Bomb: rounds each team has lost in a row (their round money grows with it). */
+  private lostInARow: [number, number, number] = [0, 0, 0];
   sites: { name: string; x: number; z: number }[] = [];
   /** Spawn areas by side: "a" (attackers / Red) and "b" (defenders / Blue). */
   private spawnA: number[] = [];
@@ -240,10 +243,21 @@ export class Match extends Space {
 
   setLoadout(p: Player, w: WeaponKey, side?: WeaponKey) {
     if (!PRIMARIES.includes(w) && !isSecondary(w)) return;
+    // Bomb: guns are bought, in the freeze time before a round, with the round money.
+    if (this.mode === "bomb" && this.phase !== "lobby") {
+      if (this.phase !== "warmup" || p.dead) return p.send({ t: "toast", text: "Buy in the freeze time before the round" });
+      const left = buy(p.money, p.loadout, w);
+      if (left == null) return p.send({ t: "toast", text: "Not enough money — {n} needed", vars: { n: costOf(p.loadout, w) } });
+      p.money = left;
+      p.primary = w;
+      p.setLoadout(w, p.secondary);
+      return p.status(this.id);
+    }
     p.primary = w;
     if (side && isSecondary(side)) p.secondary = side;
     // Gun Game hands out the guns; the pick is kept for later matches.
     if (this.mode === "gun") return p.status(this.id);
+
     // Takes effect now in the lobby / freeze time, otherwise at the next spawn.
     if (this.phase === "lobby" || this.phase === "warmup" || p.dead) p.setLoadout(w, p.secondary);
     p.status(this.id);
@@ -329,8 +343,11 @@ export class Match extends Space {
     this.streak.clear();
     for (const p of this.players) (p.kills = p.deaths = p.score = p.botKills = 0);
     if (this.mode === "hill") this.moveHill(Date.now() + WARMUP_S * 1000);
-    if (this.mode === "bomb") this.startRound(now);
-    else {
+    if (this.mode === "bomb") {
+      for (const p of this.players) p.money = START_MONEY;
+      this.lostInARow = [0, 0, 0];
+      this.startRound(now);
+    } else {
       this.phase = "warmup";
       this.until = now + WARMUP_S * 1000;
       for (const p of this.players) {
@@ -344,6 +361,18 @@ export class Match extends Space {
 
   private startRound(now: number) {
     this.round++;
+    // Half time: the sides swap, and everyone's money and guns start over.
+    const fresh = this.round === 1 || this.round === HALF_ROUNDS + 1;
+    for (const p of this.players) {
+      if (fresh) (p.money = START_MONEY), (this.lostInARow = [0, 0, 0]);
+      // Dead last round (or a fresh start): back to the free kit. Bots spend what they have.
+      if (fresh || p.dead) (p.primary = FREE_PRIMARY), (p.secondary = FREE_SECONDARY);
+      if (p.bot && p.primary === FREE_PRIMARY) {
+        const w = botBuy(p.money);
+        p.money -= PRICES[w];
+        p.primary = w;
+      }
+    }
     // Last round's smoke, fire and C4 don't carry over.
     this.nades = [];
     this.phase = "warmup";
@@ -410,6 +439,7 @@ export class Match extends Space {
       const run = (this.streak.get(killer) ?? 0) + 1;
       this.streak.set(killer, run);
       if (earnsUav(run)) this.uav(killer);
+      if (this.mode === "bomb") killer.money = earn(killer.money, KILL_PAY);
     }
     this.streak.delete(victim);
     if (this.def.respawn) victim.respawnAt = now + RESPAWN_S * 1000;
@@ -576,6 +606,7 @@ export class Match extends Space {
         const site = this.sites.reduce((a, s) => (Math.hypot(s.x - q.x, s.z - q.z) < Math.hypot(a.x - q.x, a.z - q.z) ? s : a));
         p.carrying = false;
         p.score += 150;
+        p.money = earn(p.money, PLANT_PAY);
         Object.assign(bomb, { state: "planted", carrier: 0, lat: p.lat, lng: p.lng, at: now + BOMB_TIMER_S * 1000, site: site.name });
         this.until = bomb.at;
         for (const o of this.humans) o.send({ t: "toast", text: "💣 Bomb planted at site {s}!", vars: { s: site.name } });
@@ -615,6 +646,15 @@ export class Match extends Space {
     const team = ([1, 2] as Team[]).find((t) => bombSide(t, this.round) === side) ?? 1;
     this.teamScore[team]++;
     for (const p of this.players) if (p.team === team) p.score += 50;
+    // Round money: the winners a flat sum, the losers more for each round in a row they've lost.
+    const loser: Team = team === 1 ? 2 : 1;
+    this.lostInARow[team] = 0;
+    this.lostInARow[loser]++;
+    for (const p of this.players) {
+      if (p.team === team) p.money = earn(p.money, WIN_PAY);
+      else if (p.team === loser) p.money = earn(p.money, lossPay(this.lostInARow[loser]));
+      p.status(this.id);
+    }
     this.winner = { team, sid: 0, reason };
     this.phase = "roundEnd";
     this.until = now + ROUND_END_S * 1000;

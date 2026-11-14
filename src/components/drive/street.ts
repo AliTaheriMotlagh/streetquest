@@ -33,7 +33,9 @@ import { Police, type PoliceEvent } from "./police";
 import { StreetFx } from "./streetFx";
 import { driverLook } from "./crew";
 import { Voices } from "./voices";
-import { barkById, type Situation, type VoiceKind } from "@/lib/street/barks";
+import { barkById, shopCallFor, textOf, type Situation, type VoiceKind } from "@/lib/street/barks";
+import type { StoreKind } from "@/lib/storeKinds";
+import { getLocale } from "@/lib/i18n";
 import { pickScene, SCENE_GAP_S, sceneLength, sceneScript } from "@/lib/street/scenes";
 import { GETAWAY_MIN_STARS, secsLeft, startThief, THIEF_NOTICE_M, THIEF_REFLEE_S, tickThief, type StreetJob, type StreetJobKind } from "@/lib/street/jobs";
 import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
@@ -339,6 +341,23 @@ export class StreetLife {
     this.wanted.unseen = 0;
     this.crimeAt = performance.now();
     this.publish(true);
+  }
+
+  private shopRecent: string[] = [];
+  /**
+   * A shopkeeper at an open store's door calls you in: their trade's line, spoken (when there's
+   * a voice for it), with the store's own name in the bubble — «Sangak Nayeb» Fresh bread, hot bread!
+   */
+  shopCall(kind: StoreKind, name: string, at: { x: number; z: number }) {
+    const me = this.me;
+    if (!me || me.matchOn) return false;
+    const b = shopCallFor(kind, Math.random, this.shopRecent);
+    if (!b) return false;
+    const v = b.voices.includes("f") && Math.random() < 0.3 ? "f" : "m";
+    const words = textOf(b, v), line = getLocale() === "fa" ? words.fa : words.en;
+    const ok = this.voices.line(b.id, v, () => ({ x: at.x, y: 1.75, z: at.z }), me, performance.now(), name ? `«${name}» ${line}` : line);
+    if (ok) this.shopRecent = [b.id, ...this.shopRecent].slice(0, 4);
+    return ok;
   }
 
   /** A scenario's recorded line (lib/street/barks.ts) by its id, said by the voice it was made for; nothing if it has no clip. */

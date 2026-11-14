@@ -4,11 +4,12 @@
 // `storeKind` folds all of them into ~12 visual kinds, and STORE_LOOK says how each is dressed:
 // awning colours, window glow, the few cheap props, and what moves (steam, neon, a cross).
 import { dayClock, openState, type Week } from "./localData";
+import { msg } from "./i18n";
 import type { PlaceCat } from "./places";
 
 export const STORE_KINDS = ["restaurant", "fastfood", "cafe", "bakery", "sweets", "market", "produce", "butcher", "pharmacy", "fashion", "tech", "general"] as const;
 export type StoreKind = (typeof STORE_KINDS)[number];
-export type Prop = "crates" | "menu" | "neon" | "cross" | "steam" | "rack" | "screen";
+export type Prop = "crates" | "menu" | "neon" | "cross" | "steam" | "rack" | "screen" | "rug" | "samovar";
 
 export type StoreLook = {
   emoji: string;
@@ -23,18 +24,18 @@ export type StoreLook = {
 };
 
 export const STORE_LOOK: Record<StoreKind, StoreLook> = {
-  restaurant: { emoji: "🍽️", awning: "#b3261e", sign: ["#7a1a14", "#3d0b08"], glow: "#ffb45c", props: ["menu", "steam"], cat: "restaurant" },
+  restaurant: { emoji: "🍽️", awning: "#b3261e", sign: ["#7a1a14", "#3d0b08"], glow: "#ffb45c", props: ["menu", "steam", "samovar"], cat: "restaurant" },
   fastfood: { emoji: "🍔", awning: "#e8a200", sign: ["#c0392b", "#7b1d14"], glow: "#ffd05a", props: ["menu", "steam"], cat: "burger" },
-  cafe: { emoji: "☕", awning: "#6b4a2f", sign: ["#3b2a1c", "#1d130b"], glow: "#ffc98a", props: ["neon", "menu"], cat: "cafe" },
+  cafe: { emoji: "☕", awning: "#6b4a2f", sign: ["#3b2a1c", "#1d130b"], glow: "#ffc98a", props: ["neon", "menu", "samovar"], cat: "cafe" },
   bakery: { emoji: "🥖", awning: "#c98a3a", sign: ["#8a5a22", "#4b300f"], glow: "#ffd9a0", props: ["steam", "crates"], cat: "bakery" },
   sweets: { emoji: "🍰", awning: "#d6598c", sign: ["#a83279", "#5e1a43"], glow: "#ffc4de", props: ["neon"], cat: "bakery" },
   market: { emoji: "🛒", awning: "#2e9e44", sign: ["#1f7a34", "#0f4219"], glow: "#eaffd0", props: ["crates"], cat: "grocery" },
   produce: { emoji: "🍎", awning: "#4caf50", sign: ["#2d8a3a", "#17491e"], glow: "#fff1b8", props: ["crates"], cat: "grocery" },
   butcher: { emoji: "🥩", awning: "#a61e1e", sign: ["#8b1a1a", "#470d0d"], glow: "#ffd0c0", props: [], cat: "grocery" },
   pharmacy: { emoji: "⚕️", awning: "#1e9e6a", sign: ["#14804f", "#0a4429"], glow: "#d8fff0", props: ["cross"], cat: "pharmacy" },
-  fashion: { emoji: "👗", awning: "#7d3c98", sign: ["#232323", "#0c0c0c"], glow: "#ffe6f2", props: ["rack"], cat: "fashion" },
+  fashion: { emoji: "👗", awning: "#7d3c98", sign: ["#232323", "#0c0c0c"], glow: "#ffe6f2", props: ["rack", "rug"], cat: "fashion" },
   tech: { emoji: "📱", awning: "#2c6fbb", sign: ["#16202e", "#070b11"], glow: "#8fd8ff", props: ["screen"], cat: "tech" },
-  general: { emoji: "🏪", awning: "#5f6b78", sign: ["#3d4b59", "#222b33"], glow: "#fff0cf", props: [], cat: "shop" },
+  general: { emoji: "🏪", awning: "#5f6b78", sign: ["#3d4b59", "#222b33"], glow: "#fff0cf", props: ["rug"], cat: "shop" },
 };
 
 /** Persian / English words in a store's own name that say what it is (they sharpen a vague class). */
@@ -126,3 +127,47 @@ export function neonFlicker(seed: number, t: number): number {
   const k = Math.sin(t * 1.3 + seed * 7.1) * Math.sin(t * 9.7 + seed * 3.3);
   return k > 0.93 ? 0.35 : 1;
 }
+
+// ---------------------------------------------------------------- when the menu isn't online
+/**
+ * What a kind of store usually has — shown, plainly as "usually", when its own menu isn't online
+ * (most walk-in stores aren't on any delivery site). Never prices: those would be made up.
+ */
+export const USUALLY: Record<StoreKind, string[]> = {
+  restaurant: [msg("Chelow kabab"), msg("Joojeh kabab"), msg("Ghormeh sabzi"), msg("Zereshk polo")],
+  fastfood: [msg("Burgers"), msg("Pizza"), msg("Sandwiches"), msg("Fries")],
+  cafe: [msg("Espresso & latte"), msg("Tea"), msg("Cakes"), msg("Shakes")],
+  bakery: [msg("Sangak & barbari"), msg("Lavash"), msg("Fresh bread")],
+  sweets: [msg("Pastries"), msg("Zoolbia & bamieh"), msg("Ice cream"), msg("Nuts")],
+  market: [msg("Dairy"), msg("Drinks"), msg("Snacks"), msg("Household")],
+  produce: [msg("Fruit"), msg("Vegetables"), msg("Herbs")],
+  butcher: [msg("Lamb & beef"), msg("Chicken"), msg("Minced meat")],
+  pharmacy: [msg("Medicine"), msg("Skin care"), msg("Baby care")],
+  fashion: [msg("Clothes"), msg("Shoes"), msg("Bags")],
+  tech: [msg("Phones"), msg("Chargers & cables"), msg("Repairs")],
+  general: [msg("Everyday things")],
+};
+
+export type MenuSearch = { kind: "web" | "maps"; label: string; url: string };
+
+/**
+ * Where to look a store's menu up when we couldn't find it: a web search for its name with
+ * "menu", and the place itself on a map (name + where it is, so the right branch comes up).
+ */
+export function menuSearch(name: string, at?: { lat: number; lng: number } | null): MenuSearch[] {
+  const n = name.trim();
+  if (n.length < 2) return [];
+  const q = encodeURIComponent(`${n} منو`);
+  const out: MenuSearch[] = [{ kind: "web", label: msg("Search for the menu"), url: `https://www.google.com/search?q=${q}` }];
+  const place = encodeURIComponent(n);
+  out.push({ kind: "maps", label: msg("Photos & reviews on the map"), url: at && (at.lat || at.lng) ? `https://www.google.com/maps/search/${place}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},18z` : `https://www.google.com/maps/search/${place}` });
+  return out;
+}
+
+/**
+ * Is this place a shop at all? The city's labels also name mosques, shrines, churches, schools,
+ * seminaries, hospitals and offices: no shopkeeper calls from those, no open/closed tag, no wares.
+ */
+const NOT_SHOP = /^(place_of_worship|muslim|shia|sunni|christian|jewish|zoroastrian|mosque|church|synagogue|shrine|imamzadeh|religious|monastery|school|college|university|kindergarten|seminary|hospital|clinic|doctors|dentist|police|fire_station|townhall|courthouse|government|embassy|library|post_office|community_centre|social_facility|grave_yard|cemetery)$/;
+const NOT_SHOP_NAME = /مسجد|حسینیه|امامزاده|تکیه|کلیسا|کنیسه|آتشکده|مدرسه|حوزه|دبستان|دبیرستان|هنرستان|دانشگاه|بیمارستان|کلانتری|شهرداری|mosque|church|school|hospital/i;
+export const isShop = (cls = "", name = "") => !NOT_SHOP.test(cls.toLowerCase()) && !NOT_SHOP_NAME.test(name);

@@ -5,11 +5,14 @@
 // it (npm run assets:voices → public/sounds/voice/<id>-<voice>.mp3); in the game it plays
 // from the speaker with a speech bubble over their head (drive/voices.ts). The English is
 // the subtitle for players not playing in Persian.
+import type { StoreKind } from "../storeKinds";
 
 export type Situation =
   | "flee" | "nearMiss" | "crashDriver" | "honk" | "carjack" | "greet" | "hurt" | "copStop" | "copHands" | "copDown" | "copBusted"
   // Street scenes (lib/street/scenes.ts): said in order, by the people in them.
-  | "argue" | "friends" | "phone" | "vendor" | "taxi" | "snatch";
+  | "argue" | "friends" | "phone" | "vendor" | "taxi" | "snatch"
+  // A shopkeeper at the door of an open store calling you in (SHOP_CALLS says which kind of store).
+  | "shopCall";
 /** A man, a woman, a police officer (a man's voice, through a megaphone or a radio's band). */
 export type VoiceKind = "m" | "f" | "cop";
 /**
@@ -80,6 +83,45 @@ const lines: [Situation, VoiceKind[], string, string, string?, string?][] = [
   ["taxi", ["m"], "ونک، یه نفر!", "Vanak, one more!"],
   ["taxi", ["m"], "تجریش دربست؟", "Tajrish, private hire?"],
   ["snatch", MF, "دزد! کیفمو زد! بگیریدش!", "Thief! He took my bag! Stop him!", "وای کیفم! دزد! بگیریدش!", "Oh, my bag! Thief! Stop him!"],
+  // ---- more of the street (appended: earlier lines keep their ids and recordings)
+  ["greet", MF, "به‌به! چه عجب از این طرفا!", "Well well! Look who's around here!", "به‌به! چه عجب، از این ورا!", "Oh my! Fancy seeing you round here!"],
+  ["greet", ["m"], "داداش، لاستیکت کم‌باده‌ها!", "Bro, your tyre's a bit flat!"],
+  ["greet", MF, "ببخشید، ساعت چنده؟", "Excuse me, what's the time?", "ببخشید خانم، ساعت چنده؟", "Excuse me, do you have the time?"],
+  ["greet", ["m"], "قربون دستت، یه آدرس می‌پرسم.", "Sorry to bother you, I'm asking for directions."],
+  ["greet", MF, "تو رو خدا یواش برو، بچه هست.", "Go slowly, for God's sake, there are kids.", "یواش برید تو رو خدا، بچه‌ها هستن.", "Please go slowly, there are children."],
+  ["nearMiss", ["m"], "گواهینامه‌تو از کجا خریدی؟!", "Where did you buy your licence?!"],
+  ["nearMiss", MF, "اینجا پیاده‌روئه، نه اتوبان!", "This is a pavement, not a motorway!", "اینجا پیاده‌روئه آقا!", "This is the pavement, mister!"],
+  ["nearMiss", ["m"], "فکر کردی فیلم اکشنه؟!", "Think you're in an action film?!"],
+  ["honk", ["m"], "سبز شد، سبز!", "It's green, green!"],
+  ["honk", ["m"], "خوابت برده عمو؟", "Fallen asleep, uncle?"],
+  ["honk", MF, "ای بابا، این ترافیک تموم نمی‌شه!", "Oh come on, this traffic never ends!", "وای، این ترافیک کی تموم می‌شه!", "Ugh, when will this traffic end!"],
+  ["crashDriver", ["m"], "خدا بهت رحم کرد که سپرم ضد ضربه بود!", "Lucky for you my bumper's tough!"],
+  ["crashDriver", MF, "بیا پایین ببینم! کروکی می‌کشیم!", "Get out! We're drawing up the accident report!", "وایسید! باید کروکی بکشیم!", "Wait! We need to do the accident report!"],
+  ["hurt", ["m"], "آخ کمرم! دیسکم!", "Ow, my back! My disc!"],
+  ["vendor", ["m"], "لبو داغ! باقالی داغ!", "Hot beetroot! Hot broad beans!"],
+  ["vendor", ["m"], "جوراب، سه جفت صد تومن!", "Socks, three pairs a hundred!"],
+  ["vendor", ["m"], "اسپند دود کنم برات؟ چشم نخوری!", "Shall I burn some espand for you? Keep the evil eye off!"],
+  ["taxi", ["m"], "انقلاب، انقلاب! یه نفر جا داره!", "Enghelab, Enghelab! Room for one!"],
+  ["taxi", ["m"], "میدون ونک مستقیم!", "Vanak Square, straight there!"],
+  // ---- shopkeepers (SHOP_CALLS below: which kind of store says which)
+  ["shopCall", MF, "بفرمایید، باز هستیم!", "Come on in, we're open!", "بفرمایید داخل، بازیم!", "Come in, we're open!"],
+  ["shopCall", MF, "بفرمایید، قدمتون روی چشم!", "Step inside, you're most welcome!", "بفرمایید، خوش اومدید!", "Come in, welcome!"],
+  ["shopCall", MF, "تخفیف ویژهٔ امروز! بفرمایید!", "Today's special discount! Come in!", "تخفیف امروز رو از دست ندید!", "Don't miss today's discount!"],
+  ["shopCall", ["m"], "نون تازه، نون داغ!", "Fresh bread, hot bread!"],
+  ["shopCall", ["m"], "سنگک داغ داریم، بدون صف!", "Hot sangak, no queue!"],
+  ["shopCall", ["m"], "چلوکباب داغ، بفرمایید ناهار!", "Hot chelow kabab, come in for lunch!"],
+  ["shopCall", ["m"], "دیزی داریم، دیزی سنگی!", "We've got dizi, stone-pot dizi!"],
+  ["shopCall", ["m"], "پیتزا داغ، ساندویچ تازه!", "Hot pizza, fresh sandwiches!"],
+  ["shopCall", MF, "یه چای تازه‌دم بزنید!", "Have a freshly brewed tea!", "یه قهوهٔ خوب مهمون ما باشید!", "Come have a good coffee with us!"],
+  ["shopCall", ["m"], "زولبیا بامیهٔ تازه!", "Fresh zoolbia and bamieh!"],
+  ["shopCall", ["m"], "بستنی سنتی، فالوده شیرازی!", "Traditional ice cream, Shirazi faloodeh!"],
+  ["shopCall", ["m"], "همه چی داریم، بفرمایید!", "We've got everything, come in!"],
+  ["shopCall", ["m"], "هندونه به شرط چاقو!", "Watermelon — we cut it before you buy!"],
+  ["shopCall", ["m"], "گوجه، خیار، ارزون ارزون!", "Tomatoes, cucumbers, cheap cheap!"],
+  ["shopCall", ["m"], "گوشت تازهٔ گوسفندی، امروز رسیده!", "Fresh lamb, came in today!"],
+  ["shopCall", MF, "بفرمایید، داروخانه بازه.", "Come in, the pharmacy's open.", "بفرمایید، داروخانه بازه عزیزم.", "Come in dear, the pharmacy's open."],
+  ["shopCall", MF, "حراج! حراج! تا آخر هفته!", "Sale! Sale! Till the end of the week!", "حراج فصل! بفرمایید!", "End-of-season sale! Come in!"],
+  ["shopCall", ["m"], "قاب و گلس، فقط امروز ارزون!", "Cases and screen protectors, cheap today only!"],
 ];
 
 /** Every line, with a stable id (situation and number: the recording's file name). */
@@ -116,4 +158,21 @@ export function pickBark(s: Situation, v: VoiceKind, rand: () => number, recent:
 export const sayFor = (b: Bark, v: VoiceKind = "m") => Math.max(1.8, Math.min(4.5, 0.9 + textOf(b, v).fa.length * 0.075));
 
 /** Seconds before anyone near you says something else, per situation (so the street isn't a chorus). */
-export const QUIET_S: Record<Situation, number> = { flee: 2.5, nearMiss: 4, crashDriver: 3, honk: 8, carjack: 3, greet: 6, hurt: 1.5, copStop: 7, copHands: 4, copDown: 4, copBusted: 1, argue: 0, friends: 0, phone: 0, vendor: 0, taxi: 0, snatch: 0 };
+export const QUIET_S: Record<Situation, number> = { flee: 2.5, nearMiss: 4, crashDriver: 3, honk: 8, carjack: 3, greet: 6, hurt: 1.5, copStop: 7, copHands: 4, copDown: 4, copBusted: 1, argue: 0, friends: 0, phone: 0, vendor: 0, taxi: 0, snatch: 0, shopCall: 9 };
+
+/**
+ * Which shopkeeper calls say what (by their id, "shopCall-<n>"): every store can say the
+ * welcomes (1–3), a store's own trade the rest. Kept by id so the recordings line up.
+ */
+export const SHOP_CALLS: Record<StoreKind, number[]> = {
+  bakery: [4, 5], restaurant: [6, 7], fastfood: [8], cafe: [9], sweets: [10, 11], market: [12], produce: [13, 14],
+  butcher: [15], pharmacy: [16], fashion: [17], tech: [18], general: [12],
+};
+
+/** A shopkeeper's call for this kind of store: its own trade's line more often than a plain welcome. */
+export function shopCallFor(kind: StoreKind, rand: () => number, recent: readonly string[] = []): Bark | null {
+  const own = (SHOP_CALLS[kind] ?? []).map((n) => `shopCall-${n}`), any = ["shopCall-1", "shopCall-2", "shopCall-3"];
+  const pool = (rand() < 0.65 && own.length ? own : any).filter((id) => !recent.includes(id));
+  const ids = pool.length ? pool : own.length ? own : any;
+  return barkById(ids[Math.floor(rand() * ids.length) % ids.length]);
+}

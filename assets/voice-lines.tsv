@@ -88,3 +88,52 @@ taxi-2	man	taxi-2-m.wav	ونک، یه نفر!	Vanak, one more!	en/taxi-2-m.wav
 taxi-3	man	taxi-3-m.wav	تجریش دربست؟	Tajrish, private hire?	en/taxi-3-m.wav
 snatch-1	man	snatch-1-m.wav	دزد! کیفمو زد! بگیریدش!	Thief! He took my bag! Stop him!	en/snatch-1-m.wav
 snatch-1	woman	snatch-1-f.wav	وای کیفم! دزد! بگیریدش!	Oh, my bag! Thief! Stop him!	en/snatch-1-f.wav
+greet-6	man	greet-6-m.wav	به‌به! چه عجب از این طرفا!	Well well! Look who's around here!	en/greet-6-m.wav
+greet-6	woman	greet-6-f.wav	به‌به! چه عجب، از این ورا!	Oh my! Fancy seeing you round here!	en/greet-6-f.wav
+greet-7	man	greet-7-m.wav	داداش، لاستیکت کم‌باده‌ها!	Bro, your tyre's a bit flat!	en/greet-7-m.wav
+greet-8	man	greet-8-m.wav	ببخشید، ساعت چنده؟	Excuse me, what's the time?	en/greet-8-m.wav
+greet-8	woman	greet-8-f.wav	ببخشید خانم، ساعت چنده؟	Excuse me, do you have the time?	en/greet-8-f.wav
+greet-9	man	greet-9-m.wav	قربون دستت، یه آدرس می‌پرسم.	Sorry to bother you, I'm asking for directions.	en/greet-9-m.wav
+greet-10	man	greet-10-m.wav	تو رو خدا یواش برو، بچه هست.	Go slowly, for God's sake, there are kids.	en/greet-10-m.wav
+greet-10	woman	greet-10-f.wav	یواش برید تو رو خدا، بچه‌ها هستن.	Please go slowly, there are children.	en/greet-10-f.wav
+nearMiss-5	man	nearMiss-5-m.wav	گواهینامه‌تو از کجا خریدی؟!	Where did you buy your licence?!	en/nearMiss-5-m.wav
+nearMiss-6	man	nearMiss-6-m.wav	اینجا پیاده‌روئه، نه اتوبان!	This is a pavement, not a motorway!	en/nearMiss-6-m.wav
+nearMiss-6	woman	nearMiss-6-f.wav	اینجا پیاده‌روئه آقا!	This is the pavement, mister!	en/nearMiss-6-f.wav
+nearMiss-7	man	nearMiss-7-m.wav	فکر کردی فیلم اکشنه؟!	Think you're in an action film?!	en/nearMiss-7-m.wav
+honk-4	man	honk-4-m.wav	سبز شد، سبز!	It's green, green!	en/honk-4-m.wav
+honk-5	man	honk-5-m.wav	خوابت برده عمو؟	Fallen asleep, uncle?	en/honk-5-m.wav
+honk-6	man	honk-6-m.wav	ای بابا، این ترافیک تموم نمی‌شه!	Oh come on, this traffic never ends!	en/honk-6-m.wav
+honk-6	woman	honk-6-f.wav	وای، این ترافیک کی تموم می‌شه!	Ugh, when will this traffic end!	en/honk-6-f.wav
+crashDriver-5	man	crashDriver-5-m.wav	خدا بهت رحم کرد که سپرم ضد ضربه بود!	Lucky for you my bumper's tough!	en/crashDriver-5-m.wav
+crashDriver-6	man	crashDriver-6-m.wav	بیا پایین ببینم! کروکی می‌کشیم!	Get out! We're drawing up the accident report!	en/crashDriver-6-m.wav
+crashDriver-6	woman	crashDriver-6-f.wav	وایسید! باید کروکی بکشیم!	Wait! We need to do the accident report!	en/crashDriver-6-f.wav
+hurt-3	man	hurt-3-m.wav	آخ کمرم! دیسکم!	Ow, my back! My disc!	en/hurt-3-m.wav
+vendor-4	man	vendor-4-m.wav	لبو داغ! باقالی داغ!	Hot beetroot! Hot broad beans!	en/vendor-4-m.wav
+vendor-5	man	vendor-5-m.wav	جوراب، سه جفت صد تومن!	Socks, three pairs a hundred!	en/vendor-5-m.wav
+vendor-6	man	vendor-6-m.wav	اسپند دود کنم برات؟ چشم نخوری!	Shall I burn some espand for you? Keep the evil eye off!	en/vendor-6-m.wav
+taxi-4	man	taxi-4-m.wav	انقلاب، انقلاب! یه نفر جا داره!	Enghelab, Enghelab! Room for one!	en/taxi-4-m.wav
+taxi-5	man	taxi-5-m.wav	میدون ونک مستقیم!	Vanak Square, straight there!	en/taxi-5-m.wav
+shopCall-1	man	shopCall-1-m.wav	بفرمایید، باز هستیم!	Come on in, we're open!	en/shopCall-1-m.wav
+shopCall-1	woman	shopCall-1-f.wav	بفرمایید داخل، بازیم!	Come in, we're open!	en/shopCall-1-f.wav
+shopCall-2	man	shopCall-2-m.wav	بفرمایید، قدمتون روی چشم!	Step inside, you're most welcome!	en/shopCall-2-m.wav
+shopCall-2	woman	shopCall-2-f.wav	بفرمایید، خوش اومدید!	Come in, welcome!	en/shopCall-2-f.wav
+shopCall-3	man	shopCall-3-m.wav	تخفیف ویژهٔ امروز! بفرمایید!	Today's special discount! Come in!	en/shopCall-3-m.wav
+shopCall-3	woman	shopCall-3-f.wav	تخفیف امروز رو از دست ندید!	Don't miss today's discount!	en/shopCall-3-f.wav
+shopCall-4	man	shopCall-4-m.wav	نون تازه، نون داغ!	Fresh bread, hot bread!	en/shopCall-4-m.wav
+shopCall-5	man	shopCall-5-m.wav	سنگک داغ داریم، بدون صف!	Hot sangak, no queue!	en/shopCall-5-m.wav
+shopCall-6	man	shopCall-6-m.wav	چلوکباب داغ، بفرمایید ناهار!	Hot chelow kabab, come in for lunch!	en/shopCall-6-m.wav
+shopCall-7	man	shopCall-7-m.wav	دیزی داریم، دیزی سنگی!	We've got dizi, stone-pot dizi!	en/shopCall-7-m.wav
+shopCall-8	man	shopCall-8-m.wav	پیتزا داغ، ساندویچ تازه!	Hot pizza, fresh sandwiches!	en/shopCall-8-m.wav
+shopCall-9	man	shopCall-9-m.wav	یه چای تازه‌دم بزنید!	Have a freshly brewed tea!	en/shopCall-9-m.wav
+shopCall-9	woman	shopCall-9-f.wav	یه قهوهٔ خوب مهمون ما باشید!	Come have a good coffee with us!	en/shopCall-9-f.wav
+shopCall-10	man	shopCall-10-m.wav	زولبیا بامیهٔ تازه!	Fresh zoolbia and bamieh!	en/shopCall-10-m.wav
+shopCall-11	man	shopCall-11-m.wav	بستنی سنتی، فالوده شیرازی!	Traditional ice cream, Shirazi faloodeh!	en/shopCall-11-m.wav
+shopCall-12	man	shopCall-12-m.wav	همه چی داریم، بفرمایید!	We've got everything, come in!	en/shopCall-12-m.wav
+shopCall-13	man	shopCall-13-m.wav	هندونه به شرط چاقو!	Watermelon — we cut it before you buy!	en/shopCall-13-m.wav
+shopCall-14	man	shopCall-14-m.wav	گوجه، خیار، ارزون ارزون!	Tomatoes, cucumbers, cheap cheap!	en/shopCall-14-m.wav
+shopCall-15	man	shopCall-15-m.wav	گوشت تازهٔ گوسفندی، امروز رسیده!	Fresh lamb, came in today!	en/shopCall-15-m.wav
+shopCall-16	man	shopCall-16-m.wav	بفرمایید، داروخانه بازه.	Come in, the pharmacy's open.	en/shopCall-16-m.wav
+shopCall-16	woman	shopCall-16-f.wav	بفرمایید، داروخانه بازه عزیزم.	Come in dear, the pharmacy's open.	en/shopCall-16-f.wav
+shopCall-17	man	shopCall-17-m.wav	حراج! حراج! تا آخر هفته!	Sale! Sale! Till the end of the week!	en/shopCall-17-m.wav
+shopCall-17	woman	shopCall-17-f.wav	حراج فصل! بفرمایید!	End-of-season sale! Come in!	en/shopCall-17-f.wav
+shopCall-18	man	shopCall-18-m.wav	قاب و گلس، فقط امروز ارزون!	Cases and screen protectors, cheap today only!	en/shopCall-18-m.wav

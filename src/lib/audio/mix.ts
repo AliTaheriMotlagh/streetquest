@@ -4,19 +4,20 @@
 import { msg } from "@/lib/i18n";
 import type { SoundKind } from "./spatial";
 
-export type MixBus = "effects" | "vehicles" | "weapons" | "voices" | "ambience";
+export type MixBus = "effects" | "vehicles" | "weapons" | "voices" | "ambience" | "radio";
 export const MIX_BUSES: Record<MixBus, { label: string; emoji: string }> = {
   effects: { label: msg("Effects & menus"), emoji: "✨" },
   vehicles: { label: msg("Cars & sirens"), emoji: "🚗" },
   weapons: { label: msg("Guns & explosions"), emoji: "💥" },
   voices: { label: msg("Voices"), emoji: "🗣️" },
   ambience: { label: msg("City ambience"), emoji: "🏙️" },
+  radio: { label: msg("Car radio"), emoji: "📻" },
 };
 export const MIX_BUS_KEYS = Object.keys(MIX_BUSES) as MixBus[];
 
 /** Each 0…1 as the slider shows it (1: as the game was mixed). */
 export type Mix = { master: number } & Record<MixBus, number>;
-export const DEFAULT_MIX: Mix = { master: 1, effects: 1, vehicles: 1, weapons: 1, voices: 1, ambience: 1 };
+export const DEFAULT_MIX: Mix = { master: 1, effects: 1, vehicles: 1, weapons: 1, voices: 1, ambience: 1, radio: 0.8 };
 
 const clamp01 = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : d);
 /** A saved mix (JSON from localStorage, maybe old or broken) → a whole, valid one. */

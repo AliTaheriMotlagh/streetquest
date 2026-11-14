@@ -205,3 +205,33 @@ export function stepAir(b: Body, def: VehicleDef, c: Controls, dt: number, V: nu
   b.vz = n.fz * vF + n.fx * vR;
   return vF;
 }
+
+/** Seconds of free fall before the canopy opens by itself. */
+export const CHUTE_OPEN_S = 1.1;
+/**
+ * Under a parachute (jumped from the helicopter): a moment of free fall, then the canopy opens and
+ * you glide down — always moving forward, gas to dive faster and further, brake to flare (slower
+ * down and forward), steering turns. `t`: seconds since the jump. Returns the forward speed.
+ */
+export function stepChute(b: Body, c: Pick<Controls, "gas" | "brake" | "steer">, dt: number, t: number, floor = 0) {
+  const { fx, fz } = forward(b.yaw);
+  let vF = b.vx * fx + b.vz * fz;
+  if (t < CHUTE_OPEN_S) {
+    // Free fall: gravity, a little drag; the helicopter's own speed carries on.
+    b.vy = Math.max(-26, b.vy - 9.8 * dt);
+    vF *= Math.exp(-0.4 * dt);
+  } else {
+    const wantVy = -(4.2 + 1.6 * c.gas - 1.6 * c.brake), wantF = 7 + 4 * c.gas - 4 * c.brake;
+    // The canopy biting: the fall slows hard, the glide settles.
+    b.vy += (wantVy - b.vy) * Math.min(1, dt * 2.2);
+    vF += (wantF - vF) * Math.min(1, dt * 1.2);
+    b.steer += (c.steer - b.steer) * Math.min(1, dt * 3);
+    b.yaw += b.steer * 1.1 * dt;
+  }
+  b.alt = Math.max(floor, b.alt + b.vy * dt);
+  if (b.alt <= floor) b.vy = 0;
+  const n = forward(b.yaw);
+  b.vx = n.fx * vF;
+  b.vz = n.fz * vF;
+  return vF;
+}

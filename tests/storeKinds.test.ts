@@ -1,7 +1,7 @@
 // Storefront kinds, typical hours, sign detail and caps (lib/storeKinds.ts).
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { defaultWeek, menuHighlights, neonFlicker, signDetail, STORE_KINDS, STORE_LOOK, storeKind, storefrontCap, storeOpen } from "@/lib/storeKinds";
+import { defaultWeek, isShop, menuHighlights, menuSearch, USUALLY, neonFlicker, signDetail, STORE_KINDS, STORE_LOOK, storeKind, storefrontCap, storeOpen } from "@/lib/storeKinds";
 
 describe("storeKind", () => {
   it("maps classes from every vocabulary", () => {
@@ -64,5 +64,30 @@ describe("detail and caps", () => {
     let dim = 0;
     for (let i = 0; i < 2000; i++) if (neonFlicker(3, i * 0.05) < 1) dim++;
     assert.ok(dim < 200);
+  });
+});
+
+describe("when the menu isn't online", () => {
+  it("every kind says what it usually has", () => {
+    for (const k of STORE_KINDS) assert.ok(USUALLY[k].length >= 1, k);
+  });
+  it("searches the name with 'menu', and finds the branch on the map", () => {
+    const [web, maps] = menuSearch("کبابی نایب", { lat: 35.7355, lng: 51.531 });
+    assert.equal(web.kind, "web");
+    assert.ok(decodeURIComponent(web.url).includes("کبابی نایب منو"));
+    assert.ok(maps.url.includes("@35.73550,51.53100"));
+    assert.deepEqual(menuSearch(" "), []);
+    assert.ok(!menuSearch("Cafe X", { lat: 0, lng: 0 })[1].url.includes("@"), "no spot: search by name only");
+  });
+});
+
+describe("shops, and places that aren't", () => {
+  it("no shopkeeper, tag or wares at a mosque, a seminary, a school or a hospital", () => {
+    assert.equal(isShop("muslim", "مسجد اباعبدالله الحسین"), false);
+    assert.equal(isShop("school", "مدرسه علوم دینیه"), false);
+    assert.equal(isShop("", "حسینیه ارشاد"), false);
+    assert.equal(isShop("hospital", "Day Hospital"), false);
+    assert.equal(isShop("gift", "کادویی سیب"), true);
+    assert.equal(isShop("bakery", "نانوایی سنگکی"), true);
   });
 });

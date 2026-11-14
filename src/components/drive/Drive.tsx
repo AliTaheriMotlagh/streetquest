@@ -46,6 +46,7 @@ import { PadPoller } from "./gamepad";
 import { AbilityHud, paintAbilities } from "./AbilityHud";
 import { focusDepth, newAbilities, stepAbilities } from "@/lib/abilities";
 import { loadTouchPrefs, useTouchPrefs } from "./touchPrefs";
+import { CarRadio, type RadioState } from "./radio";
 import { Icon, type IconName } from "./icons";
 import { MODES, type ModeKey } from "@/lib/arena/modes";
 import { PartyHud } from "./PartyHud";
@@ -64,7 +65,8 @@ import { Others } from "./others";
 import { bootProgress, BOOT_NEAR_M, type BootOut } from "@/lib/bootGate";
 import { DriveBoot } from "./DriveBoot";
 import { nearStore, oncePerStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
-import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
+import { CHUTE_OPEN_S, CollisionWorld, forward, stepAir, stepChute, stepGround, type Body } from "./physics";
+import { makeChute } from "./chute3d";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import { Crowd } from "./people";
@@ -220,6 +222,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [scenarios, setScenarios] = useState<Scenarios | null>(null);
   const fight = useCombat(combat);
   const onFoot = !!fight?.onFoot;
+  // The car radio (radio.ts): plays in the car, waits on foot and in a match.
+  const radioRef = useRef<CarRadio | null>(null);
+  const [radio, setRadio] = useState<RadioState>({ station: null, status: "off" });
+  useEffect(() => {
+    const r = new CarRadio(setRadio);
+    radioRef.current = r;
+    return () => (r.dispose(), void (radioRef.current = null));
+  }, []);
+  useEffect(() => radioRef.current?.setInCar(!onFoot && !fight?.inMatch), [onFoot, fight?.inMatch]);
   const [footKeys, setFootKeys] = useState(false);
   useEffect(() => {
     setFootKeys(onFoot);
@@ -823,6 +834,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Every store: one lit sign each (an atlas), dressed fronts, and the panel by the one you pass (storefronts.ts).
     const storefronts = new Storefronts(scene, lite ? "lite" : prof.tier, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
+    // The parachute (chute3d.ts): jumping from the helicopter high up. The helicopter flies itself
+    // down to the ground under where you jumped and waits there as your parked vehicle.
+    const chuteM = makeChute();
+    scene.add(chuteM.group);
+    let chute: { t: number; hx: number; hz: number; hyaw: number; halt: number } | null = null;
     let cinemasAt: { x: number; z: number } | null = null;
     const syncCinemas = () => {
       if (cinemasAt && Math.hypot(st.x - cinemasAt.x, st.z - cinemasAt.z) < 3000) return;
@@ -1257,6 +1273,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       street: (x, z) => nearestStreet(x, z, 120),
       arenaGeo: (r) => arenaGeo(r),
       brake: (on) => void (stopForExit = on),
+      bail: () => {
+        if (def().key !== "heli" || st.alt < 12 || chute || combat.inMatch) return false;
+        chute = { t: 0, hx: st.x, hz: st.z, hyaw: st.yaw, halt: st.alt };
+        st.vy = 0;
+        st.cruise = 0;
+        chuteM.open(0);
+        chuteM.group.visible = true;
+        live.current.toast({ title: t("Jump! The parachute opens by itself — gas to dive, brake to slow down") });
+        return true;
+      },
       setFoot: (on, at) => {
         stopForExit = false;
         if (on && !parked) {
@@ -1381,6 +1407,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (k === "c") cycleCam();
       if (k === "l") land();
       if (k === "m" && !e.repeat) setBigMap((b) => !b);
+      if (k === "n" && !e.repeat) radioRef.current?.next();
       startEngine();
     };
     const keyUp = (e: KeyboardEvent) => {
@@ -1516,6 +1543,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let wasLow = true;
     /** The store whose card is up (kept while it's still about as near as the best: no flicker). */
     let lastStore: string | null = null;
+    let lastShopCall = 0;
+    const shopCalled = new Map<string, number>();
     let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, fps = 60, lastWorld: World | null = null;
     let phase: Phase = "day";
     /** 0 by day … 1 at night (blended through dusk and dawn). */
@@ -1750,7 +1779,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (onFoot) {
         // The car waits where it was parked.
       } else if (L.canDrive) {
-        if (D.flies) vF = stepAir(st, D, c, dt, maxV(), collision.floor(st.x, st.z, st.alt));
+        if (chute) {
+          chute.t += dt;
+          vF = stepChute(st, c, dt, chute.t);
+          // The helicopter, left behind, sinks to the ground (or a roof) under where you jumped.
+          chute.halt = Math.max(collision.floor(chute.hx, chute.hz, chute.halt), chute.halt - 7 * dt);
+        } else if (D.flies) vF = stepAir(st, D, c, dt, maxV(), collision.floor(st.x, st.z, st.alt));
         else vF = stepGround(st, D, c, dt, maxV() * Math.max(0.05, power));
       } else if (L.follow) {
         // Walking with GPS: glide to where the phone says you are, nose first.
@@ -1822,8 +1856,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       st.speed = Math.hypot(st.vx, st.vz);
 
       // -- pose: body roll / lean, squat under throttle, wheels and rotors
-      model.group.position.set(parked?.x ?? st.x, parked?.alt ?? st.alt, parked?.z ?? st.z);
-      model.group.rotation.y = parked?.yaw ?? st.yaw;
+      model.group.position.set(chute?.hx ?? parked?.x ?? st.x, chute?.halt ?? parked?.alt ?? st.alt, chute?.hz ?? parked?.z ?? st.z);
+      model.group.rotation.y = chute?.hyaw ?? parked?.yaw ?? st.yaw;
+      if (chute) {
+        chuteM.group.position.set(st.x, st.alt, st.z);
+        chuteM.group.rotation.set(0, st.yaw, -st.steer * 0.25);
+        chuteM.open(Math.min(1, Math.max(0, (chute.t - CHUTE_OPEN_S) / 0.6)));
+        // Down: on foot where you landed, the helicopter parked where it set down.
+        if (st.alt <= 0.02 && chute.t > CHUTE_OPEN_S) {
+          const h = chute;
+          chute = null;
+          chuteM.group.visible = false;
+          Object.assign(st, { vx: 0, vz: 0, vy: 0, speed: 0, steer: 0, alt: 0 });
+          combat.getOut();
+          if (parked) Object.assign(parked, { x: h.hx, z: h.hz, yaw: h.hyaw, alt: h.halt });
+        }
+      }
       const speedK = Math.min(1, st.speed / maxV());
       filmSpeed = speedK;
       const lean = D.bike ? 0.45 : D.flies ? 0.28 : 0.12;
@@ -1900,8 +1948,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.lookAt(camLook);
         camera.rotateZ(-st.roll * 0.35);
       } else {
-        const dist = camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
-        const height = camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
+        // Under the parachute: behind and a little below the canopy, jumper and canopy both in the frame.
+        const dist = chute && camMode !== "top" ? 11 : camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
+        const height = chute && camMode !== "top" ? 3.2 : camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
         const want = camMode === "top" ? new THREE.Vector3(st.x + nfx * 6, st.alt + height, st.z + nfz * 6 + 0.01) : new THREE.Vector3(st.x - nfx * dist, st.alt + height, st.z - nfz * dist);
         camPos.lerp(want, 1 - Math.exp(-rdt * (camMode === "top" ? 6 : 4.5)));
         // Don't let the camera end up inside a building: pull it in toward the vehicle.
@@ -1919,7 +1968,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.position.copy(camPos);
         if (camMode === "top") camera.up.set(nfx, 0, nfz);
         else camera.up.set(0, 1, 0);
-        camLook.set(st.x + nfx * 4, st.alt + 1.2, st.z + nfz * 4);
+        camLook.set(st.x + nfx * 4, st.alt + (chute ? 3.4 : 1.2), st.z + nfz * 4);
         camera.lookAt(camLook);
       }
       // A crash or a blast shakes the camera (on foot, the soldier's camera has its own).
@@ -1999,6 +2048,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
       crowd.tick(dt, st.x, st.z);
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
+      // Shopkeepers: walking or cruising past an open store, its keeper calls you in (once in two minutes per store).
+      if (!matchOn && now - lastShopCall > 1500 && !(D.flies && st.alt > 0.5) && Math.hypot(st.vx, st.vz) < 14) {
+        lastShopCall = now;
+        const sc = storefronts.nearestOpen(st.x, st.z, onFoot ? 14 : 22, (id) => now - (shopCalled.get(id) ?? -1e9) < 120_000);
+        if (sc && street.shopCall(sc.kind, sc.name, sc)) shopCalled.set(sc.id, now);
+      }
       scenarios.tick(rdt, time, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, carKey: streetCar?.key ?? currentKey(), matchOn, flying: D.flies && st.alt > 0.5 });
       if (now - lightsAt > 500) {
         lightsAt = now;
@@ -2216,7 +2271,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           const dot = (x: number, z: number, col: string, r = 4) => {
             g.fillStyle = col;
             g.beginPath();
-            g.arc((x - st.x) * scale, (z - st.z) * scale, r, 0, Math.PI * 2);
+            g.arc((x - st.x) * scale, (z - st.z) * scale, r * lw, 0, Math.PI * 2);
             g.fill();
           };
           // Shops are small square blips (missions and money are the round ones).
@@ -2228,7 +2283,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             g.fillRect(bx - r, bz - r, r * 2, r * 2);
           };
           for (const p of shops) if (Math.abs(p.x - st.x) < range && Math.abs(p.z - st.z) < range) blip(p.x, p.z, p.color, 1.8 * lw);
-          for (const m of markers.spots()) blip(m.x, m.z, m.color, 2.6);
+          for (const m of markers.spots()) blip(m.x, m.z, m.color, 2.6 * lw);
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
           for (const d of scenarios.dots()) dot(d.x, d.z, d.color, 5);
           for (const gt of gates) if (gt.group.visible) dot(gt.group.position.x, gt.group.position.z, "#f0c05a", 4);
@@ -2266,10 +2321,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           g.strokeStyle = "#fff";
           g.lineWidth = 2;
           g.beginPath();
-          g.moveTo(R, R - 9);
-          g.lineTo(R + 6, R + 7);
-          g.lineTo(R, R + 3);
-          g.lineTo(R - 6, R + 7);
+          const ma = big ? 2.2 : 1;
+          g.moveTo(R, R - 9 * ma);
+          g.lineTo(R + 6 * ma, R + 7 * ma);
+          g.lineTo(R, R + 3 * ma);
+          g.lineTo(R - 6 * ma, R + 7 * ma);
           g.closePath();
           g.fill();
           g.stroke();
@@ -2363,6 +2419,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       markers.dispose();
       cinemaBoards.dispose();
       storefronts.dispose();
+      scene.remove(chuteM.group);
+      chuteM.dispose();
       if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose());
       model.dispose();
       cockpit.dispose();
@@ -2586,6 +2644,17 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               <Icon name="camera" size={22} />
               <small>{onFoot ? (fight?.cam === "fps" ? "1P" : "3P") : CAM_LABEL[cam]}</small>
             </Button>
+            {!onFoot && !fight?.inMatch && (
+              <Button
+                className={`drive-round radio ${radio.status !== "off" ? "on" : ""}`}
+                onClick={() => radioRef.current?.next()}
+                aria-label={radio.station ? t("Radio: {name} — tap for the next station", { name: radio.station.name }) : t("Car radio")}
+                data-tip={radio.station ? `${radio.station.name} · ${t(radio.station.genre)}` : t("Car radio (N)")}
+              >
+                <Icon name="radio" size={22} />
+                <small>{radio.status === "off" ? t("Off") : radio.status === "tuning" ? "…" : radio.status === "error" ? "!" : radio.station?.group === "persian" ? t("FA") : t("INT")}</small>
+              </Button>
+            )}
             {canDrive && combat && !fight?.inMatch && (onFoot ? (
               <Button className={`drive-round ${fight?.nearCar ? "on" : ""}`} disabled={!fight?.nearCar} onClick={() => combat.getIn()} aria-label={t("Get in the car")} data-tip={fight?.nearCar ? t("Get in the car (F)") : t("No car close by")}>
                 <Icon name="car" size={22} />

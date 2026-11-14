@@ -162,7 +162,7 @@ export type ServerMsg =
   | { t: "roster"; add: RosterEntry[]; del: number[] }
   | { t: "hit"; from: number; to: number; dmg: number; zone: Zone; hp: number; kill: boolean; fx: number; fz: number }
   | { t: "kill"; killer: number; victim: number; w: KillCause; head: boolean; killerName: string; victimName: string; killerTeam: Team; victimTeam: Team }
-  | { t: "you"; hp: number; dead: boolean; respawnAt: number; passive: boolean; ammo: number; reloadUntil: number; loadout: WeaponKey[]; team: Team; space: string; gear: Record<ThrowKey, number> }
+  | { t: "you"; hp: number; dead: boolean; respawnAt: number; passive: boolean; ammo: number; reloadUntil: number; loadout: WeaponKey[]; team: Team; space: string; gear: Record<ThrowKey, number>; /** Bomb mode's round money. */ money?: number }
   | { t: "shot"; sid: number; w: WeaponKey; x: number; y: number; z: number; ex: number; ey: number; ez: number }
   | { t: "spawn"; x: number; y: number; z: number; yaw: number }
   | { t: "lobbies"; list: LobbyView[] }

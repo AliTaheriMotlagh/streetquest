@@ -14,7 +14,7 @@
 import * as THREE from "three";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
 import type { Week } from "@/lib/localData";
-import { menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, type StoreKind } from "@/lib/storeKinds";
+import { isShop, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, USUALLY, type StoreKind } from "@/lib/storeKinds";
 import { patchShader, after } from "./graphics/shaders";
 import { nameLines } from "./trades";
 
@@ -85,6 +85,9 @@ export class Storefronts {
   private crosses: THREE.InstancedMesh;
   private garments: THREE.InstancedMesh;
   private screens: THREE.InstancedMesh;
+  /** Iranian touches: a Persian rug hung by the door, a brass samovar on the sill. */
+  private rugs: THREE.InstancedMesh;
+  private samovars: THREE.InstancedMesh;
   private steam: THREE.InstancedMesh;
   private steamSrc: { x: number; y: number; z: number; seed: number }[] = [];
   private owned: { dispose: () => void }[] = [];
@@ -155,6 +158,10 @@ export class Storefronts {
     this.crosses = this.mesh(this.crossGeo(own), own(new THREE.MeshBasicMaterial({ color: "#3dff9a", toneMapped: false })), D, false);
     this.garments = this.mesh(own(new THREE.BoxGeometry(0.34, 0.75, 0.05)), own(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.8 })), D * 5, true);
     this.screens = this.mesh(own(new THREE.PlaneGeometry(0.9, 0.5)), own(new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false })), D, true);
+    this.rugs = this.mesh(own(new THREE.PlaneGeometry(0.95, 1.4)), own(new THREE.MeshStandardMaterial({ map: own(this.rugTexture()), roughness: 0.95, side: THREE.DoubleSide })), D, false);
+    // A samovar turned on a lathe: foot, belly, shoulder, the crown the teapot sits on, and the teapot.
+    const sv = [[0, 0], [0.11, 0], [0.08, 0.05], [0.09, 0.1], [0.15, 0.2], [0.16, 0.36], [0.12, 0.46], [0.07, 0.5], [0.06, 0.55], [0.09, 0.6], [0.1, 0.7], [0.07, 0.76], [0.02, 0.8], [0, 0.81]].map(([x, y]) => new THREE.Vector2(x, y));
+    this.samovars = this.mesh(own(new THREE.LatheGeometry(sv, 14)), own(new THREE.MeshStandardMaterial({ color: "#c9a24a", metalness: 0.85, roughness: 0.28 })), D, false);
     const puff = own(this.puffTexture());
     this.steam = this.mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: puff, color: "#ffffff", transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })), Math.max(1, this.cap.steam * 4), true);
     this.steam.renderOrder = 4;
@@ -234,6 +241,37 @@ export class Storefronts {
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
+  /** A Persian rug: a red field, a navy border with a cream guard stripe, a medallion and corner pieces. */
+  private rugTexture() {
+    const { c, g } = canvas(128, 192);
+    g.fillStyle = "#1f2b5c";
+    g.fillRect(0, 0, 128, 192);
+    g.fillStyle = "#efe2c4";
+    g.fillRect(9, 9, 110, 174);
+    g.fillStyle = "#8f1d2c";
+    g.fillRect(13, 13, 102, 166);
+    // Border motifs: small cream diamonds along the navy band.
+    g.fillStyle = "#d9b45a";
+    for (let i = 0; i < 12; i++) for (const [x, y] of [[4.5, 8 + i * 15.5], [123.5, 8 + i * 15.5]]) (g.beginPath(), g.moveTo(x, y - 3), g.lineTo(x + 3, y), g.lineTo(x, y + 3), g.lineTo(x - 3, y), g.fill());
+    for (let i = 0; i < 8; i++) for (const [x, y] of [[8 + i * 15.5, 4.5], [8 + i * 15.5, 187.5]]) (g.beginPath(), g.moveTo(x, y - 3), g.lineTo(x + 3, y), g.lineTo(x, y + 3), g.lineTo(x - 3, y), g.fill());
+    // The medallion: nested diamonds.
+    const dia = (r: number, col: string) => (g.beginPath(), g.moveTo(64, 96 - r * 1.4), g.lineTo(64 + r, 96), g.lineTo(64, 96 + r * 1.4), g.lineTo(64 - r, 96), g.closePath(), (g.fillStyle = col), g.fill());
+    dia(34, "#1f2b5c");
+    dia(26, "#efe2c4");
+    dia(18, "#8f1d2c");
+    dia(9, "#d9b45a");
+    // Corner pieces.
+    g.fillStyle = "#1f2b5c";
+    for (const [x, y, sx, sy] of [[13, 13, 1, 1], [115, 13, -1, 1], [13, 179, 1, -1], [115, 179, -1, -1]]) (g.beginPath(), g.moveTo(x, y), g.lineTo(x + 24 * sx, y), g.lineTo(x, y + 30 * sy), g.fill());
+    // Fringe.
+    g.strokeStyle = "#f4ead2";
+    g.lineWidth = 1;
+    for (let x = 3; x < 128; x += 4) (g.beginPath(), g.moveTo(x, 0), g.lineTo(x, 3), g.moveTo(x, 189), g.lineTo(x, 192), g.stroke());
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
   private chalkTexture() {
     const { c, g } = canvas(64, 96);
     g.fillStyle = "#23302a";
@@ -361,9 +399,26 @@ export class Storefronts {
       g.roundRect(mid - room * 0.32, 40, room * 0.64, 20, 10);
       g.fill();
     }
-    // Open: a bright lamp strip along the bottom; shut: a dark one.
+    // Open: a bright lamp strip along the bottom; shut: a dark one, the sign dimmed.
+    if (!open) (g.fillStyle = "rgba(0,0,0,.38)"), g.fillRect(0, 0, U, 100);
     g.fillStyle = open ? "#46ff94" : "#5a1414";
     g.fillRect(14, 90, U - 28, 4);
+    // …and a tag you can read from the street: «باز» / «بسته» (Open / Closed), on the side away from the icon.
+    if (detail === "text" && isShop(l.cls, main)) {
+      const tag = open ? t("Open") : t("Closed");
+      g.font = `800 20px ${FONT}`;
+      g.direction = getLocale() === "fa" ? "rtl" : "ltr";
+      const tw = g.measureText(tag).width + 20, tx = rtl ? 14 : U - 14 - tw;
+      g.fillStyle = open ? "#1f9d57" : "#8a2a2a";
+      g.beginPath();
+      g.roundRect(tx, 64, tw, 24, 12);
+      g.fill();
+      g.fillStyle = "#fff";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText(tag, tx + tw / 2, 77);
+      g.direction = "ltr";
+    }
     if (info?.deal && detail === "text") {
       const dx = rtl ? 14 : U - 78;
       g.fillStyle = "#ffd23f";
@@ -500,7 +555,7 @@ export class Storefronts {
     this.litAttr.needsUpdate = true;
 
     // Dressed fronts.
-    const cnt = { awn: 0, glass: 0, shut: 0, crate: 0, prod: 0, menu: 0, neon: 0, cross: 0, garm: 0, screen: 0, steam: 0 };
+    const cnt = { awn: 0, glass: 0, shut: 0, crate: 0, prod: 0, menu: 0, neon: 0, cross: 0, garm: 0, screen: 0, steam: 0, rug: 0, samovar: 0 };
     this.neonList.length = this.crossList.length = this.screenList.length = this.steamSrc.length = 0;
     const R = (seed: number, k: number) => Math.abs(Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453) % 1;
     const crateCols = ["#c28a4a", "#a8743a", "#d9a05b"], fruit = ["#e0412b", "#f08a1e", "#5cb83a", "#e8c42a", "#b3262b"];
@@ -521,7 +576,7 @@ export class Storefronts {
       this.place(this.shutters, si, l.x + fx * 0.06, wy, l.z + fz * 0.06, l.angle, wm * 0.88, d.open ? 0.0001 : wh, 1);
       // Props.
       const ground = (o: number) => ({ x: l.x + fx * 1.0 + rx * o, z: l.z + fz * 1.0 + rz * o });
-      for (const prop of look.props) {
+      for (const prop of isShop(l.cls, nameLines(l.text)[0]) ? look.props : []) {
         if (prop === "crates") {
           const g0 = ground(wm * 0.28);
           if (this.blocked(g0.x, g0.z)) continue;
@@ -551,6 +606,16 @@ export class Storefronts {
             this.place(this.garments, gi2, l.x + fx * 0.14 + rx * (k - 1.5) * wm * 0.18, 1.35, l.z + fz * 0.14 + rz * (k - 1.5) * wm * 0.18, l.angle, 1, 1, 1);
             this.garments.setColorAt(gi2, TMP_C.setHSL(R(seed, k), 0.55, 0.5));
           }
+        } else if (prop === "rug") {
+          // Hung on the wall beside the window, the way carpet and fabric shops show them.
+          if (cnt.rug >= this.rugs.instanceMatrix.count) continue;
+          const side = R(seed, 11) < 0.5 ? -1 : 1, o = side * (wm * 0.44 + 0.55);
+          this.place(this.rugs, cnt.rug++, l.x + fx * 0.07 + rx * o, 1.3, l.z + fz * 0.07 + rz * o, l.angle);
+        } else if (prop === "samovar") {
+          // On the window sill outside: tea's on.
+          if (cnt.samovar >= this.samovars.instanceMatrix.count) continue;
+          const o = (R(seed, 13) < 0.5 ? -1 : 1) * wm * 0.3;
+          this.place(this.samovars, cnt.samovar++, l.x + fx * 0.32 + rx * o, 0.78, l.z + fz * 0.32 + rz * o, l.angle, 1, 1, 1);
         } else if (prop === "screen") {
           const si2 = cnt.screen++;
           this.place(this.screens, si2, l.x + fx * 0.12, 1.4, l.z + fz * 0.12, l.angle);
@@ -570,8 +635,10 @@ export class Storefronts {
     this.crosses.count = cnt.cross;
     this.garments.count = cnt.garm;
     this.screens.count = cnt.screen;
+    this.rugs.count = cnt.rug;
+    this.samovars.count = cnt.samovar;
     this.steam.count = this.steamSrc.length * 4;
-    for (const m of [this.awnings, this.lips, this.glass, this.shutters, this.crates, this.produce, this.menus, this.neons, this.garments, this.screens]) {
+    for (const m of [this.awnings, this.lips, this.glass, this.shutters, this.crates, this.produce, this.menus, this.neons, this.garments, this.screens, this.rugs, this.samovars]) {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
@@ -760,11 +827,32 @@ export class Storefronts {
       g.fillText(t("{n} toman", { n: fmtNum(it.price) }), rtl ? 30 : W - 30, y);
     }
     if (!items.length) {
-      g.fillStyle = "rgba(255,255,255,.55)";
-      g.font = `600 26px ${FONT}`;
-      g.textAlign = "center";
+      // No menu online (most walk-in stores): what this kind of store usually has, as a list of
+      // chips — not "nothing here" — and the card (tap) has the searches for the real one.
       g.direction = rtl ? "rtl" : "ltr";
-      g.fillText(info.rating || info.week ? t("No menu listed here") : t("Looking it up…"), W / 2, y + 60);
+      g.textAlign = rtl ? "right" : "left";
+      g.fillStyle = "rgba(255,255,255,.6)";
+      g.font = `600 24px ${FONT}`;
+      y += 48;
+      g.fillText(info.rating || info.week ? t("Menu not online · usually here:") : t("Looking it up… usually here:"), px, y);
+      g.font = `700 26px ${FONT}`;
+      let cx = px;
+      y += 50;
+      for (const w of USUALLY[kind]) {
+        const label = t(w), cw = g.measureText(label).width + 30;
+        if (rtl ? cx - cw < 30 : cx + cw > W - 30) {
+          if (y > H - 150) break;
+          (cx = px), (y += 52);
+        }
+        g.fillStyle = "rgba(255,255,255,.1)";
+        g.beginPath();
+        g.roundRect(rtl ? cx - cw : cx, y - 21, cw, 42, 21);
+        g.fill();
+        g.fillStyle = "#f2f4f8";
+        g.textAlign = "center";
+        g.fillText(label, rtl ? cx - cw / 2 : cx + cw / 2, y + 1);
+        cx += rtl ? -(cw + 10) : cw + 10;
+      }
     }
     g.fillStyle = "rgba(255,255,255,.7)";
     g.font = `600 24px ${FONT}`;
@@ -783,6 +871,27 @@ export class Storefronts {
     if (hit?.instanceId == null) return null;
     const id = this.idOf[hit.instanceId];
     return id ? { id, distance: hit.distance } : null;
+  }
+
+  /**
+   * The nearest open store within `maxM` of (x, z) that hasn't called out in a while: where its
+   * door is (a step out from the sign), its name and trade. For the shopkeeper's call.
+   */
+  nearestOpen(x: number, z: number, maxM: number, skip: (id: string) => boolean): { id: string; name: string; kind: StoreKind; x: number; z: number } | null {
+    let best: ShopLabel | null = null, bd = maxM * maxM;
+    for (const l of this.order) {
+      const d = (l.x - x) ** 2 + (l.z - z) ** 2;
+      if (d >= bd || skip(l.id)) continue;
+      const name = this.infos.get(l.id)?.name || nameLines(l.text)[0];
+      if (!isShop(l.cls, name)) continue;
+      if (!this.isOpen(l.id, storeKind(l.cls, name), this.infos.get(l.id)?.week)) continue;
+      (best = l), (bd = d);
+    }
+    if (!best) return null;
+    const name = this.infos.get(best.id)?.name || nameLines(best.text)[0];
+    // Out from the façade, toward the street: the sign faces along its angle's normal.
+    const nx = Math.sin(best.angle), nz = Math.cos(best.angle);
+    return { id: best.id, name, kind: storeKind(best.cls, name), x: best.x + nx * 1.2, z: best.z + nz * 1.2 };
   }
 
   /** A store's sign spot (to find it again by id). */
