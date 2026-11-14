@@ -108,17 +108,19 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
             <span>✚ {fmtNum(s.hp)}</span>
             <i />
           </div>
-          <div className="chud-ammo">
+          {/* Tap the gun to switch to the other one (touch and mouse alike). */}
+          <button type="button" className="chud-ammo" onClick={() => combat.swap()} title={t("Switch gun")} aria-label={t("Switch gun")} tabIndex={-1}>
             <b className={s.ammo === 0 ? "out" : s.ammo <= W.mag * 0.25 ? "low" : ""}>{s.reloading ? t("Reloading…") : fmtNum(s.ammo)}</b>
             {!s.reloading && <span>/ {fmtNum(s.mag)}</span>}
-            <small>{t(W.name)}</small>
-          </div>
+            <small>{t(W.name)} ⇄</small>
+          </button>
         </div>
       )}
 
       {s.outside && <div className="chud-warn">{t("Get back inside the arena!")}</div>}
       {s.burning && !s.outside && <div className="chud-warn">🔥 {t("You're standing in fire — move!")}</div>}
-      {s.onFoot && !s.dead && (
+      {/* On a touch screen the one grenade button (current kind, its count, a tap to cycle) is enough. */}
+      {s.onFoot && !s.dead && !touch && (
         <div className="chud-gear" aria-label={t("Grenades")}>
           {THROW_KEYS.map((k) => (
             <button key={k} className={`${k === s.throwKey ? "on" : ""} ${s.gear[k] <= 0 ? "out" : ""}`} title={t(THROWABLES[k].name)} onClick={() => combat.pickThrow(k)} tabIndex={-1}>

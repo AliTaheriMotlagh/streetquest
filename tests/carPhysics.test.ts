@@ -124,3 +124,26 @@ describe("a car tipped over", () => {
     assert.ok(Math.abs(oy - (6 + pride.hgt / 2)) < 1e-9);
   });
 });
+
+describe("no glitches from deep or violent hits", () => {
+  it("a car sunk deep into another comes out a little each frame, never flung metres at once", async () => {
+    const { contact, resolve, MAX_PUSH } = await import("@/lib/street/carPhysics");
+    const a = { x: 0, z: 0, yaw: 0, vx: 0, vz: 0, spin: 0, mass: 1000, len: 4.2, wid: 1.8 };
+    const b = { x: 0.3, z: 0.4, yaw: 0.2, vx: 0, vz: 0, spin: 0, mass: 1000, len: 4.2, wid: 1.8 };
+    const c = contact(a, b)!;
+    assert.ok(c.depth > 1, `deep overlap ${c.depth}`);
+    const [ax, bx, az, bz] = [a.x, b.x, a.z, b.z];
+    resolve(a, b, c);
+    assert.ok(Math.hypot(a.x - ax, a.z - az) + Math.hypot(b.x - bx, b.z - bz) <= MAX_PUSH + 1e-9);
+  });
+  it("speed and spin after a hit stay within bounds; bad numbers come to rest", async () => {
+    const { sane, MAX_V, MAX_SPIN } = await import("@/lib/street/carPhysics");
+    const r = { x: 0, z: 0, yaw: 0, vx: 300, vz: 400, spin: -90, mass: 1000, len: 4, wid: 2 };
+    sane(r);
+    assert.ok(Math.abs(Math.hypot(r.vx, r.vz) - MAX_V) < 1e-9);
+    assert.equal(r.spin, -MAX_SPIN);
+    const bad = { x: 0, z: 0, yaw: 0, vx: NaN, vz: 1, spin: Infinity, mass: 1000, len: 4, wid: 2 };
+    sane(bad);
+    assert.deepEqual([bad.vx, bad.vz, bad.spin], [0, 0, 0]);
+  });
+});

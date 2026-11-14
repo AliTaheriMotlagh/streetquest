@@ -133,6 +133,11 @@ const game: Record<string, string> = {
   "Stores and prices, no map": "مغازه‌ها و قیمت‌ها، بدون نقشه",
   "Stores and places on the map": "مغازه‌ها و جاها روی نقشه",
   "Money on the streets, missions, the 3D city": "پول توی خیابون‌ها، مأموریت‌ها، شهر سه‌بعدی",
+  "Stores, prices and a game — on your real streets": "مغازه‌ها، قیمت‌ها و یه بازی — توی خیابون‌های واقعی خودت",
+  "Location isn't available on this device": "موقعیت‌یابی روی این دستگاه در دسترس نیست",
+  "You're back where you really are": "برگشتی همون‌جایی که واقعاً هستی",
+  "Couldn't get your real location — is location allowed?": "موقعیت واقعی‌ات پیدا نشد — دسترسی موقعیت رو دادی؟",
+  "Back to my real location": "برگرد به موقعیت واقعی من",
 };
 
 export default game;

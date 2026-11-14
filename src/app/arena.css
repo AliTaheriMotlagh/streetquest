@@ -216,3 +216,6 @@ html[dir="rtl"] .chud :is(.chud-feed, .chud-board, .chud-dead, .chud-banner, .ch
 @keyframes medal-in { from { opacity: 0; transform: translateX(-50%) scale(1.8); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes medal-out { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
 @media (prefers-reduced-motion: reduce) { .chud-medal { animation: none; } }
+/* The ammo readout is the switch-gun button: tappable through the HUD, looks as before. */
+button.chud-ammo { pointer-events: auto; background: none; border: 0; color: inherit; font: inherit; padding: 6px 8px; margin: -6px -8px; border-radius: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.chud-ammo:active { background: rgba(255, 255, 255, .12); }

@@ -5,7 +5,7 @@
 import { createServer, type Server } from "node:http";
 import { expect, test } from "@playwright/test";
 import { STUB_PORT } from "../../playwright.config";
-import { adminPlayer, expectOk, fund, offset, Player, randomSpot, uploadPlaces, type LatLng } from "../helpers";
+import { adminPlayer, expectOk, fund, offset, Player, randomIranSpot, uploadPlaces, type LatLng } from "../helpers";
 
 /** `unlisted`: missing from the area's vendor list, so only Snappfood's search finds it. */
 /** `phone`: what Snappfood says ("customerPhone"); `balad`: the number Balad has for the same place. */
@@ -199,7 +199,7 @@ const code = () => Math.random().toString(36).slice(2, 8).padEnd(6, "x");
 
 test.describe("store hours, reviews and walk-in stores", () => {
   test("a vendor's card: hours, phone, delivery terms, star shares and its reviews", async ({ baseURL }) => {
-    const spot = randomSpot();
+    const spot = randomIranSpot();
     const v = { code: code(), title: "Hours Test Kebab", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", items: [{ title: "Kebab", price: 2_000_000 }] };
     vendors.push(v);
     const p = await Player.create(baseURL!);
@@ -220,7 +220,7 @@ test.describe("store hours, reviews and walk-in stores", () => {
   });
 
   test("a restaurant's phone is its own (from Balad), never Snappfood's call centre", async ({ baseURL }) => {
-    const spot = randomSpot();
+    const spot = randomIranSpot();
     const known = { code: code(), title: "Balad Known Pizza", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", phone: "02196612", balad: "02188023649", balad2: "0912 000 1122", items: [{ title: "Pizza", price: 3_000_000 }] };
     const unknown = { code: code(), title: "Nobody Knows Kebab", ...{ lat: spot.lat + 0.002, lon: spot.lng }, type: "RESTAURANT", phone: "021-96612", items: [{ title: "Kebab", price: 2_000_000 }] };
     vendors.push(known, unknown);
@@ -243,7 +243,7 @@ test.describe("store hours, reviews and walk-in stores", () => {
   });
 
   test("a card without a number asks again: ?phone=1 finds it on Balad, or says nobody knows it", async ({ baseURL }) => {
-    const spot = randomSpot();
+    const spot = randomIranSpot();
     // Balad knows this one (the stub's search answers from the vendors with a `balad` number).
     const known = { code: code(), title: "Late Phone Bakery", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", balad: "021 4444 1212", items: [{ title: "Bread", price: 100_000 }] };
     vendors.push(known);
@@ -259,7 +259,7 @@ test.describe("store hours, reviews and walk-in stores", () => {
   test("a place spelled without the space still finds its menu, and the map's hours become a week", async ({ baseURL }) => {
     const admin = await adminPlayer(baseURL!);
     const tag = Math.random().toString(36).slice(2, 6);
-    const { places } = await uploadPlaces(admin, randomSpot(), 2, (i) => (i === 0 ? { name: `چلوکباب جوان${tag}`, cat: "restaurant", info: { hours: "Sa-Th 11:00-23:00; Fr off", phone: "021 5555 0101" } } : {}));
+    const { places } = await uploadPlaces(admin, randomIranSpot(), 2, (i) => (i === 0 ? { name: `چلوکباب جوان${tag}`, cat: "restaurant", info: { hours: "Sa-Th 11:00-23:00; Fr off", phone: "021 5555 0101" } } : {}));
     const place = places[0];
     // Snappfood spells it with a space, 60 m away.
     const v = { code: code(), title: `چلو کباب جوان${tag}`, ...((q) => ({ lat: q.lat, lon: q.lng }))(offset(place, 60)), type: "RESTAURANT", items: [{ title: "Chelo kebab", price: 1_500_000 }] };
@@ -345,7 +345,7 @@ test.describe("store hours, reviews and walk-in stores", () => {
 test.describe("store menus & prices", () => {
   test("a real café shows its Snappfood menu, matched by name and place", async ({ baseURL }) => {
     const admin = await adminPlayer(baseURL!);
-    const { places } = await uploadPlaces(admin, randomSpot(), 4);
+    const { places } = await uploadPlaces(admin, randomIranSpot(), 4);
     const cafe = places[0];
     const tag = cafe.name.split(" ").pop()!;
     // Its Snappfood page (a few metres off, "کافه" in front), and another place next door.
@@ -383,7 +383,7 @@ test.describe("store menus & prices", () => {
 
   test("owners pin their own Snappfood, Torob and Divar links", async ({ baseURL }) => {
     const admin = await adminPlayer(baseURL!);
-    const { places } = await uploadPlaces(admin, randomSpot(), 2);
+    const { places } = await uploadPlaces(admin, randomIranSpot(), 2);
     const place = places[0];
     const mine = { code: code(), title: "Totally Different Name", ...((p) => ({ lat: p.lat, lon: p.lng }))(offset(place, 400)), type: "RESTAURANT", items: [{ title: "Kebab", price: 2_500_000 }] };
     vendors.push(mine);
@@ -415,7 +415,7 @@ test.describe("store menus & prices", () => {
     const admin = await adminPlayer(baseURL!);
     const seller = await Player.create(baseURL!);
     await fund(admin, (await seller.me()).id, 5000);
-    await seller.goTo(randomSpot());
+    await seller.goTo(randomIranSpot());
     const name = `Gadget ${Math.random().toString(36).slice(2, 7)}`;
     expectOk(await seller.post("/api/shops", { action: "create", name, category: "tech", divar: "https://divar.ir/v/gadgets/XyZ" }));
     const shopId = (await seller.get<{ shop: { id: string; divar: string } }>("/api/shops/mine")).data.shop.id;
@@ -434,7 +434,7 @@ test.describe("store menus & prices", () => {
 
   test("a café missing from the area's list is found by Snappfood's search, checked by position", async ({ baseURL }) => {
     const admin = await adminPlayer(baseURL!);
-    const { places } = await uploadPlaces(admin, randomSpot(), 2);
+    const { places } = await uploadPlaces(admin, randomIranSpot(), 2);
     const cafe = places[0];
     const tag = cafe.name.split(" ").pop()!;
     // Same name in another city (the search lists it first), then the real one next door.
@@ -453,7 +453,7 @@ test.describe("store menus & prices", () => {
     const admin = await adminPlayer(baseURL!);
     const seller = await Player.create(baseURL!);
     await fund(admin, (await seller.me()).id, 5000);
-    await seller.goTo(randomSpot());
+    await seller.goTo(randomIranSpot());
     const name = `Phonix ${Math.random().toString(36).slice(2, 7)}`;
     const shop = { id: 1000 + Math.floor(Math.random() * 1e6), name, products: ["Galaxy charger", "iPhone case", "USB cable"] };
     shops.push(shop);
@@ -487,7 +487,7 @@ test.describe("the map's own data", () => {
   test("a real place's contacts, hours and photo come from the map", async ({ baseURL }) => {
     const admin = await adminPlayer(baseURL!);
     const info = { phone: "+98 21 7700 0000", web: "https://shop.example/", ig: "test.shop", hours: "Sa-Th 09:00-22:00", addr: "Farjam St 12", img: "https://img.example/front.jpg" };
-    const { places } = await uploadPlaces(admin, randomSpot(), 2, (i) => (i === 1 ? { info } : {}));
+    const { places } = await uploadPlaces(admin, randomIranSpot(), 2, (i) => (i === 1 ? { info } : {}));
     const shop = places[1];
     const p = await Player.create(baseURL!);
     type D = { links: { kind: string; url: string; label: string }[]; about: { photo: string; logo: string; address: string; hours: string; week: number[][][] | null; phone: string } };
@@ -524,7 +524,7 @@ test.describe("the map's own data", () => {
     const town = expectOk(await p.get<A>(`/api/local?divar=1&lat=${SMALLTOWN.latitude + 0.01}&lng=${SMALLTOWN.longitude}`)).data.areas;
     expect(town).toEqual([expect.objectContaining({ id: 0, city: 2, name: "Smalltown", posts: [expect.objectContaining({ title: "Old sofa" })] })]);
     // Nowhere near a neighbourhood Divar knows: nothing to pin.
-    const nowhere = randomSpot();
+    const nowhere = randomIranSpot();
     expect(expectOk(await p.get<A>(`/api/local?divar=1&lat=${nowhere.lat}&lng=${nowhere.lng}`)).data.areas).toEqual([]);
     await p.dispose();
   });
@@ -552,7 +552,7 @@ test.describe("the map's own data", () => {
   });
 
   test("product search: a dish by name across the menus round you, in a price range, sorted, one source at a time", async ({ baseURL }) => {
-    const spot = randomSpot();
+    const spot = randomIranSpot();
     // Two restaurants near the spot, each with its own menu (the stub's /details/dynamic serves it).
     const one = { code: code(), title: "Pizza Stub Alpha", lat: spot.lat, lon: spot.lng, type: "RESTAURANT", items: [{ title: "Pizza Pepperoni", price: 500_000 }, { title: "Pizza Margherita", price: 300_000 }] };
     const away = offset(spot, 0, 220);

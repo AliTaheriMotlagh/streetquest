@@ -214,6 +214,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   // The loading screen (lib/bootGate.ts): up until the streets round you are drawn and the car stands on one.
   const [boot, setBoot] = useState<BootOut>({ pct: 0, stage: "map", done: false, canSkip: false });
   const skipBoot = useRef(false);
+  /** The loading scene has finished lifting away (it stays up while it does). */
+  const [bootGone, setBootGone] = useState(false);
   const [menu, setMenu] = useState<MenuTab | null>(null);
   const [showKeys, setShowKeys] = useState(true);
   useEffect(() => {
@@ -842,6 +844,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Every store: one lit sign each (an atlas), dressed fronts, and the panel by the one you pass (storefronts.ts).
     const storefronts = new Storefronts(scene, lite ? "lite" : prof.tier, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
+    storefronts.at = start;
     // The parachute (chute3d.ts): jumping from the helicopter high up. The helicopter flies itself
     // down to the ground under where you jumped and waits there as your parked vehicle.
     const chuteM = makeChute();
@@ -2764,7 +2767,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {/* Stacked, so two never sit on top of each other. */}
       <div className="drive-notes">
         {!canDrive && <div className={`drive-banner ${gpsNoteSmall ? "small" : ""}`}><Icon name="walk" size={16} />{gpsNoteSmall ? t("Real GPS") : t("Following your real GPS — switch to Play from home to drive anywhere")}</div>}
-        {!boot.done && <DriveBoot boot={boot} onSkip={() => (skipBoot.current = true)} onExit={onExit} />}
+        {!bootGone && <DriveBoot boot={boot} onSkip={() => (skipBoot.current = true)} onExit={onExit} onGone={() => setBootGone(true)} />}
         {boot.done && hud?.village && hud.loading > 0 && (
           <div className="drive-loading">
             <i className="drive-spinner" aria-hidden />

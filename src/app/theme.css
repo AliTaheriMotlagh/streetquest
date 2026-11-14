@@ -350,10 +350,6 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
 .pick-banner { background: var(--gold); color: #2b1d04; border-radius: 14px; box-shadow: var(--shadow-2); font-weight: 700; }
 .pick-banner .close { background: rgba(0, 0, 0, 0.12); color: #2b1d04; }
 
-/* ---------- Loading splash ---------- */
-.splash-title { font-family: var(--title); letter-spacing: 0.05em; font-size: 30px; color: var(--gold); text-shadow: 0 0 24px rgba(240, 192, 90, 0.3); }
-.splash-bar { height: 6px; border: 0; background: rgba(255, 255, 255, 0.08); }
-.splash-bar i { background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
 
 /* ---------- Phones ---------- */
 @media (max-width: 440px) {

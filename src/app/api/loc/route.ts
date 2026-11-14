@@ -13,9 +13,19 @@ import { NEAR_MAX_ACC_M, nearbyLive } from "@/server/presence";
 import { t } from "@/lib/i18n";
 import { MAX_VEHICLE_MULT } from "@/lib/vehicles";
 import { after } from "next/server";
+import { ipLocation } from "@/server/geoip";
 import { recordTrip } from "@/server/traffic";
 
-const Schema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), sim: z.boolean().optional(), acc: z.number().min(0).max(100_000).optional() });
+const Schema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), sim: z.boolean().optional(), acc: z.number().min(0).max(100_000).optional(), real: z.boolean().optional() });
+
+/**
+ * Play from home: "back to my real location" may jump past the travel speed cap — once in
+ * REAL_RESET_MS per player, and (when the request's IP says where it's from) only within
+ * REAL_RESET_KM of that. Kept per server instance: a rare second reset on another instance costs
+ * little (from-home pickups are worth a tenth).
+ */
+const REAL_RESET_MS = 10 * 60_000, REAL_RESET_KM = 150;
+const realResets = new Map<string, number>();
 
 export const POST = route(async (req) => {
   const u = await requireUser();
@@ -31,7 +41,10 @@ export const POST = route(async (req) => {
   const fixAt = u.locAt ?? u.lastSeenAt;
   const since = fixAt ? Math.max(1, (Date.now() - fixAt.getTime()) / 1000) : Infinity;
   // From home, the commander travels at tap-to-travel speed or in the 3D city's fastest vehicle, whichever is faster.
-  if (remote && moved > 30 && moved / since > (Math.max(S.remoteSpeedKmh, S.driveSpeedKmh * MAX_VEHICLE_MULT) / 3.6) * 1.5) {
+  const ip = d.real ? ipLocation(req) : null;
+  const realReset = remote && !!d.real && Date.now() - (realResets.get(u.id) ?? 0) > REAL_RESET_MS && (!ip || distanceM(ip, d) < REAL_RESET_KM * 1000);
+  if (realReset) realResets.set(u.id, Date.now());
+  if (remote && !realReset && moved > 30 && moved / since > (Math.max(S.remoteSpeedKmh, S.driveSpeedKmh * MAX_VEHICLE_MULT) / 3.6) * 1.5) {
     await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: new Date() } });
     throw new HttpError(409, t("Travelling faster than your commander can move"));
   }

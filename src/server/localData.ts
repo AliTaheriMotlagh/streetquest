@@ -19,6 +19,7 @@
 //    waits longer, and with none anywhere the card links a web search for the number;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / TAKHFIFAN_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
+import { countryAt } from "@/lib/region";
 import { Prisma } from "@prisma/client";
 import { after } from "next/server";
 import { z } from "zod";
@@ -240,7 +241,11 @@ function vendorsInCell(c: { x: number; y: number }) {
 }
 
 /** Snappfood vendors around a point, nearest first (for the map layer). */
+/** Iran's own sources (Snappfood, Torob, Divar, Takhfifan, Balad) only answer for places in Iran. */
+const inIran = (p: { lat: number; lng: number }) => countryAt(p.lat, p.lng) === "IR";
+
 export async function vendorsAround(here: LatLng, radiusM = 2000): Promise<Vendor[]> {
+  if (!inIran(here)) return []; // Snappfood delivers in Iran only
   const c = cellOf(here);
   let list = (await vendorsInCell(c)) ?? [];
   // Small towns (the Caspian coast: Royan, Nur, Chalus…): each restaurant delivers only a
@@ -673,7 +678,7 @@ async function areaPlaces(here: LatLng): Promise<{ places: TorobPlace[]; pending
 
 /** Walk-in Torob stores around a point, nearest first; `pending` while the very first map or this area's search is still being built. */
 export async function torobPlacesAround(here: LatLng, radiusM = 4000): Promise<{ shops: TorobPlace[]; pending: boolean }> {
-  if (!torobBase()) return { shops: [], pending: false };
+  if (!torobBase() || !inIran(here)) return { shops: [], pending: false };
   await freshTorobMap();
   const pending = !!torobBuild && !(await prisma.extCache.findUnique({ where: { key: TOROB_META } }));
   const reach = Math.ceil(radiusM / (TOROB_CELL * 111_000)) + 1;
@@ -766,6 +771,7 @@ export async function divarPost(token: string): Promise<DivarDetail | null> {
  * centre) and the latest ads in each — what the map pins on each neighbourhood.
  */
 export async function divarAround(here: LatLng): Promise<DivarArea[]> {
+  if (!inIran(here)) return [];
   const cities = (await divarCities()) ?? [];
   // Divar's own centre of a town is often kilometres off (Chalus's is 7 km out at sea-side
   // Hachirud): anywhere within its radius plus DIVAR_TOWN_SLACK_M counts as in it.
@@ -807,7 +813,7 @@ export async function divarAround(here: LatLng): Promise<DivarArea[]> {
  */
 export async function dealsAround(here: LatLng): Promise<Deal[]> {
   const root = takhfifanBase();
-  if (!root) return [];
+  if (!root || !inIran(here)) return [];
   const cell = { lat: Math.round(here.lat * 100) / 100, lng: Math.round(here.lng * 100) / 100 };
   const box = new URLSearchParams({ ...nearbyBox(cell, DEALS_NEAR_M + 1200), zoom: "15", path: "/nearby", sort_order: "desc", offset: "0", limit: "10" });
   const onMap = await cached<Deal[]>(`tk:near:${cell.lat},${cell.lng}`, DEALS_TTL, async () => {
@@ -895,15 +901,18 @@ const siteIcon = (web: string | null | undefined) => {
 /** Everything the store card shows from other sites: menu or catalog, Torob listings, links. */
 export async function storeData(s: StoreInfo): Promise<StoreData> {
   const owned = s.snappfood ? snappfoodCode(s.snappfood) : null;
-  const code = owned ?? (await matchVendor(s).catch(() => null))?.code ?? null;
+  // Snappfood and Torob are Iran's: elsewhere the card is the map's own data (website, phone,
+  // hours, Instagram) and searches in the local language — no lookups that can't find anything.
+  const iran = inIran(s);
+  const code = owned ?? (iran ? (await matchVendor(s).catch(() => null))?.code : null) ?? null;
   const menu = code ? await vendorMenu(code, s).catch(() => null) : null;
   // Torob lists online shops: this store's own shop there (the owner's link, else one with
   // exactly its name) and its catalog; failing that, listings only this store sells.
-  const food = isFoodCat(s.cat);
+  const skipTorob = isFoodCat(s.cat) || !iran;
   const tl = s.torob ? torobLink(s.torob) : null;
   const ownShop = tl ? torobShopId(tl) : null;
-  const shop = food ? null : await (ownShop ? torobShopById(ownShop) : torobShop(s.name)).catch(() => null);
-  const torob = food
+  const shop = skipTorob ? null : await (ownShop ? torobShopById(ownShop) : torobShop(s.name)).catch(() => null);
+  const torob = skipTorob
     ? []
     : shop
       ? await torobSearch("", shop.id).catch(() => [])
@@ -933,7 +942,7 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
     phones,
     name: s.name,
   };
-  return { menu, torob: torob.slice(0, 12), torobQuery: food ? "" : s.name, torobShop: shop, links, about };
+  return { menu, torob: torob.slice(0, 12), torobQuery: skipTorob ? "" : s.name, torobShop: shop, links, about };
 }
 
 // ---------------------------------------------------------------- Balad phone numbers
@@ -1008,6 +1017,8 @@ async function realPhones(store: { name: string; lat: number; lng: number }): Pr
   // Google first (when there is a key): its numbers are the ones the store keeps up to date; Balad fills in the rest.
   const google = await googlePhone(store).catch(() => "");
   if (google) return phonesFrom("google", google);
+  // Balad maps Iran only.
+  if (!inIran(store)) return [];
   return phonesFrom("balad", ...(await baladPhones(store).catch(() => [])));
 }
 

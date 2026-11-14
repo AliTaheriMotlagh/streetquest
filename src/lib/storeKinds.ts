@@ -5,6 +5,7 @@
 // awning colours, window glow, the few cheap props, and what moves (steam, neon, a cross).
 import { dayClock, openState, type Week } from "./localData";
 import { msg } from "./i18n";
+import { countryAt, wordsAt } from "./region";
 import type { PlaceCat } from "./places";
 
 export const STORE_KINDS = ["restaurant", "fastfood", "cafe", "bakery", "sweets", "market", "produce", "butcher", "pharmacy", "fashion", "tech", "general"] as const;
@@ -148,6 +149,27 @@ export const USUALLY: Record<StoreKind, string[]> = {
   general: [msg("Everyday things")],
 };
 
+/** Turkey's own (Istanbul's kebab shop isn't a chelow-kababi). */
+const USUALLY_TR: Partial<Record<StoreKind, string[]>> = {
+  restaurant: [msg("Kebab"), msg("Pide"), msg("Lahmacun"), msg("Mezes")],
+  fastfood: [msg("Döner"), msg("Burgers"), msg("Toast"), msg("Fries")],
+  cafe: [msg("Turkish coffee"), msg("Tea"), msg("Cakes")],
+  bakery: [msg("Simit"), msg("Börek"), msg("Fresh bread")],
+  sweets: [msg("Baklava"), msg("Künefe"), msg("Turkish delight"), msg("Ice cream")],
+};
+/** Anywhere else: what such a store has the world over. */
+const USUALLY_ANY: Partial<Record<StoreKind, string[]>> = {
+  restaurant: [msg("Mains"), msg("Grills"), msg("Salads"), msg("Desserts")],
+  cafe: [msg("Espresso & latte"), msg("Tea"), msg("Cakes"), msg("Sandwiches")],
+  bakery: [msg("Bread"), msg("Pastries"), msg("Cakes")],
+  sweets: [msg("Pastries"), msg("Chocolate"), msg("Ice cream")],
+};
+/** What this kind of store usually has, where it is (Iran's list without a position). */
+export function usuallyAt(kind: StoreKind, at?: { lat: number; lng: number } | null): string[] {
+  const c = at && (at.lat || at.lng) ? countryAt(at.lat, at.lng) : "IR";
+  return (c === "IR" ? null : c === "TR" ? USUALLY_TR[kind] : USUALLY_ANY[kind]) ?? USUALLY[kind];
+}
+
 export type MenuSearch = { kind: "web" | "maps"; label: string; url: string };
 
 /**
@@ -157,7 +179,7 @@ export type MenuSearch = { kind: "web" | "maps"; label: string; url: string };
 export function menuSearch(name: string, at?: { lat: number; lng: number } | null): MenuSearch[] {
   const n = name.trim();
   if (n.length < 2) return [];
-  const q = encodeURIComponent(`${n} منو`);
+  const q = encodeURIComponent(`${n} ${wordsAt(at).menu}`);
   const out: MenuSearch[] = [{ kind: "web", label: msg("Search for the menu"), url: `https://www.google.com/search?q=${q}` }];
   const place = encodeURIComponent(n);
   out.push({ kind: "maps", label: msg("Photos & reviews on the map"), url: at && (at.lat || at.lng) ? `https://www.google.com/maps/search/${place}/@${at.lat.toFixed(5)},${at.lng.toFixed(5)},18z` : `https://www.google.com/maps/search/${place}` });

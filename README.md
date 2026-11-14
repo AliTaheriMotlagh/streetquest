@@ -124,6 +124,21 @@ mood scales XP; loot funds research; territory funds the army.
 - **Real places** — restaurants, cafés, shops, pharmacies, gyms and parks come from OpenStreetMap, with their real
   names. Jobs happen *at* them: a 🍔 burger delivery starts at a real burger joint and ends at another real place, a ☕
   check-in is at a real café, and food spawns sit on real restaurants instead of random street corners.
+- **Anywhere in the world** — the store card works wherever the store is (`lib/region.ts` tells the country from
+  its coordinates, coarse borders, Iran's traced against Iraq and Afghanistan): Iran's own sources (Snappfood, Torob,
+  Divar, Takhfifan, Balad) are asked only for places in Iran (`server/localData.ts` `inIran`); everywhere the open
+  map's own tags (website, phone, hours, Instagram, address) carry the card, and the searches for a missing menu or
+  number are in the local language («menü» / «telefon» in Istanbul, «Speisekarte» in Berlin, «منو» / «تلفن» in
+  Tehran) with the local map (Balad in Iran, Google Maps elsewhere); "usually here" lists Turkish dishes in Turkey
+  and a neutral list elsewhere.
+- **One loading scene everywhere** (`components/LoadingScene.tsx`, `app/loading.css`): the app starting, the 3D
+  code downloading and the city being drawn all show dusk over Tehran — the Alborz, Milad and Azadi towers — whose
+  windows light up as it loads, a car on a scrolling road, the title with a light sweeping across, the bar, the
+  stage and a tip; when the city is ready the scene lifts away like a curtain. All SVG + CSS, still under
+  reduced motion.
+- **Back to my real location** (playing from home): a button in the map's column jumps you to your real GPS fix;
+  the server lets such a reset pass its travel speed cap once in 10 minutes, and only within 150 km of where the
+  request's IP says it's from when it says (`/api/loc` `real`; e2e `realReset.spec.ts`).
 - **List · Map · Game** — three ways to use it, switched from the bottom bar and remembered on the device
   (`lib/appView.ts`): **List** is shopping only — every store and product around, searched and filtered, full
   screen; **Map** is the stores and places on the map without the game (no money, jobs, players, wallet, quests or
@@ -525,7 +540,10 @@ mood scales XP; loot funds research; territory funds the army.
   `lib/arena/economy.ts`, `realtime/match.ts`), 🔫 Gun Game (every 2 kills hand you the next gun — SMG, shotgun, rifle, sniper,
   pistol; first through all 10 wins) or 🚩 Hardpoint (a glowing zone on a street, coloured by who holds it, moves every
   minute; a point a second for the team alone in it, first to 120), small / medium / large arena (70 / 120 / 200 m — small enough that you meet; its edge is a dashed red ring on the minimap), with up to 10 bots (easy / normal / hard) so it's
-  fun with one friend or none. Nine guns built from real low-poly models (CC BY, credited on /credits): pick a primary —
+  fun with one friend or none. On a touch screen: a second, smaller trigger high on the left (move, look and shoot at once),
+  tap the ammo readout to switch guns, one grenade button (the row of kinds is for the keyboard), first person by
+  default in matches (V / the camera button switches and is remembered), every shot punches the view a little and
+  hits outside matches flash the hit marker too. Nine guns built from real low-poly models (CC BY, credited on /credits): pick a primary —
   AR-7 rifle, KR-47 battle rifle (three heavy rounds, kicks harder; best just past SMG range), Vex SMG, Breacher shotgun,
   Bulldog LMG (a 100-round belt, slow to move and reload), Marksman DMR (semi-auto, owns 100–200 m) or the Longshot
   sniper with a scope — and a sidearm (P9 pistol or the Hammer .50, whose headshot drops anyone up close); every

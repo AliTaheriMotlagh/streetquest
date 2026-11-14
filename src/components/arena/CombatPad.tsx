@@ -5,8 +5,9 @@
 //  - right half: drag anywhere to look, faster flicks turn further (and a look-sensitivity setting);
 //    when the sights are up, a quick tap on it fires one shot;
 //  - two rings of actions around the fire button under the right thumb (lib/input/touch footLayout):
-//    aim (hold to aim, tap to lock it on), jump, crouch, reload nearest; switch gun and "car" (only
-//    while one is within reach) further out — all of them whole on a narrow phone's screen;
+//    aim (hold to aim, tap to lock it on), jump, crouch, reload nearest; "car" (only while one is
+//    within reach) further out; switching guns is a tap on the ammo readout (CombatHud);
+//  - a second, smaller trigger high on the left, as in mobile shooters: shoot while both thumbs steer;
 //  - a dead-eye button (slow motion while aiming), left-handed layout mirrors it all.
 // Every finger is tracked by its pointer id, so a thumb on the stick, one on the look area and a
 // third on a button never steal each other's events. Everything writes straight into the combat
@@ -183,6 +184,13 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
     buzz(8);
   };
 
+  const leftFireDown = (e: RPointerEvent<HTMLElement>) => {
+    e.stopPropagation();
+    firing.current.add(e.pointerId);
+    setFire();
+    buzz(8);
+  };
+
   // ---- the action buttons
   const tap = (fn: () => void, ms = 10) => (e: RPointerEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -210,7 +218,8 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
   };
 
   const slots = footLayout(prefs.left);
-  const shown = new Set<string>([...footActions({ nearCar, inMatch }), "swap"]);
+  // Switching guns is a tap on the gun's name and ammo (CombatHud), as in mobile shooters — one button fewer here.
+  const shown = new Set<string>(footActions({ nearCar, inMatch }));
   const rootCls = `cpad ${prefs.left ? "lh" : ""}`;
   const label: Record<string, string> = { swap: t("Switch gun"), reload: t("Reload"), crouch: t("Crouch"), jump: t("Jump"), aim: t("Aim"), car: t("Get in the car") };
   const onDown: Record<string, (e: RPointerEvent<HTMLElement>) => void> = {
@@ -230,6 +239,10 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
         </div>
       </div>
       <div className="cpad-look" onPointerDown={(e) => lookDown(e)} onPointerMove={lookMoved} />
+      {/* A second trigger under the other thumb: move, look and shoot at once (it doesn't turn the view). */}
+      <button className="cp-fire2" aria-label={t("Fire")} onPointerDown={leftFireDown}>
+        <Icon d="crosshair" />
+      </button>
       <div className="cp-arc">
         <button className="cp-fire" aria-label={t("Fire")} onPointerDown={fireDown} onPointerMove={lookMoved}>
           <Icon d="crosshair" />

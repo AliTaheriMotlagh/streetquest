@@ -30,7 +30,6 @@ const landing: Record<string, string> = {
   "Your city is": "شهرت می‌شه",
   "the game map.": "نقشهٔ بازی.",
   "▶ Play now — no sign-up": "▶ همین حالا بازی کن — بدون ثبت‌نام",
-  "Browse events": "رویدادها رو ببین",
   "{n, plural, one {# player} other {# players}}": "{n} بازیکن",
   "Live & upcoming events": "رویداد زنده و در پیش",
   Visits: "بازدید",
@@ -49,6 +48,9 @@ const landing: Record<string, string> = {
   "Create your player": "بازیکنت رو بساز",
   "Play safe: stay aware of your surroundings, respect private property and traffic laws.": "با احتیاط بازی کن: مراقب اطرافت باش، به ملک خصوصی و قوانین رانندگی احترام بذار.",
   "Missions · Chests · Real deliveries · Live events": "مأموریت · صندوق · تحویل واقعی · رویدادهای زنده",
+  "Find stores & prices": "پیدا کردن مغازه‌ها و قیمت‌ها",
+  "Three ways to use it": "سه جور استفاده",
+  "Open →": "باز کن ←",
 };
 
 export default landing;

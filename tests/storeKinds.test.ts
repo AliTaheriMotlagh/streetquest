@@ -1,7 +1,7 @@
 // Storefront kinds, typical hours, sign detail and caps (lib/storeKinds.ts).
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { defaultWeek, isShop, menuHighlights, menuSearch, USUALLY, neonFlicker, signDetail, STORE_KINDS, STORE_LOOK, storeKind, storefrontCap, storeOpen } from "@/lib/storeKinds";
+import { defaultWeek, isShop, menuHighlights, menuSearch, usuallyAt, USUALLY, neonFlicker, signDetail, STORE_KINDS, STORE_LOOK, storeKind, storefrontCap, storeOpen } from "@/lib/storeKinds";
 
 describe("storeKind", () => {
   it("maps classes from every vocabulary", () => {
@@ -89,5 +89,17 @@ describe("shops, and places that aren't", () => {
     assert.equal(isShop("hospital", "Day Hospital"), false);
     assert.equal(isShop("gift", "کادویی سیب"), true);
     assert.equal(isShop("bakery", "نانوایی سنگکی"), true);
+  });
+});
+
+describe("the world over", () => {
+  it("in Istanbul: Turkish dishes and «menü»; elsewhere a neutral list and «menu»; Tehran as before", () => {
+    const ist = { lat: 41.0082, lng: 28.9784 }, ber = { lat: 52.52, lng: 13.4 }, teh = { lat: 35.6892, lng: 51.389 };
+    assert.ok(usuallyAt("sweets", ist).includes("Baklava"));
+    assert.ok(!usuallyAt("restaurant", ber).includes("Chelow kabab"));
+    assert.ok(usuallyAt("restaurant", teh).includes("Chelow kabab"));
+    assert.deepEqual(usuallyAt("pharmacy", ist), USUALLY.pharmacy);
+    assert.ok(decodeURIComponent(menuSearch("Hafız Mustafa", ist)[0].url).includes("Hafız Mustafa menü"));
+    assert.ok(decodeURIComponent(menuSearch("Curry 36", ber)[0].url).includes("Curry 36 Speisekarte"));
   });
 });

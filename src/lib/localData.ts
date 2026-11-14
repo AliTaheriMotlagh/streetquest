@@ -2,6 +2,7 @@
 // or catalog, its Torob listings, its Divar ad. The fetching and caching is in
 // server/localData.ts; this file has the shapes, the link parsing and the name matching.
 import { msg } from "./i18n";
+import { mapSearch, wordsAt } from "./region";
 import { distanceM } from "./geo";
 import type { PlaceCat } from "./places";
 
@@ -684,13 +685,15 @@ export function mergePhones(...lists: (StorePhone[] | null | undefined)[]): Stor
 }
 
 /**
- * No map knows the number: where to look it up by hand — a Balad search for the store and a
- * web search for "<name> <city> تلفن" (Snappfood branch suffixes "(Area)" dropped).
+ * No map knows the number: where to look it up by hand — the local map (Balad in Iran, Google
+ * Maps elsewhere) and a web search for "<name> <city> <phone>" in the store's own language
+ * («تلفن» in Tehran, «telefon» in Istanbul; lib/region.ts). Snappfood branch suffixes "(Area)" dropped.
  */
-export function phoneSearchLinks(name: string, city = ""): { balad: string; web: string } {
+export function phoneSearchLinks(name: string, city = "", at?: { lat: number; lng: number } | null): { map: string; mapSite: "balad" | "google"; web: string } {
   const bare = name.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim() || name.trim();
-  const q = [bare, city.trim(), "تلفن"].filter(Boolean).join(" ");
-  return { balad: `https://balad.ir/search?query=${encodeURIComponent(bare)}`, web: `https://www.google.com/search?q=${encodeURIComponent(q)}` };
+  const q = [bare, city.trim(), wordsAt(at).phone].filter(Boolean).join(" ");
+  const m = mapSearch(bare, at);
+  return { map: m.url, mapSite: m.site, web: `https://www.google.com/search?q=${encodeURIComponent(q)}` };
 }
 
 /** Balad (balad.ir) search: POI tokens and, in the same order, their names and positions. */

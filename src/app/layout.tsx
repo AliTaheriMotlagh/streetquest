@@ -20,6 +20,7 @@ import "./hud.css";
 import "./directory.css";
 import "./filters.css";
 import "./map-pins.css";
+import "./loading.css";
 import "./compact.css";
 
 // Self-hosted at build time: no render-blocking request to Google, no layout shift.

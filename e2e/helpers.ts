@@ -12,6 +12,8 @@ const fakeIp = () => `10.${octet()}.${octet()}.${octet()}`;
 
 /** A random spot on land-ish latitudes, far from every other test's spot. */
 export const randomSpot = (): LatLng => ({ lat: -50 + Math.random() * 110, lng: -170 + Math.random() * 340 });
+/** A random spot well inside Iran — where Snappfood, Torob, Divar, Takhfifan and Balad answer (lib/region.ts). */
+export const randomIranSpot = (): LatLng => ({ lat: 30 + Math.random() * 6, lng: 51 + Math.random() * 6 });
 
 /** Move `m` metres north/east of a point. */
 export const offset = (p: LatLng, northM: number, eastM = 0): LatLng => ({

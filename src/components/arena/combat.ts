@@ -224,7 +224,11 @@ export class Combat {
   private vm: Viewmodel;
   me: FootBody | null = null;
   private avatar: Avatar | null = null;
-  private cam: "tps" | "fps" = store.get(CAM_KEY) === "fps" ? "fps" : "tps";
+  /** The view the player chose (V / the camera button), or null: first person in a match, over the shoulder in the city. */
+  private camPick: "tps" | "fps" | null = ((v) => (v === "fps" || v === "tps" ? v : null))(store.get(CAM_KEY));
+  private get cam(): "tps" | "fps" {
+    return this.camPick ?? (this.inMatch ? "fps" : "tps");
+  }
   private camPos = new THREE.Vector3();
   private recoilP = 0;
   private recoilY = 0;
@@ -334,6 +338,15 @@ export class Combat {
     return () => void this.listeners.delete(fn);
   };
   getSnapshot = () => this.snapshot;
+
+  /** The hit marker on the crosshair: white on a hit, red on a kill, bigger for a headshot. */
+  private flashHit(kill: boolean, head: boolean) {
+    const el = this.hitEl;
+    if (!el) return;
+    el.classList.remove("on", "kill", "head");
+    void el.offsetWidth;
+    el.classList.add("on", ...(kill ? ["kill"] : []), ...(head ? ["head"] : []));
+  }
 
   /** The crosshair and hit marker elements (painted every frame, not through React). */
   bindHud(cross: HTMLElement | null, hit: HTMLElement | null) {
@@ -633,8 +646,8 @@ export class Combat {
   }
 
   toggleCam() {
-    this.cam = this.cam === "tps" ? "fps" : "tps";
-    store.set(CAM_KEY, this.cam);
+    this.camPick = this.cam === "tps" ? "fps" : "tps";
+    store.set(CAM_KEY, this.camPick);
     this.publish(true);
   }
 
@@ -889,6 +902,7 @@ export class Combat {
     void this.arenaPost<{ ok: boolean; kill?: boolean; victim?: string }>({ action: "hit", target, weapon: this.weapon, zone, pellets }).then((r) => {
       if (!r?.ok) return;
       hitSound(zone === "head");
+      this.flashHit(!!r.kill, zone === "head");
       if (r.kill) {
         killSound();
         this.pushFeed(this.h.me()?.username ?? "", r.victim ?? "", this.weapon, zone === "head", true, false);
@@ -1614,6 +1628,8 @@ export class Combat {
     this.recoilP += kp * 0.55;
     me.yaw += (Math.random() - 0.5) * W.wobble * 2 * ads;
     this.vm.fire(W.kick);
+    // Every shot punches the view a little (more for the big guns, less with the sights up).
+    this.shake = Math.max(this.shake, Math.min(0.5, W.kick * 4 * ads));
     rumble(Math.min(1, W.kick * 6), 0.35, 50);
     shotSound(W.sound);
     this.publish(true);

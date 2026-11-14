@@ -177,9 +177,14 @@ it("Google Places: the phone of the place that is this store", async () => {
 it("store phones: with no number anywhere, the card links a search for it", async () => {
   const { phoneSearchLinks } = await import("../src/lib/localData");
   const l = phoneSearchLinks("پیتزا شیلا (پونک)", "تهران");
-  assert.equal(decodeURIComponent(l.balad.split("query=")[1]), "پیتزا شیلا");
+  assert.equal(l.mapSite, "balad");
+  assert.equal(decodeURIComponent(l.map.split("query=")[1]), "پیتزا شیلا");
   assert.equal(decodeURIComponent(l.web.split("q=")[1]), "پیتزا شیلا تهران تلفن");
   assert.equal(decodeURIComponent(phoneSearchLinks("Cafe X").web.split("q=")[1]), "Cafe X تلفن");
+  // In Istanbul: the local word, and Google Maps instead of Balad.
+  const ist = phoneSearchLinks("Karaköy Güllüoğlu", "", { lat: 41.0225, lng: 28.9769 });
+  assert.equal(decodeURIComponent(ist.web.split("q=")[1]), "Karaköy Güllüoğlu telefon");
+  assert.equal(ist.mapSite, "google");
 });
 
 describe("every phone number of a store", () => {

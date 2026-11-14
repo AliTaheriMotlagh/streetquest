@@ -10,7 +10,7 @@
 // now), a short cover, the actions in one row, then tabs that stick to the top of the
 // sheet while scrolling (Menu / Reviews / Info, or Catalog / Info) with compact rows.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { menuSearch, storeKind, USUALLY } from "@/lib/storeKinds";
+import { menuSearch, storeKind, usuallyAt } from "@/lib/storeKinds";
 import { createPortal } from "react-dom";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
@@ -119,7 +119,7 @@ export function CallButton({ store, phones: known }: { store: StoreRef | null; p
     );
   if (looking) return <span className="btn small ghost ext-link ext-phone is-looking" aria-busy="true">📞 …</span>;
   if (!store?.name) return null;
-  return <a className="btn small ghost ext-link ext-phone-find" href={phoneSearchLinks(store.name, store.city).web} target="_blank" rel="noopener noreferrer">🔎 {t("Find the number")}</a>;
+  return <a className="btn small ghost ext-link ext-phone-find" href={phoneSearchLinks(store.name, store.city, store).web} target="_blank" rel="noopener noreferrer">🔎 {t("Find the number")}</a>;
 }
 
 /** The phones in Info: every number with its source, else links to look one up (Google first, then Balad). */
@@ -134,13 +134,13 @@ function PhoneRows({ store, phones: known }: { store: StoreRef | null; phones?: 
     );
   if (looking) return <div className="info-row muted">📞 {t("Looking up the phone number…")}</div>;
   if (!store?.name) return null;
-  const l = phoneSearchLinks(store.name, store.city);
+  const l = phoneSearchLinks(store.name, store.city, store);
   return (
     <div className="info-row">
       📞 <span className="muted">{t("No phone number listed.")}</span>{" "}
       <a href={l.web} target="_blank" rel="noopener noreferrer">{t("Search Google")}</a>
       {" · "}
-      <a href={l.balad} target="_blank" rel="noopener noreferrer">{t("Search Balad")}</a>
+      <a href={l.map} target="_blank" rel="noopener noreferrer">{l.mapSite === "balad" ? t("Search Balad") : t("Search Google Maps")}</a>
     </div>
   );
 }
@@ -698,7 +698,7 @@ function NoMenu({ name, cls, at }: { name: string; cls: string; at: LatLng | nul
     <div className="no-menu">
       <p className="small muted">{t("Their menu isn't online yet. Usually here:")}</p>
       <div className="no-menu-chips">
-        {USUALLY[kind].map((w) => (
+        {usuallyAt(kind, at).map((w) => (
           <span key={w} className="chip small">{t(w)}</span>
         ))}
       </div>

@@ -35,6 +35,7 @@ import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
 import { Icon, type IconName } from "../drive/icons";
+import { LoadingScene } from "../LoadingScene";
 import { APP_VIEWS, layerShown, parseView, VIEW_KEY, type AppView } from "@/lib/appView";
 import { queueScenario } from "../drive/scenarioLink";
 import { pedometer, useSteps } from "./steps";
@@ -69,17 +70,7 @@ const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => 
 // Memoised: the map screen ticks (clocks, world refresh, presence) must not re-render the whole 3D city.
 const Drive = memo(dynamic(() => import("../drive/Drive"), {
   ssr: false,
-  loading: () => (
-    <div className="dboot" role="progressbar" aria-label={t("Loading the 3D city…")}>
-      <div className="db-sky" aria-hidden />
-      <div className="db-card">
-        <div className="db-title">{t("StreetQuest")}</div>
-        <div className="db-sub">{t("Your real city, in 3D")}</div>
-        <div className="db-bar wait" aria-hidden><i /></div>
-        <div className="db-stage"><span>{t("Loading the 3D city…")}</span></div>
-      </div>
-    </div>
-  ),
+  loading: () => <LoadingScene className="dboot" title={t("StreetQuest")} sub={t("Your real city, in 3D")} stage={t("Loading the 3D city…")} />,
 }));
 
 // Line icons, one set with the pins and the 3D HUD (the bottom bar never draws an emoji).
@@ -213,7 +204,11 @@ export default function Game() {
   const [view, setViewState] = useState<AppView>("game");
   useEffect(() => {
     try {
-      setViewState(parseView(localStorage.getItem(VIEW_KEY)));
+      // A link can choose it (the landing page's "three ways", a campaign): /play?view=list|map|game.
+      const asked = new URLSearchParams(location.search).get("view");
+      const v = parseView(asked ?? localStorage.getItem(VIEW_KEY));
+      if (asked) localStorage.setItem(VIEW_KEY, v);
+      setViewState(v);
     } catch {}
   }, []);
   const isGame = view === "game";
@@ -968,6 +963,28 @@ export default function Game() {
 
   // Home mode: you arrive where you really are — one real GPS fix (a few seconds at most) — and only
   // without one where the server last saw you, your IP's city, or a spot you tap.
+  /** Play from home: jump back to your real spot (the GPS fix), wherever you'd travelled to. */
+  const goReal = () =>
+    new Promise<void>((done) => {
+      if (!("geolocation" in navigator)) return toast({ kind: "error", title: t("Location isn't available on this device") }), done();
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          const at = { lat: p.coords.latitude, lng: p.coords.longitude };
+          // Told to the server as a real-location reset (it may jump past the travel speed cap, now and then).
+          void api("/api/loc", { body: { ...at, real: true } })
+            .then(() => {
+              setTravel(null);
+              setHomePos(at);
+              setFollow(true);
+              toast({ title: t("You're back where you really are") });
+            })
+            .catch((e: Error) => toast({ kind: "error", title: e.message }))
+            .finally(done);
+        },
+        () => (toast({ kind: "error", title: t("Couldn't get your real location — is location allowed?") }), done()),
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+      );
+    });
   const homeAsked = useRef(false);
   useEffect(() => {
     if (!homeMode) return void (homeAsked.current = false);
@@ -988,7 +1005,11 @@ export default function Game() {
         clearTimeout(wait);
         if (done) return;
         done = true;
-        setHomePos({ lat: p.coords.latitude, lng: p.coords.longitude });
+        const at = { lat: p.coords.latitude, lng: p.coords.longitude };
+        // A real-location reset for the server (it may be far from where it last saw you).
+        void api("/api/loc", { body: { ...at, real: true } })
+          .catch(() => {})
+          .finally(() => setHomePos((h) => h ?? at));
       },
       () => (clearTimeout(wait), fallback()),
       { enableHighAccuracy: false, timeout: 7500, maximumAge: 120_000 },
@@ -1187,16 +1208,7 @@ export default function Game() {
             <Button className="btn" onClick={() => loadMe()}>{T("Retry")}</Button>
           </div>
         ) : (
-          <div className="splash">
-            <div className="splash-art">
-              <Art k="castle" size={120} anim="float" />
-              <Art k="coin" size={44} className="splash-coin" anim="spin" />
-              <Art k="sneaker" size={46} className="splash-shoe" anim="bounce" />
-            </div>
-            <div className="splash-title">StreetQuest</div>
-            <div className="splash-bar"><i /></div>
-            <div className="small muted">{T("LOADING…")}</div>
-          </div>
+          <LoadingScene title="StreetQuest" sub={T("Stores, prices and a game — on your real streets")} stage={T("LOADING…")} />
         )}
       </div>
     );
@@ -1474,6 +1486,12 @@ export default function Game() {
                 <span className="mm-t">{muted ? t("Turn sound on") : t("Turn sound off")}</span>
               </Button>
             </div>
+          )}
+          {/* Playing from home: back to where you really are, in one tap (one GPS fix). */}
+          {homeMode && (
+            <Button className="fab real-loc" title={t("Back to my real location")} aria-label={t("Back to my real location")} onClick={goReal}>
+              <Icon name="nav" size={22} />
+            </Button>
           )}
           <Button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title={t("Re-center on me")} aria-label={t("Re-center the map on me")} aria-pressed={follow} onClick={() => (exploreOn ? stopExplore() : setFollow(true))} style={{ color: follow ? "var(--cyan)" : undefined }}>
             <Icon name="locate" size={22} />

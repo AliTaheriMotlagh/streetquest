@@ -1,3 +1,5 @@
+import { APP_VIEWS } from "@/lib/appView";
+import { Icon } from "@/components/drive/icons";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -112,8 +114,8 @@ export default async function Home() {
               <Link href="/play" className="lp-btn primary">
                 {t("▶ Play now — no sign-up")}
               </Link>
-              <Link href="/events" className="lp-btn ghost">
-                {t("Browse events")}
+              <Link href="/play?view=list" className="lp-btn ghost">
+                {t("Find stores & prices")}
               </Link>
             </div>
             <dl className="lp-stats">
@@ -154,6 +156,21 @@ export default async function Home() {
                 <small>{t("Paid to your card")}</small>
               </span>
             </div>
+          </div>
+        </section>
+
+        {/* Three ways in: shoppers, explorers and players each land where they want to be. */}
+        <section className="lp-section lp-views" aria-label={t("Three ways to use it")}>
+          <h2 className="lp-h2">{t("Three ways to use it")}</h2>
+          <div className="lp-views-row">
+            {APP_VIEWS.map((v) => (
+              <Link key={v.key} href={`/play?view=${v.key}`} className={`lp-view v-${v.key}`}>
+                <span className="lp-view-ic"><Icon name={v.icon} size={28} /></span>
+                <b>{t(v.label)}</b>
+                <span>{t(v.hint)}</span>
+                <i aria-hidden>{t("Open →")}</i>
+              </Link>
+            ))}
           </div>
         </section>
 

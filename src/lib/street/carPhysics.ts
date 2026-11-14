@@ -118,8 +118,10 @@ export function resolve(a: Rigid, b: Rigid, c: Contact, e = CAR_RESTITUTION, mu 
   const Ia = ia ? 1 / inertiaOf(a) : 0, Ib = ib ? 1 / inertiaOf(b) : 0;
   const out: Hit = { closing: 0, impulse: 0, dva: 0, dvb: 0 };
   if (!ia && !ib) return out;
-  // Out of each other first (the lighter one moves more), with a little slop so they settle.
-  const push = Math.max(0, c.depth - 0.01) / (ia + ib);
+  // Out of each other first (the lighter one moves more), with a little slop so they settle —
+  // at most MAX_PUSH a frame: a fast car that sank deep in one frame comes out over a few,
+  // instead of the other being flung metres in one (cars "teleporting" after a hit).
+  const push = Math.min(MAX_PUSH, Math.max(0, c.depth - 0.01)) / (ia + ib);
   a.x -= c.nx * push * ia;
   a.z -= c.nz * push * ia;
   b.x += c.nx * push * ib;
@@ -141,7 +143,22 @@ export function resolve(a: Rigid, b: Rigid, c: Contact, e = CAR_RESTITUTION, mu 
   const jt = Math.max(-mu * j, Math.min(mu * j, -vt / (ia + ib + cat * cat * Ia + cbt * cbt * Ib)));
   apply(a, -jt * tx, -jt * tz, rax, raz, ia, Ia);
   apply(b, jt * tx, jt * tz, rbx, rbz, ib, Ib);
+  sane(a);
+  sane(b);
   return { closing: -vn, impulse: j, dva: j * ia, dvb: j * ib };
+}
+
+/** Most a body is moved out of an overlap in one frame (m). */
+export const MAX_PUSH = 0.45;
+/** Speed and spin a hit can leave a car with (m/s, rad/s): a pile-up never launches one. */
+export const MAX_V = 40, MAX_SPIN = 5;
+/** Caps a body's speed and spin, and puts anything that went non-finite back at rest. */
+export function sane(b: Rigid) {
+  if (!Number.isFinite(b.vx) || !Number.isFinite(b.vz)) b.vx = b.vz = 0;
+  if (!Number.isFinite(b.spin)) b.spin = 0;
+  const v = Math.hypot(b.vx, b.vz);
+  if (v > MAX_V) (b.vx *= MAX_V / v), (b.vz *= MAX_V / v);
+  b.spin = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, b.spin));
 }
 
 function apply(b: Rigid, jx: number, jz: number, rx: number, rz: number, im: number, iI: number) {

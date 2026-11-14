@@ -14,7 +14,7 @@
 import * as THREE from "three";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
 import type { Week } from "@/lib/localData";
-import { isShop, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, USUALLY, type StoreKind } from "@/lib/storeKinds";
+import { isShop, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, usuallyAt, type StoreKind } from "@/lib/storeKinds";
 import { patchShader, after } from "./graphics/shaders";
 import { nameLines } from "./trades";
 
@@ -68,6 +68,8 @@ export class Storefronts {
   private lastUpload = 0;
   private dressed: Dressed[] = [];
   private order: ShopLabel[] = [];
+  /** Where the city is (its country picks the "usually here" list). */
+  at: { lat: number; lng: number } | null = null;
   private idOf: string[] = [];
   private group = new THREE.Group();
   // Instanced pieces.
@@ -838,7 +840,7 @@ export class Storefronts {
       g.font = `700 26px ${FONT}`;
       let cx = px;
       y += 50;
-      for (const w of USUALLY[kind]) {
+      for (const w of usuallyAt(kind, this.at)) {
         const label = t(w), cw = g.measureText(label).width + 30;
         if (rtl ? cx - cw < 30 : cx + cw > W - 30) {
           if (y > H - 150) break;

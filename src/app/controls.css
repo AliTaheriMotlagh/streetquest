@@ -85,3 +85,9 @@ html[lang="fa"] .ab-meter span { letter-spacing: 0; }
 .tp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tp-row input[type="range"] { flex: 1; min-height: 44px; }
 .tp-row label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+
+/* The left trigger: smaller, above the move stick, out of the stick's way (mirrored left-handed). */
+.cp-fire2 { position: absolute; left: calc(26px + var(--safe-l, 0px)); bottom: calc(250px + var(--safe-b, 0px)); width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: var(--cp-fire, rgba(214, 64, 64, .55)); border: 2px solid rgba(255, 200, 200, .6); color: #fff; pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; opacity: .9; }
+.cp-fire2 svg { width: 26px; height: 26px; }
+.cpad.lh .cp-fire2 { left: auto; right: calc(26px + var(--safe-r, 0px)); }
+@media (max-height: 520px) { .cp-fire2 { bottom: calc(150px + var(--safe-b, 0px)); width: 50px; height: 50px; } }
