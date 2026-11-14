@@ -131,6 +131,18 @@ mood scales XP; loot funds research; territory funds the army.
   number are in the local language («menü» / «telefon» in Istanbul, «Speisekarte» in Berlin, «منو» / «تلفن» in
   Tehran) with the local map (Balad in Iran, Google Maps elsewhere); "usually here" lists Turkish dishes in Turkey
   and a neutral list elsewhere.
+- **Istanbul (and all of Turkey): Yemeksepeti** (`lib/yemeksepeti.ts`, `server/localData.ts`) takes Snappfood's place —
+  its restaurants are the map's delivery layer, a map place is matched to its Yemeksepeti page by name and distance, and
+  the card shows its rating, open/closed, phone, minimum order and delivery fee (in lira), its customers' reviews, and a
+  menu of the dishes those customers actually ordered (each once, newest price, most-ordered first — Yemeksepeti's full
+  menu sits behind a bot wall we don't try to pass, so a button opens it there). Getir Yemek publishes nothing we can read:
+  food places in Turkey get a «Find on Getir» search instead. Paced like the other sites (`lib/pace.ts`); `YEMEKSEPETI_URL`
+  / `YEMEKSEPETI_REVIEWS_URL` in `.env.example`.
+- **Each site only where it knows anything** (`lib/region.ts` `SOURCE_COUNTRY`, `sourceAt`, `deliveryAt`): Iran's sites
+  (Snappfood, Torob, Divar, Takhfifan, Balad, Cinematicket, Sheypoor, Basalam, Okala, Netbarg, Bilbooard, Irangaah)
+  are asked only for points in Iran, Turkey's (Yemeksepeti, Getir) only in Turkey. The map's filter hides layers that
+  can't have anything where you are (the delivery group reads «Menus from Yemeksepeti» in Turkey), and product search
+  offers only the sites that answer there — in Istanbul that's Yemeksepeti's dishes, priced in lira.
 - **One loading scene everywhere** (`components/LoadingScene.tsx`, `app/loading.css`): the app starting, the 3D
   code downloading and the city being drawn all show dusk over Tehran — the Alborz, Milad and Azadi towers — whose
   windows light up as it loads, a car on a scrolling road, the title with a light sweeping across, the bar, the

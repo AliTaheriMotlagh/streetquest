@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { countryAt, langAt, mapSearch, wordsAt } from "@/lib/region";
+import { countryAt, deliveryAt, langAt, mapSearch, sourceAt, wordsAt } from "@/lib/region";
+import { productSourcesAt } from "@/lib/productSearch";
 
 describe("where a store is, as far as words go", () => {
   it("tells the cities apart", () => {
@@ -23,5 +24,32 @@ describe("where a store is, as far as words go", () => {
     assert.equal(mapSearch("Kebapçı", { lat: 41.0082, lng: 28.9784 }).site, "google");
     assert.ok(mapSearch("Kebapçı", { lat: 41.0082, lng: 28.9784 }).url.includes("@41.00820,28.97840"));
     assert.equal(mapSearch("کبابی", { lat: 35.6892, lng: 51.389 }).site, "balad");
+  });
+});
+
+describe("one-country sources", () => {
+  const tehran = { lat: 35.6892, lng: 51.389 }, istanbul = { lat: 41.0082, lng: 28.9784 }, berlin = { lat: 52.52, lng: 13.4 };
+  it("asks Iran's sites only in Iran and Turkey's only in Turkey", () => {
+    for (const s of ["snappfood", "torob", "divar", "takhfifan", "balad", "cinematicket", "sheypoor", "basalam", "okala", "netbarg", "bilbooard", "irangaah"] as const) {
+      assert.equal(sourceAt(s, tehran), true, s);
+      assert.equal(sourceAt(s, istanbul), false, s);
+      assert.equal(sourceAt(s, berlin), false, s);
+    }
+    for (const s of ["yemeksepeti", "getir"] as const) {
+      assert.equal(sourceAt(s, istanbul), true, s);
+      assert.equal(sourceAt(s, tehran), false, s);
+    }
+  });
+  it("picks the delivery site by country; none elsewhere; Iran before a position is known", () => {
+    assert.equal(deliveryAt(tehran), "snappfood");
+    assert.equal(deliveryAt(istanbul), "yemeksepeti");
+    assert.equal(deliveryAt(berlin), null);
+    assert.equal(deliveryAt(null), "snappfood");
+    assert.equal(deliveryAt({ lat: 0, lng: 0 }), "snappfood");
+  });
+  it("finds products only from the sources that answer here", () => {
+    assert.deepEqual(productSourcesAt(tehran), ["food", "deal", "torob", "basalam"]);
+    assert.deepEqual(productSourcesAt(istanbul), ["food"]);
+    assert.deepEqual(productSourcesAt(berlin), []);
   });
 });

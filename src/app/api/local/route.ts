@@ -1,5 +1,5 @@
 // What other sites know about real stores (server/localData.ts). One GET, ten questions:
-//   ?near=1&lat&lng            Snappfood vendors around a point (the map layer)
+//   ?near=1&lat&lng            Snappfood vendors around a point (the map layer); Yemeksepeti's in Turkey
 //   ?torobNear=1&lat&lng       Torob's walk-in stores around a point (the map layer)
 //   ?divar=1&lat&lng           the nearest Divar neighbourhoods and their latest ads (the map layer)
 //   ?divar=<id>&city=<id>&cat  one neighbourhood's ads in a category (the Divar card's tabs)
@@ -8,6 +8,7 @@
 //   ?dealInfo=<id>             one Takhfifan store in full (photos, hours, contacts, every deal)
 //   ?dealReviews=<id>&page     its comments, ten a page
 //   ?menu=<code>&lat&lng       one vendor's menu / catalog, hours, phone and review counts
+//                              (a Snappfood code, or ys-<code> for Yemeksepeti in Turkey: lib/yemeksepeti.ts)
 //   ?reviews=<code>&page       one vendor's reviews, ten to a page
 //   ?torobPlace=<id>&lat&lng   a walk-in Torob store's page, what it was seen selling at its own
 //                              prices (looked up where it stands) and the first page of its catalog
@@ -23,6 +24,7 @@
 //                              No words: only the nearby sources ("any food under 150,000"). read=1 (a fresh
 //                              search, "look in more restaurants") lets it fetch a few menus not cached yet
 import { z } from "zod";
+import { VENDOR_CODE } from "@/lib/yemeksepeti";
 import { prisma } from "@/lib/db";
 import { S } from "@/lib/settings";
 import { t } from "@/lib/i18n";
@@ -53,7 +55,7 @@ const Query = z.union([
   }),
   z.object({ near: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ torobNear: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
-  z.object({ reviews: z.string().regex(/^[0-9a-z]{6}$/), page: z.coerce.number().int().min(0).max(100).default(0) }),
+  z.object({ reviews: z.string().regex(VENDOR_CODE), page: z.coerce.number().int().min(0).max(100).default(0) }),
   z.object({ torobPlace: z.coerce.number().int().positive().max(1e9), lat: num.min(-90).max(90).optional(), lng: num.min(-180).max(180).optional() }),
   z.object({ divar: z.literal("1"), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ divar: z.string().regex(/^\d{1,9}$/), city: z.string().regex(/^\d{1,9}$/), cat: z.enum(DIVAR_CAT_KEYS).default("all") }),
@@ -61,7 +63,7 @@ const Query = z.union([
   z.object({ dealInfo: z.coerce.number().int().positive().max(1e9) }),
   z.object({ dealReviews: z.coerce.number().int().positive().max(1e9), page: z.coerce.number().int().min(0).max(100).default(0) }),
   z.object({ divarPost: z.string().regex(/^[A-Za-z0-9_-]{4,16}$/) }),
-  z.object({ menu: z.string().regex(/^[0-9a-z]{6}$/), lat: num.optional(), lng: num.optional() }),
+  z.object({ menu: z.string().regex(VENDOR_CODE), lat: num.optional(), lng: num.optional() }),
   z.object({ phone: z.literal("1"), name: z.string().trim().min(1).max(120), lat: num.min(-90).max(90), lng: num.min(-180).max(180) }),
   z.object({ store: z.literal("place"), id: z.string().max(40).optional(), name: z.string().trim().min(1).max(120), lat: num, lng: num, cat: z.string().max(20) }),
   z.object({ store: z.enum(["biz", "shop"]), id: z.string().max(40) }),

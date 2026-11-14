@@ -35,6 +35,7 @@ import { HttpError } from "./http";
 import { grant } from "./rewards";
 import { areFriends, friendIds } from "./rooms";
 import { canSimulate } from "./session";
+import { partyTag } from "@/lib/asks";
 import { arenaMe, footFlags, isDead } from "./arena";
 
 /** A driver who hasn't reported for this long has parked (closed the 3D city). */
@@ -263,10 +264,12 @@ export async function inviteToParty(u: User, partyId: string, userId: string) {
   if (p.invited.includes(userId)) return;
   if (p.invited.length >= INVITES_MAX) throw new HttpError(429, t("That's plenty of invites — give them a minute to answer"));
   await prisma.driveParty.update({ where: { id: p.id }, data: { invited: { push: userId } } });
+  // Tagged: the game shows it as a card with Join (lib/asks.ts) — one tap, on the map or in the 3D city.
   await notify(userId, () => ({
     kind: "social",
+    tag: partyTag(p.code),
     title: t("🎉 {name} invited you to play together in the 3D city", { name: u.username }),
-    body: t("Open the 3D city → Play together and enter code {code} — or accept the invite there.", { code: p.code }),
+    body: t("Tap Join on the invite — or enter code {code} in Play together.", { code: p.code }),
   }));
 }
 

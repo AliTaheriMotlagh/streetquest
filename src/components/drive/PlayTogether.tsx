@@ -142,6 +142,7 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
   const friends = (data?.friends ?? []).filter((f) => !members.has(f.id));
   const strangers = near.filter((p) => !members.has(p.id));
   const roundLive = party?.status === "LIVE";
+  const invites = (data?.invites ?? []).filter((i) => i.code !== party?.code);
   const info = gameInfo(game);
 
   const start = async () => {
@@ -202,6 +203,19 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
       {/* ---- the party */}
       <section className="play-sec">
         <h4>🎉 {t("Your party")}</h4>
+        {/* Invites first, in a party or not: joining one leaves the party you're in. */}
+        {invites.length > 0 && (
+          <div className="play-invites">
+            <b className="small">📨 {t("Invites")}</b>
+            {invites.map((i) => (
+              <div key={i.id} className="drive-job">
+                <span className="ic">{PARTY_GAMES[i.game as PartyGame]?.emoji ?? "🎉"}</span>
+                <span className="grow">{t("{name}'s party · {n} players", { name: i.host, n: i.players })}</span>
+                <Button className="btn small yellow" disabled={busy || !canDrive} onClick={() => join(i.code)}>{party ? t("Switch") : t("Join")}</Button>
+              </div>
+            ))}
+          </div>
+        )}
         {!party ? (
           <>
             <p className="small muted">{t("Get friends in the 3D city and play together: start a party, invite them (or players online near you), pick a game, start.")}</p>
@@ -210,18 +224,6 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
               <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))} placeholder={t("Party code")} aria-label={t("Party code")} autoCapitalize="characters" spellCheck={false} />
               <Button className="btn" disabled={busy || code.length !== 6 || !canDrive} onClick={() => join(code)}>{t("Join")}</Button>
             </div>
-            {!!data?.invites.length && (
-              <>
-                <b className="small">{t("Invites")}</b>
-                {data.invites.map((i) => (
-                  <div key={i.id} className="drive-job">
-                    <span className="ic">{PARTY_GAMES[i.game as PartyGame]?.emoji ?? "🎉"}</span>
-                    <span className="grow">{t("{name}'s party · {n} players", { name: i.host, n: i.players })}</span>
-                    <Button className="btn small yellow" disabled={busy || !canDrive} onClick={() => join(i.code)}>{t("Join")}</Button>
-                  </div>
-                ))}
-              </>
-            )}
           </>
         ) : (
           <>

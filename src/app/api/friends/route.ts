@@ -7,6 +7,7 @@ import { body, HttpError, route } from "@/server/http";
 import { friendIds } from "@/server/rooms";
 import { unlock } from "@/server/rewards";
 import { t } from "@/lib/i18n";
+import { friendTag } from "@/lib/asks";
 
 const pub = { select: { id: true, username: true, avatar: true, xp: true, lastSeenAt: true } } as const;
 
@@ -52,8 +53,9 @@ export const POST = route(async (req) => {
       // They already asked us — just accept.
       await prisma.friendship.update({ where: { id: existing.id }, data: { status: "ACCEPTED" } });
     } else if (!existing) {
-      await prisma.friendship.create({ data: { requesterId: u.id, addresseeId: other.id } });
-      await notify(other.id, () => ({ kind: "social", title: t("Friend request"), body: t("{name} wants to join your crew", { name: u.username }) }));
+      const f = await prisma.friendship.create({ data: { requesterId: u.id, addresseeId: other.id } });
+      // Tagged: the game answers it in place (Accept / Decline on a card, lib/asks.ts), on the map or in the 3D city.
+      await notify(other.id, () => ({ kind: "social", tag: friendTag(f.id), title: t("Friend request"), body: t("{name} wants to be friends", { name: u.username }) }));
       return { message: t("Request sent") };
     } else return { message: t("Request already pending") };
   } else {
@@ -66,7 +68,7 @@ export const POST = route(async (req) => {
       await notify(f.requesterId, () => ({ kind: "social", title: t("New crew member"), body: t("{name} accepted your request", { name: u.username }) }));
     } else {
       await prisma.friendship.delete({ where: { id: f.id } });
-      return { message: d.action === "decline" ? "Declined" : "Removed" };
+      return { message: d.action === "decline" ? t("Declined") : t("Removed") };
     }
   }
   for (const id of [u.id, otherId]) if ((await friendIds(id)).length >= 5) await unlock(id, "social_5");

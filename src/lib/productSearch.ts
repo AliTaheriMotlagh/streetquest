@@ -7,6 +7,7 @@
 // Every price is TOMAN.
 import { distanceM, type LatLng } from "./geo";
 import { msg } from "./i18n";
+import { deliveryAt, sourceAt } from "./region";
 import { normName, type Deal, type Menu, type TorobItem, type Vendor } from "./localData";
 import type { Product as BasalamProduct } from "./stores/directory";
 
@@ -20,6 +21,9 @@ export const PRODUCT_SOURCES: Record<ProductSource, { emoji: string; label: stri
 export const PRODUCT_SOURCE_KEYS = Object.keys(PRODUCT_SOURCES) as [ProductSource, ...ProductSource[]];
 /** The sources that know where their stores are (they answer without any words typed: "anything under…"). */
 export const LOCAL_SOURCES: ProductSource[] = ["food", "deal"];
+/** The sources that answer at a point: food is Snappfood in Iran and Yemeksepeti in Turkey; the rest are Iran's. */
+export const productSourcesAt = (at: LatLng | null | undefined): ProductSource[] =>
+  PRODUCT_SOURCE_KEYS.filter((s) => (s === "food" ? !!deliveryAt(at) : sourceAt(s === "deal" ? "takhfifan" : s, at)));
 
 export type ProductHit = {
   /** Unique in a result: `<source>:<its id>`. */
@@ -33,6 +37,8 @@ export type ProductHit = {
   was?: number;
   /** The cheapest of several shops ("from …"). */
   from?: boolean;
+  /** Prices are toman unless this says lira (a Yemeksepeti menu, in Turkey). */
+  currency?: "TRY";
   photo: string;
   /** Who sells it. */
   store: string;
@@ -108,7 +114,7 @@ export function menuHits(menu: Menu, q: string, here?: LatLng | null): ProductHi
       seen.add(i.id);
       const now = i.priceNow > 0 && i.priceNow < i.price ? i.priceNow : i.price;
       out.push({
-        id: `food:${v.code}:${i.id}`, source: "food", title: onceTitle(i.title), about: i.about || undefined, price: now, was: now < i.price ? i.price : undefined,
+        id: `food:${v.code}:${i.id}`, source: "food", ...(menu.currency ? { currency: menu.currency } : {}), title: onceTitle(i.title), about: i.about || undefined, price: now, was: now < i.price ? i.price : undefined,
         photo: i.photo || i.image || "", store: v.title, code: v.code, lat: v.lat, lng: v.lng, dist, rating: v.rating > 0 ? Math.round(v.rating * 5) / 10 : 0, url: v.url || undefined,
       });
     }

@@ -9,6 +9,7 @@
 import { after } from "next/server";
 import { distanceM, type LatLng } from "../lib/geo";
 import { siteBase } from "../lib/relayUrl";
+import { sourceAt } from "../lib/region";
 import { pacerFor } from "../lib/pace";
 import { mergePhones, phonesFrom, type StorePhone } from "../lib/localData";
 import {
@@ -247,6 +248,8 @@ async function within<T>(p: Promise<T>, empty: T, ms = WAIT_MS): Promise<{ v: T;
 
 /** Every directory store round a point (the 3×3 cells round it) from the sites asked for, merged and nearest first. */
 export async function storesAround(at: LatLng, sites: MapSite[], wantAds: boolean): Promise<StoresAround> {
+  // Every directory, deal and ad site here is Iran's: nothing to ask anywhere else.
+  if (!sourceAt("bilbooard", at)) return { stores: [], ads: [], city: null, pending: false };
   const city = await cityAt(at);
   const bbCity = bilbooardCity(city);
   const c = cellOf(at);
@@ -352,6 +355,7 @@ export async function storeDetail(id: string, url: string, at?: LatLng): Promise
  * cold cell is skipped this time and loads for the next card.
  */
 export async function directoryTwins(store: { name: string; lat: number; lng: number }, waitMs = 2500): Promise<{ links: { site: MapSite; url: string }[]; phones: StorePhone[] }> {
+  if (!sourceAt("irangaah", store)) return { links: [], phones: [] };
   const city = await within(cityAt(store), null, waitMs);
   const c = cellOf(store);
   const bbCity = bilbooardCity(city.v);

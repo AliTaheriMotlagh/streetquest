@@ -13,11 +13,12 @@ import { fmtNum, t } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { msg } from "@/lib/i18n";
 import { snappfoodMenuUrl, type Vendor } from "@/lib/localData";
-import { LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCE_KEYS, PRODUCT_SOURCES, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
+import { LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
 import { api } from "./client";
 import { Sheet } from "./ui";
 import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, Stars } from "./Filters";
 import { LISTING_SOURCES } from "@/lib/stores/listing";
+import { countryAt, deliveryAt } from "@/lib/region";
 import { Pic, ProductPage, VendorCard, type ExtProduct } from "./StoreInfo";
 
 type Answer = { hits: ProductHit[]; total: number; stores: number; more: boolean; failed: ProductSource[] };
@@ -38,6 +39,10 @@ const PANEL = "product-filters";
 /** Each source wears its site's colour, as in the store list. */
 const SOURCE_COLOR: Record<ProductSource, string> = { food: LISTING_SOURCES.snappfood.color, deal: LISTING_SOURCES.takhfifan.color, torob: LISTING_SOURCES.torob.color, basalam: "#f05a28" };
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
+/** A hit's price in its own money: lira for a Yemeksepeti dish (Turkey), toman for the rest. */
+const priceOf = (h: ProductHit) => (h.currency === "TRY" ? t("{n} lira", { n: fmtNum(h.price) }) : h.from ? t("from {n} toman", { n: fmtNum(h.price) }) : toman(h.price));
+/** The site a source is at a point: the food is Yemeksepeti's in Turkey. */
+const siteOf = (s: ProductSource, at: LatLng | null) => (s === "food" && deliveryAt(at) === "yemeksepeti" ? t("Yemeksepeti") : t(PRODUCT_SOURCES[s].site));
 /** "۲۵۰٬۰۰۰" / "250,000" / "250000" → 250000 (0: nothing usable typed). */
 const numberOf = (s: string) => {
   const digits = s.replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0)).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/\D/g, "");
@@ -49,8 +54,8 @@ const pageOf = (h: ProductHit): ExtProduct => ({
   title: h.title,
   photo: h.photo,
   url: h.url ?? (h.code ? snappfoodMenuUrl(h.code) : ""),
-  price: h.price > 0 ? (h.from ? t("from {n} toman", { n: fmtNum(h.price) }) : toman(h.price)) : "",
-  lines: [h.store, h.was ? t("Was {n} toman", { n: fmtNum(h.was) }) : "", h.about],
+  price: h.price > 0 ? priceOf(h) : "",
+  lines: [h.store, h.was ? (h.currency === "TRY" ? t("Was {n} lira", { n: fmtNum(h.was) }) : t("Was {n} toman", { n: fmtNum(h.was) })) : "", h.about],
   desc: h.about,
 });
 
@@ -106,7 +111,10 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   const data = res?.data ?? null;
   const steps = caps.current.key === base ? caps.current.steps : [];
   const flip = (s: ProductSource) => setSources((l) => (l.includes(s) ? l.filter((x) => x !== s) : [...l, s]));
-  const shownSources = sources.length ? sources : PRODUCT_SOURCE_KEYS;
+  // Only the sites that answer where the player is (Iran's in Iran; Yemeksepeti in Turkey).
+  const here = useMemo(() => productSourcesAt(at), [at && countryAt(at.lat, at.lng)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lira = deliveryAt(at) === "yemeksepeti";
+  const shownSources = sources.length ? sources : here;
   // With nothing typed only the nearby sources can answer.
   const idle = q.length < 2;
   const note = useMemo(() => {
@@ -115,7 +123,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     if (!data) return t("Searching…");
     const parts = [t("{n} results", { n: fmtNum(data.total) })];
     if (shownSources.includes("food") && data.stores) parts.push(t("{n} menus read", { n: fmtNum(data.stores) }));
-    if (data.failed.length) parts.push(t("{sites} didn't answer", { sites: data.failed.map((s) => t(PRODUCT_SOURCES[s].site)).join(", ") }));
+    if (data.failed.length) parts.push(t("{sites} didn't answer", { sites: data.failed.map((s) => siteOf(s, at)).join(", ") }));
     return parts.join(" · ");
   }, [at, data, error, key, shownSources]);
 
@@ -130,7 +138,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   const srcChip = (s: ProductSource) => {
     const off = idle && !LOCAL_SOURCES.includes(s);
     return (
-      <Chip key={s} label={t(PRODUCT_SOURCES[s].site)} color={SOURCE_COLOR[s]} on={sources.includes(s)} disabled={off} title={off ? t("Type a name to search {site}", { site: t(PRODUCT_SOURCES[s].site) }) : t(PRODUCT_SOURCES[s].label)} onClick={() => flip(s)} />
+      <Chip key={s} label={siteOf(s, at)} color={SOURCE_COLOR[s]} on={sources.includes(s)} disabled={off} title={off ? t("Type a name to search {site}", { site: siteOf(s, at) }) : t(PRODUCT_SOURCES[s].label)} onClick={() => flip(s)} />
     );
   };
 
@@ -148,7 +156,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
             {steps.slice(0, 2).map((s) => (
               <Chip key={s} label={t("Under {n}", { n: fmtNum(s) })} on={range.max === s} onClick={() => capTo(s)} />
             ))}
-            {PRODUCT_SOURCE_KEYS.map(srcChip)}
+            {here.length > 1 && here.map(srcChip)}
           </FilterBar>
           <FilterPanel id={PANEL} open={open} onDone={() => setOpen(false)} onClear={nSet ? clearAll : undefined} results={data ? t("Show {n} results", { n: fmtNum(data.total) }) : t("Done")}>
             <FilterGroup title={t("Sort")}>
@@ -156,17 +164,17 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
                 <Chip key={k} label={t(PRODUCT_SORTS[k])} on={sort === k} onClick={() => setSort(k)} />
               ))}
             </FilterGroup>
-            <FilterGroup title={t("Price, toman")}>
+            <FilterGroup title={lira ? t("Price, lira") : t("Price, toman")}>
               <div className="fx-range" style={{ flex: "1 1 100%" }}>
-                <input inputMode="numeric" value={minDraft} onChange={(e) => setMinDraft(e.target.value)} placeholder={t("From")} aria-label={t("Lowest price, toman")} />
-                <input inputMode="numeric" value={maxDraft} onChange={(e) => setMaxDraft(e.target.value)} placeholder={t("Up to (any)")} aria-label={t("Highest price, toman")} />
+                <input inputMode="numeric" value={minDraft} onChange={(e) => setMinDraft(e.target.value)} placeholder={t("From")} aria-label={lira ? t("Lowest price, lira") : t("Lowest price, toman")} />
+                <input inputMode="numeric" value={maxDraft} onChange={(e) => setMaxDraft(e.target.value)} placeholder={t("Up to (any)")} aria-label={lira ? t("Highest price, lira") : t("Highest price, toman")} />
               </div>
               {steps.map((s) => (
                 <Chip key={s} label={t("Under {n}", { n: fmtNum(s) })} on={range.max === s} onClick={() => capTo(s)} />
               ))}
               <Chip label={t("Discounted only")} on={onlyOff} onClick={() => setOnlyOff(!onlyOff)} />
             </FilterGroup>
-            <FilterGroup title={t("Sites")}>{PRODUCT_SOURCE_KEYS.map(srcChip)}</FilterGroup>
+            {here.length > 1 && <FilterGroup title={t("Sites")}>{here.map(srcChip)}</FilterGroup>}
           </FilterPanel>
           {!draft && (
             <div className="fx-chips" aria-label={t("Ideas")}>
@@ -197,12 +205,12 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
                       <span className="fx-title" dir="auto">{h.title}</span>
                       <Meta parts={[h.store, h.dist != null && formatDistance(h.dist), h.rating ? <Stars r={h.rating} /> : null]} />
                       <span className="fx-tags">
-                        <span className="fx-src" style={{ "--site": SOURCE_COLOR[h.source] } as React.CSSProperties}>{t(PRODUCT_SOURCES[h.source].site)}</span>
+                        <span className="fx-src" style={{ "--site": SOURCE_COLOR[h.source] } as React.CSSProperties}>{siteOf(h.source, at)}</span>
                         {off > 0 && <span className="fx-off">−{fmtNum(off)}%</span>}
                       </span>
                     </span>
                     <span className="fx-price">
-                      {h.price > 0 ? <b>{h.from ? t("from {n} toman", { n: fmtNum(h.price) }) : toman(h.price)}</b> : <span className="small muted">{t("No price")}</span>}
+                      {h.price > 0 ? <b>{priceOf(h)}</b> : <span className="small muted">{t("No price")}</span>}
                       {!!h.was && <s>{fmtNum(h.was)}</s>}
                     </span>
                   </button>
@@ -217,7 +225,13 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
             🍽️ {t("Look in more restaurants")}
           </button>
         )}
-        <p className="small muted ext-source">{t("Prices are the stores' own, in toman, as last read from Snappfood, Takhfifan, Torob and Basalam.")}</p>
+        <p className="small muted ext-source">
+          {!here.length
+            ? t("No product site covers this area yet — the store list still shows the places around you.")
+            : lira
+              ? t("Prices are the restaurants' own, in lira, as last read from Yemeksepeti.")
+              : t("Prices are the stores' own, in toman, as last read from Snappfood, Takhfifan, Torob and Basalam.")}
+        </p>
       </div>
       {page && <ProductPage p={pageOf(page)} onClose={() => setPage(null)} />}
     </Sheet>

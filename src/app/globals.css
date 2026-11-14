@@ -1747,6 +1747,8 @@ html.lite .biz-bar i::after { animation: none; }
 .ext-links { gap: 6px; margin-bottom: 4px; }
 .ext-link { text-decoration: none; }
 .ext-link.ext-snappfood { border-color: #ff2f6e; }
+.ext-link.ext-yemeksepeti { border-color: #fa0050; }
+.ext-link.ext-getir { border-color: #5d3ebc; }
 .ext-link.ext-torob { border-color: #e2363c; }
 .ext-link.ext-divar { border-color: #a62626; }
 .ext-menu .input, .ext-torob .input { margin: 4px 0 8px; }

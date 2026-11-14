@@ -9,6 +9,7 @@ import { distanceM, formatDistance } from "@/lib/geo";
 import { stepWalk, walkOf, type Walk } from "@/lib/homeWalk";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import type { HeroTabId } from "./Panels";
+import { countryAt, deliveryAt, sourceAt, type CountrySource } from "@/lib/region";
 import { api, fmtTime, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
 import { ExploreBar } from "./Explore";
 import { EXPLORE_PLACES, exploreMoved } from "@/lib/explore";
@@ -30,6 +31,8 @@ import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from 
 import { AdModal, type AdOffer, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 import { flyRewards, parseRewards } from "./Rewards";
 import { Toasts, toastLife } from "./Toasts";
+import { AskCards } from "./Asks";
+import { askOfTag, asksFrom, mergeAsks, type Ask } from "@/lib/asks";
 import { ReadyTray, Wallet } from "./Hud";
 import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
@@ -107,6 +110,12 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   ...[...MAP_SITES, "sheypoor" as const].map((id) => ({ key: siteLayer(id), emoji: SITES[id].emoji, label: SITES[id].name, group: msg("Store sites") })),
 ];
 const ALL_LAYERS = MAP_LAYERS.map((l) => l.key);
+const DELIVERY_GROUP = MAP_LAYERS.find((l) => l.key === VENDOR_KIND_KEYS[0])!.group;
+/** The one-country site a layer comes from (none: the game's own, the open map, traffic — everywhere). */
+const LAYER_SOURCE: Partial<Record<MapLayer, CountrySource>> = { torob: "torob", cinema: "cinematicket", deals: "takhfifan", divar: "divar", ...Object.fromEntries([...MAP_SITES, "sheypoor" as const].map((id) => [siteLayer(id), id])) };
+/** Whether a layer has anything where the player is: Iran's sites in Iran, the delivery menus in Iran or Turkey. */
+const layerHere = (k: MapLayer, at: LatLng | null | undefined) =>
+  (VENDOR_KIND_KEYS as readonly string[]).includes(k) ? !!deliveryAt(at) : !LAYER_SOURCE[k] || sourceAt(LAYER_SOURCE[k]!, at);
 const LAYER_GROUPS = [...new Set(MAP_LAYERS.map((l) => l.group))];
 /** The layers there were when the player saved their choice (the ones since then start on). */
 const MAP_LAYERS_KNOWN_KEY = "sq_map_layers_known";
@@ -166,6 +175,8 @@ export default function Game() {
   const homeMode = !!me?.remotePlay && !simMode;
   const geo = useLocation(simMode ? simPos : homeMode ? homePos : null);
   const pos = geo.pos;
+  /** The country the player is in (which sites' layers the map offers): changes rarely, unlike pos. */
+  const posCountry = pos ? countryAt(pos.lat, pos.lng) : null;
   const [follow, setFollow] = useState(true);
   const [panel, setPanel] = useState<PanelId | null>(null);
   // Opening a panel mounts a lot of UI. It renders as a transition, so the tapped tab
@@ -546,8 +557,10 @@ export default function Game() {
     };
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
     for (const k of MAP_SITES) count[siteLayer(k)] = dirData.stores.filter((d) => d.site === k || d.also?.includes(k)).length;
-    return LAYER_GROUPS.map((g) => ({ title: g, items: MAP_LAYERS.filter((l) => l.group === g && layerShown(view, l.key)).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) })).filter((g) => g.items.length);
-  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots, dirData, view]);
+    // In Turkey the menus are Yemeksepeti's.
+    const title = (g: string) => (g === DELIVERY_GROUP && deliveryAt(pos) === "yemeksepeti" ? msg("Menus from Yemeksepeti") : g);
+    return LAYER_GROUPS.map((g) => ({ title: title(g), items: MAP_LAYERS.filter((l) => l.group === g && layerShown(view, l.key) && layerHere(l.key, pos)).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) })).filter((g) => g.items.length);
+  }, [world, vendors, torobShops, cinemas, deals, divar, siktirSpots, dirData, view, posCountry]); // eslint-disable-line react-hooks/exhaustive-deps
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -625,6 +638,32 @@ export default function Game() {
     },
     [dismissToast],
   );
+  // Friend requests and party invites waiting on an answer: cards over the map and the 3D city
+  // (Asks.tsx). Ones answered or waved away stay gone for this tab's session.
+  const [asks, setAsks] = useState<Ask[]>([]);
+  const asksDone = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      asksDone.current = new Set(JSON.parse(sessionStorage.getItem("sq_asks_done") ?? "[]") as string[]);
+    } catch {}
+  }, []);
+  const askDone = useCallback((key: string) => {
+    asksDone.current.add(key);
+    try {
+      sessionStorage.setItem("sq_asks_done", JSON.stringify([...asksDone.current].slice(-50)));
+    } catch {}
+    setAsks((a) => a.filter((x) => x.key !== key));
+  }, []);
+  const refreshAsks = useCallback(async () => {
+    const [f, p] = await Promise.all([
+      api<{ incoming: { friendshipId: string; username: string; avatar: string }[] }>("/api/friends").catch(() => null),
+      api<{ invites: { code: string; host: string; players: number }[] }>("/api/party").catch(() => null),
+    ]);
+    setAsks((a) => mergeAsks(a, asksFrom(f?.incoming, p?.invites), asksDone.current));
+  }, []);
+  useEffect(() => {
+    if (me?.id) void refreshAsks();
+  }, [me?.id, refreshAsks]);
   const lookFailed = useCallback(
     (s: MapStyle, fellBack: boolean) =>
       toast(fellBack ? { kind: "info", title: t("{style} map is blocked on this connection — showing a similar map instead", { style: t(s.name) }) } : { kind: "error", title: t("{style} map can't load on this connection — pick another style", { style: t(s.name) }) }),
@@ -830,7 +869,10 @@ export default function Game() {
         syncSince.current = r.now;
         if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, video: r.call.video, role: "callee" });
         setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
-        for (const n of r.notifications) toast(n);
+        // A friend request or a party invite is a card with its buttons, not a toast.
+        const asked = r.notifications.filter((n) => askOfTag(n.tag));
+        for (const n of r.notifications) if (!askOfTag(n.tag)) toast(n);
+        if (asked.length) void refreshAsks();
         // React to what a notification *is* (its tag), never to its translated text.
         const tagged = (tag: string) => r.notifications.find((n) => n.tag === tag);
         if (tagged("incoming")) sfx("siren");
@@ -853,7 +895,7 @@ export default function Game() {
       stop = true;
       clearInterval(t);
     };
-  }, [toast, loadMe]);
+  }, [toast, loadMe, refreshAsks]);
 
   useEffect(() => {
     if (panel === "crew" || panel === "social") setUnread(0);
@@ -1614,6 +1656,9 @@ export default function Game() {
             stores={driveStores}
           />
         )}
+
+        {/* Above the 3D city too: a request is answered wherever the player is. */}
+        <AskCards asks={asks} onDone={askDone} toast={toast} onJoined={() => !driveOn && setDriveOn({ goal: null })} />
 
         {call && (
           <CallScreen

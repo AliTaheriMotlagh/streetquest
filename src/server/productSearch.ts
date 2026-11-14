@@ -9,9 +9,10 @@
 // A source that fails is left out and named in `failed`; the others still answer.
 import { distanceM, type LatLng } from "@/lib/geo";
 import { nameScore, type Menu, type Vendor } from "@/lib/localData";
-import { basalamHits, dealHits, filterProducts, LOCAL_SOURCES, menuHits, menusToRead, torobHits, type ProductFilter, type ProductHit, type ProductSource } from "@/lib/productSearch";
+import { basalamHits, dealHits, filterProducts, LOCAL_SOURCES, menuHits, productSourcesAt, menusToRead, torobHits, type ProductFilter, type ProductHit, type ProductSource } from "@/lib/productSearch";
 import { cachedMany, dealsAround, menuKey, snappProducts, torobSearch, vendorMenu, vendorsAround } from "./localData";
 import { basalamSearch } from "./storeSites";
+import { sourceAt } from "@/lib/region";
 
 /** Restaurants this far round the player are searched (m). */
 export const FOOD_RADIUS_M = 3000;
@@ -33,7 +34,7 @@ export type ProductAnswer = { hits: ProductHit[]; total: number; /** Restaurants
 const within = <T>(p: Promise<T>, ms: number, none: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(none), ms))]);
 
 async function foodHits(q: string, here: LatLng, read: boolean): Promise<{ hits: ProductHit[]; stores: number; more: boolean }> {
-  const [around, named] = await Promise.all([vendorsAround(here, FOOD_RADIUS_M), q ? snappProducts(q, here).catch(() => null) : null]);
+  const [around, named] = await Promise.all([vendorsAround(here, FOOD_RADIUS_M), q && sourceAt("snappfood", here) ? snappProducts(q, here).catch(() => null) : null]);
   const byCode = new Map(around.map((v) => [v.code, v]));
   // Vendors the search named (near enough to matter) and those whose own name answers it come first.
   const likely = [
@@ -72,7 +73,9 @@ async function foodHits(q: string, here: LatLng, read: boolean): Promise<{ hits:
  */
 export async function searchProducts(here: LatLng, f: ProductFilter & { city?: string; /** A fresh search: a few menus not read yet may be fetched. */ read?: boolean }): Promise<ProductAnswer> {
   const q = (f.q ?? "").trim().slice(0, 60);
-  const want = (f.sources?.length ? f.sources : (["food", "deal", "torob", "basalam"] as ProductSource[])).filter((s) => q.length >= 2 || LOCAL_SOURCES.includes(s));
+  // Only the sources that answer here (Iran's in Iran; in Turkey, Yemeksepeti's menus).
+  const here_ = productSourcesAt(here);
+  const want = (f.sources?.length ? f.sources : here_).filter((s) => here_.includes(s) && (q.length >= 2 || LOCAL_SOURCES.includes(s)));
   const failed: ProductSource[] = [];
   let stores = 0, more = false;
   const run = async (s: ProductSource): Promise<ProductHit[]> => {

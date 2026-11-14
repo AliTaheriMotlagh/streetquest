@@ -18,31 +18,35 @@ const shops: StubShop[] = [];
  * 55 km away. Fixed, at 60°S where no random test spot lands, because the server keeps
  * the map for a day and the e2e database is never wiped.
  */
-const STUBTOWN = { lat: -60, lng: 100 };
+// In Iran (Torob is asked only there), in the empty Dasht-e Kavir so no real store is near.
+const STUBTOWN = { lat: 33.9, lng: 54.9 };
 const walkIns = [
   { id: 900001, name: "Stub Mobile", ...STUBTOWN, address: "Stub street 9, by the park", phone: "02155550001", phone2: "0912 555 0001", products: ["Phone X", "Phone Y case"] },
   { id: 900002, name: "Stub Shoes", ...offset(STUBTOWN, 0, 500), address: "Stub square 2", phone: "02155550002", products: ["Running shoe"] },
-  { id: 900003, name: "Far Away Shop", lat: -60, lng: 101, address: "Elsewhere 1", phone: "", products: ["Thing"] },
+  { id: 900003, name: "Far Away Shop", ...offset(STUBTOWN, 0, 55_000), address: "Elsewhere 1", phone: "", products: ["Thing"] },
 ];
 shops.push(...walkIns);
 /** Torob's hours table: Saturday–Thursday 09:00–20:30 (in Persian digits, as Torob writes them), Friday closed. */
 const torobWeek = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه"].map((title, i) => ({ title, text: i < 6 ? "۰۹:۰۰ - ۲۰:۳۰" : "تعطیل" }));
 /**
- * Divar: one city, and a fixed row of neighbourhoods at 75°N, where no random test spot
- * lands. Fixed because the server keeps Divar's neighbourhood list for a week and the e2e
- * database is never wiped: each run picks its own pair in the row (see the Divar test).
- * Pair k: "A" at 75°N, (−170 + 0.3k)°E, and "B" 1.2 km east of it; the next pair is ~8 km on.
+ * Divar: one city, and a fixed grid of neighbourhoods in eastern Iran (Divar is asked only
+ * inside Iran), east of 57.4°E where no random test spot (randomIranSpot) lands. Fixed because
+ * the server keeps Divar's neighbourhood list for a week and the e2e database is never wiped:
+ * each run picks its own pair in the grid (see the Divar test). Pair k: "A" in row k/36,
+ * column k%36 (0.08° apart, ~8 km), and "B" 1.2 km east of it.
  */
-const pairAt = (k: number) => ({ lat: 75, lng: -170 + 0.3 * k });
+const pairAt = (k: number) => ({ lat: 28.6 + 0.08 * Math.floor(k / 36), lng: 57.4 + 0.08 * (k % 36) });
 const districts = Array.from({ length: 1000 }, (_, k) => [
   { id: 2 * k + 1, name: `A${k}`, ...pairAt(k) },
   { id: 2 * k + 2, name: `B${k}`, ...offset(pairAt(k), 0, 1200) },
 ]).flat();
 /** `district` 0: a whole town's ads (Smalltown has no neighbourhoods). */
 const ads: { district: number; cat: string; title: string }[] = [{ district: 0, cat: "home-kitchen", title: "Old sofa" }];
-const SMALLTOWN = { latitude: -75, longitude: 20 };
+const SMALLTOWN = { latitude: 27.6, longitude: 57.8 };
 // Takhfifan's /nearby map answers only for this spot (anywhere else: 404, so the name search fills in).
-const TK_SPOT = { lat: 10.123, lng: 20.123 };
+const TK_SPOT = { lat: 27.123, lng: 59.123 }; // in Iran (Takhfifan is asked only there), away from the Divar grid
+/** Yemeksepeti's vendors (Turkey), as its gateway lists them. */
+const ysVendors: { code: string; name: string; latitude: number; longitude: number; rating: number; review_number: number; web_path: string; customer_phone: string; minimum_order_amount: number; minimum_delivery_fee: number; cuisines: { name: string }[]; metadata: { is_delivery_available: boolean } }[] = [];
 let server: Server;
 let calls = 0;
 
@@ -56,6 +60,24 @@ test.beforeAll(async () => {
     calls++;
     const u = new URL(req.url ?? "/", "http://stub");
     const send = (body: unknown) => (res.setHeader("content-type", "application/json"), res.end(JSON.stringify(body)));
+    // Yemeksepeti: its gateway (without the web client id it answers nothing, like the real one) and its reviews.
+    if (u.pathname.startsWith("/ys/")) {
+      if (req.headers["x-disco-client-id"] !== "web") return (res.statusCode = 403), res.end();
+      if (u.pathname === "/ys/vendors-gateway/api/v1/pandora/vendors") {
+        const at = { lat: Number(u.searchParams.get("latitude")), lng: Number(u.searchParams.get("longitude")) };
+        return send({ data: { items: Number(u.searchParams.get("offset")) ? [] : ysVendors.filter((v) => near(at, { lat: v.latitude, lon: v.longitude })) } });
+      }
+      const v = ysVendors.find((x) => u.pathname === `/ys/vendors-gateway/api/v1/pandora/vendors/${x.code}`);
+      return v ? send({ item: v }) : ((res.statusCode = 404), res.end());
+    }
+    if (u.pathname.startsWith("/ysr/reviews/vendor/")) {
+      const dishes = u.searchParams.get("has_dish") === "true";
+      const all = [
+        { uuid: "r1", createdAt: "2026-11-13T18:00:00Z", text: "Harika", reviewerName: "...e", ratings: [{ topic: "overall", score: 5 }], replies: [{ text: "Teşekkürler" }], productVariations: [{ id: "11", defaultTitle: "Adana Dürüm", unitPrice: 320.5, product: { id: "p11", defaultTitle: "Adana Dürüm", description: "Acılı", imageUrls: [] } }] },
+        { uuid: "r2", createdAt: "2026-11-12T18:00:00Z", text: "Soğuk geldi", reviewerName: "...k", ratings: [{ topic: "overall", score: 2 }], replies: [], productVariations: [] },
+      ];
+      return send({ data: dishes ? all.filter((r) => r.productVariations.length) : all, pageKey: "" });
+    }
     if (u.pathname === "/sf/mobile/v3/restaurant/vendors-list") {
       // Like the real one: everyone delivering here, `count` of them, in pages.
       const at = { lat: Number(u.searchParams.get("lat")), lng: Number(u.searchParams.get("long")) };
@@ -63,8 +85,8 @@ test.beforeAll(async () => {
       const size = Number(u.searchParams.get("page_size")), from = Number(u.searchParams.get("page")) * size;
       return send({ status: true, data: { count: all.length, finalResult: all.slice(from, from + size).map((v) => ({ type: "VENDOR", data: vendorJson(v) })) } });
     }
-    // Northville (neighbourhoods along 75°N) and Smalltown (none) far from every random spot.
-    if (u.pathname === "/dv/v8/places/cities") return send({ cities: [{ id: 1, name: "Northville", slug: "northville", centroid: { latitude: 75, longitude: 0 }, radius: 4_000_000 }, { id: 2, name: "Smalltown", slug: "smalltown", centroid: SMALLTOWN, radius: 3000 }] });
+    // Eastville (the neighbourhood grid) and Smalltown (none), both away from every random spot.
+    if (u.pathname === "/dv/v8/places/cities") return send({ cities: [{ id: 1, name: "Eastville", slug: "eastville", centroid: { latitude: 29.7, longitude: 58.8 }, radius: 200_000 }, { id: 2, name: "Smalltown", slug: "smalltown", centroid: SMALLTOWN, radius: 3000 }] });
     if (u.pathname === "/dv/v8/places/cities/2/districts") return send({ districts: [] });
     // One ad in full (its page in the game); any other token is gone.
     if (u.pathname.startsWith("/dv/v8/posts-v2/web/"))
@@ -196,6 +218,40 @@ test.beforeAll(async () => {
 test.afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
 
 const code = () => Math.random().toString(36).slice(2, 8).padEnd(6, "x");
+
+test.describe("Istanbul: Yemeksepeti instead of Snappfood", () => {
+  test("its restaurants on the map, a place matched to its page, the dishes people ordered in lira, its reviews", async ({ baseURL }) => {
+    // Somewhere in Turkey (a fresh spot each run: the server keeps an area's list for hours).
+    const spot = { lat: 37.5 + Math.random() * 2, lng: 30 + Math.random() * 8 };
+    const raw = Math.random().toString(36).slice(2, 6).padEnd(4, "y");
+    ysVendors.push({ code: raw, name: "Stub Kebapçı", latitude: spot.lat, longitude: spot.lng, rating: 4.36, review_number: 120, web_path: `https://yemeksepeti.com/restaurant/${raw}/stub-kebapci`, customer_phone: "+905301112233", minimum_order_amount: 150, minimum_delivery_fee: 19.9, cuisines: [{ name: "Kebap" }], metadata: { is_delivery_available: true } });
+    const p = await Player.create(baseURL!);
+    const ys = `ys-${raw}`;
+
+    const around = expectOk(await p.get<{ vendors: { code: string; title: string; url: string }[] }>(`/api/local?near=1&lat=${spot.lat}&lng=${spot.lng}`)).data.vendors;
+    expect(around.find((v) => v.code === ys)).toMatchObject({ title: "Stub Kebapçı", url: `https://yemeksepeti.com/restaurant/${raw}/stub-kebapci` });
+
+    type M = { source: string; currency: string; phone: string; reviews: number; minOrder: number; deliveryFee: number; sections: { items: { title: string; price: number }[] }[] };
+    const menu = expectOk(await p.get<{ menu: M }>(`/api/local?menu=${ys}&lat=${spot.lat}&lng=${spot.lng}`)).data.menu;
+    expect(menu).toMatchObject({ source: "yemeksepeti", currency: "TRY", phone: "+905301112233", reviews: 120, minOrder: 150, deliveryFee: 19.9 });
+    expect(menu.sections[0].items).toEqual([expect.objectContaining({ title: "Adana Dürüm", price: 320.5 })]);
+
+    const rev = expectOk(await p.get<{ reviews: { reviews: { who: string; rate: number; date: string; foods: string[]; reply: string }[] } }>(`/api/local?reviews=${ys}`)).data.reviews.reviews;
+    expect(rev).toEqual([
+      expect.objectContaining({ who: "e", rate: 5, date: "2026-11-13", foods: ["Adana Dürüm"], reply: "Teşekkürler" }),
+      expect.objectContaining({ who: "k", rate: 2, foods: [] }),
+    ]);
+
+    // A map place with the same name 30 m away is that restaurant: its menu, Yemeksepeti and Getir links, its phone.
+    const at = offset(spot, 30, 0);
+    const card = expectOk(await p.get<{ menu: M | null; links: { kind: string }[]; about: { phone: string } }>(`/api/local?store=place&name=${encodeURIComponent("Stub Kebapçı")}&lat=${at.lat}&lng=${at.lng}&cat=restaurant`)).data;
+    expect(card.menu?.source).toBe("yemeksepeti");
+    expect(card.links.map((l) => l.kind)).toEqual(expect.arrayContaining(["yemeksepeti", "getir"]));
+    expect(card.about.phone).toBe("+905301112233");
+    expect((await p.get(`/api/local?menu=ys-..%2Fx`)).status).toBe(400);
+    await p.dispose();
+  });
+});
 
 test.describe("store hours, reviews and walk-in stores", () => {
   test("a vendor's card: hours, phone, delivery terms, star shares and its reviews", async ({ baseURL }) => {

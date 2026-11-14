@@ -29,6 +29,8 @@ export const PACE_DEFAULT: PaceRule = { gapMs: 200, perMin: 40, coolOn: [429], s
 export const PACE_RULES: { site: string; host: RegExp; rule: PaceRule }[] = [
   { site: "snappfood", host: /snappfood\.ir/i, rule: { gapMs: 350, perMin: 30, coolOn: [403, 429], strikes: 3, coolMs: 15 * MIN } },
   // Torob has its own gap and half-hour back-off in server/localData.ts; this only caps the minute.
+  // Yemeksepeti (Delivery Hero's fd-api: vendor list, vendor page, reviews) — a 403 is its bot wall: stop asking a while.
+  { site: "yemeksepeti", host: /fd-api\.com/i, rule: { gapMs: 300, perMin: 30, coolOn: [403, 429], strikes: 2, coolMs: 15 * MIN } },
   { site: "torob", host: /torob\.com/i, rule: { gapMs: 0, perMin: 40, coolOn: [], strikes: 1, coolMs: 0 } },
   { site: "divar", host: /divar\.ir/i, rule: { gapMs: 300, perMin: 30, coolOn: [429], strikes: 2, coolMs: 15 * MIN } },
   { site: "takhfifan", host: /takhfifan\.com/i, rule: { gapMs: 250, perMin: 30, coolOn: [429], strikes: 2, coolMs: 15 * MIN } },

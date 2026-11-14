@@ -26,6 +26,7 @@ import { CHECKPOINT_M, type PartyGame, type PartyView } from "@/lib/party";
 import { Button } from "@/components/Button";
 import { Art } from "@/components/art/Art";
 import { api, type Selected, type World, type WorldPlayer } from "../game/client";
+import { PARTY_JOINED, takePartyJoined } from "../game/Asks";
 import { useGame } from "../game/ui";
 import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { setEars } from "../game/spatial";
@@ -289,6 +290,33 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     toast({ kind: "social", title: t("{emoji} Joining the party's {mode}…", { emoji: MODES[partyArena.mode as ModeKey]?.emoji ?? "🔫", mode: t(MODES[partyArena.mode as ModeKey]?.name ?? "Street Arena") }) });
     combat.join(partyArena.id, partyArena.kind);
   }, [partyArena?.id, combat, canDrive, amHost, rtOn, inMatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A party joined from an invite card (game/Asks.tsx), here or on the map before the city
+  // opened: once the city is up, the car goes next to the host and Play together opens.
+  useEffect(() => {
+    let stop = false;
+    const go = async () => {
+      takePartyJoined();
+      for (let i = 0; i < 200 && !api3d.current && !stop; i++) await new Promise((r) => setTimeout(r, 300));
+      if (stop || !api3d.current) return;
+      setMenu("play");
+      if (!canDrive) return; // following real GPS: Play together says how to play from home
+      const r = await api<{ at: (LatLng & { yaw: number }) | null; party: PartyView | null }>("/api/party", { body: { action: "gather", sim: !!sim } }).catch(() => null);
+      if (stop) return;
+      if (r?.at) {
+        api3d.current?.teleport(r.at);
+        const h = r.party?.members.find((m) => m.userId === r.party?.hostId);
+        if (h) toast({ kind: "social", title: t("🚀 You're with {name} now", { name: h.name }) });
+      }
+      api3d.current?.kick();
+    };
+    if (takePartyJoined()) void go();
+    const on = () => void go();
+    window.addEventListener(PARTY_JOINED, on);
+    return () => {
+      stop = true;
+      window.removeEventListener(PARTY_JOINED, on);
+    };
+  }, [canDrive, sim]); // eslint-disable-line react-hooks/exhaustive-deps
   const [picked, setPicked] = useState<Picked | null>(null);
   /** A store tapped (its sign, or its chip): the full card with photos, deals and the menu. */
   const [storeSheet, setStoreSheet] = useState<StoreTarget | null>(null);

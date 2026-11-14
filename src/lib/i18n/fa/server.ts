@@ -69,7 +69,6 @@ const server: Record<string, string> = {
   "You can't post in that room": "نمی‌تونی تو این گفتگو پیام بدی",
   "Already friends": "از قبل دوستین",
   "Friend request": "درخواست دوستی",
-  "{name} wants to join your crew": "{name} می‌خواد به اکیپت بپیونده",
   "Request sent": "درخواست فرستاده شد",
   "Request already pending": "درخواست قبلاً فرستاده شده",
   "Can't accept your own request": "نمی‌تونی درخواست خودت رو قبول کنی",

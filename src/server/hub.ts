@@ -10,7 +10,7 @@ export type Notice = {
   body?: string;
   kind?: "info" | "reward" | "social" | "delivery" | "event";
   /** What the game does with it beyond showing it (sound, celebration) — never parse the text. */
-  tag?: "incoming" | "levelup" | "hurt" | "ready";
+  tag?: "incoming" | "levelup" | "hurt" | "ready" | `friendreq:${string}` | `partyinv:${string}`;
   /** The panel tapping it opens (see NoticeLink). Defaults by kind. */
   link?: NoticeLink;
 };

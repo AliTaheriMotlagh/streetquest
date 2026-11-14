@@ -20,6 +20,7 @@
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / TAKHFIFAN_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
 import { countryAt } from "@/lib/region";
+import { getirSearch, isYsCode, menuOfYs, reviewsOfYs, vendorOfYs, ysRaw, type RawYsReview, type RawYsVendor } from "@/lib/yemeksepeti";
 import { Prisma } from "@prisma/client";
 import { after } from "next/server";
 import { z } from "zod";
@@ -44,6 +45,9 @@ const takhfifanBase = () => siteBase("takhfifan", process.env.TAKHFIFAN_URL, "ht
 const baladBase = () => siteBase("balad", process.env.BALAD_URL, "https://search.raah.ir");
 const baladPoiBase = () => siteBase("baladpoi", process.env.BALAD_POI_URL, "https://poi.raah.ir");
 // Google Places (official API, paid per request): asked first when there is a key; Balad when Google has no number.
+// Yemeksepeti (Istanbul and the rest of Turkey): Delivery Hero's vendor list / vendor page, and its reviews service.
+const ysBase = () => base(process.env.YEMEKSEPETI_URL, "https://tr.fd-api.com");
+const ysReviewsBase = () => base(process.env.YEMEKSEPETI_REVIEWS_URL, "https://reviews-api-tr.fd-api.com");
 const googleKey = () => process.env.GOOGLE_PLACES_KEY?.trim() || "";
 const googleBase = () => base(process.env.GOOGLE_PLACES_URL, "https://places.googleapis.com");
 /** Google lookups a day at most (each costs money; cached a month, so the same store never asks twice). */
@@ -215,7 +219,7 @@ function toVendor(v: RawVendor): Vendor | null {
   };
 }
 
-const cellOf = (p: LatLng) => ({ y: Math.round(p.lat / CELL), x: Math.round(p.lng / CELL) });
+const cellOf = (p: LatLng, size = CELL) => ({ y: Math.round(p.lat / size), x: Math.round(p.lng / size) });
 
 type RawVendorList = { data?: { count?: number; finalResult?: { type: string; data: RawVendor }[] } };
 
@@ -245,6 +249,7 @@ function vendorsInCell(c: { x: number; y: number }) {
 const inIran = (p: { lat: number; lng: number }) => countryAt(p.lat, p.lng) === "IR";
 
 export async function vendorsAround(here: LatLng, radiusM = 2000): Promise<Vendor[]> {
+  if (inTurkey(here)) return ysVendorsAround(here, radiusM);
   if (!inIran(here)) return []; // Snappfood delivers in Iran only
   const c = cellOf(here);
   let list = (await vendorsInCell(c)) ?? [];
@@ -291,13 +296,14 @@ const matchScore = (name: string, v: Vendor, d: number) => {
 
 /** The Snappfood vendor that is this store: near it, with a similar name. */
 export async function matchVendor(store: { name: string; lat: number; lng: number; cat: string }): Promise<Vendor | null> {
-  const list = (await vendorsInCell(cellOf(store))) ?? [];
+  const turkey = inTurkey(store);
+  const list = (await (turkey ? ysVendorsInCell(cellOf(store, YS_CELL)) : vendorsInCell(cellOf(store)))) ?? [];
   let best: { v: Vendor; score: number } | null = null;
   for (const v of list) {
     const score = matchScore(store.name, v, distanceM(store, v));
     if (score >= 0.5 && (!best || score > best.score)) best = { v, score };
   }
-  if (best || !sellsOnSnappfood(store.cat)) return best?.v ?? null;
+  if (best || turkey || !sellsOnSnappfood(store.cat)) return best?.v ?? null;
   // The cell's list is only the first pages of thousands: search the name, and check where
   // the best few really are (their menu, which the card needs anyway, has the position).
   const hits = ((await searchVendors(store.name, store)) ?? [])
@@ -362,6 +368,7 @@ export function snappProducts(q: string, at: LatLng) {
 
 /** A vendor's menu (restaurants) or catalog (supermarkets, bakeries…), prices in toman. */
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
+  if (isYsCode(code)) return ysMenu(ysRaw(code), near);
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
   // "menu6": Snappfood's call-centre number is dropped (the restaurant's own is added per request, phoneFor).
@@ -414,6 +421,7 @@ const starsOf = (rate: number | undefined) => Math.max(1, Math.min(5, Math.round
 
 /** A vendor's reviews, newest first, ten to a page (with how many there are in all). */
 export function vendorReviews(code: string, page = 0): Promise<ReviewPage | null> {
+  if (isYsCode(code)) return ysReviewPage(ysRaw(code), page);
   return cached<ReviewPage>(`sf:rev:${code}:${page}`, REVIEWS_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
@@ -430,6 +438,92 @@ export function vendorReviews(code: string, page = 0): Promise<ReviewPage | null
     }));
     return { count: r.data.count ?? reviews.length, reviews };
   });
+}
+
+// ---------------------------------------------------------------- Yemeksepeti (Turkey)
+const inTurkey = (p: { lat: number; lng: number }) => countryAt(p.lat, p.lng) === "TR";
+/** Yemeksepeti lists the vendors delivering to a spot nearest first; a cell this big (~2 km) reads its first pages. */
+const YS_CELL = 0.02;
+const YS_PAGE = 100;
+const YS_PAGES = 3;
+/** Reviews come 30 to a page; this many pages are read once per vendor (its menu is the dishes they name). */
+const YS_REVIEW_PAGES = 4;
+/** The public client id Yemeksepeti's own website sends; its gateway answers nothing without one. */
+const YS_HEADERS = { "x-disco-client-id": "web" };
+const ysQuery = (at: LatLng) => `latitude=${at.lat.toFixed(5)}&longitude=${at.lng.toFixed(5)}&language_id=2`;
+
+/** The Yemeksepeti vendors delivering to a cell (its first YS_PAGES pages, nearest first). */
+function ysVendorsInCell(c: { x: number; y: number }) {
+  return cached<Vendor[]>(`ys:cell:${c.y}:${c.x}`, VENDORS_TTL, async () => {
+    const root = ysBase();
+    if (!root) return null;
+    const at = { lat: c.y * YS_CELL, lng: c.x * YS_CELL };
+    const page = (n: number) =>
+      getJson<{ data?: { items?: RawYsVendor[] } }>(`${root}/vendors-gateway/api/v1/pandora/vendors?${ysQuery(at)}&vertical=restaurants&country=tr&customer_type=regular&limit=${YS_PAGE}&offset=${n * YS_PAGE}`, undefined, YS_HEADERS);
+    const first = await page(0);
+    if (!first?.data) return null;
+    const rest = (first.data.items?.length ?? 0) < YS_PAGE ? [] : await Promise.all(Array.from({ length: YS_PAGES - 1 }, (_, i) => page(i + 1)));
+    const out = new Map<string, Vendor>();
+    for (const p of [first, ...rest]) for (const raw of p?.data?.items ?? []) {
+      const v = vendorOfYs(raw);
+      if (v) out.set(v.code, v);
+    }
+    return [...out.values()];
+  });
+}
+
+/** Yemeksepeti vendors around a point, nearest first (the map layer in Turkey). */
+async function ysVendorsAround(here: LatLng, radiusM: number): Promise<Vendor[]> {
+  const list = (await ysVendorsInCell(cellOf(here, YS_CELL))) ?? [];
+  return list.map((v) => ({ v, d: distanceM(here, v) })).filter((x) => x.d <= radiusM).sort((a, b) => a.d - b.d).map((x) => x.v);
+}
+
+/**
+ * A vendor's newest reviews (YS_REVIEW_PAGES pages of them, following its page keys): all of
+ * them for the reviews tab, or (`dishes`) only those that say what was ordered — only those
+ * carry the dishes, which are its menu.
+ */
+function ysReviews(raw: string, dishes = false) {
+  return cached<RawYsReview[]>(`ys:rev${dishes ? "d" : ""}:${raw}`, dishes ? MENU_TTL : REVIEWS_TTL, async () => {
+    const root = ysReviewsBase();
+    if (!root) return null;
+    const out: RawYsReview[] = [];
+    let key = "";
+    for (let i = 0; i < YS_REVIEW_PAGES; i++) {
+      const r = await getJson<{ data?: RawYsReview[]; pageKey?: string }>(`${root}/reviews/vendor/${encodeURIComponent(raw)}?global_entity_id=YS_TR&limit=30&created_at=desc${dishes ? "&has_dish=true" : ""}${key ? `&nextPageKey=${key}` : ""}`);
+      if (!r?.data) return i ? out : null;
+      // Only what the card shows is kept.
+      out.push(...r.data.map(({ uuid, createdAt, text, reviewerName, isAnonymous, ratings, replies, productVariations }) => ({ uuid, createdAt, text, reviewerName, isAnonymous, ratings, replies, productVariations })));
+      if (!r.pageKey || r.data.length < 30) break;
+      key = r.pageKey; // already URL-encoded by Yemeksepeti
+    }
+    return out;
+  });
+}
+
+/** A Yemeksepeti vendor's card: its page and the dishes its customers ordered, prices in lira. */
+function ysMenu(raw: string, near?: LatLng): Promise<Menu | null> {
+  return cached<Menu>(`ys:menu:${raw}`, MENU_TTL, async () => {
+    const root = ysBase();
+    if (!root) return null;
+    const at = near ?? { lat: 41.0369, lng: 28.985 };
+    const [page, reviews] = await Promise.all([
+      getJson<{ item?: RawYsVendor }>(`${root}/vendors-gateway/api/v1/pandora/vendors/${encodeURIComponent(raw)}?${ysQuery(at)}`, undefined, YS_HEADERS),
+      ysReviews(raw, true).catch(() => null),
+    ]);
+    const menu = menuOfYs(page?.item, reviews);
+    return menu && { ...menu, phones: phonesFrom("yemeksepeti", menu.phone) };
+  });
+}
+
+/** Ten of the cached reviews a page (the card asks page by page, as for Snappfood). */
+async function ysReviewPage(raw: string, page: number): Promise<ReviewPage | null> {
+  const all = await ysReviews(raw);
+  if (!all) return null;
+  const menu = await prisma.extCache.findUnique({ where: { key: `ys:menu:${raw}` } }).catch(() => null);
+  const total = (menu?.data as Menu | undefined)?.reviews ?? all.length;
+  // Only the ones read can be paged through; the total says how many there are in all.
+  return { count: Math.min(total, all.length), reviews: reviewsOfYs(all.slice(page * 10, page * 10 + 10)) };
 }
 
 // ---------------------------------------------------------------- Torob
@@ -904,7 +998,8 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   // Snappfood and Torob are Iran's: elsewhere the card is the map's own data (website, phone,
   // hours, Instagram) and searches in the local language — no lookups that can't find anything.
   const iran = inIran(s);
-  const code = owned ?? (iran ? (await matchVendor(s).catch(() => null))?.code : null) ?? null;
+  const turkey = inTurkey(s);
+  const code = owned ?? (iran || turkey ? (await matchVendor(s).catch(() => null))?.code : null) ?? null;
   const menu = code ? await vendorMenu(code, s).catch(() => null) : null;
   // Torob lists online shops: this store's own shop there (the owner's link, else one with
   // exactly its name) and its catalog; failing that, listings only this store sells.
@@ -918,8 +1013,11 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
       ? await torobSearch("", shop.id).catch(() => [])
       : (await torobSearch(s.name).catch(() => [])).filter((x) => x.shop && nameScore(x.shop, s.name) >= 1);
   const links: StoreLink[] = [];
-  if (menu) links.push({ kind: "snappfood", url: snappfoodMenuUrl(menu.vendor.code), label: t("Order on Snappfood") });
+  if (menu?.source === "yemeksepeti") links.push({ kind: "yemeksepeti", url: menu.vendor.url, label: t("Order on Yemeksepeti") });
+  else if (menu) links.push({ kind: "snappfood", url: snappfoodMenuUrl(menu.vendor.code), label: t("Order on Snappfood") });
   else if (owned) links.push({ kind: "snappfood", url: snappfoodMenuUrl(owned), label: t("Order on Snappfood") });
+  // Getir Yemek can't be read: a food place in Turkey gets a search for it there.
+  if (turkey && isFoodCat(s.cat)) links.push({ kind: "getir", url: getirSearch(s.name), label: t("Find on Getir") });
   if (tl || shop) links.push({ kind: "torob", url: tl ?? shop!.url, label: t("Shop on Torob") });
   const dl = s.divar ? divarLink(s.divar) : null;
   if (dl) links.push({ kind: "divar", url: dl, label: t("See the ad on Divar") });
@@ -927,7 +1025,7 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   if (s.instagram) links.push({ kind: "instagram", url: `https://instagram.com/${encodeURIComponent(s.instagram)}`, label: `@${s.instagram}` });
   // Every number anyone has: the map's own record, the other maps' (looked up where the
   // store stands), the menu's. The first is the card's Call button; Info lists them all.
-  const phones = mergePhones(phonesFrom("map", s.phone), await phonesFor(s), menu?.phones ?? phonesFrom("snappfood", menu?.phone));
+  const phones = mergePhones(phonesFrom("map", s.phone), await phonesFor(s), menu?.phones ?? phonesFrom(menu?.source ?? "snappfood", menu?.phone));
   const phone = phones[0]?.number ?? "";
   if (phone) links.push({ kind: "phone", url: `tel:${phone.replace(/[^\d+]/g, "")}`, label: phone });
   const about = {

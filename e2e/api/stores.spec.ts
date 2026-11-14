@@ -10,10 +10,11 @@ import { STUB_PORT } from "../../playwright.config";
 import { expectOk, offset, Player } from "../helpers";
 
 /**
- * "Tehran" for this test, at 70°S where no random test spot lands: fixed, because the server keeps
+ * "Tehran" for this test, in south-east Iran where no random test spot lands: fixed, because the server keeps
  * the city list for a week and each site's cells for a day, and the e2e database is never wiped.
  */
-const CITY = { lat: -70, lng: 120 };
+// In Iran (the store sites are asked only there), in empty south-east Baluchestan, away from every other test spot.
+const CITY = { lat: 26.4, lng: 60.6 };
 const cafe = { ...offset(CITY, 100, 100) };
 const twin = { ...offset(CITY, 110, 105) };
 const doctor = { ...offset(CITY, -300, 200) };

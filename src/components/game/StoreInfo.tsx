@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { menuSearch, storeKind, usuallyAt } from "@/lib/storeKinds";
 import { createPortal } from "react-dom";
+import { isYsCode } from "@/lib/yemeksepeti";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
@@ -67,7 +68,11 @@ const LOCAL_CACHE_MS = 60_000;
 const AUTO_RETRY_MS = 1500;
 
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
-const LINK_ICON = { snappfood: "🍽️", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸", directory: "🗂️" } as const;
+/** A menu's price in its own money: toman (Snappfood), lira (Yemeksepeti, in Turkey). */
+const money = (n: number, currency?: Menu["currency"]) => (currency === "TRY" ? t("{n} lira", { n: fmtNum(n) }) : toman(n));
+/** Where a menu's dishes are ordered, by whose menu it is. */
+const orderOn = (menu: Pick<Menu, "source"> | null | undefined) => (menu?.source === "yemeksepeti" ? t("Order on Yemeksepeti") : t("Order on Snappfood"));
+const LINK_ICON = { snappfood: "🍽️", yemeksepeti: "🍽️", getir: "🛵", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸", directory: "🗂️" } as const;
 /** "09:30" in the player's digits. */
 const clock = (min: number) => clockOf(min).replace(/\d/g, (d) => fmtNum(Number(d)));
 const spanText = ([a, b]: [number, number]) => `${clock(a)}–${clock(b > 1440 ? b - 1440 : b)}`;
@@ -88,7 +93,7 @@ function usePhones(store: StoreRef | null, known: StorePhone[] | undefined) {
   return { phones, looking: !!ask && !data && !error };
 }
 /** Who had the number. */
-const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "google" ? t("Google") : s === "takhfifan" ? t("Takhfifan") : s === "irangaah" ? t("Irangaah") : s === "netbarg" ? t("Netbarg") : t("Map"));
+const sourceName = (s: StorePhone["source"]) => (s === "balad" ? t("Balad") : s === "torob" ? t("Torob") : s === "snappfood" ? t("Snappfood") : s === "yemeksepeti" ? t("Yemeksepeti") : s === "google" ? t("Google") : s === "takhfifan" ? t("Takhfifan") : s === "irangaah" ? t("Irangaah") : s === "netbarg" ? t("Netbarg") : t("Map"));
 /** One number to tap: a mobile or a landline, and where it was read. */
 function PhoneLink({ p }: { p: StorePhone }) {
   return (
@@ -190,9 +195,9 @@ function HoursTable({ week, at }: { week: Week; at: LatLng }) {
   );
 }
 
-type InfoProps = { at: LatLng; store?: StoreRef | null; week?: Week | null; hours?: string; address?: string; area?: string; phones?: StorePhone[]; city?: string; minOrder?: number; deliveryFee?: number };
+type InfoProps = { at: LatLng; store?: StoreRef | null; week?: Week | null; hours?: string; address?: string; area?: string; phones?: StorePhone[]; city?: string; minOrder?: number; deliveryFee?: number; currency?: Menu["currency"] };
 /** Hours, address, phone (or where to find it), delivery terms: whatever is known, else a line saying so. */
-export function InfoView({ at, store = null, week, hours, address, area, phones, city, minOrder, deliveryFee }: InfoProps) {
+export function InfoView({ at, store = null, week, hours, address, area, phones, city, minOrder, deliveryFee, currency }: InfoProps) {
   const empty = !week && !hours && !address && !phones?.length && !store?.name;
   return (
     <div className="store-info">
@@ -214,8 +219,8 @@ export function InfoView({ at, store = null, week, hours, address, area, phones,
         </div>
       )}
       <PhoneRows store={store} phones={phones} />
-      {!!minOrder && <div className="info-row">🧾 {t("Minimum order: {price}", { price: toman(minOrder) })}</div>}
-      {deliveryFee != null && <div className="info-row">🛵 {deliveryFee ? t("Delivery: {price}", { price: toman(deliveryFee) }) : t("Free delivery")}</div>}
+      {!!minOrder && <div className="info-row">🧾 {t("Minimum order: {price}", { price: money(minOrder, currency) })}</div>}
+      {deliveryFee != null && <div className="info-row">🛵 {deliveryFee ? t("Delivery: {price}", { price: money(deliveryFee, currency) }) : t("Free delivery")}</div>}
       {empty && <p className="small muted">{t("No hours, address or phone known for this store yet.")}</p>}
     </div>
   );
@@ -246,10 +251,11 @@ export function StoreTabs({ tabs }: { tabs: Tab[] }) {
 
 // ---------------------------------------------------------------- menu
 /** Prices as the menu shows them: the price now, the old one struck through. */
-function MenuPrice({ price, priceNow }: { price: number; priceNow: number }) {
+function MenuPrice({ price, priceNow, currency }: { price: number; priceNow: number; currency?: Menu["currency"] }) {
+  if (priceNow <= 0) return null;
   return (
     <span className="price-tag">
-      <b>{toman(priceNow)}</b>
+      <b>{money(priceNow, currency)}</b>
       {priceNow < price && <s>{fmtNum(price)}</s>}
     </span>
   );
@@ -270,7 +276,7 @@ function MenuItemView({ item, menu, onBack }: { item: MenuItem; menu: Menu; onBa
       <h3 dir="auto">{item.title}</h3>
       {item.about && <p className="muted ext-dish-about" dir="auto">{item.about}</p>}
       <span className="price-tag big">
-        <b>{toman(item.priceNow)}</b>
+        <b>{money(item.priceNow, menu.currency)}</b>
         {off > 0 && (
           <>
             <s>{fmtNum(item.price)}</s>
@@ -278,8 +284,8 @@ function MenuItemView({ item, menu, onBack }: { item: MenuItem; menu: Menu; onBa
           </>
         )}
       </span>
-      <a className="btn yellow block" href={snappfoodMenuUrl(menu.vendor.code)} target="_blank" rel="noopener noreferrer">
-        🍽️ {t("Order on Snappfood")}
+      <a className="btn yellow block" href={menu.vendor.url || snappfoodMenuUrl(menu.vendor.code)} target="_blank" rel="noopener noreferrer">
+        🍽️ {orderOn(menu)}
       </a>
     </div>
   );
@@ -318,12 +324,19 @@ export function MenuView({ menu }: { menu: Menu }) {
               <b dir="auto">{i.title}</b>
               {i.about && <p className="small muted" dir="auto">{i.about}</p>}
             </div>
-            <MenuPrice price={i.price} priceNow={i.priceNow} />
+            <MenuPrice price={i.price} priceNow={i.priceNow} currency={menu.currency} />
           </button>
         ))}
-        {!items.length && <div className="empty">{t("Nothing matches")}</div>}
+        {!items.length && <div className="empty">{needle || menu.source !== "yemeksepeti" ? t("Nothing matches") : t("No dishes named in its reviews yet.")}</div>}
       </div>
-      <p className="small muted ext-source">{t("From Snappfood · updated {when}", { when: fmtTime(menu.fetchedAt) })}</p>
+      {menu.source === "yemeksepeti" ? (
+        <>
+          <a className="btn small ghost block ext-link ext-yemeksepeti" href={menu.vendor.url} target="_blank" rel="noopener noreferrer">🍽️ {t("The full menu on Yemeksepeti")}</a>
+          <p className="small muted ext-source">{t("What customers ordered on Yemeksepeti, at its latest price · updated {when}", { when: fmtTime(menu.fetchedAt) })}</p>
+        </>
+      ) : (
+        <p className="small muted ext-source">{t("From Snappfood · updated {when}", { when: fmtTime(menu.fetchedAt) })}</p>
+      )}
     </div>
   );
 }
@@ -392,7 +405,7 @@ function ReviewsPage({ code, page, last, onMore }: { code: string; page: number;
 }
 
 /** A vendor's reviews: the star split, then the newest first, ten more at a time. */
-function ReviewsView({ code, total, stars }: { code: string; total?: number; stars?: number[] }) {
+function ReviewsView({ code, total, stars, source }: { code: string; total?: number; stars?: number[]; source?: Menu["source"] }) {
   const [pages, setPages] = useState(1);
   return (
     <div className="reviews">
@@ -400,7 +413,7 @@ function ReviewsView({ code, total, stars }: { code: string; total?: number; sta
       {Array.from({ length: pages }, (_, i) => (
         <ReviewsPage key={i} code={code} page={i} last={i === pages - 1} onMore={() => setPages((n) => Math.min(n + 1, 20))} />
       ))}
-      <p className="small muted ext-source">{t("Reviews from Snappfood customers")}</p>
+      <p className="small muted ext-source">{source === "yemeksepeti" ? t("Reviews from Yemeksepeti customers") : t("Reviews from Snappfood customers")}</p>
     </div>
   );
 }
@@ -654,8 +667,8 @@ export function StoreExtras({ query, at, bare }: { query: Record<string, string 
   // Torob only for a store that's on it: its own shop, or listings only it sells.
   const onTorob = !!data.torobShop || data.torob.length > 0;
   if (onTorob) tabs.push({ key: "torob", label: `🏷️ ${t("Torob")}`, body: () => <TorobSearch initial={data.torob} shop={data.torobShop} /> });
-  if (data.menu) tabs.push({ key: "reviews", label: `⭐ ${data.menu.reviews ? t("Reviews ({n})", { n: fmtNum(data.menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={data.menu!.vendor.code} total={data.menu!.reviews} stars={data.menu!.stars} /> });
-  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} store={store} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phones={phones} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} /> });
+  if (data.menu) tabs.push({ key: "reviews", label: `⭐ ${data.menu.reviews ? t("Reviews ({n})", { n: fmtNum(data.menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={data.menu!.vendor.code} total={data.menu!.reviews} stars={data.menu!.stars} source={data.menu!.source} /> });
+  tabs.push({ key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={where} store={store} week={week} hours={a.hours} address={a.address} area={data.menu?.area} phones={phones} minOrder={data.menu?.minOrder} deliveryFee={data.menu?.deliveryFee} currency={data.menu?.currency} /> });
   return (
     <div className="ext-store">
       {!bare && (a.photo || a.logo) && (
@@ -769,7 +782,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       {v.about && <p className="small muted store-about" dir="auto">{v.about}</p>}
       {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
       <div className="store-actions">
-        <a className="btn small ghost ext-link ext-snappfood" href={snappfoodMenuUrl(v.code)} target="_blank" rel="noopener noreferrer">🍽️ {t("Order on Snappfood")}</a>
+        <a className={`btn small ghost ext-link ext-${isYsCode(v.code) ? "yemeksepeti" : "snappfood"}`} href={v.url || snappfoodMenuUrl(v.code)} target="_blank" rel="noopener noreferrer">🍽️ {isYsCode(v.code) ? t("Order on Yemeksepeti") : t("Order on Snappfood")}</a>
         {menu && <CallButton store={{ name: v.title, lat: v.lat, lng: v.lng }} phones={menu.phones} />}
         <GoButtons to={v} name={v.title} dist={dist} />
       </div>
@@ -783,8 +796,8 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
         <StoreTabs
           tabs={[
             { key: "menu", label: v.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={menu} /> },
-            { key: "reviews", label: `⭐ ${menu.reviews ? t("Reviews ({n})", { n: fmtNum(menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={v.code} total={menu.reviews} stars={menu.stars} /> },
-            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} store={{ name: v.title, lat: v.lat, lng: v.lng }} week={menu.week} address={menu.address} area={menu.area} phones={menu.phones} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} /> },
+            { key: "reviews", label: `⭐ ${menu.reviews ? t("Reviews ({n})", { n: fmtNum(menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={v.code} total={menu.reviews} stars={menu.stars} source={menu.source} /> },
+            { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} store={{ name: v.title, lat: v.lat, lng: v.lng }} week={menu.week} address={menu.address} area={menu.area} phones={menu.phones} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} currency={menu.currency} /> },
           ]}
         />
       ) : (

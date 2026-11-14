@@ -63,6 +63,9 @@ export default defineConfig({
           DIVAR_URL: `http://localhost:${STUB_PORT}/dv`,
           TAKHFIFAN_URL: `http://localhost:${STUB_PORT}/tk`,
           BALAD_URL: `http://localhost:${STUB_PORT}/bl`,
+          // Yemeksepeti (Turkey) from the same stub (e2e/api/local.spec.ts).
+          YEMEKSEPETI_URL: `http://localhost:${STUB_PORT}/ys`,
+          YEMEKSEPETI_REVIEWS_URL: `http://localhost:${STUB_PORT}/ysr`,
           BALAD_POI_URL: `http://localhost:${STUB_PORT}/blp`,
           GOOGLE_PLACES_URL: `http://localhost:${STUB_PORT}/gp`,
           GOOGLE_PLACES_KEY: "test-google-key",

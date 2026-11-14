@@ -162,7 +162,6 @@ const drive: Record<string, string> = {
   "You can invite friends, and players online near you": "می‌تونی دوستات و بازیکن‌های آنلاینِ نزدیکت رو دعوت کنی",
   "That's plenty of invites — give them a minute to answer": "دعوت کافیه — یه دقیقه بهشون وقت بده جواب بدن",
   "🎉 {name} invited you to play together in the 3D city": "🎉 {name} دعوتت کرده با هم توی شهر سه‌بعدی بازی کنین",
-  "Open the 3D city → Play together and enter code {code} — or accept the invite there.": "شهر سه‌بعدی ← «بازی با هم» رو باز کن و کد {code} رو وارد کن — یا همون‌جا دعوت رو قبول کن.",
   "Only the host can start a round": "فقط میزبان می‌تونه دور رو شروع کنه",
   "A round is already running": "یه دور الان در جریانه",
   "{game} needs at least {n} players": "{game} حداقل {n} بازیکن لازم داره",

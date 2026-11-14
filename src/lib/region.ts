@@ -44,6 +44,26 @@ export function countryAt(lat: number, lng: number): Country {
 
 export type Lang = "fa" | "tr" | "ar" | "en" | "de" | "fr" | "nl" | "sv" | "az" | "ka" | "hy" | "ps";
 const LANG: Record<Country, Lang> = { IR: "fa", AF: "fa", TR: "tr", IQ: "ar", AE: "ar", SA: "ar", AZ: "az", AM: "hy", GE: "ka", DE: "de", FR: "fr", NL: "nl", SE: "sv", GB: "en", US: "en", CA: "en", OTHER: "en" };
+/**
+ * The outside sources that know one country only, and that country. Each is asked, and each
+ * layer, chip and tab it fills is shown, only there: Iran's in Iran, Turkey's in Turkey (the
+ * open map, Google, traffic and radio are worldwide and aren't listed).
+ */
+export const SOURCE_COUNTRY = {
+  snappfood: "IR", torob: "IR", divar: "IR", takhfifan: "IR", balad: "IR", cinematicket: "IR",
+  sheypoor: "IR", basalam: "IR", okala: "IR", netbarg: "IR", bilbooard: "IR", irangaah: "IR",
+  yemeksepeti: "TR", getir: "TR",
+} as const satisfies Record<string, Country>;
+export type CountrySource = keyof typeof SOURCE_COUNTRY;
+/** Whether a one-country source answers at a point. Before a position is known (0,0 or none) Iran is assumed, as wordsAt does. */
+export function sourceAt(source: CountrySource, at: { lat: number; lng: number } | null | undefined): boolean {
+  const c = at && (at.lat || at.lng) ? countryAt(at.lat, at.lng) : "IR";
+  return SOURCE_COUNTRY[source] === c;
+}
+/** The food-delivery site that has menus at a point (Snappfood in Iran, Yemeksepeti in Turkey), or null. */
+export const deliveryAt = (at: { lat: number; lng: number } | null | undefined): "snappfood" | "yemeksepeti" | null =>
+  sourceAt("snappfood", at) ? "snappfood" : sourceAt("yemeksepeti", at) ? "yemeksepeti" : null;
+
 export const langAt = (lat: number, lng: number): Lang => LANG[countryAt(lat, lng)];
 
 /** What a local types after a store's name to find its menu or its number. */
