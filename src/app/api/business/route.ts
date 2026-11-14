@@ -4,7 +4,9 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { bbox, distanceM } from "@/lib/geo";
-import { activePlan, BIZ_LIMITS, BIZ_SETUP_M, CAMPAIGN_MAX_DAYS, PLAN_KEYS, PLANS } from "@/lib/business";
+import { activePlan, BIZ_LIMITS, BIZ_MENU_MAX, BIZ_SETUP_M, CAMPAIGN_MAX_DAYS, cleanColor, cleanMenu, HOURS_RE, OFF_DAY_BITS, PLAN_KEYS, PLANS } from "@/lib/business";
+import { createHash } from "node:crypto";
+import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { PLACE_CAT_KEYS, PLACE_CATS } from "@/lib/places";
 import { S } from "@/lib/settings";
 import { t } from "@/lib/i18n";
@@ -46,6 +48,17 @@ const Schema = z.discriminatedUnion("action", [
   Details.extend({ action: z.literal("create"), osmId: z.string().max(40).optional() }),
   Details.extend({ action: z.literal("update"), businessId: z.string() }),
   z.object({ action: z.literal("delete"), businessId: z.string() }),
+  // Its look in the game: brand colour, banner line, menu, hours, logo (a data URL; null removes it).
+  z.object({
+    action: z.literal("look"),
+    businessId: z.string(),
+    color: z.string().max(7).default(""),
+    tagline: text(BIZ_LIMITS.tagline).default(""),
+    menu: z.array(z.object({ title: text(BIZ_LIMITS.menuTitle).min(1), price: z.number().int().min(0).max(1e9) })).max(BIZ_MENU_MAX).default([]),
+    hours: z.string().trim().max(40).refine((v) => !v || HOURS_RE.test(v.replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0))), "Hours look like 09:00-22:00").default(""),
+    offDays: z.number().int().min(0).max(OFF_DAY_BITS).default(0),
+    logo: z.string().max(MAX_PHOTO_DATA_URL).nullable().optional(),
+  }),
   z.object({
     action: z.literal("campaign"),
     businessId: z.string(),
@@ -69,7 +82,7 @@ const Schema = z.discriminatedUnion("action", [
 ]);
 
 async function mine(userId: string, businessId: string) {
-  const b = await prisma.business.findFirst({ where: { id: businessId, ownerId: userId } });
+  const b = await prisma.business.findFirst({ omit: { logo: true }, where: { id: businessId, ownerId: userId } });
   if (!b) throw new HttpError(404, t("Business not found"));
   return b;
 }
@@ -90,7 +103,7 @@ export const POST = actionRoute(async (req) => {
 
   if (d.action === "create") {
     off();
-    const owned = await prisma.business.findMany({ where: { ownerId: u.id } });
+    const owned = await prisma.business.findMany({ omit: { logo: true }, where: { ownerId: u.id } });
     const allowed = Math.max(1, ...owned.map((b) => activePlan(b).locations));
     if (owned.length >= allowed) throw new HttpError(400, owned.length === 1 ? t("More locations need the Chain plan") : t("Your plan allows {n} locations", { n: allowed }));
     const here = await lastKnownLocation(u.id);
@@ -98,7 +111,7 @@ export const POST = actionRoute(async (req) => {
     if (d.osmId) {
       const place = [...(await placesAround(here)).values()].flat().find((p) => p.id === d.osmId);
       if (!place) throw new HttpError(404, t("That place isn't on the map here"));
-      if (await prisma.business.findFirst({ where: { osmId: d.osmId } })) throw new HttpError(409, t("{place} is already claimed — contact support if it's yours", { place: place.name }));
+      if (await prisma.business.findFirst({ omit: { logo: true }, where: { osmId: d.osmId } })) throw new HttpError(409, t("{place} is already claimed — contact support if it's yours", { place: place.name }));
       at = { lat: place.lat, lng: place.lng };
     }
     // Set up from inside (or right outside) the store, so nobody claims a place they've never been to.
@@ -111,6 +124,22 @@ export const POST = actionRoute(async (req) => {
   if (d.action === "update") {
     await mine(u.id, d.businessId);
     await prisma.business.update({ where: { id: d.businessId }, data: { name: d.name, category: d.category, emoji: d.emoji || PLACE_CATS[d.category].emoji, about: d.about, address: d.address, phone: d.phone, website: d.website, snappfood: d.snappfood, torob: d.torob, divar: d.divar } });
+    return { message: t("Saved") };
+  }
+  if (d.action === "look") {
+    await mine(u.id, d.businessId);
+    const logo = d.logo ? decodePhoto(d.logo) : null;
+    await prisma.business.update({
+      where: { id: d.businessId },
+      data: {
+        color: cleanColor(d.color),
+        tagline: d.tagline,
+        menu: cleanMenu(d.menu),
+        hours: d.hours.replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x6f0)),
+        offDays: d.offDays,
+        ...(logo ? { logo: new Uint8Array(logo.bytes), logoType: logo.type, logoHash: createHash("sha1").update(logo.bytes).digest("hex").slice(0, 12) } : d.logo === null ? { logo: null, logoType: "", logoHash: "" } : {}),
+      },
+    });
     return { message: t("Saved") };
   }
   if (d.action === "delete") {

@@ -26,6 +26,7 @@
 import { z } from "zod";
 import { VENDOR_CODE } from "@/lib/yemeksepeti";
 import { prisma } from "@/lib/db";
+import { bizOpeningHours } from "@/lib/business";
 import { S } from "@/lib/settings";
 import { t } from "@/lib/i18n";
 import { DIVAR_CAT_KEYS, mergePhones, phonesFrom, sameStore, type Menu, type StoreData, type StorePhone } from "@/lib/localData";
@@ -152,8 +153,8 @@ export const GET = route(async (req) => {
   if (q.store === "place") {
     // A business that claimed this place has its own links: they win over the guess.
     // Otherwise the map's own record of the place has its phone, website, hours…
-    const biz = q.id ? await prisma.business.findFirst({ where: { osmId: q.id } }) : null;
-    if (biz) return storeData({ ...biz, cat: biz.category });
+    const biz = q.id ? await prisma.business.findFirst({ omit: { logo: true }, where: { osmId: q.id } }) : null;
+    if (biz) return storeData({ ...biz, cat: biz.category, hours: bizOpeningHours(biz.hours, biz.offDays) || undefined });
     const info = q.id ? (await findPlace(tileKey(tileOf(q).cx, tileOf(q).cy), q.id))?.info : undefined;
     const [data, twins] = await Promise.all([
       storeData({ name: q.name, lat: q.lat, lng: q.lng, cat: q.cat, website: info?.web, phone: info?.phone, instagram: info?.ig, hours: info?.hours, address: info?.addr, photo: info?.img }),
@@ -162,9 +163,9 @@ export const GET = route(async (req) => {
     return withTwins(data, twins);
   }
   if (q.store === "biz") {
-    const b = await prisma.business.findUnique({ where: { id: q.id } });
+    const b = await prisma.business.findUnique({ omit: { logo: true }, where: { id: q.id } });
     if (!b) throw new HttpError(404, t("Business not found"));
-    return storeData({ ...b, cat: b.category });
+    return storeData({ ...b, cat: b.category, hours: bizOpeningHours(b.hours, b.offDays) || undefined });
   }
   const s = await prisma.shop.findUnique({ where: { id: q.id } });
   if (!s) throw new HttpError(404, t("Shop not found"));

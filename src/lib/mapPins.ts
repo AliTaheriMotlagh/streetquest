@@ -28,7 +28,7 @@ export type PinSpec = {
   glyph?: IconName;
   /** What kind of place: the disc's colour. */
   color: string;
-  /** A logo / photo shown inside at street level instead of the face (https only). */
+  /** A logo / photo shown inside at street level instead of the face (https only, or a business's own logo here). */
   logo?: string;
   label?: string;
   badge?: { text: string; kind: BadgeKind };
@@ -40,7 +40,7 @@ import { ICON_PATHS, type IconName } from "./iconPaths";
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeColor = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) ? c : "#6b7280");
-const safeUrl = (u: string | undefined) => (u && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : "");
+const safeUrl = (u: string | undefined) => (u && /^(https:\/\/|\/api\/business\/logo\?)[^\s"'<>]+$/.test(u) ? u : "");
 
 /** The pin's inner HTML (the map wraps it in `.mk.pin.pin-<family>`). */
 export function pinHtml(p: PinSpec): string {

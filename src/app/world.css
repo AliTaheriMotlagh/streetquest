@@ -671,3 +671,35 @@ html[lang="fa"] .scn-k { letter-spacing: 0; }
 .radio-eq i:nth-child(3) { animation-delay: -.6s; }
 @keyframes radioEq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 @media (prefers-reduced-motion: reduce) { .radio-eq i { animation: none; transform: scaleY(.7); } }
+
+/* A business's own banner on its card (Starter and up): its colours, logo and banner line. */
+.biz-banner-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; margin-bottom: 10px; color: var(--ink, #fff); background: linear-gradient(180deg, var(--brand), var(--brand2)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); min-width: 0; }
+.biz-banner-card.featured { box-shadow: inset 0 0 0 2px #f0c05a, 0 0 18px rgba(240,192,90,.35); }
+.biz-banner-card b { font-size: 1.1em; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.biz-banner-card .small { opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.biz-logo { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: #fff; flex: none; }
+.biz-logo.emoji { display: grid; place-items: center; font-size: 28px; background: rgba(255,255,255,.2); }
+.biz-logo-sm { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.biz-star { color: #f0c05a; font-size: 22px; text-shadow: 0 0 8px rgba(240,192,90,.8); }
+.biz-menu .biz-menu-line { padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,.1); gap: 8px; }
+.biz-menu .biz-menu-line:last-child { border-bottom: 0; }
+
+/* Business center: the store's 3D sign as players see it, and the look editor. */
+.biz-look-open { display: grid; gap: 6px; width: 100%; padding: 10px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); color: inherit; text-align: start; cursor: pointer; }
+.sign-preview { display: grid; gap: 6px; padding: 10px; border-radius: 12px; background: linear-gradient(180deg, #2b3445, #1b2130); }
+.sign-preview .sp-sign, .sign-preview .sp-billboard { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; color: var(--ink); background: linear-gradient(180deg, var(--brand), var(--brand2)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); min-width: 0; }
+.sign-preview .sp-billboard { padding: 12px 14px; box-shadow: inset 0 0 0 3px #f0c05a, 0 0 22px rgba(240,192,90,.45); }
+.sign-preview img, .sign-preview .sp-sign > span, .sign-preview .sp-billboard > span { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; background: #fff; display: grid; place-items: center; font-size: 22px; flex: none; }
+.sign-preview .sp-sign > span, .sign-preview .sp-billboard > span { background: rgba(255,255,255,.18); }
+.sign-preview b { display: block; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sign-preview small { display: block; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sign-preview .sp-open { font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; background: #1f9d57; color: #fff; flex: none; }
+.sign-preview .sp-awning { height: 14px; border-radius: 0 0 8px 8px; background: repeating-linear-gradient(90deg, var(--brand) 0 14px, #fff 14px 28px); opacity: .9; }
+.look-fields { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; min-width: 0; }
+.look-fields:disabled { opacity: .5; }
+.color-input { height: 40px; padding: 2px; }
+.menu-edit { gap: 6px; }
+.menu-edit .price { width: 96px; flex: none; }
+.off-days { gap: 6px; align-items: center; }
+.off-days .chip.on { background: rgba(255,90,90,.25); border-color: rgba(255,90,90,.6); }
+.card.upsell { border-color: rgba(240,192,90,.45); }

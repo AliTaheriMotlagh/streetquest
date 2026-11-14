@@ -461,7 +461,7 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
       (world?.businesses ?? []).map((b) => {
         const open = b.campaigns.filter((c) => !c.visited).length;
         const best = b.campaigns.reduce((n, c) => Math.max(n, c.rewardCoins), 0);
-        return { id: `bz${b.id}`, lat: b.lat, lng: b.lng, z: b.featured ? 700 : 360, dot: false, sel: { type: "biz", data: b }, spec: { family: "game", face: b.emoji, color: b.featured ? GOLD : b.mine ? "#63b3f2" : "#ff7ad9", label: `${b.verified ? "✔ " : ""}${b.name}`, badge: open && !b.mine ? { text: `+${fmtNum(best)}🪙`, kind: "coin" } : undefined, state: [b.featured ? "gold" : "", open ? "" : "claimed"].filter(Boolean) } } satisfies Item;
+        return { id: `bz${b.id}`, lat: b.lat, lng: b.lng, z: b.featured ? 700 : 360, dot: false, sel: { type: "biz", data: b }, spec: { family: "game", face: b.emoji, logo: b.look?.logo ?? undefined, color: b.featured ? GOLD : b.mine ? "#63b3f2" : b.look?.color || "#ff7ad9", label: `${b.verified ? "✔ " : ""}${b.name}`, badge: open && !b.mine ? { text: `+${fmtNum(best)}🪙`, kind: "coin" } : undefined, state: [b.featured ? "gold" : "", open || !b.campaigns.length ? "" : "claimed"].filter(Boolean) } } satisfies Item;
       }),
     [world],
   );

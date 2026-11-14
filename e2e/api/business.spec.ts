@@ -93,4 +93,39 @@ test.describe("businesses", () => {
     expect((await owner.post("/api/business", { action: "admin", businessId: bid, plan: "chain" })).status).toBe(403);
     await Promise.all([admin.dispose(), owner.dispose()]);
   });
+
+  test("storefront look: logo, colour, banner, menu, hours — shown by plan", async ({ baseURL }) => {
+    const { admin, owner, shop } = await store(baseURL!);
+    const bid = expectOk(await owner.post<{ id: string }>("/api/business", { action: "create", osmId: shop.id, name: shop.name, category: "cafe" })).data.id;
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const look = { action: "look", businessId: bid, color: "#FF8800", tagline: "Fresh bread since 1985", menu: [{ title: "Sangak", price: 15000 }], hours: "07:00-21:00", offDays: 64, logo: png };
+    // Only the owner; hours and logo must be real.
+    const rival = await Player.create(baseURL!);
+    expect((await rival.post("/api/business", look)).status).toBe(404);
+    expect((await owner.post("/api/business", { ...look, hours: "all day" })).status).toBe(400);
+    expect((await owner.post("/api/business", { ...look, logo: "data:image/png;base64,aGVsbG8=" })).status).toBe(400);
+    expectOk(await owner.post("/api/business", look));
+    type Look = { tier: string; color: string; tagline: string; logo: string | null; menu: { title: string; price: number }[]; week: unknown };
+    const seen = async () => (await rival.get<{ businesses: { id: string; look: Look }[] }>(`/api/world?lat=${shop.lat}&lng=${shop.lng}`)).data.businesses.find((b) => b.id === bid)!.look;
+    await rival.goTo(shop);
+    // Free: the name and hours only.
+    let l = await seen();
+    expect([l.tier, l.color, l.tagline, l.logo, l.menu.length]).toEqual(["basic", "", "", null, 0]);
+    expect(l.week).toBeTruthy();
+    // Pro: everything, and the logo is served as an image anyone can load.
+    expectOk(await admin.post("/api/business", { action: "admin", businessId: bid, plan: "pro", days: 30 }));
+    l = await seen();
+    expect([l.tier, l.color, l.tagline]).toEqual(["featured", "#ff8800", "Fresh bread since 1985"]);
+    expect(l.menu).toEqual([{ title: "Sangak", price: 15000 }]);
+    const res = await fetch(new URL(l.logo!, baseURL).toString());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    // The store card has the owner's hours (Fridays off).
+    const card = (await rival.get<{ hours?: string }>(`/api/local?store=biz&id=${bid}`)).data;
+    expect(JSON.stringify(card)).toContain("Fr off");
+    // Removing the logo.
+    expectOk(await owner.post("/api/business", { ...look, logo: null }));
+    expect((await seen()).logo).toBeNull();
+    await Promise.all([admin.dispose(), owner.dispose(), rival.dispose()]);
+  });
 });

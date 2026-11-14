@@ -56,7 +56,7 @@ export async function nearestPlace(here: LatLng, maxM = 80): Promise<Place | nul
     const d = distanceM(here, p);
     if (d <= bestD) (best = p), (bestD = d);
   }
-  const biz = await prisma.business.findMany({ where: { lat: { gte: here.lat - 0.002, lte: here.lat + 0.002 }, lng: { gte: here.lng - 0.003, lte: here.lng + 0.003 } }, take: 20 });
+  const biz = await prisma.business.findMany({ omit: { logo: true }, where: { lat: { gte: here.lat - 0.002, lte: here.lat + 0.002 }, lng: { gte: here.lng - 0.003, lte: here.lng + 0.003 } }, take: 20 });
   for (const b of biz) {
     const d = distanceM(here, b);
     if (d <= bestD) (best = { id: `b:${b.id}`, name: b.name, cat: b.category as PlaceCat, lat: b.lat, lng: b.lng }), (bestD = d);

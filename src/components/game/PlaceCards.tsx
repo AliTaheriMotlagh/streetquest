@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
-import { BIZ_CHECKIN_M } from "@/lib/business";
+import { BIZ_CHECKIN_M, inkOn, priceAt, shade } from "@/lib/business";
 import { CUSTOMER_DOOR, PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { ITEM_BY_KEY } from "@/lib/catalog";
 import { Button } from "@/components/Button";
@@ -133,9 +133,20 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
     });
   return (
     <Sheet title={`${b.emoji} ${b.name}`} onClose={onClose}>
+      {/* Its storefront banner, in its own colours (Starter and up): logo, name, banner line. */}
+      {b.look.tier !== "basic" && (b.look.color || b.look.logo || b.look.tagline) && (
+        <div className={`biz-banner-card ${b.look.tier}`} style={{ ["--brand" as string]: b.look.color || cat.color, ["--brand2" as string]: shade(b.look.color || cat.color, -0.35), ["--ink" as string]: inkOn(b.look.color || cat.color) }}>
+          {b.look.logo ? <img src={b.look.logo} alt="" className="biz-logo" /> : <span className="biz-logo emoji">{b.emoji}</span>}
+          <div className="grow">
+            <b>{b.name}</b>
+            {b.look.tagline && <div className="small">{b.look.tagline}</div>}
+          </div>
+          {b.look.tier === "featured" && <span className="biz-star" aria-hidden>★</span>}
+        </div>
+      )}
       <div className="place-card biz" style={{ ["--cat" as string]: cat.color }}>
         <div className="place-head">
-          <div className="icon-tile place-ic">{b.emoji}</div>
+          <div className="icon-tile place-ic">{b.look.logo ? <img src={b.look.logo} alt="" className="biz-logo-sm" /> : b.emoji}</div>
           <div className="grow">
             <b>{b.name}</b> {b.verified && <span className="tag verified" title={t("Verified business")}>✔ {t("Verified")}</span>}
             <div className="small muted">{t(cat.label)} · {formatDistance(dist)}{b.address ? ` · ${b.address}` : ""}</div>
@@ -144,6 +155,17 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
         </div>
         {b.about && <p className="small" style={{ margin: "8px 0 0" }}>{b.about}</p>}
       </div>
+      {b.look.menu.length > 0 && (
+        <div className="card biz-menu">
+          <b>🍽️ {t("Menu")}</b>
+          {b.look.menu.map((m, i) => (
+            <div key={i} className="row small biz-menu-line">
+              <span className="grow">{m.title}</span>
+              <b>{priceAt(m.price, b)}</b>
+            </div>
+          ))}
+        </div>
+      )}
       {b.campaigns.length === 0 && <p className="small muted">{t("No missions here right now — check back soon.")}</p>}
       {b.campaigns.map((c) => {
         const code = codes[c.id] ?? c.code;

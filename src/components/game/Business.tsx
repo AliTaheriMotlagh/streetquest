@@ -6,7 +6,9 @@ import { useCallback, useEffect, useState } from "react";
 import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { PLACE_CAT_KEYS, PLACE_CATS, type PlaceCat } from "@/lib/places";
-import { BIZ_LIMITS, CAMPAIGN_MAX_DAYS, PLAN_BY_KEY, type PlanDef, type PlanKey } from "@/lib/business";
+import { BIZ_LIMITS, BIZ_MENU_MAX, bizWeek, brandTier, CAMPAIGN_MAX_DAYS, inkOn, PLAN_BY_KEY, shade, type BizMenuItem, type PlanDef, type PlanKey } from "@/lib/business";
+import { WEEK_DAYS } from "@/lib/localData";
+import { resizePhoto } from "./photo";
 import { askConfirm } from "@/components/Dialogs";
 import { Button } from "@/components/Button";
 import type { BizDashboard } from "@/server/business";
@@ -33,13 +35,13 @@ export function BusinessPanel({ onClose, peek }: { onClose: () => void; peek: bo
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
-  const [view, setView] = useState<"home" | "setup" | "edit" | "campaign" | "plans">("home");
+  const [view, setView] = useState<"home" | "setup" | "edit" | "look" | "campaign" | "plans">("home");
   const load = useCallback(() => api<Data>("/api/business").then((d) => (setData(d), setError(null))).catch((e) => setError((e as Error).message)), []);
   useEffect(() => {
     load();
   }, [load]);
   const b = data?.businesses[sel] ?? null;
-  const title = view === "setup" ? t("Put your store on the map") : view === "edit" ? t("Store details") : view === "campaign" ? t("New mission") : view === "plans" ? t("Plans") : b ? `${b.emoji} ${b.name}` : t("Business center");
+  const title = view === "setup" ? t("Put your store on the map") : view === "edit" ? t("Store details") : view === "look" ? t("Storefront & menu") : view === "campaign" ? t("New mission") : view === "plans" ? t("Plans") : b ? `${b.emoji} ${b.name}` : t("Business center");
   return (
     <Sheet title={title} onClose={onClose} peek={peek} help="biz" tall actions={view !== "home" ? <button className="close back-btn" onClick={() => setView("home")} aria-label={t("Back")}>‹</button> : undefined}>
       {error && <p className="small" style={{ color: "var(--red)" }}>{error}</p>}
@@ -51,6 +53,8 @@ export function BusinessPanel({ onClose, peek }: { onClose: () => void; peek: bo
         <Setup data={data} onDone={() => (setView("home"), load().then(() => setSel(data.businesses.length)))} />
       ) : view === "edit" && b ? (
         <DetailsForm b={b} onDone={() => (setView("home"), load())} />
+      ) : view === "look" && b ? (
+        <LookForm b={b} onDone={() => (setView("home"), load())} onPlans={() => setView("plans")} />
       ) : view === "campaign" && b ? (
         <CampaignForm b={b} maxCoins={data.maxCoins} onDone={() => (setView("home"), load())} />
       ) : view === "plans" ? (
@@ -62,7 +66,7 @@ export function BusinessPanel({ onClose, peek }: { onClose: () => void; peek: bo
           {data.businesses.length > 1 && (
             <div className="tabs-wrap"><div className="tabs">{data.businesses.map((x, i) => <button key={x.id} className={i === sel ? "on" : ""} onClick={() => setSel(i)}>{x.emoji} {x.name}</button>)}</div></div>
           )}
-          <Dashboard b={b} data={data} reload={load} onCampaign={() => setView("campaign")} onEdit={() => setView("edit")} onPlans={() => setView("plans")} onAdd={() => setView("setup")} />
+          <Dashboard b={b} data={data} reload={load} onCampaign={() => setView("campaign")} onEdit={() => setView("edit")} onLook={() => setView("look")} onPlans={() => setView("plans")} onAdd={() => setView("setup")} />
         </>
       )}
     </Sheet>
@@ -163,7 +167,7 @@ function DetailsForm({ b, initial, osmId, onDone, onBack }: { b?: BizDashboard; 
 }
 
 // ---------------------------------------------------------------- the owner's dashboard
-function Dashboard({ b, data, reload, onCampaign, onEdit, onPlans, onAdd }: { b: BizDashboard; data: Data; reload: () => void; onCampaign: () => void; onEdit: () => void; onPlans: () => void; onAdd: () => void }) {
+function Dashboard({ b, data, reload, onCampaign, onEdit, onLook, onPlans, onAdd }: { b: BizDashboard; data: Data; reload: () => void; onCampaign: () => void; onEdit: () => void; onLook: () => void; onPlans: () => void; onAdd: () => void }) {
   const { act } = useGame();
   const [code, setCode] = useState("");
   const plan = PLAN_BY_KEY[b.plan as PlanKey];
@@ -186,6 +190,12 @@ function Dashboard({ b, data, reload, onCampaign, onEdit, onPlans, onAdd }: { b:
         </div>
         {b.planUntil && <div className="small muted">{t("Plan active until {date}", { date: fmtTime(b.planUntil) })}</div>}
       </div>
+
+      {/* How the store looks in the 3D city right now; tap to change it. */}
+      <button className="biz-look-open" onClick={onLook} aria-label={t("Storefront & menu")}>
+        <SignPreview name={b.name} emoji={b.emoji} color={b.look.color} tagline={b.look.tagline} logo={b.look.logo} tier={b.look.tier} />
+        <span className="small">🎨 {t("Storefront & menu")} ›</span>
+      </button>
 
       <div className="stat-tiles">
         <div><b>{fmtNum(b.stats.visitsMonth)}</b><span>{t("Visits this month")}</span><i className="bar"><i style={{ width: `${pct}%` }} /></i><span className="tiny muted">{t("of {n}", { n: b.stats.quota })}</span></div>
@@ -243,6 +253,7 @@ function Dashboard({ b, data, reload, onCampaign, onEdit, onPlans, onAdd }: { b:
 
       <div className="row wrap">
         <Button className="btn ghost" onClick={onEdit}>✏️ {t("Store details")}</Button>
+        <Button className="btn ghost" onClick={onLook}>🎨 {t("Storefront & menu")}</Button>
         <Button className="btn ghost" onClick={onPlans}>⭐ {t("Plans")}</Button>
         {plan.locations > data.businesses.length && <Button className="btn ghost" onClick={onAdd}>➕ {t("Add a location")}</Button>}
         {b.plan === "free" && (
@@ -329,6 +340,98 @@ function AdminTools({ b, reload }: { b: BizDashboard; reload: () => void }) {
         {(["starter", "pro", "chain"] as const).map((p) => <Button key={p} className="btn ghost small" onClick={() => act(() => api("/api/business", { body: { action: "admin", businessId: b.id, plan: p, days: 30 } })).then((ok) => ok && reload())}>{t("+30 days of {plan}", { plan: t(PLAN_BY_KEY[p].name) })}</Button>)}
         <Button className="btn ghost small" onClick={() => act(() => api("/api/business", { body: { action: "admin", businessId: b.id, verified: !b.verified } })).then((ok) => ok && reload())}>{b.verified ? t("Unverify") : t("Verify")}</Button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- its look in the game
+/** The store's sign as players see it in the 3D city (and, featured, the billboard over it). */
+function SignPreview({ name, emoji, color, tagline, logo, tier }: { name: string; emoji: string; color: string; tagline: string; logo: string | null; tier: "basic" | "brand" | "featured" }) {
+  const c = tier !== "basic" && color ? color : "#3b6fd8";
+  const style = { ["--brand" as string]: c, ["--brand2" as string]: shade(c, -0.35), ["--ink" as string]: inkOn(c) };
+  const icon = tier !== "basic" && logo ? <img src={logo} alt="" /> : <span>{emoji}</span>;
+  return (
+    <div className={`sign-preview ${tier}`} style={style}>
+      {tier === "featured" && (
+        <div className="sp-billboard">
+          {icon}
+          <div className="grow">
+            <b>{name}</b>
+            {tagline && <small>{tagline}</small>}
+          </div>
+        </div>
+      )}
+      <div className="sp-sign">
+        {icon}
+        <div className="grow">
+          <b>{name}</b>
+          {tier !== "basic" && tagline && <small>{tagline}</small>}
+        </div>
+        <i className="sp-open">{t("Open")}</i>
+      </div>
+      {tier !== "basic" && <div className="sp-awning" />}
+    </div>
+  );
+}
+
+function LookForm({ b, onDone, onPlans }: { b: BizDashboard; onDone: () => void; onPlans: () => void }) {
+  const { act } = useGame();
+  const tier = brandTier(PLAN_BY_KEY[b.plan as PlanKey] ?? PLAN_BY_KEY.free);
+  const locked = tier === "basic";
+  const [color, setColor] = useState(b.color || "#3b6fd8");
+  const [tagline, setTagline] = useState(b.tagline);
+  const [hours, setHours] = useState(b.hours);
+  const [off, setOff] = useState(b.offDays);
+  const [menu, setMenu] = useState<BizMenuItem[]>(b.menu);
+  // undefined: keep the logo; null: remove it; a data URL: the new one.
+  const [logo, setLogo] = useState<string | null | undefined>(undefined);
+  const shown = logo === undefined ? b.look.logo ?? (b.logoUrl || null) : logo;
+  const hoursOk = !hours.trim() || !!bizWeek(hours, 0);
+  const pick = (file: File | undefined) => file && resizePhoto(file, 256, 120 * 1024).then(setLogo).catch((e: Error) => act(() => Promise.reject(e)));
+  const save = () =>
+    act(() =>
+      api("/api/business", {
+        body: { action: "look", businessId: b.id, color, tagline, hours: toAsciiDigits(hours), offDays: off, menu: menu.filter((m) => m.title.trim()).map((m) => ({ title: m.title.trim(), price: Math.max(0, Math.round(Number(toAsciiDigits(String(m.price))) || 0)) })), ...(logo !== undefined ? { logo } : {}) },
+      }),
+    ).then((ok) => ok && onDone());
+  return (
+    <div className="form">
+      <SignPreview name={b.name} emoji={b.emoji} color={color} tagline={tagline} logo={shown} tier={tier === "basic" ? "brand" : tier} />
+      {locked && (
+        <div className="card upsell">
+          <b>🚀 {t("Your logo, colours and menu need the Starter plan")}</b>
+          <p className="small muted">{t("On Free your store shows with its name and hours. Starter dresses your shop front in your colours, shows your menu and puts a shopkeeper at the door; Pro adds a lit billboard over it.")}</p>
+          <Button className="btn yellow small" onClick={onPlans}>⭐ {t("Plans")}</Button>
+        </div>
+      )}
+      <fieldset disabled={locked} className="look-fields">
+        <div className="row">
+          <label className="grow">{t("Logo")}
+            <input className="input" type="file" accept="image/*" onChange={(e) => pick(e.target.files?.[0])} />
+          </label>
+          {shown && <Button className="btn ghost small" onClick={() => setLogo(null)}>{t("Remove")}</Button>}
+        </div>
+        <label>{t("Brand colour")}<input className="input color-input" type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
+        <label>{t("Banner line")}<input className="input" maxLength={BIZ_LIMITS.tagline} placeholder={t("e.g. Fresh bread since 1985")} value={tagline} onChange={(e) => setTagline(e.target.value)} /></label>
+        <b>🍽️ {t("Menu")} <span className="muted small">({fmtNum(menu.length)}/{fmtNum(BIZ_MENU_MAX)})</span></b>
+        {menu.map((m, i) => (
+          <div key={i} className="row menu-edit">
+            <input className="input grow" maxLength={BIZ_LIMITS.menuTitle} placeholder={t("Item")} value={m.title} onChange={(e) => setMenu((x) => x.map((y, j) => (j === i ? { ...y, title: e.target.value } : y)))} />
+            <input className="input price" inputMode="numeric" placeholder={t("Price")} value={m.price || ""} onChange={(e) => setMenu((x) => x.map((y, j) => (j === i ? { ...y, price: Number(toAsciiDigits(e.target.value).replace(/[^\d]/g, "")) || 0 } : y)))} />
+            <button className="chip small" aria-label={t("Remove")} onClick={() => setMenu((x) => x.filter((_, j) => j !== i))}>✕</button>
+          </div>
+        ))}
+        {menu.length < BIZ_MENU_MAX && <Button className="btn ghost small" onClick={() => setMenu((x) => [...x, { title: "", price: 0 }])}>➕ {t("Add an item")}</Button>}
+      </fieldset>
+      <label>{t("Opening hours")}<input className="input" dir="ltr" placeholder="09:00-22:00" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
+      <p className="tiny muted">{hoursOk ? t("Like 09:00-22:00, two spans 09:00-13:00, 16:00-21:00, or 24 for all day.") : t("Hours look like 09:00-22:00")}</p>
+      <div className="row wrap off-days">
+        <span className="small">{t("Closed on")}</span>
+        {WEEK_DAYS.map((d, i) => (
+          <button key={i} className={`chip small ${off & (1 << i) ? "on" : ""}`} aria-pressed={!!(off & (1 << i))} onClick={() => setOff((o) => o ^ (1 << i))}>{t(d)}</button>
+        ))}
+      </div>
+      <Button className="btn yellow block" disabled={!hoursOk} onClick={save}>{t("Save")}</Button>
     </div>
   );
 }

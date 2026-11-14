@@ -136,7 +136,9 @@ export const GET = route(async (req) => {
     places: places.filter((m) => placeIds.has(m.id)),
     // Every other real place around: a plain sign (a business that claimed one stands in for it).
     spots: around.filter((p) => !claimedOsm.has(p.id)).map(({ id, name, cat, lat, lng }) => ({ id, name, cat, lat, lng })),
-    businesses: businesses.filter((b) => bizIds.has(b.id)),
+    // Stores with a mission compete for the map's budget; every other store that joined (within
+    // 1.5 km) comes too: its storefront in the 3D city and its pin are what it signed up for.
+    businesses: businesses.filter((b) => bizIds.has(b.id) || (!openBiz.includes(b) && distanceM(here, b) <= 1500)),
     notes: notes.map((n) => {
       const unlocked = n.authorId === u.id || (trusted ? distanceM(trusted, n) <= n.radiusM : false);
       return {

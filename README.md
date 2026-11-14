@@ -670,6 +670,16 @@ mood scales XP; loot funds research; territory funds the army.
 - **Business center** — real store owners claim their place from inside the store, post missions (check-in for coins)
   and coupons (a code the cashier redeems at the till), and see visits, redemptions and repeat customers. Plans:
   Free / Starter / Pro / Chain (Stripe), with a free trial. See `marketing/BUSINESS_PLAN.md` for the monetisation plan.
+- **Storefronts that sell the plans** — every store that joined stands in the 3D city as a real shop: it takes over
+  its own shop front on the map (the map sign of the same name within 40 m, else the nearest within 12 m; otherwise
+  a pole sign at the kerb). **Free**: its own sign with its real name and opening hours (open/closed lamp).
+  **Starter**: + logo, brand colour, a banner line and its own menu (on the sign's panel and the store card), an
+  awning in its colour, always dressed (window, props) and a shopkeeper at the door. **Pro / Chain**: + a lit
+  billboard over the store (gold frame, chasing marquee bulbs, a turning star; on two posts at the kerb) and a gold
+  map pin with the logo. Owners set it in Business center → 🎨 Storefront & menu (live sign preview; logo ≤ 400 KB,
+  hours like `09:00-22:00`, `09:00-13:00, 16:00-21:00` or `24`, closed days). Rules: `lib/business.ts`
+  (`bizLook`, `bizWeek`); 3D: `drive/markers.ts`, `drive/storefronts.ts`, `drive/bizBillboards.ts`; logo:
+  `/api/business/logo`. Every joined store within 1.5 km comes in the world, mission or not.
 - **Real menus & prices** — every store card (real places, businesses, Market shops) shows the store's real menu or
   catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~150 m, or up to
   400 m when every word of the name matches, from the area's whole vendor list or else Snappfood's own search) and,

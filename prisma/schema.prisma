@@ -1285,6 +1285,15 @@ model Business {
   snappfood String        @default("")
   torob     String        @default("")
   divar     String        @default("")
+  // Its look in the game (lib/business.ts bizLook; logo, colour, banner line and menu show from Starter up).
+  logo      Bytes?
+  logoType  String        @default("")
+  logoHash  String        @default("") // changes with the logo: the image URL's cache key
+  color     String        @default("") // #rrggbb brand colour
+  tagline   String        @default("") // the banner line under the name
+  menu      Json          @default("[]") // [{ title, price }]
+  hours     String        @default("") // "09:00-22:00", "09:00-13:00, 16:00-21:00" or "24"
+  offDays   Int           @default(0) // bits of the days it's shut, Saturday = 1
   lat       Float
   lng       Float
   osmId     String? // the OpenStreetMap place it claims ("n123" / "w456")

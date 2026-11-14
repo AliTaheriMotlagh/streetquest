@@ -112,7 +112,7 @@ export async function feed(viewerId: string, opts: { tab: FeedTab; before?: Date
 export async function promotedNear(here: LatLng) {
   const b = bbox(here, NEARBY_M);
   const now = new Date();
-  const rows = await prisma.business.findMany({
+  const rows = await prisma.business.findMany({ omit: { logo: true },
     where: { lat: { gte: b.minLat, lte: b.maxLat }, lng: { gte: b.minLng, lte: b.maxLng }, plan: { in: ["pro", "chain"] }, planUntil: { gt: now } },
     include: { campaigns: { where: { paused: false, activeFrom: { lte: now }, activeTo: { gt: now } }, orderBy: { createdAt: "desc" }, take: 1 } },
     take: 10,

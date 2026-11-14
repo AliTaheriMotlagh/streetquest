@@ -8,6 +8,9 @@
 //    (a rolled shutter when the store is shut), a few props (crates of produce, a menu board,
 //    a neon cup, a clothes rail, a screen) and what moves: steam from food, neon that stutters,
 //    the pharmacy's turning green cross;
+//  - stores that joined the game (lib/business.ts, ids "bz:"): their own colours, logo and banner
+//    line on the sign, an awning in their colour, dressed first and from farther; featured ones
+//    (Pro, Chain) get a lit billboard over the store (bizBillboards.ts);
 //  - one floating panel by the store you're passing (name, rating, open now, a deal, the first
 //    menu lines) that pops in and out.
 // Everything is instanced and pooled; counts are capped by the quality tier. No per-frame allocation.
@@ -15,7 +18,9 @@ import * as THREE from "three";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
 import type { Week } from "@/lib/localData";
 import { isShop, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, usuallyAt, type StoreKind } from "@/lib/storeKinds";
+import { inkOn, shade, type BrandTier } from "@/lib/business";
 import { patchShader, after } from "./graphics/shaders";
+import { BizBillboards } from "./bizBillboards";
 import { nameLines } from "./trades";
 
 const FONT = `Vazirmatn, "Vazir", Tahoma, system-ui, -apple-system, "Segoe UI", sans-serif`;
@@ -38,7 +43,12 @@ export type StorePanel = {
   deal?: number;
   items?: { title: string; price: number }[];
   menuSections?: { items: { title: string; price: number; priceNow: number }[] }[];
+  /** A business that joined: its plan's look (colour "" = the trade's own). */
+  brand?: { tier: BrandTier; color: string; tagline: string };
 };
+
+/** A joined store that dresses up (Starter and up). */
+const branded = (info: StorePanel | undefined) => !!info?.brand && info.brand.tier !== "basic";
 
 type Slot = { id: string; col: number; row: number; sig: string; sw: number };
 type Dressed = { l: ShopLabel; kind: StoreKind; open: boolean; fx: number; fz: number; seed: number };
@@ -97,6 +107,7 @@ export class Storefronts {
   private crossList: { i: number; x: number; y: number; z: number; ang: number }[] = [];
   private screenList: { i: number; seed: number }[] = [];
   private litAttr: THREE.InstancedBufferAttribute;
+  private billboards: BizBillboards;
   private signLit: number[] = [];
   /** Where ground props may stand (not on a street); set by the city. */
   blocked: (x: number, z: number) => boolean = () => false;
@@ -180,6 +191,7 @@ export class Storefronts {
     this.owned.push(pmesh.geometry, pmat, ptex);
     this.panel = { mesh: pmesh, mat: pmat, tex: ptex, g: p.g, c: p.c, id: null, k: 0, want: 0, sig: "", label: null };
     this.group.add(pmesh);
+    this.billboards = new BizBillboards(this.group, tier === "lite" ? 1 : tier === "low" ? 2 : 3, reduceMotion, (u) => this.image(u));
     scene.add(this.group);
     // The Persian font may still be loading: the signs are drawn again once it is.
     const fonts = typeof document !== "undefined" ? document.fonts : undefined;
@@ -344,15 +356,21 @@ export class Storefronts {
     g.rect(x0, y0, SW, SH);
     g.clip();
     g.setTransform(SW / U, 0, 0, SH / 100, x0, y0);
+    const brand = branded(info) ? info!.brand! : null, col = brand?.color || "";
     const grd = g.createLinearGradient(0, 0, 0, 100);
-    grd.addColorStop(0, look.sign[0]);
-    grd.addColorStop(1, look.sign[1]);
+    grd.addColorStop(0, col || look.sign[0]);
+    grd.addColorStop(1, col ? shade(col, -0.35) : look.sign[1]);
     g.fillStyle = grd;
     g.fillRect(0, 0, U, 100);
-    g.strokeStyle = "rgba(255,255,255,.4)";
-    g.lineWidth = 3;
+    // Featured stores: a gold edge; the rest a faint white one.
+    g.strokeStyle = brand?.tier === "featured" ? "#f0c05a" : "rgba(255,255,255,.4)";
+    g.lineWidth = brand?.tier === "featured" ? 6 : 3;
     g.strokeRect(3, 3, U - 6, 94);
-    const [main, second] = nameLines(l.text);
+    const ink = col ? inkOn(col) : "#fff";
+    // A joined store's own name, and its banner line under it (Starter and up).
+    const named = info?.brand && info.name ? info.name : l.text;
+    const [main, second0] = nameLines(named);
+    const second = second0 ?? (brand?.tagline || undefined);
     const rtl = RTL.test(main);
     // Icon (the logo once the card has read it) on the reading side's start.
     const ix = rtl ? U - 50 : 50;
@@ -370,12 +388,12 @@ export class Storefronts {
       g.font = `60px ${FONT}`;
       g.textAlign = "center";
       g.textBaseline = "middle";
-      g.fillStyle = "#fff";
+      g.fillStyle = ink;
       g.fillText(look.emoji, ix, 52);
     }
     const room = U - 125, mid = rtl ? (U - 100) / 2 : 100 + (U - 100) / 2;
     if (detail === "text") {
-      g.fillStyle = "#fff";
+      g.fillStyle = ink;
       g.textAlign = "center";
       g.textBaseline = "middle";
       g.shadowColor = "rgba(0,0,0,.45)";
@@ -489,10 +507,11 @@ export class Storefronts {
         this.drawSign(s, l, kind, open, detail);
         this.dirty = true;
       }
-      if (!l.pole && dressed.length < this.cap.dressed && l.d < 70) dressed.push({ l, kind, open, fx: Math.sin(l.angle), fz: Math.cos(l.angle), seed: dressed.length + (l.x * 7 + l.z * 13) % 5 });
+      if (!l.pole && dressed.length < this.cap.dressed && l.d < (branded(info) ? 120 : 70)) dressed.push({ l, kind, open, fx: Math.sin(l.angle), fz: Math.cos(l.angle), seed: dressed.length + (l.x * 7 + l.z * 13) % 5 });
     }
     this.dressed = dressed;
     this.layout();
+    this.billboards.sync(list, this.infos, (l) => this.isOpen(l.id, storeKind(l.cls, nameLines(l.text)[0]), this.infos.get(l.id)?.week), this.fontReady);
     if (this.dirty && performance.now() - this.lastUpload > 350) {
       this.dirty = false;
       this.lastUpload = performance.now();
@@ -504,6 +523,7 @@ export class Storefronts {
     if (Math.abs(k - this.night) < 0.02) return;
     this.night = k;
     (this.signs.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.3 + k * 2.1;
+    this.billboards.setNight(k);
     this.tintWindows();
   }
 
@@ -568,9 +588,11 @@ export class Storefronts {
       // The awning: pitched down away from the wall, its lip hanging at the front edge.
       const ai = cnt.awn++;
       this.place(this.awnings, ai, l.x + fx * 0.1, yA, l.z + fz * 0.1, l.angle, wm, 1, 1.05, 0.3);
-      this.awnings.setColorAt(ai, TMP_C.set(look.awning));
+      // A joined store's awning is in its own colour.
+      const awn = (branded(this.infos.get(l.id)) && this.infos.get(l.id)!.brand!.color) || look.awning;
+      this.awnings.setColorAt(ai, TMP_C.set(awn));
       this.place(this.lips, ai, l.x + fx * 1.04, yA - 0.34, l.z + fz * 1.04, l.angle, wm, 1, 1);
-      this.lips.setColorAt(ai, TMP_C.set(look.awning));
+      this.lips.setColorAt(ai, TMP_C.set(awn));
       // Display window below it, or the rolled shutter.
       const wh = Math.max(0.8, yA - 0.2 - 0.25), wy = 0.25 + wh / 2;
       const gi = cnt.glass++, si = cnt.shut++;
@@ -688,6 +710,7 @@ export class Storefronts {
       this.steam.instanceMatrix.needsUpdate = true;
       if (this.steam.instanceColor) this.steam.instanceColor.needsUpdate = true;
     }
+    this.billboards.update(t);
     this.updatePanel(dt, cam);
   }
 
@@ -868,11 +891,12 @@ export class Storefronts {
   // ---------------------------------------------------------------- picking
   /** The store whose sign the ray hits (and how far), or null. */
   pick(ray: THREE.Raycaster): { id: string; distance: number } | null {
-    if (!this.group.visible || !this.signs.count) return null;
-    const hit = ray.intersectObject(this.signs, false)[0];
-    if (hit?.instanceId == null) return null;
-    const id = this.idOf[hit.instanceId];
-    return id ? { id, distance: hit.distance } : null;
+    if (!this.group.visible) return null;
+    const board = this.billboards.pick(ray);
+    const hit = this.signs.count ? ray.intersectObject(this.signs, false)[0] : undefined;
+    const id = hit?.instanceId != null ? this.idOf[hit.instanceId] : undefined;
+    const sign = id && hit ? { id, distance: hit.distance } : null;
+    return board && (!sign || board.distance < sign.distance) ? board : sign;
   }
 
   /**
@@ -912,7 +936,8 @@ export class Storefronts {
       if (!this.isOpen(l.id, kind, this.infos.get(l.id)?.week)) continue;
       const nx = Math.sin(l.angle), nz = Math.cos(l.angle);
       // Facing out: the person's forward (−z) turned to the sign's normal.
-      out.push({ id: l.id, kind, x: l.x + nx * 1.2, z: l.z + nz * 1.2, yaw: Math.atan2(-nx, -nz), d });
+      // A joined store (Starter and up) always has its shopkeeper out: it sorts as if much nearer.
+      out.push({ id: l.id, kind, x: l.x + nx * 1.2, z: l.z + nz * 1.2, yaw: Math.atan2(-nx, -nz), d: branded(this.infos.get(l.id)) ? d * 0.04 : d });
     }
     return out.sort((a, b) => a.d - b.d).slice(0, max).map(({ d: _d, ...o }) => o);
   }
@@ -926,6 +951,7 @@ export class Storefronts {
     this.scene.remove(this.group);
     for (const o of this.owned) o.dispose();
     this.atlas.tex.dispose();
+    this.billboards.dispose();
     for (const m of this.group.children) if ((m as THREE.InstancedMesh).isInstancedMesh) (m as THREE.InstancedMesh).dispose();
   }
 }

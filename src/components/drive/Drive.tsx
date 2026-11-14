@@ -58,7 +58,7 @@ import { MODES, type ModeKey } from "@/lib/arena/modes";
 import { PartyHud } from "./PartyHud";
 import { PlayTogether } from "./PlayTogether";
 import { useVasatyab } from "../game/Vasatyab";
-import { Markers, markersOf } from "./markers";
+import { Markers, markersOf, panelOf } from "./markers";
 import { CinemaBoards } from "./cinemaBoards";
 import { Storefronts, type StorePanel } from "./storefronts";
 import { StoreChip, StoreSheet, type StoreTarget } from "./StoreCard";
@@ -875,7 +875,29 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (!bad.length) return m.obstacles;
       return m.obstacles.filter((f) => !(f.maxX - f.minX < 0.5 && bad.some((l) => Math.abs((f.minX + f.maxX) / 2 - l.x) < 0.3 && Math.abs((f.minZ + f.maxZ) / 2 - l.z) < 0.3)));
     };
-    const markers = new Markers(scene, frame, lite ? 16 : 32, style, placeSign);
+    /**
+     * A business's own shop front: the map's shop sign of the same name within 40 m, else the
+     * nearest shop sign within 12 m of where it is (its wall spot, facing the street), else null.
+     */
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+    const facadeFor = (x: number, z: number, name: string) => {
+      const want = norm(name);
+      let same: { id: string; l: Label; d: number } | null = null, near: { id: string; l: Label; d: number } | null = null;
+      for (const s of tiles.values()) {
+        if (!s.mesh || s.dist > 1) continue;
+        s.mesh.labels.forEach((l, i) => {
+          if (l.kind !== "shop" || l.pole || l.noBoard) return;
+          const d = Math.hypot(l.x - x, l.z - z);
+          if (d > 40) return;
+          const n = norm(oneLine(l.text));
+          if (want && (n.includes(want) || want.includes(n.split(" · ")[0])) && (!same || d < same.d)) same = { id: `${s.key}:${i}`, l, d };
+          if (d <= 12 && (!near || d < near.d)) near = { id: `${s.key}:${i}`, l, d };
+        });
+      }
+      const f = (same ?? near) as { id: string; l: Label; d: number } | null;
+      return f ? { id: f.id, x: f.l.x, y: f.l.y, z: f.l.z, angle: f.l.angle, w: f.l.w } : null;
+    };
+    const markers = new Markers(frame, lite ? 16 : 32, placeSign, facadeFor);
     // Cinemas' billboards (what's on, from cinematicket.org): the list is read again after 3 km.
     const cinemaBoards = new CinemaBoards(scene, frame, placeSign);
     // Trailers on the nearest board: not on the lite tier (a decoder and a texture upload a frame).
@@ -977,7 +999,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         scene.add(l.group);
         loot.set(s.id, l);
       }
-      markers.set(markersOf(w));
+      const biz = markersOf(w);
+      markers.set(biz);
+      // Each business's sign and panel: its name, logo, colours, banner line, menu and hours.
+      for (const m of biz) {
+        const p = panelOf(m), sig = JSON.stringify(p);
+        if (bizSig.get(m.id) !== sig) (bizSig.set(m.id, sig), storefronts.setInfo(m.id, p));
+      }
       others.setWalkers(w?.players ?? []);
     };
 
@@ -986,6 +1014,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
      * (stepping out from the road until it's on the pavement, not in the road or a building).
      */
     const dataLabels = new Map<string, Label>();
+    /** What each business's sign last showed (its info is set again only when it changes). */
+    const bizSig = new Map<string, string>();
     const kerbFor = (x: number, z: number) => {
       const s = nearestStreet(x, z, 60);
       if (!s) return null;
@@ -1008,11 +1038,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     /** Storefront boards and house numbers on the walls close by (placed by the worker). */
     const syncBoards = () => {
       const want: { id: string; l: TileMeshes["labels"][number]; d: number }[] = [];
+      // Shop fronts a business has taken over: its own sign goes there instead.
+      const claimed = markers.claimed();
       for (const s of tiles.values()) {
         if (!s.mesh || s.dist > 160) continue;
         s.mesh.labels.forEach((l, i) => {
           if ((l.kind !== "shop" || l.noBoard) && l.kind !== "num") return;
-          if (poleInStreet(l)) return;
+          if (poleInStreet(l) || claimed.has(`${s.key}:${i}`)) return;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d < (l.kind === "num" ? 55 : 150)) want.push({ id: `${s.key}:${i}`, l, d });
         });
@@ -1033,7 +1065,13 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
       want.sort((a, b) => a.d - b.d);
       // (One sign per store: the map has some twice — oncePerStore.)
-      storefronts.sync(oncePerStore(want.filter((w) => w.l.kind === "shop").map((w) => ({ ...w, x: w.l.x, z: w.l.z, name: oneLine(w.l.text) }))).map((w) => ({ id: w.id, text: w.l.text, cls: w.l.cls, x: w.l.x, y: w.l.y, z: w.l.z, angle: w.l.angle, w: w.l.w, pole: w.l.pole, d: w.d })));
+      // The businesses that joined come first (their sign wins over a map sign of the same name), then the rest by distance.
+      const partners = markers.labels();
+      storefronts.sync([
+        ...partners,
+        ...oncePerStore([...partners.map((l) => ({ l: null, id: l.id, x: l.x, z: l.z, name: oneLine(l.text), d: l.d })), ...want.filter((w) => w.l.kind === "shop").map((w) => ({ ...w, x: w.l.x, z: w.l.z, name: oneLine(w.l.text) }))])
+          .flatMap((w) => (w.l ? [{ id: w.id, text: w.l.text, cls: w.l.cls, x: w.l.x, y: w.l.y, z: w.l.z, angle: w.l.angle, w: w.l.w, pole: w.l.pole, d: w.d }] : [])),
+      ]);
       const pick = want.filter((w) => w.l.kind === "num").slice(0, lite ? 8 : 24);
       const keep = new Set(pick.map((w) => w.id));
       for (const [id, b] of boards) if (!keep.has(id)) (scene.remove(b.group), b.dispose(), boards.delete(id));
@@ -1081,10 +1119,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
      */
     const syncShops = () => {
       const want: (StoreSpot & { color: string; d: number })[] = [];
+      const claimed = markers.claimed();
       for (const s of tiles.values()) {
         if (!s.mesh || s.dist > 1) continue;
         s.mesh.labels.forEach((l, i) => {
-          if (l.kind !== "shop") return;
+          if (l.kind !== "shop" || claimed.has(`${s.key}:${i}`)) return;
           const d = Math.hypot(l.x - st.x, l.z - st.z);
           if (d > SHOPS_M) return;
           const tr = tradeOf(l.cls);
@@ -1526,7 +1565,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...markers.pickables(), ...cinemaBoards.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
+      const targets = [...[...beacons.values()].map((b) => b.icon), ...[...loot.values()].map((l) => l.icon), ...cinemaBoards.pickables(), ...others.pickables(), ...[...boards.values()].flatMap((b) => b.group.children)];
       const small = ray.intersectObjects(targets, false)[0];
       // A store's sign (one instanced draw): the nearer of it and the rest wins.
       const sf = storefronts.pick(ray);
@@ -1547,6 +1586,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const openPick = (pick: { kind: string; id: string }) => {
       const here = frame.toLatLng(st.x, st.z);
       const L = live.current;
+      // A business's sign: its own card.
+      if (pick.kind === "store" && pick.id.startsWith("bz:")) return openPick({ kind: "marker", id: pick.id });
       if (pick.kind === "store") {
         const l = shopById(pick.id);
         if (!l) return setPicked(null);
@@ -1695,7 +1736,6 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // Shop signs: past 1 under the HDR pipeline, so the bright ones bloom like neon.
       boardNight = 0.15 + night * (gfx.hdr && style === "real" ? 2.4 : 0.85);
       for (const b of boards.values()) if ("emissiveIntensity" in b.mat) b.mat.emissiveIntensity = boardNight;
-      markers.setNight(boardNight);
       cinemaBoards.setNight(night);
       storefronts.setNight(night);
       dustMat.opacity = night > 0.6 ? 0.95 : 0.35;

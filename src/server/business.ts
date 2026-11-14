@@ -3,7 +3,7 @@
 import { randomInt } from "node:crypto";
 import { prisma } from "../lib/db";
 import { bbox, distanceM, type LatLng } from "../lib/geo";
-import { activePlan, BIZ_CHECKIN_M, COUPON_ALPHABET, PLAN_BY_KEY, PLAN_DAYS, type PlanKey } from "../lib/business";
+import { activePlan, BIZ_CHECKIN_M, bizLook, cleanMenu, COUPON_ALPHABET, PLAN_BY_KEY, PLAN_DAYS, type BizLook, type PlanKey } from "../lib/business";
 import { PLACE_CATS, type PlaceCat } from "../lib/places";
 import { S } from "../lib/settings";
 import { msg, t } from "../lib/i18n";
@@ -29,6 +29,8 @@ export type WorldBusiness = {
   featured: boolean;
   mine: boolean;
   osmId: string | null;
+  /** Its look in the game (logo, colour, banner, menu, hours), as its plan allows. */
+  look: BizLook;
   campaigns: {
     id: string;
     title: string;
@@ -51,7 +53,7 @@ export async function bizAround(here: LatLng, userId: string, radiusM = 3000): P
   if (!S.bizEnabled) return [];
   const b = bbox(here, radiusM);
   const now = new Date();
-  const rows = await prisma.business.findMany({
+  const rows = await prisma.business.findMany({ omit: { logo: true },
     where: { lat: { gte: b.minLat, lte: b.maxLat }, lng: { gte: b.minLng, lte: b.maxLng } },
     include: { campaigns: { where: live(now), orderBy: { createdAt: "desc" }, take: 5 } },
     take: 80,
@@ -73,6 +75,7 @@ export async function bizAround(here: LatLng, userId: string, radiusM = 3000): P
       featured: plan.featured,
       mine: r.ownerId === userId,
       osmId: r.osmId,
+      look: bizLook(r, now.getTime()),
       campaigns: r.campaigns.filter((c) => c.visits < c.maxVisits).map((c) => {
         const v = mine.get(c.id);
         return { id: c.id, title: c.title, description: c.description, kind: c.kind, offer: c.offer, rewardCoins: c.rewardCoins, rewardXp: c.rewardXp, bonusCoins: c.bonusCoins, left: c.maxVisits - c.visits, activeTo: c.activeTo.toISOString(), visited: !!v, code: v?.code ?? null, redeemed: !!v?.redeemedAt };
@@ -127,7 +130,7 @@ export async function checkIn(user: { id: string; username: string }, campaignId
 /** The owner enters a player's coupon code at the till. */
 export async function redeem(ownerId: string, businessId: string, rawCode: string) {
   const code = rawCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const biz = await prisma.business.findFirst({ where: { id: businessId, ownerId } });
+  const biz = await prisma.business.findFirst({ omit: { logo: true }, where: { id: businessId, ownerId } });
   if (!biz) throw new HttpError(404, t("Business not found"));
   const v = await prisma.bizVisit.findFirst({ where: { code, campaign: { businessId } }, include: { campaign: true, user: { select: { id: true, username: true } } } });
   if (!v) throw new HttpError(404, t("No customer has code {code}", { code }));
@@ -143,7 +146,7 @@ export async function redeem(ownerId: string, businessId: string, rawCode: strin
 
 /** Everything the owner's dashboard shows. */
 export async function dashboard(ownerId: string) {
-  const rows = await prisma.business.findMany({ where: { ownerId }, include: { campaigns: { orderBy: { createdAt: "desc" }, take: 30 } }, orderBy: { createdAt: "asc" } });
+  const rows = await prisma.business.findMany({ omit: { logo: true }, where: { ownerId }, include: { campaigns: { orderBy: { createdAt: "desc" }, take: 30 } }, orderBy: { createdAt: "asc" } });
   const since = new Date(Date.now() - MONTH_MS);
   return Promise.all(
     rows.map(async (b) => {
@@ -166,6 +169,15 @@ export async function dashboard(ownerId: string) {
         snappfood: b.snappfood,
         torob: b.torob,
         divar: b.divar,
+        // The look as the owner set it (the editor), and what players see of it on this plan.
+        color: b.color,
+        tagline: b.tagline,
+        menu: cleanMenu(b.menu),
+        hours: b.hours,
+        offDays: b.offDays,
+        look: bizLook(b),
+        /** The uploaded logo even while the plan doesn't show it (the editor). */
+        logoUrl: b.logoHash ? `/api/business/logo?id=${encodeURIComponent(b.id)}&v=${b.logoHash}` : "",
         lat: b.lat,
         lng: b.lng,
         osmId: b.osmId,
@@ -185,7 +197,7 @@ export type BizDashboard = Awaited<ReturnType<typeof dashboard>>[number];
 
 /** Extend a business's plan by one period (a paid checkout, or an admin gift). */
 export async function extendPlan(businessId: string, plan: PlanKey, days = PLAN_DAYS) {
-  const b = await prisma.business.findUnique({ where: { id: businessId } });
+  const b = await prisma.business.findUnique({ omit: { logo: true }, where: { id: businessId } });
   if (!b) return null;
   // Same plan: add to what's left. Another plan: starts now.
   const from = b.plan === plan && b.planUntil && b.planUntil.getTime() > Date.now() ? b.planUntil.getTime() : Date.now();
@@ -196,7 +208,7 @@ export async function extendPlan(businessId: string, plan: PlanKey, days = PLAN_
 }
 
 export async function startTrial(ownerId: string, businessId: string) {
-  const b = await prisma.business.findFirst({ where: { id: businessId, ownerId } });
+  const b = await prisma.business.findFirst({ omit: { logo: true }, where: { id: businessId, ownerId } });
   if (!b) throw new HttpError(404, t("Business not found"));
   if (b.trialUsed) throw new HttpError(400, t("The free trial was already used"));
   if (activePlan(b).key !== "free") throw new HttpError(400, t("You're already on a paid plan"));
@@ -207,7 +219,7 @@ export async function startTrial(ownerId: string, businessId: string) {
 }
 
 export async function planCheckout(ownerId: string, businessId: string, plan: PlanKey, origin: string) {
-  const b = await prisma.business.findFirst({ where: { id: businessId, ownerId } });
+  const b = await prisma.business.findFirst({ omit: { logo: true }, where: { id: businessId, ownerId } });
   if (!b) throw new HttpError(404, t("Business not found"));
   const def = PLAN_BY_KEY[plan];
   if (!def || !def.priceCents) throw new HttpError(400, t("Pick a paid plan"));
