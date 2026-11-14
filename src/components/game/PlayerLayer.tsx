@@ -121,6 +121,9 @@ export function PlayerLayer({ follow, guides, onUnfollow, onFollow }: { follow: 
     let haloR = 0;
     let coneDeg = 0;
     const onSnap = () => {
+      // Under the 3D city the map is hidden: no glides or pans nobody sees (they cost frames in
+      // the car). `prev` stays put, so the first fix after leaving the car jumps straight there.
+      if (map.getContainer().closest(".in-drive")) return;
       const s = getLocation();
       if (s === prev) return;
       const last = prev;

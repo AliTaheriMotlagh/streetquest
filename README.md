@@ -128,7 +128,9 @@ mood scales XP; loot funds research; territory funds the army.
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). A loading screen
   (`src/components/drive/DriveBoot.tsx`, rules `src/lib/bootGate.ts`) covers the city — progress, what it's doing, a tip —
   until every tile within 150 m is drawn and your car stands on a street; the controls stay off until then. After 9 s
-  a **Play now** button lets you start anyway, after 30 s it starts by itself, and **Back to the map** works throughout.
+  a **Play now** button lets you start anyway, after 30 s it starts by itself, and **Back to the map** works throughout. Playing from home, you
+  arrive where you really are (one GPS fix, up to 8 s); without one, where the server last saw you, your IP's city, or a
+  spot you tap.
   A mission giver's marker opens its briefing when you drive into it, never because you arrived on top of it. From home or in
   test mode the car *is* your commander: where you drive is where you are, missions are beacons of light, loot is collected by
   driving through it — the only things drawn as game markers. Stores look like stores: their own signs (a board on the
@@ -237,7 +239,10 @@ mood scales XP; loot funds research; territory funds the army.
   to the screen). On **Auto** it keeps the frame rate up by lowering the resolution first, then stripping AO, then the
   film look, then bloom and clouds, and only then shadow detail and shadows; if that's still not enough for 20 s, or the GPU context is lost, the next
   visit starts a tier lower (picking Auto again forgets that). It also spots a browser that caps the frame rate (iOS Low
-  Power Mode) and stops lowering things that won't help. Real-world geometry is untouched: what changes is how it's
+  Power Mode: frames sitting tightly on 33 ms) and stops lowering things that won't help; when fewer pixels don't help
+  but it isn't a cap (a busy CPU), it gives the sharpness back and strips effects instead. Phones and tablets (iPads
+  too, though iPadOS Safari calls itself a Mac) never draw past 1.5× resolution or 2× MSAA unless Ultra is picked —
+  the sharpening pass makes up the difference on a small screen. Real-world geometry is untouched: what changes is how it's
   drawn — façades get relief (recessed windows, sills, mortar), windows reflect the sky, walls weather toward the
   pavement; asphalt gets aggregate, cracks and patches, pavements 50 cm slabs; trees sway; the sun's shadow box follows
   where the camera looks and snaps to whole texels so it doesn't shimmer. Garage → **Time of day**: Day (default),
@@ -438,8 +443,9 @@ mood scales XP; loot funds research; territory funds the army.
   thumb is, the deeper it's pushed (45 % at its foot, full at its top — feather the throttle round a corner, brake
   lightly in traffic), with a meter on each pedal's edge; the horn sounds as long as it's held. **Drone and
   helicopter fly on two sticks** laid out like a real radio ("mode 2"): the left stick turns and climbs or sinks,
-  the right stick (a vertical slot) tips the nose — up flies forward, down backs off — as far as you push it. **The
-  minimap is the way back to the map**: tap it (a map tag on its corner says so). Your driver sits at the wheel —
+  the right stick (a vertical slot) tips the nose — up flies forward, down backs off — as far as you push it. **Tap the
+  minimap (or press M) for a bigger map** — the same live map over the game, twice the reach, with a button to the
+  full 2D map. Your driver sits at the wheel —
   seen through the glass from the chase camera — in the same cabin the traffic's drivers have.
 - **Play together** — one tab in the 3D city's menu (☰ → 👥 Play together) for everything with other people: start
   a party (or join one by its code or an invite), invite friends or players online near you (each is pinged once),

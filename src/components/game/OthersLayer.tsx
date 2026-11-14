@@ -72,8 +72,11 @@ export function OthersLayer({ players, onSelect }: { players: WorldPlayer[]; onS
 
     const target = (e: Entry) => (e.near ? nearby.predict(e.near) : { lat: e.data.lat, lng: e.data.lng, moving: false });
 
+    // Under the 3D city the map is hidden: stop animating dots nobody sees; the next update restarts it.
+    const away = () => !!map.getContainer().closest(".in-drive");
     const frame = (t: number) => {
       raf = 0;
+      if (away()) return;
       // Budget phones: 20 fps is plenty for a walking dot.
       if (lite && t - lastFrame < 50) {
         raf = requestAnimationFrame(frame);
@@ -102,7 +105,7 @@ export function OthersLayer({ players, onSelect }: { players: WorldPlayer[]; onS
       if (busy) raf = requestAnimationFrame(frame);
     };
     const kick = () => {
-      if (raf || document.hidden) return;
+      if (raf || document.hidden || away()) return;
       lastFrame = performance.now();
       raf = requestAnimationFrame(frame);
     };

@@ -136,8 +136,13 @@ export const MAX_LEVEL = 5;
  * What this device can't do, taken out of a profile: without half-float render targets
  * there is no HDR pipeline at all (the picture goes straight to the screen, as on low).
  */
-export function withCaps(p: Profile, c: Pick<Caps, "floatTargets">): Profile {
-  return c.floatTargets ? p : { ...p, post: false, msaa: 0, bloom: false, ao: false, fxaa: false, cinematic: false, ssr: 0, haze: false };
+export function withCaps(p: Profile, c: Pick<Caps, "floatTargets"> & Partial<Pick<Caps, "mobile">>): Profile {
+  if (!c.floatTargets) return { ...p, post: false, msaa: 0, bloom: false, ao: false, fxaa: false, cinematic: false, ssr: 0, haze: false };
+  // Phones and tablets (tile-based GPUs, 3× screens): past 1.5× the extra pixels and MSAA samples
+  // cost frames you feel and detail you don't see on a small screen — the sharpening pass makes up
+  // the difference. "Ultra", picked by hand, keeps 2× and 4 samples.
+  if (c.mobile && p.tier !== "ultra") return { ...p, maxDpr: Math.min(p.maxDpr, 1.5), minDpr: Math.min(p.minDpr, 1.5), msaa: Math.min(p.msaa, 2) };
+  return p;
 }
 
 export type Change = { kind: "dpr"; dpr: number } | { kind: "level"; level: number };
@@ -158,6 +163,8 @@ export class Adaptive {
   private futile = 0;
   private before = 0;
   private held = false;
+  /** Lowering the resolution was tried and didn't help, but this isn't a cap: the frame is CPU-bound. */
+  private dprUseless = false;
 
   constructor(
     readonly profile: Pick<Profile, "maxDpr" | "minDpr">,
@@ -180,6 +187,11 @@ export class Adaptive {
     this.times.length = 0;
     const median = sorted[sorted.length >> 1];
     const p90 = sorted[Math.floor(sorted.length * 0.9)];
+    const p10 = sorted[Math.floor(sorted.length * 0.1)];
+    // A frame-rate cap (iOS Low Power Mode, a 30 Hz screen) looks like frames sitting tightly on
+    // a multiple of the refresh; a busy CPU or GPU wanders around between them.
+    const vsyncs = median / (1000 / 60);
+    const capped = Math.round(vsyncs) >= 2 && Math.abs(vsyncs - Math.round(vsyncs)) < 0.08 && p90 - p10 < median * 0.12;
     const slow = median > this.target * 1.32; // under ~45 fps
     const fast = p90 < this.target * 1.08; // nearly every frame on time
 
@@ -188,9 +200,12 @@ export class Adaptive {
       if (median > this.before * 0.95) this.futile++;
       else this.futile = 0;
       this.before = 0;
-      if (this.futile >= 2 && !this.held) {
-        // Capped, not slow: hold, and give back the sharpness those steps took for nothing.
-        this.held = true;
+      if (this.futile >= 2 && !this.held && !this.dprUseless) {
+        // Fewer pixels bought nothing: give back the sharpness those steps took. Capped → hold
+        // there; otherwise the time goes on work per object (draw calls, the shadow pass, the
+        // CPU), so the effects come off next instead of the resolution.
+        if (capped || !this.opts.features) this.held = true;
+        else (this.dprUseless = true), (this.futile = 0);
         this.lastChange = now;
         const dpr = Math.min(this.profile.maxDpr, +(this.dpr + 0.3).toFixed(2));
         if (dpr !== this.dpr) return { kind: "dpr", dpr: (this.dpr = dpr) };
@@ -200,7 +215,7 @@ export class Adaptive {
       this.goodWindows = 0;
       if (this.held || now - this.lastChange < 1000) return null;
       let change: Change | null = null;
-      if (this.dpr > this.profile.minDpr + 1e-6) change = { kind: "dpr", dpr: (this.dpr = Math.max(this.profile.minDpr, +(this.dpr - 0.15).toFixed(2))) };
+      if (this.dpr > this.profile.minDpr + 1e-6 && !this.dprUseless) change = { kind: "dpr", dpr: (this.dpr = Math.max(this.profile.minDpr, +(this.dpr - 0.15).toFixed(2))) };
       else if (this.opts.features && this.level < MAX_LEVEL) change = { kind: "level", level: ++this.level };
       // Nothing left to give (a chosen tier at its lowest resolution): no step to judge either.
       if (change) (this.lastChange = now), (this.before = median);
@@ -217,6 +232,7 @@ export class Adaptive {
     this.goodWindows = 0;
     this.lastChange = now;
     if (this.level > 0) return { kind: "level", level: --this.level };
+    this.dprUseless = false;
     if (this.dpr < this.profile.maxDpr - 1e-6) {
       this.dpr = Math.min(this.profile.maxDpr, +(this.dpr + 0.15).toFixed(2));
       return { kind: "dpr", dpr: this.dpr };

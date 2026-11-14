@@ -2,7 +2,7 @@
 //
 // Every place, store, cinema, deal, ad area, game marker and player is the same pin: a disc of one
 // size per zoom level (--pin, set on the map by its level of detail), its colour saying what kind
-// of place it is, an emoji or logo inside, at most one small badge (what's off, ⭐, a job, a count)
+// of place it is, a line glyph (places: white on a solid disc), an emoji (game loot) or a logo inside, at most one small badge (what's off, ⭐, a job, a count)
 // and a name under it where there's room. Shape says the family: round = a place, square = an area
 // (Divar / Sheypoor neighbourhoods), ring = game (money, jobs, businesses).
 //
@@ -24,6 +24,8 @@ export type PinSpec = {
   family: PinFamily;
   /** Emoji (drawn as the game's art) or plain text; escaped here. */
   face: string;
+  /** A line icon drawn white on a solid disc instead of the face (places, ad areas, their bubbles). */
+  glyph?: IconName;
   /** What kind of place: the disc's colour. */
   color: string;
   /** A logo / photo shown inside at street level instead of the face (https only). */
@@ -34,6 +36,8 @@ export type PinSpec = {
   state?: string[];
 };
 
+import { ICON_PATHS, type IconName } from "./iconPaths";
+
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const safeColor = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) ? c : "#6b7280");
 const safeUrl = (u: string | undefined) => (u && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : "");
@@ -42,8 +46,10 @@ const safeUrl = (u: string | undefined) => (u && /^https:\/\/[^\s"'<>]+$/.test(u
 export function pinHtml(p: PinSpec): string {
   const logo = safeUrl(p.logo);
   return (
-    `<span class="pin-b" style="--c:${safeColor(p.color)}">` +
-    `<span class="pin-f">${esc(p.face)}</span>` +
+    `<span class="pin-b${p.glyph ? " pin-solid" : ""}" style="--c:${safeColor(p.color)}">` +
+    (p.glyph
+      ? `<span class="pin-f"><svg class="pin-g" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[p.glyph]}"/></svg></span>`
+      : `<span class="pin-f">${esc(p.face)}</span>`) +
     (logo ? `<img class="pin-logo" src="${esc(logo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : "") +
     `</span>` +
     (p.badge ? `<span class="pin-badge ${p.badge.kind}">${esc(p.badge.text)}</span>` : "") +

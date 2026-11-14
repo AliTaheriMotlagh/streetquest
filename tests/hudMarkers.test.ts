@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { colorForKind, edgeArrow, iconForEmoji, markerFade, markerScale, MARKER_COLORS, rarityOf, shortDistance } from "../src/lib/hudMarkers";
+import { colorForKind, edgeArrow, glyphFor, iconForEmoji, markerFade, markerScale, MARKER_COLORS, rarityOf, shortDistance } from "../src/lib/hudMarkers";
 import { ICON_PATHS } from "../src/lib/iconPaths";
 
 test("markerFade: faint on top, full mid range, gone far away", () => {
@@ -54,8 +54,15 @@ test("rarity, icons and colours", () => {
   assert.equal(rarityOf({ drop: { label: "x", sponsor: null }, tier: 0 }), "epic");
   assert.equal(rarityOf({ drop: null, tier: 2 }), "rare");
   assert.equal(rarityOf({ drop: null, tier: 1 }), "common");
-  assert.equal(iconForEmoji("🍔"), "food");
+  // The specific kind before the broad family: a burger is a burger, a salad is food.
+  assert.equal(iconForEmoji("🍔"), "burger");
+  assert.equal(iconForEmoji("🍕"), "pizza");
+  assert.equal(iconForEmoji("🥗"), "food");
+  assert.equal(iconForEmoji("💇"), "scissors");
   assert.equal(iconForEmoji("🦄"), "pin");
+  // The map's pins: a glyph or nothing (then the emoji is drawn as art).
+  assert.equal(glyphFor("🦄"), null);
+  assert.equal(glyphFor("📢"), "megaphone");
   assert.equal(colorForKind("visit"), MARKER_COLORS.visit);
   for (const name of ["food", "cup", "cart", "bank", "film", "fuel", "pill", "gift", "flag", "building", "bag", "key", "star", "pin"]) assert.ok(name in ICON_PATHS, name);
 });

@@ -27,6 +27,7 @@ import type { MidView } from "@/server/midpoint";
 import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
 import { STORE_TYPES, typeOf, type AdArea, type DirStore, type StoreType } from "@/lib/stores/directory";
 import { clusterFace, countText, PIN_BOX, PIN_DOT_R, PIN_PX, pinClass, pinHtml, type PinSpec } from "@/lib/mapPins";
+import { glyphFor } from "@/lib/hudMarkers";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
 function FrameTarget({ target }: { target: LatLng | null }) {
@@ -381,6 +382,10 @@ function placeItems({ vendors, spots, torob, dir, cinemas, deals }: Pick<Props, 
     places.push({ id: `sp${p.id}`, lat: p.lat, lng: p.lng, z: 200, dot: true, sel: { type: "spot", data: p }, spec: { family: "place", face: c.emoji, color: c.color, label: p.name } });
   }
   const cin = (cinemas ?? []).map<Item>((c) => ({ id: `ct${c.id}`, lat: c.lat, lng: c.lng, z: 300, dot: false, sel: { type: "cinema", data: c }, spec: { family: "place", face: "🎬", color: "#f5c518", label: c.name, badge: c.rate >= 4.5 ? { text: "⭐", kind: "star" } : undefined } }));
+  // Places wear a white line glyph on a solid disc (one icon language with the HUD and the 3D city);
+  // a face no glyph fits (a rare Torob category) stays drawn art.
+  for (const it of places) it.spec.glyph = glyphFor(it.spec.face) ?? undefined;
+  for (const it of cin) it.spec.glyph = "film";
   return { cinemas: cin, places };
 }
 
@@ -422,8 +427,8 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
   const all = useMemo(() => placeItems({ vendors, spots, torob, dir, cinemas, deals }), [vendors, spots, torob, dir, cinemas, deals]);
   const areaList = useMemo<Item[]>(
     () => [
-      ...(divar ?? []).map<Item>((a) => ({ id: `dv${a.city}-${a.id}`, lat: a.lat, lng: a.lng, z: 180, dot: false, sel: { type: "divar", data: a }, spec: { family: "area", face: "📢", color: AREA_COLOR.divar, label: t("Divar · {area}", { area: a.name }), badge: { text: countText(a.posts.length, fmtNum), kind: "count" } } })),
-      ...(ads ?? []).map<Item>((a) => ({ id: `sh${a.id}`, lat: a.lat, lng: a.lng, z: 175, dot: false, sel: { type: "ads", data: a }, spec: { family: "area", face: "📣", color: AREA_COLOR.sheypoor, label: t("Sheypoor · {area}", { area: a.name }), badge: { text: countText(a.ads.length, fmtNum), kind: "count" } } })),
+      ...(divar ?? []).map<Item>((a) => ({ id: `dv${a.city}-${a.id}`, lat: a.lat, lng: a.lng, z: 180, dot: false, sel: { type: "divar", data: a }, spec: { family: "area", face: "📢", glyph: "megaphone", color: AREA_COLOR.divar, label: t("Divar · {area}", { area: a.name }), badge: { text: countText(a.posts.length, fmtNum), kind: "count" } } })),
+      ...(ads ?? []).map<Item>((a) => ({ id: `sh${a.id}`, lat: a.lat, lng: a.lng, z: 175, dot: false, sel: { type: "ads", data: a }, spec: { family: "area", face: "📣", glyph: "megaphone", color: AREA_COLOR.sheypoor, label: t("Sheypoor · {area}", { area: a.name }), badge: { text: countText(a.ads.length, fmtNum), kind: "count" } } })),
     ],
     [divar, ads],
   );
@@ -499,7 +504,8 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
     if (g.items.length > 1) {
       const faces = g.items.map((i) => i.spec.face);
       const face = clusterFace(faces);
-      const spec: PinSpec = { family: "cluster", face, color: g.items.find((i) => i.spec.face === face)!.spec.color, badge: { text: countText(g.items.length, fmtNum), kind: "count" } };
+      const lead = g.items.find((i) => i.spec.face === face)!.spec;
+      const spec: PinSpec = { family: "cluster", face, glyph: lead.glyph, color: lead.color, badge: { text: countText(g.items.length, fmtNum), kind: "count" } };
       return <Pin key={g.key} lat={g.lat} lng={g.lng} html={pinHtml(spec)} cls={pinClass(spec)} z={clusterZ} named={false} title={t("{n} places here — tap to zoom in", { n: fmtNum(g.items.length) })} onClick={() => zoomInto(g)} />;
     }
     const it = g.items[0];

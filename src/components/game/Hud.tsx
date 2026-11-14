@@ -10,6 +10,7 @@ import { Button } from "@/components/Button";
 import { api, type Me } from "./client";
 import { useGame } from "./ui";
 import { RollingNumber, celebrate } from "./Rewards";
+import { Icon } from "@/components/drive/icons";
 
 export function Wallet({ me, onWallet, onStore, onInbox, inbox }: { me: Me; onWallet: () => void; onStore: () => void; onInbox: () => void; inbox: number }) {
   return (
@@ -24,7 +25,7 @@ export function Wallet({ me, onWallet, onStore, onInbox, inbox }: { me: Me; onWa
         💎 <RollingNumber value={me.gems} kind="gem" /> <span className="plus">+</span>
       </Button>
       <Button className={`chip bell-chip ${inbox ? "has-new" : ""}`} data-tour="inbox" title={t("Inbox")} aria-label={inbox ? t("Inbox, {n} new", { n: inbox }) : t("Inbox")} onClick={onInbox}>
-        🔔{inbox > 0 && <span className="badge pop">{inbox > 99 ? "99+" : inbox}</span>}
+        <Icon name="bell" size={18} />{inbox > 0 && <span className="badge pop">{inbox > 99 ? "99+" : inbox}</span>}
       </Button>
     </div>
   );

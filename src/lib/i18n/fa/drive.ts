@@ -271,6 +271,9 @@ const drive: Record<string, string> = {
   "Putting your car on the street…": "گذاشتن ماشینت توی خیابان…",
   Ready: "آماده",
   "Loading the 3D city…": "بارگذاری شهر سه‌بعدی…",
+  "Bigger map": "نقشهٔ بزرگ‌تر",
+  "Bigger map (M)": "نقشهٔ بزرگ‌تر (M)",
+  "Open the full map": "باز کردن نقشهٔ کامل",
 };
 
 export default drive;

@@ -13,7 +13,8 @@ export function readCaps(): Caps {
   const dpr = window.devicePixelRatio || 1;
   const caps: Caps = {
     gpu: "",
-    mobile: isTouch() && Math.min(screen.width, screen.height) < 900,
+    // iPadOS Safari says it's a Mac: a "Mac" with a touch screen is an iPad (big iPad Pros are ≥ 900 px too).
+    mobile: isTouch() && (Math.min(screen.width, screen.height) < 900 || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)),
     maxTexture: 4096,
     floatTargets: false,
     memoryGB: nav.deviceMemory ?? null,

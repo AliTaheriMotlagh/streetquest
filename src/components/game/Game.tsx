@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { useT } from "@/components/I18nProvider";
 import { applyConfig } from "@/lib/config";
@@ -34,7 +34,7 @@ import { ReadyTray, Wallet } from "./Hud";
 import { Button } from "@/components/Button";
 import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
-import { Icon } from "../drive/icons";
+import { Icon, type IconName } from "../drive/icons";
 import { queueScenario } from "../drive/scenarioLink";
 import { pedometer, useSteps } from "./steps";
 import { STEP_GOAL } from "@/lib/idle";
@@ -65,7 +65,8 @@ import { MAP_STYLES, mapStyle as styleById, type MapStyle } from "./mapStyles";
 
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 // While the 3D code downloads: the same loading screen the city then keeps up until it's drawn (DriveBoot).
-const Drive = dynamic(() => import("../drive/Drive"), {
+// Memoised: the map screen ticks (clocks, world refresh, presence) must not re-render the whole 3D city.
+const Drive = memo(dynamic(() => import("../drive/Drive"), {
   ssr: false,
   loading: () => (
     <div className="dboot" role="progressbar" aria-label={t("Loading the 3D city…")}>
@@ -78,16 +79,17 @@ const Drive = dynamic(() => import("../drive/Drive"), {
       </div>
     </div>
   ),
-});
+}));
 
-const NAV: [PanelId, string, string][] = [
-  ["nearby", "🎯", msg("Nearby")],
-  ["wallet", "💵", msg("Wallet")],
-  ["play", "🎮", msg("Play")],
-  ["market", "🛍️", msg("Market")],
-  ["jobs", "📦", msg("Jobs")],
-  ["social", "🌐", msg("Social")],
-  ["me", "👤", msg("Profile")],
+// Line icons, one set with the pins and the 3D HUD (the bottom bar never draws an emoji).
+const NAV: [PanelId, IconName, string][] = [
+  ["nearby", "target", msg("Nearby")],
+  ["wallet", "wallet", msg("Wallet")],
+  ["play", "gamepad", msg("Play")],
+  ["market", "bag", msg("Market")],
+  ["jobs", "box", msg("Jobs")],
+  ["social", "globe", msg("Social")],
+  ["me", "user", msg("Profile")],
 ];
 
 const TEST_MODE_KEY = "sq_test_mode";
@@ -420,6 +422,20 @@ export default function Game() {
     drivePos.current = { last: null, at: 0, pending: null };
     setDriveOn(null);
   };
+  // The 3D city's props stay the same objects between map-screen renders (Drive is memoised):
+  // where it started is taken once per visit, the callbacks always call the latest handlers.
+  const driveFns = useRef({ onDriveMove, leaveDrive, collect: (_: string) => Promise.resolve(false as unknown), select: (_: Selected) => {}, profile: () => {} });
+  const driveCbs = useMemo(
+    () => ({
+      onMove: (p: LatLng) => driveFns.current.onDriveMove(p),
+      onCollect: (id: string) => driveFns.current.collect(id).then(() => undefined),
+      onSelect: (s: Selected) => (driveFns.current.leaveDrive(), driveFns.current.select(s)),
+      onProfile: () => (driveFns.current.leaveDrive(), driveFns.current.profile()),
+      onExit: () => driveFns.current.leaveDrive(),
+    }),
+    [],
+  );
+  const driveStart = useMemo(() => (driveOn ? pos ?? me?.lastPos ?? null : null), [driveOn]); // eslint-disable-line react-hooks/exhaustive-deps
   // In the 3D city the 2D map is hidden underneath: its store layers wait (no matching stores
   // against each other every time the car reports where it is — that was most of the lag).
   const mapAsleep = !!driveOn;
@@ -674,8 +690,8 @@ export default function Game() {
 
   // The clock behind every countdown on screen. Each tick re-renders the whole game,
   // open panels included, so it only ticks every second while a countdown is showing.
-  const countdowns =
-    !!me?.activeRun || !!gps.view;
+  // In the 3D city the map's countdowns are hidden (the city keeps its own clocks): a slow tick.
+  const countdowns = !driveOn && (!!me?.activeRun || !!gps.view);
   useEffect(() => {
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), countdowns ? 1000 : 15_000);
@@ -917,13 +933,34 @@ export default function Game() {
     }
   }, [me?.canSimulate, me?.remotePlay, simMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Home mode: start where the server last saw you (or your real GPS), else let the player pick.
+  // Home mode: you arrive where you really are — one real GPS fix (a few seconds at most) — and only
+  // without one where the server last saw you, your IP's city, or a spot you tap.
+  const homeAsked = useRef(false);
   useEffect(() => {
-    if (!homeMode || homePos) return;
-    const start = me?.lastPos ?? geo.pos ?? (me?.ipPos ? { lat: me.ipPos.lat, lng: me.ipPos.lng } : null);
-    if (start) setHomePos(start);
-    else setPicker({ label: t("🛋️ Tap where your commander starts"), cb: (p) => setHomePos(p) });
-  }, [homeMode, me?.lastPos?.lat, geo.pos?.lat]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!homeMode) return void (homeAsked.current = false);
+    if (homePos || homeAsked.current) return;
+    homeAsked.current = true;
+    let done = false;
+    const fallback = () => {
+      if (done) return;
+      done = true;
+      const start = me?.lastPos ?? geo.pos ?? (me?.ipPos ? { lat: me.ipPos.lat, lng: me.ipPos.lng } : null);
+      if (start) setHomePos((h) => h ?? start);
+      else setPicker({ label: t("🛋️ Tap where your commander starts"), cb: (p) => setHomePos(p) });
+    };
+    if (!("geolocation" in navigator)) return fallback();
+    const wait = setTimeout(fallback, 8000);
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        clearTimeout(wait);
+        if (done) return;
+        done = true;
+        setHomePos({ lat: p.coords.latitude, lng: p.coords.longitude });
+      },
+      () => (clearTimeout(wait), fallback()),
+      { enableHighAccuracy: false, timeout: 7500, maximumAge: 120_000 },
+    );
+  }, [homeMode, homePos]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!homeMode) {
       setHomePos(null);
@@ -1012,6 +1049,7 @@ export default function Game() {
       setSelected(null);
       patchWorld((w) => ({ ...w, money: w.money.filter((m) => m.id !== id) }));
     });
+  driveFns.current = { onDriveMove, leaveDrive, collect, select: handleSelect, profile: () => setPanel("me") };
 
   const ctx = useMemo<GameCtx | null>(
     () =>
@@ -1364,7 +1402,7 @@ export default function Game() {
             />
           )}
           <Button className="fab" title={t("More")} aria-label={t("More")} aria-expanded={moreOpen} onClick={() => (setMoreOpen(!moreOpen), setStylesOpen(false), setFilterOpen(false))} style={{ outline: moreOpen ? "2px solid var(--yellow)" : undefined }}>
-            ⋯
+            <Icon name="dots" size={22} strokeWidth={3} />
           </Button>
           {moreOpen && stylesOpen && (
             <div className="more-menu styles" role="menu" aria-label={t("Map style")}>
@@ -1382,31 +1420,38 @@ export default function Game() {
             <div className="more-menu" role="menu">
               {me.canSimulate && (
                 <Button role="menuitem" onClick={() => (toggleSim(), setMoreOpen(false))} className={simMode ? "on" : ""}>
-                  🕹️ {simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")}
+                  <Icon name="gamepad" size={18} />
+                  <span className="mm-t">{simMode ? t("Test mode on — tap to use real GPS") : t("Test mode: play without walking")}</span>
                 </Button>
               )}
               <Button role="menuitem" onClick={() => (exploreOn ? stopExplore() : startExplore(look), setMoreOpen(false))} className={exploreOn ? "on" : ""}>
-                🧭 {exploreOn ? t("Exploring — tap to go back to me") : t("Explore the map (no location needed)")}
+                <Icon name="compass" size={18} />
+                <span className="mm-t">{exploreOn ? t("Exploring — tap to go back to me") : t("Explore the map (no location needed)")}</span>
               </Button>
               <Button role="menuitem" aria-haspopup="menu" onClick={() => setStylesOpen(true)}>
-                {mapStyle.emoji} {t("Map style")} <span className="small">· {t(mapStyle.name)}</span>
+                <Icon name="palette" size={18} />
+                <span className="mm-t">{t("Map style")} <span className="small mm-sub">{t(mapStyle.name)}</span></span>
               </Button>
               <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setProductsOpen(true), setMoreOpen(false))}>
-                🔎 {t("Find a product")} <span className="small">· {t("prices in every store")}</span>
+                <Icon name="search" size={18} />
+                <span className="mm-t">{t("Find a product")} <span className="small mm-sub">{t("prices in every store")}</span></span>
               </Button>
               <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setDirOpen(true), setMoreOpen(false))}>
-                🗂️ {t("List all stores")} <span className="small">· {t("no map needed")}</span>
+                <Icon name="list" size={18} />
+                <span className="mm-t">{t("List all stores")} <span className="small mm-sub">{t("no map needed")}</span></span>
               </Button>
               <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setFilterOpen(true), setMoreOpen(false))}>
-                🗺️ {t("On the map")} <span className="small">· {fmtNum(layers.length)}/{fmtNum(ALL_LAYERS.length)}</span>
+                <Icon name="layers" size={18} />
+                <span className="mm-t">{t("On the map")} <span className="small mm-sub">{fmtNum(layers.length)}/{fmtNum(ALL_LAYERS.length)}</span></span>
               </Button>
               <Button role="menuitem" onClick={() => setMuted(!muted)}>
-                {muted ? "🔇" : "🔊"} {muted ? t("Turn sound on") : t("Turn sound off")}
+                <Icon name={muted ? "mute" : "sound"} size={18} />
+                <span className="mm-t">{muted ? t("Turn sound on") : t("Turn sound off")}</span>
               </Button>
             </div>
           )}
           <Button className={`fab ${!follow && pos ? "fab-recenter" : ""}`} title={t("Re-center on me")} aria-label={t("Re-center the map on me")} aria-pressed={follow} onClick={() => (exploreOn ? stopExplore() : setFollow(true))} style={{ color: follow ? "var(--cyan)" : undefined }}>
-            ◎
+            <Icon name="locate" size={22} />
           </Button>
         </div>
 
@@ -1496,7 +1541,7 @@ export default function Game() {
                 }}
                 className={on ? "on" : ""}
               >
-                <span className="ic">{ic}</span>
+                <span className="ic"><Icon name={ic} size={22} /></span>
                 <span className="nav-lb">{t(label)}</span>
                 {b != null && <span className="badge pop">{typeof b === "number" ? fmtNum(b) : b}</span>}
               </Button>
@@ -1504,24 +1549,18 @@ export default function Game() {
           })}
         </nav>
 
-        {driveOn && (pos ?? me.lastPos) && (
+        {driveOn && driveStart && (
           <Drive
-            start={(pos ?? me.lastPos)!}
+            start={driveStart}
             goal={driveOn.goal}
             canDrive={simMode || homeMode}
             sim={simMode}
             follow={simMode || homeMode ? null : pos}
-            onMove={simMode || homeMode ? onDriveMove : null}
-            onCollect={(id) => collect(id).then(() => undefined)}
-            onSelect={(s) => {
-              leaveDrive();
-              handleSelect(s);
-            }}
-            onProfile={() => {
-              leaveDrive();
-              setPanel("me");
-            }}
-            onExit={leaveDrive}
+            onMove={simMode || homeMode ? driveCbs.onMove : null}
+            onCollect={driveCbs.onCollect}
+            onSelect={driveCbs.onSelect}
+            onProfile={driveCbs.onProfile}
+            onExit={driveCbs.onExit}
           />
         )}
 

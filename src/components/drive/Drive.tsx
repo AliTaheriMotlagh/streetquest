@@ -199,6 +199,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const { me, world, act, refresh, toast } = useGame();
   const mount = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
+  // The minimap opened up (tap it, or M): a wider area, bigger, over the game — the full 2D map is one more tap.
+  const [bigMap, setBigMap] = useState(false);
+  const bigMapRef = useRef(false);
+  bigMapRef.current = bigMap;
   const wpRoot = useRef<HTMLDivElement>(null);
   const [hud, setHud] = useState<Hud | null>(null);
   // The loading screen (lib/bootGate.ts): up until the streets round you are drawn and the car stands on one.
@@ -1376,6 +1380,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (k === "h" && !e.repeat) horn(true);
       if (k === "c") cycleCam();
       if (k === "l") land();
+      if (k === "m" && !e.repeat) setBigMap((b) => !b);
       startEngine();
     };
     const keyUp = (e: KeyboardEvent) => {
@@ -2162,15 +2167,18 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
       // -- minimap (~8 Hz): roads around us, heading up
       const mc = mini.current;
-      if (mc && now - lastMini > 120) {
+      if (mc && now - lastMini > (bigMapRef.current ? 90 : 120)) {
         lastMini = now;
         const g = mc.getContext("2d");
         if (g) {
-          const W = mc.width, R = W / 2, scale = R / 240;
+          const big = bigMapRef.current;
+          // Big: four times the area at twice the canvas, lines a touch finer than the small one's.
+          const W = mc.width, R = W / 2, range = big ? 520 : 240, scale = R / range, lw = big ? 1.5 : 1;
           g.save();
           g.clearRect(0, 0, W, W);
           g.beginPath();
-          g.arc(R, R, R - 2, 0, Math.PI * 2);
+          if (big) g.roundRect(0, 0, W, W, 28);
+          else g.arc(R, R, R - 2, 0, Math.PI * 2);
           g.clip();
           g.fillStyle = phase === "night" ? "rgba(16,20,36,.9)" : style === "real" ? "rgba(232,234,226,.92)" : "rgba(222,244,210,.9)";
           g.fillRect(0, 0, W, W);
@@ -2179,12 +2187,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           g.lineCap = "round";
           for (const s of tiles.values()) {
             const m = s.mesh;
-            if (!m || s.dist > 260) continue;
+            if (!m || s.dist > range + 40) continue;
             m.roads.forEach((line, li) => {
               const k = m.roadKinds[li];
               if (k === "foot" || k === "rail" || !m.roadDrawn[li]) return;
               g.strokeStyle = phase === "night" ? "#7f86b8" : k === "major" ? "#f2b94b" : "#9a9eb4";
-              g.lineWidth = k === "major" ? 4 : 2.6;
+              g.lineWidth = (k === "major" ? 4 : 2.6) * lw;
               g.beginPath();
               for (let i = 0; i < line.length; i += 2) {
                 const x = (line[i] - st.x) * scale, y = (line[i + 1] - st.z) * scale;
@@ -2197,7 +2205,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               cols.forEach((col, si) => {
                 if (!col) return;
                 g.strokeStyle = col;
-                g.lineWidth = k === "major" ? 4.6 : 3.2;
+                g.lineWidth = (k === "major" ? 4.6 : 3.2) * lw;
                 g.beginPath();
                 g.moveTo((line[si * 2] - st.x) * scale, (line[si * 2 + 1] - st.z) * scale);
                 g.lineTo((line[si * 2 + 2] - st.x) * scale, (line[si * 2 + 3] - st.z) * scale);
@@ -2219,7 +2227,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             g.fillStyle = col;
             g.fillRect(bx - r, bz - r, r * 2, r * 2);
           };
-          for (const p of shops) if (Math.abs(p.x - st.x) < 250 && Math.abs(p.z - st.z) < 250) blip(p.x, p.z, p.color, 1.8);
+          for (const p of shops) if (Math.abs(p.x - st.x) < range && Math.abs(p.z - st.z) < range) blip(p.x, p.z, p.color, 1.8 * lw);
           for (const m of markers.spots()) blip(m.x, m.z, m.color, 2.6);
           for (const b of beacons.values()) dot(b.group.position.x, b.group.position.z, b.job.color, 4.5);
           for (const d of scenarios.dots()) dot(d.x, d.z, d.color, 5);
@@ -2536,14 +2544,31 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             </div>
           )}
         </div>
+        {bigMap && (
+          <div className="drive-bigmap" role="dialog" aria-label={t("Map")} onClick={() => setBigMap(false)}>
+            <div className="dbm-card" onClick={(e) => e.stopPropagation()}>
+              <canvas className="drive-mini big" ref={mini} width={640} height={640} />
+              <div className="dbm-bar">
+                <button type="button" className="dbm-btn" onClick={onExit}>
+                  <Icon name="map" size={18} /> {t("Open the full map")}
+                </button>
+                <button type="button" className="dbm-btn round" onClick={() => setBigMap(false)} aria-label={t("Close")}>
+                  <Icon name="close" size={18} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="drive-end">
           {/* The minimap is the way back to the full map: tap it, like opening the map in any open-world game. */}
-          <button type="button" className={`drive-mini-wrap ${hud && hud.loading > 0 ? "loading" : ""}`} onClick={onExit} aria-label={t("Open the map")} title={hud && hud.loading > 0 ? t("Loading the city…") : t("Open the map")}>
-            <canvas className="drive-mini" ref={mini} width={256} height={256} />
-            <span className="drive-mini-tag" aria-hidden>
-              <Icon name="map" size={12} />
-            </span>
-          </button>
+          {!bigMap && (
+            <button type="button" className={`drive-mini-wrap ${hud && hud.loading > 0 ? "loading" : ""}`} onClick={() => setBigMap(true)} aria-label={t("Bigger map")} title={hud && hud.loading > 0 ? t("Loading the city…") : t("Bigger map (M)")}>
+              <canvas className="drive-mini" ref={mini} width={256} height={256} />
+              <span className="drive-mini-tag" aria-hidden>
+                <Icon name="expand" size={12} />
+              </span>
+            </button>
+          )}
           <div className="dgauge" ref={gauge} role="img" aria-label={t("Speedometer")}>
             <svg viewBox="0 0 80 80" aria-hidden>
               {GAUGE_TICKS}

@@ -79,26 +79,59 @@ export function shortDistance(m: number): { value: string; unit: "m" | "km" } {
 }
 
 // Business / pickup emoji from the data -> the HUD's line icons (the HUD never draws an emoji).
+// The specific kinds come first; the broad families after them catch the rest.
 const EMOJI_ICON: [RegExp, IconName][] = [
-  [/[🍔🍕🍟🌭🥙🥪🍲🍜🍝🍣🍗🥗🍽🍴]/u, "food"],
-  [/[☕🍵🧋🥤🍰🧁🍩🍦🥐🍪]/u, "cup"],
-  [/[🛒🛍🏪🧺]/u, "cart"],
-  [/[🏦💰💵💳🏧]/u, "bank"],
+  [/[🍕]/u, "pizza"],
+  [/[🍔🍟🌭🥙🥪]/u, "burger"],
+  [/[🍦🍨🍧]/u, "icecream"],
+  [/[🍰🧁🍩🎂🍪]/u, "cake"],
+  [/[🥖🥐🍞🥨]/u, "bread"],
+  [/[🍎🍏🥕🍌🍇🥦]/u, "apple"],
+  [/[🥩🍖🍗🐟]/u, "meat"],
+  [/[🥤🧃🍹🍸🍺]/u, "drink"],
+  [/[🍲🍜🍝🍣🥗🍽🍴]/u, "food"],
+  [/[☕🍵🧋]/u, "cup"],
+  [/[🛒🧺]/u, "cart"],
+  [/[🏦💳🏧]/u, "bank"],
   [/[🎬🎞📽🍿]/u, "film"],
-  [/[⛽🔧🛠]/u, "fuel"],
-  [/[💊🏥🩹⚕]/u, "pill"],
-  [/[🎁📦]/u, "gift"],
+  [/[⛽]/u, "fuel"],
+  [/[🔧🛠🔨]/u, "wrench"],
+  [/[🚗🚙🚘🏍]/u, "car"],
+  [/[💊🩹]/u, "pill"],
+  [/[🩺]/u, "doctor"],
+  [/[🏥⚕]/u, "medical"],
+  [/[💇💅💄✂]/u, "scissors"],
+  [/[👗👕👟👠👔]/u, "shirt"],
+  [/[👜🎒🛍]/u, "bag"],
+  [/[🛋🪑]/u, "sofa"],
+  [/[🧱🪵]/u, "brick"],
+  [/[📱💻🖥🎧]/u, "phone"],
+  [/[🎓🏫✏]/u, "school"],
+  [/[🏋💪⚽🏀]/u, "dumbbell"],
+  [/[🏠🏡]/u, "home"],
+  [/[🏨🛏]/u, "bed"],
+  [/[🐾🐶🐱]/u, "paw"],
+  [/[🌳🌲🌿]/u, "tree"],
+  [/[📚📖]/u, "book"],
+  [/[📢📣]/u, "megaphone"],
+  [/[🎁📦💐]/u, "gift"],
+  [/[💰💵]/u, "coin"],
   [/[🎯🏁]/u, "flag"],
-  [/[🏢🏬🏛🏨]/u, "building"],
-  [/[👜🎒👗👕👟]/u, "bag"],
+  [/[🏢🏬🏛]/u, "building"],
+  [/[🏪]/u, "store"],
+  [/[🏷]/u, "tag"],
   [/[🔑]/u, "key"],
   [/[⭐🌟✨]/u, "star"],
 ];
 
+/** A data emoji as one of the line icons, or null when none fits (the map then draws the emoji as art). */
+export function glyphFor(emoji: string): IconName | null {
+  for (const [re, name] of EMOJI_ICON) if (re.test(emoji)) return name;
+  return null;
+}
 /** A job's or place's data emoji as one of the HUD icons (`pin` when nothing fits). */
 export function iconForEmoji(emoji: string): IconName {
-  for (const [re, name] of EMOJI_ICON) if (re.test(emoji)) return name;
-  return "pin";
+  return glyphFor(emoji) ?? "pin";
 }
 
 /** The marker colour family for a job kind. */

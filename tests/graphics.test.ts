@@ -78,6 +78,9 @@ describe("profiles", () => {
       assert.deepEqual([p.post, p.bloom, p.ao, p.cinematic, p.fxaa, p.msaa], [false, false, false, false, false, 0], t);
       assert.equal(p.shadows, PROFILES[t].shadows);
       assert.deepEqual(withCaps(PROFILES[t], { floatTargets: true }), PROFILES[t]);
+      const phone = withCaps(PROFILES[t], { floatTargets: true, mobile: true });
+      if (t === "ultra") assert.deepEqual(phone, PROFILES[t], "ultra picked by hand stays ultra");
+      else assert.ok(phone.maxDpr <= 1.5 && phone.msaa <= 2, `${t} on a phone: ${phone.maxDpr}× ${phone.msaa} samples`);
     }
   });
 
@@ -164,6 +167,21 @@ describe("adaptive frame rate", () => {
     assert.ok(lowest >= 1.7 - 1e-9, `stopped after two futile steps (lowest ${lowest})`);
     assert.equal(a.dpr, 2, "restored");
     assert.equal(a.level, 0);
+  });
+
+  it("strips effects instead when fewer pixels don't help and it isn't a cap (a busy CPU)", () => {
+    // CPU-bound: the frame costs the same at any resolution, less with each effect gone, and wanders.
+    const a = new Adaptive({ maxDpr: 2, minDpr: 0.8 }, { features: true });
+    let now = 0, seed = 1;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let w = 0; w < 60; w++)
+      for (let i = 0; i < 60; i++) {
+        const ms = 19 + 2.2 * (MAX_LEVEL - a.level) + rnd() * 8;
+        now += ms;
+        a.sample(ms, now);
+      }
+    assert.ok(a.level >= 2, `effects stripped (level ${a.level})`);
+    assert.ok(a.dpr >= 1.7 - 1e-9, `kept its sharpness (dpr ${a.dpr})`);
   });
 
   it("ignores hitches (tab switches, GC pauses)", () => {
