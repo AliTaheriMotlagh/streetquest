@@ -121,7 +121,7 @@ function Setup({ data, onDone }: { data: Data; onDone: () => void }) {
 type Details = { name: string; category: PlaceCat; emoji: string; about: string; address: string; phone: string; website: string; snappfood: string; torob: string; divar: string };
 
 function DetailsForm({ b, initial, osmId, onDone, onBack }: { b?: BizDashboard; initial?: Partial<Details>; osmId?: string; onDone: () => void; onBack?: () => void }) {
-  const { act } = useGame();
+  const { act, pos } = useGame();
   const [f, setF] = useState<Details>({
     name: b?.name ?? initial?.name ?? "",
     category: (b?.category as PlaceCat) ?? initial?.category ?? "shop",
@@ -157,7 +157,7 @@ function DetailsForm({ b, initial, osmId, onDone, onBack }: { b?: BizDashboard; 
         <label className="grow">{t("Phone")}<input className="input" maxLength={BIZ_LIMITS.phone} inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} /></label>
         <label className="grow">{t("Website")}<input className="input" maxLength={BIZ_LIMITS.website} placeholder="https://" value={f.website} onChange={(e) => set("website", e.target.value)} /></label>
       </div>
-      <OwnerLinkFields v={f} set={set} />
+      <OwnerLinkFields v={f} set={set} at={b ?? pos} />
       <div className="row">
         {onBack && <Button className="btn ghost" onClick={onBack}>{t("Back")}</Button>}
         <Button className="btn yellow grow" disabled={f.name.trim().length < 2} onClick={save}>{b ? t("Save") : t("🏪 Put it on the map")}</Button>

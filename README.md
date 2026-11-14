@@ -150,8 +150,15 @@ mood scales XP; loot funds research; territory funds the army.
 - **Metro & buses** (`lib/transit/*`, `game/TransitCard.tsx`, `server/transit.ts`, `/api/transit`): a map layer in
   Tehran and Istanbul with every metro, tram and funicular station (always on the map, in the line's colour), the bus
   stops round you and, in Istanbul, the buses live. A station's card lists its lines and the next trains each way; a
-  bus stop's card says when each line's next bus comes — live from IETT in Istanbul (the nearest bus of that line,
-  minutes estimated from its distance), else "about every N min". The **Metro** sheet (⋯ menu, or a station's
+  bus stop's card lists every line each way it runs past the stop: where it's going and where it came from, its
+  operator, how many stops to the end and roughly how long, the next stops with minutes to each (tap for all of them),
+  and when it comes — live from IETT in Istanbul (the nearest bus of that line, minutes estimated from its distance),
+  else from the published timetable (next departures, first and last bus), else the map's own interval, else plainly
+  "No timetable" (never a made-up number). Timetables come from the city's GTFS feed: download it (Istanbul:
+  data.ibb.gov.tr "İETT GTFS", or the Mobility Database mirror mdb-3128 — both refuse Iranian addresses, use a VPN) and
+  `npm run transit:times -- istanbul <gtfs.zip>` → `src/data/transit/<city>-times.json` (`lib/transit/gtfs.ts`; read
+  from disk by `/api/transit?board=`). OpenStreetMap lists many bus routes' stops in no order; the build chains them in
+  travel order (`orderStops`). The **Metro** sheet (⋯ menu, or a station's
   "Metro map" / "Trip to here") shows each line as a strip of stations with its interchanges, plans a trip from where
   you are (walk, ride, change, walk — Dijkstra over station × line, waits of half a headway, 4 min to change), and has
   a short guide (cards, women's carriages in Tehran, Marmaray…). Lines and stops come from OpenStreetMap's route
@@ -199,9 +206,12 @@ mood scales XP; loot funds research; territory funds the army.
   it has none (guns and the interface can now be recorded too). ▶ In game plays it exactly as players hear it; ⤒ add
   takes, 🎙 record one, ✎ edit (trim, gain, fades, normalise; saved as a WAV source), 🗑 drop one, then ⚙ Build (runs
   `npm run assets:sounds`; a slot whose sources aren't on this machine keeps what ships). Voices and radio are linked.
-- **/dev/voices: every line, any voice** (`app/dev/voices/VoiceMaker.tsx`, `lib/voiceTools.ts`): all the game's lines in
-  Persian, English and Turkish, searchable. Per voice (men, women, police, per language) choose how it's made: Piper in
-  the browser, the game's speech server (Persian), any other TTS with an HTTP GET (`{text}`, `{lang}`, `{voice}` in its
+- **/dev/voices: every line, any voice** (`app/dev/voices/VoiceMaker.tsx`, `lib/voiceTools.ts`; the dev tools share one
+  look and a top bar, `app/dev/{layout.tsx,dev.css}`): all the game's lines in Persian, English and Turkish, searchable
+  and filterable (missing / made, by voice), with checkboxes to generate a selection, keyboard keys (↑↓ g r p c) and a
+  raw-vs-shipped compare with both waveforms. Per voice — or per line, overriding its voice — choose how it's made: Piper
+  in the browser, the game's speech server, a **Hugging Face** model (`HF_TOKEN` in .env; a list of TTS models with their
+  licences — non-commercial ones are marked "try only" and never ship — or any model id), any other TTS with an HTTP GET (`{text}`, `{lang}`, `{voice}` in its
   address: a local Coqui, an OpenAI-compatible server…), or by hand — then generate, ▶ Try a voice before choosing,
   🎙 record a line with the microphone (silence trimmed), ⤒ upload any audio for one line or many at once (named like
   `greet-3-f.mp3`). Everything is saved as the 16-bit mono WAV `npm run assets:voices` reads.
@@ -229,6 +239,13 @@ mood scales XP; loot funds research; territory funds the army.
   3D button; the filter has no "The game" group); **Game** is everything, with a Map tab first in its bar to step out
   (the wallet lives on its chip up top). On the map, stores that would sit on each other become one bubble with a
   count at every zoom but the closest (tap: zoom in) — never dots.
+- **Moving along the streets** (`lib/homeWalk.ts`, `server/footRoute.ts`, `/api/route?mode=foot`) — playing from home,
+  a tap sends your marker there down the streets and round the blocks, never through buildings: a walking route from
+  OpenStreetMap's public OSRM (routing.openstreetmap.de, worldwide, no key, paced to one request a second and
+  remembered ten minutes; `OSRM_FOOT_URL` / `OSRM_CAR_URL` for your own server). The marker waits a moment for it
+  ("finding the way along the streets…") and only goes straight if no route comes in 6 s. Driving navigation uses
+  Neshan in Iran and OSRM's car profile elsewhere. Exploring another city shows that city's own layers and data (its
+  delivery site, its cinemas, its transit), whatever country you're really in.
 - **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). A loading screen
   (`src/components/drive/DriveBoot.tsx`, rules `src/lib/bootGate.ts`) covers the city — progress, what it's doing, a tip —
@@ -437,8 +454,20 @@ mood scales XP; loot funds research; territory funds the army.
   height, feet and facing. No CC BY animated woman in a hijab or chador exists on Sketchfab yet, so the women stay
   drawn. The pavements also have blue-and-yellow charity boxes every block or two and green newspaper kiosks on the
   main roads.
+- **Skydiving** (`lib/skydive.ts`, `drive/skydive3d.ts`) — jump out of the helicopter, or *Skydive from here* (the
+  driving menu: 900 m over where you are). Freefall at a skydiver's speed (gas dives, brake spreads out), pull the cord
+  yourself (Space or the big button; below 70 m it opens by itself, late), a jolt as the canopy fills, then glide and
+  flare (brake just before the ground) for a perfect landing — on a roof too. A dropped jump has a course: six gold rings
+  on the way down and a target with a beam of light; the landing is graded (perfect / good / hard / no canopy), scored
+  and paid as a street job (`skydive`, 1–5 stars). Coloured smoke from your ankles, wind that roars with your speed, an
+  altimeter, the camera over your shoulder looking down.
+- **Hero moves** (`lib/hero.ts`, on foot outside matches: 🦸 in the side bar) — hold the hook (T, or 🪝) to fire a line
+  up and ahead onto the first wall (or high over an open street) and swing under it, pumping with forward; let go to be
+  flung on. Hit a wall in the air and hold forward to run up it and vault onto the roof; jump kicks off; jump while
+  falling to glide. Rooftops are floors; heroes don't take fall damage.
 - **Street life — crashes, crime and the police** (outside matches; `src/components/drive/street.ts`, numbers in
-  `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game:
+  `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game (each country's own police: Iran's
+  green-band Samands, Turkey's white-and-blue «POLİS 155» saloons with navy uniforms — `lib/street/policeLook.ts`):
   - *Crashes are real*: your car takes damage by how hard it hit (a scrape is free, ~18 at 36 km/h, ~70 at 72 km/h, a
     wreck at 90), dents where it hit (`carDamage.ts` folds the body in; the shared model is copied first), loses pull,
     smokes grey then black, catches fire at zero and explodes ~6 s later — inside it you're thrown out hurt and it's a
@@ -756,8 +785,11 @@ mood scales XP; loot funds research; territory funds the army.
   screen with two halves. **Stores**: every store the game knows round you from *every* site as one list
   (`src/lib/stores/listing.ts`) — Snappfood restaurants, Torob's walk-in shops, Takhfifan deals, cinemas, Bilbooard,
   Irangaah, Okala, Netbarg and the map's own places; the same shop on two sites is one row wearing both sites' badges
-  (and the best of each site's facts). **Products & prices**: dishes from nearby Snappfood menus plus Takhfifan, Torob and
-  Basalam (`src/lib/productSearch.ts`) — a price range in toman with one-tap caps, discounted only, by site; sorted by best
+  (and the best of each site's facts). **Products & prices**: dishes from nearby Snappfood menus (Yemeksepeti's in
+  Turkey, prices in lira; idea chips in each country's own words, and Turkish letters folded so «cig kofte» finds «Çiğ
+  Köfte») plus Takhfifan, Torob and Basalam; a dish opens its restaurant on that dish, and ‹ (or the phone's Back) goes
+  back to the list with the search kept. The phone's Back closes whatever card is on top everywhere in the game
+  (`components/game/backStack.ts`) instead of leaving it (`src/lib/productSearch.ts`) — a price range in toman with one-tap caps, discounted only, by site; sorted by best
   match (each restaurant gets two dishes in before any gets more), cheapest, dearest, nearest, best rated or biggest
   discount. Both halves — and the 3D city's Places panel — share one filter design (`src/components/game/Filters.tsx`,
   `src/app/filters.css`): a search box, one sideways-scrolling bar of quick chips (open now, deals, ★ 4+, sites in their

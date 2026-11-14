@@ -65,7 +65,6 @@ const play: Record<string, string> = {
   // ---- directions
   "Navigate with…": "Yol tarifi al…",
   "Any map app": "Herhangi bir harita uygulaması",
-  "Neshan, Balad, Google Maps… on this phone": "Neshan, Balad, Google Haritalar… bu telefonda",
   Neshan: "Neshan",
   Balad: "Balad",
   "Opens the place — tap Route": "Yeri açar — «Rota»ya dokun",
@@ -187,6 +186,8 @@ const play: Record<string, string> = {
   "The convoy's tracker beacon fell nearby — find it to know their route.": "Konvoyun takip işaret cihazı yakınlarda düştü — rotalarını öğrenmek için bul.",
   "Get ahead of the convoy.": "Konvoyun önüne geç.",
   "Spring the ambush — hold the line!": "Pusuyu tetikle — hattı tut!",
+  "Every map app on this phone": "Bu telefondaki her harita uygulaması",
+  "Yandex Maps": "Yandex Haritalar",
 };
 
 export default play;

@@ -138,6 +138,7 @@ const game: Record<string, string> = {
   "You're back where you really are": "Gerçekte bulunduğun yere geri döndün",
   "Couldn't get your real location — is location allowed?": "Gerçek konumun alınamadı — konuma izin verildi mi?",
   "Back to my real location": "Gerçek konumuma dön",
+  "Finding the way along the streets…": "Sokaklardan yol bulunuyor…",
 };
 
 export default game;

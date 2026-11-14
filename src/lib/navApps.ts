@@ -5,10 +5,12 @@
 //  - desktop: the web maps, Google first.
 // Neshan and Balad (what most people in Iran drive with) open the place on their map, one tap
 // from a route; Google Maps, Apple Maps, Waze and OpenStreetMap start the route straight away.
+// Neshan and Balad only in Iran (they map nothing else); Yandex Maps in Turkey, where many drive with it.
 // The app the player picked last time goes to the top.
 import type { LatLng } from "./geo";
+import { countryAt } from "./region";
 
-export type NavApp = "geo" | "google" | "googleWalk" | "waze" | "neshan" | "balad" | "apple" | "osm";
+export type NavApp = "geo" | "google" | "googleWalk" | "waze" | "neshan" | "balad" | "yandex" | "apple" | "osm";
 export type Platform = "android" | "ios" | "desktop";
 export type NavLink = { app: NavApp; href: string };
 
@@ -20,10 +22,12 @@ export function platformOf(ua: string, touch = 0): Platform {
 }
 
 const ORDER: Record<Platform, NavApp[]> = {
-  android: ["geo", "neshan", "balad", "google", "waze", "googleWalk", "osm"],
-  ios: ["apple", "neshan", "balad", "google", "waze", "googleWalk", "osm"],
-  desktop: ["google", "neshan", "balad", "waze", "googleWalk", "apple", "osm"],
+  android: ["geo", "neshan", "balad", "yandex", "google", "waze", "googleWalk", "osm"],
+  ios: ["apple", "neshan", "balad", "yandex", "google", "waze", "googleWalk", "osm"],
+  desktop: ["google", "neshan", "balad", "yandex", "waze", "googleWalk", "apple", "osm"],
 };
+/** Apps that only cover one country. */
+const ONLY_IN: Partial<Record<NavApp, string>> = { neshan: "IR", balad: "IR", yandex: "TR" };
 
 /** 6 decimals: ~10 cm, and no "1e-7" in an address. */
 const c = (n: number) => (Math.round(n * 1e6) / 1e6).toFixed(6).replace(/\.?0+$/, "");
@@ -42,6 +46,8 @@ export function navLink(app: NavApp, to: LatLng, o: { from?: LatLng | null; name
       return `https://waze.com/ul?ll=${ll}&navigate=yes`;
     case "neshan":
       return `https://neshan.org/maps/@${ll},17z,0p`;
+    case "yandex":
+      return `https://yandex.com.tr/maps/?rtext=~${ll}&rtt=auto`;
     case "balad":
       return `https://balad.ir/location?latitude=${c(to.lat)}&longitude=${c(to.lng)}&zoom=17`;
     case "apple":
@@ -53,7 +59,8 @@ export function navLink(app: NavApp, to: LatLng, o: { from?: LatLng | null; name
 
 /** Every app this device can use, in the order to offer them; `favourite` (the last one used) first. */
 export function navLinks(to: LatLng, o: { platform: Platform; from?: LatLng | null; name?: string; favourite?: string | null }): NavLink[] {
-  const apps = ORDER[o.platform];
+  const here = countryAt(to.lat, to.lng);
+  const apps = ORDER[o.platform].filter((a) => !ONLY_IN[a] || ONLY_IN[a] === here);
   const fav = apps.find((a) => a === o.favourite);
   const order = fav ? [fav, ...apps.filter((a) => a !== fav)] : apps;
   return order.map((app) => ({ app, href: navLink(app, to, o) }));

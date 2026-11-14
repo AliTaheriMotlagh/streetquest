@@ -182,8 +182,6 @@ export default function Game() {
   const homeMode = !!me?.remotePlay && !simMode;
   const geo = useLocation(simMode ? simPos : homeMode ? homePos : null);
   const pos = geo.pos;
-  /** The country the player is in (which sites' layers the map offers): changes rarely, unlike pos. */
-  const posCountry = pos ? countryAt(pos.lat, pos.lng) : null;
   const [follow, setFollow] = useState(true);
   const [panel, setPanel] = useState<PanelId | null>(null);
   // Opening a panel mounts a lot of UI. It renders as a transition, so the tapped tab
@@ -274,6 +272,11 @@ export default function Game() {
   const exploreAt = exploreOn ? explore : null;
   /** Where the store layers load: the explored spot, else the player. */
   const look = exploreAt ?? pos;
+  /**
+   * The country the map is looking at — the explored city, else where the player is: which sites'
+   * layers the map offers (Istanbul's when exploring Istanbul from Tehran). Changes rarely, unlike look.
+   */
+  const lookCountry = look ? countryAt(look.lat, look.lng) : null;
   const startExplore = useCallback((at?: LatLng | null) => {
     setExploreOn(true);
     setFollow(false);
@@ -576,9 +579,9 @@ export default function Game() {
     for (const k of VENDOR_KIND_KEYS) count[k] = vendors.filter((v) => v.kind === k).length;
     for (const k of MAP_SITES) count[siteLayer(k)] = dirData.stores.filter((d) => d.site === k || d.also?.includes(k)).length;
     // In Turkey the menus are Yemeksepeti's.
-    const title = (g: string) => (g === DELIVERY_GROUP && deliveryAt(pos) === "yemeksepeti" ? msg("Menus from Yemeksepeti") : g);
-    return LAYER_GROUPS.map((g) => ({ title: title(g), items: MAP_LAYERS.filter((l) => l.group === g && layerShown(view, l.key) && layerHere(l.key, pos)).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) })).filter((g) => g.items.length);
-  }, [world, vendors, torobShops, cinemas, transit, deals, divar, siktirSpots, dirData, view, posCountry]); // eslint-disable-line react-hooks/exhaustive-deps
+    const title = (g: string) => (g === DELIVERY_GROUP && deliveryAt(look) === "yemeksepeti" ? msg("Menus from Yemeksepeti") : g);
+    return LAYER_GROUPS.map((g) => ({ title: title(g), items: MAP_LAYERS.filter((l) => l.group === g && layerShown(view, l.key) && layerHere(l.key, look)).map((l) => ({ key: l.key, emoji: l.emoji, label: l.label, count: l.key === "traffic" ? undefined : count[l.key] })) })).filter((g) => g.items.length);
+  }, [world, vendors, torobShops, cinemas, transit, deals, divar, siktirSpots, dirData, view, lookCountry]); // eslint-disable-line react-hooks/exhaustive-deps
   const kindChips = useMemo(() => {
     const n = new Map<string, number>();
     for (const p of spotsAround) n.set(p.cat, (n.get(p.cat) ?? 0) + 1);
@@ -1090,27 +1093,37 @@ export default function Game() {
   }, [homeMode]);
   const homeRef = useRef(homePos);
   homeRef.current = homePos;
-  // The walk there (lib/homeWalk.ts): straight at once, then along the streets when the
-  // route comes back. Small steps several times a second — the marker walks, it doesn't hop.
+  // The walk there (lib/homeWalk.ts): along the streets — a walking route (server/footRoute.ts,
+  // anywhere in the world) is asked first and the marker waits for it a moment ("finding the way"),
+  // so it never sets off through buildings; straight there only when no route can be had.
+  // Small steps several times a second — the marker walks, it doesn't hop.
   // The path lives in state (the map draws it); progress along it only in the ref (it moves every tick).
   const [walk, setWalkState] = useState<Walk | null>(null);
   const walkRef = useRef<Walk | null>(null);
   const setWalk = (w: Walk | null) => ((walkRef.current = w), setWalkState(w));
+  const [findingWay, setFindingWay] = useState(false);
   useEffect(() => {
     const from = homeRef.current;
-    if (!homeMode || !travel || !from) return setWalk(null);
-    setWalk(walkOf(from, travel));
-    if (distanceM(from, travel) < 60) return;
+    if (!homeMode || !travel || !from) return (setWalk(null), setFindingWay(false));
+    // A step or two away: just go.
+    if (distanceM(from, travel) < 25) return (setWalk(walkOf(from, travel)), setFindingWay(false));
     let live = true;
-    api<LiveRoute>(`/api/route?from=${from.lat.toFixed(6)},${from.lng.toFixed(6)}&to=${travel.lat.toFixed(6)},${travel.lng.toFixed(6)}`)
+    setWalk(null);
+    setFindingWay(true);
+    const straight = () => live && !walkRef.current && homeRef.current && (setWalk(walkOf(homeRef.current, travel)), setFindingWay(false));
+    // No answer in a few seconds: straight there after all (the route still replaces it if it comes).
+    const giveUp = setTimeout(straight, 6000);
+    api<LiveRoute>(`/api/route?mode=foot&from=${from.lat.toFixed(6)},${from.lng.toFixed(6)}&to=${travel.lat.toFixed(6)},${travel.lng.toFixed(6)}`)
       .then((r) => {
         const cur = homeRef.current;
-        // Only a sensible route (not a drive round the block for a short walk), started from where you are now.
-        if (!live || !cur || !r.line?.length || r.distanceM > distanceM(from, travel) * 2.2 + 150) return;
+        if (!live || !cur) return;
+        if (!r.line?.length) return straight();
+        // Along the streets, from where you are now.
         setWalk(walkOf(cur, travel, r.line));
+        setFindingWay(false);
       })
-      .catch(() => {});
-    return () => void (live = false);
+      .catch(straight);
+    return () => void ((live = false), clearTimeout(giveUp));
   }, [homeMode, travel]);
   useEffect(() => {
     if (!homeMode || !travel) return;
@@ -1479,7 +1492,7 @@ export default function Game() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 4.5a1.5 1.5 0 1 0 0-.01M10 21l2-6 3 3v3m-5-9 2-3.5 3 2.5 3 1M12 11.5 9.5 13 8 16" /></svg>
               </span>
               <span className="tb-txt">
-                <b>{w && w.path.length > 2 ? t("Walking there by the streets") : t("Walking there")}</b>
+                <b>{findingWay ? t("Finding the way along the streets…") : w && w.path.length > 2 ? t("Walking there by the streets") : t("Walking there")}</b>
                 <span>{t("{d} · {n} min", { d: formatDistance(left), n: Math.max(1, Math.ceil(left / (homeSpeedKmh(w?.total ?? left, S.remoteSpeedKmh) / 3.6) / 60)) })}</span>
               </span>
               <button type="button" className="tb-stop" onClick={() => setTravel(null)}>{t("Stop")}</button>

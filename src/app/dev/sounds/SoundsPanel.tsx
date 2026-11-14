@@ -98,7 +98,8 @@ export default function SoundsPanel() {
   const load = () => void fetch("/api/dev/sounds").then((r) => r.json()).then((r: { slots: Slot[] }) => setSlots(r.slots));
   useEffect(load, []);
 
-  const shown = useMemo(() => slots.filter((s) => s.group === group && `${s.key} ${s.what}`.toLowerCase().includes(q.trim().toLowerCase())), [slots, group, q]);
+  // ":missing" (the "Synth only" button) shows the slots still without a recording.
+  const shown = useMemo(() => slots.filter((s) => s.group === group && (q === ":missing" || `${s.key} ${s.what}`.toLowerCase().includes(q.trim().toLowerCase()))), [slots, group, q]);
   const count = (g: string) => slots.filter((s) => s.group === g).length;
   const recorded = (g: string) => slots.filter((s) => s.group === g && (s.sources.length || s.shipped.length)).length;
 
@@ -188,92 +189,108 @@ export default function SoundsPanel() {
     }
   };
 
+  const missingOnly = q === ":missing";
   return (
-    <main style={{ maxWidth: 1000, margin: "24px auto", padding: 16, fontFamily: "system-ui, sans-serif", color: "#eee", background: "#16181d", borderRadius: 12 }}>
-      <h1 style={{ marginTop: 0 }}>Every sound in the game</h1>
-      <p style={{ opacity: 0.85 }}>
-        Each slot plays its recordings (a random take each time) or, while it has none, the game&apos;s own synthesized sound. Add, record or edit takes, then <b>Build</b> (it needs ffmpeg): they
-        are trimmed, levelled and written to <code>public/sounds/</code> — commit that. Sources stay in <code>assets/sounds/&lt;slot&gt;/</code> (not in git).
-      </p>
-      <p style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {GROUPS.map(([g, label]) => (
-          <button key={g} onClick={() => setGroup(g)} style={{ ...btn, ...(group === g ? { background: "#f0c05a", color: "#1b1300" } : {}) }}>
-            {label} ({recorded(g)}/{count(g)})
-          </button>
-        ))}
-        <button onClick={() => setGroup("voices")} style={{ ...btn, ...(group === "voices" ? { background: "#f0c05a", color: "#1b1300" } : {}) }}>🗣 Voices</button>
-        <button onClick={() => setGroup("radio")} style={{ ...btn, ...(group === "radio" ? { background: "#f0c05a", color: "#1b1300" } : {}) }}>📻 Radio ({STATIONS.length})</button>
-        <span style={{ flex: 1 }} />
-        <button onClick={() => void build()} disabled={busy} style={primary}>{busy ? "Building…" : "⚙ Build"}</button>
-      </p>
-      {status && <pre style={{ whiteSpace: "pre-wrap", background: "#0f1115", padding: 8, borderRadius: 6, fontSize: 12 }}>{status}</pre>}
+    <main className="dev-main">
+      <div className="row">
+        <div className="grow">
+          <h1>Every sound in the game</h1>
+          <p className="lead">
+            Each slot plays its recordings (a random take each time) or, while it has none, the game&apos;s own synth. Add, record or edit takes, then <b>Build</b> (needs ffmpeg): they&apos;re trimmed,
+            levelled and written to <code>public/sounds/</code> — commit that. Sources stay in <code>assets/sounds/&lt;slot&gt;/</code> (not in git). Voices: <a href="/dev/voices">/dev/voices</a>.
+          </p>
+        </div>
+        <button className="btn primary" onClick={() => void build()} disabled={busy}>{busy ? "Building…" : "⚙ Build"}</button>
+      </div>
 
-      {group === "voices" && (
-        <p>
-          Everything people say (in Persian, English and Turkish) is on <a href="/dev/voices" style={{ color: "#f0c05a" }}>/dev/voices</a>: generate with Piper or another TTS, record, upload, listen.
-        </p>
-      )}
+      <section className="card sticky" style={{ display: "grid", gap: 10 }}>
+        <div className="row">
+          <div className="seg" role="tablist" aria-label="Group">
+            {GROUPS.map(([g, label]) => (
+              <button key={g} role="tab" aria-selected={group === g} onClick={() => setGroup(g)}>
+                {label} <span className="pill">{recorded(g)}/{count(g)}</span>
+              </button>
+            ))}
+            <button role="tab" aria-selected={group === "radio"} onClick={() => setGroup("radio")}>📻 Radio <span className="pill">{STATIONS.length}</span></button>
+          </div>
+          {group !== "voices" && group !== "radio" && (
+            <>
+              <input type="search" value={missingOnly ? "" : q} onChange={(e) => setQ(e.target.value)} placeholder="Find a sound…" style={{ flex: "1 1 200px" }} aria-label="Find a sound" />
+              <button className={`btn sm ${missingOnly ? "primary" : ""}`} onClick={() => setQ(missingOnly ? "" : ":missing")} title="Slots still on the synth">Synth only</button>
+            </>
+          )}
+        </div>
+        {status && <pre className={`status ${/fail/i.test(status) ? "err" : ""}`} style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>{status}</pre>}
+      </section>
+
       {group === "radio" && (
-        <ul>
-          {STATIONS.map((s) => (
-            <li key={s.id}>
-              {s.name} <span style={{ opacity: 0.6 }}>— {s.genre} · {s.group}</span>
-            </li>
-          ))}
-          <li style={{ opacity: 0.6, listStyle: "none", marginTop: 8 }}>Stations are streams (lib/radio.ts); change the list there.</li>
-        </ul>
+        <section className="card">
+          <div className="grid2">
+            {STATIONS.map((st) => (
+              <div key={st.id} className="row">
+                <b className="grow">{st.name}</b>
+                <span className="pill">{st.genre}</span>
+                <span className="pill">{st.group}</span>
+              </div>
+            ))}
+          </div>
+          <p className="muted small" style={{ marginBottom: 0 }}>Stations are streams (lib/radio.ts); change the list there.</p>
+        </section>
       )}
       {group !== "voices" && group !== "radio" && (
-        <>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a sound…" style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #3a3f49", background: "#0f1115", color: "#eee", marginBottom: 10 }} />
-          {shown.map((s) => {
+        <div className="grid2">
+          {(missingOnly ? shown.filter((s) => !s.shipped.length) : shown).map((s) => {
             const play = inGame(s.key);
             return (
-              <section key={s.key} style={{ borderTop: "1px solid #2c2f36", padding: "10px 0", display: "grid", gap: 6 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <b>{s.key}</b>
-                  <span style={{ opacity: 0.75 }}>{s.what}</span>
-                  <span style={{ fontSize: 12, padding: "1px 6px", borderRadius: 4, background: s.shipped.length ? "#1f5135" : "#3a3f49" }}>{s.shipped.length ? `${s.shipped.length} recording(s)` : "synth"}</span>
-                  {s.loop && <span style={{ fontSize: 12, opacity: 0.7 }}>loop</span>}
-                  <span style={{ fontSize: 12, opacity: 0.6 }}>≤ {s.maxS} s</span>
-                  <span style={{ flex: 1 }} />
-                  {play && <button style={btn} onClick={play} title="Hear it as the game plays it now">▶ In game</button>}
-                  <label style={btn} title="Add takes (any audio)">
+              <section key={s.key} className="card" style={{ display: "grid", gap: 8, alignContent: "start" }}>
+                <div className="row">
+                  <code>{s.key}</code>
+                  <span className={`pill ${s.shipped.length ? "ok" : "warn"}`}>{s.shipped.length ? `${s.shipped.length} recording${s.shipped.length > 1 ? "s" : ""}` : "synth"}</span>
+                  {s.loop && <span className="pill">loop</span>}
+                  {s.stereo && <span className="pill">stereo</span>}
+                  <span className="pill">≤ {s.maxS} s</span>
+                </div>
+                <div className="muted small">{s.what}</div>
+                <div className="row">
+                  {play && <button className="btn sm" onClick={play} title="Hear it as the game plays it now">▶ In game</button>}
+                  <label className="btn sm" title="Add takes (any audio)">
                     ⤒ Add
                     <input type="file" accept="audio/*" multiple hidden onChange={(e) => void upload(s, e.target.files)} />
                   </label>
-                  <button style={{ ...btn, ...(rec === s.key ? { background: "#c0392b" } : {}) }} disabled={!!rec && rec !== s.key} onClick={() => void record(s)}>{rec === s.key ? "■ Stop" : "🎙 Record"}</button>
+                  <button className={`btn sm ${rec === s.key ? "rec" : ""}`} disabled={!!rec && rec !== s.key} onClick={() => void record(s)}>{rec === s.key ? "■ Stop" : "🎙 Record"}</button>
+                  <a className="btn sm" href={`https://freesound.org/search/?q=${encodeURIComponent(s.search)}&f=license:%22Creative+Commons+0%22`} target="_blank" rel="noreferrer" title="Find CC0 takes on Freesound">🔎 Freesound</a>
+                  <a className="btn sm" href={`https://pixabay.com/sound-effects/search/${encodeURIComponent(s.search)}/`} target="_blank" rel="noreferrer" title="Find takes on Pixabay (free licence)">🔎 Pixabay</a>
                 </div>
                 {s.shipped.length > 0 && (
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
-                    In the game:{" "}
+                  <div className="small" style={{ display: "grid", gap: 4 }}>
+                    <span className="muted">In the game</span>
                     {s.shipped.map((f) => (
-                      <span key={f} style={{ marginInlineEnd: 10 }}>
-                        <button style={btn} onClick={() => void new Audio(`/sounds/${f}?t=${Date.now()}`).play()}>▶</button>
-                        {f}
-                        <button style={btn} onClick={() => void open(s, f, true)} title="Edit a copy (saved as a new source take)">✎</button>
-                      </span>
+                      <div key={f} className="row" style={{ gap: 6 }}>
+                        <button className="btn icon sm" onClick={() => void new Audio(`/sounds/${f}?t=${Date.now()}`).play()} aria-label={`Play ${f}`}>▶</button>
+                        <span className="grow">{f}</span>
+                        <button className="btn icon sm" onClick={() => void open(s, f, true)} title="Edit a copy (saved as a new source take)">✎</button>
+                      </div>
                     ))}
                   </div>
                 )}
                 {s.sources.length > 0 && (
-                  <div style={{ fontSize: 13, opacity: 0.8 }}>
-                    Sources:{" "}
+                  <div className="small" style={{ display: "grid", gap: 4 }}>
+                    <span className="muted">Sources (built on ⚙ Build)</span>
                     {s.sources.map((f) => (
-                      <span key={f} style={{ marginInlineEnd: 10 }}>
-                        <button style={btn} onClick={() => void new Audio(`/api/dev/sounds?src=${encodeURIComponent(`${s.key}/${f}`)}`).play()}>▶</button>
-                        {f}
-                        <button style={btn} onClick={() => void open(s, f, false)} title="Edit">✎</button>
-                        <button style={btn} onClick={() => void remove(s, f)} title="Remove">🗑</button>
-                      </span>
+                      <div key={f} className="row" style={{ gap: 6 }}>
+                        <button className="btn icon sm" onClick={() => void new Audio(`/api/dev/sounds?src=${encodeURIComponent(`${s.key}/${f}`)}`).play()} aria-label={`Play ${f}`}>▶</button>
+                        <span className="grow">{f}</span>
+                        <button className="btn icon sm" onClick={() => void open(s, f, false)} title="Edit">✎</button>
+                        <button className="btn icon sm danger" onClick={() => void remove(s, f)} title="Remove">🗑</button>
+                      </div>
                     ))}
                   </div>
                 )}
-                {!s.shipped.length && <div style={{ fontSize: 12, opacity: 0.55 }}>Search a sound library for: “{s.search}”</div>}
+                {!s.shipped.length && <div className="muted small">Look for: “{s.search}”</div>}
               </section>
             );
           })}
-        </>
+        </div>
       )}
 
       {edit && <Editor e={edit} set={setEdit} onSave={() => void saveEdit()} />}
@@ -302,7 +319,7 @@ function Editor({ e, set, onSave }: { e: Edit; set: (e: Edit | null) => void; on
     g.fillRect((e.end / len) * W, 0, W, H);
   }, [e.data, e.start, e.end, len]);
   const row = (label: string, v: number, min: number, max: number, stepV: number, on: (v: number) => void, fmt = (x: number) => `${x.toFixed(2)} s`) => (
-    <label style={{ display: "grid", gridTemplateColumns: "110px 1fr 70px", gap: 8, alignItems: "center", textTransform: "none", letterSpacing: "normal", fontSize: 13 }}>
+    <label style={{ display: "grid", gridTemplateColumns: "110px 1fr 70px", gap: 8, alignItems: "center", fontSize: 13 }}>
       {label}
       <input type="range" min={min} max={max} step={stepV} value={v} onChange={(x) => on(Number(x.target.value))} />
       <span>{fmt(v)}</span>
@@ -310,7 +327,7 @@ function Editor({ e, set, onSave }: { e: Edit; set: (e: Edit | null) => void; on
   );
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", display: "grid", placeItems: "center", zIndex: 50 }} onClick={() => set(null)}>
-      <div style={{ width: "min(720px, 94vw)", background: "#1d2026", borderRadius: 12, padding: 16, display: "grid", gap: 10 }} onClick={(x) => x.stopPropagation()}>
+      <div className="card" style={{ width: "min(720px, 94vw)", display: "grid", gap: 10 }} onClick={(x) => x.stopPropagation()}>
         <b>
           ✎ {e.slot} / {e.name}
         </b>
@@ -320,13 +337,13 @@ function Editor({ e, set, onSave }: { e: Edit; set: (e: Edit | null) => void; on
         {row("Gain", e.gainDb, -18, 18, 0.5, (v) => set({ ...e, gainDb: v, normalize: false }), (x) => `${x > 0 ? "+" : ""}${x} dB`)}
         {row("Fade in", e.fadeIn, 0, 1, 0.01, (v) => set({ ...e, fadeIn: v }))}
         {row("Fade out", e.fadeOut, 0, 2, 0.01, (v) => set({ ...e, fadeOut: v }))}
-        <label style={{ display: "flex", gap: 8, alignItems: "center", textTransform: "none", letterSpacing: "normal", fontSize: 13 }}>
+        <label className="row small">
           <input type="checkbox" style={{ width: "auto", margin: 0 }} checked={e.normalize} onChange={(x) => set({ ...e, normalize: x.target.checked })} /> Normalise (loudest point to −1 dB; the build levels loudness too)
         </label>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button style={btn} onClick={() => playBuf(render(e))}>▶ Hear the edit</button>
-          <button style={btn} onClick={() => set(null)}>Cancel</button>
-          <button style={primary} onClick={onSave}>💾 Save take</button>
+          <button className="btn" onClick={() => playBuf(render(e))}>▶ Hear the edit</button>
+          <button className="btn" onClick={() => set(null)}>Cancel</button>
+          <button className="btn primary" onClick={onSave}>💾 Save take</button>
         </div>
       </div>
     </div>

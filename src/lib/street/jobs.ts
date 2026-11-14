@@ -7,8 +7,9 @@
 //  - getaway: the police were after you with two stars or more and you lost them — the
 //    bigger the chase, the bigger the take.
 
-export type StreetJobKind = "thief" | "getaway";
-export const STREET_JOB_KINDS = ["thief", "getaway"] as const satisfies readonly StreetJobKind[];
+/** A thief caught, the police lost, a skydive landed (lib/skydive.ts: its stars, 1–5). */
+export type StreetJobKind = "thief" | "getaway" | "skydive";
+export const STREET_JOB_KINDS = ["thief", "getaway", "skydive"] as const satisfies readonly StreetJobKind[];
 
 /** A thief gives up only when caught: this long to do it (s), and this far ahead they're gone (m). */
 export const THIEF_SECS = 45, THIEF_GONE_M = 140;
@@ -49,6 +50,10 @@ export const GETAWAY_MIN_STARS = 2;
 /** What a job pays (before the admin's XP / coin multipliers; less playing from home). */
 export function jobReward(kind: StreetJobKind, stars = 0): { xp: number; coins: number } {
   if (kind === "thief") return { xp: 40, coins: 60 };
+  if (kind === "skydive") {
+    const k = Math.max(1, Math.min(5, Math.round(stars)));
+    return { xp: 20 * k, coins: 25 * k };
+  }
   const s = Math.max(GETAWAY_MIN_STARS, Math.min(5, Math.round(stars)));
   return { xp: 25 * s, coins: 30 * s };
 }

@@ -19,5 +19,9 @@ const developer: Record<string, string> = {
   "Each key may make 60 requests a minute; over that you get a 429 with Retry-After. Only GET is allowed, from any origin.":
     "هر کلید در دقیقه ۶۰ درخواست می‌تواند بزند؛ بیشتر از آن خطای ۴۲۹ با Retry-After می‌گیری. فقط GET مجاز است، از هر مبدأیی.",
   "Sources and licences": "منابع و مجوزها",
+  "Copied": "کپی شد",
+  "StreetQuest data API": "API داده‌ی استریت‌کوئست",
+  "{n} endpoints": "{n} نقطه‌ی دسترسی",
+  "60 requests a minute per key": "۶۰ درخواست در دقیقه برای هر کلید",
 };
 export default developer;

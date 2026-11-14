@@ -65,7 +65,6 @@ const play: Record<string, string> = {
   // ---- directions
   "Navigate with…": "مسیریابی با…",
   "Any map app": "هر اپ نقشه",
-  "Neshan, Balad, Google Maps… on this phone": "نشان، بلد، گوگل‌مپ… روی همین گوشی",
   Neshan: "نشان",
   Balad: "بلد",
   "Opens the place — tap Route": "جا را باز می‌کند — «مسیریابی» را بزن",
@@ -187,6 +186,8 @@ const play: Record<string, string> = {
   "The convoy's tracker beacon fell nearby — find it to know their route.": "ردیاب کاروان همین نزدیکی افتاده — پیداش کن تا مسیرشون رو بفهمی.",
   "Get ahead of the convoy.": "از کاروان جلو بزن.",
   "Spring the ambush — hold the line!": "کمین رو اجرا کن — خط رو نگه دار!",
+  "Every map app on this phone": "هر نقشه‌ای که روی این گوشی هست",
+  "Yandex Maps": "نقشه‌ی یاندکس",
 };
 
 export default play;

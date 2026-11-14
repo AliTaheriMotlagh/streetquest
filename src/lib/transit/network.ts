@@ -30,7 +30,21 @@ export type Line = {
   mapped: boolean;
 };
 export type BusStop = { id: string; name: string; lat: number; lng: number; lines: string[] };
-export type BusLine = { ref: string; name: string; from: string; to: string; headway: number; mapped: boolean };
+export type BusLine = {
+  ref: string;
+  name: string;
+  from: string;
+  to: string;
+  /** Minutes between buses: OSM's interval when `mapped`, else the city's usual (a guess — shown as such). */
+  headway: number;
+  mapped: boolean;
+  /** Its stops in order, each way it runs (stop ids; at most two: the longest route each way). */
+  routes?: string[][];
+  /** Who runs it ("İETT", "Tehran Bus Company"), when the map says. */
+  operator?: string;
+  /** Service hours (minutes after midnight; `to` past 1440 runs after midnight), when the map says. */
+  hours?: { from: number; to: number };
+};
 export type City = "tehran" | "istanbul";
 export type Network = { city: City; built: string; tz: string; lines: Line[]; stations: Station[] };
 export type BusNetwork = { city: City; built: string; stops: BusStop[]; lines: Record<string, BusLine> };
@@ -182,6 +196,59 @@ export function buildNetwork(city: City, rels: RawRel[], nodes: Map<number, RawN
 /** Same bus stop: the pole and the platform of one stop, both directions' poles across the road. */
 const SAME_STOP_M = 60;
 
+/**
+ * Keep a line's route each way: one per direction (told apart by where it ends), the longest of
+ * each; a third way (a short working, a variant) only replaces one it outlasts going the same way.
+ */
+function addRoute(line: BusLine, seq: string[]) {
+  if (seq.length < 2) return;
+  const routes = (line.routes ??= []);
+  const same = routes.findIndex((r) => r[r.length - 1] === seq[seq.length - 1] || r[0] === seq[0]);
+  if (same >= 0) {
+    if (seq.length > routes[same].length) routes[same] = seq;
+  } else if (routes.length < 2) routes.push(seq);
+}
+
+/** Metres along a list of points, in order. */
+const pathM = (pts: { lat: number; lng: number }[]) => pts.reduce((m, p, i) => (i ? m + dist(pts[i - 1], p) : 0), 0);
+
+/**
+ * A route's stops in the order a bus meets them. Many bus routes on the map list their stops in
+ * no particular order (bulk imports), so when the listed order zig-zags (its length is well over
+ * the shortest chain's) the stops are chained instead: from the one named in the route's `from`
+ * (else the one farthest from the rest's middle), always on to the nearest stop not yet visited.
+ */
+export function orderStops<T extends { lat: number; lng: number; name?: string }>(stops: T[], from = ""): T[] {
+  if (stops.length < 3) return stops;
+  const chain = (start: T) => {
+    const left = new Set(stops);
+    const out = [start];
+    left.delete(start);
+    while (left.size) {
+      const last = out[out.length - 1];
+      let best: T | null = null, bd = Infinity;
+      for (const s of left) {
+        const d = dist(last, s);
+        if (d < bd) (bd = d), (best = s);
+      }
+      out.push(best!);
+      left.delete(best!);
+    }
+    return out;
+  };
+  const f = norm(from);
+  const named = f ? stops.find((s) => norm(s.name ?? "") === f) ?? stops.find((s) => f && norm(s.name ?? "").includes(f)) : undefined;
+  const mid = { lat: stops.reduce((a, s) => a + s.lat, 0) / stops.length, lng: stops.reduce((a, s) => a + s.lng, 0) / stops.length };
+  const far = stops.reduce((a, s) => (dist(s, mid) > dist(a, mid) ? s : a), stops[0]);
+  // Chained from the named start, or from the far end, whichever path is shorter (a bad `from` tag mustn't win).
+  const tries = [named, far, stops[0]].filter((x): x is T => !!x).map(chain);
+  const best = tries.reduce((a, b) => (pathM(b) < pathM(a) ? b : a));
+  const given = pathM(stops);
+  if (given <= pathM(best) * 1.35) return stops;
+  // Keep the direction the map meant: start nearer its first listed stop... unless `from` says otherwise.
+  return named || dist(best[0], stops[0]) <= dist(best[best.length - 1], stops[0]) ? best : [...best].reverse();
+}
+
 /** A city's bus stops (each with the lines that call there) and its bus lines, from route=bus relations. */
 export function buildBuses(city: City, rels: RawRel[], nodes: Map<number, RawNode>, built: string): BusNetwork {
   const c = CITIES[city];
@@ -222,9 +289,28 @@ export function buildBuses(city: City, rels: RawRel[], nodes: Map<number, RawNod
     }
     if (!any) continue;
     const head = minutesOf(r.tags.interval ?? ms.interval);
-    for (const ref of refs)
-      if (!lines[ref] || (head != null && !lines[ref].mapped))
-        lines[ref] = { ref, name: (ms.name || r.tags.name || ref).trim(), from: (r.tags.from || "").trim(), to: (r.tags.to || "").trim(), headway: head ?? c.busHeadway, mapped: head != null };
+    const hours = hoursOf(r.tags.opening_hours ?? ms.opening_hours);
+    const operator = (r.tags.operator || ms.operator || "").trim();
+    // This route's stops in order (one stop each, as merged above).
+    const seq: string[] = [];
+    for (const m of r.members) {
+      if (m.type !== "node" || !STOP_ROLES.test(m.role)) continue;
+      const n = nodes.get(m.ref);
+      const [s, w, nn, e] = c.box;
+      if (!n || n.lat < s || n.lat > nn || n.lon < w || n.lon > e) continue;
+      const id = stopFor(n).id;
+      if (!seq.includes(id)) seq.push(id);
+    }
+    // In the order a bus meets them (the map's own order is often scrambled).
+    const byId = new Map(stops.map((x) => [x.id, x]));
+    const ordered = orderStops(seq.map((id) => byId.get(id)!), r.tags.from ?? "").map((x) => x.id);
+    seq.splice(0, seq.length, ...ordered);
+    for (const ref of refs) {
+      const had = lines[ref];
+      if (!had || (head != null && !had.mapped))
+        lines[ref] = { ref, name: (ms.name || r.tags.name || ref).trim(), from: (r.tags.from || "").trim(), to: (r.tags.to || "").trim(), headway: head ?? c.busHeadway, mapped: head != null, routes: had?.routes ?? [], ...(operator ? { operator } : had?.operator ? { operator: had.operator } : {}), ...(hours ? { hours } : had?.hours ? { hours: had.hours } : {}) };
+      addRoute(lines[ref], seq);
+    }
   }
   const byRef = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
   return { city, built, stops: stops.filter((s) => s.set.size).map(({ key: _k, set, ...s }) => ({ ...s, lines: [...set].sort(byRef) })), lines };

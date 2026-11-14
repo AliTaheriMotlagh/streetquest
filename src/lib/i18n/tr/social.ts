@@ -1,4 +1,5 @@
 // Vasatyab (وسط‌یاب: where the party meets) and Siktir (سیکتیر: never-again marks on places).
+// In Turkish «siktir» is a strong swear word, so the feature is «Bir daha asla» (never again) here.
 const social: Record<string, string> = {
   // ---- Vasatyab
   Vasatyab: "Ortabul",
@@ -33,14 +34,14 @@ const social: Record<string, string> = {
   "The party hasn't set a meeting point yet": "Ekip henüz bir buluşma noktası belirlemedi",
 
   // ---- Siktir
-  Siktir: "Siktir",
-  "Siktir spots": "Siktir edilen yerler",
-  "Siktir · {name}": "Siktir · {name}",
-  "Siktir this spot": "Bu yere Siktir de",
-  "Update my Siktir": "Siktir'imi güncelle",
-  "You said Siktir: {reason}": "Siktir dedin: {reason}",
-  "{n, plural, one {# person said Siktir} other {# people said Siktir}}": "{n, plural, one {# kişi Siktir dedi} other {# kişi Siktir dedi}}",
-  "Nobody has said Siktir about this spot yet.": "Bu yer hakkında henüz kimse Siktir dememiş.",
+  Siktir: "Bir daha asla",
+  "Siktir spots": "Bir daha asla denen yerler",
+  "Siktir · {name}": "Bir daha asla · {name}",
+  "Siktir this spot": "Bu yere bir daha asla de",
+  "Update my Siktir": "Notumu güncelle",
+  "You said Siktir: {reason}": "Bir daha asla dedin: {reason}",
+  "{n, plural, one {# person said Siktir} other {# people said Siktir}}": "{n, plural, one {# kişi bir daha asla dedi} other {# kişi bir daha asla dedi}}",
+  "Nobody has said Siktir about this spot yet.": "Bu yer hakkında henüz kimse bir daha asla dememiş.",
   "What was wrong?": "Sorun neydi?",
   "A few words, if you like (optional)": "İstersen birkaç kelime yaz (isteğe bağlı)",
   Note: "Not",
@@ -64,9 +65,9 @@ const social: Record<string, string> = {
 
   // ---- admin
   "The never-again marks players put on places, with their reasons. Hide or delete spam and abuse.": "Oyuncuların yerlere koyduğu, sebepleriyle birlikte «bir daha asla» işaretleri. Spam ve kötüye kullanımı gizle ya da sil.",
-  "Delete this Siktir mark?": "Bu Siktir işareti silinsin mi?",
+  "Delete this Siktir mark?": "Bu bir daha asla işareti silinsin mi?",
   "Search by place or note": "Yere ya da nota göre ara",
-  "No Siktir marks yet": "Henüz Siktir işareti yok",
+  "No Siktir marks yet": "Henüz bir daha asla işareti yok",
   hidden: "gizli",
   "{n, plural, one {# mark} other {# marks}} on this place": "{n, plural, one {# işaret} other {# işaret}} bu yerde",
   "Showing the latest {n}": "Son {n} gösteriliyor",

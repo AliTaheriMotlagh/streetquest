@@ -22,18 +22,47 @@ import { countryAt, deliveryAt } from "@/lib/region";
 import { Pic, ProductPage, VendorCard, type ExtProduct } from "./StoreInfo";
 
 type Answer = { hits: ProductHit[]; total: number; stores: number; more: boolean; failed: ProductSource[] };
-/** Words worth a tap (the stores' data is Persian, so the search words are too). */
-const IDEAS: { label: string; q: string }[] = [
-  { label: msg("Pizza"), q: "پیتزا" },
-  { label: msg("Burger"), q: "برگر" },
-  { label: msg("Kebab"), q: "کباب" },
-  { label: msg("Sandwich"), q: "ساندویچ" },
-  { label: msg("Coffee"), q: "قهوه" },
-  { label: msg("Ice cream"), q: "بستنی" },
-  { label: msg("Cake"), q: "کیک" },
-  { label: msg("Phone"), q: "گوشی" },
-  { label: msg("Shoes"), q: "کفش" },
-];
+/**
+ * Words worth a tap, in the language the stores there write their menus in (Iran: Persian; Turkey:
+ * Turkish; elsewhere the map's English). The label is in the player's language, the search in the stores'.
+ */
+const IDEAS: Record<"IR" | "TR" | "EN", { label: string; q: string }[]> = {
+  IR: [
+    { label: msg("Pizza"), q: "پیتزا" },
+    { label: msg("Burger"), q: "برگر" },
+    { label: msg("Kebab"), q: "کباب" },
+    { label: msg("Sandwich"), q: "ساندویچ" },
+    { label: msg("Coffee"), q: "قهوه" },
+    { label: msg("Ice cream"), q: "بستنی" },
+    { label: msg("Cake"), q: "کیک" },
+    { label: msg("Phone"), q: "گوشی" },
+    { label: msg("Shoes"), q: "کفش" },
+  ],
+  TR: [
+    { label: msg("Döner"), q: "döner" },
+    { label: msg("Kebab"), q: "kebap" },
+    { label: msg("Pide & lahmacun"), q: "pide" },
+    { label: msg("Burger"), q: "burger" },
+    { label: msg("Pizza"), q: "pizza" },
+    { label: msg("Köfte"), q: "köfte" },
+    { label: msg("Coffee"), q: "kahve" },
+    { label: msg("Dessert"), q: "tatlı" },
+    { label: msg("Breakfast"), q: "kahvaltı" },
+  ],
+  EN: [
+    { label: msg("Pizza"), q: "pizza" },
+    { label: msg("Burger"), q: "burger" },
+    { label: msg("Sandwich"), q: "sandwich" },
+    { label: msg("Coffee"), q: "coffee" },
+    { label: msg("Ice cream"), q: "ice cream" },
+    { label: msg("Cake"), q: "cake" },
+  ],
+};
+/** The ideas for where the player is. */
+export const ideasAt = (at: LatLng | null) => {
+  const c = at ? countryAt(at.lat, at.lng) : "IR";
+  return IDEAS[c === "IR" || c === "TR" ? c : "EN"];
+};
 const TYPE_WAIT_MS = 450;
 const PANEL = "product-filters";
 /** Each source wears its site's colour, as in the store list. */
@@ -50,7 +79,7 @@ const numberOf = (s: string) => {
 };
 
 const pageOf = (h: ProductHit): ExtProduct => ({
-  source: h.source === "deal" ? "takhfifan" : h.source === "food" ? "snappfood" : h.source,
+  source: h.source === "deal" ? "takhfifan" : h.source === "food" ? (h.currency === "TRY" ? "yemeksepeti" : "snappfood") : h.source,
   title: h.title,
   photo: h.photo,
   url: h.url ?? (h.code ? snappfoodMenuUrl(h.code) : ""),
@@ -73,7 +102,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   const [round, setRound] = useState(0);
   const [res, setRes] = useState<{ key: string; data: Answer } | null>(null);
   const [error, setError] = useState<{ key: string; text: string } | null>(null);
-  const [vendor, setVendor] = useState<Vendor | null>(null);
+  const [vendor, setVendor] = useState<{ v: Vendor; dish: string } | null>(null);
   const [page, setPage] = useState<ProductHit | null>(null);
   /** The price caps of this search before any price was set (they'd shrink with the list otherwise). */
   const caps = useRef<{ key: string; steps: number[] }>({ key: "", steps: [] });
@@ -128,7 +157,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   }, [at, data, error, key, shownSources]);
 
   const openHit = (h: ProductHit) => {
-    if (h.source === "food" && h.code && h.lat != null && h.lng != null) setVendor({ code: h.code, title: h.store, kind: "food", lat: h.lat, lng: h.lng, rating: (h.rating ?? 0) * 2, logo: "", url: h.url ?? snappfoodMenuUrl(h.code), open: true, about: "" });
+    if (h.source === "food" && h.code && h.lat != null && h.lng != null) setVendor({ v: { code: h.code, title: h.store, kind: "food", lat: h.lat, lng: h.lng, rating: (h.rating ?? 0) * 2, logo: "", url: h.url ?? snappfoodMenuUrl(h.code), open: true, about: "" }, dish: h.title });
     else setPage(h);
   };
 
@@ -142,8 +171,9 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     );
   };
 
-  // A restaurant's card replaces the list while it's open (the search keeps its state underneath).
-  if (vendor) return <VendorCard v={vendor} onClose={() => setVendor(null)} />;
+  // A restaurant's card replaces the list while it's open, on the dish that was tapped (the search
+  // keeps its words, filters and results underneath): ‹ or the phone's Back returns to the list.
+  if (vendor) return <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={onClose} />;
   return (
     <Sheet title={onStores ? t("Search") : t("Find a product")} onClose={onClose} tall>
       <div className="fx-stack">
@@ -178,7 +208,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
           </FilterPanel>
           {!draft && (
             <div className="fx-chips" aria-label={t("Ideas")}>
-              {IDEAS.map((i) => (
+              {ideasAt(at).map((i) => (
                 <Chip key={i.q} label={t(i.label)} onClick={() => setDraft(i.q)} />
               ))}
             </div>

@@ -43,3 +43,12 @@ test("links carry the destination (6 decimals, no trailing zeros)", () => {
 });
 
 test("coordinates to paste into any map", () => assert.equal(coordsText(TO), "35.744812, 51.5375"));
+
+test("Iran's map apps only in Iran; Yandex Maps in Turkey (no Neshan in Istanbul)", () => {
+  const ist = { lat: 41.0369, lng: 28.985 }, paris = { lat: 48.8566, lng: 2.3522 };
+  const at = (p: { lat: number; lng: number }) => navLinks(p, { platform: "android" }).map((l) => l.app);
+  assert.ok(at(TO).includes("neshan") && at(TO).includes("balad") && !at(TO).includes("yandex"));
+  assert.ok(!at(ist).includes("neshan") && !at(ist).includes("balad") && at(ist).includes("yandex"));
+  assert.ok(!at(paris).includes("neshan") && !at(paris).includes("yandex") && at(paris).includes("google"));
+  assert.equal(navLink("yandex", ist), "https://yandex.com.tr/maps/?rtext=~41.0369,28.985&rtt=auto");
+});

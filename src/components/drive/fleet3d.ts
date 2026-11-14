@@ -654,8 +654,8 @@ type Pool = { parts: FleetParts; body: THREE.InstancedMesh[]; paint: THREE.Insta
 export type PutOpts = {
   /** Lifted and tipped (a car thrown by a blast or knocked onto its side). */
   pose?: { y: number; roll: number; pitch: number };
-  /** A patrol car's paint job over the model's own. */
-  livery?: "police";
+  /** A patrol car's paint job over the model's own: Iran's police, or Turkey's. */
+  livery?: "police" | "police-tr";
   /** Its damage: the dent drawn, and how battered the whole body is. */
   health?: CarHealth;
   /** Someone at the wheel (the number picks their look, the same for the same car). */
@@ -673,7 +673,7 @@ export class FleetInstances {
   /** By the geometry drawn: a model and its light version are separate pools, and so is a drawn one replaced by a real one. */
   private pools = new Map<FleetParts, Pool>();
   /** A model in a livery is a pool of its own (its paint is another material): the stand-in key for it, and the paint. */
-  private liveried = new Map<FleetParts, FleetParts>();
+  private liveried = new Map<string, Map<FleetParts, FleetParts>>();
   private liveryPaint = new Map<FleetParts, THREE.Material>();
   /** Each model's trim with its cabin added (traffic only — your own car keeps its cockpit), and its driver's seat. */
   private cabins = new Map<THREE.BufferGeometry, { kit: THREE.BufferGeometry; seat: Seat | null }>();
@@ -803,10 +803,12 @@ export class FleetInstances {
     const far = model.far && (this.lite || (x - this.eye.x) ** 2 + (z - this.eye.z) ** 2 > NEAR_M * NEAR_M);
     let parts = far ? model.far! : model;
     if (livery) {
-      let own = this.liveried.get(parts);
+      let byParts = this.liveried.get(livery);
+      if (!byParts) this.liveried.set(livery, (byParts = new Map()));
+      let own = byParts.get(parts);
       if (!own) {
-        this.liveried.set(parts, (own = { ...parts }));
-        this.liveryPaint.set(own, withDents(policePaint(this.mats.paint, FLEET[key])));
+        byParts.set(parts, (own = { ...parts }));
+        this.liveryPaint.set(own, withDents(policePaint(this.mats.paint, FLEET[key], livery === "police-tr" ? "tr" : "ir")));
       }
       parts = own;
     }
@@ -875,7 +877,7 @@ export class FleetInstances {
     if (!paint) return;
     paint.dispose();
     this.liveryPaint.delete(parts);
-    for (const [k, v] of this.liveried) if (v === parts) this.liveried.delete(k);
+    for (const byParts of this.liveried.values()) for (const [k, v] of byParts) if (v === parts) byParts.delete(k);
   }
 
   dispose() {

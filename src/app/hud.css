@@ -207,3 +207,21 @@ html[lang="en"] .pm-scroll b.small { text-transform: uppercase; letter-spacing: 
 .dplaces .dp-products { color: var(--dpad-accent); }
 
 /* The 3D city's loading screen is the shared loading scene now (app/loading.css). */
+
+/* Skydive (Drive): the altimeter on the left, speed / rings / target, the big «pull» button. */
+.sky-hud { position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%); z-index: 6; display: grid; gap: 8px; justify-items: start; pointer-events: none; max-width: min(46vw, 220px); }
+.sky-alt { position: relative; display: grid; padding: 8px 12px 8px 18px; border-radius: 12px; background: var(--hud-bg, rgba(10, 14, 22, .72)); border: 1px solid var(--hud-line, rgba(255, 255, 255, .12)); overflow: hidden; min-width: 104px; }
+.sky-alt b { font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+.sky-alt small { font-size: 11px; opacity: .75; }
+.sky-alt i { position: absolute; inset-inline-start: 0; bottom: 0; width: 6px; background: linear-gradient(0deg, #ff4d4d, #ffd23f 30%, #46ff94 60%); transition: height .2s linear; }
+.sky-hud.free .sky-alt { border-color: rgba(255, 210, 63, .5); }
+.sky-read { display: flex; flex-wrap: wrap; gap: 6px; }
+.sky-read span { padding: 3px 9px; border-radius: 99px; background: var(--hud-bg, rgba(10, 14, 22, .72)); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sky-pull { pointer-events: auto; display: grid; justify-items: center; gap: 2px; padding: 12px 18px; border-radius: 16px; border: 0; font-weight: 900; font-size: 17px; color: #2a1d00; background: linear-gradient(180deg, #ffe07a, #f0b429); box-shadow: 0 6px 18px rgba(240, 180, 41, .45); cursor: pointer; }
+.sky-pull small { font-size: 11px; font-weight: 700; opacity: .7; }
+.sky-pull.urgent { background: linear-gradient(180deg, #ff8a7a, #e53935); color: #fff; animation: sky-pulse .6s ease-in-out infinite alternate; }
+@keyframes sky-pulse { to { transform: scale(1.07); } }
+@media (prefers-reduced-motion: reduce) { .sky-pull.urgent { animation: none; } }
+.sky-hint { margin: 0; padding: 6px 12px; border-radius: 10px; background: rgba(229, 57, 53, .85); color: #fff; font-weight: 900; }
+.drive-job.sky-start { border: 1px solid rgba(255, 210, 63, .35); }
+.drive-job.sky-start .grow { display: grid; text-align: start; }

@@ -733,7 +733,7 @@ function ShopForm({ onDone }: { onDone: () => void }) {
       <input value={f.address} onChange={set("address")} maxLength={SHOP_LIMITS.address} placeholder={t("e.g. Next to the pharmacy, ground floor")} />
       <label>{t("About the shop")}</label>
       <textarea rows={3} value={f.about} onChange={set("about")} maxLength={SHOP_LIMITS.about} placeholder={t("What you sell, opening hours, how pickup works…")} />
-      <OwnerLinkFields v={f} set={(k, v) => setF({ ...f, [k]: v })} />
+      <OwnerLinkFields v={f} set={(k, v) => setF({ ...f, [k]: v })} at={pos} />
 
       {!existing && (
         <div className="card small" style={{ marginTop: 12 }}>

@@ -13,9 +13,11 @@ describe("pacing the store sites", () => {
     assert.equal(pacerFor("http://localhost:4010/stub/vendors", {}), null);
     assert.equal(pacerFor("https://snappfood.ir/x", { SITE_PACE: "off" }), null);
     assert.ok(pacerFor("https://snappfood.ir/x", {}) === pacerFor("https://snappfood.ir/y", {}), "one pacer per site");
-    // Snappfood is the one we can least afford to lose: nobody is paced more gently.
+    // Snappfood is the one we can least afford to lose: no other store site is paced more gently.
+    // (OSRM, the routing service, follows its own published one-a-second policy.)
     const sf = PACE_RULES.find((r) => r.site === "snappfood")!.rule;
-    for (const r of PACE_RULES) if (r.site !== "torob") assert.ok(sf.gapMs >= r.rule.gapMs && sf.perMin <= r.rule.perMin, r.site);
+    assert.equal(PACE_RULES.find((r) => r.site === "osrm")?.rule.gapMs, 1000);
+    for (const r of PACE_RULES) if (r.site !== "torob" && r.site !== "osrm") assert.ok(sf.gapMs >= r.rule.gapMs && sf.perMin <= r.rule.perMin, r.site);
   });
 
   it("spaces requests out: a burst leaves one at a time", () => {

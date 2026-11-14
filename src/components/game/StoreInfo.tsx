@@ -17,16 +17,17 @@ import { isYsCode } from "@/lib/yemeksepeti";
 import { fmtNum, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
-  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
+  clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, normName, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
   type Deal, type DealInfo, type DealProduct, type DealReviewPage, type DivarArea, type DivarCat, type DivarDetail, type DivarPost, type Menu, type MenuItem, type Review, type ReviewPage, type StoreData, type StorePhone, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type TorobStock, type Vendor, type Week,
 } from "@/lib/localData";
 import { cinemaUrl, showTime, tehranDay, type Cinema, type CinemaShows, type Film } from "@/lib/cinema";
 import { Button } from "@/components/Button";
 import { RegionChip } from "@/components/art/Symbols";
-import { countryAt } from "@/lib/region";
+import { countryAt, deliveryAt } from "@/lib/region";
 import { api, fmtTime } from "./client";
 import { Directions } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
+import { pushBack } from "./backStack";
 import { Icon } from "../drive/icons";
 import { SiktirBar } from "./Siktir";
 
@@ -268,7 +269,14 @@ function MenuPrice({ price, priceNow, currency }: { price: number; priceNow: num
 /** One item of a menu, tapped: its picture, all of its description, its price, and where to order it. */
 function MenuItemView({ item, menu, onBack }: { item: MenuItem; menu: Menu; onBack: () => void }) {
   const el = useRef<HTMLDivElement>(null);
-  useEffect(() => el.current?.scrollIntoView({ block: "nearest" }), []);
+  // The phone's Back goes back to the menu.
+  const backRef = useRef(onBack);
+  backRef.current = onBack;
+  useEffect(() => pushBack(() => backRef.current()), []);
+  // (Braces: newer browsers return a promise from scrollIntoView, which an effect must not.)
+  useEffect(() => {
+    el.current?.scrollIntoView({ block: "nearest" });
+  }, []);
   const pic = item.image || item.photo;
   const off = item.price > 0 && item.priceNow < item.price ? Math.round((1 - item.priceNow / item.price) * 100) : 0;
   return (
@@ -296,14 +304,15 @@ function MenuItemView({ item, menu, onBack }: { item: MenuItem; menu: Menu; onBa
 }
 
 /** A Snappfood menu (restaurant) or catalog (supermarket, bakery…), one section at a time; an item opens on a tap. */
-export function MenuView({ menu }: { menu: Menu }) {
+export function MenuView({ menu, focus }: { menu: Menu; /** A dish to open first (tapped in the product search). */ focus?: string }) {
   const [tab, setTab] = useState(0);
   const [q, setQ] = useState("");
-  const [open, setOpen] = useState<MenuItem | null>(null);
+  const [open, setOpen] = useState<MenuItem | null>(() => (focus ? (menu.sections.flatMap((s) => s.items).find((i) => normName(i.title) === normName(focus) || normName(i.title).startsWith(normName(focus))) ?? null) : null));
   const kind = VENDOR_KINDS[menu.vendor.kind];
-  const needle = q.trim().toLowerCase();
+  // Turkish and Persian letters folded (İ/ı/i, ç/c, ي/ی…): a phone's keyboard finds the dish either way.
+  const needle = normName(q);
   const items = needle
-    ? menu.sections.flatMap((s) => s.items).filter((i, n, all) => i.title.toLowerCase().includes(needle) && all.findIndex((x) => x.id === i.id) === n)
+    ? menu.sections.flatMap((s) => s.items).filter((i, n, all) => normName(`${i.title} ${i.about ?? ""}`).includes(needle) && all.findIndex((x) => x.id === i.id) === n)
     : menu.sections[Math.min(tab, menu.sections.length - 1)]?.items ?? [];
   if (open) return <MenuItemView item={open} menu={menu} onBack={() => setOpen(null)} />;
   return (
@@ -428,8 +437,8 @@ function ReviewsView({ code, total, stars, source }: { code: string; total?: num
  * opens its page here first — its photos, price, details and (for Divar) the whole ad with
  * its facts and description — and only its button goes on to the site itself.
  */
-type Product = { source: "divar" | "torob" | "takhfifan" | "basalam" | "snappfood"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string; photos?: string[]; desc?: string; terms?: string };
-const SOURCE = { divar: { name: msg("Divar"), open: msg("Open on Divar") }, torob: { name: msg("Torob"), open: msg("Open on Torob") }, takhfifan: { name: msg("Takhfifan"), open: msg("Buy on Takhfifan") }, basalam: { name: msg("Basalam"), open: msg("Open on Basalam") }, snappfood: { name: msg("Snappfood"), open: msg("Order on Snappfood") } } as const;
+type Product = { source: "divar" | "torob" | "takhfifan" | "basalam" | "snappfood" | "yemeksepeti"; title: string; price: string; photo: string; url: string; lines: (string | false | undefined)[]; token?: string; photos?: string[]; desc?: string; terms?: string };
+const SOURCE = { divar: { name: msg("Divar"), open: msg("Open on Divar") }, torob: { name: msg("Torob"), open: msg("Open on Torob") }, takhfifan: { name: msg("Takhfifan"), open: msg("Buy on Takhfifan") }, basalam: { name: msg("Basalam"), open: msg("Open on Basalam") }, snappfood: { name: msg("Snappfood"), open: msg("Order on Snappfood") }, yemeksepeti: { name: msg("Yemeksepeti"), open: msg("Order on Yemeksepeti") } } as const;
 /** A product's page (ProductSearch opens Torob / Basalam / Takhfifan hits in it). */
 export type ExtProduct = Product;
 
@@ -460,6 +469,10 @@ export function ProductPage({ p, onClose }: { p: Product; onClose: () => void })
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
+  // The phone's Back closes the page (back to the list it was opened from).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => pushBack(() => closeRef.current()), []);
   const onStrip = () => {
     const el = strip.current;
     if (el) setShot(Math.round(Math.abs(el.scrollLeft) / Math.max(1, el.clientWidth)));
@@ -773,7 +786,7 @@ export function GoButtons({ to, name, dist }: { to: LatLng; name: string; dist: 
 }
 
 /** A Snappfood vendor tapped on the map: menu, reviews and info in tabs. */
-export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
+export function VendorCard({ v, onClose, onBack, focus }: { v: Vendor; onClose: () => void; /** Opened from a list (the product search): ‹ goes back to it. */ onBack?: () => void; /** The dish that was tapped: shown first. */ focus?: string }) {
   const { pos } = useGame();
   const kind = VENDOR_KINDS[v.kind];
   const dist = pos ? distanceM(pos, v) : Infinity;
@@ -781,7 +794,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
   const menu = data?.menu;
   const sub = [t(kind.label), Number.isFinite(dist) ? formatDistance(dist) : "", menu?.area ?? ""].filter(Boolean).join(" · ");
   return (
-    <Sheet title={`${kind.emoji} ${v.title}`} onClose={onClose} tall>
+    <Sheet title={`${kind.emoji} ${v.title}`} onClose={onClose} onBack={onBack} tall>
       <StoreHead logo={v.logo} emoji={kind.emoji} name={v.title} sub={sub} rating={v.rating} reviews={menu?.reviews} week={menu?.week} at={v} />
       {v.about && <p className="small muted store-about" dir="auto">{v.about}</p>}
       {menu?.cover && <div className="ext-cover"><Pic src={menu.cover} className="ext-cover-img" /></div>}
@@ -799,7 +812,7 @@ export function VendorCard({ v, onClose }: { v: Vendor; onClose: () => void }) {
       ) : menu ? (
         <StoreTabs
           tabs={[
-            { key: "menu", label: v.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={menu} /> },
+            { key: "menu", label: v.kind === "market" ? `🛒 ${t("Catalog")}` : `🍽️ ${t("Menu")}`, body: () => <MenuView menu={menu} focus={focus} /> },
             { key: "reviews", label: `⭐ ${menu.reviews ? t("Reviews ({n})", { n: fmtNum(menu.reviews) }) : t("Reviews")}`, body: () => <ReviewsView code={v.code} total={menu.reviews} stars={menu.stars} source={menu.source} /> },
             { key: "info", label: `ℹ️ ${t("Info")}`, body: () => <InfoView at={v} store={{ name: v.title, lat: v.lat, lng: v.lng }} week={menu.week} address={menu.address} area={menu.area} phones={menu.phones} minOrder={menu.minOrder} deliveryFee={menu.deliveryFee} currency={menu.currency} /> },
           ]}
@@ -906,8 +919,15 @@ export function DivarCard({ area, onClose }: { area: DivarArea; onClose: () => v
 
 type Links = { snappfood: string; torob: string; divar: string };
 /** Owner forms (Business center, Market shop): the store's own pages, which beat the automatic match. */
-export function OwnerLinkFields({ v, set }: { v: Links; set: (k: keyof Links, value: string) => void }) {
+export function OwnerLinkFields({ v, set, at }: { v: Links; set: (k: keyof Links, value: string) => void; /** Where the store is: Snappfood, Torob and Divar are Iran's only. */ at?: LatLng | null }) {
   const bad = (k: keyof Links) => !LINK_CHECKS[k](v[k]);
+  const site = deliveryAt(at ?? null);
+  if (site !== "snappfood")
+    return (
+      <p className="small muted owner-links">
+        🔗 {site === "yemeksepeti" ? t("Players see your Yemeksepeti menu and reviews on your store: we find it by your store's name and location.") : t("Players see your store's details from the open map; menu sites from your country will join here as the game adds them.")}
+      </p>
+    );
   return (
     <fieldset className="owner-links">
       <legend className="small">🔗 {t("Your store on other sites")}</legend>

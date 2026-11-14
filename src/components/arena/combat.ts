@@ -28,12 +28,14 @@ import { makeSign } from "../drive/world3d";
 import { Avatar, loadCivilian, loadSoldier } from "./avatar";
 import { faceYaw, newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { fovFor } from "@/lib/view";
+import { thudSound } from "./gunsound";
 import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
 import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
 import { Nades } from "./nades";
 import { rumble } from "../drive/gamepad";
 import { medalFor, nextRun, NO_RUN, type KillRun } from "@/lib/arena/medals";
 import { sfx } from "../game/sfx";
+import { newHero, stepHero, type HeroState, type HeroWorld } from "@/lib/hero";
 import { errorText } from "../game/client";
 import { HTTP_DELAY_MS, Remotes, RT_DELAY_MS } from "./remotes";
 import type { OtherDriver } from "../drive/net";
@@ -50,6 +52,8 @@ export type CombatInput = FootInput & {
   lookX: number;
   lookY: number;
   act: boolean;
+  /** Hero moves: the grapple line held out (T, or the hook button). */
+  grapple?: boolean;
 };
 
 export type FeedLine = { id: number; killer: string; victim: string; w: string; head: boolean; mine: boolean; me: boolean; kc: string; vc: string; at: number };
@@ -206,7 +210,14 @@ const camFwd = new THREE.Vector3();
 const hitN: Normal = { x: 0, y: 1, z: 0 };
 
 export class Combat {
-  readonly input: CombatInput = { mx: 0, mz: 0, sprint: false, crouch: false, aim: false, jump: false, fire: false, lookX: 0, lookY: 0, act: false };
+  readonly input: CombatInput = { mx: 0, mz: 0, sprint: false, crouch: false, aim: false, jump: false, fire: false, lookX: 0, lookY: 0, act: false, grapple: false };
+  /**
+   * Hero moves on foot in the open city (lib/hero.ts): the grapple line, wall runs, gliding,
+   * rooftops. Off in matches. Turned off on a roof, you drop to the street like anyone.
+   */
+  hero = false;
+  private heroS: HeroState = newHero();
+  private rope: THREE.Line | null = null;
   readonly rt: RtClient;
   readonly remotes: Remotes;
   private vfx: Vfx;
@@ -509,6 +520,45 @@ export class Combat {
   }
 
   // ------------------------------------------------------------ actions (HUD, menu)
+  /** One step of hero moves (lib/hero.ts) for my body, with the line drawn from my hand to where it caught. */
+  private heroStep(me: FootBody, inp: CombatInput, dt: number, collide: HeroWorld["collide"]) {
+    const H = this.h;
+    const world: HeroWorld = {
+      collide,
+      floor: (x, z, y) => H.collision.floor(x, z, y),
+      ray: (o, d, max) => H.collision.raycast({ ox: o.x, oy: o.y, oz: o.z, dx: d.x, dy: d.y, dz: d.z }, max),
+    };
+    const body = { x: me.x, y: me.y, z: me.z, vx: me.vx, vy: me.vy, vz: me.vz, yaw: me.yaw };
+    const ev = stepHero(body, this.heroS, { mx: inp.mx, mz: inp.mz, camYaw: me.yaw, camPitch: me.pitch, jump: inp.jump, jumpPressed: inp.jump, grapple: !!inp.grapple }, dt, world);
+    Object.assign(me, { x: body.x, y: body.y, z: body.z, vx: body.vx, vy: body.vy, vz: body.vz });
+    me.air = this.heroS.mode !== "ground";
+    me.sprint = this.heroS.mode === "ground" && Math.hypot(me.vx, me.vz) > 5;
+    me.crouch = false;
+    if (ev?.kind === "fire" || ev?.kind === "kick" || ev?.kind === "vault") sfx("whoosh");
+    if (ev?.kind === "land" && (ev.hard ?? 0) > 9) (thudSound(), navigator.vibrate?.(25));
+    // The line.
+    const a = this.heroS.anchor;
+    if (a) {
+      if (!this.rope) {
+        const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+        this.rope = new THREE.Line(g, new THREE.LineBasicMaterial({ color: "#e8f4ff", transparent: true, opacity: 0.9 }));
+        this.rope.frustumCulled = false;
+        H.scene.add(this.rope);
+      }
+      const p = this.rope.geometry.getAttribute("position") as THREE.BufferAttribute;
+      p.setXYZ(0, me.x, me.y + 1.45, me.z);
+      p.setXYZ(1, a.x, a.y, a.z);
+      p.needsUpdate = true;
+      this.rope.visible = true;
+    } else if (this.rope) this.rope.visible = false;
+    return Math.hypot(me.vx, me.vz);
+  }
+
+  /** Where hero moves are now (the HUD): on a line, a wall, gliding, in the air, on the ground. */
+  get heroMode() {
+    return this.hero ? this.heroS.mode : null;
+  }
+
   getOut() {
     if (this.me || !this.h.canDrive()) return;
     const v = this.h.vehicle();
@@ -1291,6 +1341,7 @@ export class Combat {
       if (k === "q" || k === "1" || k === "2") this.swap(k === "1" ? this.loadout[0] : k === "2" ? this.loadout[1] : undefined);
       if (k === "c") this.input.crouch = !this.input.crouch;
       if (k === " ") this.input.jump = true;
+      if (k === "t") this.input.grapple = true;
       if (k === "v") this.toggleCam();
       if (k === "g") this.holdThrow(true);
       if (k === "4") this.cycleThrow();
@@ -1300,6 +1351,7 @@ export class Combat {
       const k = e.key.toLowerCase();
       this.keys.delete(k);
       if (k === "g") this.holdThrow(false);
+      if (k === "t") this.input.grapple = false;
     };
     const blur = () => {
       this.keys.clear();
@@ -1410,11 +1462,16 @@ export class Combat {
       // Third person with nothing in the sights: the body turns to where it goes (and may sprint any way).
       const squared = this.cam === "fps" || inp.aim || fireHeld || this.throwHeld || this.down || now - this.firedAt < 900;
       const moveIn = this.down || frozen ? { ...inp, mx: 0, mz: 0, jump: false, sprint: false } : fireHeld ? { ...inp, sprint: false } : { ...inp, free: !squared };
-      const speed = stepFoot(me, moveIn, dt, W.mobility, (x, z, r, y, tall) => {
+      const collideBoth = (x: number, z: number, r: number, y: number, tall: number) => {
         const a = H.collision.collide(x, z, r, y, tall);
         const b = H.obstacles.collide(a.x, a.z, r, y, tall);
         return { x: b.x, z: b.z, hit: b.hit ?? a.hit };
-      });
+      };
+      const heroOn = this.hero && !this.inMatch && !this.down;
+      const speed = heroOn ? this.heroStep(me, moveIn, dt, collideBoth) : stepFoot(me, moveIn, dt, W.mobility, collideBoth);
+      if (!heroOn && this.rope) this.rope.visible = false;
+      // Hero moves turned off up on a roof: down to the street (plain feet only know the street).
+      if (!heroOn && me.y > 0 && !me.air) (me.air = true), (me.vy = 0);
       inp.jump = false;
 
       // -- act (plant / defuse), held

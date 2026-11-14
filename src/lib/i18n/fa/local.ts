@@ -273,6 +273,12 @@ const local: Record<string, string> = {
   "Watch the trailer on Aparat": "تیزر رو توی آپارات ببین",
   "No trailer for this film": "این فیلم تیزر نداره",
   "Trailer": "تیزر",
+  "Pide & lahmacun": "پیده و لحم‌عجون",
+  "Köfte": "کوفته",
+  "Dessert": "دسر",
+  "Breakfast": "صبحانه",
+  "Players see your Yemeksepeti menu and reviews on your store: we find it by your store's name and location.": "بازیکن‌ها منو و نظرهای یمک‌سپتی مغازه‌ات را روی مغازه می‌بینند: از روی نام و مکان مغازه پیدایش می‌کنیم.",
+  "Players see your store's details from the open map; menu sites from your country will join here as the game adds them.": "بازیکن‌ها مشخصات مغازه‌ات را از نقشه‌ی باز می‌بینند؛ سایت‌های منوی کشورت هم وقتی بازی اضافه‌شان کند این‌جا می‌آیند.",
 };
 
 export default local;

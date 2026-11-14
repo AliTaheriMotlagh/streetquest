@@ -32,6 +32,8 @@ import { LiveBuses } from "./liveBuses";
 import { Shopkeepers } from "./shopkeepers";
 import { setVoiceCountry } from "./voices";
 import { countryAt } from "@/lib/region";
+import { POLICE_LOOKS } from "./police";
+import { policeCountryAt } from "@/lib/street/policeLook";
 import { useGame } from "../game/ui";
 import { audioOut, isMuted, keepAwake, sfx } from "../game/sfx";
 import { setEars } from "../game/spatial";
@@ -71,8 +73,10 @@ import { Others } from "./others";
 import { bootProgress, BOOT_NEAR_M, type BootOut } from "@/lib/bootGate";
 import { DriveBoot } from "./DriveBoot";
 import { nearStore, oncePerStore, onRoads, RoadGrid, signSpot, type StoreSpot } from "@/lib/storefront";
-import { CHUTE_OPEN_S, CollisionWorld, forward, stepAir, stepChute, stepGround, type Body } from "./physics";
+import { CollisionWorld, forward, stepAir, stepGround, type Body } from "./physics";
 import { makeChute } from "./chute3d";
+import { Skydive3D } from "./skydive3d";
+import { courseFor, DROP_ALT, landingHurt, landingOf, OPEN_S, passRings, scoreJump, startSky, stepSky, type Course, type Landing, type SkyState } from "@/lib/skydive";
 import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import { Crowd } from "./people";
@@ -238,6 +242,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const radioRef = useRef<CarRadio | null>(null);
   const [radio, setRadio] = useState<RadioState>({ station: null, status: "off" });
   const [radioOpen, setRadioOpen] = useState(false);
+  /** Hero moves on foot (lib/hero.ts): the grapple line, wall runs, gliding over the rooftops. */
+  const [hero, setHero] = useState(false);
+  /** A skydive under way: height over the ground, speed, freefall or canopy, rings, how far the target is. */
+  const [sky, setSky] = useState<{ agl: number; kmh: number; free: boolean; rings: number; of: number; target: number | null } | null>(null);
   useEffect(() => {
     const r = new CarRadio(setRadio);
     radioRef.current = r;
@@ -387,6 +395,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     storeInfo: (id: string, info: StorePanel) => void;
     /** The in-world panel by this store (null: away). */
     showPanel: (id: string | null) => void;
+    /** Skydive: jump from high over here (from the car), or pull the cord while falling. */
+    skydive: () => void;
+    pull: () => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -908,11 +919,29 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const shopkeepers = new Shopkeepers(scene, storefronts, lite);
     storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
     storefronts.at = start;
+    // The police of the country the city is in (their car, its livery, their uniform).
+    street.police.look = POLICE_LOOKS[policeCountryAt(start)];
     // The parachute (chute3d.ts): jumping from the helicopter high up. The helicopter flies itself
     // down to the ground under where you jumped and waits there as your parked vehicle.
     const chuteM = makeChute();
     scene.add(chuteM.group);
-    let chute: { t: number; hx: number; hz: number; hyaw: number; halt: number } | null = null;
+    // A jump (lib/skydive.ts): `hx/hz/hyaw/halt` is the vehicle left behind (the helicopter sinking
+    // to the ground, or the car where you jumped from); `course` the rings and target of a dropped jump.
+    let chute: { t: number; hx: number; hz: number; hyaw: number; halt: number; sky: SkyState; course: Course | null; pull: boolean; heli: boolean } | null = null;
+    const skyFx = new Skydive3D(scene, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+    let skySig = "";
+    /** Down: graded, scored, hurt if it was hard, paid for a course. */
+    const landJump = (h: NonNullable<typeof chute>) => {
+      const l: Landing = landingOf(h.sky, st.vy, Math.hypot(st.vx, st.vz));
+      const sc = scoreJump(h.course, { x: st.x, z: st.z }, l);
+      const hurt = landingHurt(l);
+      const what = l === "perfect" ? t("Perfect landing!") : l === "good" ? t("Good landing") : l === "hard" ? t("Hard landing — flare (brake) just before the ground") : t("You hit the ground without a canopy");
+      const parts = [h.course ? t("{n} of {m} rings", { n: fmtNum(sc.rings), m: fmtNum(h.course.rings.length) }) : "", sc.dist != null ? t("{d} from the target", { d: formatDistance(sc.dist) }) : "", sc.stars ? "★".repeat(sc.stars) : ""].filter(Boolean);
+      live.current.toast({ title: `🪂 ${what}`, body: parts.join(" · ") || null });
+      sfx(l === "perfect" ? "win" : l === "crash" ? "down" : "tap");
+      if (hurt) setTimeout(() => combat.streetHurt(hurt), 50);
+      if (h.course && sc.stars) void api<{ reward: { xp: number; coins: number } }>("/api/drive/street", { body: { job: "skydive", stars: sc.stars } }).then((r) => r.reward.coins && live.current.toast({ title: t("+{n} 🪙 for the jump", { n: fmtNum(r.reward.coins) }) })).catch(() => {});
+    };
     let cinemasAt: { x: number; z: number } | null = null;
     const syncCinemas = () => {
       if (cinemasAt && Math.hypot(st.x - cinemasAt.x, st.z - cinemasAt.z) < 3000) return;
@@ -1399,12 +1428,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       brake: (on) => void (stopForExit = on),
       bail: () => {
         if (def().key !== "heli" || st.alt < 12 || chute || combat.inMatch) return false;
-        chute = { t: 0, hx: st.x, hz: st.z, hyaw: st.yaw, halt: st.alt };
+        chute = { t: 0, hx: st.x, hz: st.z, hyaw: st.yaw, halt: st.alt, sky: startSky(), course: null, pull: false, heli: true };
         st.vy = 0;
         st.cruise = 0;
         chuteM.open(0);
         chuteM.group.visible = true;
-        live.current.toast({ title: t("Jump! The parachute opens by itself — gas to dive, brake to slow down") });
+        skyFx.set(null, true);
+        sfx("whoosh");
+        live.current.toast({ title: t("Freefall! Gas to dive, brake to spread out — pull the cord (Space) to open"), body: t("Brake just before the ground for a soft landing") });
         return true;
       },
       setFoot: (on, at) => {
@@ -1532,6 +1563,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (k === "l") land();
       if (k === "m" && !e.repeat) setBigMap((b) => !b);
       if (k === "n" && !e.repeat) radioRef.current?.next();
+      // Falling: Space pulls the cord.
+      if (k === " " && chute) chute.pull = true;
       startEngine();
     };
     const keyUp = (e: KeyboardEvent) => {
@@ -1632,6 +1665,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       openPick,
       storeInfo: (id, info) => storefronts.setInfo(id, info),
       showPanel: (id) => storefronts.showPanel(id),
+      pull: () => chute && (chute.pull = true),
+      skydive: () => {
+        if (chute || combat.inMatch) return;
+        if (combat.onFoot) return live.current.toast({ title: t("Get in a car or the helicopter first") });
+        // Over here, high up; a course of rings down to a clear spot on a street ahead.
+        const f = forward(st.yaw);
+        const aim = nearestStreet(st.x + f.fx * 320, st.z + f.fz * 320, 220) ?? { x: st.x + f.fx * 320, z: st.z + f.fz * 320 };
+        const course = courseFor(st.x, st.z, DROP_ALT, st.yaw, { x: aim.x, z: aim.z }, Math.floor(Math.random() * 1000));
+        chute = { t: 0, hx: st.x, hz: st.z, hyaw: st.yaw, halt: st.alt, sky: startSky(), course, pull: false, heli: false };
+        Object.assign(st, { alt: DROP_ALT, vy: 0, vx: f.fx * 8, vz: f.fz * 8, steer: 0 });
+        chuteM.open(0);
+        chuteM.group.visible = true;
+        skyFx.set(course, true, collision.floor(aim.x, aim.z, 0));
+        sfx("whoosh");
+        live.current.toast({ title: t("Skydive! Fly through the gold rings, then land on the target"), body: t("Gas to dive, brake to spread out — pull the cord (Space) to open; brake just before the ground") });
+      },
       cycleCam,
       horn,
       land,
@@ -1907,7 +1956,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       } else if (L.canDrive) {
         if (chute) {
           chute.t += dt;
-          vF = stepChute(st, c, dt, chute.t);
+          const floor = collision.floor(st.x, st.z, st.alt);
+          const before = { x: st.x, z: st.z, alt: st.alt };
+          const ev = stepSky(st, chute.sky, { gas: c.gas, brake: c.brake, steer: c.steer, pull: chute.pull || c.lift > 0.5 }, dt, floor);
+          chute.pull = false;
+          if (ev) {
+            // The canopy bites: a jolt.
+            shakeK = Math.max(shakeK, 0.9);
+            sfx("whoosh");
+            navigator.vibrate?.(60);
+            if (ev === "auto-opened") live.current.toast({ title: t("The canopy opened by itself — pull earlier next time") });
+          }
+          if (chute.course && passRings(chute.course, before, { x: st.x + st.vx * dt, z: st.z + st.vz * dt, alt: st.alt })) sfx("ring");
+          vF = Math.hypot(st.vx, st.vz);
           // The helicopter, left behind, sinks to the ground (or a roof) under where you jumped.
           chute.halt = Math.max(collision.floor(chute.hx, chute.hz, chute.halt), chute.halt - 7 * dt);
         } else if (D.flies) vF = stepAir(st, D, c, dt, maxV(), collision.floor(st.x, st.z, st.alt));
@@ -1985,15 +2046,28 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       model.group.position.set(chute?.hx ?? parked?.x ?? st.x, chute?.halt ?? parked?.alt ?? st.alt, chute?.hz ?? parked?.z ?? st.z);
       model.group.rotation.y = chute?.hyaw ?? parked?.yaw ?? st.yaw;
       if (chute) {
+        const free = chute.sky.phase === "free";
         chuteM.group.position.set(st.x, st.alt, st.z);
-        chuteM.group.rotation.set(0, st.yaw, -st.steer * 0.25);
-        chuteM.open(Math.min(1, Math.max(0, (chute.t - CHUTE_OPEN_S) / 0.6)));
-        // Down: on foot where you landed, the helicopter parked where it set down.
-        if (st.alt <= 0.02 && chute.t > CHUTE_OPEN_S) {
+        // Freefall: belly down (a dive tips the head down further); under the canopy: hanging, leaning into turns.
+        chuteM.group.rotation.set(free ? -1.25 - c.gas * 0.35 + c.brake * 0.25 : 0, st.yaw, -st.steer * (free ? 0.5 : 0.25));
+        chuteM.open(free ? 0 : Math.min(1, (chute.sky.t - chute.sky.openedAt) / (OPEN_S * 0.6)));
+        skyFx.update(dt, now / 1000, st, free);
+        const floorHere = collision.floor(st.x, st.z, st.alt);
+        const sig = `${Math.round((st.alt - floorHere) / 5)}|${Math.round(Math.hypot(st.vx, st.vz, st.vy) * 3.6 / 5)}|${free}|${chute.course?.rings.filter((r) => r.hit).length ?? 0}`;
+        if (sig !== skySig) {
+          skySig = sig;
+          setSky({ agl: Math.max(0, st.alt - floorHere), kmh: Math.hypot(st.vx, st.vz, st.vy) * 3.6, free, rings: chute.course?.rings.filter((r) => r.hit).length ?? 0, of: chute.course?.rings.length ?? 0, target: chute.course ? Math.hypot(st.x - chute.course.target.x, st.z - chute.course.target.z) : null });
+        }
+        // Down (on the ground or a roof): on foot where you landed, the vehicle where it was left.
+        if (st.alt <= floorHere + 0.02 && chute.sky.t > 0.5) {
           const h = chute;
           chute = null;
           chuteM.group.visible = false;
-          Object.assign(st, { vx: 0, vz: 0, vy: 0, speed: 0, steer: 0, alt: 0 });
+          skyFx.set(null, false);
+          setSky(null);
+          skySig = "";
+          landJump(h);
+          Object.assign(st, { vx: 0, vz: 0, vy: 0, speed: 0, steer: 0, alt: floorHere });
           combat.getOut();
           if (parked) Object.assign(parked, { x: h.hx, z: h.hz, yaw: h.hyaw, alt: h.halt });
         }
@@ -2075,8 +2149,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.rotateZ(-st.roll * 0.35);
       } else {
         // Under the parachute: behind and a little below the canopy, jumper and canopy both in the frame.
-        const dist = chute && camMode !== "top" ? 11 : camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
-        const height = chute && camMode !== "top" ? 3.2 : camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
+        // Freefall: up behind you looking down past you at the city (and the next ring); the canopy: behind and a little below it.
+        const freeCam = chute && chute.sky.phase === "free" && camMode !== "top";
+        const dist = freeCam ? 9 : chute && camMode !== "top" ? 11 : camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
+        const height = freeCam ? 7 : chute && camMode !== "top" ? 3.2 : camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
         const want = camMode === "top" ? new THREE.Vector3(st.x + nfx * 6, st.alt + height, st.z + nfz * 6 + 0.01) : new THREE.Vector3(st.x - nfx * dist, st.alt + height, st.z - nfz * dist);
         camPos.lerp(want, 1 - Math.exp(-rdt * (camMode === "top" ? 6 : 4.5)));
         // Don't let the camera end up inside a building: pull it in toward the vehicle.
@@ -2094,7 +2170,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         camera.position.copy(camPos);
         if (camMode === "top") camera.up.set(nfx, 0, nfz);
         else camera.up.set(0, 1, 0);
-        camLook.set(st.x + nfx * 4, st.alt + (chute ? 3.4 : 1.2), st.z + nfz * 4);
+        camLook.set(st.x + nfx * (freeCam ? 10 : 4), st.alt + (freeCam ? -12 : chute ? 3.4 : 1.2), st.z + nfz * (freeCam ? 10 : 4));
         camera.lookAt(camLook);
       }
       // A crash or a blast shakes the camera (on foot, the soldier's camera has its own).
@@ -2572,6 +2648,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       storefronts.dispose();
       scene.remove(chuteM.group);
       chuteM.dispose();
+      skyFx.dispose();
       if (nextModel) (nextModel.model.dispose(), nextModel.cockpit.dispose());
       model.dispose();
       cockpit.dispose();
@@ -2824,6 +2901,28 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
               {!(radioRef.current?.stations().length) && <p className="small muted">{t("Finding stations…")}</p>}
             </div>
           )}
+          {sky && (
+            <div className={`sky-hud ${sky.free ? "free" : "open"}`} aria-live="polite">
+              <div className="sky-alt">
+                <b>{fmtNum(Math.round(sky.agl))}</b>
+                <small>{t("m above the ground")}</small>
+                <i style={{ height: `${Math.min(100, (sky.agl / DROP_ALT) * 100)}%` }} />
+              </div>
+              <div className="sky-read">
+                <span>{t("{n} km/h", { n: fmtNum(Math.round(sky.kmh)) })}</span>
+                {sky.of > 0 && <span>◯ {fmtNum(sky.rings)}/{fmtNum(sky.of)}</span>}
+                {sky.target != null && <span>🎯 {formatDistance(sky.target)}</span>}
+              </div>
+              {sky.free ? (
+                <button type="button" className={`sky-pull ${sky.agl < 250 ? "urgent" : ""}`} onClick={() => api3d.current?.pull()}>
+                  🪂 {t("Pull the cord")}
+                  <small>{t("Space")}</small>
+                </button>
+              ) : (
+                sky.agl < 15 && <p className="sky-hint">{t("Flare! Brake now")}</p>
+              )}
+            </div>
+          )}
           <div className="drive-side" role="toolbar" aria-label={t("Tools")}>
             <Button className="drive-round cam" onClick={() => api3d.current?.cycleCam()} aria-label={t("Camera")} data-tip={t("Camera")}>
               <Icon name="camera" size={22} />
@@ -2840,6 +2939,35 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                 <Icon name="radio" size={22} />
                 {radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <small>{radio.status === "off" ? t("Off") : radio.status === "tuning" ? "…" : "!"}</small>}
               </Button>
+            )}
+            {combat && onFoot && !fight?.inMatch && (
+              <Button
+                className={`drive-round ${hero ? "on" : ""}`}
+                onClick={() => {
+                  combat.hero = !hero;
+                  setHero(!hero);
+                  if (!hero) live.current.toast({ title: t("Hero moves on: hold the hook (T) to swing, run up walls, jump in the air to glide") });
+                }}
+                aria-pressed={hero}
+                aria-label={t("Hero moves")}
+                data-tip={t("Hero moves: swing, wall-run, glide")}
+              >
+                <span aria-hidden style={{ fontSize: 20 }}>🦸</span>
+              </Button>
+            )}
+            {combat && onFoot && hero && !fight?.inMatch && (
+              <button
+                type="button"
+                className="drive-round hook"
+                onPointerDown={(e) => (e.preventDefault(), (combat.input.grapple = true))}
+                onPointerUp={() => (combat.input.grapple = false)}
+                onPointerCancel={() => (combat.input.grapple = false)}
+                onPointerLeave={() => (combat.input.grapple = false)}
+                aria-label={t("Hold to swing on the line (T)")}
+                data-tip={t("Hold to swing on the line (T)")}
+              >
+                <span aria-hidden style={{ fontSize: 20 }}>🪝</span>
+              </button>
             )}
             {canDrive && combat && !fight?.inMatch && (onFoot ? (
               <Button className={`drive-round ${fight?.nearCar ? "on" : ""}`} disabled={!fight?.nearCar} onClick={() => combat.getIn()} aria-label={t("Get in the car")} data-tip={fight?.nearCar ? t("Get in the car (F)") : t("No car close by")}>
@@ -2884,6 +3012,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         <DriveMenu tabs={tabs} active={menu} onTab={setMenu} onClose={() => setMenu(null)}>
         {menu === "jobs" && hud && (
           <div className="drive-tab">
+            {!fight?.inMatch && (
+              <button className="drive-job sky-start" onClick={() => (setMenu(null), api3d.current?.skydive())}>
+                <span className="ic">🪂</span>
+                <span className="grow">
+                  <b>{t("Skydive from here")}</b>
+                  <span className="small muted">{t("Jump from {n} m: gold rings, then land on the target", { n: fmtNum(DROP_ALT) })}</span>
+                </span>
+              </button>
+            )}
             {hud.jobs.length === 0 && <p className="small muted">{t("No jobs around here yet — drive on, or check back in a few minutes.")}</p>}
             {hud.jobs.map((j) => (
               <button key={j.id} className="drive-job" onClick={() => goTo(j, j.label)}>

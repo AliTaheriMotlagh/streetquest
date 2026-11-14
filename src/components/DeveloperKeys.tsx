@@ -61,14 +61,14 @@ export function DeveloperKeys() {
       {err && <p role="alert" style={{ color: "var(--danger, #e5484d)" }}>{err}</p>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t("What is it for? (optional)")} style={{ flex: "1 1 180px", minWidth: 0 }} />
-        <Button onClick={make}>{t("Make a key")}</Button>
+        <Button className="btn yellow" onClick={make}>{t("Make a key")}</Button>
       </div>
       {fresh && (
         <div className="card" style={{ padding: 10 }}>
           <p>{t("Copy your key now — it won't be shown again.")}</p>
           <code dir="ltr" style={{ wordBreak: "break-all", userSelect: "all" }}>{fresh}</code>
           <div style={{ marginBlockStart: 8 }}>
-            <Button onClick={() => navigator.clipboard?.writeText(fresh)}>{t("Copy")}</Button> <Button onClick={() => setFresh("")}>{t("Done")}</Button>
+            <Button className="btn small ghost" onClick={() => navigator.clipboard?.writeText(fresh)}>{t("Copy")}</Button> <Button className="btn small ghost" onClick={() => setFresh("")}>{t("Done")}</Button>
           </div>
         </div>
       )}
@@ -89,8 +89,8 @@ export function DeveloperKeys() {
               <span className="muted">{t("Revoked")}</span>
             ) : (
               <>
-                {data.admin && all && <Button onClick={() => limit(k)}>{t("Limit")}</Button>}
-                <Button onClick={() => revoke(k.id)}>{t("Revoke")}</Button>
+                {data.admin && all && <Button className="btn small ghost" onClick={() => limit(k)}>{t("Limit")}</Button>}
+                <Button className="btn small ghost" onClick={() => revoke(k.id)}>{t("Revoke")}</Button>
               </>
             )}
           </li>

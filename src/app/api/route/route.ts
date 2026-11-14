@@ -1,9 +1,11 @@
 // Navigation: a live driving route from where you are to a spot on the map, drawn on the
 // map with the time it takes in today's traffic (server/traffic.ts liveRoute).
 //   ?from=lat,lng&to=lat,lng → LiveRoute, or 503 when routing isn't available.
+//   &mode=foot → a walking route along the streets (server/footRoute.ts, worldwide); else driving (Neshan, else OSRM's car profile).
 import { requireUser } from "@/server/auth";
 import { HttpError, route } from "@/server/http";
 import { liveRoute } from "@/server/traffic";
+import { footRoute } from "@/server/footRoute";
 import { distanceM } from "@/lib/geo";
 import { t } from "@/lib/i18n";
 
@@ -19,7 +21,9 @@ export const GET = route(async (req) => {
   const from = point(sp.get("from")), to = point(sp.get("to"));
   if (!from || !to) throw new HttpError(400, t("lat/lng required"));
   if (distanceM(from, to) > 150_000) throw new HttpError(400, t("That's too far to route"));
-  const r = await liveRoute(from, to);
+  // On foot: the walking route first (anywhere); the driving one (Neshan, Iran) if that fails. Driving: the other way round.
+  const foot = sp.get("mode") === "foot";
+  const r = foot ? ((await footRoute(from, to)) ?? (await liveRoute(from, to))) : ((await liveRoute(from, to)) ?? (await footRoute(from, to, "car")));
   if (!r) throw new HttpError(503, t("Routing isn't available right now — try Directions instead"));
   return Response.json(r, { headers: { "cache-control": "no-store" } });
 });

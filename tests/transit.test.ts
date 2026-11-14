@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildBuses, buildNetwork, cityAt, cleanLine, cleanStation, hoursOf, minutesOf, modeOf, type RawNode, type RawRel } from "@/lib/transit/network";
+import { buildBuses, buildNetwork, cityAt, cleanLine, cleanStation, hoursOf, minutesOf, modeOf, orderStops, type RawNode, type RawRel } from "@/lib/transit/network";
 import { departures, localMinutes, nearStations, planTrip } from "@/lib/transit/plan";
 import { arrivalsAt, asmxJson, busesNear, busOf, etaMin, soapBody, soapJson } from "@/lib/transit/iett";
+import { csvRow, csvTable, departuresAt, gtfsMinutes, TimetableBuilder, weekBits } from "@/lib/transit/gtfs";
 
 // A small Tehran: Line 1 runs north–south through A B C D, Line 2 west–east through E C F;
 // they meet at C. Each station has two stop nodes (the two platforms), ~40 m apart.
@@ -160,5 +161,79 @@ describe("transit: Istanbul's buses from the phone (no relay)", () => {
     const at = { lat: 41.0, lng: 29.0 };
     const near = busesNear([{ id: "b", lat: 41.02, lng: 29.0 }, { id: "a", lat: 41.001, lng: 29.0 }, { id: "x", lat: 42, lng: 29 }], at);
     assert.deepEqual(near.map((b) => b.id), ["a", "b"]);
+  });
+});
+
+describe("transit: real timetables (GTFS)", () => {
+  // A tiny feed: line 500T Tuzla → Kadıköy (3 stops), weekdays 07:00, 07:20, 23:50; Sundays 09:00.
+  const feed = () => {
+    const b = new TimetableBuilder("Europe/Istanbul", "test");
+    b.routes(csvTable("route_id,route_short_name\nR1,500T"));
+    b.tripsTable(csvTable("route_id,service_id,trip_id,trip_headsign\nR1,WK,t1,Kadıköy\nR1,WK,t2,Kadıköy\nR1,WK,t3,Kadıköy\nR1,SU,t4,Kadıköy\nR1,WK,x1,"));
+    b.stopsTable(csvTable('stop_id,stop_name,stop_lat,stop_lon\nA,"Tuzla, İskele",40.8,29.3\nB,Pendik,40.9,29.2\nC,Kadıköy,40.99,29.02'));
+    b.calendar(csvTable("service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday\nWK,1,1,1,1,1,0,0\nSU,0,0,0,0,0,0,1"));
+    for (const [id, start] of [["t1", "07:00:00"], ["t2", "07:20:00"], ["t3", "23:50:00"], ["t4", "09:00:00"]] as const) {
+      const s = gtfsMinutes(start)!;
+      const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`;
+      b.trip(id, [{ seq: 3, stop: "C", time: hm(s + 50) }, { seq: 1, stop: "A", time: hm(s) }, { seq: 2, stop: "B", time: hm(s + 20) }]);
+    }
+    return b.result("2026-11-14");
+  };
+  it("reads CSV with quotes and a byte-order mark; times past midnight", () => {
+    assert.deepEqual(csvRow('a,"b, c","say ""hi"""'), ["a", "b, c", 'say "hi"']);
+    assert.deepEqual(csvTable("﻿x,y\n1,2")[0], { x: "1", y: "2" });
+    assert.equal(gtfsMinutes("25:10:00"), 1510);
+    assert.equal(weekBits({ monday: "1", sunday: "1" }), 1 | 64);
+  });
+  it("one pattern per way a line runs, with the minutes to each stop and departures by days", () => {
+    const tt = feed();
+    const [p] = tt.lines["500T"];
+    assert.equal(p.headsign, "Kadıköy");
+    assert.deepEqual(p.names, ["Tuzla, İskele", "Pendik", "Kadıköy"]);
+    assert.deepEqual(p.offsets, [0, 20, 50]);
+    assert.deepEqual(p.days["31"], [420, 440, 1430]);
+    assert.deepEqual(p.days["64"], [540]);
+  });
+  it("the next buses at a stop on its own day, yesterday's late bus after midnight, first and last", () => {
+    const tt = feed(), pendik = { lat: 40.9, lng: 29.2 };
+    // Monday 2026-11-16 07:05 in Istanbul (UTC+3) → 04:05 UTC: the 07:20 and 07:40 at Pendik (+20).
+    const [d] = departuresAt(tt.lines["500T"], pendik, new Date("2026-11-16T04:05:00Z"), tt.tz);
+    assert.deepEqual([d.headsign, d.left, d.toEnd], ["Kadıköy", 1, 30]);
+    assert.deepEqual(d.next, [440, 460, 1450]);
+    assert.deepEqual([d.first, d.last], [440, 1450]);
+    assert.deepEqual(d.ahead, [{ name: "Kadıköy", min: 30 }]);
+    // Tuesday 00:05: Monday's 23:50 from Tuzla passes Pendik at 00:10.
+    assert.deepEqual(departuresAt(tt.lines["500T"], pendik, new Date("2026-11-16T21:05:00Z"), tt.tz)[0].next.slice(0, 1), [10]);
+    // Sunday: only the 09:00 (Pendik 09:20).
+    assert.deepEqual(departuresAt(tt.lines["500T"], pendik, new Date("2026-11-15T05:00:00Z"), tt.tz)[0].next, [560]);
+    // The end of the line isn't a place to board; a stop far away isn't on it.
+    assert.equal(departuresAt(tt.lines["500T"], { lat: 40.99, lng: 29.02 }, new Date(), tt.tz).length, 0);
+    assert.equal(departuresAt(tt.lines["500T"], { lat: 41.2, lng: 28.9 }, new Date(), tt.tz).length, 0);
+  });
+  it("bus lines keep their stops in order each way (the stop card's stops ahead)", () => {
+    const n = new Map<number, RawNode>([
+      [1, { id: 1, lat: 41.0, lon: 29.0, tags: { name: "A" } }],
+      [2, { id: 2, lat: 41.01, lon: 29.0, tags: { name: "B" } }],
+      [3, { id: 3, lat: 41.02, lon: 29.0, tags: { name: "C" } }],
+    ]);
+    const way = (id: number, ...ns: number[]): RawRel => ({ id, tags: { type: "route", route: "bus", ref: "15F", operator: "İETT", opening_hours: "06:00-23:30" }, members: ns.map((x) => ({ type: "node", ref: x, role: "platform" })) });
+    const b = buildBuses("istanbul", [way(1, 1, 2, 3), way(2, 3, 2, 1), way(3, 1, 2)], n, "x");
+    const l = b.lines["15F"];
+    assert.deepEqual(l.routes, [["b1", "b2", "b3"], ["b3", "b2", "b1"]]);
+    assert.equal(l.operator, "İETT");
+    assert.deepEqual(l.hours, { from: 360, to: 1410 });
+  });
+});
+
+describe("transit: a route's stops in the order a bus meets them", () => {
+  const p = (name: string, lat: number) => ({ name, lat, lng: 29 });
+  const line = ["A", "B", "C", "D", "E", "F"].map((n, i) => p(n, 41 + i * 0.004));
+  it("keeps an order that's already right; chains a scrambled one from its `from`", () => {
+    assert.deepEqual(orderStops(line, "A").map((s) => s.name), ["A", "B", "C", "D", "E", "F"]);
+    const scrambled = [line[3], line[0], line[5], line[1], line[4], line[2]];
+    assert.deepEqual(orderStops(scrambled, "A").map((s) => s.name), ["A", "B", "C", "D", "E", "F"]);
+    assert.deepEqual(orderStops(scrambled, "F").map((s) => s.name), ["F", "E", "D", "C", "B", "A"]);
+    // No usable `from`: from an end, in the direction its first listed stop suggests.
+    assert.deepEqual(orderStops([line[4], line[0], line[5], line[1], line[3], line[2]], "nowhere").map((s) => s.name).join(""), "FEDCBA");
   });
 });

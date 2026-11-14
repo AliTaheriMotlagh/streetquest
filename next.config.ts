@@ -10,6 +10,8 @@ const config: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // This folder is the project root (a package-lock.json higher up made Next guess wrong).
   outputFileTracingRoot: import.meta.dirname,
+  // Bus timetables imported from GTFS (scripts/transit-gtfs.ts) are read from disk by /api/transit.
+  outputFileTracingIncludes: { "/api/transit": ["./src/data/transit/*-times.json"] },
   poweredByHeader: false,
   // Allow opening the dev server from a phone via LAN IP or an https tunnel.
   allowedDevOrigins: ["*.trycloudflare.com", "192.168.*.*", "10.*.*.*"],

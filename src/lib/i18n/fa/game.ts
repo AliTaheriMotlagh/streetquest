@@ -138,6 +138,7 @@ const game: Record<string, string> = {
   "You're back where you really are": "برگشتی همون‌جایی که واقعاً هستی",
   "Couldn't get your real location — is location allowed?": "موقعیت واقعی‌ات پیدا نشد — دسترسی موقعیت رو دادی؟",
   "Back to my real location": "برگرد به موقعیت واقعی من",
+  "Finding the way along the streets…": "پیدا کردن مسیر از خیابان‌ها…",
 };
 
 export default game;

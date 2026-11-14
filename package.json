@@ -35,7 +35,8 @@
     "assets:people": "tsx scripts/people.ts",
     "assets:sounds": "tsx scripts/sounds.ts",
     "assets:voices": "tsx scripts/voices.ts",
-    "transit:build": "tsx scripts/transit-osm.ts"
+    "transit:build": "tsx scripts/transit-osm.ts",
+    "transit:times": "tsx scripts/transit-gtfs.ts"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

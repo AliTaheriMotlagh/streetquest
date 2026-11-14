@@ -502,6 +502,9 @@ function ysReviews(raw: string, dishes = false) {
 }
 
 /** A Yemeksepeti vendor's card: its page and the dishes its customers ordered, prices in lira. */
+/** Where a vendor's menu is cached (Snappfood's and Yemeksepeti's are kept apart): product search reads them all at once. */
+export const menuCacheKey = (code: string) => (isYsCode(code) ? `ys:menu:${ysRaw(code)}` : menuKey(code));
+
 function ysMenu(raw: string, near?: LatLng): Promise<Menu | null> {
   return cached<Menu>(`ys:menu:${raw}`, MENU_TTL, async () => {
     const root = ysBase();

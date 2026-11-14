@@ -36,6 +36,8 @@ export const PACE_RULES: { site: string; host: RegExp; rule: PaceRule }[] = [
   { site: "takhfifan", host: /takhfifan\.com/i, rule: { gapMs: 250, perMin: 30, coolOn: [429], strikes: 2, coolMs: 15 * MIN } },
   { site: "balad", host: /raah\.ir|balad\.ir/i, rule: { gapMs: 250, perMin: 30, coolOn: [429], strikes: 2, coolMs: 15 * MIN } },
   { site: "basalam", host: /basalam\.com/i, rule: PACE_DEFAULT },
+  // FOSSGIS's public OSRM (walking routes): its policy asks for at most one request a second.
+  { site: "osrm", host: /routing\.openstreetmap\.de/i, rule: { gapMs: 1000, perMin: 50, coolOn: [429], strikes: 2, coolMs: 10 * MIN } },
   { site: "okala", host: /okala\.com/i, rule: PACE_DEFAULT },
   { site: "bilbooard", host: /bilbooard\.ir/i, rule: PACE_DEFAULT },
   { site: "irangaah", host: /irangaah\.ir/i, rule: PACE_DEFAULT },

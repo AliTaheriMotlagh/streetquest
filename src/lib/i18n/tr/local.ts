@@ -273,6 +273,12 @@ const local: Record<string, string> = {
   "Watch the trailer on Aparat": "Fragmanı Aparat'ta izle",
   "No trailer for this film": "Bu filmin fragmanı yok",
   "Trailer": "Fragman",
+  "Pide & lahmacun": "Pide ve lahmacun",
+  "Köfte": "Köfte",
+  "Dessert": "Tatlı",
+  "Breakfast": "Kahvaltı",
+  "Players see your Yemeksepeti menu and reviews on your store: we find it by your store's name and location.": "Oyuncular Yemeksepeti menünü ve yorumlarını dükkânında görür: onu dükkânının adı ve konumundan buluruz.",
+  "Players see your store's details from the open map; menu sites from your country will join here as the game adds them.": "Oyuncular dükkânının bilgilerini açık haritadan görür; ülkendeki menü siteleri oyun ekledikçe buraya gelecek.",
 };
 
 export default local;

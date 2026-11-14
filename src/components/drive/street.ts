@@ -156,7 +156,7 @@ export class StreetLife {
   private solids(): Solid[] {
     const me = this.me;
     if (!me || me.matchOn) return [];
-    const pd = FLEET.samand, pm = massOf(pd);
+    const pd = FLEET[this.police.look.key], pm = massOf(pd);
     const out: Solid[] = this.police.units.map((u) => ({
       x: u.body.x, z: u.body.z, yaw: u.body.yaw, vx: u.body.vx, vz: u.body.vz, len: pd.len, wid: pd.wid, mass: pm,
       moving: Math.hypot(u.body.vx, u.body.vz) > 2,

@@ -11,8 +11,30 @@ import * as THREE from "three";
 /** Body white and the band's green (sRGB). */
 export const POLICE_WHITE = "#f2f4f0";
 export const POLICE_GREEN = "#1d7d4f";
+/** Turkey's police blue (Emniyet: white cars, a blue band, «POLİS»), and the thin red line over the band. */
+export const POLIS_BLUE = "#123c8c";
 
 let words: THREE.CanvasTexture | null = null;
+let wordsTr: THREE.CanvasTexture | null = null;
+/** POLİS (left half, blue — the bonnet) and «POLİS 155» (right half, white — on the band). */
+function wordsTextureTr() {
+  if (wordsTr) return wordsTr;
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "900 100px 'Arial Black', 'Helvetica Neue', Arial, sans-serif";
+  g.fillStyle = POLIS_BLUE;
+  g.fillText("POLİS", 256, 66, 480);
+  g.fillStyle = "#ffffff";
+  g.fillText("POLİS 155", 768, 66, 470);
+  wordsTr = new THREE.CanvasTexture(c);
+  wordsTr.colorSpace = THREE.SRGBColorSpace;
+  wordsTr.anisotropy = 4;
+  return wordsTr;
+}
 /** POLICE (left half, green) and «پلیس» (right half, white), on clear. */
 function wordsTexture() {
   if (words) return words;
@@ -51,7 +73,8 @@ export function policeBand(u: number) {
  * A copy of a fleet paint material that wears the police livery. `dims`: the model's
  * outside size (the livery is laid out in fractions of it).
  */
-export function policePaint(base: THREE.Material, dims: { len: number; wid: number; hgt: number }): THREE.Material {
+export function policePaint(base: THREE.Material, dims: { len: number; wid: number; hgt: number }, style: "ir" | "tr" = "ir"): THREE.Material {
+  if (style === "tr") return polisPaint(base, dims);
   const mat = base.clone();
   const uniforms = { livWords: { value: wordsTexture() }, livDims: { value: new THREE.Vector3(dims.wid, dims.hgt, dims.len) } };
   mat.onBeforeCompile = (sh) => {
@@ -106,5 +129,62 @@ export function policePaint(base: THREE.Material, dims: { len: number; wid: numb
   };
   // Its own program (the patched shader isn't the plain paint's).
   mat.customProgramCacheKey = () => "police-livery";
+  return mat;
+}
+
+/**
+ * Turkey's patrol car (Emniyet Genel Müdürlüğü): white bodywork, a straight blue band along the
+ * doors with a thin red line over it, «POLİS 155» in white on the band, POLİS in blue across the
+ * bonnet. Drawn the same way as Iran's (by position in the car's frame).
+ */
+function polisPaint(base: THREE.Material, dims: { len: number; wid: number; hgt: number }): THREE.Material {
+  const mat = base.clone();
+  const uniforms = { livWords: { value: wordsTextureTr() }, livDims: { value: new THREE.Vector3(dims.wid, dims.hgt, dims.len) } };
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLivP;\nvarying vec3 vLivN;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLivP = position;\nvLivN = normal;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLivP;\nvarying vec3 vLivN;\nuniform sampler2D livWords;\nuniform vec3 livDims;")
+      .replace(
+        "#include <color_fragment>",
+        /* glsl */ `#include <color_fragment>
+        if (dot(diffuseColor.rgb, vec3(0.333)) > 0.2) {
+          vec3 livN = abs(normalize(vLivN));
+          vec3 blue = vec3(0.006, 0.045, 0.27);
+          vec3 red = vec3(0.6, 0.006, 0.02);
+          float u = vLivP.z / livDims.z + 0.5; // nose 0 … tail 1
+          float v = vLivP.y / livDims.y;
+          if (livN.x > 0.5 && livN.x > livN.y) {
+            float aa = fwidth(v) * 1.5 + 0.0015;
+            float on = smoothstep(0.08, 0.1, u) * (1.0 - smoothstep(0.92, 0.94, u));
+            // The blue band along the doors, a little lower than the middle, and the red line over it.
+            float mid = 0.4, half_ = 0.075;
+            float band = (1.0 - smoothstep(half_ - aa, half_ + aa, abs(v - mid))) * on;
+            float line = (1.0 - smoothstep(0.009, 0.009 + aa, abs(v - (mid + half_ + 0.025)))) * on;
+            diffuseColor.rgb = mix(diffuseColor.rgb, blue, band);
+            diffuseColor.rgb = mix(diffuseColor.rgb, red, line);
+            // «POLİS 155» on the band over the doors, reading the right way on both sides.
+            float tu = (u - 0.3) / 0.42;
+            if (vLivP.x > 0.0) tu = 1.0 - tu;
+            float tv = (v - (mid - half_ * 0.85)) / (half_ * 1.7);
+            if (tu > 0.0 && tu < 1.0 && tv > 0.0 && tv < 1.0) {
+              vec4 w = texture2D(livWords, vec2(0.5 + tu * 0.5, tv));
+              diffuseColor.rgb = mix(diffuseColor.rgb, w.rgb, w.a * band);
+            }
+          } else if (livN.y > 0.55 && u > 0.05 && u < 0.26) {
+            // POLİS across the bonnet.
+            float tu = 0.5 - vLivP.x / (livDims.x * 0.74);
+            float tv = (u - 0.07) / 0.17;
+            if (tu > 0.0 && tu < 1.0 && tv > 0.0 && tv < 1.0) {
+              vec4 w = texture2D(livWords, vec2(tu * 0.5, tv));
+              diffuseColor.rgb = mix(diffuseColor.rgb, w.rgb, w.a);
+            }
+          }
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => "police-livery-tr";
   return mat;
 }

@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { jobsFor, lineText, MODELS, VOICE_LANGS, type Job, type VoiceLang } from "@/lib/street/voiceLang";
 import { barkKey, type VoiceKind } from "@/lib/street/barks";
-import { encodeWav, ENGINE_TYPES, rawNameOf, toMono, trimSilence, ttsUrl, validTemplate, type VoiceEngine } from "@/lib/voiceTools";
+import { encodeWav, ENGINE_TYPES, HF_MODELS, hfLicence, rawNameOf, toMono, trimSilence, ttsUrl, validHfModel, validTemplate, type VoiceEngine } from "@/lib/voiceTools";
 import { haaniye } from "./haaniye";
 import { piperRun } from "./piperRun";
 
@@ -32,7 +32,9 @@ const JOBS: Record<VoiceLang, Job[]> = { fa: jobsFor("fa"), en: jobsFor("en"), t
 const LANG_LABEL: Record<VoiceLang, string> = { fa: "فارسی · fa", en: "English · en", tr: "Türkçe · tr" };
 const KINDS: VoiceKind[] = ["m", "f", "cop"];
 const KIND_LABEL: Record<VoiceKind, string> = { m: "👨 Men", f: "👩 Women", cop: "👮 Police" };
-const ENGINE_LABEL: Record<VoiceEngine["type"], string> = { piper: "Piper (in this browser)", server: "The game's speech server", http: "Another TTS (HTTP)", record: "Record / upload only" };
+const ENGINE_LABEL: Record<VoiceEngine["type"], string> = { piper: "Piper (in this browser)", server: "The game's speech server (Azure / OpenAI)", hf: "Hugging Face model", http: "Another TTS (HTTP)", record: "Record / upload only" };
+/** One line's own engine, when it differs from its voice's (raw name → engine). */
+const LINE_ENGINES_KEY = "sq_dev_line_engines";
 const ENGINES_KEY = "sq_dev_voice_engines";
 /** Rate the game's voice files are made at (assets:voices resamples anyway). */
 const RATE = 22050;
@@ -108,6 +110,14 @@ export default function VoiceMaker() {
   const [filter, setFilter] = useState("");
   const [recording, setRecording] = useState<string | null>(null);
   const [engines, setEngines] = useState<Record<string, VoiceEngine>>({});
+  const [lineEng, setLineEng] = useState<Record<string, VoiceEngine>>({});
+  const [show, setShow] = useState<"all" | "missing" | "saved">("all");
+  const [kindOnly, setKindOnly] = useState<VoiceKind | "all">("all");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [focus, setFocus] = useState<string | null>(null);
+  /** The take being compared: the raw one and the shipped one, side by side. */
+  const [compare, setCompare] = useState<{ raw: string; file: string; text: string } | null>(null);
+  const [err, setErr] = useState(false);
   /** Piper (and its runtime paths), loaded once; the voice that is running now (one at a time: a model is ~60 MB). */
   const engine = useRef<{ tts: Piper; ver: string; paths: Paths } | null>(null);
   const current = useRef<{ model: string; session: Session } | null>(null);
@@ -117,8 +127,20 @@ export default function VoiceMaker() {
     refresh();
     try {
       setEngines(JSON.parse(localStorage.getItem(ENGINES_KEY) ?? "{}"));
+      setLineEng(JSON.parse(localStorage.getItem(LINE_ENGINES_KEY) ?? "{}"));
     } catch {}
   }, []);
+  /** A line's engine: its own, else its voice's. */
+  const engineFor = (j: Job): VoiceEngine => lineEng[j.raw] ?? engineOf(j.lang, j.v);
+  const setLineEngine = (raw: string, e: VoiceEngine | null) => {
+    const next = { ...lineEng };
+    if (e) next[raw] = e;
+    else delete next[raw];
+    setLineEng(next);
+    try {
+      localStorage.setItem(LINE_ENGINES_KEY, JSON.stringify(next));
+    } catch {}
+  };
   const engineOf = (l: VoiceLang, k: VoiceKind): VoiceEngine => usable(engines[`${l}:${k}`], l, k);
   const setEngine = (l: VoiceLang, k: VoiceKind, e: VoiceEngine) => {
     const next = { ...engines, [`${l}:${k}`]: e };
@@ -130,7 +152,12 @@ export default function VoiceMaker() {
 
   const all = JOBS[lang];
   const q = filter.trim().toLowerCase();
-  const jobs = q ? all.filter((j) => `${j.raw} ${j.text} ${lineText(j.b, j.v, "en")} ${j.b.s}`.toLowerCase().includes(q)) : all;
+  const jobs = all.filter(
+    (j) =>
+      (!q || `${j.raw} ${j.text} ${lineText(j.b, j.v, "en")} ${j.b.s}`.toLowerCase().includes(q)) &&
+      (show === "all" || (show === "saved") === saved.has(j.raw)) &&
+      (kindOnly === "all" || j.v === kindOnly),
+  );
   const left = jobs.filter((j) => !saved.has(j.raw));
   const doneCount = all.filter((j) => saved.has(j.raw)).length;
 
@@ -180,7 +207,13 @@ export default function VoiceMaker() {
 
   /** One line spoken by its voice's engine, as a WAV (null: that voice is made by hand). */
   const speak = async (j: Job): Promise<ArrayBuffer | null> => {
-    const e = engineOf(j.lang, j.v);
+    const e = engineFor(j);
+    if (e.type === "hf") {
+      if (!validHfModel(e.model)) throw new Error("choose a Hugging Face model (owner/name) first");
+      const r = await fetch("/api/dev/voices/hf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: e.model, text: j.text }) });
+      if (!r.ok) throw new Error(await r.text());
+      return toWav(await r.arrayBuffer(), true);
+    }
     if (e.type === "record") return null;
     if (e.type === "server") {
       const r = await fetch(`/api/tts?id=${encodeURIComponent(j.b.id)}&v=${j.v}&k=${barkKey(j.b, j.v, j.lang)}${j.lang === "fa" ? "" : `&l=${j.lang}`}`);
@@ -219,8 +252,10 @@ export default function VoiceMaker() {
         }
         await save(j.raw, wav);
       }
+      setErr(false);
       setStatus(`Done${byHand ? ` (${byHand} lines are made by hand: record or upload them)` : ""}. Now run: npm run assets:voices -- --from=assets/voices/raw${lang === "fa" ? "" : ` --lang=${lang}`}`);
     } catch (e) {
+      setErr(true);
       setStatus(`Stopped: ${(e as Error).message}`);
     } finally {
       setBusy(false);
@@ -306,107 +341,252 @@ export default function VoiceMaker() {
 
   const play = (url: string) => void new Audio(url).play().catch(() => {});
   const rtl = lang === "fa";
-  const btn = (primary: boolean): React.CSSProperties => ({ padding: "10px 18px", fontSize: 16, borderRadius: 8, border: primary ? 0 : "1px solid #f0c05a", background: busy ? "#555" : primary ? "#f0c05a" : "transparent", color: primary ? "#1b1300" : "#f0c05a", cursor: busy ? "default" : "pointer" });
-  const field: React.CSSProperties = { width: "auto", padding: "6px 8px", borderRadius: 6, border: "1px solid #3a3f49", background: "#0f1115", color: "#eee" };
-  /** The site's own label style (small capitals) doesn't belong here. */
-  const plain: React.CSSProperties = { textTransform: "none", letterSpacing: "normal", fontSize: 14, fontWeight: 400 };
   /** The line again in another language, to check the words: English beside Persian and Turkish, Persian beside English. */
   const other: VoiceLang = lang === "en" ? "fa" : "en";
+  const pickedJobs = jobs.filter((j) => picked.has(j.raw));
+  const flip = (raw: string) => setPicked((p) => (p.has(raw) ? (p.delete(raw), new Set(p)) : new Set(p).add(raw)));
+
+  // Keyboard: ↑/↓ (or j/k) move between lines, g generates, r records, p plays the raw take, c compares.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input, select, textarea")) return;
+      const i = jobs.findIndex((j) => j.raw === focus);
+      const j = jobs[i];
+      if (e.key === "ArrowDown" || e.key === "j") (e.preventDefault(), setFocus(jobs[Math.min(jobs.length - 1, i + 1)]?.raw ?? null));
+      else if (e.key === "ArrowUp" || e.key === "k") (e.preventDefault(), setFocus(jobs[Math.max(0, i - 1)]?.raw ?? null));
+      else if (!j) return;
+      else if (e.key === "g" && !busy) void make([j]);
+      else if (e.key === "r") void record(j);
+      else if (e.key === "p" && saved.has(j.raw)) play(`/api/dev/voices/play?file=${encodeURIComponent(j.raw)}`);
+      else if (e.key === "c") setCompare({ raw: j.raw, file: j.file, text: j.text });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  useEffect(() => void document.querySelector(`[data-line="${CSS.escape(focus ?? "")}"]`)?.scrollIntoView({ block: "nearest" }), [focus]);
 
   return (
-    <main style={{ maxWidth: 980, margin: "24px auto", padding: 16, fontFamily: "system-ui, sans-serif", color: "#eee", background: "#16181d", borderRadius: 12 }}>
-      <h1 style={{ marginTop: 0 }}>Make the street voices</h1>
-      <p style={{ opacity: 0.8 }}>
-        Every other sound (crashes, guns, the interface…) is on <a href="/dev/sounds" style={{ color: "#f0c05a" }}>/dev/sounds</a>.
-      </p>
-      <p>
-        Every line people say in the game, in each language. Choose how each voice is made — Piper in this browser, the game&apos;s speech server, any other TTS you can reach over HTTP, or your own
-        recordings — then generate, record (🎙) or upload (⤒). Each take is saved to <code>assets/voices/raw/</code>; then run <code>npm run assets:voices -- --from=assets/voices/raw</code> (add{" "}
-        <code>--lang=en</code> / <code>--lang=tr</code>) and commit <code>public/sounds/voice/</code>.
-      </p>
-      <p role="tablist" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {VOICE_LANGS.map((l) => (
-          <button key={l} role="tab" aria-selected={lang === l} onClick={() => setLang(l)} style={{ padding: "6px 16px", borderRadius: 8, border: "1px solid #f0c05a", background: lang === l ? "#f0c05a" : "transparent", color: lang === l ? "#1b1300" : "#f0c05a" }}>
-            {LANG_LABEL[l]} ({JOBS[l].filter((j) => saved.has(j.raw)).length}/{JOBS[l].length})
-          </button>
+    <main className="dev-main">
+      <datalist id="hf-models">
+        {HF_MODELS.map((m) => (
+          <option key={m.id} value={m.id}>{`${m.note} — ${m.licence}`}</option>
         ))}
-      </p>
+      </datalist>
+      <div className="row">
+        <div className="grow">
+          <h1>Street voices</h1>
+          <p className="lead">
+            Every line people say in the game, in each language. Pick how each voice is made — or one line at a time — then generate, record (🎙) or upload (⤒). Takes go to{" "}
+            <code>assets/voices/raw/</code>; then <code>npm run assets:voices -- --from=assets/voices/raw{lang === "fa" ? "" : ` --lang=${lang}`}</code> and commit <code>public/sounds/voice/</code>.
+          </p>
+        </div>
+        <div className="seg" role="tablist" aria-label="Language">
+          {VOICE_LANGS.map((l) => (
+            <button key={l} role="tab" aria-selected={lang === l} onClick={() => (setLang(l), setPicked(new Set()), setFocus(null))}>
+              {LANG_LABEL[l]} <span className="pill">{JOBS[l].filter((j) => saved.has(j.raw)).length}/{JOBS[l].length}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <section style={{ display: "grid", gap: 8, padding: 12, borderRadius: 10, background: "#1d2026", marginBottom: 12 }}>
-        <b>Voices ({lang})</b>
-        {KINDS.map((k) => {
-          const e = engineOf(lang, k), models = MODELS.filter((m) => m.lang === lang && m.kind === k);
-          const sample = all.find((j) => j.v === k);
-          return (
-            <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ minWidth: 92 }}>{KIND_LABEL[k]}</span>
-              <select value={e.type} onChange={(ev) => setEngine(lang, k, ev.target.value === "http" ? { type: "http", url: (e.type === "http" && e.url) || "" } : ({ type: ev.target.value } as VoiceEngine))} style={field} aria-label={`How ${k} lines are made`}>
-                {/* Piper only where there's a permissive model for this voice (none for Turkish). */}
-                {ENGINE_TYPES.filter((t) => t !== "piper" || models.some((m) => m.hf || m.url) || (lang === "fa" && k === "f")).map((t) => (
-                  <option key={t} value={t}>{ENGINE_LABEL[t]}</option>
-                ))}
-              </select>
-              {e.type === "http" && (
-                <input value={e.url} onChange={(ev) => setEngine(lang, k, { type: "http", url: ev.target.value })} placeholder="http://localhost:5002/api/tts?text={text}&speaker_id={voice}&language_id={lang}" style={{ ...field, flex: "1 1 320px" }} dir="ltr" aria-label="TTS address" />
-              )}
-              <span style={{ opacity: 0.6, fontSize: 12 }}>
-                {e.type === "piper" ? models.filter((m) => m.hf || m.url || m.id === "haaniye").map((m) => `${m.label} — ${m.licence}`).join(" · ") : e.type === "server" ? `Azure ${lang}-… neural voices, else OpenAI (keys in .env)` : ""}
-              </span>
-              {sample && e.type !== "record" && (
-                <button style={iconBtn} disabled={busy} onClick={() => void tryLine(sample)} title="Hear a line in this voice (not saved)">▶ Try</button>
-              )}
-            </div>
-          );
-        })}
+      <section className="card">
+        <h2>Voices · {LANG_LABEL[lang]}</h2>
+        <div style={{ display: "grid", gap: 10 }}>
+          {KINDS.map((k) => {
+            const e = engineOf(lang, k), models = MODELS.filter((m) => m.lang === lang && m.kind === k);
+            const sample = all.find((j) => j.v === k);
+            const n = all.filter((j) => j.v === k), done = n.filter((j) => saved.has(j.raw)).length;
+            return (
+              <div key={k} className="row">
+                <b style={{ minWidth: 96 }}>{KIND_LABEL[k]}</b>
+                <EnginePick lang={lang} value={e} kind={k} onChange={(x) => x && setEngine(lang, k, x)} />
+                <span className="muted small grow">
+                  {e.type === "piper" ? models.filter((m) => m.hf || m.url || m.id === "haaniye").map((m) => `${m.label} — ${m.licence}`).join(" · ") : e.type === "server" ? `Azure ${lang}-… neural voices, else OpenAI (keys in .env)` : e.type === "hf" ? "HF_TOKEN in .env" : ""}
+                </span>
+                <span className="pill">{done}/{n.length}</span>
+                {sample && e.type !== "record" && <button className="btn sm" disabled={busy} onClick={() => void tryLine(sample)} title="Hear a line in this voice (not saved)">▶ Try</button>}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
-      <p style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button onClick={() => void make(redo ? jobs : left)} disabled={busy || (!redo && !left.length)} style={btn(true)}>
-          {busy ? "Working…" : left.length ? `Generate missing (${left.length})` : redo ? "Generate again" : "All made ✔"}
-        </button>
-        <label style={plain}>
-          <input type="checkbox" checked={redo} onChange={(e) => setRedo(e.target.checked)} disabled={busy} /> again, even the saved ones
-        </label>
-        <label style={{ ...btn(false), ...plain, padding: "8px 14px", fontSize: 15 }}>
-          ⤒ Upload many (named like greet-3-f.mp3)
-          <input type="file" accept="audio/*" multiple hidden onChange={(e) => void uploadMany(e.target.files)} />
-        </label>
-        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a line, a situation (shopCall, cop…)…" style={{ ...field, flex: "1 1 220px" }} aria-label="Filter lines" />
-      </p>
-      <progress value={doneCount} max={all.length} style={{ width: "100%" }} />
-      <p style={{ minHeight: 24, opacity: 0.85 }}>{status}</p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-        <tbody>
-          {jobs.map((j) => (
-            <tr key={j.raw} style={{ borderTop: "1px solid #2c2f36", background: recording === j.raw ? "#3a1d1d" : undefined }}>
-              <td style={{ padding: 4 }}>{saved.has(j.raw) ? "✅" : "·"}</td>
-              <td style={{ padding: 4, whiteSpace: "nowrap" }}>
-                {j.v === "m" ? "👨" : j.v === "f" ? "👩" : "👮"} {j.raw}
-                <div style={{ opacity: 0.6, fontSize: 11 }}>{ENGINE_LABEL[engineOf(j.lang, j.v).type]}</div>
-              </td>
-              <td style={{ padding: 4 }} dir={rtl ? "rtl" : "ltr"}>{j.text}</td>
-              <td style={{ padding: 4, opacity: 0.7 }} dir={other === "fa" ? "rtl" : "ltr"}>{lineText(j.b, j.v, other)}</td>
-              <td style={{ padding: 4, whiteSpace: "nowrap" }}>
-                {engineOf(j.lang, j.v).type !== "record" && (
-                  <button style={iconBtn} onClick={() => void make([j])} disabled={busy} title="Generate this line (again)">↻</button>
-                )}
-                <button style={{ ...iconBtn, background: recording === j.raw ? "#c0392b" : iconBtn.background }} onClick={() => void record(j)} disabled={busy || (!!recording && recording !== j.raw)} title={recording === j.raw ? "Stop and save" : "Record this line with the microphone"}>
-                  {recording === j.raw ? "■" : "🎙"}
-                </button>
-                <label style={{ ...iconBtn, ...plain, display: "inline-flex", alignItems: "center", justifyContent: "center", verticalAlign: "middle" }} title="Upload a file for this line (any audio)">
-                  ⤒
-                  <input type="file" accept="audio/*" hidden onChange={(e) => void upload(j, e.target.files?.[0])} />
-                </label>
-                {saved.has(j.raw) && (
-                  <button style={iconBtn} onClick={() => play(`/api/dev/voices/play?file=${encodeURIComponent(j.raw)}`)} title="Play the raw take">▶</button>
-                )}
-                {/* The shipped, filtered file (after npm run assets:voices), to compare with the raw take. */}
-                <button style={iconBtn} onClick={() => play(`/sounds/voice/${j.file}`)} title="Play the shipped file (after assets:voices), to compare">▶▶</button>
-              </td>
+      <section className="card sticky" style={{ display: "grid", gap: 10 }}>
+        <div className="row">
+          <button className="btn primary" onClick={() => void make(redo ? jobs : left)} disabled={busy || (!redo && !left.length)}>
+            {busy ? "Working…" : left.length ? `⚡ Generate missing (${left.length})` : redo ? "Generate again" : "All made ✔"}
+          </button>
+          <button className="btn" onClick={() => void make(pickedJobs)} disabled={busy || !pickedJobs.length}>Generate selected ({pickedJobs.length})</button>
+          <label className="row small muted" style={{ gap: 4 }}>
+            <input type="checkbox" checked={redo} onChange={(e) => setRedo(e.target.checked)} disabled={busy} /> redo saved ones too
+          </label>
+          <label className="btn">
+            ⤒ Upload many
+            <input type="file" accept="audio/*" multiple hidden onChange={(e) => void uploadMany(e.target.files)} />
+          </label>
+          <span className="grow" />
+          <div className="seg" aria-label="Show">
+            {(["all", "missing", "saved"] as const).map((x) => (
+              <button key={x} aria-pressed={show === x} onClick={() => setShow(x)}>{x === "all" ? "All" : x === "missing" ? "Missing" : "Made"}</button>
+            ))}
+          </div>
+          <div className="seg" aria-label="Voice">
+            {(["all", ...KINDS] as const).map((x) => (
+              <button key={x} aria-pressed={kindOnly === x} onClick={() => setKindOnly(x)}>{x === "all" ? "Everyone" : KIND_LABEL[x]}</button>
+            ))}
+          </div>
+          <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a line or situation (shopCall, cop…)" style={{ flex: "1 1 220px" }} aria-label="Filter lines" />
+        </div>
+        <div className="bar" aria-label={`${doneCount} of ${all.length} made`}><i style={{ width: `${(doneCount / Math.max(1, all.length)) * 100}%` }} /></div>
+        <div className="row small">
+          <span className={`status grow ${err ? "err" : ""}`} aria-live="polite">{status || `${doneCount} of ${all.length} lines made · ${jobs.length} shown`}</span>
+          <span className="muted hide-sm">
+            <span className="kbd">↑</span><span className="kbd">↓</span> move · <span className="kbd">g</span> generate · <span className="kbd">r</span> record · <span className="kbd">p</span> play · <span className="kbd">c</span> compare
+          </span>
+        </div>
+      </section>
+
+      {compare && (
+        <section className="card">
+          <div className="row">
+            <h2 className="grow">Compare · {compare.raw}</h2>
+            <button className="btn sm" onClick={() => setCompare(null)}>Close</button>
+          </div>
+          <p className="muted" dir={rtl ? "rtl" : "ltr"} style={{ margin: "0 0 8px" }}>{compare.text}</p>
+          <div className="grid2">
+            <Take label="Raw take (assets/voices/raw)" url={`/api/dev/voices/play?file=${encodeURIComponent(compare.raw)}`} onPlay={play} />
+            <Take label="Shipped (after assets:voices)" url={`/sounds/voice/${compare.file}`} onPlay={play} />
+          </div>
+        </section>
+      )}
+
+      <section className="card" style={{ padding: 0, overflowX: "auto" }}>
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 28 }}>
+                <input type="checkbox" aria-label="Select all shown" checked={!!jobs.length && jobs.every((j) => picked.has(j.raw))} onChange={(e) => setPicked(e.target.checked ? new Set(jobs.map((j) => j.raw)) : new Set())} />
+              </th>
+              <th>Line</th>
+              <th>Text</th>
+              <th className="hide-sm">{other === "fa" ? "Persian" : "English"}</th>
+              <th>Engine</th>
+              <th style={{ textAlign: "end" }}>Take</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {jobs.map((j) => {
+              const own = lineEng[j.raw] ?? null, e = engineFor(j);
+              return (
+                <tr key={j.raw} data-line={j.raw} className={[recording === j.raw ? "on" : "", picked.has(j.raw) || focus === j.raw ? "sel" : ""].join(" ")} onClick={() => setFocus(j.raw)}>
+                  <td>
+                    <input type="checkbox" checked={picked.has(j.raw)} onChange={() => flip(j.raw)} aria-label={`Select ${j.raw}`} />
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <div>{j.v === "m" ? "👨" : j.v === "f" ? "👩" : "👮"} <code>{j.raw}</code></div>
+                    <span className={`pill ${saved.has(j.raw) ? "ok" : ""}`}>{saved.has(j.raw) ? "made" : "missing"}</span>
+                  </td>
+                  <td dir={rtl ? "rtl" : "ltr"} style={{ minWidth: 200 }}>{j.text}</td>
+                  <td className="hide-sm muted" dir={other === "fa" ? "rtl" : "ltr"} style={{ minWidth: 160 }}>{lineText(j.b, j.v, other)}</td>
+                  <td>
+                    <EnginePick lang={lang} value={own} kind={j.v} line onChange={(x) => setLineEngine(j.raw, x)} />
+                    {!own && <div className="muted small">{ENGINE_LABEL[e.type]}{e.type === "hf" ? ` · ${e.model}` : ""}</div>}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap", textAlign: "end" }}>
+                    {e.type !== "record" && <button className="btn icon sm" onClick={() => void make([j])} disabled={busy} title="Generate this line (g)">↻</button>}{" "}
+                    <button className={`btn icon sm ${recording === j.raw ? "rec" : ""}`} onClick={() => void record(j)} disabled={busy || (!!recording && recording !== j.raw)} title={recording === j.raw ? "Stop and save" : "Record with the microphone (r)"}>{recording === j.raw ? "■" : "🎙"}</button>{" "}
+                    <label className="btn icon sm" title="Upload a file for this line (any audio)">
+                      ⤒
+                      <input type="file" accept="audio/*" hidden onChange={(ev) => void upload(j, ev.target.files?.[0])} />
+                    </label>{" "}
+                    <button className="btn icon sm" disabled={!saved.has(j.raw)} onClick={() => play(`/api/dev/voices/play?file=${encodeURIComponent(j.raw)}`)} title="Play the raw take (p)">▶</button>{" "}
+                    <button className="btn icon sm" onClick={() => setCompare({ raw: j.raw, file: j.file, text: j.text })} title="Compare the raw and shipped takes (c)">⇄</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!jobs.length && <p className="muted" style={{ padding: 16 }}>Nothing matches.</p>}
+      </section>
     </main>
+  );
+}
+
+/** An engine picker (for a voice, or for one line with "voice default" first). */
+function EnginePick({ value, onChange, kind, line, lang }: { value: VoiceEngine | null; onChange: (e: VoiceEngine | null) => void; kind: VoiceKind; line?: boolean; lang: VoiceLang }) {
+  const models = MODELS.filter((m) => m.lang === lang && m.kind === kind);
+  const types = ENGINE_TYPES.filter((t) => t !== "piper" || models.some((m) => m.hf || m.url) || (lang === "fa" && kind === "f"));
+  return (
+    <span className="row" style={{ gap: 6 }}>
+      <select
+        value={value?.type ?? ""}
+        onChange={(ev) => {
+          const t = ev.target.value;
+          onChange(!t ? null : t === "http" ? { type: "http", url: (value?.type === "http" && value.url) || "" } : t === "hf" ? { type: "hf", model: (value?.type === "hf" && value.model) || HF_MODELS.find((m) => m.langs.includes(lang))?.id || "" } : ({ type: t } as VoiceEngine));
+        }}
+        aria-label={line ? "This line's engine" : `How ${kind} lines are made`}
+      >
+        {line && <option value="">Voice default</option>}
+        {types.map((t) => (
+          <option key={t} value={t}>{ENGINE_LABEL[t]}</option>
+        ))}
+      </select>
+      {value?.type === "hf" && (
+        <>
+          <input list="hf-models" value={value.model} onChange={(ev) => onChange({ type: "hf", model: ev.target.value })} placeholder="owner/model" style={{ width: 230 }} dir="ltr" aria-label="Hugging Face model" />
+          {(() => {
+            const l = hfLicence(value.model);
+            return l ? <span className={`pill ${l.ok ? "ok" : "bad"}`} title={l.note}>{l.licence}{l.ok ? "" : " · try only"}</span> : value.model ? <span className="pill warn">check its licence</span> : null;
+          })()}
+        </>
+      )}
+      {value?.type === "http" && <input value={value.url} onChange={(ev) => onChange({ type: "http", url: ev.target.value })} placeholder="http://localhost:5002/api/tts?text={text}&speaker_id={voice}&language_id={lang}" style={{ width: 340 }} dir="ltr" aria-label="TTS address" />}
+    </span>
+  );
+}
+
+/** One take: its waveform (drawn from the file), length and loudest peak, and ▶. */
+function Take({ label, url, onPlay }: { label: string; url: string; onPlay: (u: string) => void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [info, setInfo] = useState<string>("…");
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.status === 404 ? "not there yet" : `${r.status}`);
+        const ctx = new AudioContext();
+        const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+        void ctx.close();
+        if (!live) return;
+        const d = buf.getChannelData(0), c = ref.current!, g = c.getContext("2d")!;
+        const W = (c.width = c.clientWidth * devicePixelRatio), H = (c.height = 70 * devicePixelRatio);
+        g.clearRect(0, 0, W, H);
+        g.fillStyle = "#f0c05a";
+        let peak = 0;
+        for (let x = 0; x < W; x++) {
+          let m = 0;
+          const a = Math.floor((x / W) * d.length), b = Math.floor(((x + 1) / W) * d.length);
+          for (let i = a; i < b; i++) m = Math.max(m, Math.abs(d[i]));
+          peak = Math.max(peak, m);
+          g.fillRect(x, H / 2 - (m * H) / 2, 1, Math.max(1, m * H));
+        }
+        setInfo(`${buf.duration.toFixed(2)} s · peak ${(20 * Math.log10(peak || 1e-6)).toFixed(1)} dBFS`);
+      } catch (e) {
+        if (live) setInfo(`(${(e as Error).message})`);
+      }
+    })();
+    return () => void (live = false);
+  }, [url]);
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <div className="row">
+        <b className="grow small">{label}</b>
+        <span className="muted small">{info}</span>
+        <button className="btn icon sm" onClick={() => onPlay(url)} aria-label={`Play: ${label}`}>▶</button>
+      </div>
+      <canvas ref={ref} style={{ width: "100%", height: 70, background: "#0b0d12", borderRadius: 8, border: "1px solid var(--line)" }} />
+    </div>
   );
 }

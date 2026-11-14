@@ -1,0 +1,28 @@
+/* /developers: the data API's keys and reference — a docs page, not a game panel. */
+.devdocs { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 18px; }
+.devdocs .dd-hero { display: grid; gap: 8px; padding: 22px; border-radius: 18px; background: radial-gradient(120% 140% at 0% 0%, rgba(240, 192, 90, .18), transparent 60%), var(--panel, #161a22); border: 1px solid rgba(255, 255, 255, .08); }
+.devdocs .dd-hero h1 { margin: 0; font-size: 28px; }
+.devdocs .dd-hero p { margin: 0; opacity: .8; line-height: 1.6; max-width: 760px; }
+.devdocs .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.devdocs .facts span { padding: 4px 10px; border-radius: 99px; background: rgba(255, 255, 255, .06); font-size: 13px; }
+.devdocs .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .devdocs .two { grid-template-columns: 1fr; } }
+.devdocs .box { padding: 16px; border-radius: 14px; background: var(--panel, #161a22); border: 1px solid rgba(255, 255, 255, .08); min-width: 0; }
+.devdocs .box h2, .devdocs .box h3 { margin: 0 0 10px; }
+.devdocs pre { margin: 0; padding: 12px; border-radius: 10px; background: #0b0d12; border: 1px solid rgba(255, 255, 255, .08); overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+.devdocs .tabs { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: #0b0d12; margin-bottom: 8px; }
+.devdocs .tabs button { border: 0; background: none; color: inherit; opacity: .7; padding: 5px 12px; border-radius: 7px; font: inherit; cursor: pointer; }
+.devdocs .tabs button[aria-selected="true"] { opacity: 1; background: rgba(255, 255, 255, .08); }
+.devdocs .ep { border-radius: 12px; border: 1px solid rgba(255, 255, 255, .08); overflow: hidden; }
+.devdocs .ep + .ep { margin-top: 10px; }
+.devdocs .ep summary { list-style: none; display: flex; gap: 10px; align-items: center; padding: 12px 14px; cursor: pointer; background: rgba(255, 255, 255, .03); flex-wrap: wrap; }
+.devdocs .ep summary::-webkit-details-marker { display: none; }
+.devdocs .ep[open] summary { border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.devdocs .get { padding: 2px 8px; border-radius: 6px; background: #1f9d57; color: #fff; font-weight: 800; font-size: 12px; letter-spacing: .04em; }
+.devdocs .ep .body { padding: 12px 14px; display: grid; gap: 10px; }
+.devdocs table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.devdocs th, .devdocs td { text-align: start; padding: 6px 8px; border-bottom: 1px solid rgba(255, 255, 255, .07); vertical-align: top; }
+.devdocs th { opacity: .65; font-weight: 600; }
+.devdocs .req { color: #ffb84d; font-size: 11px; font-weight: 700; }
+.devdocs .src { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; padding: 0; margin: 0; list-style: none; }
+.devdocs .src li { padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, .03); font-size: 13px; }

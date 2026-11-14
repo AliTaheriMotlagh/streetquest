@@ -17,5 +17,9 @@ const developer: Record<string, string> = {
   Revoked: "İptal edildi",
   Limit: "Sınır",
   Revoke: "İptal et",
+  "Copied": "Kopyalandı",
+  "StreetQuest data API": "StreetQuest veri API'si",
+  "{n} endpoints": "{n} uç nokta",
+  "60 requests a minute per key": "Anahtar başına dakikada 60 istek",
 };
 export default developer;

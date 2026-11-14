@@ -11,9 +11,31 @@ export type VoiceEngine =
   | { type: "server" }
   /** Any TTS with an HTTP GET answering audio: `url` with {text}, {lang}, {voice} in it. */
   | { type: "http"; url: string }
+  /** A text-to-speech model on Hugging Face (through /api/dev/voices/hf, with HF_TOKEN from .env). */
+  | { type: "hf"; model: string }
   /** No engine: recorded with the microphone or uploaded, line by line. */
   | { type: "record" };
-export const ENGINE_TYPES = ["piper", "server", "http", "record"] as const;
+export const ENGINE_TYPES = ["piper", "server", "hf", "http", "record"] as const;
+
+/**
+ * Text-to-speech models on Hugging Face worth trying, with their licence: only `ok` ones may
+ * ship in the game (the rest are for hearing what's possible — the game never ships
+ * non-commercial voices). Any other model id can be typed in.
+ */
+export const HF_MODELS: { id: string; langs: VoiceLang[]; licence: string; ok: boolean; note: string }[] = [
+  { id: "facebook/mms-tts-fas", langs: ["fa"], licence: "CC BY-NC 4.0", ok: false, note: "Meta MMS, Persian (non-commercial: try only)" },
+  { id: "facebook/mms-tts-tur", langs: ["tr"], licence: "CC BY-NC 4.0", ok: false, note: "Meta MMS, Turkish (non-commercial: try only)" },
+  { id: "facebook/mms-tts-eng", langs: ["en"], licence: "CC BY-NC 4.0", ok: false, note: "Meta MMS, English (non-commercial: try only)" },
+  { id: "hexgrad/Kokoro-82M", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Kokoro, natural English" },
+  { id: "parler-tts/parler-tts-mini-v1", langs: ["en"], licence: "Apache-2.0", ok: true, note: "Parler, English, described voices" },
+  { id: "microsoft/speecht5_tts", langs: ["en"], licence: "MIT", ok: true, note: "SpeechT5, English" },
+  { id: "suno/bark", langs: ["en", "tr"], licence: "MIT", ok: true, note: "Bark, expressive (English, Turkish)" },
+  { id: "espnet/kan-bayashi_ljspeech_vits", langs: ["en"], licence: "CC BY 4.0", ok: true, note: "VITS, LJ Speech (credit it)" },
+];
+/** A Hugging Face model id ("owner/name"). */
+export const validHfModel = (m: string) => /^[\w.-]+\/[\w.-]+$/.test(m.trim());
+/** What a model's licence allows (unknown models: check its card before shipping). */
+export const hfLicence = (m: string) => HF_MODELS.find((x) => x.id === m.trim()) ?? null;
 
 /** The request for a line from an HTTP TTS template (each placeholder URL-encoded). */
 export function ttsUrl(template: string, text: string, lang: VoiceLang, voice: VoiceKind): string {

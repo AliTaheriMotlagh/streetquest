@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { blastOnCar, blastOnPerson, BLAST_R, BURN_S, burnCar, CAR_HP, carLook, crashDamage, crumple, DENT_MAX, dentCar, holeCar, HOLES_MAX, localShot, dentDepth, enginePower, freshCar, hurtCar, localHit, SCRAPE_MS } from "@/lib/street/damage";
+import { policeCountryAt } from "@/lib/street/policeLook";
 import { calm, CUFF_S, HEAT, loseAfter, MAX_STARS, report, response, starsFor, STAR_HEAT, tickWanted } from "@/lib/street/wanted";
 
 const kmh = (v: number) => v / 3.6;
@@ -177,4 +178,11 @@ describe("bullet holes", () => {
     holeCar(c, { x: 99, y: 1, z: 0 });
     assert.equal(c.holes!.length, HOLES_MAX, "a burnt-out shell takes no more");
   });
+});
+
+it("each country's own police: Turkey's in Istanbul and Ankara, Iran's in Tehran (and where there's no look yet)", () => {
+  assert.equal(policeCountryAt({ lat: 41.0369, lng: 28.985 }), "TR");
+  assert.equal(policeCountryAt({ lat: 39.93, lng: 32.85 }), "TR");
+  assert.equal(policeCountryAt({ lat: 35.6892, lng: 51.389 }), "IR");
+  assert.equal(policeCountryAt({ lat: 48.85, lng: 2.35 }), "IR");
 });

@@ -27,9 +27,10 @@ const saveFav = (app: NavApp) => {
 
 /** How each app is shown: a coloured tile, its name and what tapping it does. */
 const LOOK: Record<NavApp, { tile: string; color: string; name: () => string; sub: () => string }> = {
-  geo: { tile: "📍", color: "#3b4252", name: () => t("Any map app"), sub: () => t("Neshan, Balad, Google Maps… on this phone") },
+  geo: { tile: "📍", color: "#3b4252", name: () => t("Any map app"), sub: () => t("Every map app on this phone") },
   neshan: { tile: "ن", color: "#1e6fd9", name: () => t("Neshan"), sub: () => t("Opens the place — tap Route") },
   balad: { tile: "ب", color: "#0a9e6e", name: () => t("Balad"), sub: () => t("Opens the place — tap Route") },
+  yandex: { tile: "Y", color: "#fc3f1d", name: () => t("Yandex Maps"), sub: () => t("Route by car") },
   google: { tile: "G", color: "#ea4335", name: () => t("Google Maps"), sub: () => t("Route by car") },
   googleWalk: { tile: "🚶", color: "#34a853", name: () => t("Google Maps"), sub: () => t("Walking route") },
   waze: { tile: "W", color: "#33ccff", name: () => t("Waze"), sub: () => t("Route by car") },

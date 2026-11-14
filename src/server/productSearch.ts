@@ -8,9 +8,9 @@
 //  - torob / basalam: their own product searches (cached, Torob's spaced out as ever).
 // A source that fails is left out and named in `failed`; the others still answer.
 import { distanceM, type LatLng } from "@/lib/geo";
-import { nameScore, type Menu, type Vendor } from "@/lib/localData";
+import { nameScore, normName, type Menu, type Vendor } from "@/lib/localData";
 import { basalamHits, dealHits, filterProducts, LOCAL_SOURCES, menuHits, productSourcesAt, menusToRead, torobHits, type ProductFilter, type ProductHit, type ProductSource } from "@/lib/productSearch";
-import { cachedMany, dealsAround, menuKey, snappProducts, torobSearch, vendorMenu, vendorsAround } from "./localData";
+import { cachedMany, dealsAround, menuCacheKey, snappProducts, torobSearch, vendorMenu, vendorsAround } from "./localData";
 import { basalamSearch } from "./storeSites";
 import { sourceAt } from "@/lib/region";
 
@@ -40,16 +40,17 @@ async function foodHits(q: string, here: LatLng, read: boolean): Promise<{ hits:
   const likely = [
     ...(named?.vendors ?? []).filter((c) => byCode.has(c)),
     ...(named?.dishes ?? []).map((d) => d.code).filter((c) => byCode.has(c)),
-    ...(q ? around.filter((v) => nameScore(q, v.title) >= 0.5 || v.title.includes(q) || v.about.includes(q)).map((v) => v.code) : []),
+    // Its name or what it serves ("Döner, Kebap & Türk Mutfağı"), letters folded (kebap = Kebap, köfte = kofte).
+    ...(q ? around.filter((v) => nameScore(q, v.title) >= 0.5 || normName(`${v.title} ${v.about}`).includes(normName(q))).map((v) => v.code) : []),
   ];
   const codes = menusToRead(likely, around, MENUS_READ);
-  const have = await cachedMany<Menu>(codes.map(menuKey));
-  const missing = codes.filter((c) => !have.has(menuKey(c)));
+  const have = await cachedMany<Menu>(codes.map(menuCacheKey));
+  const missing = codes.filter((c) => !have.has(menuCacheKey(c)));
   // A few new menus per search, the likeliest first; whatever isn't back in time is found next time.
-  const fetched = read
-    ? await within(Promise.all(missing.slice(0, MENUS_PER_SEARCH).map((c) => vendorMenu(c, byCode.get(c)).catch(() => null))), MENU_WAIT_MS, [] as (Menu | null)[])
-    : [];
-  const menus = [...have.values(), ...fetched.filter((m): m is Menu => !!m)];
+  // Each menu that's back in time counts (one slow restaurant doesn't throw away the others).
+  const fetched: Menu[] = [];
+  if (read) await within(Promise.all(missing.slice(0, MENUS_PER_SEARCH).map((c) => vendorMenu(c, byCode.get(c)).then((m) => void (m && fetched.push(m)), () => {}))), MENU_WAIT_MS, undefined);
+  const menus = [...have.values(), ...fetched];
   const hits: ProductHit[] = [];
   for (const m of menus) {
     // The list knows where the vendor is now; a cached menu may carry an older copy of it.

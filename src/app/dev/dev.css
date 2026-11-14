@@ -1,0 +1,66 @@
+/* The developer tools (/dev/voices, /dev/sounds): one calm dark look, readable tables, real buttons.
+   Scoped under .dev so nothing leaks into the game. */
+.dev { --bg: #0e1015; --panel: #161a22; --panel2: #1c212b; --line: #2a303c; --text: #e8eaf0; --muted: #9aa3b2; --gold: #f0c05a; --green: #3ddc84; --red: #ff5d5d; --blue: #5aa9ff;
+  min-height: 100vh; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Vazirmatn, sans-serif; }
+.dev * { box-sizing: border-box; }
+.dev a { color: var(--gold); }
+.dev code { background: #0b0d12; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 12.5px; }
+.dev-top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 10px 20px; background: rgba(14, 16, 21, .92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.dev-top .brand { font-weight: 800; letter-spacing: .02em; }
+.dev-top nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.dev-top nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 8px; }
+.dev-top nav a:hover { color: var(--text); background: var(--panel2); }
+.dev-top nav a[aria-current="page"] { color: #1b1300; background: var(--gold); font-weight: 700; }
+.dev-main { max-width: 1180px; margin: 0 auto; padding: 22px 20px 60px; display: grid; gap: 16px; }
+.dev h1 { margin: 0; font-size: 26px; }
+.dev h2 { margin: 0 0 8px; font-size: 17px; }
+.dev .lead { margin: 0; color: var(--muted); max-width: 820px; }
+.dev .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.dev .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dev .grow { flex: 1 1 auto; min-width: 0; }
+.dev .muted { color: var(--muted); }
+.dev .small { font-size: 12.5px; }
+.dev .btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.dev .btn:hover:not(:disabled) { border-color: #3d4554; background: #232937; }
+.dev .btn:disabled { opacity: .45; cursor: default; }
+.dev .btn.primary { background: var(--gold); border-color: var(--gold); color: #1b1300; }
+.dev .btn.primary:hover:not(:disabled) { background: #ffd27a; }
+.dev .btn.danger { color: var(--red); }
+.dev .btn.rec { background: var(--red); border-color: var(--red); color: #fff; }
+.dev .btn.icon { width: 34px; padding: 0; justify-content: center; }
+.dev .btn.sm { height: 28px; padding: 0 9px; font-size: 12.5px; }
+.dev .btn.icon.sm { width: 28px; padding: 0; }
+.dev input[type="text"], .dev input:not([type]), .dev input[type="search"], .dev select, .dev textarea { height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: #0b0d12; color: var(--text); font: inherit; }
+.dev textarea { height: auto; padding: 8px 10px; }
+.dev select { padding-inline-end: 6px; }
+.dev input:focus, .dev select:focus, .dev .btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.dev .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 11px; background: #0b0d12; border: 1px solid var(--line); flex-wrap: wrap; }
+.dev .seg button { border: 0; background: none; color: var(--muted); padding: 6px 12px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+.dev .seg button[aria-pressed="true"], .dev .seg button[aria-selected="true"] { background: var(--panel2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.dev .pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 700; background: var(--panel2); color: var(--muted); white-space: nowrap; }
+.dev .pill.ok { background: rgba(61, 220, 132, .14); color: var(--green); }
+.dev .pill.warn { background: rgba(240, 192, 90, .15); color: var(--gold); }
+.dev .pill.bad { background: rgba(255, 93, 93, .14); color: var(--red); }
+.dev .bar { height: 8px; border-radius: 99px; background: #0b0d12; overflow: hidden; border: 1px solid var(--line); }
+.dev .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--green)); }
+.dev .status { min-height: 22px; color: var(--muted); }
+.dev .status.err { color: var(--red); }
+.dev .sticky { position: sticky; top: 55px; z-index: 10; }
+.dev table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.dev th { text-align: start; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; }
+.dev td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.dev tr.on td { background: rgba(255, 93, 93, .08); }
+.dev tr.sel td { background: rgba(90, 169, 255, .06); }
+.dev .wave { display: block; width: 120px; height: 28px; }
+.dev .kbd { display: inline-block; min-width: 18px; padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; font-size: 11px; text-align: center; color: var(--muted); }
+.dev .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+@media (max-width: 640px) {
+  .dev-main { padding: 14px 12px 40px; }
+  .dev .hide-sm { display: none; }
+  .dev .sticky { top: 0; position: static; }
+}
+/* The game's own label and button styles (capitals, gold under-shadow) aren't for the tools. */
+.dev label { text-transform: none; letter-spacing: normal; font-size: inherit; font-weight: inherit; margin: 0; }
+.dev .btn, .dev button { box-shadow: none; transform: none; text-transform: none; letter-spacing: normal; }
+.dev .btn:active { transform: translateY(1px); }
+.dev input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--gold); }

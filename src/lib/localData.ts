@@ -598,6 +598,10 @@ export function normName(s: string) {
 }
 function normNameRaw(s: string) {
   return s
+    // Turkish: İ/I/ı are one letter, and so are ç/c, ş/s, ğ/g, ö/o, ü/u (a phone without Turkish
+    // keys types "cig kofte" for "Çiğ Köfte"; "İ".toLowerCase() is "i" + a dot that split words).
+    .replace(/[İIı]/g, "i")
+    .replace(/[À-ɏ]/g, (c) => c.normalize("NFD")[0])
     .toLowerCase()
     .replace(/\(.*?\)/g, " ")
     .replace(/[يى]/g, "ی")

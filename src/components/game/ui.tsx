@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
 import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
+import { pushBack } from "./backStack";
 import type { LatLng, Me, World } from "./client";
 
 export type Toast = { id?: number; title: string; body?: string | null; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error"; tag?: string | null; link?: string | null };
@@ -51,7 +52,11 @@ export const useGame = () => useContext(Ctx)!;
 /** The icon on "go there" buttons: 🕹️ test mode, 🛋️ play from home. */
 export const MoveIcon = () => <>{useGame().moveIcon}</>;
 
-export function Sheet({ title, onClose, children, peek, actions, help, tall }: { title: string; onClose: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string; tall?: boolean }) {
+/**
+ * A panel. `onBack`: it was opened from another one (a restaurant from the product list): a ‹
+ * button goes back there, and so does the phone's Back; without it Back closes it.
+ */
+export function Sheet({ title, onClose, onBack, children, peek, actions, help, tall }: { title: string; onClose: () => void; onBack?: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string; tall?: boolean }) {
   // "How this works": the first time, a one-line hint at the top that opens the card; after
   // that, the ? button. (It used to open in full and push the panel itself off a phone's screen.)
   const [showHelp, setShowHelp] = useState(false);
@@ -68,10 +73,19 @@ export function Sheet({ title, onClose, children, peek, actions, help, tall }: {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useSwipeToClose(ref, !peek, closeRef);
+  // The phone's Back: one step back if it came from somewhere, else close.
+  const backRef = useRef(onBack ?? onClose);
+  backRef.current = onBack ?? onClose;
+  useEffect(() => pushBack(() => backRef.current()), []);
   return (
     <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}`} role="dialog" aria-label={title}>
       <div className="sheet-grip" />
       <div className="sheet-head">
+        {onBack && (
+          <button className="close back-btn" onClick={onBack} aria-label={t("Back")}>
+            ‹
+          </button>
+        )}
         <h2>{title}</h2>
         {actions}
         {help && HELP[help] && (

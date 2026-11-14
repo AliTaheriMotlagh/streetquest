@@ -408,6 +408,23 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
 .tr-dep { display: flex; gap: 8px; align-items: baseline; }
 .tr-arrivals, .tr-found, .tr-legs, .tr-guide { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
 .tr-arrivals li { gap: 8px; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--line-soft, rgba(127, 127, 127, .18)); }
+/* The bus stop card: one row per line and way — where it goes, when, today's times, the stops ahead. */
+.tr-ways { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.tr-way { padding: 8px 10px; border-radius: 12px; background: rgba(127, 127, 127, .08); border: 1px solid rgba(127, 127, 127, .14); min-width: 0; }
+.tr-way.src-live { border-color: rgba(70, 255, 148, .35); }
+.tr-way.src-none { opacity: .85; }
+.tr-way-head { width: 100%; gap: 10px; align-items: center; background: none; border: 0; padding: 0; color: inherit; text-align: start; cursor: pointer; }
+.tr-way-to { display: grid; min-width: 0; }
+.tr-way-to b, .tr-way-to span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-when { display: grid; justify-items: end; text-align: end; flex: none; max-width: 42%; }
+.tr-when b { font-size: 15px; white-space: nowrap; }
+.tr-times { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tr-times > span:not(.muted) { padding: 1px 8px; border-radius: 99px; background: rgba(45, 140, 255, .16); font-variant-numeric: tabular-nums; }
+.tr-left { margin-top: 4px; }
+.tr-ahead { list-style: none; margin: 6px 0 0; padding: 0 0 0 10px; border-inline-start: 3px solid #2d8cff; display: grid; gap: 2px; max-height: 260px; overflow: auto; }
+.tr-ahead li { gap: 8px; }
+.tr-filter { margin: 4px 0; }
+
 .tr-live { color: #2fbf71; }
 .tr-found button, .tr-strip button { width: 100%; gap: 6px; align-items: center; background: none; border: 0; color: inherit; font: inherit; text-align: start; padding: 6px 2px; }
 .tr-trip { display: grid; gap: 8px; padding: 12px; }

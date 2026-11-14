@@ -14,7 +14,8 @@
 // When the stars go out they drive off and vanish out of sight.
 import * as THREE from "three";
 import { FLEET, type FleetKey } from "@/lib/fleet";
-import { VEHICLES } from "@/lib/vehicles";
+import { VEHICLES, type VehicleDef } from "@/lib/vehicles";
+import type { PoliceCountry } from "@/lib/street/policeLook";
 import { burnCar, carLook, dentCar, dentDepth, freshCar, holeCar, hurtCar, localHit, localShot, type CarHealth } from "@/lib/street/damage";
 import { rayPlayer, type Ray } from "@/lib/arena/geom";
 import type { Response } from "@/lib/street/wanted";
@@ -24,15 +25,21 @@ import { box, type Footprint } from "./tileMesh";
 import type { FleetInstances } from "./fleet3d";
 import { POLICE_WHITE } from "./livery";
 
-const KEY: FleetKey = "samand";
-const DEF = VEHICLES.samand;
-/** Iran's police green (the patrol cars' body), and the white band down their sides. */
+/**
+ * The patrol car, its livery and the uniform, by country: Iran's police drive Samands (white with
+ * the green band, «پلیس»); Turkey's Emniyet a Renault saloon (the L90 here: white, blue band,
+ * «POLİS», 155) in navy uniforms.
+ */
+export type PoliceLook = { key: FleetKey; def: VehicleDef; livery: "police" | "police-tr"; uniform: string; accent: string };
+export const POLICE_LOOKS: Record<PoliceCountry, PoliceLook> = {
+  IR: { key: "samand", def: VEHICLES.samand, livery: "police", uniform: "#3d4a3a", accent: "#1d2c52" },
+  TR: { key: "l90", def: VEHICLES.l90, livery: "police-tr", uniform: "#1f2a44", accent: "#c8102e" },
+};
+/** The body's white. */
 const WHITE = new THREE.Color(POLICE_WHITE);
 /** The light bar: a red lens at each end of a pale housing (three pieces a car). */
 const BAR = { lens: 0.36, mid: 0.3, hgt: 0.13, dep: 0.27 };
 const BURNT = new THREE.Color("#17140f");
-/** Police uniform and the band on the cap. */
-const UNIFORM = "#3d4a3a", ACCENT = "#1d2c52";
 /** Officers on foot at once (lite phones less). */
 const OFFICERS_MAX = 6;
 
@@ -102,6 +109,8 @@ export class Police {
   private sv = new THREE.Vector3(1, 1, 1);
   private c = new THREE.Color();
   private rand = Math.random;
+  /** Whose police these are (where the city is): their car, its livery and their uniform. */
+  look: PoliceLook = POLICE_LOOKS.IR;
   /** Your car this frame (police cars can't drive through it — they ram it), or null on foot. */
   myCar: { x: number; z: number; r: number; vx: number; vz: number } | null = null;
 
@@ -140,7 +149,7 @@ export class Police {
 
   /** Footprints for the collision world (police cars are solid). */
   footprints(): Footprint[] {
-    const def = FLEET[KEY];
+    const def = FLEET[this.look.key];
     return this.units.map((u) => {
       const f = box(u.body.x, u.body.z, def.wid / 2 + 0.05, def.len / 2, u.body.yaw, def.hgt);
       f.ref = u;
@@ -159,7 +168,7 @@ export class Police {
     for (const u of this.units) {
       const burnt = u.health.exploded;
       // An officer at the wheel until they get out (or the car's gone up).
-      put(KEY, u.body.x, u.body.z, u.body.yaw, burnt ? BURNT : WHITE, !burnt && blink && u.health.hp < 30, u.body.wheelSpin, 0, { pose: burnt ? { y: 0, roll: 0, pitch: 0 } : undefined, livery: "police", health: u.health, driver: u.health.hp > 0 && !u.officers.length ? u.id * 2 : undefined, uniform: UNIFORM });
+      put(this.look.key, u.body.x, u.body.z, u.body.yaw, burnt ? BURNT : WHITE, !burnt && blink && u.health.hp < 30, u.body.wheelSpin, 0, { pose: burnt ? { y: 0, roll: 0, pitch: 0 } : undefined, livery: this.look.livery, health: u.health, driver: u.health.hp > 0 && !u.officers.length ? u.id * 2 : undefined, uniform: this.look.uniform });
     }
   }
 
@@ -191,7 +200,7 @@ export class Police {
       // The megaphone, now and then, while it's after you and close.
       if (resp && !u.leaving && u.health.hp > 0 && !u.officers.length && d < 45 && performance.now() > u.talkAt) {
         u.talkAt = performance.now() + 9000 + this.rand() * 6000;
-        this.events.push({ kind: "talk", say: "copStop", where: () => (this.units.includes(u) ? { x: u.body.x, y: FLEET[KEY].hgt + 0.5, z: u.body.z } : null) });
+        this.events.push({ kind: "talk", say: "copStop", where: () => (this.units.includes(u) ? { x: u.body.x, y: FLEET[this.look.key].hgt + 0.5, z: u.body.z } : null) });
       }
       else this.coast(u, dt);
       // Officers get out when the car pulls up near you.
@@ -208,7 +217,7 @@ export class Police {
       if (!u.health.exploded && bars + 3 <= this.bars.instanceMatrix.count) {
         u.phase += dt * 6;
         const on = Math.sin(u.phase) > 0, chasing = !!resp && !u.leaving && u.health.hp > 0;
-        const f = forward(u.body.yaw), rx = -f.fz, rz = f.fx, top = FLEET[KEY].hgt + BAR.hgt / 2 + 0.015;
+        const f = forward(u.body.yaw), rx = -f.fz, rz = f.fx, top = FLEET[this.look.key].hgt + BAR.hgt / 2 + 0.015;
         this.q.setFromAxisAngle(Y, u.body.yaw);
         for (const side of [-1, 0, 1]) {
           const off = side * (BAR.mid + BAR.lens) / 2;
@@ -269,7 +278,7 @@ export class Police {
       if (u.stuck > 1.3) (u.stuck = 0), (u.reverse = 1.1);
     }
     const maxV = 24 * (resp ? 1 : 0.6) * (u.health.hp < 40 ? 0.7 : 1);
-    stepGround(b, DEF, c, dt, maxV);
+    stepGround(b, this.look.def, c, dt, maxV);
     // Shoves from crashes fade out.
     b.vx += u.push.vx;
     b.vz += u.push.vz;
@@ -307,16 +316,16 @@ export class Police {
     };
     for (const off of [1.3, -1.3])
       for (const w of [this.world, this.obstacles]) {
-        const r = w.collide(nx + f.fx * off, nz + f.fz * off, DEF.radius, 0, 1.5);
+        const r = w.collide(nx + f.fx * off, nz + f.fz * off, this.look.def.radius, 0, 1.5);
         if (!r.hit) continue;
         nx = r.x - f.fx * off;
         nz = r.z - f.fz * off;
         bounce(r.hit.nx, r.hit.nz);
       }
     // Circles against the other patrol cars and against yours (that's a ram).
-    const circles = [...this.units.filter((o) => o !== u).map((o) => ({ x: o.body.x, z: o.body.z, r: DEF.radius, me: false })), ...(this.myCar ? [{ ...this.myCar, me: true }] : [])];
+    const circles = [...this.units.filter((o) => o !== u).map((o) => ({ x: o.body.x, z: o.body.z, r: this.look.def.radius, me: false })), ...(this.myCar ? [{ ...this.myCar, me: true }] : [])];
     for (const o of circles) {
-      const dx = nx - o.x, dz = nz - o.z, dd = Math.hypot(dx, dz), min = DEF.radius + o.r + 0.4;
+      const dx = nx - o.x, dz = nz - o.z, dd = Math.hypot(dx, dz), min = this.look.def.radius + o.r + 0.4;
       if (dd >= min || dd < 1e-3) continue;
       nx = o.x + (dx / dd) * min;
       nz = o.z + (dz / dd) * min;
@@ -335,7 +344,7 @@ export class Police {
 
   /** Fold a patrol car's bodywork in where (`at`) it was hit. */
   private dent(u: Unit, at: { x: number; z: number; depth: number }) {
-    dentCar(u.health, localHit(u.body.x, u.body.z, u.body.yaw, at.x, at.z, FLEET[KEY].len, FLEET[KEY].wid), at.depth);
+    dentCar(u.health, localHit(u.body.x, u.body.z, u.body.yaw, at.x, at.z, FLEET[this.look.key].len, FLEET[this.look.key].wid), at.depth);
   }
 
   /** A car-to-car hit (traffic.ts crashes): its change of speed (m/s) and spin, the damage, and where it struck (the dent). */
@@ -360,7 +369,7 @@ export class Police {
 
   /** A bullet in a patrol car. */
   shootCar(u: Unit, dmg: number, at?: { x: number; y: number; z: number }) {
-    if (at) holeCar(u.health, localShot(u.body.x, u.body.z, u.body.yaw, at.x, at.y, at.z, FLEET[KEY].len, FLEET[KEY].wid, FLEET[KEY].hgt));
+    if (at) holeCar(u.health, localShot(u.body.x, u.body.z, u.body.yaw, at.x, at.y, at.z, FLEET[this.look.key].len, FLEET[this.look.key].wid, FLEET[this.look.key].hgt));
     if (hurtCar(u.health, dmg)) this.events.push({ kind: "fire", x: u.body.x, z: u.body.z });
   }
 
@@ -383,8 +392,8 @@ export class Police {
     return this.units.flatMap((u) => {
       const look = carLook(u.health.hp, u.health.exploded);
       if (look === "ok" || look === "dented") return [];
-      const f = forward(u.body.yaw), front = u.health.exploded ? 0 : FLEET[KEY].len * 0.32;
-      return [{ x: u.body.x + f.fx * front, y: FLEET[KEY].hgt * 0.75, z: u.body.z + f.fz * front, look, burnT: u.health.burn }];
+      const f = forward(u.body.yaw), front = u.health.exploded ? 0 : FLEET[this.look.key].len * 0.32;
+      return [{ x: u.body.x + f.fx * front, y: FLEET[this.look.key].hgt * 0.75, z: u.body.z + f.fz * front, look, burnT: u.health.burn }];
     });
   }
 
@@ -403,7 +412,7 @@ export class Police {
       // (A moment to get out and draw before the first shot.)
       const o: Officer = { id: nextId++, unit: u, avatar: null, x: c.x, z: c.z, yaw: Math.atan2(-(me.x - c.x), -(me.z - c.z)), vx: 0, vz: 0, hp: 100, dead: false, since: 0, next: performance.now() + 1500 + this.rand() * 1000, flash: 0 };
       if (this.soldier) {
-        o.avatar = new Avatar(this.soldier, UNIFORM, ACCENT, this.shadows);
+        o.avatar = new Avatar(this.soldier, this.look.uniform, this.look.accent, this.shadows);
         o.avatar.setWeapon("pistol");
         this.scene.add(o.avatar.group);
       }
@@ -456,7 +465,7 @@ export class Police {
       o.avatar.group.position.set(o.x, 0, o.z);
       o.avatar.update(dt, { vx: o.vx, vz: o.vz, yaw: o.yaw, pitch: 0, crouch: false, air: false, dead: o.dead }, Math.hypot(o.x - me.x, o.z - me.z));
     } else if (this.soldier && !o.dead) {
-      o.avatar = new Avatar(this.soldier, UNIFORM, ACCENT, this.shadows);
+      o.avatar = new Avatar(this.soldier, this.look.uniform, this.look.accent, this.shadows);
       o.avatar.setWeapon("pistol");
       this.scene.add(o.avatar.group);
     }
