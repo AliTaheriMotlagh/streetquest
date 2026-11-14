@@ -333,6 +333,24 @@
    "author": "Piper voices",
    "url": "https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/bryce/medium",
    "license": "Public domain"
+  },
+  {
+   "title": "Fahrettin (Turkish man) (tr)",
+   "author": "Piper voices",
+   "url": "https://huggingface.co/csukuangfj/vits-piper-tr_TR-fahrettin-medium",
+   "license": "CC0 (NabuCasa voice-datasets)"
+  },
+  {
+   "title": "İlkiz (Turkish woman) (tr)",
+   "author": "Piper voices",
+   "url": "https://huggingface.co/ilkeraktuna/piper-tts-tr-ilkiz-medium",
+   "license": "MIT (its author's model card; the recordings' source isn't stated)"
+  },
+  {
+   "title": "Fettah (Turkish man, through a megaphone) (tr)",
+   "author": "Piper voices",
+   "url": "https://huggingface.co/csukuangfj/vits-piper-tr_TR-fettah-medium",
+   "license": "CC0 (NabuCasa voice-datasets)"
   }
  ]
 }
