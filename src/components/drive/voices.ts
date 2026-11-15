@@ -16,7 +16,7 @@
 import * as THREE from "three";
 import { barkById, barkKey, pickBark, QUIET_S, sayFor, textOf, type Bark, type Situation, type VoiceKind } from "@/lib/street/barks";
 import { getLocale } from "@/lib/i18n";
-import { lineFile, manifestPaths, pickDeviceVoice, voiceLangOf, type VoiceLang } from "@/lib/street/voiceLang";
+import { lineFile, manifestPaths, pickDeviceVoice, talkClip, voiceLangOf, type VoiceLang } from "@/lib/street/voiceLang";
 import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
@@ -33,7 +33,16 @@ type Bubble = { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; tex: THREE.Canv
 const HEAR_M = 45, SEE_M = 55;
 
 let manifest: Promise<Set<string>> | null = null;
-const bufs = new Map<string, AudioBuffer | null>();
+/**
+ * The recordings: their bytes fetched as soon as the city opens (small, no audio needed), decoded on
+ * first use. (They used to be decoded up front — which needs the audio context, and that only exists
+ * after the player's first tap: a city opened before it never got its voices, and every person
+ * stayed silent for the whole drive.)
+ */
+const raw = new Map<string, Promise<ArrayBuffer | null>>();
+const bufs = new Map<string, AudioBuffer>();
+/** Decoded lines kept at most (the bytes stay; a line falls out and is decoded again when needed). */
+const DECODED_MAX = 40;
 
 function files() {
   manifest ??= fetch("/sounds/voice/manifest.json", { cache: "no-cache" })
@@ -43,17 +52,36 @@ function files() {
   return manifest;
 }
 
-async function load(file: string) {
-  if (bufs.has(file)) return;
-  bufs.set(file, null);
-  const o = audioOut("voices");
-  if (!o) return bufs.delete(file);
-  try {
-    const r = await fetch(`/sounds/voice/${file}`);
-    if (r.ok) bufs.set(file, await o.ctx.decodeAudioData(await r.arrayBuffer()));
-  } catch {
-    // Left silent: the bubble still shows.
+function fetchLine(file: string) {
+  let p = raw.get(file);
+  if (!p) {
+    p = fetch(`/sounds/voice/${file}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .catch(() => null);
+    raw.set(file, p);
   }
+  return p;
+}
+
+/** A recording decoded (now if it already is), or null: not shipped, not fetched, no audio yet. */
+function decoded(file: string): AudioBuffer | Promise<AudioBuffer | null> | null {
+  const had = bufs.get(file);
+  if (had) return had;
+  const p = raw.get(file);
+  if (!p) return null;
+  return p.then(async (bytes) => {
+    const o = audioOut("voices");
+    if (!bytes || !o) return null;
+    try {
+      // (decodeAudioData detaches what it's given: a copy, so the bytes can be decoded again.)
+      const buf = await o.ctx.decodeAudioData(bytes.slice(0));
+      bufs.set(file, buf);
+      while (bufs.size > DECODED_MAX) bufs.delete(bufs.keys().next().value!);
+      return buf;
+    } catch {
+      return null;
+    }
+  });
 }
 
 /** The server's spoken lines: decoded, being fetched, or "none" (no speech service there). */
@@ -111,7 +139,7 @@ export class Voices {
     }
     // The recordings of the player's language, in the background (they're small).
     const lang = voiceLangOf(getLocale(), voiceCountry);
-    void files().then((s) => s.forEach((f) => (lang === "fa" ? !/^(en|tr)\//.test(f) : f.startsWith(`${lang}/`)) && void load(f)));
+    void files().then((s) => s.forEach((f) => (lang === "fa" ? !/^(en|tr)\//.test(f) : f.startsWith(`${lang}/`)) && void fetchLine(f)));
   }
 
   /**
@@ -183,9 +211,22 @@ export class Voices {
     // The phone's own speech has no place in the mix: just its volume at that distance.
     const vol = gainAt(d, "voice");
     const lang = voiceLangOf(getLocale(), voiceCountry);
-    const buf = bufs.get(lineFile(b, v, lang));
-    // A recording (already filtered for the police).
-    if (buf) return this.play(buf, at, false);
+    // A recording (already filtered for the police): decoded now, or in a moment.
+    const rec = decoded(lineFile(b, v, lang));
+    if (rec instanceof AudioBuffer) return this.play(rec, at, false);
+    if (rec) {
+      const asked = performance.now();
+      void rec.then((buf) => {
+        if (buf) performance.now() - asked < 800 && this.play(buf, at, false);
+        else this.unrecorded(b, v, vol, at, lang);
+      });
+      return;
+    }
+    this.unrecorded(b, v, vol, at, lang);
+  }
+
+  /** A line with no recording here: the server's copy, the on-device model, the phone's voice. */
+  private unrecorded(b: Bark, v: VoiceKind, vol: number, at: { x: number; z: number }, lang: VoiceLang) {
     // English: the device's voice (it always has one). Persian and Turkish: the server's spoken copy
     // (Azure / OpenAI) — now if it's here, else as soon as it arrives (if that's soon) — then the device's.
     if (lang === "en") return this.device(b, v, vol, lang);
@@ -239,14 +280,27 @@ export class Voices {
     if (isMuted() || d > HEAR_M) return secs;
     const lang = voiceLangOf(getLocale(), voiceCountry);
     const vol = close ? 1 : gainAt(d, "voice");
-    this.neuralOr(text, v, at, lang, close ? 6000 : 2500, () => this.deviceText(text, v, vol, lang));
+    this.neuralOr(text, v, at, lang, close ? 6000 : 2500, () => {
+      if (this.deviceText(text, v, vol, lang)) return;
+      // No voice for these words on this device (most phones have no Persian voice, and the neural
+      // one isn't here): the speaker still says *something* — a recorded greeting in their voice,
+      // once per conversation — while the bubble and the panel carry the words.
+      const now = performance.now();
+      if (talkClip({ neural: false, device: false, now, lastClip: this.clipAt })) {
+        const b = pickBark("greet", v === "cop" ? "m" : v, Math.random, this.recent);
+        const rec = b && decoded(lineFile(b, v === "cop" ? "m" : v, lang));
+        if (rec) (this.clipAt = now), void Promise.resolve(rec).then((buf) => buf && this.play(buf, at, false));
+      }
+    });
     return secs;
   }
+  /** When a recorded greeting last stood in for a conversation's words. */
+  private clipAt = -Infinity;
 
-  /** The phone's own voice saying any text. */
-  private deviceText(text: string, v: VoiceKind, vol: number, lang: VoiceLang) {
+  /** The phone's own voice saying any text; false when it has none for the language. */
+  private deviceText(text: string, v: VoiceKind, vol: number, lang: VoiceLang): boolean {
     const dv = deviceVoice(lang, v);
-    if (!dv) return;
+    if (!dv) return false;
     const u = new SpeechSynthesisUtterance(text);
     u.voice = dv;
     u.lang = dv.lang;
@@ -254,6 +308,7 @@ export class Voices {
     u.pitch = lang === "en" ? (v === "f" ? 1.15 : v === "cop" ? 0.9 : 1) : v === "f" ? 1.45 : v === "cop" ? 0.85 : 1;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
+    return true;
   }
 
   /** The device's own voice in the player's language, if it has one. */

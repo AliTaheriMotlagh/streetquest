@@ -15,6 +15,9 @@ import {
 import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, Sources, Stars } from "./Filters";
 import { Pic } from "./StoreInfo";
 import { Sheet } from "./ui";
+import { usePage } from "./pageMode";
+import { REST, shares, storeGlance } from "@/lib/insights";
+import { ShareBar, StoreInsights } from "../list/Insights";
 
 const PAGE = 40;
 const PANEL = "stores-filters";
@@ -23,7 +26,7 @@ const flip = <T,>(l: T[] | undefined, x: T) => ((l ?? []).includes(x) ? (l ?? []
 export function StoreRow({ l, m, onPick }: { l: Listing; m: number | null; onPick: () => void }) {
   const ty = STORE_TYPES[l.type];
   return (
-    <button type="button" className="fx-row" onClick={onPick}>
+    <button type="button" className="fx-row" onClick={onPick} style={{ "--ty": ty.color } as React.CSSProperties}>
       {l.img ? <Pic src={l.img} className="fx-thumb" /> : <span className="fx-thumb" style={{ background: `color-mix(in srgb, ${ty.color} 35%, var(--panel-solid))` }} aria-hidden>{ty.emoji}</span>}
       <span className="fx-body">
         <span className="fx-title" dir="auto">{l.name}</span>
@@ -66,6 +69,9 @@ export function StoreBrowser({ listings, at, loading, onPick, onClose, onService
   const srcs = LISTING_SOURCE_KEYS.filter((s) => res.bySource.get(s) || f.sources?.includes(s));
   const types = STORE_TYPE_KEYS.filter((k) => res.byType.get(k) || f.types?.includes(k));
   const results = t("Show {n} stores", { n: fmtNum(res.rows.length) });
+  // The List view's summary strip (only there: the map's sheet stays a plain list).
+  const page = usePage();
+  const glance = useMemo(() => (page ? storeGlance(res.rows.map((r) => ({ open: r.l.open, off: r.l.off, rating: r.l.rating, m: r.m }))) : null), [page, res]);
 
   return (
     <Sheet title={t("Search")} onClose={onClose} tall>
@@ -111,6 +117,18 @@ export function StoreBrowser({ listings, at, loading, onPick, onClose, onService
             {loading ? ` · ${t("still asking some sites…")}` : ""}
           </p>
         </div>
+        {page && glance && (
+          <StoreInsights
+            g={glance}
+            kinds={
+              <ShareBar
+                title={t("Kinds of store")}
+                segs={shares(res.byType, page.wide ? 6 : 4).map((s) => ({ ...s, label: s.key === REST ? t("The rest") : t(STORE_TYPES[s.key].label), emoji: s.key === REST ? undefined : STORE_TYPES[s.key].emoji, color: s.key === REST ? "var(--surface-3)" : STORE_TYPES[s.key].color, on: s.key !== REST && !!f.types?.includes(s.key) }))}
+                onPick={(k) => set({ types: flip(f.types, k) })}
+              />
+            }
+          />
+        )}
 
         {!listings.length ? (
           loading ? (

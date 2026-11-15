@@ -42,6 +42,8 @@ import { EmojiArtLayer } from "@/components/art/EmojiArt";
 import { Art } from "@/components/art/Art";
 import { Icon, type IconName } from "../drive/icons";
 import { LoadingScene } from "../LoadingScene";
+import { DownloadLine } from "./GameDownload";
+import { shouldAutoDownload, startGameDownload } from "./downloader";
 import { APP_VIEWS, layerShown, parseView, VIEW_KEY, type AppView } from "@/lib/appView";
 import { queueScenario } from "../drive/scenarioLink";
 import { pedometer, useSteps } from "./steps";
@@ -83,9 +85,14 @@ import { startBenchIfAsked } from "../perf/benchRunner";
 const GameMap = dynamic(() => import("./GameMap"), { ssr: false, loading: () => <div className="map" /> });
 // While the 3D code downloads: the same loading screen the city then keeps up until it's drawn (DriveBoot).
 // Memoised: the map screen ticks (clocks, world refresh, presence) must not re-render the whole 3D city.
-const Drive = memo(dynamic(() => import("../drive/Drive"), {
+// The game's files (models, sounds, voices) start downloading into the phone's caches alongside
+// (game/downloader.ts; not by itself on a data-saving or slow connection), shown on the same screen.
+const Drive = memo(dynamic(() => {
+  if (shouldAutoDownload()) void startGameDownload();
+  return import("../drive/Drive");
+}, {
   ssr: false,
-  loading: () => <LoadingScene className="dboot" title={t("StreetQuest")} sub={t("Your real city, in 3D")} stage={t("Loading the 3D city…")} />,
+  loading: () => <LoadingScene className="dboot" title={t("StreetQuest")} sub={t("Your real city, in 3D")} stage={t("Loading the 3D city…")} note={<DownloadLine />} />,
 }));
 
 // Line icons, one set with the pins and the 3D HUD (the bottom bar never draws an emoji).

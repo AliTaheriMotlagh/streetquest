@@ -27,7 +27,7 @@ const WINDOWS = BLOCKS.flatMap((b, bi) => {
   return out;
 }).sort((a, b) => a.k - b.k);
 
-export function LoadingScene({ pct, title, sub, stage, tip, out, className, children }: { pct?: number | null; title: string; sub?: string; stage?: string; tip?: string; out?: boolean; className?: string; children?: ReactNode }) {
+export function LoadingScene({ pct, title, sub, stage, tip, out, className, note, children }: { pct?: number | null; title: string; sub?: string; stage?: string; tip?: string; out?: boolean; className?: string; /** Under the bar: another thing loading (the game files: game/GameDownload.tsx). */ note?: ReactNode; children?: ReactNode }) {
   const istanbul = useLocale() === "tr";
   const known = typeof pct === "number";
   const lit = Math.round(WINDOWS.length * (known ? Math.max(0.06, pct! / 100) : 0.35));
@@ -110,6 +110,7 @@ export function LoadingScene({ pct, title, sub, stage, tip, out, className, chil
             {known && <b>{fmtNum(Math.round(pct!))}%</b>}
           </div>
         )}
+        {note}
         {tip && (
           <p className="ls-tip" key={tip}>
             {tip}

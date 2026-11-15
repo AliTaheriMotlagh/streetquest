@@ -14,6 +14,19 @@ import { cachedMany, dealsAround, menuCacheKey, snappProducts, torobSearch, vend
 import { basalamSearch } from "./storeSites";
 import { sourceAt } from "@/lib/region";
 import { shopQuery } from "@/lib/search/query";
+import { Lru, singleFlight } from "@/lib/lru";
+import { gatherKey } from "@/lib/productSearch";
+
+/**
+ * What the sites answered (every hit, before the price, rating, distance and order are applied), in
+ * memory (O(1)): the same words from about the same spot within GATHERED_TTL_MS are answered from
+ * here — so changing the price, the order or a filter never asks a site again, nor does typing back
+ * over a word. Identical questions in flight share one gathering.
+ */
+const GATHERED_TTL_MS = 90_000;
+type Gathered = { hits: ProductHit[]; want: ProductSource[]; stores: number; more: boolean; failed: ProductSource[] };
+const gathered = new Lru<Gathered>(300, GATHERED_TTL_MS);
+const together = singleFlight<Gathered>();
 
 /** Restaurants this far round the player are searched (m). */
 export const FOOD_RADIUS_M = 3000;
@@ -79,6 +92,15 @@ export async function searchProducts(here: LatLng, f: ProductFilter & { city?: s
   // Only the sources that answer here (Iran's in Iran; in Turkey, Yemeksepeti's menus).
   const here_ = productSourcesAt(here);
   const want = (f.sources?.length ? f.sources : here_).filter((s) => here_.includes(s) && (q.length >= 2 || LOCAL_SOURCES.includes(s)));
+  const key = gatherKey(here, q, want, f.city);
+  const had = gathered.get(key);
+  // Remembered, unless this search may read menus the remembered one left unread.
+  const g = had && !(f.read && had.more) ? had : await together(`${key}|${f.read ? 1 : 0}`, () => gather(here, q, want, f));
+  return { ...filterProducts(g.hits, { ...f, q, sources: want }), stores: g.stores, more: g.more, failed: g.failed };
+}
+
+/** Everything the sources say about `q` round `here` (unfiltered), remembered when none failed. */
+async function gather(here: LatLng, q: string, want: ProductSource[], f: { city?: string; read?: boolean }): Promise<Gathered> {
   const failed: ProductSource[] = [];
   let stores = 0, more = false;
   const run = async (s: ProductSource): Promise<ProductHit[]> => {
@@ -97,6 +119,8 @@ export async function searchProducts(here: LatLng, f: ProductFilter & { city?: s
       return [];
     }
   };
-  const all = (await Promise.all(want.map(run))).flat();
-  return { ...filterProducts(all, { ...f, q, sources: want }), stores, more, failed };
+  const g: Gathered = { hits: (await Promise.all(want.map(run))).flat(), want, stores, more, failed };
+  // (Not with a failed source: the next question tries that site again.)
+  if (!failed.length) gathered.set(gatherKey(here, q, want, f.city), g);
+  return g;
 }

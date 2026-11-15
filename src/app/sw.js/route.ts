@@ -168,8 +168,9 @@ self.addEventListener("fetch", (event) => {
     if (url.pathname.startsWith("/media/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/screens/")) return event.respondWith(cacheFirst(req, STATIC));
     if (url.pathname.startsWith("/landmark/")) return event.respondWith(cacheFirst(req, MODELS).then((res) => (event.waitUntil(trim(MODELS, MAX_MODELS)), res)));
     if (url.pathname.startsWith("/models/cars/") || url.pathname.startsWith("/models/people/")) return event.respondWith(carFirst(req));
-    // Fonts, the arena's models, the 3D decoder: straight from the phone, refreshed behind.
-    if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/models/") || url.pathname.startsWith("/draco/")) return event.respondWith(staleWhileRevalidate(req, ASSETS, event));
+    // Fonts, the arena's models, the 3D decoder, the sounds and voices: straight from the phone,
+    // refreshed behind (the "download the game" step puts them all here: components/game/downloader.ts).
+    if (url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/models/") || url.pathname.startsWith("/draco/") || url.pathname.startsWith("/sounds/")) return event.respondWith(staleWhileRevalidate(req, ASSETS, event));
     // The 3D city's street maps (fetched by its worker, which this worker also serves).
     // Street detail (city packs) a day, since a city's pack can be rebuilt.
     if (url.pathname.startsWith("/api/vt/")) return event.respondWith(cityFirst(req, event, 7 * DAY_MS));

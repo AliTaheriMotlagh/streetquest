@@ -45,6 +45,8 @@
   position: static; inset: auto; z-index: auto; max-height: none; min-height: 100%; display: block;
   background: none; border: 0; border-radius: 0; box-shadow: none; animation: none; transform: none;
   width: auto !important; max-width: none; margin: 0;
+  /* (A sheet clips; a page mustn't: it would cut the edge-to-edge search bar and stop it sticking.) */
+  overflow: visible;
 }
 .lv .sheet.page > .sheet-grip { display: none; }
 .lv .sheet.page > .sheet-head { padding: 16px 0 8px; border: 0; }
@@ -95,3 +97,211 @@
 .lv .hf-field .tp-step button { min-width: 36px; }
 /* Toasts sit under the page's header, not over its tabs. */
 .game.view-list .toasts { top: calc(64px + var(--safe-t, 0px)); }
+
+/* ======================================================================================
+   The List view, redesigned (2026-11-15): a glass header with a sliding tab marker, a soft glow
+   behind the page, a big search like a search engine's, the summary strip (list/Insights.tsx),
+   cards that lift under the pointer and come in one after another, photo-first product cards.
+   Everything is CSS (no images); motion stops when the device asks for less.
+   ====================================================================================== */
+.lv {
+  background:
+    radial-gradient(900px 420px at 88% -120px, color-mix(in srgb, var(--gold) 13%, transparent), transparent 70%),
+    radial-gradient(760px 380px at 4% -80px, color-mix(in srgb, var(--sky) 11%, transparent), transparent 70%),
+    var(--bg);
+}
+.lv-top {
+  position: relative; z-index: 2;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  border-bottom-color: transparent;
+  box-shadow: 0 1px 0 var(--line), 0 10px 30px -18px rgba(0, 0, 0, .7);
+}
+.lv-top::after {
+  content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 70%, transparent), color-mix(in srgb, var(--sky) 70%, transparent), transparent);
+  opacity: .55;
+}
+.lv-brand b {
+  background: linear-gradient(100deg, var(--gold) 10%, #ffb648 45%, var(--sky) 110%); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+/* The sliding marker under the open tab (ListView sets --ix / --iw from the tab's box). */
+.lv-tabs { position: relative; }
+.lv-tabs button.on { border-bottom-color: transparent; }
+.lv-tabs[style*="--iw"]::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: var(--iw); border-radius: 3px 3px 0 0;
+  transform: translateX(var(--ix)); background: linear-gradient(90deg, var(--gold), #ffb648);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--gold) 70%, transparent);
+  transition: transform .32s var(--ease-spring, cubic-bezier(.3, 1.4, .5, 1)), width .32s var(--ease-out, ease);
+}
+.lv-tabs:not([style*="--iw"]) button.on { border-bottom-color: var(--gold); }
+.lv-tabs button span[aria-hidden] { transition: transform .2s var(--ease-out, ease); }
+.lv-tabs button.on span[aria-hidden] { transform: scale(1.15) rotate(-4deg); }
+
+/* The search, front and centre. */
+.lv-main { --lv-pad: 16px; }
+.lv .fx-stack > .fx-sticky {
+  /* Edge to edge (no box round the search while the page scrolls under it). */
+  margin-inline: calc(-1 * var(--lv-pad)); padding-inline: var(--lv-pad);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.lv .fx-search input {
+  height: 52px; border-radius: 26px; font-size: 16px; padding-inline-start: 46px;
+  background: var(--surface-1); border: 1px solid var(--line);
+  box-shadow: 0 8px 24px -14px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .04);
+  transition: border-color .15s, box-shadow .2s, background .15s;
+}
+.lv .fx-search input:hover { border-color: var(--line-strong); }
+.lv .fx-search input:focus-visible {
+  outline: none; background: var(--surface-2); border-color: color-mix(in srgb, var(--gold) 70%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 18%, transparent), 0 12px 30px -14px rgba(0, 0, 0, .9);
+}
+.lv .fx-search-ic { inset-inline-start: 17px; color: var(--gold); }
+
+/* ---- the summary strip */
+.ins {
+  display: grid; gap: 14px; margin: 6px 0 14px; padding: 14px; border-radius: 20px;
+  background:
+    linear-gradient(var(--surface-1), var(--surface-1)) padding-box,
+    linear-gradient(135deg, color-mix(in srgb, var(--gold) 45%, transparent), var(--line) 40%, color-mix(in srgb, var(--sky) 40%, transparent)) border-box;
+  border: 1px solid transparent;
+  animation: lv-rise .45s var(--ease-out, ease) both;
+}
+.ins-tiles { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; margin: -2px; padding: 2px; scroll-snap-type: x proximity; }
+.ins-tiles::-webkit-scrollbar { display: none; }
+.ins-tile {
+  --tone: var(--gold);
+  flex: 1 0 auto; min-width: 132px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; scroll-snap-align: start;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--tone) 14%, transparent), transparent 70%), var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent);
+}
+.ins-tile-txt { display: grid; gap: 1px; min-width: 0; }
+.ins-tile b { font: 800 17px/1.15 var(--body); color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ins-tile small { font: 700 11.5px/1.2 var(--body); color: var(--tone); white-space: nowrap; }
+.ins-tile em { font: 600 10.5px/1.2 var(--body); font-style: normal; color: var(--muted); white-space: nowrap; }
+.ins-glyph {
+  flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; font: 800 18px/1 var(--body);
+  color: var(--tone); background: color-mix(in srgb, var(--tone) 16%, transparent);
+}
+.ins-ring { flex: none; width: 38px; height: 38px; transform: rotate(-90deg); }
+[dir="rtl"] .ins-ring { transform: rotate(-90deg) scaleY(-1); }
+.ins-ring circle { fill: none; stroke-width: 4.5; }
+.ins-ring-bg { stroke: rgba(255, 255, 255, .08); }
+.ins-ring-fg { stroke-linecap: round; transition: stroke-dasharray .6s var(--ease-out, ease); animation: ins-ring .9s var(--ease-out, ease) both; }
+@keyframes ins-ring { from { stroke-dasharray: 0 100; } }
+
+/* One bar of shares, its legend under it. */
+.ins-share { display: grid; gap: 8px; }
+.ins-share-bar { display: flex; gap: 3px; height: 12px; border-radius: 6px; overflow: hidden; }
+.ins-share-bar button {
+  flex: 1 1 0; min-width: 4px; border: 0; padding: 0; cursor: pointer; opacity: .85; transform-origin: left;
+  transition: opacity .15s, filter .15s; animation: ins-grow .7s var(--ease-out, ease) both;
+}
+.ins-share-bar button:hover, .ins-share-bar button.on { opacity: 1; filter: brightness(1.15) saturate(1.2); }
+.ins-share-bar:has(.on) button:not(.on) { opacity: .35; }
+.ins-share-bar button:disabled { cursor: default; }
+@keyframes ins-grow { from { transform: scaleX(0); } }
+.ins-legend { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.ins-legend::-webkit-scrollbar { display: none; }
+.ins-legend button {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: 16px;
+  border: 1px solid var(--line); background: none; color: var(--muted); font: 700 12px/1 var(--body); cursor: pointer; white-space: nowrap;
+}
+.ins-legend button:hover { color: var(--text); border-color: var(--line-strong); }
+.ins-legend button.on { color: var(--text); background: var(--surface-2); border-color: var(--line-strong); }
+.ins-legend button:disabled { cursor: default; }
+.ins-legend i { width: 8px; height: 8px; border-radius: 50%; }
+.ins-legend b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* The price histogram: a tap on a bar caps the price there. */
+.ins-hist { display: grid; gap: 6px; }
+.ins-hist-bars { display: flex; align-items: flex-end; gap: 4px; height: 72px; }
+.ins-hist-bars button { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; padding: 0; border: 0; background: none; cursor: pointer; }
+.ins-hist-bars i {
+  display: block; width: 100%; height: var(--h); border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sky) 85%, white 0%), color-mix(in srgb, var(--sky) 35%, transparent));
+  transform-origin: bottom; animation: ins-bar .55s var(--ease-out, ease) both; animation-delay: calc(var(--i, 0) * 30ms);
+  transition: background .15s, filter .15s;
+}
+.ins-hist-bars button:hover i { filter: brightness(1.25); }
+.ins-hist-bars button.mid i { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .55); }
+.ins-hist-bars button.on i { background: linear-gradient(180deg, var(--gold), color-mix(in srgb, var(--gold) 40%, transparent)); }
+.ins-hist-bars:has(.on) button:not(.on) i { filter: saturate(.3) brightness(.7); }
+.ins-hist-bars button:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; border-radius: 6px; }
+@keyframes ins-bar { from { transform: scaleY(0); } }
+.ins-hist-axis { display: flex; justify-content: space-between; gap: 8px; font: 600 11px/1.2 var(--body); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ins-hist-axis span:nth-child(2) { text-align: center; }
+
+/* ---- cards: a type-coloured glow, a lift under the pointer, in one after another */
+.lv .fx-row {
+  position: relative; overflow: hidden; isolation: isolate;
+  transition: transform .18s var(--ease-out, ease), box-shadow .18s, border-color .15s, background .15s;
+}
+.lv .fx-row::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .5;
+  background: radial-gradient(240px 120px at 100% 0%, color-mix(in srgb, var(--ty, var(--gold)) 16%, transparent), transparent 70%);
+}
+[dir="rtl"] .lv .fx-row::before { background: radial-gradient(240px 120px at 0% 0%, color-mix(in srgb, var(--ty, var(--gold)) 16%, transparent), transparent 70%); }
+@media (hover: hover) {
+  .lv .fx-row:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -16px rgba(0, 0, 0, .9), 0 0 0 1px color-mix(in srgb, var(--ty, var(--gold)) 35%, transparent); }
+}
+.lv .fx-row:active { transform: scale(.985); }
+.lv .fx-list > *:nth-child(-n + 16) { animation: lv-rise .4s var(--ease-out, ease) both; }
+.lv .fx-list > :nth-child(2) { animation-delay: 25ms; } .lv .fx-list > :nth-child(3) { animation-delay: 50ms; }
+.lv .fx-list > :nth-child(4) { animation-delay: 75ms; } .lv .fx-list > :nth-child(5) { animation-delay: 100ms; }
+.lv .fx-list > :nth-child(6) { animation-delay: 125ms; } .lv .fx-list > :nth-child(7) { animation-delay: 150ms; }
+.lv .fx-list > :nth-child(8) { animation-delay: 175ms; } .lv .fx-list > :nth-child(n + 9):nth-child(-n + 16) { animation-delay: 200ms; }
+@keyframes lv-rise { from { opacity: 0; transform: translateY(10px); } }
+.lv .fx-row .fx-thumb { border-radius: 14px; box-shadow: 0 6px 16px -10px rgba(0, 0, 0, .9); }
+.lv .fx-open { border-radius: 999px; padding: 2px 8px; }
+.lv .fx-open:not(.shut)::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-inline-end: 4px; border-radius: 50%; background: currentColor; vertical-align: 1px; box-shadow: 0 0 6px currentColor; animation: lv-pulse 2s ease-in-out infinite; }
+@keyframes lv-pulse { 50% { opacity: .35; } }
+
+/* Loading: cards of the right shape, shimmering. */
+.lv .fx-skel {
+  height: 86px; border-radius: 16px; border: 1px solid var(--line);
+  background: linear-gradient(100deg, var(--surface-1) 30%, var(--surface-2) 50%, var(--surface-1) 70%); background-size: 220% 100%;
+}
+
+.lv .fx-list > .fx-skel { animation: fx-shine 1.4s linear infinite; }
+
+/* ---- products: photo-first cards in the grid */
+.lv .ps-grid { gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); }
+.lv .ps-grid .fx-row { padding: 0; gap: 0; grid-template-rows: auto 1fr auto; border-radius: 18px; min-height: 0; }
+.lv .ps-grid .fx-thumb { width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 0; box-shadow: none; font-size: 44px; background: linear-gradient(160deg, var(--surface-2), var(--surface-1)); transition: transform .35s var(--ease-out, ease); }
+@media (hover: hover) { .lv .ps-grid .fx-row:hover .fx-thumb { transform: scale(1.05); } }
+.lv .ps-grid .fx-body { padding: 10px 12px 0; position: relative; background: var(--surface-1); }
+.lv .ps-grid .fx-price { padding: 8px 12px 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; background: var(--surface-1); }
+.lv .ps-grid .fx-price b { font-size: 16px; }
+.lv .ps-grid .fx-off {
+  position: absolute; top: -34px; inset-inline-end: 10px; padding: 4px 9px; border-radius: 999px; font-size: 12px;
+  background: linear-gradient(135deg, #ff4d6d, #ff8a3d); color: #fff; box-shadow: 0 6px 16px -6px rgba(255, 77, 109, .8);
+}
+.lv .ps-grid .fx-tags { overflow: visible; }
+.lv .ps-grid .ps-pick {
+  inset-inline-start: 0; top: 0; margin: 10px; width: 34px; height: 34px; border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 60%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border-color: rgba(255, 255, 255, .18); color: var(--text); opacity: 0; transition: opacity .15s, background .12s, transform .12s;
+}
+.lv .ps-grid .ps-li:hover .ps-pick, .lv .ps-grid .ps-pick.on, .lv .ps-grid .ps-pick:focus-visible { opacity: 1; }
+@media (hover: none) { .lv .ps-grid .ps-pick { opacity: 1; } }
+.lv .ps-grid .ps-pick.on { background: var(--sky); color: #041321; }
+.lv .ps-same-card { transition: transform .18s var(--ease-out, ease), border-color .15s; }
+@media (hover: hover) { .lv .ps-same-card:hover { transform: translateY(-2px); } }
+
+/* Toasts in the List view: at the bottom, never over the search. */
+.game.view-list .toasts { top: auto; bottom: calc(92px + var(--safe-b, 0px)); }
+@media (min-width: 960px) {
+  .lv-main { --lv-pad: 28px; }
+  .game.view-list .toasts { bottom: 24px; }
+  .ins { padding: 18px; grid-template-columns: minmax(0, 1fr); }
+  .ins-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); overflow: visible; }
+  .ins-hist-bars { height: 92px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv .fx-list > *, .ins, .ins-hist-bars i, .ins-share-bar button, .ins-ring-fg, .lv .fx-open::before { animation: none !important; }
+  .lv .fx-row, .lv .ps-grid .fx-thumb, .lv-tabs::after { transition: none !important; }
+  .lv .fx-row:hover { transform: none; }
+}

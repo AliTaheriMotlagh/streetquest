@@ -4,6 +4,7 @@ import { ASKS_CHANGED } from "@/lib/asks";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { MODEL_MB, NEURAL_PREFS, type NeuralPref, type NeuralWhy } from "@/lib/tts/neural";
 import { neuralNow, neuralPref, onNeuralChange, progress, setNeuralPref, warmNeural } from "../drive/tts/neural";
+import { DownloadRow } from "./GameDownload";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
 import { RARITY_COLOR, RARITY_LABEL } from "@/lib/catalog";
@@ -1312,6 +1313,7 @@ function SoundSettings() {
           </div>
         </div>
         <NeuralVoiceRow />
+        <DownloadRow />
         <p className="small muted" style={{ margin: 0 }}>
           {t("Headphones: 3D sound — you hear where a shot, a siren or a voice is, also behind and above you. Speakers: plain left and right. 5.1 shows up when a surround system is connected.")}
           {audioOutput() === "auto" && ` ${t("This device is using {mode}.", { mode: t(panning() === "hrtf" ? "Headphones (3D)" : "Speakers") })}`}

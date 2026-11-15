@@ -40,6 +40,24 @@ export function ListView({ sections, view, onView, place }: {
   };
   const [dock, setDock] = useState<HTMLElement | null>(null);
   const main = useRef<HTMLElement>(null);
+  // The sliding marker under the open tab (app/list.css .lv-tabs::after): its place and width from the
+  // tab's own box, again when the bar resizes (a phone turned, the language switched).
+  const tabs = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = tabs.current;
+    if (!nav) return;
+    const place = () => {
+      const on = nav.querySelector<HTMLElement>("button.on");
+      if (!on) return;
+      nav.style.setProperty("--ix", `${on.offsetLeft}px`);
+      nav.style.setProperty("--iw", `${on.offsetWidth}px`);
+      on.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    };
+    place();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : null;
+    ro?.observe(nav);
+    return () => ro?.disconnect();
+  }, [tab]);
   return (
     <div className="lv" data-tab={tab}>
       <header className="lv-top">
@@ -47,7 +65,7 @@ export function ListView({ sections, view, onView, place }: {
           <b>StreetQuest</b>
           {place && <small dir="auto">📍 {place}</small>}
         </div>
-        <nav className="lv-tabs" role="tablist" aria-label={t("Sections")}>
+        <nav className="lv-tabs" ref={tabs} role="tablist" aria-label={t("Sections")}>
           {LIST_TABS.map((s) => (
             <button key={s.key} type="button" role="tab" aria-selected={tab === s.key} className={tab === s.key ? "on" : ""} onClick={() => setTab(s.key)}>
               <span aria-hidden>{s.emoji}</span>

@@ -121,6 +121,21 @@ const directory: Record<string, string> = {
   "Don't ask again for {site}": "برای {site} دیگه نپرس",
   "Stay in the game": "بمون تو بازی",
   "Open {site}": "باز کردن {site}",
+  "At a glance": "در یک نگاه",
+  "nearest {d}": "نزدیک‌ترین {d}",
+  "{p}% of those with hours": "{p}٪ از آن‌هایی که ساعت کاری دارند",
+  "With deals": "تخفیف‌دار",
+  "Average rating": "میانگین امتیاز",
+  "{n} rated": "{n} امتیازدار",
+  "Typical price": "قیمت معمول",
+  "half cost less": "نصفشان ارزان‌ترند",
+  "Discounted": "تخفیف‌خورده",
+  "up to {p}% off": "تا {p}٪ تخفیف",
+  "Prices": "قیمت‌ها",
+  "{n} between {a} and {b}": "{n} کالا بین {a} و {b}",
+  "Tap a bar to cap the price": "روی یک ستون بزن تا سقف قیمت شود",
+  "The rest": "بقیه",
+  "Kinds of store": "نوع فروشگاه‌ها",
 };
 
 export default directory;

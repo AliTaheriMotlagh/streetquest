@@ -122,6 +122,21 @@ const settings: Record<string, string> = {
   "Stat overrides": "İstatistik geçersiz kılmaları",
   "Travel to a friend: wait between trips (min)": "Arkadaşa seyahat: seyahatler arası bekleme (dk)",
   "A home player can jump straight to an online friend (Online now → 🚀). This long between jumps; 0 turns it off.": "Evden oynayan bir oyuncu doğrudan çevrimiçi bir arkadaşının yanına gidebilir (Şu an çevrimiçi → 🚀). Seyahatler arası bekleme süresi bu kadar; 0 bunu kapatır.",
+  "{n} MB": "{n} MB",
+  "{n} KB": "{n} KB",
+  "{n} s left": "{n} sn kaldı",
+  "{n} min left": "{n} dk kaldı",
+  "{a} of {b}": "{a} / {b}",
+  "{v}/s": "{v}/sn",
+  "Downloading the game": "Oyun indiriliyor",
+  "Game files on this phone": "Bu telefondaki oyun dosyaları",
+  "Check again": "Tekrar kontrol et",
+  "Download": "İndir",
+  "Downloading… {p}% ({a} of {b})": "İndiriliyor… %{p} ({a} / {b})",
+  "Checking what's already here…": "Mevcut dosyalar kontrol ediliyor…",
+  "All here ({n}): the 3D city starts at once and works offline.": "Hepsi burada ({n}): 3D şehir hemen açılır ve çevrimdışı çalışır.",
+  "Some files didn't come — try again on a better connection.": "Bazı dosyalar gelmedi — daha iyi bir bağlantıyla tekrar dene.",
+  "Models, sounds and voices, downloaded once so the 3D city starts at once and works offline.": "Modeller, sesler ve konuşmalar bir kez indirilir; 3D şehir hemen açılır ve çevrimdışı çalışır.",
 };
 
 export default settings;

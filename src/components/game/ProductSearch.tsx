@@ -15,7 +15,7 @@ import { fmtNum, getLocale, t } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { msg } from "@/lib/i18n";
 import { snappfoodMenuUrl, type Vendor } from "@/lib/localData";
-import { LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, sameProducts, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
+import { filterProducts, LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, sameProducts, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
 import { api } from "./client";
 import { Sheet } from "./ui";
 import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, openTravel, SearchField, Stars } from "./Filters";
@@ -24,6 +24,9 @@ import { fresh, keep, kept } from "./keep";
 import { LISTING_SOURCES } from "@/lib/stores/listing";
 import { countryAt, deliveryAt } from "@/lib/region";
 import { Pic, ProductPage, VendorCard, type ExtProduct } from "./StoreInfo";
+import { usePage } from "./pageMode";
+import { priceBands, productGlance, REST, shares, type Bands } from "@/lib/insights";
+import { ProductInsights, ShareBar } from "../list/Insights";
 
 type Answer = { hits: ProductHit[]; total: number; bySource?: Partial<Record<ProductSource, number>>; stores: number; more: boolean; failed: ProductSource[] };
 const RECENT = "sq-product-recent";
@@ -92,7 +95,8 @@ export const ideasAt = (at: LatLng | null) => {
   const c = at ? countryAt(at.lat, at.lng) : "IR";
   return IDEAS[c === "IR" || c === "TR" ? c : "EN"];
 };
-const TYPE_WAIT_MS = 450;
+/** Typing waits this long before asking the server (what's on screen narrows at every key meanwhile). */
+const TYPE_WAIT_MS = 220;
 const PANEL = "product-filters";
 /** Each source wears its site's colour, as in the store list. */
 const SOURCE_COLOR: Record<ProductSource, string> = { food: LISTING_SOURCES.snappfood.color, deal: LISTING_SOURCES.takhfifan.color, torob: LISTING_SOURCES.torob.color, basalam: "#f05a28" };
@@ -137,6 +141,8 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   /** "Look in more restaurants": the same question again reads the next few menus. */
   const [round, setRound] = useState(0);
   const [res, setRes] = useState<{ key: string; data: Answer } | null>(null);
+  /** The quick answer is on screen; the one reading new menus is still on its way. */
+  const [widening, setWidening] = useState(false);
   const [error, setError] = useState<{ key: string; text: string } | null>(null);
   const [vendor, setVendor] = useState<{ v: Vendor; dish: string } | null>(null);
   const [page, setPage] = useState<ProductHit | null>(null);
@@ -187,23 +193,49 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     if (range.max) p.set("max", String(range.max));
     if (minRating) p.set("rating", String(minRating));
     if (maxDist) p.set("dist", String(maxDist));
-    if (asked.current !== `${base}|${round}`) (asked.current = `${base}|${round}`), p.set("read", "1");
+    const read = asked.current !== `${base}|${round}`;
+    if (read) asked.current = `${base}|${round}`;
+    let final = false;
+    const show = (data: Answer) => {
+      if (!range.min && !range.max && !onlyOff) caps.current = { key: base, steps: priceSteps(data.hits) };
+      if (!data.total && data.failed.length && mine?.data.total) return;
+      setRes({ key, data });
+      setError(null);
+      if (data.total) keep(`products:${key}`, data);
+      if (data.total && draft.trim().length >= 2) remember(draft);
+    };
+    // New words: two questions at once — the quick one (what's already known: ~0.3 s) shows first,
+    // the one that also reads a few new menus (up to a few seconds) replaces it when it's back.
+    if (read && !round) {
+      setWidening(true);
+      api<Answer>(`/api/local?${p}`).then((data) => live && !final && data.total > 0 && show(data), () => {});
+    }
+    if (read) p.set("read", "1");
     api<Answer>(`/api/local?${p}`)
       .then((data) => {
-        if (!live) return;
-        if (!range.min && !range.max && !onlyOff) caps.current = { key: base, steps: priceSteps(data.hits) };
-        if (!data.total && data.failed.length && mine?.data.total) return;
-        setRes({ key, data });
-        setError(null);
-        if (data.total) keep(`products:${key}`, data);
-        if (data.total && draft.trim().length >= 2) remember(draft);
+        final = true;
+        if (live) show(data);
       })
-      .catch((e) => live && !mine && setError({ key, text: (e as Error).message }));
-    return () => void (live = false);
+      .catch((e) => live && !mine && setError({ key, text: (e as Error).message }))
+      .finally(() => live && setWidening(false));
+    return () => {
+      live = false;
+      setWidening(false);
+    };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loading = !!key && res?.key !== key && error?.key !== key;
-  const data = res?.data ?? null;
+  const asked_ = res?.data ?? null;
+  // Instant results: at every key, what's on screen is narrowed to the words being typed — the same
+  // ranking the server uses (lib/productSearch filterProducts, over ≤ 300 rows: well under a frame) —
+  // while the question is on its way. Words that find nothing on screen keep the list as it was.
+  const typing = useMemo(() => parseQuery(draft).words.trim(), [draft]);
+  const instant = useMemo(() => {
+    if (!asked_ || typing.length < 2 || typing === q.trim()) return null;
+    const f = filterProducts(asked_.hits, { q: typing, sort, onlyOff, minRating, maxDist, min: range.min, max: range.max, sources });
+    return f.total ? { ...asked_, ...f } : null;
+  }, [asked_, typing, q, sort, onlyOff, minRating, maxDist, range, sources]);
+  const data = instant ?? asked_;
   const steps = caps.current.key === base ? caps.current.steps : [];
   const flip = (s: ProductSource) => setSources((l) => (l.includes(s) ? l.filter((x) => x !== s) : [...l, s]));
   // Only the sites that answer where the player is (Iran's in Iran; Yemeksepeti in Turkey).
@@ -243,6 +275,18 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   // keeps its words, filters and results underneath): ‹ or the phone's Back returns to the list.
   // (Every hook above this line: returning before one crashed React — "fewer hooks than expected".)
   const groups = useMemo(() => sameProducts(data?.hits ?? []), [data]);
+  // The List view's summary strip: the price histogram of the answer as the server sent it (the bars
+  // stay put while a cap from them narrows the list).
+  const pageMode = usePage();
+  const bandsOf = useRef<{ key: string; b: Bands | null }>({ key: "", b: null });
+  const bands = useMemo(() => {
+    if (!pageMode || !asked_) return null;
+    // Capped from a bar: the bars of the uncapped answer stay (the capped one would rescale under the finger).
+    if (range.max && bandsOf.current.key === base) return bandsOf.current.b;
+    const b = priceBands(asked_.hits.map((h) => h.price));
+    bandsOf.current = { key: base, b };
+    return b;
+  }, [pageMode, asked_, base, range.max]);
   if (vendor) return <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={onClose} />;
   const inTray = (h: ProductHit) => tray.some((x) => x.id === h.id);
   const flipTray = (h: ProductHit) => setTray((v) => (v.some((x) => x.id === h.id) ? v.filter((x) => x.id !== h.id) : [...v, h].slice(-MAX_COMPARE)));
@@ -318,8 +362,26 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
               ))}
             </div>
           )}
-          <p className={`fx-status${loading ? " busy" : ""}`} aria-live="polite">{note}</p>
+          <p className={`fx-status${loading || widening ? " busy" : ""}`} aria-live="polite">{note}{widening && !loading ? ` · ${t("still asking some sites…")}` : ""}</p>
         </div>
+        {pageMode && data && data.hits.length > 0 && (
+          <ProductInsights
+            g={productGlance(data.hits)}
+            bands={bands}
+            money={lira ? (n) => t("{n} lira", { n: fmtNum(n) }) : toman}
+            cap={range.max}
+            onCap={(to) => (setMaxDraft(to ? String(to) : ""), setRange((r) => ({ ...r, max: to })))}
+            sources={
+              here.length > 1 ? (
+                <ShareBar
+                  title={t("Sites")}
+                  segs={shares(Object.entries(data.bySource ?? {}) as [ProductSource, number][]).map((s) => ({ ...s, label: s.key === REST ? t("The rest") : siteOf(s.key, at), color: s.key === REST ? "var(--surface-3)" : SOURCE_COLOR[s.key], on: s.key !== REST && sources.includes(s.key) }))}
+                  onPick={flip}
+                />
+              ) : null
+            }
+          />
+        )}
         {groups.length > 0 && (
           <section className="ps-same" aria-label={t("Same product, different stores")}>
             <h3 className="tiny muted">{t("Same product, different stores")}</h3>
@@ -346,11 +408,11 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
             {nSet > 0 && <button className="btn small ghost" onClick={clearAll}>{t("Clear all")}</button>}
           </div>
         ) : (
-          <ul className={`fx-list ps-list ${grid ? "ps-grid" : ""} ${loading ? "busy" : ""}`}>
-            {(data?.hits ?? []).map((h) => {
+          <ul className={`fx-list ps-list ${grid || pageMode?.wide ? "ps-grid" : ""} ${loading && !instant ? "busy" : ""}`}>
+            {(data?.hits ?? []).map((h, i) => {
               const off = offOf(h);
               return (
-                <li key={h.id} className="ps-li">
+                <li key={h.id} className="ps-li" style={i < 16 ? ({ "--i": i } as React.CSSProperties) : undefined}>
                   <button type="button" className={`ps-pick${inTray(h) ? " on" : ""}`} aria-pressed={inTray(h)} onClick={() => flipTray(h)} title={t("Compare")} aria-label={t("Compare {name}", { name: h.title })}>⇄</button>
                   <button type="button" className="fx-row" onClick={() => openHit(h)}>
                     {h.photo ? <Pic src={h.photo} className="fx-thumb" /> : <span className="fx-thumb" aria-hidden>{PRODUCT_SOURCES[h.source].emoji}</span>}

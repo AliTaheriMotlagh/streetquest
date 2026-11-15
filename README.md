@@ -208,7 +208,10 @@ mood scales XP; loot funds research; territory funds the army.
   running in a Web Worker with ONNX Runtime — never on the render thread, never blocking a line (the phone's own voice,
   then the bubble alone, take over). Settings → Voices: Auto (only on a strong computer that isn't saving data), On or
   Off; phones ask first. Production needs the files hosted (`NEXT_PUBLIC_TTS_BASE`, see `.env.example`); without it the
-  game uses the phone's voice.
+  game uses the phone's voice, and where the phone has no Persian voice either (most), the speaker says one recorded
+  greeting in their own voice per conversation (`talkClip`, `lib/street/voiceLang.ts`) while the bubble carries the
+  words. The recorded lines are fetched as bytes when the city opens and decoded on first use, so a city opened
+  before the first tap (no audio yet) still gets its voices.
 - **Public data API for other apps** (`/api/v1`, `server/apiV1.ts`, `lib/apiV1.ts`; docs at `/developers`, OpenAPI at
   `/api/v1/openapi.json`): stores, a store's menu, deals, cinemas and sessions, Divar ads, product search, bus stops and
   arrivals, Istanbul's live buses and each city's metro — read-only, answered from our cache (a source's normal paced
@@ -271,7 +274,13 @@ mood scales XP; loot funds research; territory funds the army.
   Products & prices · Trips · Hotels & stays* (`lib/listTabs.ts`, `/play?view=list&tab=hotels`); the same screens the
   map opens as sheets, drawn as pages (`components/game/pageMode.tsx`, `components/list/ListView.tsx`,
   `app/list.css`): on a wide screen the filters sit open in a sidebar beside a grid of cards and the header carries
-  List · Map · Game; on a phone the filters are one button away; **Map** is the stores and places on the map without the game (no money, jobs, players, wallet, quests or
+  List · Map · Game; on a phone the filters are one button away. Above the results an **at-a-glance strip**
+  (`components/list/Insights.tsx`, pure numbers `lib/insights.ts`) draws what the list holds: for stores, how many,
+  a ring of how many are open now, deals, the average rating and one bar of what kinds of store they are (tap a kind
+  to filter); for products, the cheapest and the typical price, how many are discounted and a price histogram (tap a
+  bar to cap the price there). Glass header with a sliding tab marker, a search box like a search engine's, cards
+  that lift and come in one after another, photo-first product cards; all CSS/SVG, still under "reduce motion";
+  **Map** is the stores and places on the map without the game (no money, jobs, players, wallet, quests or
   3D button; the filter has no "The game" group); **Game** is everything, with a Map tab first in its bar to step out
   (the wallet lives on its chip up top). On the map, stores that would sit on each other become one bubble with a
   count at every zoom but the closest (tap: zoom in) — never dots.
@@ -796,6 +805,13 @@ mood scales XP; loot funds research; territory funds the army.
   keeps its own copy of tickets, stays and product searches (`game/keep.ts`, last 40, localStorage): shown at once
   next time — offline too, "Saved …" — and asked again only once it's old (tickets 15 min, stays 6 h, products
   10 min).
+- **Fast search** — the server keeps its hot `ExtCache` rows in memory too (`lib/lru.ts`, O(1) LRU; `HOT_CACHE_MAX`),
+  so a search's ~160 menus come from memory, not the database. What the sites answered for a product search
+  (every hit, before price/rating/distance/order) is remembered 90 s per words + sources + spot (~11 m), so changing
+  the price, the order or a filter is answered in ~20 ms without asking any site again, and identical searches in
+  flight share one run (`singleFlight`). New words are asked twice at once: the quick answer (what's already known,
+  ~0.3 s) shows first, the one that also reads a few new menus replaces it. While typing, what's on screen narrows at
+  every key with the server's own ranking (`filterProducts`), before the answer arrives.
 - **Storefronts that sell the plans** — every store that joined stands in the 3D city as a real shop: it takes over
   its own shop front on the map (the map sign of the same name within 40 m, else the nearest within 12 m; otherwise
   a pole sign at the kerb). **Free**: its own sign with its real name and opening hours (open/closed lamp).
@@ -1255,7 +1271,11 @@ Live since 2026-11-15: `RT_URL=wss://37-32-28-215.sslip.io:8791`. Check: `curl h
 
 - **Installable app & offline:** `/sw.js` (service worker) caches the app, map tiles you've seen and your last game
   state, so the game opens offline. It also keeps the heavy files on the phone so a launch never downloads them again:
-  fonts, the arena's 3D models and the 3D decoder (fetched in the background on install and every launch), and the
+  fonts, the arena's 3D models and the 3D decoder (fetched in the background on install and every launch), the whole
+  game when the 3D city first opens — **"Downloading the game · 4.2 of 12 MB · 1.3 MB/s · 9 s left"** on the loading
+  screen: every model, sound and the player's language's voices (`/api/game-files` lists them at build time;
+  `game/downloader.ts`, rules `lib/gameDownload.ts`), three at a time into the worker's caches, only what's missing,
+  not by itself on a data-saving or 2G/3G connection (Settings → *Game files on this phone* → Download), and the
   3D city's street maps you've driven through (vector tiles a week, city-pack detail a day). The app asks the browser
   for persistent storage so Android doesn't clear it when space runs low. Every deploy gets a new version id, and
   players see "New version ready → Update". *Later* keeps the bar away for 6 hours (across reloads), and an update

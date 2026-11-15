@@ -72,6 +72,14 @@ export type ProductFilter = {
   /** Stores at most this far (m); hits with no known spot are left out once it's set. */
   maxDist?: number;
 };
+/**
+ * The key a search's gathered hits are remembered under (server/productSearch.ts): the words (case
+ * and spacing folded), the sources asked, and the spot to ~11 m (4 decimals) — near enough that the
+ * distances shown stay right, so the same player asking again is answered from memory.
+ */
+export const gatherKey = (at: LatLng, q: string, sources: readonly ProductSource[], city?: string) =>
+  `${q.trim().replace(/\s+/g, " ").toLowerCase()}|${[...sources].sort().join(",")}|${at.lat.toFixed(4)},${at.lng.toFixed(4)}|${city ?? ""}`;
+
 /** At most this many rows go to the player at once. */
 export const PRODUCT_LIMIT = 300;
 

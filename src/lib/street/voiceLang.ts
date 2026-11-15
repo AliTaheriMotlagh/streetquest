@@ -95,3 +95,12 @@ export function pickDeviceVoice<T extends DeviceVoice & { localService?: boolean
   const score = (x: T) => (want.test(x.name) ? 4 : (v === "f" ? MALE : FEMALE).test(x.name) ? -4 : 0) + (/^(en[-_]us|tr[-_]tr)/i.test(x.lang) ? 2 : /^en[-_]gb/i.test(x.lang) ? 1 : 0) + (x.localService ? 0.5 : 0);
   return inLang.reduce((a, x) => (score(x) > score(a) ? x : a));
 }
+
+/** A recorded greeting stands in for a conversation's words at most this often (ms): once per chat. */
+export const TALK_CLIP_GAP_MS = 20_000;
+/**
+ * Whether a conversation line with no voice of its own (no on-device model, no phone voice for the
+ * language) gets a recorded greeting instead — so the person never moves their lips in silence, yet
+ * doesn't say «سلام» over every line of the same conversation.
+ */
+export const talkClip = (o: { neural: boolean; device: boolean; now: number; lastClip: number }) => !o.neural && !o.device && o.now - o.lastClip >= TALK_CLIP_GAP_MS;

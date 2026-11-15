@@ -99,3 +99,11 @@ describe("best match spreads the stores", () => {
     assert.ok(new Set(top).size === 3, top.join(","));
   });
 });
+
+it("a search's gathered hits are remembered by words, sources and spot (~11 m)", async () => {
+  const { gatherKey } = await import("../src/lib/productSearch");
+  const at = { lat: 35.744812, lng: 51.375321 };
+  assert.equal(gatherKey(at, "  Pizza  Pepperoni ", ["torob", "food"]), gatherKey({ lat: 35.74484, lng: 51.37529 }, "pizza pepperoni", ["food", "torob"]));
+  assert.notEqual(gatherKey(at, "pizza", ["food"]), gatherKey({ lat: 35.7458, lng: 51.3753 }, "pizza", ["food"]));
+  assert.notEqual(gatherKey(at, "pizza", ["food"]), gatherKey(at, "pizza", ["food", "deal"]));
+});

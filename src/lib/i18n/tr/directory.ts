@@ -121,6 +121,21 @@ const directory: Record<string, string> = {
   "Don't ask again for {site}": "{site} için bir daha sorma",
   "Stay in the game": "Oyunda kal",
   "Open {site}": "{site}'i aç",
+  "At a glance": "Bir bakışta",
+  "nearest {d}": "en yakın {d}",
+  "{p}% of those with hours": "saatleri bilinenlerin %{p}'i",
+  "With deals": "İndirimli",
+  "Average rating": "Ortalama puan",
+  "{n} rated": "{n} puanlı",
+  "Typical price": "Tipik fiyat",
+  "half cost less": "yarısı daha ucuz",
+  "Discounted": "İndirimde",
+  "up to {p}% off": "%{p}'e varan indirim",
+  "Prices": "Fiyatlar",
+  "{n} between {a} and {b}": "{a} ile {b} arasında {n}",
+  "Tap a bar to cap the price": "Fiyatı sınırlamak için bir çubuğa dokun",
+  "The rest": "Diğerleri",
+  "Kinds of store": "Mağaza türleri",
 };
 
 export default directory;

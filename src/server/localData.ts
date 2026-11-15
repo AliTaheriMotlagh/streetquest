@@ -26,6 +26,7 @@ import { Prisma } from "@prisma/client";
 import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "../lib/db";
+import { Lru } from "../lib/lru";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
   baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealInfoOf, dealOf, dealOfPoi, dealReviewsOf, dealsNear, nearbyBox, type Deal, type DealInfo, type DealReviewPage, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, menuFromReadModel, type RmDetails, type RmMenu, type RmReview, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
@@ -172,6 +173,13 @@ export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Rec
 }
 
 const inflight = new Map<string, Promise<unknown>>();
+/**
+ * The hot copies of ExtCache rows, in this server's memory (lib/lru.ts, O(1)): a search reads up to
+ * 160 menus and a few lists per question — from memory, the database is asked only for what isn't
+ * here. Each copy keeps its own fetchedAt, so freshness is judged exactly as from the database.
+ * HOT_CACHE_MAX (default 600) bounds it.
+ */
+const hot = new Lru<{ data: unknown; fetchedAt: number }>(Number(process.env.HOT_CACHE_MAX ?? 600));
 // Stale-while-revalidate (lib/cachePolicy.ts): a stale copy within its window is served at once while a
 // fresh one loads; older, the caller waits (and still gets the old copy if the site fails).
 // CACHE_STALE_MAX_MS caps the window (default a week); CACHE_SWR="off" waits for every refresh.
@@ -179,8 +187,10 @@ const STALE_MAX_MS = Number(process.env.CACHE_STALE_MAX_MS ?? 7 * 24 * 3600_000)
 
 /** The cached copy while it's fresh; a stale one at once while it refreshes; otherwise fetch once (shared by concurrent callers), falling back to the stale copy. */
 export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>, opts: { staleTtls?: number } = {}): Promise<T | null> {
-  const row = await prisma.extCache.findUnique({ where: { key } });
-  const age = row ? Date.now() - row.fetchedAt.getTime() : Infinity;
+  const mem = hot.get(key);
+  const row = mem ?? (await prisma.extCache.findUnique({ where: { key }, select: { data: true, fetchedAt: true } }).then((r) => (r ? { data: r.data as unknown, fetchedAt: r.fetchedAt.getTime() } : null)));
+  if (row && !mem) hot.set(key, row);
+  const age = row ? Date.now() - row.fetchedAt : Infinity;
   const action = cacheAction(age, ttlMs, { staleTtls: opts.staleTtls, max: STALE_MAX_MS, swr: process.env.CACHE_SWR !== "off" });
   if (row && action === "fresh") return row.data as T;
   let p = inflight.get(key) as Promise<T | null> | undefined;
@@ -190,6 +200,7 @@ export async function cached<T>(key: string, ttlMs: number, load: () => Promise<
       .then(async (data) => {
         if (data == null) return null;
         const json = data as unknown as Prisma.InputJsonValue;
+        hot.set(key, { data, fetchedAt: Date.now() });
         await prisma.extCache.upsert({ where: { key }, create: { key, data: json }, update: { data: json, fetchedAt: new Date() } });
         return data;
       })
@@ -206,9 +217,20 @@ export async function cached<T>(key: string, ttlMs: number, load: () => Promise<
 /** Whatever is cached under these keys, however old (a search reads many menus at once without fetching any). */
 export async function cachedMany<T>(keys: string[]): Promise<Map<string, T>> {
   const out = new Map<string, T>();
-  for (let i = 0; i < keys.length; i += 200) {
-    const rows = await prisma.extCache.findMany({ where: { key: { in: keys.slice(i, i + 200) } }, select: { key: true, data: true } });
-    for (const r of rows) if (r.data != null) out.set(r.key, r.data as T);
+  // From memory first; the database only for the rest.
+  const rest: string[] = [];
+  for (const k of keys) {
+    const e = hot.get(k);
+    if (e?.data != null) out.set(k, e.data as T);
+    else rest.push(k);
+  }
+  for (let i = 0; i < rest.length; i += 200) {
+    const rows = await prisma.extCache.findMany({ where: { key: { in: rest.slice(i, i + 200) } }, select: { key: true, data: true, fetchedAt: true } });
+    for (const r of rows)
+      if (r.data != null) {
+        out.set(r.key, r.data as T);
+        hot.set(r.key, { data: r.data, fetchedAt: r.fetchedAt.getTime() });
+      }
   }
   return out;
 }

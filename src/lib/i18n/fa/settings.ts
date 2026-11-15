@@ -122,6 +122,21 @@ const settings: Record<string, string> = {
   "Stat overrides": "بازنویسی آمار",
   "Travel to a friend: wait between trips (min)": "سفر پیش دوست: فاصله‌ی بین سفرها (دقیقه)",
   "A home player can jump straight to an online friend (Online now → 🚀). This long between jumps; 0 turns it off.": "بازیکنی که از خونه بازی می‌کنه می‌تونه مستقیم بره پیش یه دوست آنلاین (آنلاین‌ها ← 🚀). این مقدار فاصله‌ی بین سفرهاست؛ ۰ خاموشش می‌کنه.",
+  "{n} MB": "{n} مگابایت",
+  "{n} KB": "{n} کیلوبایت",
+  "{n} s left": "{n} ثانیه مانده",
+  "{n} min left": "{n} دقیقه مانده",
+  "{a} of {b}": "{a} از {b}",
+  "{v}/s": "{v} در ثانیه",
+  "Downloading the game": "دانلود بازی",
+  "Game files on this phone": "فایل‌های بازی روی این گوشی",
+  "Check again": "دوباره بررسی کن",
+  "Download": "دانلود",
+  "Downloading… {p}% ({a} of {b})": "در حال دانلود… {p}٪ ({a} از {b})",
+  "Checking what's already here…": "در حال بررسی فایل‌های موجود…",
+  "All here ({n}): the 3D city starts at once and works offline.": "همه‌اش اینجاست ({n}): شهر سه‌بعدی فوری باز می‌شود و آفلاین هم کار می‌کند.",
+  "Some files didn't come — try again on a better connection.": "چند فایل نرسید — با اینترنت بهتر دوباره امتحان کن.",
+  "Models, sounds and voices, downloaded once so the 3D city starts at once and works offline.": "مدل‌ها، صداها و صدای آدم‌ها یک بار دانلود می‌شوند تا شهر سه‌بعدی فوری باز شود و آفلاین هم کار کند.",
 };
 
 export default settings;
