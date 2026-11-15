@@ -3,10 +3,10 @@
 // Prints what happened; exits non-zero if something basic is broken.
 import { SignJWT } from "jose";
 import WebSocket from "ws";
-import { serverKey } from "../src/server/session";
+import { rtKey } from "../src/server/session";
 import { decodeSnap, encodeState, localFrame, F_FOOT, type ServerMsg } from "../src/lib/arena/protocol";
 
-const KEY = new TextEncoder().encode(serverKey("rt"));
+const KEY = new TextEncoder().encode(rtKey("rt"));
 const ORIGIN = { lat: 35.7, lng: 51.4 };
 const F = localFrame(ORIGIN);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -18,7 +18,7 @@ async function ticket(sub: string, name: string) {
 
 type C = { ws: WebSocket; sid: number; msgs: ServerMsg[]; snaps: number; lastSnap: number; x: number; z: number; y: number; yaw: number; seen: Map<number, { x0: number; z0: number; x: number; z: number }> };
 async function client(sub: string, name: string, x: number, z: number): Promise<C> {
-  const ws = new WebSocket("ws://localhost:8787");
+  const ws = new WebSocket(process.env.RT_SMOKE_URL ?? "ws://localhost:8787");
   const c: C = { ws, sid: 0, msgs: [], snaps: 0, lastSnap: 0, x, z, y: 0, yaw: 0, seen: new Map() };
   ws.binaryType = "arraybuffer";
   ws.on("message", (d: ArrayBuffer | string, bin: boolean) => {

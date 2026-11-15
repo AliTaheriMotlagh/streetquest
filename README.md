@@ -1198,6 +1198,27 @@ header a site needs is sent as `x-relay-<name>` and passed on as `<name>`); bodi
 answers are `no-store`, redirects aren't followed, and no query string (positions) is logged. `GET /health` says its
 `version`. Tests `tests/relay.test.ts`, `tests/relayUrl.test.ts`.
 
+### Street Arena realtime server on the relay box
+
+Matches and the 3D city's live players over a WebSocket instead of the database relay (`npm run rt`
+anywhere that keeps a socket open; Vercel can't). `npm run rt:deploy` bundles `realtime/server.ts` into one
+file and installs it on the relay box with `realtime/install.sh`, which only adds to the box:
+
+- service `streetquest-rt` on port 8791 as its own user, capped at 300 MB and half a CPU, lowest priority,
+  first to be killed if memory runs out; the install records what else listens and what ports 80/443 answer,
+  and rolls itself back if anything changed;
+- TLS (an https page may only open `wss://`): Iran DNS-filters every free dynamic-DNS name tried (DuckDNS, dynv6,
+  all of Dynu's free domains, mooo.com; deSEC stopped giving names out), so `RT_DOMAIN` is a subdomain of a real
+  domain. Its owner adds `A sq → the box` (no CDN proxy) and `CNAME _acme-challenge.sq → ACMEDNS_FULLDOMAIN` (from
+  `curl -X POST https://auth.acme-dns.io/register`); the Let's Encrypt certificate comes by that DNS challenge
+  (ports 80/443 stay the other app's) and is renewed by the daily timer `streetquest-rt-renew`; the server reloads it without dropping matches.
+
+Needs in `.env`: `RT_SECRET` (`openssl rand -hex 32`), `RT_DOMAIN`, `ACMEDNS_USERNAME`/`_PASSWORD`/`_SUBDOMAIN`
+(+ `RELAY_SSH`; a domain hosted on deSEC or Dynu instead: `RT_DNS=desec` + `DEDYN_TOKEN`, `RT_DNS=dynu` + `DYNU_CLIENT_ID`/`DYNU_SECRET`). Then on
+Vercel (production): `RT_URL=wss://<RT_DOMAIN>:8791` and the same `RT_SECRET`, and redeploy. A browser
+that can't open the socket twice in a row (8 s each) plays on through the database relay, as without `RT_URL`.
+Check: `curl https://<RT_DOMAIN>:8791/health`; remove: `systemctl disable --now streetquest-rt streetquest-rt-renew.timer`.
+
 ## Production checklist
 
 - **Installable app & offline:** `/sw.js` (service worker) caches the app, map tiles you've seen and your last game

@@ -9,13 +9,15 @@
 // with who you are (/api/rt/ticket), and match results go back to the web app signed
 // (/api/rt/result), which pays out.
 //
-// Env: PORT, AUTH_SECRET, APP_URL (the web app, for results), RT_ORIGINS (allowed page
+// Env: PORT, RT_SECRET (or AUTH_SECRET), RT_TLS_CERT + RT_TLS_KEY (optional), APP_URL (the web app, for results), RT_ORIGINS (allowed page
 // origins, comma-separated; empty = any).
 import { createHmac } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
 import http from "node:http";
+import https from "node:https";
 import { jwtVerify } from "jose";
 import { WebSocketServer, type WebSocket } from "ws";
-import { serverKey } from "../src/server/session";
+import { rtKey } from "../src/server/session";
 import { decodeState, PROTOCOL, TICK_HZ, type ClientMsg } from "../src/lib/arena/protocol";
 import { Hub, type Identity } from "./hub";
 import type { Match, MatchResult } from "./match";
@@ -24,21 +26,40 @@ import type { Player } from "./player";
 const PORT = Number(process.env.PORT ?? 8787);
 const APP_URL = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const ORIGINS = (process.env.RT_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-const TICKET_KEY = new TextEncoder().encode(serverKey("rt"));
-const RESULT_KEY = serverKey("rt-result");
+const TICKET_KEY = new TextEncoder().encode(rtKey("rt"));
+const RESULT_KEY = rtKey("rt-result");
 const MAX_MSGS_PER_S = 120;
 
 const hub = new Hub((m, results) => void report(m, results));
 
 // ---------------------------------------------------------------- http + ws
-const server = http.createServer((req, res) => {
+// TLS (wss://, needed by pages served over https): RT_TLS_CERT + RT_TLS_KEY (PEM files). A renewed
+// certificate is picked up without a restart (checked hourly), so matches aren't dropped.
+const TLS_CERT = process.env.RT_TLS_CERT, TLS_KEY = process.env.RT_TLS_KEY;
+const tls = () => ({ cert: readFileSync(TLS_CERT!), key: readFileSync(TLS_KEY!) });
+const handler: http.RequestListener = (req, res) => {
   if (req.url === "/health" || req.url === "/") {
     res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
     res.end(JSON.stringify({ ok: true, players: hub.players.size, matches: hub.matches.size, protocol: PROTOCOL }));
     return;
   }
   res.writeHead(404).end();
-});
+};
+const server = TLS_CERT && TLS_KEY ? https.createServer(tls(), handler) : http.createServer(handler);
+if (server instanceof https.Server) {
+  let stamp = statSync(TLS_CERT!).mtimeMs;
+  setInterval(() => {
+    try {
+      const now = statSync(TLS_CERT!).mtimeMs;
+      if (now === stamp) return;
+      server.setSecureContext(tls());
+      stamp = now;
+      console.log("[rt] TLS certificate reloaded");
+    } catch (e) {
+      console.error("[rt] TLS reload failed", (e as Error).message);
+    }
+  }, 3600_000).unref();
+}
 
 const wss = new WebSocketServer({
   server,
@@ -128,4 +149,4 @@ async function report(m: Match, results: MatchResult[]) {
 }
 
 setInterval(() => hub.tick(), 1000 / TICK_HZ);
-server.listen(PORT, () => console.log(`[rt] Street Arena realtime on :${PORT} → results to ${APP_URL}`));
+server.listen(PORT, () => console.log(`[rt] Street Arena realtime on :${PORT}${server instanceof https.Server ? " (TLS)" : ""} → results to ${APP_URL}`));

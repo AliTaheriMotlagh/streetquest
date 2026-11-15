@@ -5,7 +5,9 @@
 //    city's other players come over HTTP (drive/net.ts + server/arena.ts), and matches
 //    are played with other people through the game server (relay.ts): a match I make is
 //    open to my party and to players nearby, and I can join theirs.
-//  - Reconnects with backoff (a fresh ticket each time), and drops the socket after a
+//  - Reconnects with backoff (a fresh ticket each time); a realtime server that can't be reached
+//    at all (down, or its port blocked on this network) → plays on as if none were deployed.
+//  - Drops the socket after a
 //    minute in the background so nobody stands frozen in the street for others.
 //  - Keeps the server clock (offset measured at the middle of each ping's round trip,
 //    smoothed) so snapshots can be interpolated on the server's timeline. In someone
@@ -14,6 +16,9 @@ import { decodeSnap, encodeState, localFrame, OP_SNAP, PROTOCOL, type ClientMsg,
 import type { Hub, Identity } from "../../../realtime/hub";
 import type { Player, Sock } from "../../../realtime/player";
 import { Mixer, RelayGuest, RelayHost, relayApi } from "./relay";
+
+/** A socket that hasn't opened in this long is given up; this many in a row and the game plays without the realtime server. */
+const RT_OPEN_MS = 8000, RT_GIVE_UP = 2;
 
 export type RtHandlers = {
   snap: (t: number, list: SnapEntity[]) => void;
@@ -45,6 +50,8 @@ export class RtClient {
   private ws: WebSocket | null = null;
   private stopped = false;
   private fails = 0;
+  /** Sockets in a row that never opened: the realtime server is down or blocked on this network. */
+  private unreachable = 0;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private pinger: ReturnType<typeof setInterval> | null = null;
   private hiddenAt = 0;
@@ -272,14 +279,25 @@ export class RtClient {
     const ws = new WebSocket(pass.url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    let opened = false;
+    // A filtered port can hang for a minute before failing: give up sooner.
+    const slow = setTimeout(() => !opened && ws.close(), RT_OPEN_MS);
     ws.onopen = () => {
+      opened = true;
+      this.unreachable = 0;
+      clearTimeout(slow);
       ws.send(JSON.stringify({ t: "hello", v: PROTOCOL, ticket, anchor: this.anchor } satisfies ClientMsg));
     };
     ws.onmessage = (e) => this.receive(e.data as string | ArrayBuffer);
     ws.onerror = () => {};
     ws.onclose = (e) => {
+      clearTimeout(slow);
+      if (this.ws !== ws) return;
       this.ws = null;
       this.close();
+      // The realtime server can't be reached from here: play on without it, the way the game does
+      // when none is deployed (matches go through the game server), until the page is reloaded.
+      if (!opened && ++this.unreachable >= RT_GIVE_UP && !this.stopped) return void this.startLocal();
       // Replaced by another tab, or a ticket the server didn't take: don't fight it.
       if (e.code === 4009 || e.code === 4003) this.fails = 6;
       this.later();

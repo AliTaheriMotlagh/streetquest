@@ -10,6 +10,12 @@ const raw = process.env.AUTH_SECRET || createHash("sha256").update(`sq|${process
 const secret = () => new TextEncoder().encode(raw);
 /** Derive a purpose-specific key from the server secret (never the JWT key itself). */
 export const serverKey = (purpose: string) => createHash("sha256").update(`${purpose}|${raw}`).digest("hex");
+/**
+ * Keys shared with the realtime server (tickets, match results). RT_SECRET, when set on both, is
+ * used instead of AUTH_SECRET, so the realtime box never needs the app's session secret.
+ */
+export const rtKey = (purpose: "rt" | "rt-result") =>
+  process.env.RT_SECRET ? createHash("sha256").update(`${purpose}|rt|${process.env.RT_SECRET}`).digest("hex") : serverKey(purpose);
 
 export async function signSession(userId: string) {
   return new SignJWT({ sub: userId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("365d").sign(secret());

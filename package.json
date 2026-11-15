@@ -41,7 +41,8 @@
     "load:server": "NEXT_DIST_DIR=.next-load next build && NEXT_DIST_DIR=.next-load next start -p 3300",
     "load:seed": "tsx --env-file-if-exists=.env scripts/load/seed.ts",
     "load:clean": "tsx --env-file-if-exists=.env scripts/load/seed.ts --clean",
-    "load:test": "k6 run --quiet --log-output=none scripts/load/scenarios.js"
+    "load:test": "k6 run --quiet --log-output=none scripts/load/scenarios.js",
+    "rt:deploy": "bash scripts/rt-deploy.sh"
   },
   "dependencies": {
     "@huggingface/inference": "4.13.32",
