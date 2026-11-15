@@ -2,6 +2,7 @@
 // Location UX: the "where are you?" screen, the GPS health chip and the quick
 // "walking or from home?" question when a player comes back to the game.
 import { useEffect, useMemo, useState } from "react";
+import { isQuiet } from "@/lib/quiet";
 import { S } from "@/lib/settings";
 import { msg, t } from "@/lib/i18n";
 import { browserInfo, browserLabel, desktopUnavailableSteps, locationSteps, openInBrowserUrl, preciseSteps } from "./location/browser";
@@ -185,7 +186,7 @@ export function useModePrompt(enabled: boolean) {
     if (!enabled) return;
     const ask = () => {
       try {
-        if (localStorage.getItem(NEVER_KEY) || !localStorage.getItem(TOUR_KEY)) return; // first visit: the tour asks
+        if (localStorage.getItem(NEVER_KEY) || !localStorage.getItem(TOUR_KEY) || isQuiet()) return; // first visit: the tour asks
         if (sessionStorage.getItem(ASKED_KEY)) return;
         sessionStorage.setItem(ASKED_KEY, "1");
       } catch {

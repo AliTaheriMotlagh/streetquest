@@ -146,7 +146,7 @@ const local: Record<string, string> = {
 
   // ---- navigation
   "🏁 You've arrived{name}": "🏁 Vardın{name}",
-  "{n} min · {d} · live traffic": "{n} dk · {d} · canlı trafikle",
+  "{n} min · {d}": "{n} dk · {d}",
   "Stop navigation": "Yol tarifini durdur",
   "That's too far to route": "Yol tarifi için bu çok uzak",
   "Routing isn't available right now — try Directions instead": "Yol tarifi şu an kullanılamıyor — bunun yerine harita uygulamasındaki «Yol tarifi»ni dene",
@@ -279,6 +279,27 @@ const local: Record<string, string> = {
   "Breakfast": "Kahvaltı",
   "Players see your Yemeksepeti menu and reviews on your store: we find it by your store's name and location.": "Oyuncular Yemeksepeti menünü ve yorumlarını dükkânında görür: onu dükkânının adı ve konumundan buluruz.",
   "Players see your store's details from the open map; menu sites from your country will join here as the game adds them.": "Oyuncular dükkânının bilgilerini açık haritadan görür; ülkendeki menü siteleri oyun ekledikçe buraya gelecek.",
+  // Turn-by-turn (lib/routeSteps.ts)
+  "Head off": "Yola çıkın",
+  "You've arrived": "Vardınız",
+  "Turn left": "Sola dönün",
+  "Turn right": "Sağa dönün",
+  "Bear left": "Hafif sola",
+  "Bear right": "Hafif sağa",
+  "Turn sharp left": "Keskin sola dönün",
+  "Turn sharp right": "Keskin sağa dönün",
+  "Go straight on": "Düz devam edin",
+  "Make a U-turn": "U dönüşü yapın",
+  "At the roundabout, take exit {n}": "Dönel kavşakta {n}. çıkışı alın",
+  "Take the ramp": "Rampaya girin",
+  "Take the exit": "Çıkışı alın",
+  "Merge": "Yola katılın",
+  "Keep left at the fork": "Ayrımda soldan devam edin",
+  "Keep right at the fork": "Ayrımda sağdan devam edin",
+  "tickets, stays and trips between cities": "şehirler arası bilet, konaklama ve gezi",
+  "Own car": "Kendi aracınız",
+  "Flight": "Uçuş",
+  "Bus": "Otobüs",
 };
 
 export default local;

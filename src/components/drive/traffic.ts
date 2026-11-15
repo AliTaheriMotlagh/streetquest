@@ -36,7 +36,6 @@ const POLL_MS = 30_000;
 export class TrafficFeed {
   /** Bumps whenever new readings arrive (colours are recomputed then). */
   version = 0;
-  neshan = "off";
   private grid = new Map<string, TrafficCellOut[]>();
   private at = 0;
   private from: LatLng | null = null;
@@ -50,7 +49,7 @@ export class TrafficFeed {
     this.busy = true;
     this.at = now;
     this.from = p;
-    api<{ cells: TrafficCellOut[]; neshan: string }>(`/api/traffic?lat=${p.lat.toFixed(5)}&lng=${p.lng.toFixed(5)}`)
+    api<{ cells: TrafficCellOut[] }>(`/api/traffic?lat=${p.lat.toFixed(5)}&lng=${p.lng.toFixed(5)}`)
       .then((r) => {
         this.grid.clear();
         for (const c of r.cells) {
@@ -59,7 +58,6 @@ export class TrafficFeed {
           if (l) l.push(c);
           else this.grid.set(k, [c]);
         }
-        this.neshan = r.neshan;
         this.version++;
       })
       .catch(() => {})

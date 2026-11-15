@@ -4,13 +4,15 @@
 //
 //   <SearchField>   the box (clears with ✕, Enter hides the phone keyboard)
 //   <FilterBar>     one row under it: [Filters •n] [quick chips…] — never wraps, scrolls sideways
-//   <FilterPanel>   opens in place under the bar (no sheet on a sheet): groups of chips, then
-//                   "Clear" and "Show n results"
+//   <FilterPanel>   its own sheet over everything: groups of chips scrolling inside it, "Clear all"
+//                   at the top, "Show n results" always at the bottom
 //   <Chip>          a toggle; a site's chip wears its brand colour (`color`) and a count (`n`)
 //   <Meta>          "Store · 300 m · ★ 4.3": each part isolated (<bdi>) so Persian and English,
 //                   digits and units never run into each other
 //   <Sources>       the sites that list a store, as small coloured badges
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { pushBack } from "./backStack";
 import { fmtNum, t } from "@/lib/i18n";
 import { LISTING_SOURCES, type ListingSource } from "@/lib/stores/listing";
 
@@ -70,22 +72,49 @@ export function FilterBar({ count, open, onToggle, panelId, children }: { count:
   );
 }
 
-export function FilterPanel({ id, open, onClear, onDone, results, children }: { id: string; open: boolean; onClear?: () => void; onDone: () => void; results: string; children: ReactNode }) {
-  if (!open) return null;
-  return (
-    <div className="fx-panel" id={id} role="group" aria-label={t("Filters")}>
-      {children}
-      <div className="fx-panel-end">
-        {onClear && (
-          <button type="button" className="btn ghost small" onClick={onClear}>
-            {t("Clear all")}
+/**
+ * The filters, as their own sheet over everything (a bottom sheet on a phone, a dialog on a wide
+ * screen): a head with "Clear all" and ✕, the groups scrolling on their own — never the list or
+ * the sheet behind — and "Show n results" always in reach at the bottom. Back and the backdrop close it.
+ */
+export function FilterPanel({ id, open, onClear, onDone, results, children, title }: { id: string; open: boolean; onClear?: () => void; onDone: () => void; results: string; children: ReactNode; title?: string }) {
+  const done = useRef(onDone);
+  done.current = onDone;
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => setHost(document.body), []);
+  useEffect(() => (open ? pushBack(() => done.current()) : undefined), [open]);
+  // Escape closes it on a keyboard.
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && done.current();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [open]);
+  if (!open || !host) return null;
+  return createPortal(
+    <div className="fx-sheet-wrap" onClick={(e) => e.target === e.currentTarget && onDone()}>
+      <div className="fx-sheet" id={id} role="dialog" aria-modal="true" aria-label={title ?? t("Filters")} data-no-drag>
+        <div className="fx-sheet-grip" aria-hidden />
+        <header className="fx-sheet-head">
+          <h2>{title ?? t("Filters")}</h2>
+          {onClear && (
+            <button type="button" className="fx-sheet-clear" onClick={onClear}>
+              {t("Clear all")}
+            </button>
+          )}
+          <button type="button" className="fx-sheet-x" onClick={onDone} aria-label={t("Close")}>
+            ✕
           </button>
-        )}
-        <button type="button" className="btn small fx-done" onClick={onDone}>
-          {results}
-        </button>
+        </header>
+        <div className="fx-sheet-body">{children}</div>
+        <footer className="fx-sheet-foot">
+          <button type="button" className="btn fx-done" onClick={onDone}>
+            {results}
+          </button>
+        </footer>
       </div>
-    </div>
+    </div>,
+    host,
   );
 }
 
@@ -132,7 +161,7 @@ export function Sources({ list, max = 3 }: { list: ListingSource[]; max?: number
 /** Open the travel planner (components/game/Travel.tsx) from anywhere: the map and the 3D city listen. `to`: a city key. */
 export const openTravel = (to?: string) => window.dispatchEvent(new CustomEvent("sq-travel", { detail: { to } }));
 
-/** Stores | Products | Travel: the one Search screen's three parts (StoreBrowser, ProductSearch, Travel). */
+/** Stores | Products: the Search screen's two parts (StoreBrowser, ProductSearch). Travel has its own screen. */
 export function FindTabs({ on, onStores, onProducts }: { on: "stores" | "products"; onStores?: () => void; onProducts?: () => void }) {
   return (
     <div className="fx-seg" role="tablist" aria-label={t("Search")}>
@@ -141,9 +170,6 @@ export function FindTabs({ on, onStores, onProducts }: { on: "stores" | "product
       </button>
       <button type="button" role="tab" aria-selected={on === "products"} className={on === "products" ? "on" : ""} onClick={on === "products" ? undefined : onProducts}>
         {t("Products & prices")}
-      </button>
-      <button type="button" role="tab" aria-selected={false} onClick={() => openTravel()}>
-        {t("Travel")}
       </button>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 import L from "leaflet";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { PLACE_CATS } from "@/lib/places";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
@@ -222,7 +222,9 @@ function useMapView() {
     const check = () => {
       raf = 0;
       const v = viewRef.current;
-      if (map.getZoom() !== v.zoom || !v.bounds.contains(map.getBounds())) setView(read());
+      // A transition: React re-groups the markers in slices between frames instead of one long
+      // task right as the zoom lands (what made zooming hitch for 100–300 ms).
+      if (map.getZoom() !== v.zoom || !v.bounds.contains(map.getBounds())) startTransition(() => setView(read()));
     };
     // Rotation and URL-bar resizes fire bursts of events: handle at most one per frame.
     const later = () => {
@@ -352,7 +354,7 @@ const TIER_COLORS = ["#5bd38c", "#4cb8ff", "#b77dff", "#ff6b6b"];
  * same object while the map pans and zooms; whether its name fits is a class toggled on the element
  * — the marker is never re-inserted, so nothing blinks or replays its entrance.
  */
-const Pin = memo(function Pin({ lat, lng, html, cls, z, named, title, onClick }: { lat: number; lng: number; html: string; cls: string; z: number; named: boolean; title: string; onClick: () => void }) {
+const Pin = memo(function Pin({ id, lat, lng, html, cls, z, named, title, onClick }: { id?: string; lat: number; lng: number; html: string; cls: string; z: number; named: boolean; title: string; onClick: () => void }) {
   const ref = useRef<L.Marker | null>(null);
   const at = useMemo<[number, number]>(() => [lat, lng], [lat, lng]);
   const ic = icon(html, cls, PIN_BOX);
@@ -362,8 +364,28 @@ const Pin = memo(function Pin({ lat, lng, html, cls, z, named, title, onClick }:
   useEffect(() => {
     ref.current?.getElement()?.querySelector(".mk")?.classList.toggle("nolabel", !named);
   }, [named, ic]);
+  // The first time this place is on the map, it drops in; re-grouped by a zoom, it's just there.
+  useEffect(() => {
+    if (!id || seenPins.has(id)) return;
+    seenPins.add(id);
+    const mk = ref.current?.getElement()?.querySelector(".mk");
+    // A handful drop in per frame; when a zoom out brings dozens at once, the rest just appear.
+    if (!mk || !freshSlot()) return;
+    mk.classList.add("fresh");
+    const done = () => mk.classList.remove("fresh");
+    mk.addEventListener("animationend", done, { once: true });
+  }, [id, ic]);
   return <Marker ref={ref} position={at} icon={ic} zIndexOffset={z} eventHandlers={handlers} title={title} alt={title} />;
 });
+/** Places already shown once this visit (their pin doesn't drop in again). */
+const seenPins = new Set<string>();
+/** At most this many pins start their drop-in in one frame (each is a compositor layer while it runs). */
+const FRESH_PER_FRAME = 10;
+let freshLeft = FRESH_PER_FRAME, freshFrame = 0;
+function freshSlot() {
+  if (!freshFrame) freshFrame = requestAnimationFrame(() => ((freshFrame = 0), (freshLeft = FRESH_PER_FRAME)));
+  return freshLeft-- > 0;
+}
 /** A crowded place: a dot in its colour on the map's canvas (cheap with hundreds; still tappable). */
 const Dot = memo(function Dot({ lat, lng, color, onClick }: { lat: number; lng: number; color: string; onClick: () => void }) {
   const at = useMemo<[number, number]>(() => [lat, lng], [lat, lng]);
@@ -434,8 +456,10 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
   const run = me?.activeRun;
 
   // Pin size, labels and animations per zoom level are pure CSS (--pin and .lod-* in map-pins.css).
+  // On the marker pane only: a custom property set on the whole container restyled every tile,
+  // control and HUD element under it (~3000) on each zoom — a 60 ms stall on a phone.
   useEffect(() => {
-    const el = map.getContainer();
+    const el = map.getPane("markerPane")!;
     el.classList.remove("lod-near", "lod-mid", "lod-far");
     el.classList.add(`lod-${lod}`);
     // Street level, nothing grouped: room for every place's name.
@@ -538,7 +562,7 @@ function Layers({ world, me, game, travelTo, travelPath, vendors, spots, divar, 
     const it = g.items[0];
     if (deco.hidden.has(g.key)) return null;
     if (deco.dots.has(g.key)) return <Dot key={g.key} lat={it.lat} lng={it.lng} color={it.spec.color} onClick={() => onSelect(it.sel)} />;
-    return <Pin key={g.key} lat={it.lat} lng={it.lng} html={pinHtml(it.spec)} cls={pinClass(it.spec)} z={it.z} named={deco.named.has(g.key)} title={it.spec.label ?? ""} onClick={() => onSelect(it.sel)} />;
+    return <Pin key={g.key} id={it.id} lat={it.lat} lng={it.lng} html={pinHtml(it.spec)} cls={pinClass(it.spec)} z={it.z} named={deco.named.has(g.key)} title={it.spec.label ?? ""} onClick={() => onSelect(it.sel)} />;
   };
 
   return (

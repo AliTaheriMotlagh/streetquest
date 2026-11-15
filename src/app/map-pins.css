@@ -4,22 +4,25 @@
    Size lives in --pin on the map (its level of detail), so a zoom changes every pin at once with a
    transition, and a crowded pin turns into a dot by a class — the element is never swapped. */
 
-/* (The lod-* classes are on Leaflet's container, inside .map.) */
-.map .leaflet-container { --pin: 30px; --pin-label: 10px; }
-.map .leaflet-container.lod-near { --pin: 34px; --pin-label: 10.5px; }
-.map .leaflet-container.lod-mid { --pin: 28px; --pin-label: 10px; }
-.map .leaflet-container.lod-far { --pin: 24px; }
+/* (The lod-* classes are on Leaflet's marker pane only: set on the whole container, the custom
+   property restyled every tile and control on each zoom.) */
+.map .leaflet-marker-pane { --pin: 30px; --pin-label: 10px; }
+.map .leaflet-marker-pane.lod-near { --pin: 34px; --pin-label: 10.5px; }
+.map .leaflet-marker-pane.lod-mid { --pin: 28px; --pin-label: 10px; }
+.map .leaflet-marker-pane.lod-far { --pin: 24px; }
 
 /* The 48 px box Leaflet anchors on its centre; the disc sits in the middle of it. */
 .map .leaflet-marker-icon .mk.pin {
   width: 48px; height: 48px; display: grid; place-items: center; position: relative;
   font-size: calc(var(--pin) * .54); line-height: 1; text-shadow: none; scale: none;
-  animation: pin-in .22s cubic-bezier(.2, .8, .3, 1) backwards;
   -webkit-tap-highlight-color: transparent;
 }
-/* A sheet over the map pauses marker animations; a pin that arrives meanwhile must still show. */
-.game:has(.sheet) .map .leaflet-marker-icon .mk.pin { animation-play-state: running !important; }
-@keyframes pin-in { from { opacity: 0; transform: scale(.6); } }
+/* A pin drops in only the first time its place shows up (GameMap.tsx Pin adds .fresh): every zoom
+   re-groups the pins, and a hundred of them replaying an entrance at once (each its own compositor
+   layer, a style pass per frame) was the zoom hitch. Transform + opacity only: the compositor runs it. */
+.map .leaflet-marker-icon .mk.pin { animation: none; }
+.map .leaflet-marker-icon .mk.pin.fresh { animation: pin-in .28s cubic-bezier(.2, .9, .3, 1.2) backwards; }
+@keyframes pin-in { from { opacity: 0; transform: translateY(-6px) scale(.7); } }
 
 /* ---- the disc */
 .mk.pin .pin-b {
@@ -29,7 +32,9 @@
   background: color-mix(in srgb, var(--c) 22%, #10141c);
   border: 2px solid var(--c);
   box-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 3px 8px rgba(0, 0, 0, .3);
-  transition: width .2s ease, height .2s ease, box-shadow .2s ease, transform .15s ease;
+  /* Only what the compositor can run: a width/height transition re-laid out every pin on every
+     frame after each zoom (the size snaps with the zoom instead). */
+  transition: transform .15s ease;
 }
 .mk.pin .pin-f { display: grid; place-items: center; width: 100%; height: 100%; }
 .mk.pin .pin-f img, .mk.pin .pin-f svg { width: 64%; height: 64%; object-fit: contain; }
@@ -41,7 +46,7 @@
 /* A bubble of places: dark disc, the glyph in their colour. */
 .mk.pin-cluster .pin-b.pin-solid { background: rgba(16, 20, 28, .92); border-color: var(--c); }
 .mk.pin-cluster .pin-g { stroke: var(--c); }
-.mk.pin .pin-logo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; opacity: 0; transition: opacity .2s; }
+.mk.pin .pin-logo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; opacity: 0; }
 /* A store's own logo only up close, where it reads; further out the kind of place is clearer. */
 .lod-near .mk.pin .pin-logo { opacity: 1; }
 @media (hover: hover) { .mk.pin:hover .pin-b { transform: scale(1.12); } }
@@ -65,7 +70,7 @@
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center;
   font: 800 10px/18px var(--body); font-variant-numeric: tabular-nums; white-space: nowrap;
   color: #fff; background: #1f2633; border: 1.5px solid rgba(255, 255, 255, .9);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .4); transition: opacity .15s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
 }
 .mk.pin .pin-badge.deal { background: #e2264d; }
 .mk.pin .pin-badge.back { background: #13a36b; }
@@ -80,7 +85,7 @@
   max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 1px 6px; border-radius: 6px; font: 700 var(--pin-label)/1.45 var(--body); color: #fff;
   background: rgba(14, 17, 26, .84); box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
-  transition: opacity .15s; pointer-events: none;
+  pointer-events: none;
 }
 .mk.pin.nolabel .nm { display: none; }
 .lod-far .mk.pin .nm { display: none; }
@@ -91,7 +96,7 @@
 .map.light .mk.pin .pin-b { background: color-mix(in srgb, var(--c) 18%, #fff); }
 
 @media (prefers-reduced-motion: reduce) {
-  .map .leaflet-marker-icon .mk.pin, .mk.pin.gold .pin-b { animation: none; }
+  .map .leaflet-marker-icon .mk.pin.fresh, .mk.pin.gold .pin-b { animation: none; }
   .mk.pin .pin-b, .mk.pin .pin-logo, .mk.pin .nm, .mk.pin .pin-badge { transition: none; }
 }
 /* Driving: the 2D map behind the 3D city stays still. */

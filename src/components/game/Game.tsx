@@ -19,6 +19,8 @@ import { sfx, isMuted, setMuted, onMuteChange } from "./sfx";
 import { setMusicMood, startMusic } from "./music";
 import { InboxPanel } from "./Inbox";
 import { Tour, TOUR_KEY } from "./Help";
+import { isQuiet } from "@/lib/quiet";
+import { stepText, TURN_ICON } from "@/lib/routeSteps";
 import { enablePush, pushSupported, reportAway, swEnabled, syncPush } from "@/components/pwaClient";
 import { askConfirm } from "@/components/Dialogs";
 import { CallScreen, type CallInvite, type CallPeer } from "./Call";
@@ -818,7 +820,7 @@ export default function Game() {
   useEffect(() => {
     if (!me || !mapReady) return;
     try {
-      if (!localStorage.getItem(TOUR_KEY)) setTimeout(() => setTour(true), 1200);
+      if (!localStorage.getItem(TOUR_KEY) && !isQuiet()) setTimeout(() => setTour(true), 1200);
     } catch {}
   }, [me?.id, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
   // Notifications already on: re-register this device for whoever is signed in now.
@@ -845,7 +847,7 @@ export default function Game() {
     try {
       localStorage.setItem(TOUR_KEY, "1");
       // Then, once, offer notifications (only where they can actually work).
-      if (pushSupported() && swEnabled() && Notification.permission === "default" && !localStorage.getItem("sq_push_asked")) setTimeout(() => setAskPush("general"), 1500);
+      if (pushSupported() && swEnabled() && Notification.permission === "default" && !localStorage.getItem("sq_push_asked") && !isQuiet()) setTimeout(() => setAskPush("general"), 1500);
     } catch {}
   }, []);
 
@@ -1582,6 +1584,10 @@ export default function Game() {
                   <span className="mm-t">{t("Metro")}<span className="small mm-sub">{t("lines, trip planner, guide")}</span></span>
                 </Button>
               )}
+              <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setTripPlan({}), setMoreOpen(false))}>
+                <Icon name="plane" size={18} />
+                <span className="mm-t">{t("Travel")}<span className="small mm-sub">{t("tickets, stays and trips between cities")}</span></span>
+              </Button>
               <Button role="menuitem" aria-haspopup="dialog" onClick={() => (setVasaOpen(true), setMoreOpen(false))}>
                 <Icon name="people" size={18} />
                 <span className="mm-t">{t("Vasatyab")}<span className="small mm-sub">{t("where to meet your friends")}</span></span>
@@ -1835,8 +1841,8 @@ function RouteChip({ route, pos, onClear }: { route: LiveRoute & { to: LatLng; n
     <div className="route-chip" role="status">
       <div className="grow">
         <b dir="auto">🧭 {route.name ?? t("Route")}</b>
-        <div className="small">{t("{n} min · {d} · live traffic", { n: fmtNum(mins), d: formatDistance(left) })}</div>
-        {next && <div className="small muted" dir="auto">↪ {next.text}</div>}
+        <div className="small">{t("{n} min · {d}", { n: fmtNum(mins), d: formatDistance(left) })}</div>
+        {next && <div className="small muted" dir="auto">{next.turn ? TURN_ICON[next.turn] : "↪"} {stepText(next)}{pos && next.turn !== "arrive" ? ` · ${formatDistance(distanceM(pos, { lat: next.at[0], lng: next.at[1] }))}` : ""}</div>}
       </div>
       <Button className="btn small ghost" onClick={onClear} aria-label={t("Stop navigation")}>✕</Button>
     </div>

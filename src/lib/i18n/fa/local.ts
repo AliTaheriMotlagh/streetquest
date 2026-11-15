@@ -146,7 +146,7 @@ const local: Record<string, string> = {
 
   // ---- navigation
   "🏁 You've arrived{name}": "🏁 رسیدی{name}",
-  "{n} min · {d} · live traffic": "{n} دقیقه · {d} · با ترافیک زنده",
+  "{n} min · {d}": "{n} دقیقه · {d}",
   "Stop navigation": "توقف مسیریابی",
   "That's too far to route": "برای مسیریابی خیلی دوره",
   "Routing isn't available right now — try Directions instead": "مسیریابی الان در دسترس نیست — از «مسیریابی» با برنامه‌ی نقشه استفاده کن",
@@ -279,6 +279,27 @@ const local: Record<string, string> = {
   "Breakfast": "صبحانه",
   "Players see your Yemeksepeti menu and reviews on your store: we find it by your store's name and location.": "بازیکن‌ها منو و نظرهای یمک‌سپتی مغازه‌ات را روی مغازه می‌بینند: از روی نام و مکان مغازه پیدایش می‌کنیم.",
   "Players see your store's details from the open map; menu sites from your country will join here as the game adds them.": "بازیکن‌ها مشخصات مغازه‌ات را از نقشه‌ی باز می‌بینند؛ سایت‌های منوی کشورت هم وقتی بازی اضافه‌شان کند این‌جا می‌آیند.",
+  // Turn-by-turn (lib/routeSteps.ts)
+  "Head off": "راه بیفتید",
+  "You've arrived": "رسیدید",
+  "Turn left": "به چپ بپیچید",
+  "Turn right": "به راست بپیچید",
+  "Bear left": "کمی به چپ",
+  "Bear right": "کمی به راست",
+  "Turn sharp left": "تند به چپ بپیچید",
+  "Turn sharp right": "تند به راست بپیچید",
+  "Go straight on": "مستقیم بروید",
+  "Make a U-turn": "دور بزنید",
+  "At the roundabout, take exit {n}": "در میدان، خروجی {n} را بروید",
+  "Take the ramp": "وارد رمپ شوید",
+  "Take the exit": "از خروجی بروید",
+  "Merge": "وارد مسیر شوید",
+  "Keep left at the fork": "در دوراهی سمت چپ بمانید",
+  "Keep right at the fork": "در دوراهی سمت راست بمانید",
+  "tickets, stays and trips between cities": "سفر: بلیت، اقامت و سفر بین شهرها",
+  "Own car": "خودروی شخصی",
+  "Flight": "پرواز",
+  "Bus": "اتوبوس",
 };
 
 export default local;

@@ -1,0 +1,166 @@
+// A whole trip (pure; tests/travelPlan.test.ts): from a home city through any number of cities —
+// so many nights in each — and back, or not. Each leg goes its own way (a flight there, the train
+// on, a bus back, or your own car), each city has its own stay, and the plan adds it all up for
+// everyone travelling: tickets, nights and fuel, the total and per person.
+//
+//   plan  = { home, stops: [{ city, nights }…], back, travellers, start }
+//   legs  = home → stop 1 → stop 2 … (→ home): each leg's day follows from the nights before it
+//   picks = per leg: a ticket (a Trip from lib/travel) or "car"; per stop: a stay
+import { distanceM } from "../geo";
+import { msg } from "../i18n";
+import { cityByKey, isoDay, type City, type Mode, type Stay, type Trip } from "./index";
+
+/** How a leg is travelled: a ticket (flight, train, bus) or your own car. */
+export type Way = Mode | "car";
+export const WAYS: Record<Way, { emoji: string; label: string }> = {
+  flight: { emoji: "✈️", label: msg("Flight") },
+  train: { emoji: "🚆", label: msg("Train") },
+  bus: { emoji: "🚌", label: msg("Bus") },
+  car: { emoji: "🚗", label: msg("Own car") },
+};
+export const WAY_KEYS = Object.keys(WAYS) as [Way, ...Way[]];
+
+export type Stop = { city: string; nights: number };
+export type Plan = {
+  /** Where the trip starts (a city key). */
+  home: string;
+  stops: Stop[];
+  /** Back home at the end. */
+  back: boolean;
+  travellers: number;
+  /** The first leg's day (yyyy-mm-dd). */
+  start: string;
+};
+export type Leg = { i: number; from: string; to: string; date: string };
+
+/** What was chosen for a leg: the ticket (its price is per person), or the car. */
+export type LegPick = { way: "car" } | { way: Mode; trip: Trip };
+/** What was chosen for a stop's nights (price a night, for the place). */
+export type StayPick = { stay: Stay };
+
+export const MAX_STOPS = 8;
+export const MAX_NIGHTS = 30;
+export const MAX_TRAVELLERS = 9;
+
+const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** A new plan: from home, nowhere yet, starting tomorrow (Iran time). */
+export const newPlan = (home: string, now = Date.now()): Plan => ({ home, stops: [], back: true, travellers: 1, start: isoDay(now, 1) });
+
+/** The legs, in order, each on its day: you leave a city the morning after your last night there. */
+export function legsOf(p: Plan): Leg[] {
+  const out: Leg[] = [];
+  let at = p.home, day = p.start;
+  for (const s of p.stops) {
+    if (s.city !== at) out.push({ i: out.length, from: at, to: s.city, date: day });
+    day = addDays(day, Math.max(0, s.nights));
+    at = s.city;
+  }
+  if (p.back && p.stops.length && at !== p.home) out.push({ i: out.length, from: at, to: p.home, date: day });
+  return out;
+}
+
+/** The day you arrive at each stop and the day you leave it (yyyy-mm-dd). */
+export function stopDays(p: Plan): { arrive: string; leave: string }[] {
+  let day = p.start;
+  return p.stops.map((s) => {
+    const arrive = day;
+    day = addDays(day, Math.max(0, s.nights));
+    return { arrive, leave: day };
+  });
+}
+
+/** Days from the first leg to the last. */
+export const tripDays = (p: Plan) => p.stops.reduce((n, s) => n + Math.max(0, s.nights), 0);
+
+// ---------------------------------------------------------------- driving there yourself
+/** Roads wind: a road trip is about this much longer than the straight line. */
+export const ROAD_FACTOR = 1.3;
+/** Average speed on intercity roads with a stop or two (km/h). */
+export const ROAD_KMH = 80;
+/** A family car on the highway (litres per 100 km). */
+export const CAR_L_PER_100KM = 8;
+/** Petrol, toman a litre (Iran's second-tier price, beyond the monthly card quota). */
+export const FUEL_TOMAN = 3000;
+/** People per car. */
+export const CAR_SEATS = 4;
+
+export type Drive = { km: number; minutes: number; litres: number; fuel: number; cars: number };
+
+/** Driving a leg yourself: road distance, time, petrol and its cost for every car needed (null: a city without a position). */
+export function driveOf(from: City | null, to: City | null, travellers = 1): Drive | null {
+  if (from?.lat == null || from.lng == null || to?.lat == null || to.lng == null) return null;
+  const km = Math.round((distanceM({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }) / 1000) * ROAD_FACTOR);
+  const cars = Math.max(1, Math.ceil(travellers / CAR_SEATS));
+  const litres = Math.round((km * CAR_L_PER_100KM) / 100);
+  return { km, minutes: Math.round((km / ROAD_KMH) * 60), litres, fuel: litres * FUEL_TOMAN * cars, cars };
+}
+
+// ---------------------------------------------------------------- the bill
+export type Bill = {
+  tickets: number;
+  fuel: number;
+  stays: number;
+  total: number;
+  perPerson: number;
+  /** Legs and stops with nothing chosen yet. */
+  open: { legs: number; stays: number };
+};
+
+/** Everything added up for everyone: tickets × travellers, fuel per car, each stay × its nights. */
+export function billOf(p: Plan, legPicks: Record<number, LegPick | undefined>, stayPicks: Record<number, StayPick | undefined>): Bill {
+  const legs = legsOf(p);
+  let tickets = 0, fuel = 0, stays = 0, openLegs = 0, openStays = 0;
+  for (const l of legs) {
+    const pick = legPicks[l.i];
+    if (!pick) openLegs++;
+    else if (pick.way === "car") fuel += driveOf(cityByKey(l.from), cityByKey(l.to), p.travellers)?.fuel ?? 0;
+    else tickets += pick.trip.price * p.travellers;
+  }
+  p.stops.forEach((s, i) => {
+    if (s.nights <= 0) return;
+    const pick = stayPicks[i];
+    if (!pick) openStays++;
+    else stays += pick.stay.price * s.nights * roomsFor(pick.stay, p.travellers);
+  });
+  const total = tickets + fuel + stays;
+  return { tickets, fuel, stays, total, perPerson: Math.round(total / Math.max(1, p.travellers)), open: { legs: openLegs, stays: openStays } };
+}
+
+/** How many of a place everyone needs (a place for 2 and 5 travelling: 3). */
+export const roomsFor = (s: Stay, travellers: number) => Math.max(1, Math.ceil(travellers / Math.max(1, s.capacity ?? 2)));
+
+// ---------------------------------------------------------------- comparing the ways for one leg
+export type WayBest = { way: Way; n: number; cheapest?: Trip; fastest?: Trip; drive?: Drive; none?: boolean };
+
+/** Each way side by side for one leg: how many, the cheapest and the fastest (with seats); the car's numbers. */
+export function compareWays(trips: Trip[], from: City | null, to: City | null, travellers = 1, none: Mode[] = []): WayBest[] {
+  return WAY_KEYS.map((way) => {
+    if (way === "car") {
+      const drive = driveOf(from, to, travellers);
+      return { way, n: drive ? 1 : 0, drive: drive ?? undefined, none: !drive };
+    }
+    const list = trips.filter((x) => x.mode === way && (x.seats == null || x.seats >= travellers));
+    const cheapest = list.reduce<Trip | undefined>((a, b) => (!a || b.price < a.price ? b : a), undefined);
+    const fastest = list.reduce<Trip | undefined>((a, b) => (b.minutes != null && (!a || (a.minutes ?? 1e9) > b.minutes) ? b : a), undefined);
+    return { way, n: list.length, cheapest, fastest, none: none.includes(way) };
+  });
+}
+
+/** The cheapest ticket for everyone on one leg, any way (or null). */
+export const cheapestTrip = (trips: Trip[], travellers = 1) =>
+  trips.filter((x) => x.seats == null || x.seats >= travellers).reduce<Trip | null>((a, b) => (!a || b.price < a.price ? b : a), null);
+
+// ---------------------------------------------------------------- keeping it
+/** A plan read back from storage or a link: only what makes sense survives. */
+export function cleanPlan(v: unknown, now = Date.now()): Plan | null {
+  const o = v as Partial<Plan> | null;
+  if (!o || typeof o.home !== "string" || !cityByKey(o.home)) return null;
+  const stops = (Array.isArray(o.stops) ? o.stops : [])
+    .filter((s): s is Stop => !!s && typeof s.city === "string" && !!cityByKey(s.city))
+    .slice(0, MAX_STOPS)
+    .map((s) => ({ city: s.city, nights: Math.max(0, Math.min(MAX_NIGHTS, Math.round(Number(s.nights) || 0))) }));
+  const today = isoDay(now, 0);
+  const start = typeof o.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.start) && o.start >= today ? o.start : isoDay(now, 1);
+  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start };
+}

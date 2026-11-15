@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { isQuiet } from "@/lib/quiet";
 import { t } from "@/lib/i18n";
 import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
 import { pushBack } from "./backStack";
@@ -62,7 +63,7 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
   const [showHelp, setShowHelp] = useState(false);
   const [hint, setHint] = useState(false);
   useEffect(() => {
-    if (help && HELP[help] && !helpSeen(help)) setHint(true);
+    if (help && HELP[help] && !helpSeen(help) && !isQuiet()) setHint(true);
   }, [help]);
   const closeHelp = () => {
     if (help) markHelpSeen(help);
@@ -77,6 +78,19 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
   const backRef = useRef(onBack ?? onClose);
   backRef.current = onBack ?? onClose;
   useEffect(() => pushBack(() => backRef.current()), []);
+  // `.game.sheet-on` (counted: sheets stack): what `.game:has(.sheet)` said in CSS, without
+  // making the browser re-check the whole game screen each time a map marker is added.
+  useEffect(() => {
+    const g = ref.current?.closest<HTMLElement>(".game");
+    if (!g) return;
+    g.dataset.sheets = String(Number(g.dataset.sheets ?? 0) + 1);
+    g.classList.add("sheet-on");
+    return () => {
+      const n = Math.max(0, Number(g.dataset.sheets ?? 1) - 1);
+      g.dataset.sheets = String(n);
+      if (!n) g.classList.remove("sheet-on");
+    };
+  }, []);
   return (
     <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}`} role="dialog" aria-label={title}>
       <div className="sheet-grip" />

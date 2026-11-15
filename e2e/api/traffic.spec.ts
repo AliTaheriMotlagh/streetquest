@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { offset, Player, randomSpot } from "../helpers";
 
-type Traffic = { cells: [number, number, number, number][]; neshan: string };
+type Traffic = { cells: [number, number, number, number][] };
 
 test.describe("live traffic", () => {
   test("a street two players drove shows their speed; one player's trip never shows", async ({ baseURL }) => {
@@ -19,7 +19,6 @@ test.describe("live traffic", () => {
       .poll(async () => (await drivers[0].get<Traffic>(`/api/traffic?lat=${start.lat}&lng=${start.lng}`)).data.cells, { timeout: 10_000 })
       .not.toHaveLength(0);
     const { data } = await drivers[0].get<Traffic>(`/api/traffic?lat=${start.lat}&lng=${start.lng}`);
-    expect(data.neshan).toBe("off");
     for (const [, , dir, kmh] of data.cells) {
       expect(dir).toBe(2); // east
       expect(kmh).toBeGreaterThan(35);
@@ -64,7 +63,7 @@ test.describe("navigation", () => {
     expect((await p.get(`/api/route?from=${a.lat},${a.lng}`)).status).toBe(400);
     expect((await p.get(`/api/route?from=${a.lat},${a.lng}&to=95,10`)).status).toBe(400);
     expect((await p.get(`/api/route?from=${a.lat},${a.lng}&to=${a.lat + 3},${a.lng}`)).status).toBe(400); // 300+ km
-    // The tests run without a Neshan key: a clear 503, and the card keeps its Directions links.
+    // The tests run with routing off (OSRM_*_URL=off): a clear 503, and the card keeps its Directions links.
     expect((await p.get(`/api/route?from=${a.lat},${a.lng}&to=${b.lat},${b.lng}`)).status).toBe(503);
     await p.dispose();
   });

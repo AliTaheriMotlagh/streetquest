@@ -126,7 +126,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 
 /* ---------- Game shell ---------- */
 .game { position: fixed; inset: 0; overflow: hidden; }
-.map { position: absolute; inset: 0; z-index: 0; background: #0c0c14; }
+/* contain: the map is its own layout and paint island — a marker added or removed (every zoom
+   re-groups dozens) re-lays out only the map, not the ~2000 HUD boxes over it as well. */
+.map { position: absolute; inset: 0; z-index: 0; background: #0c0c14; contain: strict; }
+/* Each marker too: its own label never moves anything else. */
+.map .leaflet-marker-icon { contain: layout style; }
 /* The map is a picture of the world, not text: it never mirrors. */
 .leaflet-container { background: #0c0c14 !important; font-family: var(--body); direction: ltr; }
 .leaflet-control-attribution { background: rgba(0,0,0,.5) !important; color: #777 !important; font-size: 9px !important; }
@@ -541,7 +545,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 }
 /* Under an open panel the map's looping markers kept the GPU recompositing behind
    every scroll frame; nobody can see them anyway. */
-.game:has(.sheet) .mk, .game:has(.sheet) .mk *, .game:has(.sheet) .me-marker::after { animation-play-state: paused !important; }
+.game.sheet-on .mk, .game.sheet-on .mk *, .game.sheet-on .me-marker::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
@@ -587,7 +591,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
   .sheet .biz-bar i::after { animation: none; }
   /* Pausing the map's markers under a panel still kept a layer for each one; the panel
      hides them on a phone, so drop the animation and the layer. */
-  .game:has(.sheet) .mk, .game:has(.sheet) .mk *, .game:has(.sheet) .me-marker::after { animation: none !important; will-change: auto !important; }
+  .game.sheet-on .mk, .game.sheet-on .mk *, .game.sheet-on .me-marker::after { animation: none !important; will-change: auto !important; }
 }
 
 /* Markers drop onto the map once, with a little bounce (one-shot, not a loop). */
@@ -671,8 +675,8 @@ html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
   .sheet-grip { display: none; }
   @keyframes slideSide { from { transform: perspective(1400px) translateX(40%) rotateY(-18deg); opacity: 0; } to { transform: none; opacity: 1; } }
   /* When a panel is open, keep floating buttons and banners clear of it. */
-  .game:has(.sheet) .fab-col { inset-inline-end: calc(452px + var(--safe-e)); }
-  .game:has(.sheet) .wave-banner { inset-inline-end: calc(460px + var(--safe-e)); }
+  .game.sheet-on .fab-col { inset-inline-end: calc(452px + var(--safe-e)); }
+  .game.sheet-on .wave-banner { inset-inline-end: calc(460px + var(--safe-e)); }
   .nav { max-width: 620px; bottom: calc(16px + var(--safe-b)); }
   .nav button { font-size: 11px; padding: 8px 6px; }
   .nav button .ic { font-size: 26px; }
@@ -702,7 +706,7 @@ html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 /* Large iPad / desktop: a touch more room */
 @media (min-width: 1100px) {
   .sheet { width: 460px; }
-  .game:has(.sheet) .fab-col { inset-inline-end: calc(492px + var(--safe-e)); }
+  .game.sheet-on .fab-col { inset-inline-end: calc(492px + var(--safe-e)); }
 }
 
 /* Phones (iPhone 12–16 and smaller): keep the whole HUD on screen */
@@ -1188,8 +1192,8 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 @media (min-width: 1100px) and (min-height: 600px) {
   :root { --sheet-w: clamp(460px, 34vw, 600px); }
   .sheet { width: var(--sheet-w); }
-  .game:has(.sheet) .fab-col { inset-inline-end: calc(var(--sheet-w) + 32px + var(--safe-e)); }
-  .game:has(.sheet) .wave-banner { inset-inline-end: calc(var(--sheet-w) + 40px + var(--safe-e)); }
+  .game.sheet-on .fab-col { inset-inline-end: calc(var(--sheet-w) + 32px + var(--safe-e)); }
+  .game.sheet-on .wave-banner { inset-inline-end: calc(var(--sheet-w) + 40px + var(--safe-e)); }
   .nav.with-sheet { inset-inline-end: calc(var(--sheet-w) + 32px + var(--safe-e)); }
   .sheet-head { padding: 18px 22px 12px; }
   .sheet-head h2 { font-size: 22px; }
@@ -1992,3 +1996,6 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 .av-sub { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
 .av-table { margin-top: 14px; }
 .av-table summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+
+/* Quiet mode (lib/quiet.ts: tests, ?quiet=1): no dev-tools badge over the HUD in screenshots. */
+html.quiet nextjs-portal { display: none !important; }

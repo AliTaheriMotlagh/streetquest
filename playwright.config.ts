@@ -56,7 +56,9 @@ export default defineConfig({
           // No OpenStreetMap downloads for the random test spots: tests upload their own tiles.
           OVERPASS_URL: "off",
           // Traffic tests stay offline (players' GPS only).
-          NESHAN_API_KEY: "",
+          // Routing is a public server (OSRM): off in tests, so they never depend on it.
+          OSRM_CAR_URL: "off",
+          OSRM_FOOT_URL: "off",
           // Snappfood / Torob / Divar answer from a stub the test starts (e2e/api/local.spec.ts).
           SNAPPFOOD_URL: `http://localhost:${STUB_PORT}/sf`,
           TOROB_URL: `http://localhost:${STUB_PORT}/tr`,

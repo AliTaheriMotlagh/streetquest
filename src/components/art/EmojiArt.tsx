@@ -38,7 +38,10 @@ function processText(node: Text) {
 function processTree(el: Node) {
   if (el.nodeType === Node.TEXT_NODE) return processText(el as Text);
   if (el.nodeType !== Node.ELEMENT_NODE || (el as Element).closest(SKIP)) return;
-  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  // Skipped subtrees aren't walked at all (map markers already carry their art: mapIcons.ts).
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => (n.nodeType === Node.TEXT_NODE ? NodeFilter.FILTER_ACCEPT : (n as Element).matches(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP),
+  });
   const found: Text[] = [];
   for (let n = w.nextNode(); n; n = w.nextNode()) found.push(n as Text);
   found.forEach(processText);

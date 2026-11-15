@@ -193,7 +193,7 @@ mood scales XP; loot funds research; territory funds the army.
   sources only in their country, never sellers or phone numbers. Keys are made and revoked on `/developers` (only their
   SHA-256 is stored; 5 each, 60 requests a minute, admins can raise it); CORS for GET.
 - **Everything outside is cached**: every store site, cinema, IETT and the other maps go through `ExtCache` with a TTL
-  (one answer for everyone), and Neshan's live routes are remembered 5 minutes per ~100 m start/end.
+  (one answer for everyone), and OSRM routes are remembered 10 minutes per ~10 m start/end.
 - **Bridges in the 3D city** (`tileMesh.ts` drawBridges; `vectorTile.ts` bridgeSpan): every bridge road (`brunnel=bridge`)
   gets low concrete parapets, its deck's edge and a pier every 40 m (none on lite); a long one (≥ 450 m on its tile —
   the Bosphorus bridges, Tehran's long overpasses) becomes a suspension span: two towers of two legs with cross beams
@@ -254,7 +254,7 @@ mood scales XP; loot funds research; territory funds the army.
   OpenStreetMap's public OSRM (routing.openstreetmap.de, worldwide, no key, paced to one request a second and
   remembered ten minutes; `OSRM_FOOT_URL` / `OSRM_CAR_URL` for your own server). The marker waits a moment for it
   ("finding the way along the streets…") and only goes straight if no route comes in 6 s. Driving navigation uses
-  Neshan in Iran and OSRM's car profile elsewhere. Exploring another city shows that city's own layers and data (its
+  OSRM's car profile everywhere. Exploring another city shows that city's own layers and data (its
   delivery site, its cinemas, its transit), whatever country you're really in.
 - **3D city & play from home** — tap 🚗 DRIVE to drive a cartoon car through your real streets in 3D (real building
   footprints and heights, roads, parks, water and store signs, storybook toon style with day/night). A loading screen
@@ -923,10 +923,11 @@ mood scales XP; loot funds research; territory funds the army.
   ramsar rasht gorgan`). In small towns Snappfood's vendors deliver only a short way, so the map reads the cells around
   you too and reaches 5 km; Divar's small towns (no neighbourhoods) show the nearest three together, even when Divar
   puts a town's centre kilometres off.
-- **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a live driving route (Neshan, with
-  today's traffic) to it: a blue line, the minutes and distance left and the next turn in Persian; it re-routes when
-  you're 70 m off the line, refreshes every 2 minutes, and ends on arrival. Each route also feeds the traffic layer.
-  Without Neshan routing, `/api/route` answers 503 and the card keeps its Directions links.
+- **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a driving route (OSRM on OpenStreetMap,
+  no key — `OSRM_CAR_URL` for your own server) to it: a blue line, the minutes and distance left and the next turn
+  with its arrow and how far to it, worded on the phone in the player's language (`lib/routeSteps.ts`); it re-routes
+  when you're 70 m off the line, refreshes every 2 minutes, and ends on arrival. With routing off or unreachable,
+  `/api/route` answers 503 and the card keeps its Directions links. (Neshan's metered API is no longer used.)
 - **Navigate with…** — 🧭 *Directions* on every place, store, cinema, shop and GPS-game target (also in test mode)
   opens a chooser of real navigation apps (`lib/navApps.ts`, `NavigateWith.tsx`): Android first offers *Any map app*
   (the `geo:` link — Neshan, Balad, Google Maps, Waze on the phone), iPhone Apple Maps, desktop Google Maps; then
@@ -1224,9 +1225,8 @@ answers are `no-store`, redirects aren't followed, and no query string (position
   shop and park (`CityTile.pois`) — without it, places only arrive with an Overpass tile, which is often busy. `--top 3` builds the three places with the most
   active players (any country — the right extract is found automatically), `--list` shows what's built and where
   players are. Re-run weekly to pick up map edits.
-- **Live traffic:** comes from players' real GPS (shown only where 2+ players drove in the last 15 min) and, with
-  `NESHAN_API_KEY`, from Neshan's live routing where players are looking and from every 🧭 route. The key needs the
-  **Direction** service enabled in the Neshan panel — `/api/traffic` reports `"neshan": "no-access"` until it is.
+- **Live traffic:** comes from players' real GPS only (shown only where 2+ players drove in the last 15 min, so
+  nobody's own trip shows). There is no free live-traffic API that covers Iran; Neshan's metered one is no longer used.
   The 2D map draws it as short dashes per direction (green → dark red by speed), refreshed every minute.
   AI cars drive the real streets at those speeds and stop at the traffic lights, which run one 40 s cycle on the
   clock (north–south first) so every player sees the same lights.

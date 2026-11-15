@@ -19,7 +19,7 @@ export function icon(html: string, cls = "", size = 40) {
     iconCache.delete(key);
   } else {
     // Emoji in marker HTML become the drawn art right here, once per cached icon.
-    i = L.divIcon({ html: `<div class="mk ${cls}">${artHtml(html, (k) => ensureArt(k))}</div>`, className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+    i = L.divIcon({ html: `<div class="mk ${cls}" data-art>${artHtml(html, (k) => ensureArt(k))}</div>`, className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
     if (iconCache.size >= ICON_CACHE_MAX) iconCache.delete(iconCache.keys().next().value!);
   }
   iconCache.set(key, i);
