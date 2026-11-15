@@ -360,6 +360,27 @@ export class StreetLife {
     return ok;
   }
 
+  /**
+   * A conversation's line — any words, said by someone right by you (the passer-by you're talking
+   * to, the shopkeeper): bubble now, voice from the on-device model or the phone (voices.talk).
+   * Returns how long it shows (s).
+   */
+  converse(text: string, v: VoiceKind, where: () => { x: number; y: number; z: number } | null, close = true) {
+    const me = this.me;
+    return me ? this.voices.talk(text, v, where, me, close) : 0;
+  }
+
+  /** Wanted stars now (people won't talk to you at 2+). */
+  get stars() {
+    return this.wanted.stars;
+  }
+
+  /** Someone you upset calls the police on you from here. */
+  complaint(x: number, z: number) {
+    this.crime("complaint", x, z, true);
+    this.publish(true);
+  }
+
   /** A scenario's recorded line (lib/street/barks.ts) by its id, said by the voice it was made for; nothing if it has no clip. */
   bark(id: string, where: () => { x: number; y: number; z: number } | null) {
     const b = barkById(id), me = this.me;

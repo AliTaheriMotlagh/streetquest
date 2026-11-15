@@ -14,17 +14,8 @@ export type PiperConfig = {
   phoneme_id_map: Record<string, number[]>;
 };
 
-/** Phoneme symbols → a Piper model's input ids (bos, pad, each phoneme followed by pad, eos); unknown symbols are dropped. */
-export function piperIds(symbols: string[], map: Record<string, number[]>): number[] {
-  const pad = map["_"] ?? [0];
-  const ids = [...(map["^"] ?? [1]), ...pad];
-  for (const s of symbols) {
-    const id = map[s];
-    if (id) ids.push(...id, ...pad);
-  }
-  ids.push(...(map["$"] ?? [2]));
-  return ids;
-}
+export { piperIds } from "@/lib/tts/ids";
+import { piperIds } from "@/lib/tts/ids";
 
 type Ort = {
   env: { wasm: { wasmPaths: string; numThreads: number } };

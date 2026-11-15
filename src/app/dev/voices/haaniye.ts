@@ -10,27 +10,8 @@
 // Pure parts (haaniyeIds) are tested in tests/voices.test.ts.
 
 /** haaniye's phonemes, by id (its phonemes.txt). */
-export const HAANIYE = "_ ^ $ , . # ˈ ˌ 1 a b d e f h i j k l m n o p q r s t u v x z ɑ ɡ ʃ ʒ ʔ ː".split(" ");
-const ID = new Map(HAANIYE.map((p, i) => [p, i]));
-const PUNCT: Record<string, string> = { "!": ".", "?": ".", ";": ",", ":": ",", "؟": ".", "،": ",", "؛": "," };
-
-/** IPA symbols (one per codepoint, " " between words) → haaniye's ids, as Mimic 3's phonemes2ids makes them. */
-export function haaniyeIds(symbols: string[]): number[] {
-  const words: string[][] = [[]];
-  for (const s of symbols) {
-    if (s === " ") words.push([]);
-    else words[words.length - 1].push(PUNCT[s] ?? s);
-  }
-  const blank = ID.get("_")!, ids = [ID.get("^")!, blank];
-  for (const w of words) {
-    const word = w.map((p) => ID.get(p)).filter((x): x is number => x != null);
-    if (!word.length) continue;
-    word.push(ID.get("#")!);
-    for (const id of word) ids.push(id, blank);
-  }
-  ids.push(ID.get("$")!);
-  return ids;
-}
+export { HAANIYE, haaniyeIds } from "@/lib/tts/ids";
+import { haaniyeIds } from "@/lib/tts/ids";
 
 /** Float samples → a 16-bit mono WAV. */
 export function wav(pcm: Float32Array, rate: number): Blob {

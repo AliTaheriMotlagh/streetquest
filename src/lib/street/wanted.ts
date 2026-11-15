@@ -4,10 +4,11 @@
 // shoot. Out of every officer's sight for long enough, they lose you; stopped beside an
 // officer for a moment, you're arrested.
 
-export type Crime = "shots" | "hitPerson" | "killPerson" | "carjack" | "explosion" | "rammedCop" | "hitCop" | "killCop";
+/** `complaint`: someone you insulted twice calls the police (lib/street/npcTalk.ts) — twice gets you a star. */
+export type Crime = "shots" | "hitPerson" | "killPerson" | "carjack" | "explosion" | "rammedCop" | "hitCop" | "killCop" | "complaint";
 
 /** Heat a crime adds when a passer-by sees it (an officer seeing it counts double). */
-export const HEAT: Record<Crime, number> = { shots: 2, hitPerson: 3, killPerson: 6, carjack: 2.5, explosion: 7, rammedCop: 4, hitCop: 9, killCop: 16 };
+export const HEAT: Record<Crime, number> = { shots: 2, hitPerson: 3, killPerson: 6, carjack: 2.5, explosion: 7, rammedCop: 4, hitCop: 9, killCop: 16, complaint: 1.2 };
 /** Heat at which each star lights (index = stars). */
 export const STAR_HEAT = [0, 2, 8, 18, 32, 50] as const;
 export const MAX_STARS = 5;

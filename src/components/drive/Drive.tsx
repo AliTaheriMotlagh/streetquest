@@ -12,6 +12,7 @@
 // at most one finished tile is added per frame (nearest first), far tiles drop their
 // street furniture, and the render resolution adapts to keep the frame rate up.
 // Solid things are solid: walls, trees, posts, shelters and other players' cars.
+import { Guard } from "../Guard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { bearingTo, distanceM, formatDistance, type LatLng } from "@/lib/geo";
@@ -100,6 +101,11 @@ import { Rain } from "./graphics/weather";
 import { mixHex, mixRecord, phaseOf, skyFor, sunVector, WEATHER_LOOK, type TimePick, type Weather } from "@/lib/daylight";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
+import { storeKind, type StoreKind } from "@/lib/storeKinds";
+import { callsPolice, GOOD_STORES, reply as npcReply, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
+import { TalkPanel, type TalkAnswer } from "./TalkPanel";
+import { ShopScreen } from "./ShopScreen";
+import { setNeuralLite } from "./tts/neural";
 import { NAME_MODES, type NameMode } from "./vectorTile";
 import { Combat } from "../arena/combat";
 import { CombatHud, useCombat } from "../arena/CombatHud";
@@ -177,7 +183,9 @@ type Hud = {
   night: boolean;
   street: string | null;
   /** The store you're passing (slow, or on foot): its card under the street name. */
-  store: { kind: "store" | "marker"; id: string; emoji: string; name: string; sub: string; color: string; cls?: string; lat?: number; lng?: number } | null;
+  store: { kind: "store" | "marker"; id: string; emoji: string; name: string; sub: string; color: string; cls?: string; lat?: number; lng?: number; /** On foot at its door: you can walk in (ShopScreen). */ enter?: boolean } | null;
+  /** On foot beside someone you could talk to (TalkPanel) — or the one you're talking to. */
+  talk: { id: number; woman: boolean } | null;
   fps: number;
   serverNow: number;
 };
@@ -196,6 +204,10 @@ const CTL_KEY = "sq_drive_ctl";
 const NAMES_KEY = "sq_drive_names";
 const FLY_HINT_KEY = "sq_fly_hint_off";
 const SHOPS_M = 260; // shops on the minimap and for the store card this far
+/** On foot this close to a store's door (m), you can walk in (ShopScreen). */
+const ENTER_M = 22;
+/** On foot this close to someone (m), you can talk to them (TalkPanel). */
+const TALK_M = 3;
 /** The party's meeting point (Vasatyab) in the 3D city: its beacon, minimap dot and waypoint. */
 const VASA_COLOR = "#b18cff";
 const CORNER_M = 170; // street-name signs at corners this close
@@ -347,6 +359,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const [picked, setPicked] = useState<Picked | null>(null);
   /** A store tapped (its sign, or its chip): the full card with photos, deals and the menu. */
   const [storeSheet, setStoreSheet] = useState<StoreTarget | null>(null);
+  // Talking to someone on the street (their id) and the store I walked into.
+  const [talkWith, setTalkWith] = useState<number | null>(null);
+  const [shopAt, setShopAt] = useState<StoreTarget | null>(null);
   /** Product search open, round where I was when I opened it. */
   const [productsAt, setProductsAt] = useState<LatLng | null>(null);
   // The travel planner over the 3D city (Search → Travel, or an airport / station: openTravel).
@@ -422,6 +437,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     /** Sky Rings: a hero course over the rooftops from here (gets out of the car, hero moves on), or give it up. */
     swingRings: () => void;
     quitSwing: () => void;
+    /** Say something to passer-by `id` (lib/street/npcTalk.ts): their answer, spoken over their head, and what they do. */
+    talkTo: (id: number, act: TalkAct, way?: WayKind) => TalkAnswer | null;
+    /** I walked up to `id` to talk: they stop and turn to me. */
+    talkStart: (id: number) => void;
+    /** The conversation is over (they can walk on). */
+    talkEnd: () => void;
+    /** The shopkeeper says this, right in front of me (ShopScreen). */
+    shopkeeper: (text: string) => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -820,6 +843,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     });
     // People on the pavements: they run from trouble, and cars knock them down.
     const crowd = new Crowd(scene, style, lite);
+    // (A weak device by the city's own measure doesn't run the neural voices unasked.)
+    setNeuralLite(lite);
     // People step round cars, never through them (the cars' and poles' colliders; the police and mine once street life is up).
     crowd.solid = (x, z) => !!obstacles.collide(x, z, 0.3).hit || !!street.solid.collide(x, z, 0.3).hit;
     // Street life outside matches: crashes and damage, crime and the police (street.ts).
@@ -1711,7 +1736,60 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const land = () => {
       st.cruise = 0;
     };
+    // ---- talking to people (TalkPanel) and to shopkeepers (ShopScreen)
+    /** Who I'm talking to, how many times I've insulted whom, how many turns each conversation had. */
+    let convo: number | null = null;
+    const insults = new Map<number, number>(), turns = new Map<number, number>();
+    /** A store round me as a place someone could point to: how far, and which way from where I'm looking (+ = right). */
+    const spotOf = (sp: StoreSpot): NpcSpot => {
+      camera.getWorldDirection(camFwd);
+      const fl = Math.hypot(camFwd.x, camFwd.z) || 1, fx = camFwd.x / fl, fz = camFwd.z / fl;
+      const dx = sp.x - st.x, dz = sp.z - st.z;
+      const rel = (Math.atan2(-fz * dx + fx * dz, fx * dx + fz * dz) * 180) / Math.PI;
+      return { name: sp.name, dist: Math.round(Math.hypot(dx, dz)), rel, rating: storefronts.ratingOf(sp.id) ?? undefined };
+    };
+    const nearestOf = (kinds: StoreKind[], within: number) =>
+      shops
+        .filter((sp) => sp.name && kinds.includes(storeKind(sp.cls, sp.name)))
+        .map((sp) => ({ sp, d: Math.hypot(sp.x - st.x, sp.z - st.z) }))
+        .filter((x) => x.d <= within)
+        .sort((a, b) => a.d - b.d);
+    const talkTo = (id: number, act: TalkAct, way?: WayKind): TalkAnswer | null => {
+      const p = crowd.person(id);
+      if (!p || Math.hypot(p.x - st.x, p.z - st.z) > 7) return null;
+      convo = id;
+      const turn = turns.get(id) ?? 0;
+      turns.set(id, turn + 1);
+      const wayTo = way ? nearestOf(WAY_STORES[way], 1500)[0] : undefined;
+      const good = act === "recommend" ? nearestOf(GOOD_STORES, 600).slice(0, 6) : [];
+      const best = good.length ? good[(id + turn) % good.length].sp : null;
+      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, fmt: formatDistance, tr: (k) => t(k) }, turn);
+      if (act === "insult") insults.set(id, (insults.get(id) ?? 0) + 1);
+      const text = t(r.key, r.params);
+      street.converse(text, p.woman ? "f" : "m", () => crowd.head(id));
+      if (r.react === "stay" || r.react === "angry") crowd.stopFor(id, r.secs + 6, st.x, st.z);
+      else if (r.react === "leave") (crowd.stopFor(id, 1.2, st.x, st.z), (convo = null));
+      else if (r.react === "flee") {
+        crowd.runFrom(id, st.x, st.z, r.secs);
+        if (callsPolice(r)) street.complaint(p.x, p.z);
+        convo = null;
+      } else if (r.react === "follow") (crowd.follow(id, () => (combat.onFoot ? { x: st.x, z: st.z } : null), r.secs), (convo = null));
+      return { text, react: r.react, mood: r.mood };
+    };
+
     api3d.current = {
+      talkTo,
+      talkStart: (id) => {
+        if (crowd.stopFor(id, 14, st.x, st.z)) convo = id;
+      },
+      talkEnd: () => {
+        if (convo != null) crowd.stopFor(convo, 0.8, st.x, st.z);
+        convo = null;
+      },
+      shopkeeper: (text) => {
+        camera.getWorldDirection(camFwd);
+        street.converse(text, "m", () => ({ x: st.x + camFwd.x * 1.4, y: 1.75, z: st.z + camFwd.z * 1.4 }));
+      },
       setGoal: (p) => ((navGoal = p), (wanted.current = null)),
       here: () => frame.toLatLng(st.x, st.z),
       openPick,
@@ -2498,20 +2576,32 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           if (ns) {
             const tr = tradeOf(ns.store.cls);
             const ll = frame.toLatLng(ns.store.x, ns.store.z);
-            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng };
+            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng, enter: combat.onFoot && ns.d < ENTER_M };
           }
         }
         lastStore = store?.id ?? null;
+        // Someone to talk to: the one I'm talking to while they're still near, else whoever's beside me.
+        let talk: Hud["talk"] = null;
+        if (combat.onFoot && !combat.inMatch && !D.flies) {
+          const cur = convo != null ? crowd.person(convo) : null;
+          if (cur && Math.hypot(cur.x - st.x, cur.z - st.z) < 7) talk = { id: convo!, woman: cur.woman };
+          else {
+            if (convo != null) convo = null;
+            const sp = crowd.speaker(st.x, st.z, TALK_M, true);
+            if (sp) talk = { id: sp.id, woman: sp.woman };
+          }
+        } else convo = null;
         const sig = [
           near?.id, near?.verb, navInfo && `${navInfo.label}|${Math.round(navInfo.dist / 5)}|${Math.round(navInfo.rel / 4)}`, loading, village, camMode, phase, streetName, D.flies, low,
           menuOpen.current ? list.map((j) => `${j.id}:${Math.round(j.dist / 10)}`).join(",") : list.length,
           menuOpen.current ? Math.round(fps) : 0,
           partyNow ? Math.floor(serverNow / 250) : 0,
-          store && `${store.id}|${store.sub}`,
+          store && `${store.id}|${store.sub}|${store.enter ? 1 : 0}`,
+          talk && `${talk.id}`,
         ].join("~");
         if (sig !== hudSig) {
           hudSig = sig;
-          setHud({ flying: D.flies, low, near, nav: navInfo, loading, village, cam: camMode, night: phase === "night", street: streetName, store, fps: Math.round(fps), serverNow, jobs: list });
+          setHud({ flying: D.flies, low, near, nav: navInfo, loading, village, cam: camMode, night: phase === "night", street: streetName, store, talk, fps: Math.round(fps), serverNow, jobs: list });
         }
       }
 
@@ -2791,6 +2881,37 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // Walk into the store at hand / talk to whoever's beside me (B and Y on a keyboard).
+  const enterShop = () => {
+    const st = hud?.store;
+    if (!st || st.kind !== "store" || !st.enter || st.lat == null || st.lng == null) return;
+    setTalkWith(null);
+    setShopAt({ id: st.id, name: st.name, cls: st.cls, lat: st.lat, lng: st.lng, emoji: st.emoji, color: st.color, sub: st.sub });
+  };
+  const keysRef = useRef({ enterShop, talk: () => hud?.talk && !shopAt && setTalkWith(hud.talk.id) });
+  keysRef.current = { enterShop, talk: () => hud?.talk && !shopAt && setTalkWith(hud.talk.id) };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || (e.target as HTMLElement | null)?.closest?.("input, textarea")) return;
+      const k = e.key.toLowerCase();
+      if (k === "b") keysRef.current.enterShop();
+      if (k === "y") keysRef.current.talk();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  useEffect(() => {
+    if (talkWith != null) api3d.current?.talkStart(talkWith);
+  }, [talkWith]);
+  // They walked off (or I did): the conversation closes.
+  useEffect(() => {
+    if (talkWith != null && hud && hud.talk?.id !== talkWith) (api3d.current?.talkEnd(), setTalkWith(null));
+  }, [hud?.talk?.id, talkWith]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Back in the car / a match: no shop, no conversation.
+  useEffect(() => {
+    if (!onFoot) (setShopAt(null), setTalkWith(null));
+  }, [onFoot]);
+
   const pickVehicle = (k: VehicleKey) => {
     setVehicle(k);
     store.set(VEHICLE_KEY, k);
@@ -2898,6 +3019,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         </div>
         <div className="drive-mid">
           {hud?.street && <div className="drive-street" key={banner?.at ?? 0}>{hud.street}</div>}
+          {hud?.store?.kind === "store" && hud.store.enter && hud.store.lat != null && !shopAt && (
+            <button type="button" className="drive-enter" onClick={() => enterShop()}>
+              🚪 {t("Enter")} <kbd>B</kbd>
+            </button>
+          )}
           {hud?.store?.kind === "store" && hud.store.lat != null && hud.store.lng != null && (
             <StoreChip
               key={hud.store.id}
@@ -3212,6 +3338,26 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
       {productsAt && <ProductSearch at={productsAt} onClose={() => setProductsAt(null)} />}
       {tripPlan && <Travel at={tripPlan.at} initialTo={tripPlan.to} onClose={() => setTripPlan(null)} />}
+      {hud?.talk && talkWith == null && !shopAt && (
+        <button type="button" className="drive-talk-btn" onClick={() => setTalkWith(hud.talk!.id)}>
+          💬 {t("Talk")} <kbd>Y</kbd>
+        </button>
+      )}
+      {talkWith != null && hud?.talk?.id === talkWith && (
+        <Guard where="talk" quiet>
+        <TalkPanel
+          key={talkWith}
+          woman={hud.talk.woman}
+          onAsk={(act, way) => api3d.current?.talkTo(talkWith, act, way) ?? null}
+          onClose={() => (api3d.current?.talkEnd(), setTalkWith(null))}
+        />
+        </Guard>
+      )}
+      {shopAt && (
+        <Guard where="shop" onExit={() => setShopAt(null)}>
+          <ShopScreen s={shopAt} onClose={() => setShopAt(null)} say={(text) => api3d.current?.shopkeeper(text)} />
+        </Guard>
+      )}
       {storeSheet && <StoreSheet s={storeSheet} onClose={() => setStoreSheet(null)} onGo={() => (api3d.current?.setGoal({ lat: storeSheet.lat, lng: storeSheet.lng }), toast({ title: t("🧭 Heading to {place}", { place: storeSheet.name }) }), setStoreSheet(null))} />}
 
       {picked && (

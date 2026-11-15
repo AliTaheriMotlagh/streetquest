@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASKS_CHANGED } from "@/lib/asks";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
+import { MODEL_MB, NEURAL_PREFS, type NeuralPref, type NeuralWhy } from "@/lib/tts/neural";
+import { neuralNow, neuralPref, onNeuralChange, progress, setNeuralPref, warmNeural } from "../drive/tts/neural";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
 import { RARITY_COLOR, RARITY_LABEL } from "@/lib/catalog";
@@ -1309,11 +1311,54 @@ function SoundSettings() {
             ))}
           </div>
         </div>
+        <NeuralVoiceRow />
         <p className="small muted" style={{ margin: 0 }}>
           {t("Headphones: 3D sound — you hear where a shot, a siren or a voice is, also behind and above you. Speakers: plain left and right. 5.1 shows up when a surround system is connected.")}
           {audioOutput() === "auto" && ` ${t("This device is using {mode}.", { mode: t(panning() === "hrtf" ? "Headphones (3D)" : "Speakers") })}`}
         </p>
       </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- on-device voices (drive/tts)
+const NEURAL_LABELS: Record<NeuralPref, string> = { auto: msg("Auto"), on: msg("On"), off: msg("Off") };
+const NEURAL_WHY: Record<NeuralWhy, string> = {
+  off: msg("Off: people speak with this device's own voice, or only in speech bubbles."),
+  unsupported: msg("This browser can't run the voice models."),
+  "not-hosted": msg("The voice files aren't set up on this server yet."),
+  weak: msg("This device is too weak for the voice models — it uses its own voice."),
+  "data-saver": msg("Data saver is on: no {mb} MB downloads until you turn this on."),
+  "slow-net": msg("A slow connection: turn this on to download the voices anyway (about {mb} MB each)."),
+  "phone-ask": msg("On a phone it's your choice: each voice is about {mb} MB, downloaded once."),
+  on: msg("On: shopkeepers and people speak Persian with a natural voice, made on this device."),
+  auto: msg("On for this device: shopkeepers and people speak Persian with a natural voice."),
+};
+function NeuralVoiceRow() {
+  const [, force] = useState(0);
+  useEffect(() => onNeuralChange(() => force((n) => n + 1)), []);
+  const plan = neuralNow();
+  const got = [...progress.values()];
+  return (
+    <>
+      <div className="row">
+        <span className="grow">🗣️ {t("Natural Persian voices")}</span>
+        <div className="tabs" style={{ margin: 0 }}>
+          {NEURAL_PREFS.map((p) => (
+            <button key={p} className={neuralPref() === p ? "on" : ""} onClick={() => setNeuralPref(p)}>{t(NEURAL_LABELS[p])}</button>
+          ))}
+        </div>
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>
+        {t(NEURAL_WHY[plan.why], { mb: fmtNum(MODEL_MB) })}
+        {got.some((x) => x < 1) && ` ${t("Downloading the voice… {n}%", { n: fmtNum(Math.round(Math.min(...got) * 100)) })}`}
+        {plan.use && !got.length && (
+          <>
+            {" "}
+            <button type="button" className="link-btn small" onClick={() => warmNeural("m")}>{t("Get the voice now")}</button>
+          </>
+        )}
+      </p>
     </>
   );
 }

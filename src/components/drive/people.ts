@@ -28,8 +28,9 @@ type Look = 0 | 1 | 2;
  * walk on · flying: thrown by a car or a blast · down: on the ground (dead, or getting up
  * when `t` runs out).
  */
-/** `stop`: standing still, turned toward (fromX, fromZ) — talking to someone (a street scene) — then walking on. */
-type Mode = "walk" | "flee" | "back" | "flying" | "down" | "stop";
+/** `stop`: standing still, turned toward (fromX, fromZ) — talking to someone (a street scene) — then walking on.
+ *  `follow`: walking (running, if left behind) after the player for `t` s — asked to, in a conversation. */
+type Mode = "walk" | "flee" | "back" | "flying" | "down" | "stop" | "follow";
 type Walker = {
   id: number;
   look: Look;
@@ -535,6 +536,25 @@ export class Crowd {
     return true;
   }
 
+  /** Who each follower walks after (follow). */
+  private leaders = new Map<number, () => { x: number; z: number } | null>();
+
+  /** Person `id` walks after `lead` (the player) for `secs` s, then goes back to a pavement. */
+  follow(id: number, lead: () => { x: number; z: number } | null, secs: number) {
+    const w = this.walkers.find((v) => v.id === id);
+    if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop" && w.mode !== "follow")) return false;
+    this.leaders.set(id, lead);
+    w.mode = "follow";
+    w.t = secs;
+    return true;
+  }
+
+  /** Person `id` (a conversation's other side): where, and whether they're still up for talking. */
+  person(id: number) {
+    const w = this.walkers.find((v) => v.id === id);
+    return w && !w.dead && w.mode !== "down" && w.mode !== "flying" ? { x: w.x, z: w.z, woman: w.look !== 0, calm: w.mode === "walk" || w.mode === "stop" || w.mode === "follow" } : null;
+  }
+
   /** Person `id` gives up (a thief caught): stops running and stands still for `secs` s, facing (x, z). */
   surrender(id: number, secs: number, x: number, z: number) {
     const w = this.walkers.find((v) => v.id === id);
@@ -578,6 +598,7 @@ export class Crowd {
       else if (w.mode === "back") this.goBack(w, dt);
       else if (w.mode === "flying") this.fly(w, dt);
       else if (w.mode === "stop") this.hold(w, dt);
+      else if (w.mode === "follow") this.trail(w, dt);
       else this.lie(w, dt);
     }
     this.assign();
@@ -588,6 +609,39 @@ export class Crowd {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
+  }
+
+  /** Following someone (`leaders`): keeps a couple of metres behind, runs to catch up, round walls; then back to a pavement. */
+  private trail(w: Walker, dt: number) {
+    const lead = this.leaders.get(w.id)?.();
+    w.t -= dt;
+    if (!lead || w.t <= 0) {
+      this.leaders.delete(w.id);
+      w.to = this.pavementNear(w.x, w.z, 25);
+      w.mode = w.to ? "back" : "walk";
+      (w.vx = 0), (w.vz = 0);
+      return;
+    }
+    const dx = lead.x - w.x, dz = lead.z - w.z, d = Math.hypot(dx, dz);
+    if (d < 2) {
+      (w.vx = 0), (w.vz = 0);
+      this.face(w, Math.atan2(-dx, -dz), dt, 6);
+      return;
+    }
+    const sp = Math.min(RUN_MS * 1.3, d > 6 ? RUN_MS : w.speed * 1.2);
+    let vx = (dx / d) * sp, vz = (dz / d) * sp;
+    if (this.walled(w.x + (vx / sp) * 0.6, w.z + (vz / sp) * 0.6))
+      for (const a of [0.8, -0.8, 1.6, -1.6]) {
+        const c = Math.cos(a), si = Math.sin(a), tx = vx * c - vz * si, tz = vx * si + vz * c;
+        if (!this.walled(w.x + (tx / sp) * 0.8, w.z + (tz / sp) * 0.8)) {
+          (vx = tx), (vz = tz);
+          break;
+        }
+      }
+    (w.vx = vx), (w.vz = vz);
+    if (!this.walled(w.x + vx * dt, w.z + vz * dt)) (w.x += vx * dt), (w.z += vz * dt);
+    this.face(w, Math.atan2(-vx, -vz), dt, 8);
+    w.phase += sp * dt * (sp > w.speed * 1.5 ? 3.2 : 4.6);
   }
 
   /** Standing, talking: turned toward the other one; walking on when it's over. */
@@ -768,7 +822,7 @@ export class Crowd {
   }
 
   private draw(w: Walker, dt: number) {
-    const moving = w.mode === "walk" || w.mode === "back" ? w.speed : w.mode === "flee" ? Math.hypot(w.vx, w.vz) : 0;
+    const moving = w.mode === "walk" || w.mode === "back" ? w.speed : w.mode === "flee" || w.mode === "follow" ? Math.hypot(w.vx, w.vz) : 0;
     const down = w.mode === "down" || w.mode === "flying";
     if (w.body) {
       const g = w.body.group;

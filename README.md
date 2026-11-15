@@ -87,6 +87,13 @@ Three games stacked on one real-world map:
   (`drive/carCheck.ts`) flags parts exported inside out (drawn see-through — the game turns them round on load),
   the cabin poking out of the glass, floating or sunk wheels and too many triangles. Scripts drive it through
   `window.__carLab` (`pick`, `set`, `view`, `lineup`, `shot` → PNG, `check`, `real`; `e2e/ui/carlab.spec.ts`).
+- **Admin → Browser errors** (`/api/log`, `lib/clientLog.ts`, `components/ClientLog.tsx`): what went wrong in players'
+  browsers — crashes, files that didn't load, requests to our server that failed, blocked connections (the realtime
+  server, map tiles, a travel site the phone asks itself) — grouped by error with how often, from which countries and
+  on which browsers (never who; ≤8 reports a page, 30 per network per 10 min). Also in the server log:
+  `vercel logs --environment production --query client-error`. A part of the screen that crashes (a panel, the map,
+  the List view, the 3D city, a store) shows a small "didn't load — Try again" card in its place (`components/Guard.tsx`)
+  instead of taking the whole game down.
 - **Admin → Objects** — a searchable, filterable grid of every object in the game: cars, people, the soldier and
   police, guns, street props, loot, markers, store kinds and stores' own 3D buildings, each with its file, size,
   triangles, licence/credit and where it is used, and a lazy turntable (`drive/turntable.ts`: one shared WebGL
@@ -188,6 +195,20 @@ mood scales XP; loot funds research; territory funds the army.
 - **A shopkeeper in every open shop** (`drive/shopkeepers.ts`, `storefronts.openNear`): one of the street's people
   stands in the doorway facing the street, idling — closed shops, mosques, schools and hospitals have none (≤10 within
   60 m, ≤4 on lite); their calls (already spoken from the door) are that person's voice.
+- **Talk to anyone on foot** (`drive/TalkPanel.tsx`; rules `lib/street/npcTalk.ts`): beside a passer-by, 💬 Talk (Y)
+  opens a conversation — say hello, ask the way to a real café, restaurant, pharmacy or supermarket nearby (they point:
+  "on your left, about 80 m"), ask what's good around here, chat, give money, insult them or ask them to follow you.
+  Each person has a mood (friendly, busy, grumpy) that changes how they answer; insulting a grumpy one twice brings a
+  complaint to the police (a wanted star). They answer out loud and in a subtitle, and walk off when you leave.
+- **Walk into a store** (`drive/ShopScreen.tsx`; lines `lib/street/shopTalk.ts`): on foot at an open shop's door,
+  🚪 Enter (B) fills the screen with the inside — the shopkeeper greets you and, when asked, recommends dishes, names
+  today's discounts and hours from the real menu (Snappfood), and adds up a basket; the order is finished on Snappfood.
+- **On-device Persian voices** (`drive/tts/`, rules `lib/tts/neural.ts`): what the shopkeeper and passers-by say that
+  isn't a recorded line is spoken by Piper models (a man, a woman, the police; ~60 MB each, once, kept in the browser)
+  running in a Web Worker with ONNX Runtime — never on the render thread, never blocking a line (the phone's own voice,
+  then the bubble alone, take over). Settings → Voices: Auto (only on a strong computer that isn't saving data), On or
+  Off; phones ask first. Production needs the files hosted (`NEXT_PUBLIC_TTS_BASE`, see `.env.example`); without it the
+  game uses the phone's voice.
 - **Public data API for other apps** (`/api/v1`, `server/apiV1.ts`, `lib/apiV1.ts`; docs at `/developers`, OpenAPI at
   `/api/v1/openapi.json`): stores, a store's menu, deals, cinemas and sessions, Divar ads, product search, bus stops and
   arrivals, Istanbul's live buses and each city's metro — read-only, answered from our cache (a source's normal paced

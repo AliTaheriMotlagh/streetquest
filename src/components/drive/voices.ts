@@ -20,6 +20,7 @@ import { lineFile, manifestPaths, pickDeviceVoice, voiceLangOf, type VoiceLang }
 import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
+import { speakNeural } from "./tts/neural";
 
 /** The country the player is in (Drive sets it as they move): people in Turkey speak Turkish (voiceLangOf). */
 let voiceCountry: string | null = null;
@@ -195,11 +196,64 @@ export class Voices {
       void spoken.then((s) => {
         if (s) {
           if (performance.now() - asked < 2500) this.play(s, at, v === "cop");
-        } else this.device(b, v, vol, lang);
+        } else this.neuralOr(textOf(b, v)[lang], v, at, lang, 2500, () => this.device(b, v, vol, lang));
       });
       return;
     }
-    this.device(b, v, vol, lang);
+    this.neuralOr(textOf(b, v)[lang], v, at, lang, 2500, () => this.device(b, v, vol, lang));
+  }
+
+  /**
+   * The on-device neural voice (tts/neural.ts — Persian, where this device runs it) if it's ready
+   * within `wait` ms; else `fallback` (the phone's own voice) straight away.
+   */
+  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void) {
+    const n = lang === "fa" ? speakNeural(text, v) : null;
+    if (!n) return fallback();
+    const asked = performance.now();
+    let done = false;
+    const late = setTimeout(() => (done = true, fallback()), wait);
+    void n.then((buf) => {
+      if (done) return;
+      clearTimeout(late);
+      done = true;
+      if (buf && performance.now() - asked < wait) this.play(buf, at, v === "cop");
+      else fallback();
+    });
+  }
+
+  /**
+   * Someone says `text` (any words — a shopkeeper naming a dish, a passer-by's directions) in voice
+   * `v` from `where`: the bubble at once, the voice from the on-device model (Persian), else the
+   * phone's own voice, else the bubble alone. `close`: right beside you (a conversation) — full
+   * volume, waited for a little longer. Returns how long the bubble stays (s).
+   */
+  talk(text: string, v: VoiceKind, where: Where, me: { x: number; z: number }, close = true): number {
+    const at = where();
+    const secs = Math.min(9, 1.6 + text.length * 0.065);
+    if (!at) return secs;
+    this.busyUntil = Math.max(this.busyUntil, performance.now() + secs * 700);
+    // (The bubble keeps it short; the whole answer is in the conversation panel.)
+    this.bubbleText(text.length > 64 ? `${text.slice(0, 62).trim()}…` : text, secs, where);
+    const d = Math.hypot(at.x - me.x, at.z - me.z);
+    if (isMuted() || d > HEAR_M) return secs;
+    const lang = voiceLangOf(getLocale(), voiceCountry);
+    const vol = close ? 1 : gainAt(d, "voice");
+    this.neuralOr(text, v, at, lang, close ? 6000 : 2500, () => this.deviceText(text, v, vol, lang));
+    return secs;
+  }
+
+  /** The phone's own voice saying any text. */
+  private deviceText(text: string, v: VoiceKind, vol: number, lang: VoiceLang) {
+    const dv = deviceVoice(lang, v);
+    if (!dv) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = dv;
+    u.lang = dv.lang;
+    u.volume = Math.min(1, vol * 1.2);
+    u.pitch = lang === "en" ? (v === "f" ? 1.15 : v === "cop" ? 0.9 : 1) : v === "f" ? 1.45 : v === "cop" ? 0.85 : 1;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
   }
 
   /** The device's own voice in the player's language, if it has one. */
@@ -220,8 +274,14 @@ export class Voices {
 
   /** The line in a bubble over the speaker's head. */
   private bubble(b: Bark, v: VoiceKind, where: Where, caption?: string) {
+    const loc = getLocale(), words = textOf(b, v), text = caption ?? (loc === "fa" ? words.fa : loc === "tr" ? words.tr : words.en);
+    this.bubbleText(text, sayFor(b, v), where);
+  }
+
+  /** Any words in a bubble over `where`, for `secs` s. */
+  private bubbleText(text: string, secs: number, where: Where) {
     const bub = this.bubbles.reduce((a, x) => (x.t < a.t ? x : a));
-    const loc = getLocale(), fa = loc === "fa", words = textOf(b, v), text = caption ?? (fa ? words.fa : loc === "tr" ? words.tr : words.en);
+    const fa = /[\u0600-\u06ff]/.test(text) || getLocale() === "fa";
     const g = bub.c.getContext("2d")!;
     const W = bub.c.width, H = bub.c.height;
     g.clearRect(0, 0, W, H);
@@ -262,7 +322,7 @@ export class Voices {
     else lines.forEach((l, i) => g.fillText(l, W / 2, 61 + (i ? 1 : -1) * size * 0.58));
     bub.tex.needsUpdate = true;
     bub.where = where;
-    bub.t = sayFor(b, v);
+    bub.t = secs;
     bub.sprite.visible = true;
   }
 

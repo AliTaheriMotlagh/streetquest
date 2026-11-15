@@ -464,6 +464,11 @@ export class Storefronts {
     return o;
   }
 
+  /** A store's rating once its card has been read (null: not known). */
+  ratingOf(id: string) {
+    return this.infos.get(id)?.rating ?? null;
+  }
+
   /** What's known about a store (its card read): its sign gets the logo and a deal tag; the panel its menu. */
   setInfo(id: string, info: StorePanel) {
     this.infos.set(id, info);

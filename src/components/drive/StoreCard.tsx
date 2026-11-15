@@ -18,10 +18,10 @@ import type { StorePanel } from "./storefronts";
 export type StoreTarget = { id: string; name: string; cls?: string; /** Its kind when already known (a search result); else worked out from `cls` and the name. */ cat?: string; lat: number; lng: number; emoji: string; color: string; sub: string };
 
 /** The /api/local query for a store seen in the city. */
-const queryOf = (s: StoreTarget) => ({ store: "place", name: s.name, lat: s.lat.toFixed(6), lng: s.lng.toFixed(6), cat: s.cat ?? STORE_LOOK[storeKind(s.cls, s.name)].cat });
+export const queryOf = (s: StoreTarget) => ({ store: "place", name: s.name, lat: s.lat.toFixed(6), lng: s.lng.toFixed(6), cat: s.cat ?? STORE_LOOK[storeKind(s.cls, s.name)].cat });
 
 /** Takhfifan deals at this very store (same name, within 150 m). */
-function useDeals(s: StoreTarget | null) {
+export function useDeals(s: StoreTarget | null) {
   const { data } = useLocal<{ deals: Deal[] }>(s ? { deals: "1", lat: s.lat.toFixed(3), lng: s.lng.toFixed(3) } : null);
   return useMemo(() => (s && data ? dealsNear(data.deals, s, 150).filter((d) => sameName(d.name, s.name)) : []), [data, s]);
 }
