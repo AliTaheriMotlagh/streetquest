@@ -1,33 +1,26 @@
 "use client";
-// The game's on-device Persian voices (the rules: lib/tts/neural.ts). Anything said in the 3D city
-// that isn't a recorded line — the shopkeeper naming today's dishes, a passer-by giving directions —
-// can be spoken by a neural model running in a worker (piper.worker.ts), on devices that should:
-//   speakNeural(text, "m" | "f" | "cop") → AudioBuffer (or null: not here, not now, failed)
+// The game's on-device Persian voices (the rules: lib/tts/neural.ts; the voices: lib/tts/sherpa.ts). Anything said in
+// the 3D city that isn't a recorded line — the shopkeeper naming today's dishes, a passer-by giving directions — can
+// be spoken by a sherpa-onnx model running in a worker (sherpa.worker.ts), on devices that should:
+//   speakNeural(text, "m" | "f" | "cop") → AudioBuffer (or null: not here, not yet, failed)
+// The first line a voice is asked for starts its download (Hugging Face, else hf-mirror.com — or our own copy first,
+// NEXT_PUBLIC_TTS_BASE) and answers null meanwhile; the game speaks another way until the voice is on the device.
 // Lines are cut into sentences, kept decoded (the newest SPOKEN_CACHE), and asked one at a time.
-// The models come from the voice host: NEXT_PUBLIC_TTS_BASE (ort/, piper/, model/ as in
-// assets/voices/lib), or the dev server's /api/dev/voices/lib/ while developing.
 import type { VoiceKind } from "@/lib/street/barks";
-import { chunks, FA_MODELS, NEURAL_PREF_KEY, neuralPlan, parseNeuralPref, SPOKEN_CACHE, type DeviceInfo, type NeuralPlan, type NeuralPref } from "@/lib/tts/neural";
+import { chunks, NEURAL_PREF_KEY, NEURAL_WOMEN_KEY, neuralPlan, parseNeuralPref, SPOKEN_CACHE, type DeviceInfo, type NeuralPlan, type NeuralPref } from "@/lib/tts/neural";
+import { bytesToGet, mirrors, VOICE_CACHE, VOICE_KEYS_PATH, voiceFor, type SherpaVoice } from "@/lib/tts/sherpa";
 import { audioOut } from "../../game/sfx";
-
-const ORT_URL = process.env.NEXT_PUBLIC_TTS_ORT_URL || "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/wasm/+esm";
-const PHONEMIZER_URL = process.env.NEXT_PUBLIC_TTS_PHONEMIZER_URL || "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/dist/piper-o91UDS6e.js/+esm";
-
-/** Where the voice files are ("" = nowhere: no neural voices). */
-export function voiceBase(): string {
-  const own = process.env.NEXT_PUBLIC_TTS_BASE;
-  if (own) return own.endsWith("/") ? own : `${own}/`;
-  return process.env.NODE_ENV === "development" ? "/api/dev/voices/lib/" : "";
-}
 
 // ---------------------------------------------------------------- the choice and the device
 let pref: NeuralPref = "auto";
+let women = false;
 let lite = false;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((f) => f());
 if (typeof window !== "undefined")
   try {
     pref = parseNeuralPref(localStorage.getItem(NEURAL_PREF_KEY));
+    women = localStorage.getItem(NEURAL_WOMEN_KEY) === "1";
   } catch {}
 
 export const neuralPref = () => pref;
@@ -37,6 +30,16 @@ export function setNeuralPref(p: NeuralPref) {
     localStorage.setItem(NEURAL_PREF_KEY, p);
   } catch {}
   changed();
+}
+/** Women speak with their own voice (a second download) — or, off, with the phone's voice / a recorded line. */
+export const neuralWomen = () => women;
+export function setNeuralWomen(on: boolean) {
+  women = on;
+  try {
+    localStorage.setItem(NEURAL_WOMEN_KEY, on ? "1" : "0");
+  } catch {}
+  changed();
+  if (on && neuralNow().use) warmNeural("f");
 }
 /** The 3D city says when it's running in its lite mode (a weak device by its own measure). */
 export const setNeuralLite = (v: boolean) => void (lite = v);
@@ -51,65 +54,112 @@ export function deviceInfo(): DeviceInfo {
     saveData: !!n?.connection?.saveData,
     net: n?.connection?.effectiveType ?? null,
     wasm: typeof WebAssembly === "object",
-    worker: typeof Worker !== "undefined",
+    // (The voice files live in Cache Storage, which needs a secure page.)
+    worker: typeof Worker !== "undefined" && typeof caches !== "undefined",
     mobile,
-    hosted: !!voiceBase(),
     lite,
   };
 }
 export const neuralNow = (): NeuralPlan => neuralPlan(deviceInfo(), pref);
+const voiceOf = (kind: VoiceKind) => voiceFor(kind, { mobile: deviceInfo().mobile, women });
+/** MB this device downloads for the men's voice (and the women's, `withWomen`), for Settings. */
+export const downloadMb = (withWomen = women) => Math.round(bytesToGet([voiceOf("m")!, ...(withWomen ? [voiceFor("f", { mobile: false, women: true })!] : [])]) / (1024 * 1024));
 
-// ---------------------------------------------------------------- the worker
-let worker: Worker | null = null;
+// ---------------------------------------------------------------- one worker per voice
+type Speaker = { w: Worker; state: "checking" | "missing" | "downloading" | "ready" | "failed"; failures: number; waiting: Map<number, (r: { pcm: Float32Array; rate: number } | null) => void> };
+const speakers = new Map<string, Speaker>();
 let nextId = 1;
-let failures = 0;
-const waiting = new Map<number, { ok: (r: { pcm: Float32Array; rate: number } | null) => void }>();
-/** How far each model's download is (0…1), for Settings; 1 once it's on the device. */
+/** How far each voice's download is (0…1), for Settings; 1 once it's on the device. */
 export const progress = new Map<string, number>();
 
-function workerNow() {
-  if (worker) return worker;
-  worker = new Worker(new URL("./piper.worker.ts", import.meta.url), { type: "module" });
-  worker.onmessage = (e: MessageEvent<{ type: string; id?: number; pcm?: Float32Array; rate?: number; model?: string; loaded?: number; total?: number; message?: string }>) => {
+const keys = () => `${location.origin}${VOICE_KEYS_PATH}`;
+const doneKey = (sha: string) => `${keys()}${sha}?done`;
+
+function speaker(v: SherpaVoice): Speaker {
+  const had = speakers.get(v.id);
+  if (had) return had;
+  const w = new Worker(new URL("./sherpa.worker.ts", import.meta.url));
+  const sp: Speaker = { w, state: "checking", failures: 0, waiting: new Map() };
+  speakers.set(v.id, sp);
+  w.postMessage({ t: "init", cache: VOICE_CACHE, keys: keys(), bases: mirrors(v.id, process.env.NEXT_PUBLIC_TTS_BASE), files: v.files, config: v.config });
+  w.onmessage = (e: MessageEvent<{ t: string; id?: number; pcm?: Float32Array; rate?: number; loaded?: number; total?: number; msg?: string }>) => {
     const m = e.data;
-    if (m.type === "progress" && m.model) {
-      progress.set(m.model, m.total ? Math.min(1, (m.loaded ?? 0) / m.total) : 0);
+    if (m.t === "progress") {
+      progress.set(v.id, m.total ? Math.min(1, (m.loaded ?? 0) / m.total) : 1);
       return changed();
     }
-    const w = m.id != null ? waiting.get(m.id) : undefined;
-    if (!w) return;
-    waiting.delete(m.id!);
-    if (m.type === "audio" && m.pcm) (failures = 0), w.ok({ pcm: m.pcm, rate: m.rate ?? 22050 });
-    else {
-      // Three failures in a row (no network to the host, a broken file): quiet for this session.
-      if (++failures >= 3) disabled = true;
-      w.ok(null);
+    if (m.t === "downloaded") {
+      sp.state = "ready";
+      progress.set(v.id, 1);
+      w.postMessage({ t: "load" });
+      return changed();
+    }
+    const done = m.id != null ? sp.waiting.get(m.id) : undefined;
+    if (m.t === "audio" && done) {
+      sp.waiting.delete(m.id!);
+      sp.failures = 0;
+      return done({ pcm: m.pcm!, rate: m.rate ?? 22050 });
+    }
+    if (m.t === "fail") {
+      if (done) sp.waiting.delete(m.id!), done(null);
+      if (m.id == null) {
+        // The download or the model failed: every waiting line gives up; three in a row → quiet for this session.
+        for (const f of sp.waiting.values()) f(null);
+        sp.waiting.clear();
+        if (sp.state === "downloading") sp.state = "missing";
+        if (++sp.failures >= 3) sp.state = "failed";
+        changed();
+      }
     }
   };
-  worker.onerror = () => {
-    disabled = true;
-    for (const w of waiting.values()) w.ok(null);
-    waiting.clear();
+  w.onerror = () => {
+    sp.state = "failed";
+    for (const f of sp.waiting.values()) f(null);
+    sp.waiting.clear();
   };
-  return worker;
+  // Already on the device? (caches.match, not caches.open: looking mustn't create the cache.)
+  void Promise.all(v.files.map((f) => caches.match(doneKey(f.sha256), { cacheName: VOICE_CACHE }).catch(() => undefined))).then((hits) => {
+    if (sp.state !== "checking") return;
+    sp.state = hits.every(Boolean) ? "ready" : "missing";
+    if (sp.state === "ready") progress.set(v.id, 1);
+    changed();
+  });
+  return sp;
 }
-let disabled = false;
 
-function ask(text: string, kind: VoiceKind) {
+/** Start downloading a voice (once), if it isn't on the device. */
+function fetchVoice(v: SherpaVoice, sp = speaker(v)) {
+  if (sp.state !== "missing") return;
+  sp.state = "downloading";
+  progress.set(v.id, progress.get(v.id) ?? 0);
+  sp.w.postMessage({ t: "download" });
+  changed();
+}
+
+function ask(v: SherpaVoice, sp: Speaker, text: string) {
   return new Promise<{ pcm: Float32Array; rate: number } | null>((ok) => {
     const id = nextId++;
-    waiting.set(id, { ok });
-    workerNow().postMessage({ type: "say", id, text, model: FA_MODELS[kind], base: new URL(voiceBase(), location.href).href, ortUrl: ORT_URL, phonemizerUrl: PHONEMIZER_URL });
+    sp.waiting.set(id, ok);
+    sp.w.postMessage({ t: "say", id, text });
   });
 }
 
 // ---------------------------------------------------------------- speaking
 const spoken = new Map<string, Promise<AudioBuffer | null>>();
 
-/** `text` (Persian) in a man's, a woman's or a police officer's voice, decoded; null when it can't be. */
+/** `text` (Persian) in a man's, a woman's or a police officer's voice, decoded; null when it can't be (yet). */
 export function speakNeural(text: string, kind: VoiceKind): Promise<AudioBuffer | null> | null {
-  if (disabled || !neuralNow().use || !text.trim()) return null;
-  const key = `${kind}|${text}`;
+  if (!neuralNow().use || !text.trim()) return null;
+  const v = voiceOf(kind);
+  if (!v) return null;
+  const sp = speaker(v);
+  if (sp.state === "failed") return null;
+  if (sp.state !== "ready") {
+    // Not on the device yet: start bringing it (this line is said another way).
+    if (sp.state === "missing") fetchVoice(v, sp);
+    return null;
+  }
+  const key = `${v.id}|${text}`;
   const had = spoken.get(key);
   if (had) {
     // Newest last: the oldest falls out first.
@@ -118,7 +168,7 @@ export function speakNeural(text: string, kind: VoiceKind): Promise<AudioBuffer 
     return had;
   }
   const p = (async () => {
-    const parts = await Promise.all(chunks(text).map((c) => ask(c, kind)));
+    const parts = await Promise.all(chunks(text).map((c) => ask(v, sp, c)));
     const ok = parts.filter((x): x is { pcm: Float32Array; rate: number } => !!x);
     const o = audioOut("voices");
     if (!ok.length || !o) return null;
@@ -136,7 +186,21 @@ export function speakNeural(text: string, kind: VoiceKind): Promise<AudioBuffer 
   return p;
 }
 
-/** Downloads a speaker's model now (Settings → "Get the voices"), so the first line isn't late. */
+/**
+ * Bring a speaker's voice onto the device now and load it (Settings → "Get the voice", the 3D city opening), so
+ * the first line isn't late.
+ */
 export function warmNeural(kind: VoiceKind = "m") {
-  if (!disabled && neuralNow().use) void ask("سلام", kind);
+  if (!neuralNow().use) return;
+  const v = voiceOf(kind);
+  if (!v) return;
+  const sp = speaker(v);
+  const go = () => (sp.state === "missing" ? fetchVoice(v, sp) : sp.state === "ready" ? sp.w.postMessage({ t: "load" }) : undefined);
+  if (sp.state === "checking") {
+    const off = onNeuralChange(() => sp.state !== "checking" && (off(), go()));
+  } else go();
 }
+
+// Dev tools: try the voices from the console (window.__sqTts.warm("m"), .say("سلام", "m"), .progress).
+if (process.env.NODE_ENV === "development" && typeof window !== "undefined")
+  (window as unknown as { __sqTts?: unknown }).__sqTts = { warm: warmNeural, say: speakNeural, progress, plan: neuralNow, setPref: setNeuralPref, states: () => Object.fromEntries([...speakers].map(([k, s]) => [k, s.state])) };

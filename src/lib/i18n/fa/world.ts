@@ -498,7 +498,6 @@ const world: Record<string, string> = {
   "Grumpy": "بداخلاق",
   "Off: people speak with this device's own voice, or only in speech bubbles.": "خاموش: آدم‌ها با صدای خود گوشی حرف می‌زنن، یا فقط حباب حرف.",
   "This browser can't run the voice models.": "این مرورگر نمی‌تونه مدل‌های صدا رو اجرا کنه.",
-  "The voice files aren't set up on this server yet.": "فایل‌های صدا هنوز روی این سرور نیستن.",
   "This device is too weak for the voice models — it uses its own voice.": "این دستگاه برای مدل‌های صدا ضعیفه — از صدای خودش استفاده می‌کنه.",
   "Data saver is on: no {mb} MB downloads until you turn this on.": "صرفه‌جویی داده روشنه: تا روشنش نکنی {mb} مگابایت دانلود نمی‌شه.",
   "A slow connection: turn this on to download the voices anyway (about {mb} MB each).": "اینترنت کنده: اگه بخوای روشنش کن تا صداها دانلود بشن (هر کدوم حدود {mb} مگابایت).",
@@ -569,6 +568,7 @@ const world: Record<string, string> = {
   "That's {n} things — {total} toman altogether.": "{n} قلم شد — روی هم {total} تومن.",
   "Your basket's empty — take your time.": "سبدت خالیه — عجله نکن.",
   "Thank you, come again!": "ممنون، باز هم بیا!",
+  "Women's own voice too (+{mb} MB)": "صدای خود خانم‌ها هم (+{mb} مگابایت)",
 };
 
 export default world;

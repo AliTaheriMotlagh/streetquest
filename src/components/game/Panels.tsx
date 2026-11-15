@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASKS_CHANGED } from "@/lib/asks";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
-import { MODEL_MB, NEURAL_PREFS, type NeuralPref, type NeuralWhy } from "@/lib/tts/neural";
-import { neuralNow, neuralPref, onNeuralChange, progress, setNeuralPref, warmNeural } from "../drive/tts/neural";
+import { NEURAL_PREFS, type NeuralPref, type NeuralWhy } from "@/lib/tts/neural";
+import { downloadMb, neuralNow, neuralPref, neuralWomen, onNeuralChange, progress, setNeuralPref, setNeuralWomen, warmNeural } from "../drive/tts/neural";
 import { DownloadRow } from "./GameDownload";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
@@ -1328,7 +1328,6 @@ const NEURAL_LABELS: Record<NeuralPref, string> = { auto: msg("Auto"), on: msg("
 const NEURAL_WHY: Record<NeuralWhy, string> = {
   off: msg("Off: people speak with this device's own voice, or only in speech bubbles."),
   unsupported: msg("This browser can't run the voice models."),
-  "not-hosted": msg("The voice files aren't set up on this server yet."),
   weak: msg("This device is too weak for the voice models — it uses its own voice."),
   "data-saver": msg("Data saver is on: no {mb} MB downloads until you turn this on."),
   "slow-net": msg("A slow connection: turn this on to download the voices anyway (about {mb} MB each)."),
@@ -1352,7 +1351,7 @@ function NeuralVoiceRow() {
         </div>
       </div>
       <p className="small muted" style={{ margin: 0 }}>
-        {t(NEURAL_WHY[plan.why], { mb: fmtNum(MODEL_MB) })}
+        {t(NEURAL_WHY[plan.why], { mb: fmtNum(downloadMb(false)) })}
         {got.some((x) => x < 1) && ` ${t("Downloading the voice… {n}%", { n: fmtNum(Math.round(Math.min(...got) * 100)) })}`}
         {plan.use && !got.length && (
           <>
@@ -1361,6 +1360,12 @@ function NeuralVoiceRow() {
           </>
         )}
       </p>
+      {plan.use && (
+        <label className="row">
+          <span className="grow">👩 {t("Women's own voice too (+{mb} MB)", { mb: fmtNum(downloadMb(true) - downloadMb(false)) })}</span>
+          <input type="checkbox" checked={neuralWomen()} onChange={(e) => setNeuralWomen(e.target.checked)} />
+        </label>
+      )}
     </>
   );
 }

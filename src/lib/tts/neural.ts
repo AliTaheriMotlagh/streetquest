@@ -1,15 +1,15 @@
-// On-device neural voices (pure; tests/tts.test.ts): whether this device should run Piper
-// (an ONNX voice model, ~60 MB each, in a Web Worker — drive/tts/), which model speaks for whom,
-// and how a line is cut for it. Best practice for a game on phones:
-//  - never download 60 MB unasked on a phone or a metered/slow connection: "auto" runs it only on a
+// On-device neural voices (pure; tests/tts.test.ts): whether this device should run the sherpa-onnx
+// Persian voices (lib/tts/sherpa.ts: which model speaks for whom, ~49–93 MB, in a Web Worker — drive/tts/)
+// and how a line is cut for them. Best practice for a game on phones:
+//  - never download tens of MB unasked on a phone or a metered/slow connection: "auto" runs it only on a
 //    desktop-class device (≥ 4 GB, ≥ 4 cores) that isn't saving data; phones need "on" in Settings;
 //  - never on the render thread (the worker), never blocking a line (it falls back to the phone's own
 //    voice, then to the speech bubble alone), one model per kind of speaker, loaded on first use.
-import type { VoiceKind } from "../street/barks";
-
 export type NeuralPref = "auto" | "on" | "off";
 export const NEURAL_PREFS: NeuralPref[] = ["auto", "on", "off"];
 export const NEURAL_PREF_KEY = "sq_neural_voice";
+/** The women's voice is a second download (Haaniye, ~81 MB): only when the player asks for it too. */
+export const NEURAL_WOMEN_KEY = "sq_neural_women";
 export const parseNeuralPref = (v: string | null | undefined): NeuralPref => (v === "on" || v === "off" ? v : "auto");
 
 /** What the browser says about this device (navigator.deviceMemory, hardwareConcurrency, connection). */
@@ -22,20 +22,17 @@ export type DeviceInfo = {
   wasm: boolean;
   worker: boolean;
   mobile: boolean;
-  /** The voice files are hosted somewhere (NEXT_PUBLIC_TTS_BASE, or the dev server). */
-  hosted: boolean;
   /** The game runs in its lite graphics mode (a weak device by its own measure). */
   lite: boolean;
 };
 
-export type NeuralWhy = "off" | "unsupported" | "not-hosted" | "weak" | "data-saver" | "slow-net" | "phone-ask" | "on" | "auto";
+export type NeuralWhy = "off" | "unsupported" | "weak" | "data-saver" | "slow-net" | "phone-ask" | "on" | "auto";
 export type NeuralPlan = { use: boolean; why: NeuralWhy };
 
 /** Whether to run the neural voices here, and why (the Settings line explains it). */
 export function neuralPlan(d: DeviceInfo, pref: NeuralPref): NeuralPlan {
   if (pref === "off") return { use: false, why: "off" };
   if (!d.wasm || !d.worker) return { use: false, why: "unsupported" };
-  if (!d.hosted) return { use: false, why: "not-hosted" };
   // Even when asked for: a model needs ~200 MB of memory while it runs.
   if (d.memoryGb != null && d.memoryGb < 2) return { use: false, why: "weak" };
   if (pref === "on") return { use: true, why: "on" };
@@ -45,16 +42,6 @@ export function neuralPlan(d: DeviceInfo, pref: NeuralPref): NeuralPlan {
   if (d.lite || (d.memoryGb != null && d.memoryGb < 4) || (d.cores != null && d.cores < 4)) return { use: false, why: "weak" };
   return { use: true, why: "auto" };
 }
-
-/** The Persian models (files under the voice host's model/): a man, a woman, the police. */
-export type NeuralModel = { id: string; file: string; kind: "piper" | "haaniye" };
-export const FA_MODELS: Record<VoiceKind, NeuralModel> = {
-  m: { id: "fa-m", file: "fa_IR-amir-medium", kind: "piper" },
-  f: { id: "fa-f", file: "fa-haaniye-low", kind: "haaniye" },
-  cop: { id: "fa-cop", file: "fa_IR-gyro-medium", kind: "piper" },
-};
-/** About how big one model is to download (MB) — said in Settings before anyone turns it on. */
-export const MODEL_MB = 60;
 
 /**
  * A line in pieces the model says well and quickly: whole sentences, none longer than `max`

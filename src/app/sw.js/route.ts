@@ -60,7 +60,8 @@ async function warm() {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if ((k.startsWith("sq-shell-") && k !== SHELL) || k === "sq-static-v1") await caches.delete(k);
+    // (sq-voices-1: the old Piper voices, replaced by the sherpa-onnx ones in sq-voices-sherpa-1 — never cleared here.)
+    for (const k of await caches.keys()) if ((k.startsWith("sq-shell-") && k !== SHELL) || k === "sq-static-v1" || k === "sq-voices-1") await caches.delete(k);
     // Tiles from a provider no map style uses any more (CARTO began answering every tile
     // with an "API key required" picture): never shown again, so they go.
     const tiles = await caches.open(TILES);

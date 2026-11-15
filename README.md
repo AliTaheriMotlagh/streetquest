@@ -203,12 +203,17 @@ mood scales XP; loot funds research; territory funds the army.
 - **Walk into a store** (`drive/ShopScreen.tsx`; lines `lib/street/shopTalk.ts`): on foot at an open shop's door,
   🚪 Enter (B) fills the screen with the inside — the shopkeeper greets you and, when asked, recommends dishes, names
   today's discounts and hours from the real menu (Snappfood), and adds up a basket; the order is finished on Snappfood.
-- **On-device Persian voices** (`drive/tts/`, rules `lib/tts/neural.ts`): what the shopkeeper and passers-by say that
-  isn't a recorded line is spoken by Piper models (a man, a woman, the police; ~60 MB each, once, kept in the browser)
-  running in a Web Worker with ONNX Runtime — never on the render thread, never blocking a line (the phone's own voice,
-  then the bubble alone, take over). Settings → Voices: Auto (only on a strong computer that isn't saving data), On or
-  Off; phones ask first. Production needs the files hosted (`NEXT_PUBLIC_TTS_BASE`, see `.env.example`); without it the
-  game uses the phone's voice, and where the phone has no Persian voice either (most), the speaker says one recorded
+- **On-device Persian voices** (`drive/tts/`, rules `lib/tts/neural.ts`, voices `lib/tts/sherpa.ts`): what the
+  shopkeeper and passers-by say that isn't a recorded line is spoken by sherpa-onnx (WebAssembly) running Persian
+  Piper/Mimic 3 models in a Web Worker — the same pinned builds as the khabar news site. Men and the police: Ganji
+  (12 MB runtime + 81 MB model on a computer, the 37 MB int8 build on a phone; the police through the megaphone
+  filter); women: Haaniye, a woman's own voice, as a second download only when asked (Settings → Voices). Files come
+  from Hugging Face, else hf-mirror.com where it's blocked (or `NEXT_PUBLIC_TTS_BASE` first), in 8 MB parts that
+  resume after a dropped connection, each checked against its SHA-256, kept in Cache Storage; the runtime is shared by
+  every voice. Never on the render thread, never blocking a line: until the voice is on the device the phone's own
+  voice speaks. Settings → Voices: Auto (only on a strong computer that isn't saving data), On or Off; phones ask
+  first. Without a neural voice the game uses the phone's voice, and where the phone has no Persian voice either
+  (most), the speaker says one recorded
   greeting in their own voice per conversation (`talkClip`, `lib/street/voiceLang.ts`) while the bubble carries the
   words. The recorded lines are fetched as bytes when the city opens and decoded on first use, so a city opened
   before the first tap (no audio yet) still gets its voices.

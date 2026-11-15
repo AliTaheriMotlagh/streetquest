@@ -20,7 +20,7 @@ import { lineFile, manifestPaths, pickDeviceVoice, talkClip, voiceLangOf, type V
 import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
-import { speakNeural } from "./tts/neural";
+import { speakNeural, warmNeural } from "./tts/neural";
 
 /** The country the player is in (Drive sets it as they move): people in Turkey speak Turkish (voiceLangOf). */
 let voiceCountry: string | null = null;
@@ -139,6 +139,8 @@ export class Voices {
     }
     // The recordings of the player's language, in the background (they're small).
     const lang = voiceLangOf(getLocale(), voiceCountry);
+    // The on-device Persian voice, brought onto the device now (where it should run) so the first conversation is spoken.
+    if (lang === "fa") warmNeural("m");
     void files().then((s) => s.forEach((f) => (lang === "fa" ? !/^(en|tr)\//.test(f) : f.startsWith(`${lang}/`)) && void fetchLine(f)));
   }
 

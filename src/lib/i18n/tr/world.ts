@@ -498,7 +498,6 @@ const world: Record<string, string> = {
   "Grumpy": "Huysuz",
   "Off: people speak with this device's own voice, or only in speech bubbles.": "Kapalı: insanlar cihazın kendi sesiyle ya da yalnızca konuşma balonlarıyla konuşur.",
   "This browser can't run the voice models.": "Bu tarayıcı ses modellerini çalıştıramıyor.",
-  "The voice files aren't set up on this server yet.": "Ses dosyaları bu sunucuda henüz kurulu değil.",
   "This device is too weak for the voice models — it uses its own voice.": "Bu cihaz ses modelleri için zayıf — kendi sesini kullanıyor.",
   "Data saver is on: no {mb} MB downloads until you turn this on.": "Veri tasarrufu açık: bunu açana kadar {mb} MB indirme yok.",
   "A slow connection: turn this on to download the voices anyway (about {mb} MB each).": "Yavaş bağlantı: sesleri yine de indirmek için aç (her biri yaklaşık {mb} MB).",
@@ -569,6 +568,7 @@ const world: Record<string, string> = {
   "That's {n} things — {total} toman altogether.": "{n} ürün — toplam {total} toman.",
   "Your basket's empty — take your time.": "Sepetin boş — acele etme.",
   "Thank you, come again!": "Teşekkürler, yine bekleriz!",
+  "Women's own voice too (+{mb} MB)": "Kadınların kendi sesi de (+{mb} MB)",
 };
 
 export default world;
