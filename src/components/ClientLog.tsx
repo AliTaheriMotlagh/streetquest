@@ -8,10 +8,17 @@ import { useEffect } from "react";
 import { MAX_PER_PAGE, type ClientKind } from "@/lib/clientLog";
 
 const sent = new Set<string>();
+// Leaving the page cancels its requests ("Failed to fetch"): not an error worth keeping.
+let leaving = false;
+if (typeof window !== "undefined") {
+  addEventListener("pagehide", () => (leaving = true));
+  addEventListener("beforeunload", () => (leaving = true));
+  addEventListener("pageshow", () => (leaving = false));
+}
 
 /** Report something that went wrong in this browser (kept, by kind and message, for Admin → Browser errors). */
 export function logClient(kind: ClientKind, msg: string, host?: string) {
-  if (typeof window === "undefined" || process.env.NODE_ENV === "test") return;
+  if (typeof window === "undefined" || process.env.NODE_ENV === "test" || leaving) return;
   const key = `${kind}|${msg}|${host ?? ""}`;
   if (sent.has(key) || sent.size >= MAX_PER_PAGE) return;
   sent.add(key);
