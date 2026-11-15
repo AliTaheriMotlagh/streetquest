@@ -16,6 +16,11 @@ describe("siteBase", () => {
     assert.equal(siteBase("cinematicket", undefined, "https://cinematicket.org/api/v1", { RELAY_URL: R, RELAY_FOR: "all" }), "http://37.0.0.1:8790/key-0123456789abcdef/https/cinematicket.org/api/v1");
     assert.equal(siteBase("torob", undefined, "https://api.torob.com", { RELAY_URL: R, RELAY_FOR: "snappfood, Torob" }), "http://37.0.0.1:8790/key-0123456789abcdef/https/api.torob.com");
   });
+  it("never sends a site abroad (Istanbul buses, plane positions) through Iran just because of \"all\"", () => {
+    assert.equal(siteBase("iett", undefined, "https://api.ibb.gov.tr", { RELAY_URL: R, RELAY_FOR: "all" }), "https://api.ibb.gov.tr");
+    assert.equal(siteBase("adsb", undefined, "https://api.adsb.lol", { RELAY_URL: R, RELAY_FOR: "all" }), "https://api.adsb.lol");
+    assert.equal(siteBase("iett", undefined, "https://api.ibb.gov.tr", { RELAY_URL: R, RELAY_FOR: "all,iett" }), "http://37.0.0.1:8790/key-0123456789abcdef/https/api.ibb.gov.tr", "named: yes");
+  });
   it("lets a site's own URL win, and \"off\" turn it off", () => {
     assert.equal(siteBase("snappfood", "http://relay/k/snappfood/", "https://snappfood.ir", { RELAY_URL: R }), "http://relay/k/snappfood");
     assert.equal(siteBase("snappfood", "off", "https://snappfood.ir", { RELAY_URL: R }), null);

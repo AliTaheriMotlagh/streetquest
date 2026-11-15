@@ -1,4 +1,5 @@
 "use client";
+import { Guard } from "../Guard";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { isQuiet } from "@/lib/quiet";
 import { t } from "@/lib/i18n";
@@ -130,7 +131,7 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
             </div>
           )
         )}
-        {children}
+        <Guard where={`panel ${help ?? title}`} onExit={onBack ?? onClose} exitLabel={onBack ? t("Back") : t("Close")}>{children}</Guard>
       </div>
     </div>
   );

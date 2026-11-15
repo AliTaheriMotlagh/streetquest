@@ -1,4 +1,5 @@
 "use client";
+import { logClient } from "../ClientLog";
 import L from "leaflet";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -161,6 +162,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         h.told = true;
         const swap = !!look.fallback && !onFallback;
         if (swap) setFellBack(look.id);
+        logClient("tiles", `map tiles failing (${look.id})`, (() => { try { return new URL((look.tiles?.url ?? "").replace(/\{s\}/, "a")).host; } catch { return ""; } })());
         onTilesFail?.(look, swap);
       },
     }),

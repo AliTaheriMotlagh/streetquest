@@ -9,6 +9,7 @@
 //    where RELAY_FOR names them, server/travel.ts).
 // A phone call that fails (offline, the site changed its rules) falls back to the server for that mode.
 // NEXT_PUBLIC_TRAVEL_DIRECT="off" sends everything through the server.
+import { logClient } from "../ClientLog";
 import { cityByKey, fromAlibabaBuses, mergeTrips, type Mode, type Route, type Trip } from "@/lib/travel";
 import { api } from "./client";
 
@@ -27,8 +28,10 @@ const ON_DEVICE: Partial<Record<Mode, (r: Route) => Promise<Trip[] | null>>> = {
     const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
     try {
       const res = await fetch(`https://ws.alibaba.ir/api/v2/bus/available?orginCityCode=${r.from.bus}&destinationCityCode=${r.to.bus}&requestDate=${r.date}&passengerCount=1`, { signal: ctl.signal, credentials: "omit", referrerPolicy: "no-referrer" });
+      if (!res.ok) logClient("net", `bus search ${res.status}`, "ws.alibaba.ir");
       return res.ok ? fromAlibabaBuses(await res.json(), r) : null;
     } catch {
+      logClient("net", ctl.signal.aborted ? "bus search timed out" : "bus search blocked", "ws.alibaba.ir");
       return null;
     } finally {
       clearTimeout(timer);

@@ -1,0 +1,99 @@
+/* Talking to people and walking into stores in the 3D city (drive/TalkPanel.tsx, drive/ShopScreen.tsx).
+   Phone-first: one thumb, 44 px targets, nothing wider than the screen; reduced motion stills it. */
+
+/* ---- the prompts: "💬 Talk (Y)" beside someone, "🚪 Enter (B)" at a store's door */
+.drive-talk-btn, .drive-enter {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px;
+  background: rgba(12, 16, 24, .9); border: 1px solid rgba(255, 255, 255, .18); color: #fff; font: 800 15px/1 var(--body);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45); cursor: pointer; animation: talkPop .25s ease-out; pointer-events: auto;
+}
+.drive-talk-btn { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(168px + var(--safe-b, 0px)); z-index: 60; }
+.drive-enter { border-color: var(--trade, var(--gold)); }
+.drive-talk-btn kbd, .drive-enter kbd { padding: 2px 6px; border-radius: 6px; background: rgba(255, 255, 255, .14); font: 700 11px/1.2 var(--body); }
+@media (pointer: coarse) { .drive-talk-btn kbd, .drive-enter kbd { display: none; } }
+@keyframes talkPop { from { opacity: 0; transform: translate(-50%, 8px) scale(.96); } }
+.drive-enter { animation-name: talkPopIn; }
+@keyframes talkPopIn { from { opacity: 0; transform: translateY(6px) scale(.96); } }
+
+/* ---- the conversation */
+.talk {
+  position: fixed; left: 50%; bottom: calc(10px + var(--safe-b, 0px)); transform: translateX(-50%); z-index: 70;
+  width: min(520px, calc(100vw - 16px)); max-height: min(70vh, 520px); display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border-radius: 20px; background: rgba(10, 13, 20, .94); border: 1px solid rgba(255, 255, 255, .14); color: #fff;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .55); backdrop-filter: blur(8px); pointer-events: auto; animation: talkUp .25s ease-out;
+}
+@keyframes talkUp { from { opacity: 0; transform: translate(-50%, 16px); } }
+.talk-head { display: flex; align-items: center; gap: 8px; }
+.talk-face { font-size: 26px; line-height: 1; }
+.talk-head b { flex: 1; font: 800 14.5px/1.2 var(--body); }
+.talk-mood { font-size: 20px; }
+.talk-x { width: 40px; height: 40px; border: 0; border-radius: 12px; background: rgba(255, 255, 255, .08); color: #fff; font-size: 16px; cursor: pointer; }
+.talk-log { display: grid; gap: 8px; max-height: 180px; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+.talk-log p { margin: 0; display: grid; gap: 4px; }
+.talk-me, .talk-them { max-width: 88%; padding: 7px 11px; border-radius: 14px; font: 600 14px/1.45 var(--body); overflow-wrap: anywhere; }
+.talk-me { justify-self: end; background: color-mix(in srgb, var(--sky) 30%, transparent); border-end-end-radius: 4px; }
+.talk-them { justify-self: start; background: #fff; color: #14171c; border-end-start-radius: 4px; }
+.talk-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.talk-acts button {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .06); color: #fff; font: 700 13.5px/1.2 var(--body); text-align: start; cursor: pointer; min-width: 0;
+}
+.talk-acts button span { font-size: 17px; flex: none; }
+.talk-acts button:hover:not(:disabled), .talk-acts button:focus-visible { background: rgba(255, 255, 255, .13); outline: none; border-color: var(--sky); }
+.talk-acts button:disabled { opacity: .45; }
+.talk-acts button.bad { border-color: rgba(239, 91, 91, .4); }
+.talk-acts button.ghost { background: none; }
+@media (min-width: 560px) { .talk-acts { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ---- inside a store: the whole screen */
+.shop {
+  position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; background: var(--bg, #0b0e14); color: var(--text, #eef1f7);
+  animation: shopIn .3s ease-out; overflow: hidden;
+}
+@keyframes shopIn { from { opacity: 0; transform: scale(1.03); } }
+.shop-top { position: relative; flex: none; min-height: 132px; padding: calc(10px + var(--safe-t, 0px)) 14px 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; overflow: hidden; background: linear-gradient(160deg, color-mix(in srgb, var(--trade, #63b3f2) 45%, #0b0e14), #0b0e14); }
+.shop-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .38; }
+.shop-top::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 20%, rgba(11, 14, 20, .92)); }
+.shop-leave, .shop-title { position: relative; z-index: 1; }
+.shop-leave { align-self: flex-start; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 0; background: rgba(0, 0, 0, .5); color: #fff; font: 800 14px/1 var(--body); cursor: pointer; }
+.shop-title b { display: block; font: 800 21px/1.25 var(--body); overflow-wrap: anywhere; }
+.shop-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; font: 700 13px/1.2 var(--body); }
+.shop-keeper { flex: none; display: flex; align-items: flex-end; gap: 10px; padding: 10px 14px 4px; }
+.shop-face { flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; font-size: 32px; background: color-mix(in srgb, var(--trade, #63b3f2) 30%, #1b2130); box-shadow: 0 0 0 2px var(--trade, #63b3f2); }
+.shop-bubble { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 16px; border-end-start-radius: 4px; background: #fff; color: #14171c; }
+.shop-bubble p { margin: 0; font: 700 14.5px/1.5 var(--body); overflow-wrap: anywhere; }
+.shop-asked { display: block; color: #5b6475; font: 600 12px/1.3 var(--body); margin-bottom: 2px; }
+.shop-asks { flex: none; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 6px 14px; }
+.shop-asks::-webkit-scrollbar { display: none; }
+.shop-asks button { flex: none; min-height: 40px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong, rgba(255, 255, 255, .18)); background: var(--surface-1, #151a24); color: inherit; font: 700 13px/1 var(--body); cursor: pointer; white-space: nowrap; }
+.shop-tabs { flex: none; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 0 10px; border-bottom: 1px solid var(--line, rgba(255, 255, 255, .08)); }
+.shop-tabs::-webkit-scrollbar { display: none; }
+.shop-tabs button { flex: none; min-height: 42px; padding: 0 12px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted, #95a0b4); font: 700 13.5px/1 var(--body); cursor: pointer; white-space: nowrap; }
+.shop-tabs button.on { color: var(--text, #fff); border-bottom-color: var(--trade, var(--gold)); }
+.shop-shelf { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 10px 14px 16px; }
+.shop-items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 8px; }
+.shop-items li { position: relative; border-radius: 14px; border: 1px solid var(--line, rgba(255, 255, 255, .08)); background: var(--surface-1, #151a24); }
+.shop-items li.in { border-color: color-mix(in srgb, var(--green, #5bd38c) 60%, transparent); }
+.shop-item { display: flex; gap: 10px; width: 100%; padding: 8px; border: 0; background: none; color: inherit; text-align: start; font: inherit; cursor: pointer; }
+.shop-item img, .shop-ph { flex: none; width: 72px; height: 72px; border-radius: 10px; object-fit: cover; background: var(--surface-2, #1b2130); display: grid; place-items: center; font-size: 28px; }
+.shop-item-tx { flex: 1; min-width: 0; display: grid; gap: 3px; align-content: start; }
+.shop-item-tx > b { font: 700 14px/1.35 var(--body); overflow-wrap: anywhere; }
+.shop-item-tx small { color: var(--muted, #95a0b4); font: 500 12px/1.35 var(--body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.shop-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.shop-price b { color: var(--gold, #f0c05a); font: 800 14px/1.2 var(--body); }
+.shop-price s { color: var(--muted, #95a0b4); font-size: 12px; }
+.shop-qty { position: absolute; bottom: 8px; inset-inline-end: 8px; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: var(--panel-solid, #141924); border: 1px solid var(--line-strong, rgba(255, 255, 255, .18)); }
+.shop-qty button { width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .08); color: #fff; font: 800 17px/1 var(--body); cursor: pointer; }
+.shop-qty output { min-width: 22px; text-align: center; font: 800 14px/1 var(--body); }
+.shop-empty { margin: 24px 0; text-align: center; color: var(--muted, #95a0b4); }
+.shop-wait { display: grid; gap: 8px; }
+.shop-wait i { height: 88px; border-radius: 14px; background: linear-gradient(90deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .09), rgba(255, 255, 255, .04)); background-size: 200% 100%; animation: shopShimmer 1.2s linear infinite; }
+@keyframes shopShimmer { to { background-position: -200% 0; } }
+.shop-foot { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px calc(10px + var(--safe-b, 0px)); border-top: 1px solid var(--line, rgba(255, 255, 255, .08)); background: var(--panel-solid, #141924); }
+.shop-foot .grow { min-width: 0; display: grid; gap: 2px; }
+.shop-foot b { font: 800 16px/1.2 var(--body); }
+.shop-foot small { color: var(--muted, #95a0b4); font: 600 12px/1.2 var(--body); }
+.shop-foot .btn { min-height: 44px; white-space: nowrap; }
+@media (min-width: 900px) { .shop-top { min-height: 180px; padding-inline: 28px; } .shop-keeper, .shop-asks, .shop-shelf, .shop-foot { padding-inline: 28px; } }
+
+@media (prefers-reduced-motion: reduce) { .drive-talk-btn, .drive-enter, .talk, .shop, .shop-wait i { animation: none; } }

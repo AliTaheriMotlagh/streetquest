@@ -11,6 +11,7 @@ const common: Record<string, string> = {
   "Go here": "برو اینجا",
   "Go there": "برو اونجا",
   Stop: "توقف",
+  "This part didn't load. The rest of the game still works.": "این بخش باز نشد. بقیهٔ بازی کار می‌کند.",
   Close: "بستن",
   Open: "باز",
   Closed: "بسته",

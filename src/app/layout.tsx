@@ -4,6 +4,7 @@ import { preload } from "react-dom";
 import { Analytics } from "@/components/Analytics";
 import { DialogHost } from "@/components/Dialogs";
 import { I18nProvider } from "@/components/I18nProvider";
+import { ClientLog } from "@/components/ClientLog";
 import { Pwa } from "@/components/Pwa";
 import { dirOf, LOCALE_META } from "@/lib/i18n";
 import { SITE, siteText } from "@/lib/site";
@@ -21,6 +22,7 @@ import "./directory.css";
 import "./filters.css";
 import "./travel.css";
 import "./list.css";
+import "./drive-talk.css";
 import "./map-pins.css";
 import "./loading.css";
 import "./compact.css";
@@ -75,6 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Pwa />
         </I18nProvider>
         <Analytics />
+        <ClientLog />
       </body>
     </html>
   );

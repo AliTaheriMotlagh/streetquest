@@ -1,4 +1,5 @@
 "use client";
+import { logClient } from "../ClientLog";
 import type { AdArea, DirStore } from "@/lib/stores/directory";
 import type { SiktirSpot } from "@/lib/siktir";
 import { fmtWhen, t } from "@/lib/i18n";
@@ -19,6 +20,8 @@ let guest: Promise<void> | null = null;
 function ensureGuest() {
   guest ??= fetch("/api/auth/guest", { method: "POST" })
     .then(async (r) => {
+      // A refused new player (429: too many from one network — a phone carrier's shared address) is worth seeing.
+      if (!r.ok) logClient("net", `guest sign-up ${r.status}`);
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? t("Couldn't start a game ({status})", { status: r.status }));
     })
     .finally(() => setTimeout(() => (guest = null), 1000));
@@ -50,6 +53,9 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
       signal: ctl.signal,
     });
   } catch (e) {
+    // What made "Couldn't start the game" for someone: kept by country (Admin → Browser errors).
+    const what = path.split("?")[0];
+    if (navigator.onLine !== false) logClient("net", `${ctl.signal.aborted ? "timeout" : "unreachable"} ${what}`);
     if (ctl.signal.aborted) throw new Error(t("The server is taking too long — check your connection and try again"));
     // The browser's own words for a failed request ("Failed to fetch", "Load failed") are English.
     throw new Error(navigator.onLine === false ? t("You're offline — try again when you're back online") : t("Couldn't reach the server — check your connection and try again"));
@@ -61,6 +67,7 @@ export async function api<T = { message?: string }>(path: string, init?: { metho
     await ensureGuest();
     return api<T>(path, init, true);
   }
+  if (res.status >= 500 || res.status === 429) logClient("net", `${res.status} ${path.split("?")[0]}`);
   if (!res.ok) throw new ApiError(res.status, errorText(res, data) ?? t("Request failed ({status})", { status: res.status }));
   return data as T;
 }

@@ -11,6 +11,7 @@ const common: Record<string, string> = {
   "Go here": "Buraya git",
   "Go there": "Oraya git",
   Stop: "Dur",
+  "This part didn't load. The rest of the game still works.": "Bu bölüm yüklenemedi. Oyunun geri kalanı çalışıyor.",
   Close: "Kapat",
   Open: "Açık",
   Closed: "Kapalı",

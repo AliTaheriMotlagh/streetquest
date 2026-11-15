@@ -2004,3 +2004,8 @@ html.quiet nextjs-portal { display: none !important; }
    Safari a panel scrolled to its end used to drag the whole screen with it ("not fixed"). Only panels scroll. */
 html.game-on, html.game-on body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .sheet-body, .pm-scroll, .fx-sheet-body, .tv-picks, .ps-cmp { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+/* A part of the screen that crashed (components/Guard.tsx): a small card in its place, the rest keeps working. */
+.guard-card { display: grid; justify-items: center; gap: 8px; margin: 12px auto; padding: 16px; max-width: 360px; border-radius: 16px; background: var(--panel-solid, #141924); border: 1px solid var(--line-strong, rgba(255, 255, 255, .18)); color: var(--text, #eef1f7); text-align: center; pointer-events: auto; position: relative; z-index: 5; }
+.guard-card > span { font-size: 30px; }
+.guard-card p { margin: 0; font: 600 14px/1.5 var(--body); }

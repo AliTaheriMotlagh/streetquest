@@ -3,11 +3,14 @@
 // No language provider is mounted up here, so it reads the player's language cookie and
 // loads that catalog; until that's loaded it shows English.
 import { useEffect, useState } from "react";
+import { logClient } from "@/components/ClientLog";
 import { isLocale, LOCALE_COOKIE, LOCALE_META, translate, type Locale } from "@/lib/i18n";
 import { loadCatalog } from "@/lib/i18n/load";
 
-export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const [locale, setLocale] = useState<Locale>("en");
+  // The whole app failed: kept for Admin → Browser errors (components/ClientLog.tsx).
+  useEffect(() => logClient("crash", `app: ${error?.message ?? "?"}`), [error]);
   useEffect(() => {
     const cookie = document.cookie.split(/;\s*/).find((c) => c.startsWith(`${LOCALE_COOKIE}=`))?.slice(LOCALE_COOKIE.length + 1);
     if (!isLocale(cookie)) return;

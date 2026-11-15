@@ -2,12 +2,14 @@
 // If any part of the game crashes, show a recover screen instead of a dead page.
 import { useEffect } from "react";
 import { useT } from "@/components/I18nProvider";
+import { logClient } from "@/components/ClientLog";
 
 export default function PlayError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const t = useT();
   useEffect(() => {
     console.error(error);
-    fetch("/api/track", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "client_error", path: `${location.pathname} ${error.message}`.slice(0, 200) }) }).catch(() => {});
+    // Kept with its country and browser for Admin → Browser errors (components/ClientLog.tsx).
+    logClient("crash", error.message || String(error));
   }, [error]);
   return (
     <div className="game" style={{ display: "grid", placeItems: "center", padding: 16 }}>

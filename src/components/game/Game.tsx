@@ -1,4 +1,5 @@
 "use client";
+import { Guard } from "../Guard";
 import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
@@ -1396,6 +1397,7 @@ export default function Game() {
     <Ctx.Provider value={ctx}>
       <EmojiArtLayer />
       <div className={`game ${driveOn ? "in-drive" : ""} map-${mapStyle.id} view-${view}`}>
+        <Guard where="map">
         <GameMap
           asleep={mapAsleep}
           world={mapWorld}
@@ -1429,6 +1431,7 @@ export default function Game() {
           others={exploreOn ? (layers.includes("players") ? exploreData?.players ?? [] : []) : undefined}
           explore={exploreProp}
         />
+        </Guard>
         {siktirAt && <SiktirSheet target={siktirAt} onClose={() => setSiktirAt(null)} />}
         {exploreOn && <ExploreBar hasMe={!!pos} onJump={(at) => startExplore(at)} onExit={stopExplore} />}
 
@@ -1666,6 +1669,7 @@ export default function Game() {
 
         <LeaveGuard />
         {view === "list" && !panel && !driveOn && (
+          <Guard where="list" onExit={() => setView("map")} exitLabel={t("Back to the map")}>
           <ListView
             view={view}
             onView={setView}
@@ -1685,6 +1689,7 @@ export default function Game() {
               hotels: () => <HotelFinder at={look ?? pos ?? null} />,
             }}
           />
+          </Guard>
         )}
         {dirOpen && view !== "list" && !panel && (
           <StoreBrowser
@@ -1778,6 +1783,7 @@ export default function Game() {
         </nav>
 
         {driveOn && driveStart && (
+          <Guard where="3d" onExit={driveCbs.onExit} exitLabel={t("Back to the map")}>
           <Drive
             start={driveStart}
             goal={driveOn.goal}
@@ -1791,6 +1797,7 @@ export default function Game() {
             onExit={driveCbs.onExit}
             stores={driveStores}
           />
+          </Guard>
         )}
 
         {/* Above the 3D city too: a request is answered wherever the player is. */}

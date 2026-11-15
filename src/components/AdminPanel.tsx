@@ -8,6 +8,7 @@ import { Button } from "./Button";
 import { fmtNum, t, msg } from "@/lib/i18n";
 
 const AdminVisits = dynamic(() => import("./AdminVisits"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminErrors = dynamic(() => import("./AdminErrors"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminCars = dynamic(() => import("./AdminCars"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminSiktir = dynamic(() => import("./AdminSiktir"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminClaims = dynamic(() => import("./AdminClaims"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
@@ -40,13 +41,14 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "scenarios" | "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "siktir" | "deliveries" | "claims" | "audit";
+type Tab = "errors" | "scenarios" | "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "siktir" | "deliveries" | "claims" | "audit";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
   { group: msg("Overview"), items: [
     { id: "dash", icon: "📈", label: msg("Dashboard"), desc: msg("Players, visits, sign-ups and activity over the last 7 days.") },
     { id: "visits", icon: "👁️", label: msg("Visits"), desc: msg("Visits and unique visitors per day, signed-in players and new players, in Iran time.") },
+    { id: "errors", icon: "🐞", label: msg("Browser errors"), desc: msg("What went wrong in players' browsers — crashes, files that didn't load, blocked connections (the realtime server, map tiles, sites the phone asks itself) — by country and browser.") },
   ] },
   {
     group: msg("Game"),
@@ -228,6 +230,7 @@ export function AdminPanel() {
 
         {tab === "stores3d" && <AdminLandmarks onError={setNotice} />}
         {tab === "visits" && <AdminVisits />}
+        {tab === "errors" && <AdminErrors />}
         {tab === "cars" && <AdminCars />}
         {tab === "siktir" && <AdminSiktir onError={setNotice} />}
         {tab === "claims" && <AdminClaims onError={setNotice} />}

@@ -12,6 +12,7 @@
 //  - Keeps the server clock (offset measured at the middle of each ping's round trip,
 //    smoothed) so snapshots can be interpolated on the server's timeline. In someone
 //    else's relayed match the clock is the host's (measured through the game server).
+import { logClient } from "../ClientLog";
 import { decodeSnap, encodeState, localFrame, OP_SNAP, PROTOCOL, type ClientMsg, type LL, type LocalFrame, type ServerMsg, type SnapEntity, type State } from "@/lib/arena/protocol";
 import type { Hub, Identity } from "../../../realtime/hub";
 import type { Player, Sock } from "../../../realtime/player";
@@ -297,7 +298,11 @@ export class RtClient {
       this.close();
       // The realtime server can't be reached from here: play on without it, the way the game does
       // when none is deployed (matches go through the game server), until the page is reloaded.
-      if (!opened && ++this.unreachable >= RT_GIVE_UP && !this.stopped) return void this.startLocal();
+      if (!opened && ++this.unreachable >= RT_GIVE_UP && !this.stopped) {
+        // (Kept for Admin → Browser errors: which countries can't reach the realtime server.)
+        logClient("ws", "realtime server unreachable", (() => { try { return new URL(pass.url ?? "").host; } catch { return ""; } })());
+        return void this.startLocal();
+      }
       // Replaced by another tab, or a ticket the server didn't take: don't fight it.
       if (e.code === 4009 || e.code === 4003) this.fails = 6;
       this.later();
