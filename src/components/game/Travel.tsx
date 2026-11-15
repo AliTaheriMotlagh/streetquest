@@ -16,11 +16,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtDate, fmtNum, getLocale, t } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import {
-  bookUrl, CITIES, cityByKey, cityHas, COMPARE, DAY_PART_KEYS, DAY_PARTS, filterStays, filterTrips, findCities, hotelLinks, isoDay, MODE_KEYS, MODES, nearestCity, STAY_KINDS, STAY_SORT_KEYS, STAY_SORTS,
-  tourLink, TRAVEL_SITES, TRIP_SORT_KEYS, TRIP_SORTS, tripFacets, type City, type DayPart, type Mode, type Stay, type StayKind, type StaySort, type Trip, type TripSort,
+  bookUrl, CITIES, cityByKey, cityHas, COMPARE, DAY_PART_KEYS, DAY_PARTS, filterStays, filterTrips, findCities, hotelLinks, isoDay, AMENITIES, MODE_KEYS, MODES, nearestCity, STAY_KINDS, STAY_SORT_KEYS, STAY_SORTS,
+  tourLink, TRAVEL_SITES, TRIP_SORT_KEYS, TRIP_SORTS, tripFacets, type City, type DayPart, type Mode, type Amenity, type Stay, type StayKind, type StaySort, type Trip, type TripSort,
 } from "@/lib/travel";
 import {
-  billOf, cheapestTrip, cleanPlan, compareWays, driveOf, legsOf, MAX_NIGHTS, MAX_STOPS, MAX_TRAVELLERS, newPlan, roomsFor, stopDays, tripDays, WAYS, type Leg, type LegPick, type Plan, type StayPick, type Way,
+  billOf, cheapestTrip, cleanPlan, compareWays, driveOf, itinerary, legsOf, MAX_NIGHTS, MAX_STOPS, MAX_TRAVELLERS, newPlan, roomsFor, stopDays, tripDays, WAYS, type Leg, type LegPick, type Plan, type StayPick, type Way,
 } from "@/lib/travel/plan";
 import { iranTime } from "@/lib/flights";
 import { api } from "./client";
@@ -35,16 +35,23 @@ const STORE = "sq-trip";
 const DAYS_AHEAD = 30;
 const TRIPS_FRESH_MS = 15 * 60_000;
 const STAYS_FRESH_MS = 6 * 3600_000;
+/** Kept stays' key (v2: hotels joined the list — older copies have none). */
+const STAYS_KEPT = "stays2:";
+const STAYS_PAGE = 30;
 const PANEL = "travel-filters";
 
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
+/** A price in a few characters for tight spots: 1.9M, 850K (toman). */
+const short = (n: number) => (n >= 1e6 ? t("{n}M", { n: fmtNum(Math.round(n / 1e5) / 10) }) : t("{n}K", { n: fmtNum(Math.round(n / 1000)) }));
 const clock = (s: string) => fmtDate(iranTime(s), { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tehran" });
 const span = (min?: number) => (min == null ? "" : min < 60 ? t("{m} min", { m: fmtNum(min) }) : min % 60 ? t("{h} h {m} min", { h: fmtNum(Math.floor(min / 60)), m: fmtNum(min % 60) }) : t("{h} h", { h: fmtNum(min / 60) }));
 const day = (iso: string) => fmtDate(`${iso}T12:00:00Z`, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 const cityName = (c: City | string | null) => {
   const x = typeof c === "string" ? cityByKey(c) : c;
-  return x ? (getLocale() === "fa" ? x.fa : x.en) : "";
+  return x ? (getLocale() === "fa" ? x.fa : x.en).replace(/_/g, " ") : "";
 };
+/** From → to, pointing the way the line reads (right to left in Persian). */
+const arrow = () => (getLocale() === "fa" ? "←" : "→");
 const legKey = (l: Leg) => `${l.from}>${l.to}@${l.date}`;
 const stayKey = (city: string, arrive: string) => `${city}@${arrive}`;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
@@ -110,16 +117,10 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
   useEffect(() => {
     for (const s of plan.stops) {
       if (s.nights <= 0 || s.city in stays) continue;
-      const mine = kept<Stay[]>(`stays:${s.city}`);
+      const mine = kept<Stay[]>(`${STAYS_KEPT}${s.city}`);
       setStays((v) => ({ ...v, [s.city]: mine?.data ?? null }));
       if (fresh(mine, STAYS_FRESH_MS)) continue;
-      api<{ stays: Stay[] }>(`/api/travel?stays=${encodeURIComponent(s.city)}`).then(
-        (r) => {
-          if (r.stays.length) keep(`stays:${s.city}`, r.stays);
-          setStays((v) => ({ ...v, [s.city]: r.stays.length || !mine?.data.length ? r.stays : mine.data }));
-        },
-        () => setStays((v) => ({ ...v, [s.city]: v[s.city] ?? [] })),
-      );
+      void loadStays(s.city).then((r) => setStays((v) => ({ ...v, [s.city]: r })));
     }
   }, [plan.stops]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,6 +228,10 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
           </button>
         </div>
 
+        {legs.length > 0 && (
+          <TripGlance plan={plan} legs={legs} days={days} answers={answers} legPicks={legPicks} stayPicks={stayPicks} bill={bill} onLeg={(l) => setView({ kind: "leg", key: legKey(l) })} onStay={(i) => setView({ kind: "stay", i })} />
+        )}
+
         <ol className="tp-line">
           <li className="tp-node home">
             <span className="tp-dot" aria-hidden>📍</span>
@@ -311,6 +316,152 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
   );
 }
 
+// ---------------------------------------------------------------- the trip at a glance
+/** A leg's way, time and price for everyone: the one chosen, else the cheapest on offer (faded). */
+function legLook(l: Leg, pick: LegPick | undefined, answer: Answer | undefined, travellers: number) {
+  const drive = driveOf(cityByKey(l.from), cityByKey(l.to), travellers);
+  if (pick?.way === "car") return { set: true, emoji: WAYS.car.emoji, minutes: drive?.minutes, price: drive?.fuel ?? 0, depart: undefined as string | undefined };
+  if (pick) return { set: true, emoji: WAYS[pick.way].emoji, minutes: pick.trip.minutes, price: pick.trip.price * travellers, depart: pick.trip.depart };
+  const best = cheapestTrip(answer?.data?.trips ?? [], travellers);
+  if (best) return { set: false, emoji: WAYS[best.mode].emoji, minutes: best.minutes, price: best.price * travellers, depart: undefined };
+  return { set: false, emoji: drive ? WAYS.car.emoji : "❔", minutes: drive?.minutes, price: drive?.fuel ?? 0, depart: undefined };
+}
+
+/**
+ * The whole trip in one look: the route as a line (each city with its dates, nights and stay; each
+ * leg with how, how long and how much — solid once chosen, dashed while open), the cost split into
+ * tickets / fuel / stays, then the trip day by day or on the map. Every piece opens its own screen.
+ */
+function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLeg, onStay }: {
+  plan: Plan; legs: Leg[]; days: { arrive: string; leave: string }[]; answers: Record<string, Answer>; legPicks: Record<number, LegPick | undefined>; stayPicks: Record<number, StayPick | undefined>;
+  bill: ReturnType<typeof billOf>; onLeg: (l: Leg) => void; onStay: (i: number) => void;
+}) {
+  const [tab, setTab] = useState<"line" | "days" | "map">("line");
+  const diary = useMemo(() => itinerary(plan, legPicks, stayPicks), [plan, legPicks, stayPicks]);
+  const parts = [
+    { k: "tickets", n: bill.tickets, label: t("Tickets"), emoji: "🎫" },
+    { k: "fuel", n: bill.fuel, label: t("Fuel"), emoji: "⛽" },
+    { k: "stays", n: bill.stays, label: t("Stays"), emoji: "🏨" },
+  ].filter((x) => x.n > 0);
+  const seg = (l: Leg) => {
+    const x = legLook(l, legPicks[l.i], answers[legKey(l)], plan.travellers);
+    return (
+      <li key={`seg${l.i}`} className={`tg-seg${x.set ? " set" : ""}`}>
+        <button type="button" onClick={() => onLeg(l)} aria-label={`${cityName(l.from)} ${arrow()} ${cityName(l.to)}`}>
+          <span className="tg-way" aria-hidden>{x.emoji}</span>
+          <small>{x.minutes ? span(x.minutes) : x.set ? "" : t("Choose")}</small>
+          {x.price > 0 && <small className="tg-cost">{x.set ? "" : "~"}{short(x.price)}</small>}
+        </button>
+      </li>
+    );
+  };
+  const city = (key: string, sub: string, extra?: React.ReactNode, cls = "") => (
+    <li className={`tg-city ${cls}`}>
+      <span className="tg-dot" aria-hidden />
+      <b dir="auto">{cityName(key)}</b>
+      <small>{sub}</small>
+      {extra}
+    </li>
+  );
+  return (
+    <section className="tg" aria-label={t("Your trip at a glance")}>
+      <div className="fx-seg tg-tabs" role="tablist" aria-label={t("Your trip at a glance")}>
+        {([["line", t("Route")], ["days", t("Day by day")], ["map", t("Map")]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "line" && (
+        <ol className="tg-line">
+          {city(plan.home, day(plan.start), null, "home")}
+          {plan.stops.map((s, i) => {
+            const l = legs.find((x) => x.to === s.city && x.date === days[i].arrive);
+            const stay = stayPicks[i]?.stay;
+            return [
+              l && seg(l),
+              <li key={`c${i}`} className={`tg-city${s.nights && !stay ? " open" : ""}`}>
+                <span className="tg-dot" aria-hidden />
+                <b dir="auto">{cityName(s.city)}</b>
+                <small>{s.nights ? `${day(days[i].arrive)}` : t("Passing through")}</small>
+                {s.nights > 0 && (
+                  <button type="button" className={`tg-nights${stay ? " set" : ""}`} onClick={() => onStay(i)}>
+                    🏨 {t("{n} nights", { n: fmtNum(s.nights) })}
+                  </button>
+                )}
+              </li>,
+            ];
+          })}
+          {plan.back && legs.at(-1)?.to === plan.home && [seg(legs.at(-1)!), city(plan.home, day(legs.at(-1)!.date), null, "home end")]}
+        </ol>
+      )}
+
+      {tab === "days" && (
+        <ol className="tg-days">
+          {diary.map((d) => (
+            <li key={d.date}>
+              <div className="tg-day-head">
+                <b>{t("Day {n}", { n: fmtNum(d.n) })}</b>
+                <small>{day(d.date)}</small>
+              </div>
+              <ul>
+                {d.items.map((it, k) => {
+                  if (it.kind === "go") {
+                    const x = legLook(it.leg, it.pick, answers[legKey(it.leg)], plan.travellers);
+                    return (
+                      <li key={k} className={`tg-item go${x.set ? " set" : ""}`}>
+                        <button type="button" onClick={() => onLeg(it.leg)}>
+                          <span aria-hidden>{x.emoji}</span>
+                          <span className="grow">
+                            <b>{cityName(it.leg.from)} {arrow()} {cityName(it.leg.to)}</b>
+                            <small>{x.set ? [x.depart && clock(x.depart), x.minutes && span(x.minutes)].filter(Boolean).join(" · ") : t("Choose how to get there")}</small>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  }
+                  if (it.kind === "night")
+                    return (
+                      <li key={k} className={`tg-item night${it.pick ? " set" : ""}`}>
+                        <button type="button" onClick={() => onStay(it.stop)}>
+                          <span aria-hidden>🌙</span>
+                          <span className="grow">
+                            <b dir="auto">{it.pick ? it.pick.stay.name : t("Choose a place to stay")}</b>
+                            <small>{t("Night {n} of {of} in {city}", { n: fmtNum(it.night), of: fmtNum(it.of), city: cityName(it.city) })}</small>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  return (
+                    <li key={k} className="tg-item home set">
+                      <span aria-hidden>🏠</span>
+                      <span className="grow"><b>{t("Home again")}</b></span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {tab === "map" && <CityMap route={[plan.home, ...plan.stops.map((s) => s.city), ...(plan.back ? [plan.home] : [])]} here={plan.home} onPick={() => {}} />}
+
+      {bill.total > 0 && (
+        <div className="tg-cost-bar" role="img" aria-label={parts.map((x) => `${x.label} ${toman(x.n)}`).join("، ")}>
+          <div className="tg-bar">
+            {parts.map((x) => <i key={x.k} className={`tg-${x.k}`} style={{ flexGrow: x.n }} />)}
+          </div>
+          <div className="tg-legend">
+            {parts.map((x) => (
+              <span key={x.k} className={`tg-${x.k}`}><i aria-hidden />{x.emoji} {x.label} <b>{fmtNum(Math.round((x.n / bill.total) * 100))}%</b></span>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** − n +, at least 44 px each. */
 function Stepper({ value, min, max, onChange, label, unit }: { value: number; min: number; max: number; onChange: (n: number) => void; label: string; unit?: (n: number) => string }) {
   return (
@@ -366,7 +517,7 @@ function StopBlock({ leg, answer, pick, travellers, stop, when, stay, stays, onL
           {stop.nights > 0 && (
             <button type="button" className={`tp-stay${stay ? " set" : ""}`} onClick={onStay}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {stay?.photo ? <img src={stay.photo} alt="" loading="lazy" /> : <span className="tp-stay-ic" aria-hidden>🏨</span>}
+              {stay?.photo ? <img src={stay.photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(e) => e.currentTarget.replaceWith(Object.assign(document.createElement("span"), { className: "tp-stay-ic", textContent: "🏨" }))} /> : <span className="tp-stay-ic" aria-hidden>🏨</span>}
               <span className="grow">
                 <b dir="auto">{stay ? stay.name : t("Choose a place to stay")}</b>
                 <small>
@@ -428,7 +579,7 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
   }, [leg.date]);
 
   return (
-    <Sheet title={`${cityName(from)} → ${cityName(to)}`} onBack={onBack} onClose={onClose} tall>
+    <Sheet title={`${cityName(from)} ${arrow()} ${cityName(to)}`} onBack={onBack} onClose={onClose} tall>
       <div className="tv-days" role="tablist" aria-label={t("Day")} ref={daysRef}>
         {dates.map((d) => (
           <button key={d} role="tab" aria-selected={d === leg.date} className={d === leg.date ? "on" : ""} onClick={() => d !== leg.date && onDate(d)}>{day(d)}</button>
@@ -542,12 +693,16 @@ function TripRow({ trip: x, travellers, chosen, onChoose }: { trip: Trip; travel
         <div className="tv-times">
           <b>{clock(x.depart)}</b>
           <span className="tv-line" aria-hidden><i>{MODES[x.mode].emoji}</i></span>
-          <b>{x.arrive ? clock(x.arrive) : "—"}</b>
+          {x.arrive ? <b>{clock(x.arrive)}</b> : <span />}
           <small className="muted">{span(x.minutes)}</small>
         </div>
         <div className="tv-who">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {x.logo ? <img src={x.logo} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} /> : <span aria-hidden>{MODES[x.mode].emoji}</span>}
+          <span className="tv-logo" aria-hidden>
+            {[...x.company.replace(/^(شرکت|تعاونی|هواپیمایی)\s+/, "")][0] ?? MODES[x.mode].emoji}
+            {/* The site's logo over the company's first letter, once it has actually loaded (some are blank or blocked). */}
+            {x.logo && <img src={x.logo} alt="" loading="lazy" onLoad={(e) => e.currentTarget.naturalWidth > 1 && e.currentTarget.classList.add("ok")} onError={(e) => e.currentTarget.remove()} />}
+          </span>
           <div className="grow">
             <b dir="auto">{x.company}</b>
             <Meta parts={[x.number && `${x.mode === "train" ? t("Train") : ""} ${x.number}`.trim(), x.klass, x.charter && t("Charter")]} />
@@ -588,36 +743,123 @@ function TripSkeleton() {
 }
 
 // ---------------------------------------------------------------- a city's stays
-function StayView({ city, nights, travellers, from, stays, picked, onPick, onBack, onClose }: { city: City; nights: number; travellers: number; from: string; stays: Stay[] | null; picked?: Stay; onPick: (s: Stay | null) => void; onBack: () => void; onClose: () => void }) {
+/** A city's places to stay, kept on the phone for a few hours (Jabama's villas and suites and its hotels). */
+export async function loadStays(city: string): Promise<Stay[]> {
+  const mine = kept<Stay[]>(`${STAYS_KEPT}${city}`);
+  if (fresh(mine, STAYS_FRESH_MS)) return mine!.data;
+  try {
+    const r = await api<{ stays: Stay[] }>(`/api/travel?stays=${encodeURIComponent(city)}`);
+    if (r.stays.length) keep(`${STAYS_KEPT}${city}`, r.stays);
+    return r.stays.length || !mine?.data.length ? r.stays : mine.data;
+  } catch {
+    return mine?.data ?? [];
+  }
+}
+
+const flip = <T,>(l: T[], x: T) => (l.includes(x) ? l.filter((y) => y !== x) : [...l, x]);
+const starRow = (n: number) => "★".repeat(n);
+
+function StayCard({ s, nights, travellers, chosen, onPick }: { s: Stay; nights: number; travellers: number; chosen: boolean; onPick?: () => void }) {
+  const rooms = roomsFor(s, travellers);
+  return (
+    <article className={`tv-stay${chosen ? " chosen" : ""}`}>
+      <div className="tv-stay-pic">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <span aria-hidden>{STAY_KINDS[s.kind].emoji}</span>
+        {/* Some listed photos are gone from the site's CDN: the kind's icon shows instead. */}
+        {s.photo && <img src={s.photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(e) => e.currentTarget.remove()} />}
+        <span className="tv-stay-kind">{STAY_KINDS[s.kind].emoji} {t(STAY_KINDS[s.kind].label)}</span>
+        {s.was ? <span className="tv-stay-off">−{fmtNum(Math.round((1 - s.price / s.was) * 100))}%</span> : null}
+      </div>
+      <div className="tv-stay-body">
+        <b dir="auto">{s.name}</b>
+        {s.stars ? <span className="tv-stars" aria-label={t("{n} stars", { n: fmtNum(s.stars) })}>{starRow(s.stars)}</span> : null}
+        <Meta parts={[s.rating && <span className="tv-score">{fmtNum(s.rating)}</span>, s.reviews && t("{n} reviews", { n: fmtNum(s.reviews) }), s.capacity && t("{n} guests", { n: fmtNum(s.capacity) }), s.dist != null && formatDistance(s.dist), s.instant && `⚡ ${t("Instant")}`]} />
+        {s.amenities?.length ? (
+          <span className="tv-amen" aria-label={s.amenities.map((a) => t(AMENITIES[a].label)).join("، ")}>
+            {s.amenities.slice(0, 6).map((a) => <i key={a} title={t(AMENITIES[a].label)}>{AMENITIES[a].emoji}</i>)}
+          </span>
+        ) : null}
+        <div className="tv-price">
+          {s.was ? <s className="tiny muted">{fmtNum(s.was)}</s> : null}
+          <span><b>{toman(s.price)}</b> <small className="muted">{t("a night")}</small></span>
+          <small className="muted">{t("{n} for your stay", { n: toman(s.price * nights * rooms) })}{rooms > 1 ? ` · ${t("{n} units", { n: fmtNum(rooms) })}` : ""}</small>
+        </div>
+        <div className="row tv-stay-act">
+          {onPick && <button type="button" className={`btn small grow${chosen ? " green" : ""}`} onClick={onPick}>{chosen ? t("Chosen ✓") : t("Choose")}</button>}
+          <a className={`btn small${onPick ? " ghost" : " grow"}`} href={s.url} target="_blank" rel="noreferrer noopener">{t("Jabama")} ↗</a>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function StayView({ city, nights, travellers, from, stays, picked, onPick, onBack, onClose, form, title }: {
+  city: City; nights: number; travellers: number; from: string; stays: Stay[] | null; picked?: Stay;
+  /** Choosing one for the trip (the planner); without it the cards only link to the site (Hotels). */
+  onPick?: (s: Stay | null) => void; onBack?: () => void; onClose: () => void;
+  /** The search form over the list (Hotels: city, dates, guests). */
+  form?: React.ReactNode; title?: string;
+}) {
   const [kinds, setKinds] = useState<StayKind[]>([]);
   const [instant, setInstant] = useState(false);
   const [max, setMax] = useState(0);
+  const [minStars, setMinStars] = useState(0);
+  const [minRating, setMinRating] = useState(0);
+  const [amen, setAmen] = useState<Amenity[]>([]);
   const [sort, setSort] = useState<StaySort>("cheap");
   const [words, setWords] = useState("");
   const [open, setOpen] = useState(false);
-  const shown = useMemo(() => filterStays(stays ?? [], { kinds, guests: travellers > 2 ? travellers : 0, instant, max, q: words, sort }).filter((s) => !s.minNights || s.minNights <= nights), [stays, kinds, travellers, instant, max, words, sort, nights]);
+  const [more, setMore] = useState(STAYS_PAGE);
+  const filter = { kinds, guests: travellers > 2 ? travellers : 0, instant, max, minStars, minRating, amenities: amen, q: words, sort };
+  const shown = useMemo(() => filterStays(stays ?? [], filter).filter((s) => !s.minNights || s.minNights <= nights), [stays, nights, JSON.stringify(filter)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setMore(STAYS_PAGE), [shown]);
   const caps = useMemo(() => priceCaps((stays ?? []).map((s) => s.price)), [stays]);
-  const nFilters = kinds.length + (instant ? 1 : 0) + (max ? 1 : 0);
+  const has = useMemo(() => {
+    const all = stays ?? [];
+    return {
+      kinds: (Object.keys(STAY_KINDS) as StayKind[]).map((k) => [k, all.filter((s) => s.kind === k).length] as const).filter(([, n]) => n > 0),
+      amen: (Object.keys(AMENITIES) as Amenity[]).filter((a) => all.some((s) => s.amenities?.includes(a))),
+      stars: all.some((s) => s.stars),
+      rated: all.some((s) => s.rating),
+    };
+  }, [stays]);
+  const nFilters = kinds.length + (instant ? 1 : 0) + (max ? 1 : 0) + (minStars ? 1 : 0) + (minRating ? 1 : 0) + amen.length;
+  const clear = () => (setKinds([]), setInstant(false), setMax(0), setMinStars(0), setMinRating(0), setAmen([]));
+  const kindChip = (k: StayKind, n?: number) => <Chip key={k} on={kinds.includes(k)} emoji={STAY_KINDS[k].emoji} label={t(STAY_KINDS[k].label)} n={n} onClick={() => setKinds((v) => flip(v, k))} />;
   return (
-    <Sheet title={t("Stay in {city}", { city: cityName(city) })} onBack={onBack} onClose={onClose} tall>
-      <p className="small muted tp-sub">{t("{nights} nights from {day} · {people}", { nights: fmtNum(nights), day: day(from), people: t("{n} travellers", { n: fmtNum(travellers) }) })}</p>
+    <Sheet title={title ?? t("Stay in {city}", { city: cityName(city) })} onBack={onBack} onClose={onClose} tall>
+      {form ?? <p className="small muted tp-sub">{t("{nights} nights from {day} · {people}", { nights: fmtNum(nights), day: day(from), people: t("{n} travellers", { n: fmtNum(travellers) }) })}</p>}
       <div className="tp-tools">
         <SearchField value={words} onChange={setWords} placeholder={t("Name of the place")} />
         <FilterBar count={nFilters} open={open} onToggle={() => setOpen(!open)} panelId={PANEL}>
           <select className="fx-sort" value={sort} onChange={(e) => setSort(e.target.value as StaySort)} aria-label={t("Sort")}>
-            {STAY_SORT_KEYS.map((k) => <option key={k} value={k}>{t(STAY_SORTS[k])}</option>)}
+            {STAY_SORT_KEYS.filter((k) => k !== "stars" || has.stars).map((k) => <option key={k} value={k}>{t(STAY_SORTS[k])}</option>)}
           </select>
-          {(Object.keys(STAY_KINDS) as StayKind[]).filter((k) => stays?.some((s) => s.kind === k)).map((k) => <Chip key={k} on={kinds.includes(k)} emoji={STAY_KINDS[k].emoji} label={t(STAY_KINDS[k].label)} onClick={() => setKinds((v) => (v.includes(k) ? v.filter((x) => x !== k) : [...v, k]))} />)}
+          {has.kinds.map(([k]) => kindChip(k))}
         </FilterBar>
       </div>
-      <FilterPanel id={PANEL} open={open} onClear={nFilters ? () => (setKinds([]), setInstant(false), setMax(0)) : undefined} onDone={() => setOpen(false)} results={t("Show {n} results", { n: fmtNum(shown.length) })}>
-        <FilterGroup title={t("Kind")}>
-          {(Object.keys(STAY_KINDS) as StayKind[]).filter((k) => stays?.some((s) => s.kind === k)).map((k) => <Chip key={k} on={kinds.includes(k)} emoji={STAY_KINDS[k].emoji} label={t(STAY_KINDS[k].label)} onClick={() => setKinds((v) => (v.includes(k) ? v.filter((x) => x !== k) : [...v, k]))} />)}
-        </FilterGroup>
+      <FilterPanel id={PANEL} open={open} onClear={nFilters ? clear : undefined} onDone={() => setOpen(false)} results={t("Show {n} results", { n: fmtNum(shown.length) })}>
+        <FilterGroup title={t("Kind")}>{has.kinds.map(([k, n]) => kindChip(k, n))}</FilterGroup>
         {caps.length > 0 && (
           <FilterGroup title={t("Price a night")}>
             <Chip on={!max} label={t("Any price")} onClick={() => setMax(0)} />
             {caps.map((c) => <Chip key={c} on={max === c} label={t("Under {n}", { n: toman(c) })} onClick={() => setMax(c)} />)}
+          </FilterGroup>
+        )}
+        {has.stars && (
+          <FilterGroup title={t("Hotel stars")}>
+            {[3, 4, 5].map((n) => <Chip key={n} on={minStars === n} label={n === 5 ? starRow(5) : `${starRow(n)}+`} onClick={() => setMinStars(minStars === n ? 0 : n)} />)}
+          </FilterGroup>
+        )}
+        {has.rated && (
+          <FilterGroup title={t("Guest rating")}>
+            {[4, 4.5].map((r) => <Chip key={r} on={minRating === r} label={`★ ${fmtNum(r)}+`} onClick={() => setMinRating(minRating === r ? 0 : r)} />)}
+          </FilterGroup>
+        )}
+        {has.amen.length > 0 && (
+          <FilterGroup title={t("Has")}>
+            {has.amen.map((a) => <Chip key={a} on={amen.includes(a)} emoji={AMENITIES[a].emoji} label={t(AMENITIES[a].label)} onClick={() => setAmen((v) => flip(v, a))} />)}
           </FilterGroup>
         )}
         <FilterGroup title={t("Booking")}>
@@ -625,31 +867,21 @@ function StayView({ city, nights, travellers, from, stays, picked, onPick, onBac
         </FilterGroup>
       </FilterPanel>
 
+      {stays && <p className="fx-status" aria-live="polite">{t("{n} places to stay", { n: fmtNum(shown.length) })}</p>}
       {!stays && <TripSkeleton />}
-      {stays && !shown.length && <p className="muted small tv-empty">{stays.length ? t("Nothing matches — loosen a filter") : t("No places to stay listed here yet")}</p>}
+      {stays && !shown.length && (
+        <div className="fx-empty">
+          <span className="em">🏨</span>
+          {stays.length ? t("Nothing matches — loosen a filter") : t("No places to stay listed here yet")}
+          {nFilters > 0 && <button type="button" className="btn small ghost" onClick={clear}>{t("Clear all")}</button>}
+        </div>
+      )}
       <div className="tv-stays">
-        {shown.slice(0, 90).map((s) => {
-          const rooms = roomsFor(s, travellers), chosen = picked?.id === s.id;
-          return (
-            <article key={s.id} className={`tv-stay${chosen ? " chosen" : ""}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.photo} alt="" loading="lazy" />
-              <div className="tv-stay-body">
-                <b dir="auto">{s.name}</b>
-                <Meta parts={[`${STAY_KINDS[s.kind].emoji} ${t(STAY_KINDS[s.kind].label)}`, s.rating && `★ ${fmtNum(s.rating)}${s.reviews ? ` (${fmtNum(s.reviews)})` : ""}`, s.capacity && t("{n} guests", { n: fmtNum(s.capacity) }), s.dist != null && formatDistance(s.dist), s.instant && `⚡ ${t("Instant")}`]} />
-                <div className="tv-price">
-                  <b>{toman(s.price)}</b> <small className="muted">{t("a night")}</small>
-                  <small className="muted">{t("{n} for your stay", { n: toman(s.price * nights * rooms) })}{rooms > 1 ? ` · ${t("{n} units", { n: fmtNum(rooms) })}` : ""}</small>
-                </div>
-                <div className="row">
-                  <button type="button" className={`btn small grow${chosen ? " green" : ""}`} onClick={() => onPick(chosen ? null : s)}>{chosen ? t("Chosen ✓") : t("Choose")}</button>
-                  <a className="btn small ghost" href={s.url} target="_blank" rel="noreferrer noopener">{t("Jabama")} ↗</a>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+        {shown.slice(0, more).map((s) => (
+          <StayCard key={s.id} s={s} nights={nights} travellers={travellers} chosen={picked?.id === s.id} onPick={onPick && (() => onPick(picked?.id === s.id ? null : s))} />
+        ))}
       </div>
+      {shown.length > more && <button type="button" className="btn small ghost fx-more" onClick={() => setMore(more + STAYS_PAGE)}>{t("Show more")} ({fmtNum(shown.length - more)})</button>}
       <div className="tv-compare-sites">
         <span className="small muted">{t("More hotels on")}</span>
         {hotelLinks(city).map((l) => (
@@ -658,6 +890,51 @@ function StayView({ city, nights, travellers, from, stays, picked, onPick, onBac
       </div>
     </Sheet>
   );
+}
+
+// ---------------------------------------------------------------- hotels on their own (the List view)
+/** Hotels and stays in any city — where, when, how many nights, how many people — without a trip. */
+export function HotelFinder({ at }: { at: LatLng | null }) {
+  const here = useMemo(() => nearestCity(at), [at]);
+  const [city, setCity] = useState(() => here?.key ?? "tehran");
+  const [from, setFrom] = useState(() => isoDay(Date.now(), 0));
+  const [nights, setNights] = useState(2);
+  const [guests, setGuests] = useState(2);
+  const [picking, setPicking] = useState(false);
+  const [stays, setStays] = useState<Stay[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setStays(null);
+    loadStays(city).then((r) => live && setStays(r));
+    return () => void (live = false);
+  }, [city]);
+  const c = cityByKey(city);
+  if (picking || !c) return <CityPicker title={t("Which city?")} here={here} exclude={null} route={[city]} onPick={(x) => (setCity(x.key), setPicking(false))} onClose={() => setPicking(false)} />;
+  const days = Array.from({ length: DAYS_AHEAD }, (_, n) => isoDay(Date.now(), n));
+  const form = (
+    <div className="hf-form">
+      <button type="button" className="hf-field hf-city" onClick={() => setPicking(true)}>
+        <span>{t("City")}</span>
+        <b dir="auto">{cityName(c)}</b>
+      </button>
+      <label className="hf-field">
+        <span>{t("Check-in")}</span>
+        <select value={from} onChange={(e) => setFrom(e.target.value)}>
+          {days.map((d, n) => <option key={d} value={d}>{n === 0 ? t("Today") : n === 1 ? t("Tomorrow") : day(d)}</option>)}
+        </select>
+      </label>
+      <div className="hf-field">
+        <span>{t("Nights")}</span>
+        <Stepper value={nights} min={1} max={MAX_NIGHTS} onChange={setNights} label={t("Nights")} />
+      </div>
+      <div className="hf-field">
+        <span>{t("Guests")}</span>
+        <Stepper value={guests} min={1} max={MAX_TRAVELLERS} onChange={setGuests} label={t("Guests")} />
+      </div>
+      <p className="hf-out small muted">{t("Check-out {day}", { day: day(addDays(from, nights)) })}</p>
+    </div>
+  );
+  return <StayView title={t("Hotels & stays in {city}", { city: cityName(c) })} city={c} nights={nights} travellers={guests} from={from} stays={stays} form={form} onClose={() => {}} />;
 }
 
 // ---------------------------------------------------------------- picking a city: by name or on the map

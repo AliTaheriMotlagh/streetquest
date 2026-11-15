@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { billOf, cleanPlan, compareWays, driveOf, legsOf, newPlan, roomsFor, stopDays, tripDays, type Plan } from "../src/lib/travel/plan";
+import { billOf, cleanPlan, compareWays, driveOf, itinerary, legsOf, newPlan, roomsFor, stopDays, tripDays, type Plan } from "../src/lib/travel/plan";
 import { cityByKey, type Stay, type Trip } from "../src/lib/travel";
 
 const plan = (over: Partial<Plan> = {}): Plan => ({ home: "tehran", stops: [{ city: "isfahan", nights: 2 }, { city: "shiraz", nights: 3 }], back: true, travellers: 2, start: "2026-12-01", ...over });
@@ -62,4 +62,18 @@ test("a stored plan: unknown cities and odd numbers are dropped, a past start mo
   assert.equal(p.back, false);
   assert.equal(cleanPlan({ home: "nowhere" }), null);
   assert.equal(newPlan("tehran", now).start, "2026-12-11");
+});
+
+test("itinerary: the trip day by day — travel, nights, home", () => {
+  const p = { home: "tehran", stops: [{ city: "shiraz", nights: 2 }, { city: "isfahan", nights: 0 }, { city: "kashan", nights: 1 }], back: true, travellers: 2, start: "2026-11-20" };
+  const days = itinerary(p);
+  assert.deepEqual(days.map((d) => [d.date, d.n]), [["2026-11-20", 1], ["2026-11-21", 2], ["2026-11-22", 3], ["2026-11-23", 4]]);
+  assert.deepEqual(days[0].items.map((i) => i.kind), ["go", "night"], "arrive in Shiraz, sleep there");
+  const d3 = days[2].items;
+  assert.deepEqual(d3.map((i) => (i.kind === "go" ? `${i.leg.from}>${i.leg.to}` : i.kind === "night" ? `night:${i.city}` : `home`)), ["shiraz>isfahan", "isfahan>kashan", "night:kashan"], "pass through Isfahan the same day");
+  assert.deepEqual(days[3].items.map((i) => i.kind), ["go", "home"]);
+  const n2 = days[1].items[0];
+  assert.ok(n2.kind === "night" && n2.night === 2 && n2.of === 2);
+  // One-way: no way back, no home.
+  assert.ok(!itinerary({ ...p, back: false }).flatMap((d) => d.items).some((i) => i.kind === "home"));
 });

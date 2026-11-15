@@ -20,6 +20,7 @@ import "./hud.css";
 import "./directory.css";
 import "./filters.css";
 import "./travel.css";
+import "./list.css";
 import "./map-pins.css";
 import "./loading.css";
 import "./compact.css";

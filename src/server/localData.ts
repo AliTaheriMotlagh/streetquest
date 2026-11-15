@@ -28,7 +28,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealInfoOf, dealOf, dealOfPoi, dealReviewsOf, dealsNear, nearbyBox, type Deal, type DealInfo, type DealReviewPage, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealInfoOf, dealOf, dealOfPoi, dealReviewsOf, dealsNear, nearbyBox, type Deal, type DealInfo, type DealReviewPage, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, menuFromReadModel, type RmDetails, type RmMenu, type RmReview, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -38,6 +38,8 @@ import { pacerFor } from "../lib/pace";
 const base = (env: string | undefined, fallback: string) => (env === "off" ? null : (env || fallback).replace(/\/$/, ""));
 // The Iranian sites: straight, or through the Iran relay (RELAY_URL + RELAY_FOR, lib/relayUrl.ts).
 const snappBase = () => siteBase("snappfood", process.env.SNAPPFOOD_URL, "https://snappfood.ir");
+/** Snappfood's API gateway (menus since Nov 2026); relayed like snappfood.ir (same RELAY_FOR name). */
+const snappGateway = () => siteBase("snappfood", process.env.SNAPPFOOD_API_URL, "https://apigw.snappfood.ir");
 const torobBase = () => siteBase("torob", process.env.TOROB_URL, "https://api.torob.com");
 const divarBase = () => siteBase("divar", process.env.DIVAR_URL, "https://api.divar.ir");
 // Takhfifan (takhfifan.com): deals and cashback at stores (its /nearby map by position; a neighbourhood-name search as a fallback), a store's page and comments.
@@ -353,7 +355,7 @@ type RawMenu = {
 const phoneOf = (s: string | undefined) => storePhone(s);
 
 /** The cache key of a vendor's menu (cachedMany reads many of them for a product search). */
-export const menuKey = (code: string) => `sf:menu6:${code}`;
+export const menuKey = (code: string) => `sf:menu7:${code}`;
 
 type RawDish = { id?: number; title?: string; description?: string; price?: number; discount?: number; images?: { thumb?: string; main?: string }[]; vendor?: { code?: string; title?: string; rating?: number } };
 /** A dish Snappfood's own search named, with the vendor that sells it (toman; no position). */
@@ -385,9 +387,22 @@ export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
   // "menu6": Snappfood's call-centre number is dropped (the restaurant's own is added per request, phoneFor).
+  // "menu7": read from the menu-read-model API (the old one 404s; failures were cached as empty).
   return cached<Menu>(menuKey(code), MENU_TTL, async () => {
     const root = snappBase();
     if (!root) return null;
+    // The site's current API first (lib/localData menuFromReadModel); the old endpoint only if it fails.
+    const gw = snappGateway();
+    if (gw) {
+      const c = encodeURIComponent(code);
+      const [det, menu, rev] = await Promise.all([
+        getJson<RmDetails>(`${gw}/menu-read-model/vendor-details/${c}`),
+        getJson<RmMenu>(`${gw}/menu-read-model/${c}`),
+        getJson<RmReview>(`${gw}/menu-read-model/vendor-review/${c}`).catch(() => null),
+      ]);
+      const m = menuFromReadModel(det, menu, rev);
+      if (m) return m;
+    }
     const at = near ?? { lat: 35.6997, lng: 51.338 };
     const r = await getJson<RawMenu>(`${root}/mobile/v2/restaurant/details/dynamic?${snappQuery(at)}&UDID=streetquest&vendorCode=${encodeURIComponent(code)}&show_party=1&fetch-static-data=1`);
     const v = r?.data?.vendor ? toVendor({ ...r.data.vendor, vendorCode: r.data.vendor.vendorCode ?? code }) : null;

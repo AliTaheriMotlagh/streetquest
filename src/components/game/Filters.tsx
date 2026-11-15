@@ -13,6 +13,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { pushBack } from "./backStack";
+import { usePage } from "./pageMode";
 import { fmtNum, t } from "@/lib/i18n";
 import { LISTING_SOURCES, type ListingSource } from "@/lib/stores/listing";
 
@@ -30,7 +31,7 @@ export function SearchField({ value, onChange, placeholder, label, onSubmit, max
       <span className="fx-search-ic" aria-hidden>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
       </span>
-      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label ?? placeholder} dir="auto" maxLength={max} enterKeyHint="search" autoComplete="off" />
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label ?? placeholder} dir={value ? "auto" : undefined} maxLength={max} enterKeyHint="search" autoComplete="off" />
       {value && (
         <button type="button" className="fx-clear" onClick={() => onChange("")} aria-label={t("Clear")}>
           ✕
@@ -60,13 +61,16 @@ export function Chip({ on, onClick, label, emoji, n, color, disabled, title }: {
 
 /** [Filters •n] then the quick chips; `open` shows the panel id'd `panelId` below. */
 export function FilterBar({ count, open, onToggle, panelId, children }: { count: number; open: boolean; onToggle: () => void; panelId: string; children?: ReactNode }) {
+  // Docked beside the results (List view, wide screen): no button needed.
+  const page = usePage();
+  const docked = !!page?.wide && !!page.dock;
   return (
     <div className="fx-bar">
-      <button type="button" className={`fx-chip fx-filters${open ? " on" : ""}${count ? " set" : ""}`} aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
+      {!docked && <button type="button" className={`fx-chip fx-filters${open ? " on" : ""}${count ? " set" : ""}`} aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M4 6h16M7 12h10M10 18h4" /></svg>
         <span className="fx-lb">{t("Filters")}</span>
         {count > 0 && <span className="fx-n dot">{fmtNum(count)}</span>}
-      </button>
+      </button>}
       {children}
     </div>
   );
@@ -82,7 +86,10 @@ export function FilterPanel({ id, open, onClear, onDone, results, children, titl
   done.current = onDone;
   const [host, setHost] = useState<HTMLElement | null>(null);
   useEffect(() => setHost(document.body), []);
-  useEffect(() => (open ? pushBack(() => done.current()) : undefined), [open]);
+  // In the List view on a wide screen the filters stay open beside the results (pageMode.tsx).
+  const page = usePage();
+  const docked = !!page?.wide && !!page.dock;
+  useEffect(() => (open && !docked ? pushBack(() => done.current()) : undefined), [open, docked]);
   // Escape closes it on a keyboard.
   useEffect(() => {
     if (!open) return;
@@ -90,6 +97,21 @@ export function FilterPanel({ id, open, onClear, onDone, results, children, titl
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, [open]);
+  if (docked)
+    return createPortal(
+      <section className="fx-dock" id={id} aria-label={title ?? t("Filters")}>
+        <header className="fx-dock-head">
+          <h2>{title ?? t("Filters")}</h2>
+          {onClear && (
+            <button type="button" className="fx-sheet-clear" onClick={onClear}>
+              {t("Clear all")}
+            </button>
+          )}
+        </header>
+        <div className="fx-dock-body">{children}</div>
+      </section>,
+      page.dock!,
+    );
   if (!open || !host) return null;
   return createPortal(
     <div className="fx-sheet-wrap" onClick={(e) => e.target === e.currentTarget && onDone()}>

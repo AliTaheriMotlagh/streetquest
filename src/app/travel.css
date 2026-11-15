@@ -48,10 +48,11 @@
 .tv-line i { position: absolute; inset-inline-start: 50%; top: 50%; transform: translate(-50%, -50%); font-style: normal; font-size: 14px; background: var(--panel-solid); padding: 0 4px; border-radius: 6px; }
 [dir="rtl"] .tv-line i { transform: translate(50%, -50%); }
 .tv-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.tv-who img, .tv-who > span { width: 34px; height: 34px; border-radius: 9px; object-fit: contain; background: #fff; flex: 0 0 auto; display: grid; place-items: center; font-size: 18px; }
-.tv-who > span { background: var(--surface-2, rgba(255, 255, 255, .08)); }
+.tv-logo { position: relative; width: 36px; height: 36px; border-radius: 10px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; background: color-mix(in srgb, var(--sky) 18%, var(--surface-2, #1b2130)); color: var(--text); font: 800 16px/1 var(--body); }
+.tv-logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 3px; box-sizing: border-box; background: #fff; opacity: 0; transition: opacity .2s; }
+.tv-logo img.ok { opacity: 1; }
 .tv-who .grow { min-width: 0; }
-.tv-who .grow b { display: block; font: 700 14px/1.25 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-who .grow b { font: 700 14px/1.3 var(--body); overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .tv-price { display: grid; justify-items: end; gap: 1px; text-align: end; white-space: nowrap; }
 .tv-price b { font: 800 15px/1.1 var(--body); color: var(--gold, #f0c05a); }
 .tv-few { color: var(--ember, #ff9d4d); font-weight: 700; }
@@ -74,13 +75,39 @@
 .tv-compare-sites { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 4px; }
 .tv-compare-sites .chip { --site: var(--sky); text-decoration: none; border-color: color-mix(in srgb, var(--site) 50%, transparent); }
 
-.tv-stays { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
-.tv-stay { display: grid; grid-template-columns: 112px 1fr; gap: 10px; text-decoration: none; color: var(--text); border-radius: var(--r-md, 14px); border: 1px solid var(--line); background: var(--surface-1, rgba(255, 255, 255, .04)); overflow: hidden; }
-.tv-stay img { width: 112px; height: 100%; min-height: 96px; object-fit: cover; background: var(--surface-2, #222); }
-.tv-stay-body { display: grid; gap: 4px; padding: 10px 10px 10px 0; align-content: start; min-width: 0; }
-[dir="rtl"] .tv-stay-body { padding: 10px 0 10px 10px; }
-.tv-stay-body b { font: 700 14px/1.3 var(--body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.tv-stay .tv-price { justify-items: start; text-align: start; }
+.tv-stays { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-top: 8px; }
+/* A place to stay: the photo on top (its kind and any discount on it), then name, stars, score,
+   what it has, the price a night and for the whole stay, and the buttons — text wraps, never squeezed. */
+.tv-stay { display: flex; flex-direction: column; color: var(--text); border-radius: var(--r-md, 14px); border: 1px solid var(--line); background: var(--surface-1, rgba(255, 255, 255, .04)); overflow: hidden; transition: border-color .15s, transform .15s; }
+.tv-stay:hover { border-color: var(--line-strong, rgba(255, 255, 255, .18)); }
+.tv-stay.chosen { border-color: color-mix(in srgb, var(--green, #5bd38c) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--green, #5bd38c) 50%, transparent); }
+.tv-stay-pic { position: relative; aspect-ratio: 16 / 9; background: var(--surface-2, #222); display: grid; place-items: center; font-size: 34px; }
+.tv-stay-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tv-stay-kind, .tv-stay-off { position: absolute; top: 8px; padding: 3px 8px; border-radius: 999px; font: 700 11.5px/1.3 var(--body); }
+.tv-stay-kind { inset-inline-start: 8px; background: rgba(8, 10, 16, .78); color: #fff; backdrop-filter: blur(6px); }
+.tv-stay-off { inset-inline-end: 8px; background: var(--red, #ef5b5b); color: #fff; }
+.tv-stay-body { display: grid; gap: 6px; padding: 12px; align-content: start; min-width: 0; flex: 1; }
+.tv-stay-body > b { font: 700 15px/1.35 var(--body); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-stars { color: var(--gold, #f0c05a); font-size: 13px; letter-spacing: 1px; line-height: 1; }
+.tv-score { display: inline-block; min-width: 26px; padding: 2px 5px; border-radius: 6px; background: color-mix(in srgb, var(--green, #5bd38c) 22%, transparent); color: var(--green, #5bd38c); font-weight: 800; text-align: center; }
+.tv-amen { display: flex; flex-wrap: wrap; gap: 4px; }
+.tv-amen i { font-style: normal; font-size: 14px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: var(--surface-2, rgba(255, 255, 255, .06)); }
+.tv-stay .tv-price { justify-items: start; text-align: start; white-space: normal; margin-top: auto; }
+.tv-stay .tv-price > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.tv-stay-act { gap: 8px; margin-top: 4px; }
+.tv-stay-act .btn { min-height: 40px; }
+
+/* The hotel search form (List view → Hotels): city, check-in, nights, guests. */
+.hf-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.hf-field { display: grid; gap: 4px; align-content: start; min-width: 0; padding: 8px 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-1, rgba(255, 255, 255, .04)); color: var(--text); text-align: start; font: inherit; }
+.hf-field > span { font: 600 11.5px/1.2 var(--body); color: var(--muted); }
+.hf-field > b { font: 800 16px/1.3 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-field select { width: 100%; min-height: 34px; border: 0; background: none; color: var(--text); font: 700 15px/1.2 var(--body); padding: 0; }
+.hf-field .tp-step { justify-content: space-between; }
+button.hf-field { cursor: pointer; }
+button.hf-field:hover, button.hf-field:focus-visible { border-color: var(--sky); outline: none; }
+.hf-out { grid-column: 1 / -1; margin: 0; }
+@media (min-width: 720px) { .hf-form { grid-template-columns: 1.4fr 1fr 1fr 1fr; } }
 
 .tv-picks { display: grid; gap: 4px; margin-top: 6px; }
 .tv-pick-head { margin: 12px 0 0; text-transform: uppercase; letter-spacing: .05em; }
@@ -91,14 +118,9 @@
 
 /* Tablets and desktops: two columns of stays, a roomier compare row, picks in two columns. */
 @media (min-width: 640px) {
-  .tv-stays { grid-template-columns: 1fr 1fr; }
-  .tv-stay { grid-template-columns: 1fr; }
-  .tv-stay img { width: 100%; height: 150px; }
-  .tv-stay-body, [dir="rtl"] .tv-stay-body { padding: 0 12px 12px; }
   .tv-picks { grid-template-columns: 1fr 1fr; }
   .tv-mode { padding: 14px; }
 }
-@media (min-width: 1000px) { .tv-stays { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 380px) {
   .tv-times b { font-size: 17px; }
   .tv-mode { padding: 8px; }
@@ -106,8 +128,12 @@
 }
 
 /* ---- the map's travel layer (game/TravelLayer.tsx): airports, stations, planes */
-.tv-hub span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--panel-solid, #10131a); border: 2px solid var(--sky); font-size: 14px; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
-.tv-hub.rail span { border-color: #2fbf71; font-size: 13px; }
+.tv-hub { display: grid; justify-items: center; }
+.tv-hub > span { display: flex; align-items: center; justify-content: center; gap: 1px; min-width: 24px; height: 24px; padding: 0 3px; box-sizing: border-box; border-radius: 999px; background: var(--panel-solid, #10131a); border: 2px solid var(--sky); font-size: 12px; line-height: 1; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
+.tv-hub.rail > span { border-color: #2fbf71; }
+.tv-hub.bus > span { border-color: #f59e0b; }
+.tv-hub.small > span { min-width: 18px; height: 18px; padding: 0 2px; font-size: 9.5px; border-width: 1.5px; }
+.tv-hub > b { margin-top: 2px; padding: 1px 5px; border-radius: 6px; background: rgba(10, 13, 20, .82); color: #fff; font: 700 10.5px/1.25 var(--body); white-space: nowrap; pointer-events: none; }
 .tv-plane { pointer-events: auto; }
 .tv-plane span { display: block; font-size: 22px; line-height: 30px; text-align: center; color: #ffe27a; text-shadow: 0 0 3px #000, 0 1px 4px rgba(0, 0, 0, .7); transition: transform .4s; }
 .tv-plane.schedule span { color: #bfe3ff; opacity: .9; }
@@ -224,7 +250,6 @@
 .tv-trip.chosen, .tv-stay.chosen { border-color: var(--green, #5bd38c); box-shadow: 0 0 0 1px var(--green, #5bd38c) inset; }
 .tp-choose-btn { min-height: 36px; }
 article.tv-stay { cursor: default; }
-.tv-stay-body .row { margin-top: 4px; gap: 6px; }
 
 /* the map city picker (CityMap.tsx) */
 .tp-map { height: min(56dvh, 460px); border-radius: 16px; overflow: hidden; border: 1px solid var(--line-strong); margin-bottom: 8px; background: #0c0c14; contain: strict; }
@@ -236,9 +261,46 @@ article.tv-stay { cursor: default; }
 @keyframes tp-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes tp-pulse { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .tp-node, .tp-pulse, .tp-map-wait { animation: none; } .tp-toggle i::after, .tp-way { transition: none; } }
-/* a stay you choose (StayView): a square photo, the details wrapping under the name */
-article.tv-stay { grid-template-columns: 96px 1fr; align-items: start; column-gap: 12px; }
-article.tv-stay img { width: 96px; height: 96px; min-height: 0; margin: 10px 0 10px 0; margin-inline-start: 10px; border-radius: 12px; }
 article.tv-stay .fx-meta { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
-article.tv-stay .tv-stay-body { padding: 10px; padding-inline-start: 0; }
-article.tv-stay .tv-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+
+/* ---- the trip at a glance (Travel.tsx TripGlance): route line, day by day, map, cost split */
+.tg { display: grid; gap: 10px; margin: 4px 0 14px; padding: 12px; border-radius: 18px; border: 1px solid var(--line); background: linear-gradient(160deg, color-mix(in srgb, var(--sky) 9%, var(--surface-1)), var(--surface-1)); }
+.tg-tabs { grid-template-columns: repeat(3, 1fr); }
+.tg-line { list-style: none; margin: 0; padding: 6px 2px 2px; display: flex; align-items: flex-start; overflow-x: auto; scrollbar-width: thin; scroll-snap-type: x proximity; }
+.tg-city { flex: 0 0 auto; display: grid; justify-items: center; gap: 3px; min-width: 76px; max-width: 110px; text-align: center; scroll-snap-align: center; }
+.tg-city b { font: 800 14px/1.25 var(--body); overflow-wrap: anywhere; }
+.tg-city small { font: 600 11px/1.2 var(--body); color: var(--muted); }
+.tg-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--sky); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sky) 25%, transparent); }
+.tg-city.home .tg-dot { background: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 25%, transparent); }
+.tg-nights { margin-top: 2px; min-height: 30px; padding: 0 9px; border-radius: 999px; border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent); background: none; color: var(--muted); font: 700 11.5px/1 var(--body); cursor: pointer; white-space: nowrap; }
+.tg-nights.set { border-style: solid; border-color: color-mix(in srgb, var(--green, #5bd38c) 60%, transparent); color: var(--green, #5bd38c); background: color-mix(in srgb, var(--green, #5bd38c) 10%, transparent); }
+.tg-seg { flex: 1 0 74px; position: relative; padding-top: 0; }
+.tg-seg::before { content: ""; position: absolute; top: 7px; inset-inline: -6px; height: 3px; border-radius: 3px; background: repeating-linear-gradient(var(--fwd, 90deg), color-mix(in srgb, var(--muted) 70%, transparent) 0 6px, transparent 6px 11px); }
+.tg-seg.set::before { background: var(--green, #5bd38c); }
+.tg-seg button { position: relative; display: grid; justify-items: center; gap: 2px; width: 100%; padding: 0 2px 4px; border: 0; background: none; color: var(--text); cursor: pointer; font: inherit; }
+.tg-way { display: grid; place-items: center; width: 30px; height: 30px; margin-top: -7px; border-radius: 50%; background: var(--panel-solid); border: 2px solid var(--line-strong, rgba(255, 255, 255, .2)); font-size: 15px; }
+.tg-seg.set .tg-way { border-color: var(--green, #5bd38c); }
+.tg-seg small { font: 600 11px/1.2 var(--body); color: var(--muted); white-space: nowrap; }
+.tg-seg .tg-cost { color: var(--gold); font-weight: 800; }
+.tg-seg button:focus-visible, .tg-nights:focus-visible { outline: 2px solid var(--sky); border-radius: 10px; }
+.tg-days { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-height: 360px; overflow-y: auto; overscroll-behavior: contain; }
+.tg-day-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.tg-day-head b { font: 800 13px/1.2 var(--body); color: var(--gold); }
+.tg-day-head small { color: var(--muted); font: 600 12px/1.2 var(--body); }
+.tg-days ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; border-inline-start: 2px solid color-mix(in srgb, var(--sky) 35%, transparent); padding-inline-start: 10px; }
+.tg-item > button, .tg-item.home { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 10px; border-radius: 12px; border: 1px dashed var(--line-strong, rgba(255, 255, 255, .16)); background: none; color: var(--text); text-align: start; cursor: pointer; font: inherit; box-sizing: border-box; }
+.tg-item.set > button, .tg-item.home { border-style: solid; border-color: var(--line); background: rgba(255, 255, 255, .03); }
+.tg-item > button > span:first-child, .tg-item.home > span:first-child { font-size: 18px; }
+.tg-item b { display: block; font: 700 13.5px/1.3 var(--body); overflow-wrap: anywhere; }
+.tg-item small { color: var(--muted); font: 600 12px/1.3 var(--body); }
+.tg .tp-map { height: 240px; }
+.tg-cost-bar { display: grid; gap: 6px; }
+.tg-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, .06); }
+.tg-bar i { flex-basis: 0; min-width: 6px; }
+.tg-tickets { --c: var(--sky); } .tg-fuel { --c: #ff9f43; } .tg-stays { --c: #b388ff; }
+.tg-bar i { background: var(--c); }
+.tg-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font: 600 12px/1.3 var(--body); color: var(--muted); }
+.tg-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.tg-legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--c); }
+.tg-legend b { color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .tv-logo img { transition: none; } }

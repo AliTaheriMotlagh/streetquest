@@ -67,7 +67,8 @@ import { StoreBrowser } from "./StoreBrowser";
 import { commitDue } from "@/lib/driveCommit";
 import { fromCinema, fromDeal, fromDir, fromSpot, fromTorob, fromVendor, mergeListings } from "@/lib/stores/listing";
 import { ProductSearch } from "./ProductSearch";
-import { Travel } from "./Travel";
+import { HotelFinder, Travel } from "./Travel";
+import { ListView } from "../list/ListView";
 import { LeaveGuard } from "./LeaveGuard";
 import { applyPreset, currentPreset, type PresetId } from "@/lib/mapPresets";
 import { MAP_SITES, SITES, siteLayer, STORE_TYPE_KEYS, STORE_TYPES, type DirStore, type StoreType } from "@/lib/stores/directory";
@@ -103,7 +104,7 @@ const SYNC_EVERY_MS = 4000, SYNC_IDLE_MS = 120_000, SYNC_IDLE_EVERY_MS = 12_000;
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "transit" | "deals" | "divar" | "traffic" | "siktir" | ReturnType<typeof siteLayer>;
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "transit" | "deals" | "divar" | "traffic" | "travel" | "siktir" | ReturnType<typeof siteLayer>;
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -114,6 +115,7 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)"), group: msg("Around you") },
   { key: "cinema", emoji: "🎬", label: msg("Cinemas (Cinematicket)"), group: msg("Around you") },
   { key: "transit", emoji: "🚇", label: msg("Metro & buses"), group: msg("Around you") },
+  { key: "travel", emoji: "✈️", label: msg("Airports, stations & planes"), group: msg("Around you") },
   { key: "deals", emoji: "🏷️", label: msg("Deals (Takhfifan)"), group: msg("Around you") },
   { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
@@ -503,7 +505,8 @@ export default function Game() {
   const driveStart = useMemo(() => (driveOn ? pos ?? me?.lastPos ?? null : null), [driveOn]); // eslint-disable-line react-hooks/exhaustive-deps
   // In the 3D city the 2D map is hidden underneath: its store layers wait (no matching stores
   // against each other every time the car reports where it is — that was most of the lag).
-  const mapAsleep = !!driveOn;
+  // The List view covers it too (a full page): nothing on the map needs drawing then.
+  const mapAsleep = !!driveOn || view === "list";
   const shownVendors = useMemo(() => (mapAsleep ? [] : vendors.filter((v) => layers.includes(v.kind))), [vendors, layers, mapAsleep]);
   // Iran's store directories (Bilbooard, Irangaah, Okala, Netbarg) and Sheypoor's ads, for the site layers that are on.
   const dirData = useDirectory((k) => layers.includes(k as MapLayer), look ?? null, now);
@@ -1418,6 +1421,7 @@ export default function Game() {
           dir={shownDir}
           ads={layers.includes(siteLayer("sheypoor")) ? dirData.ads : undefined}
           traffic={layers.includes("traffic")}
+          travel={layers.includes("travel")}
           siktir={siktirOn ? siktirSpots : undefined}
           onLongPress={picker ? undefined : setSiktirAt}
           vasatyab={vasa}
@@ -1661,13 +1665,34 @@ export default function Game() {
         <Toasts toasts={toasts} onDismiss={dismissToast} onOpen={(l) => ctx.openLink(l)} />
 
         <LeaveGuard />
-        {(dirOpen || view === "list") && !panel && (
+        {view === "list" && !panel && !driveOn && (
+          <ListView
+            view={view}
+            onView={setView}
+            sections={{
+              stores: () => (
+                <StoreBrowser
+                  listings={listings}
+                  at={look ?? null}
+                  loading={dirData.pending}
+                  onPick={(ref) => setSelected(ref as Selected)}
+                  onClose={() => setView("map")}
+                  onServices={() => setServicesOpen(true)}
+                />
+              ),
+              products: () => <ProductSearch at={look ?? null} onClose={() => setView("map")} />,
+              travel: () => <Travel at={look ?? pos ?? null} onClose={() => setView("map")} />,
+              hotels: () => <HotelFinder at={look ?? pos ?? null} />,
+            }}
+          />
+        )}
+        {dirOpen && view !== "list" && !panel && (
           <StoreBrowser
             listings={listings}
             at={look ?? null}
             loading={dirData.pending}
             onPick={(ref) => (setDirOpen(false), setSelected(ref as Selected))}
-            onClose={() => (view === "list" ? setView("map") : setDirOpen(false))}
+            onClose={() => setDirOpen(false)}
             onServices={() => (setDirOpen(false), setServicesOpen(true))}
             onProducts={() => (setDirOpen(false), setProductsOpen(true))}
           />

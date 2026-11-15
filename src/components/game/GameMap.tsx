@@ -100,6 +100,8 @@ type Props = {
   ads?: AdArea[];
   /** Live traffic on the roads, coloured by speed. */
   traffic?: boolean;
+  /** Airports, train stations and bus terminals, and the planes in the sky (TravelLayer). Default on. */
+  travel?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
   route?: (LiveRoute & { to: LatLng }) | null;
   /** Other players to draw instead of the world's (explore mode: those around the explored spot). */
@@ -132,7 +134,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, transit, deals, dir, ads, traffic, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, transit, deals, dir, ads, traffic, travel = true, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -189,7 +191,7 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         <FrameTarget target={game?.target ?? game?.area?.center ?? (game?.points && game.next != null ? game.points[game.next] : null) ?? null} />
         <Clicks onClick={onMapClick} />
         <BenchHandle />
-        <TravelLayer />
+        {travel && <TravelLayer />}
         {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
         {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
         {vasatyab && <VasatyabLayer view={vasatyab} />}

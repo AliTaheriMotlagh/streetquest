@@ -12,7 +12,8 @@ import { tomanFor } from "./money";
 
 export type PlaceCat =
   | "burger" | "pizza" | "restaurant" | "cafe" | "bakery" | "icecream" | "bar"
-  | "grocery" | "pharmacy" | "fuel" | "gym" | "park" | "fashion" | "tech" | "books" | "cinema" | "bank" | "shop";
+  | "grocery" | "pharmacy" | "fuel" | "gym" | "park" | "fashion" | "tech" | "books" | "cinema" | "bank"
+  | "tobacco" | "beauty" | "home" | "auto" | "gifts" | "pets" | "health" | "shop";
 
 /**
  * How to reach a real place, from its OpenStreetMap tags: phone, website, Instagram
@@ -41,6 +42,13 @@ export const PLACE_CATS: Record<PlaceCat, { emoji: string; label: string; color:
   books: { emoji: "📚", label: msg("Books & library"), color: "#a3a3ff" },
   cinema: { emoji: "🎬", label: msg("Cinema"), color: "#e879f9" },
   bank: { emoji: "🏦", label: msg("Bank"), color: "#facc15" },
+  tobacco: { emoji: "🚬", label: msg("Tobacco & hookah"), color: "#a8a29e" },
+  beauty: { emoji: "💇", label: msg("Beauty & hair"), color: "#e84393" },
+  home: { emoji: "🛋️", label: msg("Home & hardware"), color: "#b7791f" },
+  auto: { emoji: "🔧", label: msg("Cars & repairs"), color: "#94a3b8" },
+  gifts: { emoji: "🎁", label: msg("Gifts, toys & flowers"), color: "#db2777" },
+  pets: { emoji: "🐾", label: msg("Pets & vets"), color: "#d97706" },
+  health: { emoji: "🏥", label: msg("Clinics & opticians"), color: "#ef4444" },
   shop: { emoji: "🏪", label: msg("Shop"), color: "#63b3f2" },
 };
 export const PLACE_CAT_KEYS = Object.keys(PLACE_CATS) as [PlaceCat, ...PlaceCat[]];
@@ -62,6 +70,10 @@ export function catOfTags(tags: Record<string, string | undefined>): PlaceCat | 
   if (a === "ice_cream" || sh === "ice_cream") return "icecream";
   if (a === "bar" || a === "pub" || a === "biergarten" || sh === "beverages") return "bar";
   if (a === "pharmacy" || sh === "chemist" || sh === "medical_supply") return "pharmacy";
+  if (sh === "tobacco" || sh === "e-cigarette") return "tobacco";
+  if (a === "clinic" || a === "doctors" || a === "dentist" || sh === "optician" || sh === "hearing_aids") return "health";
+  if (a === "veterinary" || sh === "pet" || sh === "pet_grooming") return "pets";
+  if (a === "car_wash" || sh === "car" || sh === "car_repair" || sh === "car_parts" || sh === "tyres" || sh === "motorcycle" || sh === "motorcycle_repair") return "auto";
   if (a === "fuel") return "fuel";
   if (a === "bank") return "bank";
   if (a === "cinema" || a === "theatre") return "cinema";
@@ -72,6 +84,9 @@ export function catOfTags(tags: Record<string, string | undefined>): PlaceCat | 
   if (sh === "supermarket" || sh === "convenience" || sh === "greengrocer" || sh === "butcher" || sh === "deli" || sh === "general") return "grocery";
   if (sh === "clothes" || sh === "shoes" || sh === "fashion" || sh === "boutique" || sh === "jewelry" || sh === "bag") return "fashion";
   if (sh === "electronics" || sh === "mobile_phone" || sh === "computer") return "tech";
+  if (sh === "hairdresser" || sh === "beauty" || sh === "cosmetics" || sh === "perfumery" || sh === "massage" || sh === "tattoo") return "beauty";
+  if (/^(furniture|hardware|doityourself|houseware|interior_decoration|carpet|curtain|kitchen|bathroom_furnishing|paint|lighting|bed|electrical|trade|glaziery|appliance|tiles|flooring)$/.test(sh ?? "")) return "home";
+  if (/^(florist|garden_centre|gift|toys|baby_goods|party|craft|art|antiques|photo|watches|music|musical_instrument)$/.test(sh ?? "")) return "gifts";
   if (sh) return "shop";
   return null;
 }
@@ -132,6 +147,13 @@ const TEMPLATES: Record<PlaceCat, Template[]> = {
   ],
   fashion: [{ kind: "deliver", title: msg("Fashion courier"), brief: msg("A customer at {dest} ordered from {place}. Deliver the parcel without creasing it.") }],
   tech: [{ kind: "deliver", title: msg("Repair pickup"), brief: msg("A fixed phone is ready at {place}. Its owner is waiting at {dest}.") }],
+  tobacco: [{ kind: "visit", title: msg("Corner kiosk"), brief: msg("Swing by {place} — the owner knows everything happening on this street.") }],
+  beauty: [{ kind: "visit", title: msg("Fresh cut"), brief: msg("You've got a big day tomorrow. Get a trim at {place}.") }],
+  home: [{ kind: "deliver", title: msg("Hardware run"), brief: msg("A plumber at {dest} is waiting on parts from {place}. Bring them over.") }],
+  auto: [{ kind: "visit", title: msg("Strange noise"), brief: msg("The car's making a noise. Have the mechanic at {place} take a look.") }],
+  gifts: [{ kind: "deliver", title: msg("Surprise gift"), brief: msg("Pick up the wrapped present at {place} and get it to {dest} before the party starts.") }],
+  pets: [{ kind: "deliver", title: msg("Pet food delivery"), brief: msg("A hungry cat at {dest} is waiting for food from {place}.") }],
+  health: [{ kind: "deliver", title: msg("Test results"), brief: msg("Results are ready at {place}. Take them to {dest} — the doctor needs them.") }],
   books: [{ kind: "visit", title: msg("Return the books"), brief: msg("Drop overdue books back at {place} before the fine doubles.") }],
   cinema: [{ kind: "visit", title: msg("Movie night"), brief: msg("Your friends saved you a seat at {place}. Don't be late.") }],
   bank: [{ kind: "deliver", title: msg("Cash in transit"), brief: msg("Move a sealed cash bag from {place} to {dest}. Stay alert."), item: "cash" }],

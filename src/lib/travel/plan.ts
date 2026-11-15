@@ -127,6 +127,33 @@ export function billOf(p: Plan, legPicks: Record<number, LegPick | undefined>, s
   return { tickets, fuel, stays, total, perPerson: Math.round(total / Math.max(1, p.travellers)), open: { legs: openLegs, stays: openStays } };
 }
 
+/** One thing on a day of the trip: travelling a leg, a night in a city, or home again. */
+export type DayItem =
+  | { kind: "go"; leg: Leg; pick?: LegPick }
+  | { kind: "night"; stop: number; city: string; night: number; of: number; pick?: StayPick }
+  | { kind: "home"; city: string };
+/** The trip day by day (day 1 = the first leg's day), each day's things in the order they happen. */
+export type TripDay = { date: string; n: number; items: DayItem[] };
+
+/** The plan as a diary: which day you travel where (and how, once chosen), which nights you sleep where. */
+export function itinerary(p: Plan, legPicks: Record<number, LegPick | undefined> = {}, stayPicks: Record<number, StayPick | undefined> = {}): TripDay[] {
+  const legs = legsOf(p), days = stopDays(p);
+  const out = new Map<string, DayItem[]>();
+  const add = (date: string, it: DayItem) => (out.get(date) ?? out.set(date, []).get(date)!).push(it);
+  let li = 0;
+  p.stops.forEach((s, i) => {
+    const leg = legs[li];
+    if (leg && leg.to === s.city && leg.date === days[i].arrive) add(leg.date, { kind: "go", leg, pick: legPicks[legs[li++].i] });
+    for (let k = 0; k < s.nights; k++) add(addDays(days[i].arrive, k), { kind: "night", stop: i, city: s.city, night: k + 1, of: s.nights, pick: stayPicks[i] });
+  });
+  for (; li < legs.length; li++) {
+    add(legs[li].date, { kind: "go", leg: legs[li], pick: legPicks[legs[li].i] });
+    if (legs[li].to === p.home) add(legs[li].date, { kind: "home", city: p.home });
+  }
+  const dayN = (d: string) => Math.round((Date.parse(`${d}T12:00:00Z`) - Date.parse(`${p.start}T12:00:00Z`)) / 86_400_000) + 1;
+  return [...out].sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => ({ date, n: dayN(date), items }));
+}
+
 /** How many of a place everyone needs (a place for 2 and 5 travelling: 3). */
 export const roomsFor = (s: Stay, travellers: number) => Math.max(1, Math.ceil(travellers / Math.max(1, s.capacity ?? 2)));
 

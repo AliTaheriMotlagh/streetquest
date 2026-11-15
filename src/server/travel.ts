@@ -113,13 +113,16 @@ export async function tripsBetween(fromKey: string, toKey: string, date: string,
 export async function staysIn(cityKey: string, here?: LatLng | null): Promise<{ stays: Stay[]; failed: boolean }> {
   const c = cityByKey(cityKey), root = base.jabama();
   if (!c || !root) return { stays: [], failed: !root };
-  const pages = await Promise.all(
-    [1, 2, 3].map((page) =>
-      cached<unknown>(`jb:city:${c.key}:${page}`, STAYS_TTL, () => getJson(`${root}/v4/keyword/city-${c.key}?allowEmptyCity=true&hasUnitRoom=true&platform=desktop`, { "page-number": page, "page-size": 40 })).catch(() => null),
-    ),
-  );
+  // Villas, suites and flats are Jabama's `city-<key>` list; its hotels are a separate `hotels-<key>`
+  // list (Alibaba's) that the first one never contains — both, a few pages each (30 a page).
+  const lists = [
+    ...[1, 2, 3].map((page) => ({ key: `jb:city:${c.key}:${page}`, url: `${root}/v4/keyword/city-${c.key}?allowEmptyCity=true&hasUnitRoom=true&platform=desktop`, page })),
+    ...[1, 2].map((page) => ({ key: `jb:hotels:${c.key}:${page}`, url: `${root}/v4/keyword/hotels-${c.key}?allowEmptyCity=true&platform=desktop`, page })),
+  ];
+  const pages = await Promise.all(lists.map((l) => cached<unknown>(l.key, STAYS_TTL, () => getJson(l.url, { "page-number": l.page, "page-size": 40 })).catch(() => null)));
   const seen = new Set<string>();
-  const stays = pages.flatMap((p) => (p ? fromJabama(p, here ?? (c.lat != null ? { lat: c.lat, lng: c.lng! } : null)) : [])).filter((s) => !seen.has(s.id) && !!seen.add(s.id));
+  const near = here ?? (c.lat != null ? { lat: c.lat, lng: c.lng! } : null);
+  const stays = pages.flatMap((p) => (p ? fromJabama(p, near, c.key) : [])).filter((s) => !seen.has(s.id) && !!seen.add(s.id));
   return { stays, failed: pages.every((p) => !p) };
 }
 

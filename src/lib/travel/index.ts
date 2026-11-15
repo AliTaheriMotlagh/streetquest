@@ -483,7 +483,7 @@ export function tripFacets(trips: Trip[]) {
 }
 
 // ---------------------------------------------------------------- stays
-export type StayKind = "hotel" | "villa" | "suite" | "apartment" | "ecolodge" | "room";
+export type StayKind = "hotel" | "villa" | "suite" | "apartment" | "ecolodge" | "room" | "hostel";
 export const STAY_KINDS: Record<StayKind, { emoji: string; label: string }> = {
   hotel: { emoji: "🏨", label: msg("Hotels") },
   villa: { emoji: "🏡", label: msg("Villas") },
@@ -491,24 +491,58 @@ export const STAY_KINDS: Record<StayKind, { emoji: string; label: string }> = {
   apartment: { emoji: "🏢", label: msg("Apartments") },
   ecolodge: { emoji: "🛖", label: msg("Eco-lodges") },
   room: { emoji: "🚪", label: msg("Rooms") },
+  hostel: { emoji: "🎒", label: msg("Hostels & inns") },
 };
-export type Stay = { id: string; source: "jabama"; name: string; kind: StayKind; city: string; lat?: number; lng?: number; dist?: number; price: number; was?: number; rating?: number; reviews?: number; capacity?: number; bedrooms?: number; photo: string; photos: string[]; url: string; verified?: boolean; instant?: boolean; minNights?: number };
+export type Stay = { id: string; source: "jabama"; name: string; kind: StayKind; city: string; lat?: number; lng?: number; dist?: number; price: number; was?: number; rating?: number; reviews?: number; capacity?: number; bedrooms?: number; photo: string; photos: string[]; url: string; verified?: boolean; instant?: boolean; minNights?: number; stars?: number; amenities?: Amenity[] };
+/** What a place to stay offers, as the filters and the card show it (Jabama's names folded into these). */
+export type Amenity = "pool" | "parking" | "wifi" | "breakfast" | "restaurant" | "gym" | "spa" | "elevator" | "kitchen" | "aircon" | "pets";
+export const AMENITIES: Record<Amenity, { emoji: string; label: string }> = {
+  pool: { emoji: "🏊", label: msg("Pool") },
+  parking: { emoji: "🅿️", label: msg("Parking") },
+  wifi: { emoji: "📶", label: msg("Wi-Fi") },
+  breakfast: { emoji: "🥐", label: msg("Breakfast") },
+  restaurant: { emoji: "🍽️", label: msg("Restaurant") },
+  gym: { emoji: "🏋️", label: msg("Gym") },
+  spa: { emoji: "💆", label: msg("Spa & sauna") },
+  elevator: { emoji: "🛗", label: msg("Lift") },
+  kitchen: { emoji: "🍳", label: msg("Kitchen") },
+  aircon: { emoji: "❄️", label: msg("Air conditioning") },
+  pets: { emoji: "🐾", label: msg("Pets allowed") },
+};
+const AMENITY_WORDS: [RegExp, Amenity][] = [
+  [/pool|استخر/i, "pool"], [/parking|پارکینگ/i, "parking"], [/wi-?fi|internet|اینترنت|وای ?فای/i, "wifi"], [/breakfast|صبحانه/i, "breakfast"],
+  [/restaurant|رستوران/i, "restaurant"], [/gym|fitness|باشگاه|بدنسازی/i, "gym"], [/spa|sauna|jacuzzi|massage|سونا|جکوزی|ماساژ/i, "spa"],
+  [/elevator|lift|آسانسور/i, "elevator"], [/kitchen|آشپزخانه/i, "kitchen"], [/air ?condition|cooler|کولر|اسپلیت/i, "aircon"], [/pet|حیوان/i, "pets"],
+];
+/** Jabama's amenity names (English or Persian) → ours, each once. */
+export function amenitiesOf(names: string[]): Amenity[] {
+  const out = new Set<Amenity>();
+  for (const n of names) for (const [re, a] of AMENITY_WORDS) if (re.test(n)) out.add(a);
+  return (Object.keys(AMENITIES) as Amenity[]).filter((a) => out.has(a));
+}
 
-const KIND_OF: Record<string, StayKind> = { hotel: "hotel", hotel_apartment: "apartment", apartment: "apartment", villa: "villa", cottage: "villa", suite: "suite", ecotourism: "ecolodge", boomgardi: "ecolodge", traditional: "ecolodge", room: "room", personalRoom: "room" };
-type JbItem = { id?: string; code?: number; name?: string; type?: string; placeType?: string; image?: string; images?: string[]; location?: { city?: string; geo?: { lat?: number; long?: number } }; price?: { perNight?: number; mainPrice?: number; discountedPrice?: number; discountPercent?: number }; rate_review?: { score?: number; count?: number } | null; capacity?: { base?: number; extra?: number }; accommodationMetrics?: { bedroomsCount?: number }; verified?: boolean; reservation_type?: string; min_night?: number; kind?: string };
-export function fromJabama(json: unknown, here?: LatLng | null): Stay[] {
+const KIND_OF: Record<string, StayKind> = {
+  hotel: "hotel", hotelapartment: "hotel", hotel_apartment: "hotel", boutique: "hotel", apartment: "apartment", complex: "apartment", villa: "villa", cottage: "villa", suite: "suite",
+  ecotourism: "ecolodge", boomgardi: "ecolodge", traditional: "ecolodge", room: "room", personalRoom: "room", inn: "hostel", hostel: "hostel", guesthouse: "hostel",
+};
+type JbItem = { id?: string; code?: number; name?: string; type?: string; placeType?: string; image?: string; images?: string[]; location?: { city?: string; geo?: { lat?: number; long?: number } }; price?: { perNight?: number | null; mainPrice?: number; discountedPrice?: number; discountPercent?: number }; min_price?: number; rate_review?: { score?: number; count?: number } | null; capacity?: { base?: number; extra?: number }; accommodationMetrics?: { bedroomsCount?: number }; verified?: boolean; reservation_type?: string; min_night?: number; kind?: string; star?: number; amenities?: { name?: string }[] };
+/** Jabama's villas/suites (kind "accommodation", `city-<key>`) and hotels (kind "hotel", `hotels-<key>`).
+ *  Hotels have no page of their own the game can link (they're Alibaba's), so they open the city's hotel list. */
+export function fromJabama(json: unknown, here?: LatLng | null, cityKey?: string): Stay[] {
   const items = (json as { result?: { items?: JbItem[] } })?.result?.items ?? [];
   return items
-    .filter((i) => i.kind === "accommodation" && i.name && (i.price?.discountedPrice || i.price?.perNight))
+    .filter((i) => (i.kind === "accommodation" || i.kind === "hotel") && i.name && (i.price?.discountedPrice || i.price?.perNight || i.min_price))
     .map((i) => {
       const lat = i.location?.geo?.lat, lng = i.location?.geo?.long;
-      const now = i.price?.discountedPrice || i.price?.perNight || 0;
-      const type = i.type ?? i.placeType ?? "";
+      const now = i.price?.discountedPrice || i.price?.perNight || i.min_price || 0;
+      const hotel = i.kind === "hotel";
+      const type = i.type || i.placeType || (hotel ? "hotel" : "");
+      const amen = amenitiesOf((i.amenities ?? []).map((a) => a.name ?? ""));
       return {
-        id: `jabama:${i.code ?? i.id}`,
+        id: `jabama:${i.code || i.id}`,
         source: "jabama" as const,
-        name: i.name!.replace(/^رزرو\s+/, ""),
-        kind: KIND_OF[type] ?? KIND_OF[i.placeType ?? ""] ?? "suite",
+        name: i.name!.replace(/^(رزرو|اجاره)\s+/, ""),
+        kind: KIND_OF[type] ?? KIND_OF[i.placeType ?? ""] ?? (hotel ? "hotel" : "suite"),
         city: i.location?.city ?? "",
         lat,
         lng,
@@ -521,18 +555,20 @@ export function fromJabama(json: unknown, here?: LatLng | null): Stay[] {
         bedrooms: i.accommodationMetrics?.bedroomsCount || undefined,
         photo: i.image ?? i.images?.[0] ?? "",
         photos: (i.images ?? []).slice(0, 8),
-        url: `https://www.jabama.com/stay/${type || "suite"}-${i.code}`,
+        url: hotel ? `https://www.jabama.com/hotels-${cityKey ?? ""}` : `https://www.jabama.com/stay/${type || "suite"}-${i.code}`,
         verified: i.verified,
         instant: i.reservation_type === "instant",
         minNights: i.min_night || undefined,
+        stars: i.star && i.star > 0 ? Math.round(i.star) : undefined,
+        amenities: amen.length ? amen : undefined,
       };
     });
 }
 
-export type StaySort = "cheap" | "dear" | "rating" | "near" | "big";
-export const STAY_SORTS: Record<StaySort, string> = { cheap: msg("Cheapest first"), dear: msg("Most expensive first"), rating: msg("Best rated"), near: msg("Nearest first"), big: msg("Most guests") };
+export type StaySort = "cheap" | "dear" | "rating" | "near" | "big" | "stars";
+export const STAY_SORTS: Record<StaySort, string> = { cheap: msg("Cheapest first"), dear: msg("Most expensive first"), rating: msg("Best rated"), near: msg("Nearest first"), big: msg("Most guests"), stars: msg("Most stars") };
 export const STAY_SORT_KEYS = Object.keys(STAY_SORTS) as [StaySort, ...StaySort[]];
-export type StayFilter = { kinds?: StayKind[]; max?: number; min?: number; guests?: number; instant?: boolean; minRating?: number; q?: string; sort?: StaySort };
+export type StayFilter = { kinds?: StayKind[]; max?: number; min?: number; guests?: number; instant?: boolean; minRating?: number; minStars?: number; amenities?: Amenity[]; q?: string; sort?: StaySort };
 export function filterStays(stays: Stay[], f: StayFilter = {}): Stay[] {
   const q = f.q ? normFa(f.q) : "";
   const list = stays.filter(
@@ -543,6 +579,8 @@ export function filterStays(stays: Stay[], f: StayFilter = {}): Stay[] {
       (!f.guests || (s.capacity ?? 0) >= f.guests) &&
       (!f.instant || s.instant) &&
       (!f.minRating || (s.rating ?? 0) >= f.minRating) &&
+      (!f.minStars || (s.stars ?? 0) >= f.minStars) &&
+      (!f.amenities?.length || f.amenities.every((a) => s.amenities?.includes(a))) &&
       (!q || normFa(s.name).includes(q)),
   );
   const by: Record<StaySort, (a: Stay, b: Stay) => number> = {
@@ -551,6 +589,7 @@ export function filterStays(stays: Stay[], f: StayFilter = {}): Stay[] {
     rating: (a, b) => (b.rating ?? 0) - (a.rating ?? 0) || (b.reviews ?? 0) - (a.reviews ?? 0),
     near: (a, b) => (a.dist ?? Infinity) - (b.dist ?? Infinity),
     big: (a, b) => (b.capacity ?? 0) - (a.capacity ?? 0) || a.price - b.price,
+    stars: (a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.rating ?? 0) - (a.rating ?? 0) || a.price - b.price,
   };
   return list.sort(by[f.sort ?? "cheap"]);
 }
@@ -561,3 +600,16 @@ export const hotelLinks = (c: City) => [
   { site: "jabama" as TravelSite, url: `https://www.jabama.com/city-${c.key}` },
 ];
 export const tourLink = (c: City) => `https://www.alibaba.ir/tour/iran-${c.key}`;
+
+// ---------------------------------------------------------------- the map's travel hubs (game/TravelLayer.tsx)
+/** From which map zoom each kind of hub is shown: airports with the whole country in view, then stations, then bus terminals. */
+export const HUB_ZOOM = { air: 4, rail: 6, bus: 8, names: 7 } as const;
+/** What a city's pin shows at a zoom: its ways in (✈️ 🚆 🚌, only those shown at that zoom), or nothing. */
+export function hubGlyphs(c: Pick<City, "iata" | "train" | "bus" | "lat">, zoom: number): string[] {
+  if (c.lat == null) return [];
+  const out: string[] = [];
+  if (c.iata && zoom >= HUB_ZOOM.air) out.push("✈️");
+  if (c.train != null && zoom >= HUB_ZOOM.rail) out.push("🚆");
+  if (c.bus != null && zoom >= HUB_ZOOM.bus) out.push("🚌");
+  return out;
+}

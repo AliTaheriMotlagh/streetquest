@@ -1,0 +1,97 @@
+/* The List view (components/list/ListView.tsx): StreetQuest as a website. A full screen over the
+   (sleeping) map: a header with the sections, then the section's page. Phone: one column, the
+   filters one button away, the app's bottom bar below. Wide (≥960 px): filters in a sidebar beside
+   a grid of cards, the header carries List · Map · Game and the bottom bar steps aside. */
+.lv {
+  position: absolute; inset: 0; z-index: 690; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text); contain: strict;
+}
+.game.view-list > .sheet:not(.page) { z-index: 720; }
+
+/* ---- header */
+.lv-top {
+  flex: none; display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: calc(10px + var(--safe-t, 0px)) 16px 0; background: var(--bg); border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.lv-brand { display: none; align-items: baseline; gap: 10px; min-width: 0; flex: 1 1 auto; }
+.lv-brand b { font: 800 19px/1.2 var(--title, var(--display)); letter-spacing: .02em; color: var(--gold); white-space: nowrap; }
+.lv-brand small { color: var(--muted); font: 600 12.5px/1.2 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-tabs {
+  order: 3; flex: 1 0 100%; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 10px;
+  scroll-snap-type: x proximity;
+}
+.lv-tabs::-webkit-scrollbar { display: none; }
+.lv-tabs button {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 0; border-bottom: 3px solid transparent;
+  background: none; color: var(--muted); font: 700 14px/1 var(--body); cursor: pointer; white-space: nowrap; scroll-snap-align: start;
+  transition: color .15s, border-color .15s;
+}
+.lv-tabs button:hover { color: var(--text); }
+.lv-tabs button.on { color: var(--text); border-bottom-color: var(--gold); }
+.lv-tabs button:focus-visible { outline: 2px solid var(--sky); outline-offset: -2px; border-radius: 8px; }
+.lv-views { display: none; }
+
+/* ---- body: a sidebar (wide only) and the page */
+.lv-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.lv-side { display: none; }
+.lv-main {
+  min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  padding: 0 16px calc(96px + var(--safe-b, 0px));
+}
+
+/* The screens drawn as pages (Sheet in page mode): no card, no grip, the title as the page's heading. */
+.lv .sheet.page {
+  position: static; inset: auto; z-index: auto; max-height: none; min-height: 100%; display: block;
+  background: none; border: 0; border-radius: 0; box-shadow: none; animation: none; transform: none;
+  width: auto !important; max-width: none; margin: 0;
+}
+.lv .sheet.page > .sheet-grip { display: none; }
+.lv .sheet.page > .sheet-head { padding: 16px 0 8px; border: 0; }
+.lv .sheet.page > .sheet-head h2 { font-size: 22px; letter-spacing: 0; }
+/* Stores and products: the tab already says what this is — no heading unless there's a way back. */
+.lv[data-tab="stores"] .sheet.page > .sheet-head:not(:has(.back-btn)), .lv[data-tab="products"] .sheet.page > .sheet-head:not(:has(.back-btn)) { display: none; }
+.lv[data-tab="stores"] .sheet.page > .sheet-body, .lv[data-tab="products"] .sheet.page > .sheet-body { padding-top: 12px; }
+.lv .sheet.page > .sheet-body { overflow: visible; padding: 0; max-height: none; }
+.lv .fx-stack > .fx-sticky { background: var(--bg); }
+
+/* Stores as cards (they're rows in the map's sheet). */
+.lv .fx-list { gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.lv .fx-row { min-height: 84px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); align-items: flex-start; }
+.lv .fx-row:hover { border-color: var(--line-strong, rgba(255, 255, 255, .18)); background: var(--surface-2); }
+.lv .fx-row .fx-thumb { width: 60px; height: 60px; }
+.lv .fx-row .fx-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* The trip planner: a readable column. */
+.lv .tp, .lv .tp-bill { max-width: 820px; margin-inline: auto; }
+.lv .tp-bill { position: sticky; bottom: 0; }
+
+/* ---- the filters docked in the sidebar */
+.fx-dock { display: grid; gap: 4px; }
+.fx-dock-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 18px 0 6px; }
+.fx-dock-head h2 { margin: 0; font: 800 17px/1.2 var(--body); }
+.fx-dock-body { display: grid; gap: 20px; padding-bottom: 24px; }
+
+@media (min-width: 960px) {
+  .lv-top { flex-wrap: nowrap; padding: calc(8px + var(--safe-t, 0px)) 24px 0; gap: 20px; }
+  .lv-brand { display: flex; flex: none; }
+  .lv-tabs { order: 0; flex: 1 1 auto; margin: 0; padding: 0; justify-content: center; }
+  .lv-tabs button { min-height: 56px; }
+  .lv-views { display: flex; flex: none; gap: 2px; padding: 3px; border-radius: 14px; background: var(--surface-1); border: 1px solid var(--line); }
+  .lv-views button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 11px; background: none; color: var(--muted); font: 700 13px/1 var(--body); cursor: pointer; }
+  .lv-views button.on { background: var(--surface-2); color: var(--text); }
+  .lv-views button:focus-visible { outline: 2px solid var(--sky); }
+  .lv-body { grid-template-columns: 300px minmax(0, 1fr); max-width: 1440px; width: 100%; margin: 0 auto; }
+  .lv-side { display: block; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px; border-inline-end: 1px solid var(--line); }
+  .lv-side:empty { display: none; }
+  .lv-side:empty + .lv-main { grid-column: 1 / -1; }
+  .lv-main { padding: 0 28px 40px; }
+  .game.view-list > .nav { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .lv-tabs button { transition: none; } }
+
+/* The hotel form's − n + fit their box at any width. */
+.lv .hf-field .tp-step { min-width: 0; }
+.lv .hf-field .tp-step button { min-width: 36px; }
+/* Toasts sit under the page's header, not over its tabs. */
+.game.view-list .toasts { top: calc(64px + var(--safe-t, 0px)); }

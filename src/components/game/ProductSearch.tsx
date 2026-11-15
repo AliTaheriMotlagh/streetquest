@@ -241,8 +241,9 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
 
   // A restaurant's card replaces the list while it's open, on the dish that was tapped (the search
   // keeps its words, filters and results underneath): ‹ or the phone's Back returns to the list.
-  if (vendor) return <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={onClose} />;
+  // (Every hook above this line: returning before one crashed React — "fewer hooks than expected".)
   const groups = useMemo(() => sameProducts(data?.hits ?? []), [data]);
+  if (vendor) return <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={onClose} />;
   const inTray = (h: ProductHit) => tray.some((x) => x.id === h.id);
   const flipTray = (h: ProductHit) => setTray((v) => (v.some((x) => x.id === h.id) ? v.filter((x) => x.id !== h.id) : [...v, h].slice(-MAX_COMPARE)));
 

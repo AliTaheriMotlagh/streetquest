@@ -43,7 +43,7 @@ export const siteLayer = (s: SiteId) => `dir-${s}` as const;
 // ---------------------------------------------------------------- store types
 export type StoreType =
   | "food" | "cafe" | "sweets" | "grocery" | "bakery" | "fruit" | "butcher" | "clothing" | "beauty" | "health" | "doctor"
-  | "pharmacy" | "auto" | "home" | "building" | "digital" | "education" | "sport" | "realestate" | "finance" | "hotel" | "gifts" | "pets" | "services" | "other";
+  | "pharmacy" | "auto" | "home" | "building" | "digital" | "education" | "sport" | "realestate" | "finance" | "hotel" | "gifts" | "pets" | "tobacco" | "services" | "other";
 export const STORE_TYPES: Record<StoreType, { emoji: string; label: string; color: string }> = {
   food: { emoji: "🍽️", label: msg("Restaurants & fast food"), color: "#ff5a3c" },
   cafe: { emoji: "☕", label: msg("Cafés"), color: "#a0643c" },
@@ -68,6 +68,7 @@ export const STORE_TYPES: Record<StoreType, { emoji: string; label: string; colo
   hotel: { emoji: "🏨", label: msg("Hotels & stays"), color: "#7c3aed" },
   gifts: { emoji: "🎁", label: msg("Gifts, books & flowers"), color: "#db2777" },
   pets: { emoji: "🐾", label: msg("Pets & vets"), color: "#a16207" },
+  tobacco: { emoji: "🚬", label: msg("Tobacco & hookah"), color: "#a8a29e" },
   services: { emoji: "🛠️", label: msg("Services"), color: "#78716c" },
   other: { emoji: "🏪", label: msg("Other stores"), color: "#6b7280" },
 };
@@ -77,6 +78,7 @@ export function placeCatOf(type: StoreType): PlaceCat {
   const map: Partial<Record<StoreType, PlaceCat>> = {
     food: "restaurant", cafe: "cafe", sweets: "icecream", bakery: "bakery", grocery: "grocery", fruit: "grocery", butcher: "grocery",
     pharmacy: "pharmacy", clothing: "fashion", digital: "tech", sport: "gym", finance: "bank",
+    tobacco: "tobacco", beauty: "beauty", home: "home", building: "home", auto: "auto", gifts: "gifts", pets: "pets", health: "health", doctor: "health",
   };
   return map[type] ?? "shop";
 }
@@ -87,6 +89,7 @@ const TYPE_RULES: [StoreType, RegExp][] = [
   ["doctor", /پزشک|دکتر|متخصص|جراح|دندان|^dr\b|\/dr\/|dentist|optometr|midwife|ماما\b|روانشناس|psychiatr|psycholog/i],
   ["health", /درمانگاه|کلینیک|بیمارستان|آزمایشگاه|رادیولوژی|فیزیوتراپی|سونوگرافی|کاردرمانی|گفتاردرمانی|توانبخشی|ترک اعتیاد|طب سنتی|عطاری|عینک|اپتیک|clinic|hospital|medical|laborator|lab\b|optic/i],
   ["cafe", /کافه|قهوه|café|cafe|coffee|چایخانه|teahouse/i],
+  ["tobacco", /سیگار|دخانیات|توتون|تنباکو|قلیان|ویپ|\bvape|tobacco|hookah|shisha|cigar/i],
   ["sweets", /شیرینی|قنادی|بستنی|آبمیوه|کیک|شکلات|confection|cake|ice-?cream|juice|sweet|dessert/i],
   ["bakery", /نانوایی|نان |سنگک|بربری|لواش|bakery|baker/i],
   ["fruit", /میوه|تره.?بار|سبزی|fruit|vegetable|greengrocer/i],

@@ -106,3 +106,33 @@ test("stays from Jabama, filtered and sorted", () => {
   assert.deepEqual(filterStays(stays, { instant: true }).map((s) => s.kind).sort(), ["apartment", "suite"]);
   assert.equal(filterStays(stays, { sort: "rating" })[0].kind, "suite");
 });
+
+test("Jabama hotels (their own list): stars, amenities, no code, price from min_price", () => {
+  const hotel = { kind: "hotel", code: 0, id: "ABH_dh-10fd", name: "رزرو هتل رونیا", type: "hotel", star: 4, image: "h.jpg", location: { city: "تهران", geo: { lat: 35.77, long: 51.42 } }, price: { perNight: null, discountedPrice: 40500000, mainPrice: 40500000 }, min_price: 40500000, amenities: [{ name: "swimming pool" }, { name: "parking" }, { name: "wifi available in all areas" }, { name: "restaurant" }], rate_review: { score: 5, count: 1 }, reservation_type: "instant" };
+  const inn = { kind: "accommodation", code: 9, name: "اجاره مسافرخانه نور", type: "inn", image: "i.jpg", price: { perNight: 9000000, discountedPrice: 9000000 }, capacity: { base: 2, extra: 0 } };
+  const stays = fromJabama({ result: { items: [hotel, inn] } }, null, "tehran");
+  assert.equal(stays.length, 2);
+  const [h, i] = stays;
+  assert.equal(h.kind, "hotel");
+  assert.equal(h.id, "jabama:ABH_dh-10fd", "code 0 → the id");
+  assert.equal(h.name, "هتل رونیا");
+  assert.equal(h.price, 4050000);
+  assert.equal(h.stars, 4);
+  assert.equal(h.url, "https://www.jabama.com/hotels-tehran");
+  assert.deepEqual(h.amenities, ["pool", "parking", "wifi", "restaurant"]);
+  assert.equal(i.kind, "hostel");
+  assert.equal(i.name, "مسافرخانه نور", "'اجاره' is dropped too");
+  assert.deepEqual(filterStays(stays, { minStars: 3 }).map((s) => s.kind), ["hotel"]);
+  assert.deepEqual(filterStays(stays, { amenities: ["pool", "wifi"] }).map((s) => s.kind), ["hotel"]);
+  assert.equal(filterStays(stays, { sort: "stars" })[0].kind, "hotel");
+});
+
+test("travel hubs on the map: airports from the country view, stations then buses as you zoom in", async () => {
+  const { hubGlyphs } = await import("../src/lib/travel");
+  const mashhad = { iata: "MHD", train: 191, bus: 1, lat: 36.3 };
+  assert.deepEqual(hubGlyphs(mashhad, 5), ["✈️"]);
+  assert.deepEqual(hubGlyphs(mashhad, 6), ["✈️", "🚆"]);
+  assert.deepEqual(hubGlyphs(mashhad, 9), ["✈️", "🚆", "🚌"]);
+  assert.deepEqual(hubGlyphs({ bus: 2, lat: 35 }, 6), [], "a bus-only town waits for a closer zoom");
+  assert.deepEqual(hubGlyphs({ iata: "X" }, 9), [], "no position, no pin");
+});

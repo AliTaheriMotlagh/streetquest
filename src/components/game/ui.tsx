@@ -4,6 +4,7 @@ import { isQuiet } from "@/lib/quiet";
 import { t } from "@/lib/i18n";
 import { HELP, HelpCard, helpSeen, markHelpSeen } from "./Help";
 import { pushBack } from "./backStack";
+import { usePage } from "./pageMode";
 import type { LatLng, Me, World } from "./client";
 
 export type Toast = { id?: number; title: string; body?: string | null; kind?: "info" | "reward" | "social" | "delivery" | "event" | "error"; tag?: string | null; link?: string | null };
@@ -73,16 +74,18 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  useSwipeToClose(ref, !peek, closeRef);
+  // Drawn as a page in the List view (pageMode.tsx): no swipe, no ✕, Back only steps back.
+  const page = !!usePage();
+  useSwipeToClose(ref, !peek && !page, closeRef);
   // The phone's Back: one step back if it came from somewhere, else close.
   const backRef = useRef(onBack ?? onClose);
   backRef.current = onBack ?? onClose;
-  useEffect(() => pushBack(() => backRef.current()), []);
+  useEffect(() => (page && !onBack ? undefined : pushBack(() => backRef.current())), []); // eslint-disable-line react-hooks/exhaustive-deps
   // `.game.sheet-on` (counted: sheets stack): what `.game:has(.sheet)` said in CSS, without
   // making the browser re-check the whole game screen each time a map marker is added.
   useEffect(() => {
     const g = ref.current?.closest<HTMLElement>(".game");
-    if (!g) return;
+    if (!g || page) return;
     g.dataset.sheets = String(Number(g.dataset.sheets ?? 0) + 1);
     g.classList.add("sheet-on");
     return () => {
@@ -90,9 +93,9 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
       g.dataset.sheets = String(n);
       if (!n) g.classList.remove("sheet-on");
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}`} role="dialog" aria-label={title}>
+    <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}${page ? " page" : ""}`} role={page ? "region" : "dialog"} aria-label={title}>
       <div className="sheet-grip" />
       <div className="sheet-head">
         {onBack && (
@@ -107,9 +110,11 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
             ?
           </button>
         )}
-        <button className="close" onClick={onClose} aria-label={t("Close")}>
-          ✕
-        </button>
+        {!page && (
+          <button className="close" onClick={onClose} aria-label={t("Close")}>
+            ✕
+          </button>
+        )}
       </div>
       <div className="sheet-body">
         {showHelp && help ? (

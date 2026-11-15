@@ -787,3 +787,72 @@ export function googlePhoneOf(r: GoogleSearch | null, store: { name: string; lat
   }
   return best?.phone ?? "";
 }
+
+// ---------------------------------------------------------------- Snappfood's menu-read-model (2026-11)
+// Snappfood retired /mobile/v2/restaurant/details/dynamic (404 for every vendor, Nov 2026); its site
+// now reads apigw.snappfood.ir/menu-read-model/{vendor-details/<code>, <code>, vendor-review/<code>}.
+// Prices are toman as before; a dish's price and discount sit on its first variation.
+type RmVariation = { id?: number; title?: string; price?: number | null; discount?: { amount?: number; ratio?: number } | null; active?: boolean };
+type RmProduct = { id?: number | null; title?: string; description?: string; images?: { src?: string; thumbnailSrc?: string }[]; variations?: RmVariation[] | null; price?: number | null };
+export type RmDetails = { data?: { code?: string; title?: string; logo?: string; cover?: string; minOrder?: number; isOpen?: boolean; isOpenNow?: boolean; description?: string; address?: { area?: string; address?: string; latitude?: number; longitude?: number }; schedules?: { weekday?: number; startHour?: string; stopHour?: string; allDay?: boolean }[]; type?: { code?: string } } };
+export type RmMenu = { data?: { menuCategories?: { title?: string; products?: RmProduct[] }[] } };
+export type RmReview = { data?: { rate?: number; reviewCount?: number; rateCount?: number; rateDiversity?: { one?: number; two?: number; three?: number; four?: number; five?: number } } };
+
+/** One vendor's card from the three menu-read-model answers (the review one may be missing). */
+export function menuFromReadModel(det: RmDetails | null, menu: RmMenu | null, rev?: RmReview | null, now = new Date()): Menu | null {
+  const d = det?.data;
+  const lat = d?.address?.latitude, lng = d?.address?.longitude;
+  if (!d?.code || !d.title || typeof lat !== "number" || typeof lng !== "number") return null;
+  const r = rev?.data, st = r?.rateDiversity;
+  const seen = new Set<string>();
+  return {
+    vendor: {
+      code: d.code,
+      title: d.title,
+      kind: vendorKind(d.type?.code ?? ""),
+      lat,
+      lng,
+      rating: Math.round((r?.rate ?? 0) * 10) / 10,
+      logo: d.logo ?? "",
+      url: snappfoodMenuUrl(d.code),
+      open: !!(d.isOpenNow ?? d.isOpen),
+      about: (d.description ?? "").replace(/\s*,\s*/g, "، ").trim(),
+    },
+    cover: d.cover ?? "",
+    address: d.address?.address ?? "",
+    // Hours come as "07:30:00" here (the old API said "07:30").
+    week: weekFromSnappfood(d.schedules?.map((x) => ({ ...x, startHour: x.startHour?.replace(/^(\d{1,2}:\d{2}):\d{2}$/, "$1"), stopHour: x.stopHour?.replace(/^(\d{1,2}:\d{2}):\d{2}$/, "$1") }))),
+    // Some vendors' area is a placeholder ("FIXME") in Snappfood's own data.
+    area: /fixme|todo|^-+$/i.test(d.address?.area ?? "") ? "" : (d.address?.area ?? "").trim(),
+    reviews: r?.reviewCount ?? 0,
+    ...(st ? { stars: [st.one ?? 0, st.two ?? 0, st.three ?? 0, st.four ?? 0, st.five ?? 0] } : {}),
+    ...(d.minOrder ? { minOrder: Math.round(d.minOrder) } : {}),
+    fetchedAt: now.toISOString(),
+    sections: (menu?.data?.menuCategories ?? [])
+      .map((c) => ({
+        title: c.title ?? "",
+        items: (c.products ?? [])
+          .map((p): MenuItem | null => {
+            const v = p.variations?.find((x) => x.active !== false && typeof x.price === "number") ?? p.variations?.[0];
+            const price = v?.price ?? p.price;
+            if (!p.title || typeof price !== "number" || price <= 0) return null;
+            const id = String(v?.id ?? p.id ?? p.title);
+            return {
+              id,
+              title: v?.title ? `${p.title} (${v.title})` : p.title,
+              about: (p.description ?? "").trim(),
+              price: Math.round(price),
+              priceNow: Math.round(price - (v?.discount?.amount ?? 0)),
+              photo: p.images?.[0]?.thumbnailSrc ?? p.images?.[0]?.src ?? "",
+              image: p.images?.[0]?.src ?? p.images?.[0]?.thumbnailSrc ?? "",
+            };
+          })
+          .filter((x): x is MenuItem => !!x)
+          .slice(0, 60),
+      }))
+      // "Popular" and "On sale" repeat dishes from the real sections: keep them, but drop exact repeats inside one.
+      .map((s) => ({ ...s, items: s.items.filter((i) => !seen.has(`${s.title}|${i.id}`) && !!seen.add(`${s.title}|${i.id}`)) }))
+      .filter((s) => s.items.length)
+      .slice(0, 40),
+  };
+}

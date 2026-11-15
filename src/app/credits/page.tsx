@@ -78,8 +78,8 @@ export default async function Credits() {
             <h3>{t("3D street furniture and trees")}</h3>
             <p className="muted" style={{ lineHeight: 1.6 }}>{t("Made lighter for phones and recoloured for the game.")}</p>
             <ul style={{ lineHeight: 1.8, paddingInlineStart: 18 }}>
-              {props.map((c) => (
-                <li key={c.url} dir="ltr" style={{ textAlign: "start" }}>
+              {props.map((c, i) => (
+                <li key={`${c.url}#${i}`} dir="ltr" style={{ textAlign: "start" }}>
                   <a href={c.url} target="_blank" rel="noreferrer">
                     {c.title}
                   </a>{" "}
@@ -97,8 +97,8 @@ export default async function Credits() {
             <h3>{t("3D people")}</h3>
             <p className="muted" style={{ lineHeight: 1.6 }}>{t("Made lighter for phones and recoloured for the game.")}</p>
             <ul style={{ lineHeight: 1.8, paddingInlineStart: 18 }}>
-              {people.map((c) => (
-                <li key={c.url} dir="ltr" style={{ textAlign: "start" }}>
+              {people.map((c, i) => (
+                <li key={`${c.url}#${i}`} dir="ltr" style={{ textAlign: "start" }}>
                   <a href={c.url} target="_blank" rel="noreferrer">
                     {c.title}
                   </a>{" "}
@@ -116,8 +116,8 @@ export default async function Credits() {
             <h3>{t("Sound effects")}</h3>
             <p className="muted" style={{ lineHeight: 1.6 }}>{t("Cut, layered and evened out for the game.")}</p>
             <ul style={{ lineHeight: 1.8, paddingInlineStart: 18 }}>
-              {sounds.map((c) => (
-                <li key={c.url} dir="ltr" style={{ textAlign: "start" }}>
+              {sounds.map((c, i) => (
+                <li key={`${c.url}#${i}`} dir="ltr" style={{ textAlign: "start" }}>
                   <a href={c.url} target="_blank" rel="noreferrer">
                     {c.title}
                   </a>{" "}

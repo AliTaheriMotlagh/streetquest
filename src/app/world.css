@@ -649,13 +649,11 @@ html[lang="fa"] .scn-k { letter-spacing: 0; }
 .chud-buy-row .chip:disabled { opacity: .45; }
 
 /* List · Map · Game (lib/appView.ts): outside the game, none of its HUD — no wallet, profile card,
-   quest tray, quest banners or 3D button. The list view is the store browser over everything. */
+   quest tray, quest banners or 3D button. The list view is a page of its own (app/list.css). */
 .game:not(.view-game) > .hud, .game:not(.view-game) .ready-wrap, .game:not(.view-game) > .run-banner,
 .game:not(.view-game) > .quest-hud, .game:not(.view-game) > .drive-fab, .game:not(.view-game) .ready-tray, .game:not(.view-game) .travel-banner { display: none !important; }
 .game.view-list > .fab-col, .game.view-list .compass-rose { display: none; }
-/* List view: the store browser is the screen (above the map, below the bar), no slide-up, no grip. */
-.game.view-list > .sheet.tall { top: calc(8px + var(--safe-t, 0px)); max-height: none; border-radius: 24px; padding-bottom: calc(84px + var(--safe-b, 0px)); animation: none; }
-.game.view-list > .sheet.tall .sheet-grip { display: none; }
+/* List view: its own full page (app/list.css) over the sleeping map; the bar stays above it. */
 .game.view-list > .nav:not(.with-sheet) { z-index: 750; }
 
 /* Car radio: a station list beside the tools, grouped Persian / international, the playing one bouncing. */

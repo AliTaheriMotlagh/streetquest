@@ -1,5 +1,6 @@
 "use client";
-// The map's travel layer: airports ✈️ and train stations 🚆 as pins (from zoom 7 / 10; a tap shows its
+// The map's travel layer: airports ✈️, train stations 🚆 and bus terminals 🚌 as pins (airports with the
+// whole country in view, the rest as you zoom in — lib/travel hubGlyphs; a tap shows its
 // name and opens the travel planner to or from it), and the planes in the sky — live ADS-B where
 // receivers hear them, today's timetable placed by the clock elsewhere (lib/flights.ts) — moving
 // smoothly between updates, each turned to its heading. A tap on a plane says who, what, how high.
@@ -7,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { useMap, useMapEvents } from "react-leaflet";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
-import { CITIES, type City } from "@/lib/travel";
+import { CITIES, HUB_ZOOM, hubGlyphs, type City } from "@/lib/travel";
 import { advance, type Plane } from "@/lib/flights";
 import { api } from "./client";
 import { openTravel } from "./Filters";
@@ -17,7 +18,15 @@ const MOVE_EVERY_MS = 1000;
 const PLANES_MAX = 80;
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const hubIcon = (glyph: string, cls: string) => L.divIcon({ className: `tv-hub ${cls}`, html: `<span>${glyph}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+/** A city's travel pin: its ways in side by side (✈️🚆🚌) and, zoomed in, its name (or its airport code). */
+const hubIcon = (glyphs: string[], label: string, cls: string) =>
+  L.divIcon({
+    className: `tv-hub ${cls}${glyphs.length > 1 ? " multi" : ""}`,
+    html: `<span>${glyphs.join("")}</span>${label ? `<b>${esc(label)}</b>` : ""}`,
+    // (the pin's circle centred on the city; .small pins are 18 px)
+    iconSize: cls.includes("small") ? [18, 18] : [24 + (glyphs.length - 1) * 16, 24],
+    iconAnchor: cls.includes("small") ? [9, 9] : [12 + (glyphs.length - 1) * 8, 12],
+  });
 const planeIcon = (p: Plane) =>
   L.divIcon({
     className: `tv-plane ${p.source}`,
@@ -37,23 +46,33 @@ export function TravelLayer({ planes: showPlanes = true }: { planes?: boolean })
   const [center, setCenter] = useState(map.getCenter());
   useMapEvents({ zoomend: () => setZoom(map.getZoom()), moveend: () => setCenter(map.getCenter()) });
 
-  // ---- hubs: airports from zoom 7, stations from zoom 10
-  const hubs = useMemo(() => CITIES.filter((c) => c.lat != null && (c.iata || c.train != null)), []);
+  // ---- hubs (lib/travel hubGlyphs): airports with the whole country in view, stations and bus
+  // terminals as you zoom in — one pin per city with every way in, its name once there's room.
+  // Bigger hubs first (more ways in), so when pins would overlap the busier city keeps its pin.
+  const hubs = useMemo(() => CITIES.filter((c) => c.lat != null && (c.iata || c.train != null || c.bus != null)).sort((a, b) => hubGlyphs(b, 20).length - hubGlyphs(a, 20).length), []);
+  const level = Math.floor(zoom);
   useEffect(() => {
-    if (zoom < 7) return;
+    if (level < HUB_ZOOM.air) return;
     const layer = L.layerGroup().addTo(map);
     const fa = getLocale() === "fa";
     const b = map.getBounds().pad(0.3);
+    // Pins closer than this on screen give way (the whole country at once would be a pile otherwise).
+    const gap = level < HUB_ZOOM.rail ? 22 : level < HUB_ZOOM.names ? 30 : 44;
+    const placed: L.Point[] = [];
     for (const c of hubs) {
-      const air = !!c.iata, train = c.train != null && zoom >= 10;
-      if ((!air && !train) || !b.contains([c.lat!, c.lng!])) continue;
-      const name = fa ? c.fa : c.en;
-      const m = L.marker([c.lat!, c.lng!], { icon: hubIcon(air ? "✈️" : "🚆", air ? "air" : "rail"), keyboard: true, title: name, zIndexOffset: -200 });
+      const glyphs = hubGlyphs(c, level);
+      if (!glyphs.length || !b.contains([c.lat!, c.lng!])) continue;
+      const pt = map.latLngToContainerPoint([c.lat!, c.lng!]);
+      if (placed.some((q) => q.distanceTo(pt) < gap)) continue;
+      placed.push(pt);
+      const name = (fa ? c.fa : c.en).replace(/_/g, " ");
+      const label = level >= HUB_ZOOM.names ? name : c.iata && level >= HUB_ZOOM.rail ? c.iata : "";
+      const m = L.marker([c.lat!, c.lng!], { icon: hubIcon(glyphs, label, `${c.iata ? "air" : glyphs[0] === "🚆" ? "rail" : "bus"}${level < HUB_ZOOM.rail ? " small" : ""}`), keyboard: true, title: name, zIndexOffset: c.iata ? -100 : -200 });
       m.bindPopup(() => hubPopup(c, name), { className: "tv-popup" });
       layer.addLayer(m);
     }
     return () => void layer.remove();
-  }, [map, hubs, zoom >= 10, zoom >= 7, center.lat.toFixed(1), center.lng.toFixed(1)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [map, hubs, level, center.lat.toFixed(1), center.lng.toFixed(1)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- planes: asked for every 15 s round the map's centre, moved on every second
   const planes = useRef(new Map<string, { p: Plane; m: L.Marker }>());
