@@ -722,17 +722,25 @@ mood scales XP; loot funds research; territory funds the army.
   and verification changes, with the IP; filter by kind, player, target or words). The owner sees their store's
   history without IPs. Rules `lib/claims.ts`, work `server/claims.ts`, log `server/audit.ts`; `/api/business`
   (`claim`, `claim_check`, `claim_visit`, `claim_doc`, `history`), `/api/admin/claims`, `/api/admin/audit`.
-- **Travel: tickets, stays and real planes** — Search → **Travel** (or ✈️ in the 3D city's Places, or a tap on an
-  airport ✈️ / train station 🚆 pin on the map from zoom 7 / 10): from the nearest city to any of 360+ Iranian cities
-  (search in Persian, English or by airport code), on any of the next 14 days. *All* compares flights, trains and
-  buses side by side (cheapest, fastest, how many); each list reads [Alibaba](https://www.alibaba.ir) (flights,
-  trains, buses) and [MrBilit](https://mrbilit.com) (flights, and trains straight from Raja), and the same flight or
-  train sold by both is **one row with both prices**, the cheaper first, each opening that site's booking page on
-  the right day (Jalali dates for Alibaba). Filters: time of day, price cap, company, refundable, seats left, direct;
-  sort by price, departure, duration or seats. **Stays**: villas, suites, apartments, eco-lodges and hotels from
-  [Jabama](https://www.jabama.com) with photos, rating, guests and price a night (kind, guests, instant booking,
-  price; sort by price, rating, distance, size), plus Alibaba's and [Booking.ir](https://www.booking.ir)'s hotel
-  pages and Alibaba's tours. [Flytoday](https://www.flytoday.ir), [Raja](https://www.raja.ir) and
+- **Travel: a trip planner, tickets, stays and real planes** — ⋯ → **Travel** (its own screen, apart from product
+  search; or ✈️ in the 3D city's Places, or a tap on an airport ✈️ / train station 🚆 pin on the map from zoom 7 / 10).
+  **A whole trip**: start from the nearest city, add any number of cities (by name — Persian, English, airport code —
+  or tapped on a **map** of every city with tickets, the trip drawn on it), so many nights in each, one way or a
+  **round trip**, for 1–9 travellers. The plan is a timeline: each leg with its day, how it's travelled and its price
+  for everyone; each city with its dates, nights (− / +) and its stay. A leg opens **flight, train, bus and your own
+  car side by side** (cheapest, fastest, how many; the car's road km, hours and petrol for every car needed — ~1.3× the
+  straight line, 80 km/h, 8 L/100 km at 3,000 toman), then that way's tickets; any day can be moved (the first leg
+  moves the trip, a later one the nights before it). The **bill** stays at the bottom: total, per person, tickets /
+  fuel / stays, and what's still to choose — **Cheapest everywhere** fills every open leg and stay. The plan and
+  every answer are kept on the phone (`lib/travel/plan.ts`, pure, `tests/travelPlan.test.ts`). Tickets: each list reads
+  [Alibaba](https://www.alibaba.ir) (flights, trains, buses) and [MrBilit](https://mrbilit.com) (flights, and trains
+  straight from Raja), and the same flight or train sold by both is **one row with both prices**, the cheaper first,
+  each opening that site's booking page on the right day (Jalali dates for Alibaba). Filters (in their own sheet):
+  time of day, price cap, company, refundable, direct; sort by price, departure, duration or seats; only tickets with
+  seats for everyone. **Stays**: villas, suites, apartments, eco-lodges and hotels from [Jabama](https://www.jabama.com)
+  with photos, rating, guests and price a night and for the whole stay (units enough for everyone; kind, instant
+  booking, price; sort by price, rating, distance, size), plus Alibaba's and [Booking.ir](https://www.booking.ir)'s
+  hotel pages and Alibaba's tours. [Flytoday](https://www.flytoday.ir), [Raja](https://www.raja.ir) and
   [Payaneh](https://payaneh.ir) publish no data the game can read: they are *Compare on* links. Product search knows
   a trip too: "بلیط مشهد", "hotel in Shiraz" offer the planner. **Planes**: live ADS-B positions
   ([adsb.lol](https://adsb.lol): callsign, type, height, speed) where receivers hear them — Turkey, the Gulf, Europe —
@@ -742,7 +750,7 @@ mood scales XP; loot funds research; territory funds the army.
   navigation lights. Cities: `lib/travel/hubs.generated.json` (MrBilit's station and bus-city lists, Alibaba's
   airports, positions from OpenStreetMap); rules `lib/travel`, `lib/flights.ts`; data `server/travel.ts`
   (`/api/travel`, `/api/flights`; tickets cached 20 min per route and day, stays 3 h, planes 10 s);
-  `drive/planes3d.ts`, `game/TravelLayer.tsx`, `game/Travel.tsx`. Each site: `ALIBABA_URL` / `MRBILIT_FLIGHT_URL` /
+  `drive/planes3d.ts`, `game/TravelLayer.tsx`, `game/Travel.tsx`, `game/CityMap.tsx`. Each site: `ALIBABA_URL` / `MRBILIT_FLIGHT_URL` /
   `MRBILIT_TRAIN_URL` / `JABAMA_URL` / `ADSB_URL` (`off` disables; through the relay add `alibaba,mrbilit,jabama` to
   `RELAY_FOR`). **Searches run on the player's phone where the site allows it** (`game/travelClient.ts`): Alibaba's
   bus search answers any site, so the phone (on its own Iranian connection) asks it; Alibaba's flights/trains,
@@ -1122,7 +1130,7 @@ snatched and its owner shouts after the thief — the people stop, turn to each 
 | Spawns: deterministic per ~450 m cell and 20-min window, so everyone sees the same world with zero storage; the server rebuilds a spawn from its id to verify claims | `src/lib/spawns.ts` |
 | Time of day: local *solar* time decides night/dawn/day/dusk items and golden-hour 2× XP anywhere on Earth; daily streaks reset at the player's own midnight | `src/lib/geo.ts`, `src/lib/progression.ts` |
 | Anti-cheat: claims use the server's trusted position, GPS jumps faster than 250 km/h are rejected | `src/app/api/loc`, `src/server/rewards.ts` |
-| Live layer (serverless-friendly): position + presence via `/api/loc`, notifications + unread via `/api/sync` (polled every 4 s), chat polled every 3 s. "Online" = pinged in the last 90 s | `src/server/hub.ts`, `src/app/api/{loc,sync,chat}` |
+| Live layer (serverless-friendly): position + presence via `/api/loc`, notifications + unread via `/api/sync` (every 4 s in use, 12 s after 2 idle minutes, jittered, paused in a hidden tab, at once on return; its queries run in one round trip, and `Message(createdAt)` / `EventParticipant(userId)` indexes keep each poll to the last seconds — run `npm run db:push` after pulling), chat polled every 3 s. "Online" = pinged in the last 90 s | `src/server/hub.ts`, `src/app/api/{loc,sync,chat}` |
 | Deliveries: coins in escrow → courier accepts → GPS check-in at pickup → handover code at drop-off | `src/app/api/deliveries` |
 | Live settings: every tunable has a default in `lib/settings.ts`; admin overrides are stored in `GameConfig`, loaded per server instance (15 s cache) and sent to clients with `/api/me`; `applyConfig()` updates the rule constants and catalog stats in place on both sides | `src/lib/{settings,config}.ts`, `src/server/settings.ts` |
 | Goals: game events (every `questEvent`) feed per-user, per-faction and world counters per week | `src/server/goals.ts`, `/api/goals` |

@@ -256,3 +256,46 @@ export function priceSteps(hits: ProductHit[]): number[] {
 export function menusToRead(named: string[], around: { code: string }[], max: number): string[] {
   return [...new Set([...named, ...around.map((v) => v.code)])].slice(0, max);
 }
+
+// ---------------------------------------------------------------- the same product in several stores
+/** Words that say nothing about which product it is (sizes and units stay: 1kg ≠ 5kg). */
+const FILLER = new Set(["و", "با", "در", "از", "the", "and", "with", "of", "for", "-", "|", "+", "،"]);
+const wordsOf = (title: string) => new Set(normName(title).split(" ").filter((w) => w.length > 1 && !FILLER.has(w)));
+/** How alike two names are: words in both over words in either (0…1). */
+export function nameLikeness(a: string, b: string): number {
+  const x = wordsOf(a), y = wordsOf(b);
+  if (!x.size || !y.size) return 0;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both++;
+  return both / (x.size + y.size - both);
+}
+
+export type SameProduct = { title: string; hits: ProductHit[]; min: number; max: number; stores: number; save: number };
+
+/**
+ * The same product sold by more than one store, cheapest first: names at least `alike` alike (word
+ * overlap), a price each, the same currency, at least two different stores. Groups ranked by how much
+ * picking the cheapest saves (the most first). Pure.
+ */
+export function sameProducts(hits: ProductHit[], alike = 0.6, max = 8): SameProduct[] {
+  const priced = hits.filter((h) => h.price > 0 && !h.from).slice(0, 200);
+  const used = new Set<string>();
+  const out: SameProduct[] = [];
+  for (let i = 0; i < priced.length; i++) {
+    const a = priced[i];
+    if (used.has(a.id)) continue;
+    const group = [a];
+    for (let j = i + 1; j < priced.length; j++) {
+      const b = priced[j];
+      if (used.has(b.id) || b.currency !== a.currency || nameLikeness(a.title, b.title) < alike) continue;
+      group.push(b);
+    }
+    const stores = new Set(group.map((h) => h.store)).size;
+    if (stores < 2) continue;
+    group.forEach((h) => used.add(h.id));
+    group.sort((x, y) => x.price - y.price);
+    const lo = group[0].price, hi = group[group.length - 1].price;
+    out.push({ title: group[0].title, hits: group, min: lo, max: hi, stores, save: hi > 0 ? Math.round((1 - lo / hi) * 100) : 0 });
+  }
+  return out.sort((x, y) => y.save - x.save || y.stores - x.stores).slice(0, max);
+}

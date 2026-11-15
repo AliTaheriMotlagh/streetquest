@@ -117,3 +117,128 @@
 
 /* The sort menu in a filter bar (Travel): a chip-shaped select. */
 .fx-bar .fx-sort { flex: 0 0 auto; min-height: 36px; max-width: 46vw; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel-solid); color: var(--text); font: 700 13px/1 var(--body); -webkit-appearance: none; appearance: none; text-align: center; }
+
+/* ---------------------------------------------------------------- the trip planner (Travel.tsx)
+   Small phones first: one column, 44 px targets, a timeline down the start edge, the bill pinned to
+   the bottom of the sheet. Motion is transform/opacity only. */
+.tp { display: grid; gap: 14px; padding-bottom: 8px; }
+.tp-controls { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.tp-ctl {
+  display: grid; gap: 4px; align-content: start; min-width: 0; padding: 8px 12px; border-radius: 14px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .04); color: var(--text); font: inherit; text-align: start;
+}
+.tp-ctl > span { font: 700 11.5px/1.2 var(--body); color: var(--muted); }
+.tp-ctl select { min-height: 32px; width: 100%; border: 0; background: none; color: var(--text); font: 800 15px/1.2 var(--body); padding: 0; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.tp-ctl select:focus-visible { outline: 2px solid var(--sky); border-radius: 6px; }
+.tp-toggle { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; min-height: 48px; cursor: pointer; }
+.tp-toggle > span { font: 700 14px/1.2 var(--body); color: var(--text); }
+.tp-toggle i { position: relative; width: 44px; height: 26px; border-radius: 13px; background: rgba(255, 255, 255, .16); flex: none; transition: background .18s; }
+.tp-toggle i::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: transform .18s cubic-bezier(.2, .9, .3, 1.2); }
+.tp-toggle.on i { background: var(--sky); }
+.tp-toggle.on i::after { transform: translateX(18px); }
+[dir="rtl"] .tp-toggle.on i::after { transform: translateX(-18px); }
+
+.tp-step { display: inline-flex; align-items: center; gap: 2px; border-radius: 12px; background: rgba(255, 255, 255, .06); }
+.tp-step button { width: 40px; height: 36px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 800 20px/1 var(--body); cursor: pointer; }
+.tp-step button:disabled { opacity: .3; cursor: default; }
+.tp-step button:not(:disabled):active { transform: scale(.92); }
+.tp-step output { min-width: 28px; text-align: center; font: 800 14px/1 var(--body); font-variant-numeric: tabular-nums; white-space: nowrap; padding: 0 4px; }
+
+/* the timeline: a dot per city, a rail between them, legs on the rail */
+.tp-line { list-style: none; margin: 0; padding: 0; display: grid; }
+.tp-node, .tp-leg { position: relative; padding-inline-start: 44px; }
+.tp-node::before, .tp-leg::before { content: ""; position: absolute; inset-inline-start: 17px; top: 0; bottom: 0; width: 2px; background: color-mix(in srgb, var(--sky) 35%, transparent); }
+.tp-node:first-child::before { top: 22px; }
+.tp-node:last-child::before { bottom: calc(100% - 22px); }
+.tp-dot { position: absolute; inset-inline-start: 2px; top: 6px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-solid); border: 2px solid var(--sky); font-size: 15px; z-index: 1; }
+.tp-node.add .tp-dot { border-style: dashed; color: var(--sky); font-weight: 800; }
+.tp-node { padding-block: 4px; animation: tp-in .24s ease-out backwards; }
+.tp-city { display: grid; gap: 2px; width: 100%; min-height: 44px; padding: 4px 0; border: 0; background: none; color: var(--text); text-align: start; cursor: pointer; font: inherit; }
+.tp-city b { font: 800 17px/1.25 var(--display, var(--body)); }
+.tp-city small, .tp-leg small, .tp-stay small { color: var(--muted); font: 600 12.5px/1.35 var(--body); }
+.tp-city.static { cursor: default; }
+.tp-add { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px dashed color-mix(in srgb, var(--sky) 55%, transparent); background: none; color: var(--sky); font: 800 15px/1.2 var(--body); cursor: pointer; text-align: start; padding: 0 14px; margin: 2px 0; }
+
+.tp-leg { padding-block: 6px; }
+.tp-leg-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 10px 12px; border-radius: 14px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .03); color: var(--text); text-align: start; cursor: pointer; font: inherit;
+  transition: background .15s, border-color .15s;
+}
+.tp-leg.set .tp-leg-btn { border-color: color-mix(in srgb, var(--green, #5bd38c) 55%, transparent); background: color-mix(in srgb, var(--green, #5bd38c) 8%, transparent); }
+.tp-leg-btn:hover, .tp-leg-btn:focus-visible { background: rgba(255, 255, 255, .07); outline: none; }
+.tp-leg-btn:focus-visible { box-shadow: 0 0 0 2px var(--sky); }
+.tp-leg-day { flex: none; width: 58px; font: 800 11.5px/1.25 var(--body); color: var(--muted); }
+.tp-leg-body { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.tp-leg-body b { font: 700 14px/1.3 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-choose { color: var(--sky); }
+.tp-go { flex: none; color: var(--muted); font-size: 22px; line-height: 1; }
+[dir="rtl"] .tp-go { transform: scaleX(-1); }
+
+.tp-stop { display: grid; gap: 8px; padding-bottom: 6px; }
+.tp-stop-head { display: flex; align-items: flex-start; gap: 6px; }
+.tp-x { flex: none; width: 40px; height: 40px; border: 0; border-radius: 12px; background: none; color: var(--muted); font-size: 15px; cursor: pointer; }
+.tp-x:hover, .tp-x:focus-visible { background: rgba(255, 255, 255, .08); color: var(--text); }
+.tp-stop-row { display: flex; gap: 8px; align-items: center; }
+.tp-stay {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px; border-radius: 14px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .03); color: var(--text); text-align: start; cursor: pointer; font: inherit;
+}
+.tp-stay.set { border-color: color-mix(in srgb, var(--green, #5bd38c) 55%, transparent); }
+.tp-stay img, .tp-stay-ic { flex: none; width: 44px; height: 44px; border-radius: 10px; object-fit: cover; display: grid; place-items: center; background: rgba(255, 255, 255, .06); font-size: 20px; }
+.tp-stay .grow { display: grid; gap: 2px; min-width: 0; }
+.tp-stay b { font: 700 14px/1.3 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-sum { margin: 0; text-align: center; }
+
+/* the bill: always at the bottom of the sheet */
+.tp-bill {
+  position: sticky; bottom: calc(-20px - var(--safe-b, 0px)); z-index: 2; display: flex; gap: 10px; align-items: center;
+  margin: 8px -16px -20px; padding: 12px 16px calc(12px + var(--safe-b, 0px)); background: var(--panel-solid);
+  border-top: 1px solid var(--line-strong); box-shadow: 0 -10px 24px rgba(0, 0, 0, .35);
+}
+.tp-bill .grow { display: grid; gap: 2px; min-width: 0; }
+.tp-bill b { font: 800 18px/1.2 var(--body); color: var(--gold, #f0c05a); font-variant-numeric: tabular-nums; }
+.tp-bill small { color: var(--muted); font: 600 12px/1.3 var(--body); }
+.tp-fill { flex: none; white-space: nowrap; }
+
+/* a leg: the four ways side by side (two by two on a small phone) */
+.tp-ways { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
+@media (max-width: 400px) { .tp-ways { grid-template-columns: repeat(2, 1fr); } }
+.tp-way {
+  display: grid; gap: 2px; justify-items: start; align-content: start; min-height: 84px; padding: 10px; border-radius: 14px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .03); color: var(--text); text-align: start; cursor: pointer; font: inherit;
+  transition: border-color .15s, background .15s, transform .12s;
+}
+.tp-way:active:not(:disabled) { transform: scale(.97); }
+.tp-way.on { border-color: var(--sky); background: color-mix(in srgb, var(--sky) 14%, transparent); }
+.tp-way:disabled { opacity: .45; cursor: default; }
+.tp-way-ic { font-size: 20px; line-height: 1.1; }
+.tp-way b { font: 800 13.5px/1.2 var(--body); }
+.tp-way small { font: 600 12px/1.25 var(--body); font-variant-numeric: tabular-nums; }
+.tp-pulse { animation: tp-pulse 1.2s ease-in-out infinite; }
+.tp-tools { display: grid; gap: 8px; }
+.tp-drive { display: grid; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .03); }
+.tp-drive p { margin: 0; }
+.tp-sub { margin: 0 0 8px; }
+.tp-seg { margin-bottom: 10px; }
+.tv-trip.chosen, .tv-stay.chosen { border-color: var(--green, #5bd38c); box-shadow: 0 0 0 1px var(--green, #5bd38c) inset; }
+.tp-choose-btn { min-height: 36px; }
+article.tv-stay { cursor: default; }
+.tv-stay-body .row { margin-top: 4px; gap: 6px; }
+
+/* the map city picker (CityMap.tsx) */
+.tp-map { height: min(56dvh, 460px); border-radius: 16px; overflow: hidden; border: 1px solid var(--line-strong); margin-bottom: 8px; background: #0c0c14; contain: strict; }
+.tp-map-wait { animation: tp-pulse 1.2s ease-in-out infinite; }
+.tp-map .leaflet-container { background: #0c0c14; }
+.tp-map-label { background: rgba(14, 17, 26, .86); color: #fff; border: 0; border-radius: 6px; padding: 1px 6px; font: 700 11px/1.4 var(--body); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
+.tp-map-label::before { display: none; }
+
+@keyframes tp-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes tp-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .tp-node, .tp-pulse, .tp-map-wait { animation: none; } .tp-toggle i::after, .tp-way { transition: none; } }
+/* a stay you choose (StayView): a square photo, the details wrapping under the name */
+article.tv-stay { grid-template-columns: 96px 1fr; align-items: start; column-gap: 12px; }
+article.tv-stay img { width: 96px; height: 96px; min-height: 0; margin: 10px 0 10px 0; margin-inline-start: 10px; border-radius: 12px; }
+article.tv-stay .fx-meta { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
+article.tv-stay .tv-stay-body { padding: 10px; padding-inline-start: 0; }
+article.tv-stay .tv-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }

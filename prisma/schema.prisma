@@ -293,6 +293,8 @@ model Message {
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([room, createdAt])
+  /// Unread counts (api/sync, every few seconds per player) look at the last few seconds only.
+  @@index([createdAt])
 }
 
 // A message pinned to a real place — only readable when you stand there.
@@ -436,6 +438,8 @@ model EventParticipant {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, userId])
+  /// "My events" per sync poll.
+  @@index([userId])
 }
 
 // Hand-placed missions from the admin panel (sponsored drops, campaigns...).

@@ -6,14 +6,16 @@
 //    what's discounted, which sources (food near you, deals near you, Torob, Basalam);
 //  - sort it: best match, cheapest, most expensive, nearest, best rated, biggest discount;
 //  - a tap on a dish opens its restaurant's card (menu, reviews, route); on a product, its page
-//    with the way out to its own site.
+//    with the way out to its own site;
+//  - compare: the same product sold by several stores (a strip over the list: the price spread and
+//    what the cheapest saves), or up to three picked with ⇄, side by side.
 // Typing waits a moment before asking; the list on screen stays until the new one arrives.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { msg } from "@/lib/i18n";
 import { snappfoodMenuUrl, type Vendor } from "@/lib/localData";
-import { LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
+import { LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, sameProducts, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
 import { api } from "./client";
 import { Sheet } from "./ui";
 import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, openTravel, SearchField, Stars } from "./Filters";
@@ -138,6 +140,9 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   const [error, setError] = useState<{ key: string; text: string } | null>(null);
   const [vendor, setVendor] = useState<{ v: Vendor; dish: string } | null>(null);
   const [page, setPage] = useState<ProductHit | null>(null);
+  /** Picked with ⇄ to compare side by side (up to MAX_COMPARE), and the comparison open. */
+  const [tray, setTray] = useState<ProductHit[]>([]);
+  const [comparing, setComparing] = useState<{ title: string; hits: ProductHit[] } | null>(null);
   /** The price caps of this search before any price was set (they'd shrink with the list otherwise). */
   const caps = useRef<{ key: string; steps: number[] }>({ key: "", steps: [] });
   /** The last search that was allowed to read new menus: changing the price or the order re-sorts what's already known. */
@@ -237,6 +242,10 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
   // A restaurant's card replaces the list while it's open, on the dish that was tapped (the search
   // keeps its words, filters and results underneath): ‹ or the phone's Back returns to the list.
   if (vendor) return <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={onClose} />;
+  const groups = useMemo(() => sameProducts(data?.hits ?? []), [data]);
+  const inTray = (h: ProductHit) => tray.some((x) => x.id === h.id);
+  const flipTray = (h: ProductHit) => setTray((v) => (v.some((x) => x.id === h.id) ? v.filter((x) => x.id !== h.id) : [...v, h].slice(-MAX_COMPARE)));
+
   return (
     <Sheet title={onStores ? t("Search") : t("Find a product")} onClose={onClose} tall>
       <div className="fx-stack">
@@ -310,6 +319,23 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
           )}
           <p className={`fx-status${loading ? " busy" : ""}`} aria-live="polite">{note}</p>
         </div>
+        {groups.length > 0 && (
+          <section className="ps-same" aria-label={t("Same product, different stores")}>
+            <h3 className="tiny muted">{t("Same product, different stores")}</h3>
+            <div className="ps-same-row">
+              {groups.map((g) => (
+                <button key={g.hits[0].id} type="button" className="ps-same-card" onClick={() => setComparing({ title: g.title, hits: g.hits })}>
+                  {g.hits[0].photo ? <Pic src={g.hits[0].photo} className="ps-same-pic" /> : <span className="ps-same-pic" aria-hidden>{PRODUCT_SOURCES[g.hits[0].source].emoji}</span>}
+                  <span className="ps-same-body">
+                    <b dir="auto">{g.title}</b>
+                    <small>{t("{n} stores · {lo} – {hi}", { n: fmtNum(g.stores), lo: fmtNum(g.min), hi: fmtNum(g.max) })}</small>
+                    {g.save > 0 && <span className="fx-off">{t("Save {n}%", { n: fmtNum(g.save) })}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {!data && loading ? (
           <div className="fx-list" aria-hidden>{[0, 1, 2, 3, 4].map((i) => <div key={i} className="fx-skel" />)}</div>
         ) : data && !data.hits.length && !loading ? (
@@ -323,7 +349,8 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
             {(data?.hits ?? []).map((h) => {
               const off = offOf(h);
               return (
-                <li key={h.id}>
+                <li key={h.id} className="ps-li">
+                  <button type="button" className={`ps-pick${inTray(h) ? " on" : ""}`} aria-pressed={inTray(h)} onClick={() => flipTray(h)} title={t("Compare")} aria-label={t("Compare {name}", { name: h.title })}>⇄</button>
                   <button type="button" className="fx-row" onClick={() => openHit(h)}>
                     {h.photo ? <Pic src={h.photo} className="fx-thumb" /> : <span className="fx-thumb" aria-hidden>{PRODUCT_SOURCES[h.source].emoji}</span>}
                     <span className="fx-body">
@@ -366,7 +393,69 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
               : t("Prices are the stores' own, in toman, as last read from Snappfood, Takhfifan, Torob and Basalam.")}
         </p>
       </div>
+      {tray.length > 0 && (
+        <div className="ps-tray" role="status">
+          <span className="grow">{t("{n} picked to compare", { n: fmtNum(tray.length) })}</span>
+          <button type="button" className="btn small ghost" onClick={() => setTray([])}>{t("Clear")}</button>
+          <button type="button" className="btn small" disabled={tray.length < 2} onClick={() => setComparing({ title: t("Compare"), hits: [...tray].sort((a, b) => a.price - b.price) })}>{t("Compare")}</button>
+        </div>
+      )}
+      {comparing && <Compare title={comparing.title} hits={comparing.hits} at={at} onOpen={(h) => (setComparing(null), openHit(h))} onClose={() => setComparing(null)} />}
       {page && <ProductPage p={pageOf(page)} onClose={() => setPage(null)} />}
+    </Sheet>
+  );
+}
+
+const MAX_COMPARE = 3;
+
+/**
+ * Products side by side: a column each (cheapest first, scrolling sideways when there are many), a row
+ * per thing worth comparing — price, discount, store, site, distance, rating — the best of each marked.
+ */
+function Compare({ title, hits, at, onOpen, onClose }: { title: string; hits: ProductHit[]; at: LatLng | null; onOpen: (h: ProductHit) => void; onClose: () => void }) {
+  const priced = hits.filter((h) => h.price > 0);
+  const lo = priced.length ? Math.min(...priced.map((h) => h.price)) : 0;
+  const near = Math.min(...hits.map((h) => h.dist ?? Infinity));
+  const top = Math.max(...hits.map((h) => h.rating ?? 0));
+  const rows: { label: string; cell: (h: ProductHit) => React.ReactNode; best?: (h: ProductHit) => boolean }[] = [
+    { label: t("Price"), cell: (h) => (h.price > 0 ? priceOf(h) : t("No price")), best: (h) => h.price > 0 && h.price === lo && priced.length > 1 },
+    { label: t("Over the cheapest"), cell: (h) => (h.price > 0 && lo && h.price > lo ? `+${fmtNum(h.price - lo)}` : "—") },
+    { label: t("Discount"), cell: (h) => (offOf(h) ? `−${fmtNum(offOf(h))}%` : "—") },
+    { label: t("Store"), cell: (h) => <bdi>{h.store}</bdi> },
+    { label: t("Site"), cell: (h) => siteOf(h.source, at) },
+    { label: t("Distance"), cell: (h) => (h.dist != null ? formatDistance(h.dist) : "—"), best: (h) => h.dist != null && h.dist === near && hits.length > 1 },
+    { label: t("Store rating"), cell: (h) => (h.rating ? <Stars r={h.rating} /> : "—"), best: (h) => !!h.rating && h.rating === top && hits.length > 1 },
+  ];
+  return (
+    <Sheet title={title} onBack={onClose} onClose={onClose} tall>
+      <div className="ps-cmp" data-no-drag>
+        <table>
+          <thead>
+            <tr>
+              <th aria-hidden />
+              {hits.map((h) => (
+                <th key={h.id} scope="col">
+                  <button type="button" className="ps-cmp-head" onClick={() => onOpen(h)}>
+                    {h.photo ? <Pic src={h.photo} className="ps-cmp-pic" /> : <span className="ps-cmp-pic" aria-hidden>{PRODUCT_SOURCES[h.source].emoji}</span>}
+                    <span dir="auto">{h.title}</span>
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label}>
+                <th scope="row">{r.label}</th>
+                {hits.map((h) => (
+                  <td key={h.id} className={r.best?.(h) ? "best" : ""}>{r.cell(h)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="tiny muted">{t("Tap a product to open it. Prices as last read from each site.")}</p>
     </Sheet>
   );
 }

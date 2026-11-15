@@ -139,8 +139,13 @@ html.lite .map.light .leaflet-tile { filter: grayscale(1); }
   --hud-bg: rgba(12, 14, 20, .8); --hud-solid: #14161d; --hud-line: rgba(255, 255, 255, .13); --dpad-accent: #ffb020;
   --pad-h: 212px;
   position: fixed; inset: 0; z-index: 2900; background: #9fd2ff; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; overflow: hidden; direction: ltr;
+  overscroll-behavior: none;
 }
 .drive-canvas { position: absolute; inset: 0; }
+/* The city takes every touch (touch-action: none above); its panels say plainly that they scroll and keep
+   the scroll to themselves (iPad: the garage and every tab). */
+.drive :is(.pm-scroll, .sheet-body, .fx-sheet-body, .ps-cmp) { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
 .drive-canvas canvas { display: block; width: 100%; height: 100%; }
 .drive-spinner { display: inline-block; width: 22px; height: 22px; flex: none; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

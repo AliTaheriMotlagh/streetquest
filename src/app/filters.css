@@ -137,3 +137,4 @@
 /* A Persian name in the English list (and the other way round) lines up with its details. */
 .fx-title { text-align: left; }
 [dir="rtl"] .fx-title { text-align: right; }
+.fx-dot { opacity: .6; font-size: .85em; }

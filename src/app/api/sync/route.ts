@@ -23,27 +23,29 @@ export const GET = route(async (req) => {
     await readyAlerts(u).catch(() => 0);
   }
 
-  const [notifications, events] = await Promise.all([
+  // Everything in one round trip (one poll per player every few seconds: latency and connections add up).
+  const events = await prisma.eventParticipant.findMany({ where: { userId: u.id }, select: { eventId: true } });
+  const [notifications, unread, inbox, ring, cfg] = await Promise.all([
     prisma.notification.findMany({ where: { userId: u.id, createdAt: { gt: since } }, orderBy: { createdAt: "asc" }, take: 20, select: { id: true, kind: true, tag: true, title: true, body: true, link: true } }),
-    prisma.eventParticipant.findMany({ where: { userId: u.id }, select: { eventId: true } }),
+    // Private rooms only (DMs + my events) count toward the unread badge (Message @@index([createdAt]): only the last seconds are read).
+    prisma.message.count({
+      where: {
+        createdAt: { gt: since },
+        authorId: { not: u.id },
+        OR: [{ room: { startsWith: "dm:", contains: u.id } }, { room: { in: events.map((e) => `event:${e.eventId}`) } }],
+      },
+    }),
+    prisma.notification.count({ where: { userId: u.id, readAt: null, hiddenAt: null } }),
+    // A crew member ringing this player right now.
+    prisma.call.findFirst({
+      where: { calleeId: u.id, status: "RINGING", createdAt: { gt: new Date(now.getTime() - RING_MS) } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, video: true, caller: { select: { id: true, username: true, avatar: true } } },
+    }),
+    settingsVersion(),
+    // Keep presence fresh even when the player is standing still with GPS idle.
+    !u.lastSeenAt || now.getTime() - u.lastSeenAt.getTime() > 30_000 ? prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: now } }) : null,
   ]);
-  // Private rooms only (DMs + my events) count toward the unread badge.
-  const unread = await prisma.message.count({
-    where: {
-      createdAt: { gt: since },
-      authorId: { not: u.id },
-      OR: [{ room: { startsWith: "dm:", contains: u.id } }, { room: { in: events.map((e) => `event:${e.eventId}`) } }],
-    },
-  });
-  // Keep presence fresh even when the player is standing still with GPS idle.
-  if (!u.lastSeenAt || now.getTime() - u.lastSeenAt.getTime() > 30_000) await prisma.user.update({ where: { id: u.id }, data: { lastSeenAt: now } });
-  const inbox = await prisma.notification.count({ where: { userId: u.id, readAt: null, hiddenAt: null } });
-  // A crew member ringing this player right now.
-  const ring = await prisma.call.findFirst({
-    where: { calleeId: u.id, status: "RINGING", createdAt: { gt: new Date(now.getTime() - RING_MS) } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, video: true, caller: { select: { id: true, username: true, avatar: true } } },
-  });
   // cfg: the admin settings' version — a client that sees it change reloads them (/api/me), so a save reaches every open game in seconds.
-  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, video: ring.video, peer: ring.caller }, cfg: await settingsVersion() };
+  return { now: now.getTime(), notifications, unread, inbox, call: ring && { id: ring.id, video: ring.video, peer: ring.caller }, cfg };
 });

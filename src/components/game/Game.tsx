@@ -98,6 +98,8 @@ const NAV: [PanelId, IconName, string][] = [
 ];
 
 const TEST_MODE_KEY = "sq_test_mode";
+/** The game's poll (/api/sync): how often while in use, and once idle this long (Game's sync effect). */
+const SYNC_EVERY_MS = 4000, SYNC_IDLE_MS = 120_000, SYNC_IDLE_EVERY_MS = 12_000;
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
@@ -815,6 +817,11 @@ export default function Game() {
   useWakeLock(geo.speed > 2 || !!gps.view);
   const driving = geo.speed > 7;
 
+  // The page itself never scrolls while the game is open (globals.css html.game-on): only its panels do.
+  useEffect(() => {
+    document.documentElement.classList.add("game-on");
+    return () => document.documentElement.classList.remove("game-on");
+  }, []);
   // First-run tutorial, once the map is up (real GPS or play-from-home).
   const mapReady = !!geo.pos;
   useEffect(() => {
@@ -942,10 +949,33 @@ export default function Game() {
         busy = false;
       }
     };
-    const t = setInterval(tick, 4000);
+    // Every 4 s while the player is using the game, every 12 s after two idle minutes (nobody waits on a
+    // badge then; a call still rings within seconds of a touch, and push covers a hidden tab), each with a
+    // little jitter so thousands of open games don't all ask in the same second. Back on screen: at once.
+    let last = Date.now(), timer = 0;
+    const active = () => void (last = Date.now());
+    const next = () => {
+      const idle = Date.now() - last > SYNC_IDLE_MS;
+      timer = window.setTimeout(async () => {
+        await tick();
+        if (!stop) next();
+      }, (idle ? SYNC_IDLE_EVERY_MS : SYNC_EVERY_MS) * (0.85 + Math.random() * 0.3));
+    };
+    const back = () => {
+      if (document.hidden) return;
+      active();
+      void tick();
+    };
+    addEventListener("pointerdown", active, { passive: true });
+    addEventListener("keydown", active);
+    document.addEventListener("visibilitychange", back);
+    next();
     return () => {
       stop = true;
-      clearInterval(t);
+      clearTimeout(timer);
+      removeEventListener("pointerdown", active);
+      removeEventListener("keydown", active);
+      document.removeEventListener("visibilitychange", back);
     };
   }, [toast, loadMe, refreshAsks]);
 

@@ -135,7 +135,8 @@ export function Meta({ parts, className = "fx-meta" }: { parts: (ReactNode | fal
     <span className={className}>
       {shown.map((p, i) => (
         <span key={i} className="fx-part">
-          {i > 0 && <span className="fx-dot" aria-hidden> · </span>}
+          {/* "•", not "·": in Persian a middle dot reads as the digit zero (۰). */}
+          {i > 0 && <span className="fx-dot" aria-hidden> • </span>}
           <bdi>{p}</bdi>
         </span>
       ))}

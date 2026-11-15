@@ -267,6 +267,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const k = setTimeout(() => setFootKeys(false), 12_000);
     return () => clearTimeout(k);
   }, [onFoot]);
+  // iOS Safari zooms the page on a pinch whatever the CSS says: the 3D city never zooms like a page.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    document.addEventListener("gesturestart", stop);
+    return () => document.removeEventListener("gesturestart", stop);
+  }, []);
   const [touch, setTouch] = useState(isTouch);
   // Some Android browsers claim a mouse; the first finger on the screen settles it.
   useEffect(() => {

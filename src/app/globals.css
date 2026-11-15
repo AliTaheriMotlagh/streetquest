@@ -1999,3 +1999,8 @@ button.ext-item { width: 100%; font: inherit; text-align: start; cursor: pointer
 
 /* Quiet mode (lib/quiet.ts: tests, ?quiet=1): no dev-tools badge over the HUD in screenshots. */
 html.quiet nextjs-portal { display: none !important; }
+
+/* While the game is open (Game.tsx sets html.game-on) the page itself never scrolls or rubber-bands: on iPad
+   Safari a panel scrolled to its end used to drag the whole screen with it ("not fixed"). Only panels scroll. */
+html.game-on, html.game-on body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+.sheet-body, .pm-scroll, .fx-sheet-body, .tv-picks, .ps-cmp { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
