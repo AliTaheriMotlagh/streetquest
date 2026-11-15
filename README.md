@@ -1207,17 +1207,16 @@ file and installs it on the relay box with `realtime/install.sh`, which only add
 - service `streetquest-rt` on port 8791 as its own user, capped at 300 MB and half a CPU, lowest priority,
   first to be killed if memory runs out; the install records what else listens and what ports 80/443 answer,
   and rolls itself back if anything changed;
-- TLS (an https page may only open `wss://`): Iran DNS-filters every free dynamic-DNS name tried (DuckDNS, dynv6,
-  all of Dynu's free domains, mooo.com; deSEC stopped giving names out), so `RT_DOMAIN` is a subdomain of a real
-  domain. Its owner adds `A sq → the box` (no CDN proxy) and `CNAME _acme-challenge.sq → ACMEDNS_FULLDOMAIN` (from
-  `curl -X POST https://auth.acme-dns.io/register`); the Let's Encrypt certificate comes by that DNS challenge
-  (ports 80/443 stay the other app's) and is renewed by the daily timer `streetquest-rt-renew`; the server reloads it without dropping matches.
+- TLS (an https page may only open `wss://`) with no domain: the name is `<box-ip>.sslip.io`, and sslip.io
+  delegates `_acme-challenge.<box-ip>.sslip.io` to that IP — so for the minute a certificate is issued, the box
+  answers Let's Encrypt's DNS question itself (`realtime/acme-answer.mjs` on port 53, only that one name;
+  ports 80/443 stay the other app's). Free dynamic-DNS names (DuckDNS, dynv6, all of Dynu's free domains,
+  mooo.com) are DNS-filtered in Iran; a real domain works too (`RT_DNS=acmedns|desec|dynu`, see `.env.example`). Renewed by the daily timer `streetquest-rt-renew`; the server reloads it without dropping matches.
 
-Needs in `.env`: `RT_SECRET` (`openssl rand -hex 32`), `RT_DOMAIN`, `ACMEDNS_USERNAME`/`_PASSWORD`/`_SUBDOMAIN`
-(+ `RELAY_SSH`; a domain hosted on deSEC or Dynu instead: `RT_DNS=desec` + `DEDYN_TOKEN`, `RT_DNS=dynu` + `DYNU_CLIENT_ID`/`DYNU_SECRET`). Then on
-Vercel (production): `RT_URL=wss://<RT_DOMAIN>:8791` and the same `RT_SECRET`, and redeploy. A browser
+Needs in `.env`: `RT_SECRET` (`openssl rand -hex 32`) and `RELAY_SSH`. Then on
+Vercel (production): `RT_URL=wss://<box-ip-with-dashes>.sslip.io:8791` and the same `RT_SECRET`, and redeploy. A browser
 that can't open the socket twice in a row (8 s each) plays on through the database relay, as without `RT_URL`.
-Check: `curl https://<RT_DOMAIN>:8791/health`; remove: `systemctl disable --now streetquest-rt streetquest-rt-renew.timer`.
+Live since 2026-11-15: `RT_URL=wss://37-32-28-215.sslip.io:8791`. Check: `curl https://37-32-28-215.sslip.io:8791/health`; remove: `systemctl disable --now streetquest-rt streetquest-rt-renew.timer`.
 
 ## Production checklist
 
