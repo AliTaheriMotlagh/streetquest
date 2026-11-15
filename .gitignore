@@ -36,3 +36,7 @@ __pycache__/
 
 # Models replaced from Admin → Model update when no BLOB_READ_WRITE_TOKEN is set (development)
 /public/uploads/
+
+# Load tests (npm run load:*): a production build on :3300 and the seeded players/summary
+/.next-load
+/.load/

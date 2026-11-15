@@ -907,6 +907,8 @@ export default function Game() {
 
   // ---- "realtime" via polling (works on serverless hosts like Vercel)
   const syncSince = useRef(Date.now());
+  /** A full answer has come back: syncSince is the server's clock, so the "same" shortcut is safe. */
+  const syncFull = useRef(false);
   const panelRef = useRef(panel);
   panelRef.current = panel;
   useEffect(() => {
@@ -918,14 +920,19 @@ export default function Game() {
       if (document.hidden || busy) return;
       busy = true;
       try {
-        const r = await api<{ now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; video: boolean; peer: CallPeer } | null; cfg?: number }>(`/api/sync?since=${syncSince.current}`);
+        // q=1 (once `since` is the server's own time): "same" when nothing changed — one row read on the server.
+        type Full = { now: number; unread: number; inbox: number; notifications: Toast[]; call: { id: string; video: boolean; peer: CallPeer } | null; cfg?: number; same?: undefined };
+        const r = await api<Full | { now: number; same: true; cfg?: number }>(`/api/sync?since=${syncSince.current}${syncFull.current ? "&q=1" : ""}`);
         if (stop) return;
-        syncSince.current = r.now;
         // The admin saved new game settings: reload them (and me) now, not at the next tap.
         if (r.cfg != null) {
           if (cfgSeen.current != null && r.cfg !== cfgSeen.current) loadMe();
           cfgSeen.current = r.cfg;
         }
+        // Nothing new: keep `since` (a write that lands a moment late still shows in the next full answer).
+        if (r.same) return;
+        syncSince.current = r.now;
+        syncFull.current = true;
         if (r.call && !callRef.current && !handledCalls.current.has(r.call.id)) setCall({ id: r.call.id, peer: r.call.peer, video: r.call.video, role: "callee" });
         setInbox(panelRef.current === "inbox" ? 0 : r.inbox);
         // A friend request or a party invite is a card with its buttons, not a toast.

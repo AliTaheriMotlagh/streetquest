@@ -23,6 +23,7 @@ model User {
   lastLat      Float?
   lastLng      Float?
   lastSeenAt   DateTime?
+  pulseAt      DateTime? // last write /api/sync reports for this player (server/pulse.ts): polls with nothing newer skip the reads
   locAt        DateTime? // when lastLat/lastLng was accepted (speed checks measure from here)
   streak       Int       @default(0)
   lastDailyKey String? // YYYY-MM-DD in the user's own timezone

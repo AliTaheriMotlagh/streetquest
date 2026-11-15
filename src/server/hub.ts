@@ -1,6 +1,7 @@
 // Serverless-friendly "realtime": everything lives in Postgres and clients poll
 // /api/sync. Works on Vercel (no long-lived sockets) and anywhere else.
 import { prisma } from "../lib/db";
+import { pulse } from "./pulse";
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../lib/i18n";
 import { withLocale } from "./i18n";
 import { pushSoon } from "./push";
@@ -50,6 +51,7 @@ export async function notify(userId: string, n: Notice | (() => Notice)) {
       : { ...n, title: translate(locale, n.title), body: n.body && translate(locale, n.body) };
   const link = notice.link ?? (notice.kind ? LINK_BY_KIND[notice.kind] : undefined);
   await prisma.notification.create({ data: { userId, kind: notice.kind ?? "info", tag: notice.tag, title: notice.title, body: notice.body, link } }).catch(() => {});
+  await pulse(userId);
   // Also reach the phone when the game isn't open (fire-and-forget).
   pushSoon(userId, { title: notice.title, body: notice.body, kind: notice.kind });
 }

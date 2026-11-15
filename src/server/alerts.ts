@@ -4,6 +4,7 @@
 // (dismissing one hides it — see /api/notifications — so its key keeps it from coming back).
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/db";
+import { pulse } from "./pulse";
 import { t } from "../lib/i18n";
 import { DIVIDEND_H, dividendCoins, rankOf } from "../lib/idle";
 import { dayKey, DAILY_REWARD } from "../lib/progression";
@@ -41,5 +42,6 @@ export async function readyAlerts(u: User) {
   const r = await prisma.notification.createMany({
     data: fresh.map((a) => ({ userId: u.id, key: a.key, kind: a.kind ?? "info", tag: a.tag, link: a.link, title: a.title, body: a.body })),
   });
+  if (r.count) await pulse(u.id);
   return r.count;
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { pulse } from "@/server/pulse";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { roomAudience } from "@/server/rooms";
@@ -35,6 +36,8 @@ export const POST = route(async (req) => {
     data: { room: d.room, authorId: u.id, body: d.body },
     include: { author: { select: { id: true, username: true, avatar: true } } },
   });
+  // Private rooms count toward the others' unread badge: their sync polls must look.
+  if (Array.isArray(audience)) await pulse(audience.filter((x) => x !== u.id));
   // Private rooms (DMs, my events) reach the others' phones when they're away. One
   // notification per room: a new message replaces the last one instead of piling up.
   if (Array.isArray(audience)) {

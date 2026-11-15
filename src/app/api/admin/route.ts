@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { cancelLottery, drawDue } from "@/server/lottery";
 import { prisma } from "@/lib/db";
+import { pulse } from "@/server/pulse";
 import { levelForXp } from "@/lib/progression";
 import { requireAdmin } from "@/server/auth";
 import { isOnline, notify, onlineSince } from "@/server/hub";
@@ -324,6 +325,7 @@ export const POST = route(async (req) => {
       // Everyone active in the last 15 minutes gets it on their next poll.
       const active = await prisma.user.findMany({ where: { lastSeenAt: { gt: new Date(Date.now() - 15 * 60_000) } }, select: { id: true } });
       await prisma.notification.createMany({ data: active.map((a) => ({ userId: a.id, kind: "info", title: d.title, body: d.body })) });
+      await pulse(active.map((a) => a.id));
       // Optionally a phone notification to everyone who turned notifications on.
       if (d.push) {
         const subs = await prisma.pushSub.findMany({ distinct: ["userId"], select: { userId: true }, take: 20000 });

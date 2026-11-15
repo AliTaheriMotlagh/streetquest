@@ -1,6 +1,7 @@
 // Video and voice calls between crew members. The media is peer-to-peer WebRTC; Postgres only
 // carries the handshake, polled by both phones while the call is up (see /api/calls).
 import { prisma } from "../lib/db";
+import { pulse } from "./pulse";
 import { pushSoon } from "./push";
 import { t } from "../lib/i18n";
 import { asUser } from "./hub";
@@ -82,10 +83,12 @@ function staleReason(c: CallRow, now = Date.now()) {
 /** Close a call (once). A call that rang out or was cancelled shows up as missed for the callee. */
 export async function endCall(c: CallRow, reason: string) {
   const { count } = await prisma.call.updateMany({ where: { id: c.id, status: { not: "ENDED" } }, data: { status: "ENDED", endReason: reason, endedAt: new Date() } });
+  if (count) await pulse([c.calleeId, c.callerId]);
   if (count && c.status === "RINGING" && reason !== "declined" && reason !== "busy") {
     const caller = await prisma.user.findUnique({ where: { id: c.callerId }, select: { username: true } });
     const n = await asUser(c.calleeId, () => ({ title: c.video ? t("📵 Missed video call") : t("📵 Missed voice call"), body: t("{name} tried to call you", { name: caller?.username ?? t("Someone") }) }));
     await prisma.notification.create({ data: { userId: c.calleeId, kind: "social", ...n } }).catch(() => {});
+    await pulse(c.calleeId);
     // Same tag as the ringing notification, so it turns into "missed" instead of ringing on.
     pushSoon(c.calleeId, { ...n, kind: "social", tag: `call-${c.id}`, call: c.id, url: "/play?panel=crew" }, { evenIfActive: true });
   }

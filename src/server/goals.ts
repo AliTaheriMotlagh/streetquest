@@ -3,6 +3,7 @@
 // trackStat() (questEvent calls it for every quest kind), so no background jobs.
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/db";
+import { pulse } from "./pulse";
 import { GOAL_METRICS, S, type GoalDef, type GoalReward, type MilestoneDef } from "../lib/settings";
 import { HttpError } from "./http";
 import { isLocale, translate, t, type Vars } from "../lib/i18n";
@@ -48,6 +49,7 @@ export async function trackStat(userId: string, metric: string, n = 1, faction?:
       if (crossed(row.value, fgoal.target)) {
         const members = await prisma.user.findMany({ where: { faction: f, lastSeenAt: { gt: new Date(Date.now() - 7 * DAY) } }, select: { id: true, locale: true }, take: 2000 });
         await prisma.notification.createMany({ data: members.map((m) => inLocale(m, "{emoji} Faction goal complete: {title}", "Claim your share in Hero → Goals", { emoji: "🚩", title: fgoal.title })) });
+        await pulse(members.map((m) => m.id));
       }
     }
   } catch (e) {
@@ -66,6 +68,7 @@ const inLocale = (u: { id: string; locale: string }, title: string, body: string
 async function announce(title: string, body: string, vars: Vars) {
   const active = await prisma.user.findMany({ where: { lastSeenAt: { gt: new Date(Date.now() - 30 * 60_000) } }, select: { id: true, locale: true }, take: 5000 });
   await prisma.notification.createMany({ data: active.map((a) => inLocale(a, title, body, vars)) });
+  await pulse(active.map((a) => a.id));
 }
 
 const fmtReward = (r: GoalReward, mult = 1) => [r.xp && t("{n} XP", { n: r.xp * mult }), r.coins && `${r.coins * mult} 🪙`, r.gems && `${r.gems * mult} 💎`].filter(Boolean).join(" · ");

@@ -1264,8 +1264,23 @@ answers are `no-store`, redirects aren't followed, and no query string (position
   default street tiles (fantasy, street, night ops and the filtered looks); the satellite, terrain and CARTO styles
   use the free public servers of Esri, OpenTopoMap, CARTO and OSM France — fine for light use, check their terms
   before heavy traffic.
-- Chat/notifications poll every few seconds. For instant delivery at scale, plug in a hosted
-  realtime service (Ably, Pusher, Supabase Realtime) behind `notify()` and the chat route.
+- Chat/notifications poll every few seconds (`/api/sync`). Most polls find nothing new and answer `{ same: true }`
+  from the session's user row alone: every write the poll reports (a notification, a DM or event chat message, a
+  call ringing or ending) stamps `User.pulseAt` through `server/pulse.ts`, and a poll with no stamp newer than its last
+  full answer skips the five other reads (`lib/pulse.ts`; a unit test fails if a new notification/message/call write
+  forgets the stamp). For instant delivery at scale, plug in a hosted realtime service (Ably, Pusher, Supabase
+  Realtime) behind `pulse()` — it already marks exactly who needs to hear about a change.
+- Street Arena without the realtime server (prod on Vercel alone) relays matches through the database at ~7 polls a
+  second per player: in the load test 10 % of players in matches made over half of all requests. Past a few dozen
+  simultaneous matches, deploy the realtime server (`npm run rt`, see Run locally) next to the app.
+- **Load test** (k6, local only): `npm run load:server` (a production build in `.next-load` on :3300 — `next dev`
+  numbers mean nothing), `npm run load:seed -- --players 500`, then `VUS=400 SCENARIO=mix npm run load:test`
+  (`map` | `city` | `arena` | `mix`, `HOLD=2m`, `P95_MS=800`). It prints one line per endpoint (rps, p50/p95/p99,
+  failures by status) and writes `.load/summary.json`; `npm run load:clean` removes the players. The seed refuses a
+  non-local database. On one Mac, past ~1000 virtual players the numbers measure macOS's connection queue
+  (`kern.ipc.somaxconn` 128) and one Node process, not the app — compare runs, don't read absolute capacity.
+  Measured 2026-11-15, 400 players: the sync shortcut answered 89 % of polls, sync p95 117 → 22 ms, and every other
+  endpoint got faster with it (less database contention).
 - Street Arena runs in one realtime process (in memory). One instance handles a few thousand players; past that,
   shard by region (each instance owns an area; route players with the ticket). Anti-cheat is server-refereed but
   movement is client-reported (speed-capped, no walking through buildings in matches), so it's casual-grade, not

@@ -2,6 +2,7 @@
 // side's offer/answer/ICE) and POSTs its own. The video itself never touches the server.
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { pulse } from "@/server/pulse";
 import { requireUser } from "@/server/auth";
 import { callFor, endCall, iceServers, liveCall, markSeen } from "@/server/calls";
 import { body, HttpError, route } from "@/server/http";
@@ -51,6 +52,7 @@ export const POST = route(async (req) => {
     const theirs = await liveCall(d.userId);
     if (theirs) throw new HttpError(409, t("They're on another call — try again in a bit"));
     const call = await prisma.call.create({ data: { callerId: u.id, calleeId: d.userId, video: d.video } });
+    await pulse(d.userId); // their sync poll picks the ring up now
     // Ring the phone even if the app looks open: it may be in a pocket with the tab hidden.
     // It expires with the ring, so a phone that was offline doesn't ring hours later.
     const ring = await asUser(d.userId, () =>
