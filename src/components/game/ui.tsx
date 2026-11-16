@@ -59,7 +59,7 @@ export const MoveIcon = () => <>{useGame().moveIcon}</>;
  * A panel. `onBack`: it was opened from another one (a restaurant from the product list): a ‹
  * button goes back there, and so does the phone's Back; without it Back closes it.
  */
-export function Sheet({ title, onClose, onBack, children, peek, actions, help, tall }: { title: string; onClose: () => void; onBack?: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string; tall?: boolean }) {
+export function Sheet({ title, onClose, onBack, children, peek, actions, help, tall, hidden }: { title: string; onClose: () => void; onBack?: () => void; children: React.ReactNode; peek?: boolean; actions?: React.ReactNode; help?: string; tall?: boolean; /** Kept (state, scroll, Back) but not shown: a page opened from it is on top. */ hidden?: boolean }) {
   // "How this works": the first time, a one-line hint at the top that opens the card; after
   // that, the ? button. (It used to open in full and push the panel itself off a phone's screen.)
   const [showHelp, setShowHelp] = useState(false);
@@ -96,7 +96,7 @@ export function Sheet({ title, onClose, onBack, children, peek, actions, help, t
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}${page ? " page" : ""}`} role={page ? "region" : "dialog"} aria-label={title}>
+    <div ref={ref} className={`sheet ${peek ? "peek" : ""} ${tall ? "tall" : ""}${page ? " page" : ""}`} role={page ? "region" : "dialog"} aria-label={title} style={hidden ? { display: "none" } : undefined} aria-hidden={hidden || undefined}>
       <div className="sheet-grip" />
       <div className="sheet-head">
         {onBack && (

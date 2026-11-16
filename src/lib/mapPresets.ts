@@ -6,7 +6,7 @@ import { msg } from "./i18n";
 import { STORE_TYPE_KEYS, type StoreType } from "./stores/directory";
 import type { PlaceCat } from "./places";
 
-export type PresetId = "all" | "food" | "shopping" | "health" | "services" | "fun" | "game";
+export type PresetId = "all" | "food" | "shopping" | "health" | "services" | "fun" | "travel" | "game";
 export const PRESETS: { id: PresetId; emoji: string; label: string }[] = [
   { id: "all", emoji: "✨", label: msg("Everything") },
   { id: "food", emoji: "🍽️", label: msg("Food & drink") },
@@ -14,6 +14,7 @@ export const PRESETS: { id: PresetId; emoji: string; label: string }[] = [
   { id: "health", emoji: "🩺", label: msg("Health") },
   { id: "services", emoji: "🛠️", label: msg("Services") },
   { id: "fun", emoji: "🎬", label: msg("Going out") },
+  { id: "travel", emoji: "🧳", label: msg("Travelling") },
   { id: "game", emoji: "🎮", label: msg("Just the game") },
 ];
 
@@ -29,6 +30,8 @@ const TOPICS: Record<Exclude<PresetId, "all" | "game">, Topic> = {
   health: { layers: ["places", ...SITES], types: ["doctor", "health", "pharmacy"], kinds: ["pharmacy"] },
   services: { layers: ["places", ...SITES], types: ["services", "auto", "realestate", "finance", "education", "building", "pets"], kinds: ["fuel", "bank"] },
   fun: { layers: ["places", "cinema", "deals", ...SITES], types: ["sport", "hotel", "cafe", "food"], kinds: ["cinema", "gym", "park", "cafe", "bar"] },
+  // On the road: airports, stations, the rail network, your trip's routes, the metro, and where to sleep, eat and fill up.
+  travel: { layers: ["travel", "rail", "routes", "transit", "places", "traffic", ...SITES], types: ["hotel", "food", "cafe", "auto"], kinds: ["restaurant", "cafe", "fuel", "pharmacy", "bank"] },
 };
 
 /** What a preset shows: the layers on (only ones the map has), and the store types / kinds of place hidden. */

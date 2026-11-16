@@ -32,7 +32,7 @@ import { STORE_TYPES, typeOf, type AdArea, type DirStore, type StoreType } from 
 import { clusterFace, countText, PIN_BOX, PIN_DOT_R, PIN_PX, pinClass, pinHtml, type PinSpec } from "@/lib/mapPins";
 import { glyphFor } from "@/lib/hudMarkers";
 import { benchOn } from "../perf/benchRunner";
-import { TravelLayer } from "./TravelLayer";
+import { RailLayer, TripRoutes, TravelLayer } from "./TravelLayer";
 
 /** When a new waypoint appears, zoom out so both you and it are on screen. */
 function FrameTarget({ target }: { target: LatLng | null }) {
@@ -103,6 +103,10 @@ type Props = {
   traffic?: boolean;
   /** Airports, train stations and bus terminals, and the planes in the sky (TravelLayer). Default on. */
   travel?: boolean;
+  /** The rail network (OpenRailwayMap) over the map, from country to city zoom. */
+  rail?: boolean;
+  /** The trip planner's legs as routes across the country. */
+  routes?: boolean;
   /** The route being followed (🧭), drawn as a line to its end. */
   route?: (LiveRoute & { to: LatLng }) | null;
   /** Other players to draw instead of the world's (explore mode: those around the explored spot). */
@@ -135,7 +139,7 @@ function guidesFor(run: Me["activeRun"] | undefined, game: GpsView | null | unde
   return out;
 }
 
-function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, transit, deals, dir, ads, traffic, travel = true, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
+function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick, onSelect, game, travelTo, travelPath, vendors, spots, divar, torob, cinemas, transit, deals, dir, ads, traffic, travel = true, rail, routes, route, look = DEFAULT_STYLE, onTilesFail, others, explore, siktir, onLongPress, vasatyab }: Props) {
   // Only the first position matters here; PlayerLayer follows the player after that.
   const center = getLocation().pos ?? explore?.jump?.at ?? { lat: 51.5074, lng: -0.1278 };
   const run = me?.activeRun;
@@ -194,6 +198,8 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         <Clicks onClick={onMapClick} />
         <BenchHandle />
         {travel && <TravelLayer />}
+        {rail && <RailLayer />}
+        {routes && <TripRoutes />}
         {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
         {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
         {vasatyab && <VasatyabLayer view={vasatyab} />}

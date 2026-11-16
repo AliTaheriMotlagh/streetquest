@@ -8,7 +8,7 @@ import { hashStr } from "../geo";
 import { msg } from "../i18n";
 import type { StoreKind } from "../storeKinds";
 
-export type TalkAct = "greet" | "way" | "recommend" | "chat" | "money" | "insult" | "follow" | "bye";
+export type TalkAct = "greet" | "way" | "recommend" | "chat" | "money" | "insult" | "follow" | "bye" | "store" | "wait" | "come" | "release";
 export type Mood = "friendly" | "busy" | "grumpy";
 /** What the asked-for place is, for "the way to…". */
 export type WayKind = "cafe" | "food" | "pharmacy" | "market";
@@ -23,7 +23,7 @@ export const WAY_STORES: Record<WayKind, StoreKind[]> = { cafe: ["cafe"], food: 
 /** Places worth recommending. */
 export const GOOD_STORES: StoreKind[] = ["restaurant", "fastfood", "cafe", "sweets", "bakery"];
 /** What they do after answering. */
-export type React = "stay" | "leave" | "flee" | "follow" | "angry";
+export type React = "stay" | "leave" | "flee" | "follow" | "angry" | "wait";
 /** A place they could point to: its name, how far (m) and its bearing from you relative to where you face (degrees, + = right). */
 export type Spot = { name: string; dist: number; rel: number; rating?: number };
 
@@ -38,6 +38,10 @@ export type TalkCtx = {
   way?: { kind: WayKind; spot: Spot | null };
   /** A place worth recommending round here (null: none). */
   best?: Spot | null;
+  /** The store nearest you ("what about this place?"), with a dish off its real menu when known. */
+  store?: (Spot & { item?: string; price?: string }) | null;
+  /** They're already following you (the follower's own words: waiting, coming, going home). */
+  following?: boolean;
   /** A distance in words ("200 m"). */
   fmt: (m: number) => string;
   /** Translates the words put inside the answer ("on your right", "a café"); the answer's own key is translated by the caller. */
@@ -101,10 +105,39 @@ export function reply(c: TalkCtx, seed = 0): Reply {
       if (mood === "friendly" && c.insults === 0) return r(msg("That wasn't nice. Goodbye."), "leave", 3);
       return r(mood === "grumpy" ? msg("That's it, I'm calling the police!") : msg("What's wrong with you?!"), "flee", 4);
     case "follow":
-      return mood === "friendly" ? r(msg("Sure, lead the way!"), "follow", 25) : r(msg("No, I've got things to do."), "leave", 4);
+      if (c.following) return r(msg("I'm right behind you."), "follow", 90);
+      // Friendly: yes. Busy: a coin toss by who they are. Grumpy: no.
+      return mood === "friendly" || (mood === "busy" && c.id % 2 === 0) ? r(msg("Sure, lead the way!"), "follow", 90) : r(msg("No, I've got things to do."), "leave", 4);
+    case "store": {
+      const s = c.store;
+      if (!s) return r(msg("There's no shop right here I'd know."), "stay", 4);
+      if (s.item && s.price) return r(pickOf([msg("{place}? Their {item} is the best — about {price} toman."), msg("Get the {item} at {place}, {price} toman. You won't regret it.")], seed + c.id), "stay", 6, { place: s.name, item: s.item, price: s.price });
+      if (s.rating) return r(s.rating >= 4 ? msg("{place} is good — people give it {rating} stars.") : msg("{place}? Only {rating} stars… I'd go somewhere else."), "stay", 6, { place: s.name, rating: s.rating });
+      return r(msg("{place}, {dist} {side}. I've never been in, to be honest."), "stay", 5, { place: s.name, dist: c.fmt(s.dist), side: tr(sideOf(s.rel)) });
+    }
+    case "wait":
+      return r(c.following ? msg("OK, I'll wait here for you.") : msg("Wait for what?"), c.following ? "wait" : "stay", c.following ? 120 : 4);
+    case "come":
+      return c.following || mood !== "grumpy" ? r(msg("Coming!"), "follow", 90) : r(msg("No, I've got things to do."), "leave", 4);
+    case "release":
+      return r(msg("OK, see you around!"), "leave", 3);
     case "bye":
       return r(mood === "grumpy" ? msg("Finally.") : msg("Goodbye, take care!"), "leave", 3);
   }
+}
+
+/**
+ * A passer-by remarks on a store as they walk past it (no one asked): what's good there, the
+ * stars, the queue. `item`/`price`: a dish off its real menu when known. The same person and
+ * store give the same line.
+ */
+export function storeGossip(place: string, seed: number, item?: string, price?: string, rating?: number): { key: string; params: Record<string, string | number> } {
+  const lines = item && price
+    ? [msg("The {item} at {place} is so good — {price} toman."), msg("I always get the {item} at {place}."), msg("Have you tried {place}? Their {item} is amazing.")]
+    : rating && rating >= 4.3
+      ? [msg("{place} is always full — {rating} stars, they say."), msg("Best place on this street, {place}.")]
+      : [msg("{place} opened a while ago, I should try it."), msg("My cousin works at {place}."), msg("Is {place} open now? I need something.")];
+  return { key: lines[Math.abs(seed) % lines.length], params: { place, ...(item ? { item } : {}), ...(price ? { price } : {}), ...(rating ? { rating } : {}) } };
 }
 
 /** Insulting a grumpy person twice, they call the police: a little heat (lib/street/wanted.ts). */

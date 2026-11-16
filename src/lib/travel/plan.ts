@@ -30,7 +30,11 @@ export type Plan = {
   travellers: number;
   /** The first leg's day (yyyy-mm-dd). */
   start: string;
+  /** Things to do on the way (lib/travel/activities.ts), each with its price a person and how many go. */
+  acts?: ActPick[];
 };
+/** An outing added to the trip: the price a person (toman, editable — the list's is an estimate) and how many of you go. */
+export type ActPick = { id: string; city: string; title: string; emoji: string; price: number; people: number };
 export type Leg = { i: number; from: string; to: string; date: string };
 
 /** What was chosen for a leg: the ticket (its price is per person), or the car. */
@@ -101,6 +105,8 @@ export type Bill = {
   tickets: number;
   fuel: number;
   stays: number;
+  /** Outings (activities). */
+  acts: number;
   total: number;
   perPerson: number;
   /** Legs and stops with nothing chosen yet. */
@@ -123,8 +129,11 @@ export function billOf(p: Plan, legPicks: Record<number, LegPick | undefined>, s
     if (!pick) openStays++;
     else stays += pick.stay.price * s.nights * roomsFor(pick.stay, p.travellers);
   });
-  const total = tickets + fuel + stays;
-  return { tickets, fuel, stays, total, perPerson: Math.round(total / Math.max(1, p.travellers)), open: { legs: openLegs, stays: openStays } };
+  // Outings only count in cities the trip still goes to.
+  const where = new Set(p.stops.map((s) => s.city));
+  const acts = (p.acts ?? []).reduce((sum, a) => sum + (where.has(a.city) ? Math.max(0, a.price) * Math.max(0, a.people) : 0), 0);
+  const total = tickets + fuel + stays + acts;
+  return { tickets, fuel, stays, acts, total, perPerson: Math.round(total / Math.max(1, p.travellers)), open: { legs: openLegs, stays: openStays } };
 }
 
 /** One thing on a day of the trip: travelling a leg, a night in a city, or home again. */
@@ -189,5 +198,9 @@ export function cleanPlan(v: unknown, now = Date.now()): Plan | null {
     .map((s) => ({ city: s.city, nights: Math.max(0, Math.min(MAX_NIGHTS, Math.round(Number(s.nights) || 0))) }));
   const today = isoDay(now, 0);
   const start = typeof o.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.start) && o.start >= today ? o.start : isoDay(now, 1);
-  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start };
+  const acts = (Array.isArray(o.acts) ? o.acts : [])
+    .filter((a): a is ActPick => !!a && typeof a.id === "string" && typeof a.city === "string" && typeof a.title === "string")
+    .slice(0, 40)
+    .map((a) => ({ id: a.id, city: a.city, title: a.title.slice(0, 120), emoji: typeof a.emoji === "string" ? a.emoji.slice(0, 8) : "", price: Math.max(0, Math.min(1e10, Math.round(Number(a.price) || 0))), people: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(a.people) || 1))) }));
+  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}) };
 }

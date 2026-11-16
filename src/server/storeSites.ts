@@ -342,7 +342,7 @@ export async function storeDetail(id: string, url: string, at?: LatLng): Promise
   const root = site === "bilbooard" ? base.bilbooard() : site === "irangaah" ? base.irangaah() : null;
   const origin = site === "bilbooard" ? "https://bilbooard.ir" : "https://irangaah.ir";
   if (!root || !url.startsWith(`${origin}/`)) return null;
-  return cached<DirDetail>(`dir:page:${id}`, 24 * HOUR, async () => {
+  return cached<DirDetail>(`dir:page2:${id}`, 24 * HOUR, async () => {
     const html = await fetchText(root + url.slice(origin.length));
     return html ? detailFromLd(html, { id, site, url }) : null;
   });

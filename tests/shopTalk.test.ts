@@ -36,3 +36,12 @@ test("hours, offers, prices and the bill", () => {
   assert.deepEqual(shopSay("checkout", ctx("2026-11-15T11:30:00Z", { basket: { n: 3, total: 1070000 } })).params, { n: 3, total: "1,070,000" });
   assert.equal(shopSay("recommend", ctx("2026-11-15T11:30:00Z", { sections: [] })).key, "Have a look around, everything's fresh today.");
 });
+
+test("the shopkeeper at the door says the store's name (and its best dish when known)", async () => {
+  const { doorGreeting, panicLine, PANIC_LINES } = await import("../src/lib/street/shopTalk");
+  const a = doorGreeting("Nayeb", "Koobideh", 0);
+  assert.deepEqual(a.params, { store: "Nayeb", item: "Koobideh" });
+  assert.equal(doorGreeting("Nayeb", null, 2).params?.store, "Nayeb");
+  assert.ok(!("item" in (doorGreeting("Nayeb", null, 2).params ?? {})));
+  assert.ok(PANIC_LINES.includes(panicLine(7)));
+});

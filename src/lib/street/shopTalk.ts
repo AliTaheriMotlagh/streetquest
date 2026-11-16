@@ -86,3 +86,20 @@ export function shopSay(act: ShopAct, c: ShopCtx): ShopLine {
       return { key: msg("Thank you, come again!") };
   }
 }
+
+/**
+ * The shopkeeper at the door, as you walk past on foot: the store's own name, said aloud,
+ * and its best dish when the menu is known ("Welcome to Nayeb! Try our koobideh.").
+ */
+export function doorGreeting(store: string, item: string | null, seed: number): ShopLine {
+  if (item) {
+    const k = [msg("Welcome to {store}! Try our {item} today."), msg("{store}! Fresh {item}, come in!"), msg("Come in, come in — {store}'s {item} is the best in town!")];
+    return { key: k[Math.abs(seed) % k.length], params: { store, item } };
+  }
+  const k = [msg("Welcome to {store}! Come in, have a look."), msg("{store} — we're open, come in!"), msg("Hello! This is {store}, come on in.")];
+  return { key: k[Math.abs(seed) % k.length], params: { store } };
+}
+
+/** What a shopkeeper shouts when shots ring out by the shop (before running in and pulling the shutter down). */
+export const PANIC_LINES = [msg("Don't shoot!"), msg("Get inside, everyone inside!"), msg("Call the police!"), msg("Shut the shutters, quick!"), msg("Oh God, not again!")];
+export const panicLine = (seed: number) => PANIC_LINES[Math.abs(seed) % PANIC_LINES.length];

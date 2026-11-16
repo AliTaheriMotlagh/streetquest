@@ -1,0 +1,34 @@
+/* Photo galleries (components/game/Gallery.tsx): swipe, dots, count, arrows; full screen with thumbnails. */
+.gl { position: relative; width: 100%; overflow: hidden; border-radius: inherit; background: #0d1018; isolation: isolate; }
+.gl-empty { display: grid; place-items: center; font-size: 42px; }
+.gl-strip { display: flex; width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.gl-strip::-webkit-scrollbar { display: none; }
+.gl-slide { flex: 0 0 100%; height: 100%; padding: 0; border: 0; background: none; scroll-snap-align: center; scroll-snap-stop: always; cursor: zoom-in; }
+.gl-slide img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gl-count { position: absolute; z-index: 2; top: 8px; inset-inline-end: 8px; padding: 3px 9px; border-radius: 999px; background: rgba(8, 10, 16, .72); color: #fff; font: 700 12px/1.3 var(--body); font-variant-numeric: tabular-nums; pointer-events: none; }
+.gl-dots { position: absolute; z-index: 2; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; padding: 4px 7px; border-radius: 999px; background: rgba(8, 10, 16, .45); pointer-events: none; }
+.gl-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .5); transition: width .2s, background .2s; }
+.gl-dots i.on { width: 16px; border-radius: 3px; background: #fff; }
+.gl-arrow { position: absolute; z-index: 3; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .88); color: #111; font: 800 22px/1 var(--body); display: grid; place-items: center; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .15s; }
+.gl-arrow.prev { inset-inline-start: 8px; }
+.gl-arrow.next { inset-inline-end: 8px; }
+[dir="rtl"] .gl-arrow { transform: translateY(-50%) scaleX(-1); }
+.gl:hover .gl-arrow, .gl-arrow:focus-visible { opacity: 1; }
+@media (pointer: coarse) { .gl-arrow:not(.big) { display: none; } }
+
+.gl-full { position: fixed; inset: 0; z-index: 5000; display: grid; grid-template-rows: auto 1fr auto; background: rgba(4, 5, 8, .96); color: #fff; animation: gl-in .18s ease-out; touch-action: pan-y; }
+@keyframes gl-in { from { opacity: 0; } }
+.gl-full-bar { display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px; font: 700 14px/1 var(--body); font-variant-numeric: tabular-nums; }
+.gl-full-bar button { width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .12); color: #fff; font-size: 18px; cursor: pointer; }
+.gl-full-img { align-self: center; justify-self: center; max-width: 100%; max-height: 100%; object-fit: contain; min-height: 0; animation: gl-in .2s ease-out; }
+.gl-arrow.big { opacity: .9; width: 46px; height: 46px; font-size: 28px; position: fixed; }
+.gl-thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px)); scrollbar-width: none; justify-content: safe center; }
+.gl-thumbs::-webkit-scrollbar { display: none; }
+.gl-thumbs button { flex: none; width: 56px; height: 56px; padding: 0; border-radius: 10px; overflow: hidden; border: 2px solid transparent; background: #222; opacity: .55; cursor: pointer; }
+.gl-thumbs button.on { border-color: #fff; opacity: 1; }
+.gl-thumbs img { width: 100%; height: 100%; object-fit: cover; }
+@media (prefers-reduced-motion: reduce) { .gl-full, .gl-full-img { animation: none; } .gl-dots i { transition: none; } }
+/* While a photo loads (or if it never does), a soft shimmer instead of a black box. */
+.gl-slide { background: linear-gradient(100deg, rgba(255, 255, 255, .03) 30%, rgba(255, 255, 255, .08) 50%, rgba(255, 255, 255, .03) 70%) 0 0 / 300% 100%; animation: gl-shim 1.4s linear infinite; }
+@keyframes gl-shim { to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .gl-slide { animation: none; } }

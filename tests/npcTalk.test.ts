@@ -50,3 +50,31 @@ test("the words inside an answer are translated", () => {
   const r = reply(ctx({ act: "way", tr: (k) => `«${k}»`, way: { kind: "cafe", spot: { name: "A", dist: 300, rel: 0 } } }));
   assert.equal(r.params?.side, "«straight ahead»");
 });
+
+test("a follower takes orders: wait here, come on, go home", () => {
+  const id = find("friendly");
+  assert.equal(reply(ctx({ act: "follow", id })).react, "follow");
+  const w = reply(ctx({ act: "wait", id, following: true }));
+  assert.equal(w.react, "wait");
+  assert.ok(w.secs >= 60, "waits a good while");
+  assert.equal(reply(ctx({ act: "wait", id })).react, "stay", "a stranger has nothing to wait for");
+  assert.equal(reply(ctx({ act: "come", id, following: true })).react, "follow");
+  assert.equal(reply(ctx({ act: "come", id: find("grumpy") })).react, "leave");
+  assert.equal(reply(ctx({ act: "release", id, following: true })).react, "leave");
+  assert.equal(reply(ctx({ act: "follow", id: find("grumpy") })).react, "leave");
+});
+
+test("asked about the store right here, they name a real dish and its price", () => {
+  const r = reply(ctx({ act: "store", store: { name: "Nayeb", dist: 12, rel: 0, item: "Koobideh", price: "250,000" } }));
+  assert.equal(r.react, "stay");
+  assert.deepEqual(r.params, { place: "Nayeb", item: "Koobideh", price: "250,000" });
+  assert.match(reply(ctx({ act: "store", store: { name: "X", dist: 12, rel: 0, rating: 3.1 } })).key, /Only \{rating\}/);
+  assert.equal(reply(ctx({ act: "store", store: null })).key, "There's no shop right here I'd know.");
+});
+
+test("street gossip about a store is the same line for the same seed and names the place", async () => {
+  const { storeGossip } = await import("../src/lib/street/npcTalk");
+  assert.deepEqual(storeGossip("Nayeb", 3, "Kabab", "100"), storeGossip("Nayeb", 3, "Kabab", "100"));
+  assert.equal(storeGossip("Nayeb", 1).params.place, "Nayeb");
+  assert.match(storeGossip("Nayeb", 0, "Kabab", "100").key, /\{item\}/);
+});

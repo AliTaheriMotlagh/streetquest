@@ -484,7 +484,7 @@ export function ProductPage({ p, onClose }: { p: Product; onClose: () => void })
   const long = text.length > 360;
   return createPortal(
     <div className="pp" role="dialog" aria-modal="true" aria-label={p.title} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`pp-card pp-${p.source}`}>
+      <div className={`pp-card pp-${p.source}`} data-leave-title={p.title} data-leave-photo={photos[0] || undefined} data-leave-price={p.price || undefined}>
         <header className="pp-bar">
           <button type="button" className="pp-icon" onClick={onClose} aria-label={t("Back")}>
             <Icon name="back" size={20} className="pp-back" />

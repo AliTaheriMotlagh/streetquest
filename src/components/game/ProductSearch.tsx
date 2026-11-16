@@ -18,6 +18,7 @@ import { snappfoodMenuUrl, type Vendor } from "@/lib/localData";
 import { filterProducts, LOCAL_SOURCES, offOf, priceSteps, PRODUCT_SORT_KEYS, PRODUCT_SORTS, PRODUCT_SOURCES, productSourcesAt, sameProducts, type ProductHit, type ProductSort, type ProductSource } from "@/lib/productSearch";
 import { api } from "./client";
 import { Sheet } from "./ui";
+import { Icon } from "../drive/icons";
 import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, openTravel, SearchField, Stars } from "./Filters";
 import { parseQuery, PART_LABEL, scaleBare, shopQuery, withoutPart, type Parsed } from "@/lib/search/query";
 import { fresh, keep, kept } from "./keep";
@@ -253,8 +254,13 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     return parts.join(" · ");
   }, [at, data, error, key, shownSources]);
 
+  // Where the list was when a restaurant opened (List view: the window scrolls) — Back lands right there.
+  const listAt = useRef(0);
+  useEffect(() => {
+    if (!vendor && listAt.current) window.scrollTo(0, listAt.current);
+  }, [vendor]);
   const openHit = (h: ProductHit) => {
-    if (h.source === "food" && h.code && h.lat != null && h.lng != null) setVendor({ v: { code: h.code, title: h.store, kind: "food", lat: h.lat, lng: h.lng, rating: (h.rating ?? 0) * 2, logo: "", url: h.url ?? snappfoodMenuUrl(h.code), open: true, about: "" }, dish: h.title });
+    if (h.source === "food" && h.code && h.lat != null && h.lng != null) (listAt.current = window.scrollY), setVendor({ v: { code: h.code, title: h.store, kind: "food", lat: h.lat, lng: h.lng, rating: (h.rating ?? 0) * 2, logo: "", url: h.url ?? snappfoodMenuUrl(h.code), open: true, about: "" }, dish: h.title });
     else setPage(h);
   };
 
@@ -287,12 +293,12 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     bandsOf.current = { key: base, b };
     return b;
   }, [pageMode, asked_, base, range.max]);
-  if (vendor) return <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={onClose} />;
   const inTray = (h: ProductHit) => tray.some((x) => x.id === h.id);
   const flipTray = (h: ProductHit) => setTray((v) => (v.some((x) => x.id === h.id) ? v.filter((x) => x.id !== h.id) : [...v, h].slice(-MAX_COMPARE)));
 
   return (
-    <Sheet title={onStores ? t("Search") : t("Find a product")} onClose={onClose} tall>
+    <>
+    <Sheet title={onStores ? t("Search") : t("Find a product")} onClose={onClose} tall hidden={!!vendor && !!pageMode}>
       <div className="fx-stack">
         <div className="fx-sticky">
           {onStores && <FindTabs on="products" onStores={onStores} />}
@@ -349,10 +355,12 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
             </button>
           )}
           {!draft && recent.length > 0 && (
-            <div className="fx-chips" aria-label={t("Recent searches")}>
-              <span className="tiny muted">🕘</span>
-              {recent.map((r) => <Chip key={r} label={r} onClick={() => setDraft(r)} />)}
-              <button className="link-btn tiny" onClick={() => (setRecent([]), writeLocal(RECENT, []))}>{t("Clear")}</button>
+            <div className="fx-chips fx-recent" aria-label={t("Recent searches")}>
+              <span className="fx-recent-ic" aria-hidden><Icon name="clock" size={15} /></span>
+              {recent.map((r) => <Chip key={r} label={r} onClick={() => (setDraft(r), setQ(r))} />)}
+              <button type="button" className="fx-clear" onClick={() => (setRecent([]), writeLocal(RECENT, []))} aria-label={t("Clear recent searches")}>
+                <Icon name="close" size={13} /> {t("Clear")}
+              </button>
             </div>
           )}
           {!draft && (
@@ -466,6 +474,9 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
       {comparing && <Compare title={comparing.title} hits={comparing.hits} at={at} onOpen={(h) => (setComparing(null), openHit(h))} onClose={() => setComparing(null)} />}
       {page && <ProductPage p={pageOf(page)} onClose={() => setPage(null)} />}
     </Sheet>
+    {/* A restaurant from the list sits on top of it: ‹ and ✕ both come back to the same results, same place. */}
+    {vendor && <VendorCard v={vendor.v} focus={vendor.dish} onBack={() => setVendor(null)} onClose={() => setVendor(null)} />}
+    </>
   );
 }
 

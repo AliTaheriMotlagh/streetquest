@@ -250,7 +250,7 @@ export class Voices {
    * The on-device neural voice (tts/neural.ts — Persian, where this device runs it) if it's ready
    * within `wait` ms; else `fallback` (the phone's own voice) straight away.
    */
-  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void) {
+  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void, onPlay?: (secs: number) => void) {
     const n = lang === "fa" ? speakNeural(text, v) : null;
     if (!n) return fallback();
     const asked = performance.now();
@@ -260,7 +260,7 @@ export class Voices {
       if (done) return;
       clearTimeout(late);
       done = true;
-      if (buf && performance.now() - asked < wait) this.play(buf, at, v === "cop");
+      if (buf && performance.now() - asked < wait) (this.play(buf, at, v === "cop"), onPlay?.(buf.duration));
       else fallback();
     });
   }
@@ -271,19 +271,27 @@ export class Voices {
    * phone's own voice, else the bubble alone. `close`: right beside you (a conversation) — full
    * volume, waited for a little longer. Returns how long the bubble stays (s).
    */
-  talk(text: string, v: VoiceKind, where: Where, me: { x: number; z: number }, close = true): number {
+  talk(text: string, v: VoiceKind, where: Where, me: { x: number; z: number }, close = true, onSpeak?: (secs: number) => void): number {
     const at = where();
     const secs = Math.min(9, 1.6 + text.length * 0.065);
-    if (!at) return secs;
+    // The subtitles follow the voice: told once, when it actually starts, how long it runs.
+    let told = false;
+    const said = (d: number) => {
+      if (told) return;
+      told = true;
+      onSpeak?.(Math.max(0.6, d));
+    };
+    if (!at) return said(secs), secs;
     this.busyUntil = Math.max(this.busyUntil, performance.now() + secs * 700);
     // (The bubble keeps it short; the whole answer is in the conversation panel.)
     this.bubbleText(text.length > 64 ? `${text.slice(0, 62).trim()}…` : text, secs, where);
     const d = Math.hypot(at.x - me.x, at.z - me.z);
-    if (isMuted() || d > HEAR_M) return secs;
+    if (isMuted() || d > HEAR_M) return said(secs), secs;
     const lang = voiceLangOf(getLocale(), voiceCountry);
     const vol = close ? 1 : gainAt(d, "voice");
     this.neuralOr(text, v, at, lang, close ? 6000 : 2500, () => {
-      if (this.deviceText(text, v, vol, lang)) return;
+      if (this.deviceText(text, v, vol, lang, () => said(secs))) return;
+      said(secs);
       // No voice for these words on this device (most phones have no Persian voice, and the neural
       // one isn't here): the speaker still says *something* — a recorded greeting in their voice,
       // once per conversation — while the bubble and the panel carry the words.
@@ -293,17 +301,18 @@ export class Voices {
         const rec = b && decoded(lineFile(b, v === "cop" ? "m" : v, lang));
         if (rec) (this.clipAt = now), void Promise.resolve(rec).then((buf) => buf && this.play(buf, at, false));
       }
-    });
+    }, said);
     return secs;
   }
   /** When a recorded greeting last stood in for a conversation's words. */
   private clipAt = -Infinity;
 
   /** The phone's own voice saying any text; false when it has none for the language. */
-  private deviceText(text: string, v: VoiceKind, vol: number, lang: VoiceLang): boolean {
+  private deviceText(text: string, v: VoiceKind, vol: number, lang: VoiceLang, onStart?: () => void): boolean {
     const dv = deviceVoice(lang, v);
     if (!dv) return false;
     const u = new SpeechSynthesisUtterance(text);
+    if (onStart) (u.onstart = onStart), (u.onerror = onStart);
     u.voice = dv;
     u.lang = dv.lang;
     u.volume = Math.min(1, vol * 1.2);

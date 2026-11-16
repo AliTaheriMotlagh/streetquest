@@ -151,3 +151,27 @@ export function planTrip(net: Network, a: { lat: number; lng: number }, b: { lat
   if (!rides) return null;
   return { minutes: Math.round(done.t), legs, changes: rides - 1 };
 }
+
+/** The stations a ride passes, boarding and alighting included, in the order you pass them. */
+export function rideStops(line: Line, from: string, to: string): string[] {
+  const a = line.stations.indexOf(from), b = line.stations.indexOf(to);
+  if (a < 0 || b < 0) return [];
+  return a <= b ? line.stations.slice(a, b + 1) : line.stations.slice(b, a + 1).reverse();
+}
+
+/** A trip as a timetable from `startMin` (minutes after midnight): when each step starts and ends. */
+export type Step = { leg: Leg; start: number; end: number };
+export function timeline(trip: Trip, startMin: number): Step[] {
+  let t = startMin;
+  return trip.legs.map((leg) => {
+    const start = t;
+    t += leg.kind === "walk" ? leg.minutes : leg.wait + leg.minutes;
+    return { leg, start, end: t };
+  });
+}
+
+/** "08:05" for minutes after midnight (wrapping past midnight). */
+export const clockOf = (min: number) => {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};

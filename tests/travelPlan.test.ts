@@ -77,3 +77,33 @@ test("itinerary: the trip day by day — travel, nights, home", () => {
   // One-way: no way back, no home.
   assert.ok(!itinerary({ ...p, back: false }).flatMap((d) => d.items).some((i) => i.kind === "home"));
 });
+
+test("outings at the destination count in the bill (only in cities still on the trip)", async () => {
+  const { activitiesIn, ACTIVITIES } = await import("../src/lib/travel/activities");
+  const { billOf, newPlan } = await import("../src/lib/travel/plan");
+  const dive = activitiesIn("qeshm").find((a) => a.id === "qeshm:dive")!;
+  assert.ok(dive && dive.price > 0);
+  assert.ok(new Set(ACTIVITIES.map((a) => a.id)).size === ACTIVITIES.length, "ids are unique");
+  const plan = { ...newPlan("tehran"), stops: [{ city: "qeshm", nights: 3 }], travellers: 2, acts: [{ id: dive.id, city: "qeshm", title: dive.title, emoji: dive.emoji, price: 1000, people: 2 }, { id: "kish:dive", city: "kish", title: "x", emoji: "", price: 5000, people: 1 }] };
+  const b = billOf(plan, {}, {});
+  assert.equal(b.acts, 2000);
+  assert.equal(b.total, 2000);
+  assert.equal(b.perPerson, 1000);
+});
+
+test("the trip on the map: flights bow, the rest go straight, unchosen legs have no way", async () => {
+  const { tripRoutes, arcPoints } = await import("../src/lib/travel/routes");
+  const plan = { ...newPlan("tehran"), stops: [{ city: "shiraz", nights: 2 }, { city: "kish", nights: 2 }] };
+  const legs = legsOf(plan);
+  const picks = { [`${legs[0].from}>${legs[0].to}@${legs[0].date}`]: { way: "flight" as const, trip: {} as never } };
+  const r = tripRoutes(plan, picks);
+  assert.equal(r.length, legs.length);
+  assert.equal(r[0].way, "flight");
+  assert.ok(r[0].points.length > 2, "an arc");
+  assert.equal(r[1].way, null);
+  assert.equal(r[1].points.length, 2, "a straight line");
+  const arc = arcPoints({ lat: 0, lng: 0 }, { lat: 0, lng: 10 });
+  assert.deepEqual(arc[0], [0, 0]);
+  assert.deepEqual(arc.at(-1), [0, 10]);
+  assert.ok(Math.abs(arc[12][0]) > 0.5, "bowed off the straight line");
+});

@@ -12,7 +12,7 @@ import {
   filterCount, filterListings, hayOf, LISTING_SORT_KEYS, LISTING_SORTS, LISTING_SOURCE_KEYS, LISTING_SOURCES,
   type Listing, type ListingFilter, type ListingRef, type ListingSource,
 } from "@/lib/stores/listing";
-import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, Sources, Stars } from "./Filters";
+import { Chip, FindTabs, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, SortMenu, Sources, Stars } from "./Filters";
 import { Pic } from "./StoreInfo";
 import { Sheet } from "./ui";
 import { usePage } from "./pageMode";
@@ -80,6 +80,7 @@ export function StoreBrowser({ listings, at, loading, onPick, onClose, onService
           {onProducts && <FindTabs on="stores" onProducts={onProducts} />}
           <SearchField value={q} onChange={setQ} placeholder={t("Search stores, food, doctors…")} />
           <FilterBar count={n} open={open} onToggle={() => setOpen(!open)} panelId={PANEL}>
+            <SortMenu value={f.sort ?? "near"} onChange={(k) => set({ sort: k })} options={LISTING_SORT_KEYS.map((k) => ({ key: k, label: t(LISTING_SORTS[k]) }))} />
             <Chip label={t("Open now")} on={f.openNow} onClick={() => set({ openNow: !f.openNow })} />
             <Chip label={t("Deals")} on={f.deals} onClick={() => set({ deals: !f.deals })} />
             <Chip label="★ 4+" on={f.minRating === 4} onClick={() => set({ minRating: f.minRating === 4 ? 0 : 4 })} />

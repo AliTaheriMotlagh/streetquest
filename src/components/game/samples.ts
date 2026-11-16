@@ -146,7 +146,7 @@ export class SampleLoop {
  * tap's beep to a long blast. Always the same take for one player (`pick`), so your car
  * keeps its own voice. Returns the release, or null while the slot has no decoded file.
  */
-export function holdSample(key: SoundKey, vol: number, pick = 0): (() => void) | null {
+export function holdSample(key: SoundKey, vol: number, pick = 0, rate = 1): (() => void) | null {
   const all = decoded.get(key);
   if (!all?.length) return void load(key), null;
   const out = audioOut(busOfSlot(key));
@@ -155,6 +155,7 @@ export function holdSample(key: SoundKey, vol: number, pick = 0): (() => void) |
   const { ctx } = out;
   const src = ctx.createBufferSource();
   src.buffer = buf;
+  src.playbackRate.value = rate;
   // The steady part: past the attack, before the tail (most horn takes ring off for the last fifth).
   src.loop = true;
   src.loopStart = Math.min(0.12, buf.duration * 0.2);

@@ -73,6 +73,12 @@ type Walker = {
   to: { x: number; z: number; road: Road; seg: number; along: number; side: 1 | -1; off: number; dir: 1 | -1 } | null;
   /** Which model and shade it gets when it's near enough to draw as one (men only). */
   tpl: number;
+  /** Stepping aside (m, on top of the pavement path): two people passing, or me in the way. Eases back to 0. */
+  ox?: number;
+  oz?: number;
+  /** The way the path runs here (walking), so a sidestep is to the side. */
+  ux?: number;
+  uz?: number;
   tint: number;
   body: PersonModel | null;
   /** Seconds since it died (bodies are cleared after a while). */
@@ -350,8 +356,14 @@ export class Crowd {
 
   // ---------------------------------------------------------------- reacting
 
+  /** How much room I take (m): on foot a person's, in a car 0 (cars knock people over instead: hitBy). */
+  meR = 0.35;
+  /** Told of every alarm too (the shopkeepers: they shout and shut up shop). */
+  onAlarm: ((x: number, z: number, r: number) => void) | null = null;
+
   /** Something frightening happened here (a shot, a crash, a blast): everyone within `r` m runs from it. */
   alarm(x: number, z: number, r: number) {
+    this.onAlarm?.(x, z, r);
     for (const w of this.walkers) {
       if (w.mode === "down" || w.mode === "flying") continue;
       const d = Math.hypot(w.x - x, w.z - z);
@@ -487,7 +499,7 @@ export class Crowd {
   speaker(x: number, z: number, r: number, calm = false): { id: number; woman: boolean } | null {
     let best: Walker | null = null, bd = r;
     for (const w of this.walkers) {
-      if (w.dead || w.mode === "down" || w.mode === "flying" || (calm && w.mode !== "walk" && w.mode !== "stop")) continue;
+      if (w.dead || w.mode === "down" || w.mode === "flying" || (calm && w.mode !== "walk" && w.mode !== "stop" && w.mode !== "follow")) continue;
       if (Math.abs(w.x - x) > bd || Math.abs(w.z - z) > bd) continue;
       const d = Math.hypot(w.x - x, w.z - z);
       if (d < bd) (bd = d), (best = w);
@@ -528,7 +540,10 @@ export class Crowd {
   /** Person `id` stops for `secs` s, turned toward (x, z) (someone they're talking to); then walks on. */
   stopFor(id: number, secs: number, x: number, z: number) {
     const w = this.walkers.find((v) => v.id === id);
-    if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop")) return false;
+    if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop" && w.mode !== "follow" && w.mode !== "back")) return false;
+    // A follower stopping to talk picks the following up again after (unless told to wait: dropFollow).
+    if (w.mode === "follow") this.paused.set(id, w.t);
+    if (w.mode === "follow" || w.mode === "back") this.offPath.add(id);
     w.mode = "stop";
     w.t = secs;
     w.fromX = x;
@@ -538,12 +553,56 @@ export class Crowd {
 
   /** Who each follower walks after (follow). */
   private leaders = new Map<number, () => { x: number; z: number } | null>();
+  /** Followers stopped to talk: how long they'd still follow (s). */
+  private paused = new Map<number, number>();
+  /** Stopped off the pavement (were following): they walk back to one when the stop ends. */
+  private offPath = new Set<number>();
+
+  /** Person `id` stops following (told to wait here, or to go home): waits `secs` s, then back to a pavement. */
+  dropFollow(id: number, secs: number, x: number, z: number) {
+    const w = this.walkers.find((v) => v.id === id);
+    if (!w || w.dead) return false;
+    this.leaders.delete(id);
+    this.paused.delete(id);
+    if (w.mode === "follow" || w.mode === "back") this.offPath.add(id);
+    if (w.mode === "walk" || w.mode === "stop" || w.mode === "follow" || w.mode === "back") ((w.mode = "stop"), (w.t = secs), (w.fromX = x), (w.fromZ = z));
+    return true;
+  }
+
+  /**
+   * Something happened at (x, z) — a wreck, an arrest: up to `n` passers-by within `r` m walk over,
+   * stop a couple of metres off and look for about `secs` s, then go back to their way.
+   */
+  gather(x: number, z: number, r: number, n: number, secs: number) {
+    const spot = { x, z };
+    let k = 0;
+    for (const w of this.walkers) {
+      if (k >= n) break;
+      if (w.dead || w.mode !== "walk" || Math.hypot(w.x - x, w.z - z) > r) continue;
+      // Each a little apart round it, not all on one spot.
+      const a = w.id * 2.39996, ring = 2.2 + (w.id % 3) * 0.6;
+      const at = { x: spot.x + Math.cos(a) * ring, z: spot.z + Math.sin(a) * ring };
+      if (this.walled(at.x, at.z)) continue;
+      if (this.follow(w.id, () => at, secs + (w.id % 5))) (this.onlookers.add(w.id), k++);
+    }
+    return k;
+  }
+
+  /** Is person `id` following someone now (or stopped mid-follow to talk)? */
+  following(id: number) {
+    return this.leaders.has(id) && !this.onlookers.has(id);
+  }
+  /** People "following" a spot (come to look at a scene), not me. */
+  private onlookers = new Set<number>();
 
   /** Person `id` walks after `lead` (the player) for `secs` s, then goes back to a pavement. */
   follow(id: number, lead: () => { x: number; z: number } | null, secs: number) {
+    this.onlookers.delete(id);
     const w = this.walkers.find((v) => v.id === id);
-    if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop" && w.mode !== "follow")) return false;
+    if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop" && w.mode !== "follow" && w.mode !== "back")) return false;
     this.leaders.set(id, lead);
+    this.paused.delete(id);
+    this.offPath.add(id);
     w.mode = "follow";
     w.t = secs;
     return true;
@@ -601,6 +660,7 @@ export class Crowd {
       else if (w.mode === "follow") this.trail(w, dt);
       else this.lie(w, dt);
     }
+    if (this.enabled) this.separate(dt, px, pz, this.meR);
     this.assign();
     for (const w of this.walkers) this.draw(w, dt);
     for (const k of Object.keys(this.meshes) as PartKey[]) {
@@ -617,6 +677,8 @@ export class Crowd {
     w.t -= dt;
     if (!lead || w.t <= 0) {
       this.leaders.delete(w.id);
+      this.offPath.delete(w.id);
+      this.onlookers.delete(w.id);
       w.to = this.pavementNear(w.x, w.z, 25);
       w.mode = w.to ? "back" : "walk";
       (w.vx = 0), (w.vz = 0);
@@ -648,7 +710,17 @@ export class Crowd {
   private hold(w: Walker, dt: number) {
     this.face(w, Math.atan2(-(w.fromX - w.x), -(w.fromZ - w.z)), dt, 5);
     w.t -= dt;
-    if (w.t <= 0) w.mode = "walk";
+    if (w.t > 0) return;
+    const more = this.paused.get(w.id);
+    this.paused.delete(w.id);
+    if (more != null && more > 0 && this.leaders.has(w.id)) ((w.mode = "follow"), (w.t = more));
+    else if (this.offPath.delete(w.id)) {
+      // Off the pavement (they were following): walk back to one, not snap onto it.
+      this.leaders.delete(w.id);
+      w.to = this.pavementNear(w.x, w.z, 25);
+      w.mode = w.to ? "back" : "walk";
+      (w.vx = 0), (w.vz = 0);
+    } else w.mode = "walk";
   }
 
   private walk(w: Walker, dt: number) {
@@ -673,10 +745,58 @@ export class Crowd {
       } else this.corner(w);
       at = this.place(w);
     }
-    w.x = at.x;
-    w.z = at.z;
+    // The sidestep eases back onto the path.
+    const ease = Math.exp(-dt * 0.9);
+    w.ox = (w.ox ?? 0) * ease;
+    w.oz = (w.oz ?? 0) * ease;
+    w.x = at.x + w.ox;
+    w.z = at.z + w.oz;
+    w.ux = at.ux;
+    w.uz = at.uz;
     this.face(w, Math.atan2(-at.ux, -at.uz), dt, 6);
     w.phase += w.speed * dt * 4.6;
+  }
+
+  /**
+   * Nobody walks through anybody: people closer than a body's width step apart — on the pavement
+   * to the side (each keeps to their right, so two meeting head-on pass), anywhere else straight
+   * apart — and they make way for me (px, pz). Never into a wall.
+   */
+  private separate(dt: number, px: number, pz: number, meR: number) {
+    const R = 0.62, list = this.walkers;
+    const push = (w: Walker, dx: number, dz: number) => {
+      if (w.mode === "walk" && w.ux != null && w.uz != null) {
+        // To the side only (along the path would just be undone by the path).
+        const sx = -w.uz, sz = w.ux;
+        let lat = dx * sx + dz * sz;
+        if (Math.abs(lat) < 0.02) lat = (dx * w.ux + dz * w.uz > 0 ? 1 : -1) * Math.hypot(dx, dz) * (w.dir > 0 ? 1 : -1);
+        const nx = (w.ox ?? 0) + sx * lat, nz = (w.oz ?? 0) + sz * lat;
+        if (Math.hypot(nx, nz) < 1.6 && !this.walled(w.x + sx * lat, w.z + sz * lat)) (w.ox = nx), (w.oz = nz), (w.x += sx * lat), (w.z += sz * lat);
+      } else if (w.mode === "stop" || w.mode === "follow" || w.mode === "back" || w.mode === "flee") {
+        if (!this.walled(w.x + dx, w.z + dz)) (w.x += dx), (w.z += dz);
+      }
+    };
+    const ok = (w: Walker) => !w.dead && w.mode !== "down" && w.mode !== "flying";
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (!ok(a)) continue;
+      // Me: they step out of my way (I don't get pushed — I'm the player).
+      const mx = a.x - px, mz = a.z - pz, md = Math.hypot(mx, mz), mr = R * 0.5 + meR;
+      if (md < mr && md > 1e-4) {
+        const k = Math.min(mr - md, 2.5 * dt + (mr - md) * 0.5);
+        push(a, (mx / md) * k, (mz / md) * k);
+      }
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        if (!ok(b) || Math.abs(a.x - b.x) > R || Math.abs(a.z - b.z) > R) continue;
+        let dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz);
+        if (d >= R) continue;
+        if (d < 1e-4) (dx = Math.cos(a.id) * 1e-3), (dz = Math.sin(a.id) * 1e-3), (d = 1e-3);
+        const k = Math.min((R - d) * 0.5, 1.6 * dt + (R - d) * 0.25);
+        push(a, (dx / d) * k, (dz / d) * k);
+        push(b, (-dx / d) * k, (-dz / d) * k);
+      }
+    }
   }
 
   private face(w: Walker, yaw: number, dt: number, rate: number) {
@@ -788,6 +908,39 @@ export class Crowd {
     });
   }
 
+  /**
+   * While the loading screen is up: the people models loaded and a pool of bodies built, their
+   * shaders compiled (`ready`: graphics/warmup.ts whenReady) — so the first passers-by to come
+   * near don't each cost a hitch (cloning a skinned body, compiling its program).
+   */
+  async prewarm(ready: (o: THREE.Object3D) => Promise<void>) {
+    const tpls = this.tpls.length ? this.tpls : await loadPeople().catch(() => [] as PersonTemplate[]);
+    if (!tpls.length) return;
+    this.tpls = tpls;
+    const per = Math.max(1, Math.ceil((this.modelCap + 2) / tpls.length));
+    const stage = new THREE.Group();
+    // Out of sight under the street; drawn once (so their programs build), then pooled.
+    stage.position.set(this.eye.x, -60, this.eye.z);
+    const made: PersonModel[] = [];
+    tpls.forEach((tpl, ti) => {
+      for (let i = 0; i < per && this.bodies < this.modelCap + 3; i++) {
+        const b = new PersonModel(tpl, (ti * 3 + i) % TINT_COUNT);
+        this.bodies++;
+        stage.add(b.group);
+        made.push(b);
+      }
+    });
+    this.scene.add(stage);
+    await Promise.race([ready(stage), new Promise((r) => setTimeout(r, 6000))]);
+    stage.removeFromParent();
+    for (const b of made) {
+      b.group.removeFromParent();
+      const l = this.spare.get(b.tpl);
+      if (l) l.push(b);
+      else this.spare.set(b.tpl, [b]);
+    }
+  }
+
   private give(w: Walker) {
     const tpl = this.tpls[w.tpl % this.tpls.length];
     let body = this.spare.get(tpl)?.pop() ?? null;
@@ -803,6 +956,9 @@ export class Crowd {
 
   /** Hand its model back (always false, to use inside filters). */
   private release(w: Walker) {
+    this.leaders.delete(w.id);
+    this.paused.delete(w.id);
+    this.offPath.delete(w.id);
     if (w.body) {
       w.body.group.removeFromParent();
       const l = this.spare.get(w.body.tpl);

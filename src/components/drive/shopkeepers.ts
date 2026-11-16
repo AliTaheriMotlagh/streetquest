@@ -12,7 +12,10 @@ import type { Storefronts } from "./storefronts";
 const MAX = 10, MAX_LITE = 4, NEAR_M = 60;
 const PLACE_EVERY_S = 1;
 
-type Keeper = { id: string | null; model: PersonModel };
+/** Running in from the door when shots ring out (s), and how long the shutter stays down after. */
+const RUN_IN_S = 0.9, SHUT_S = [12, 20] as const;
+
+type Keeper = { id: string | null; model: PersonModel; /** Running inside (s left), 0 = at the door. */ fleeing: number };
 
 export class Shopkeepers {
   private pool: Keeper[] = [];
@@ -20,6 +23,35 @@ export class Shopkeepers {
   private since = PLACE_EVERY_S;
   /** Off in a match and while the street people are off. */
   enabled = true;
+  /** Someone at a door shouts (gunfire): the words and where from. */
+  onShout: ((text: string, at: { x: number; y: number; z: number }) => void) | null = null;
+  private shoutAt = -Infinity;
+  private seed = 0;
+
+  /**
+   * Shots, a blast, a crash at (x, z): every keeper within `r` m turns and runs in, the shop's
+   * shutter comes down for a while (storefronts.panic), and the nearest one shouts.
+   */
+  alarm(x: number, z: number, r: number, say: (seed: number) => string) {
+    const hit: Keeper[] = [];
+    for (const k of this.pool) {
+      if (!k.id || !k.model.group.visible || k.fleeing > 0) continue;
+      const g = k.model.group.position;
+      if (Math.hypot(g.x - x, g.z - z) <= r) hit.push(k);
+    }
+    if (!hit.length) return;
+    for (const k of hit) {
+      k.fleeing = RUN_IN_S;
+      k.model.group.rotation.y += Math.PI; // turn to the door
+    }
+    this.fronts.panic(hit.map((k) => k.id!), SHUT_S[0] + Math.random() * (SHUT_S[1] - SHUT_S[0]));
+    const now = performance.now();
+    if (now - this.shoutAt > 4000 && this.onShout) {
+      this.shoutAt = now;
+      const g = hit[0].model.group.position;
+      this.onShout(say(this.seed++), { x: g.x, y: 1.75, z: g.z });
+    }
+  }
 
   constructor(private scene: THREE.Scene, private fronts: Storefronts, private lite: boolean) {
     loadPeople()
@@ -49,6 +81,16 @@ export class Shopkeepers {
     for (const k of this.pool) {
       if (!k.id || !k.model.group.visible) continue;
       const g = k.model.group.position;
+      if (k.fleeing > 0) {
+        // Into the shop: along the way they now face (local −z), at a run, then gone.
+        const yaw = k.model.group.rotation.y, sp = 3.6;
+        g.x -= Math.sin(yaw) * sp * dt;
+        g.z -= Math.cos(yaw) * sp * dt;
+        k.fleeing -= dt;
+        k.model.update(dt, sp, false, Math.hypot(g.x - px, g.z - pz));
+        if (k.fleeing <= 0) ((k.fleeing = 0), (k.model.group.visible = false));
+        continue;
+      }
       k.model.update(dt, 0, false, Math.hypot(g.x - px, g.z - pz));
     }
   }
@@ -57,7 +99,7 @@ export class Shopkeepers {
     const want = this.fronts.openNear(px, pz, NEAR_M, this.lite ? MAX_LITE : MAX);
     const ids = new Set(want.map((w) => w.id));
     // Keepers whose shop is still wanted stay; the others are free.
-    for (const k of this.pool) if (k.id && !ids.has(k.id)) (k.id = null), (k.model.group.visible = false);
+    for (const k of this.pool) if (k.id && !ids.has(k.id) && k.fleeing <= 0) (k.id = null), (k.model.group.visible = false);
     const placed = new Set(this.pool.filter((k) => k.id).map((k) => k.id!));
     for (const w of want) {
       if (placed.has(w.id)) continue;
@@ -67,11 +109,12 @@ export class Shopkeepers {
         const model = this.modelFor(w.id);
         if (!model) return;
         this.scene.add(model.group);
-        k = { id: null, model };
+        k = { id: null, model, fleeing: 0 };
         this.pool.push(k);
       }
       if (!k) break;
       k.id = w.id;
+      k.fleeing = 0;
       k.model.group.position.set(w.x, 0, w.z);
       k.model.group.rotation.y = w.yaw;
       k.model.group.visible = true;

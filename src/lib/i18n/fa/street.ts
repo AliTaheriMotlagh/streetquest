@@ -1,0 +1,61 @@
+// The 3D city's street life: talking to people and followers (TalkPanel.tsx, lib/street/npcTalk.ts),
+// shopkeepers at their doors and when shots ring out (lib/street/shopTalk.ts), the police clearing
+// up (drive/street.ts), the sign's second line (lib/storeKinds.ts) and the loading screen's last step.
+const street: Record<string, string> = {
+  // ---- the talk panel
+  "Come on": "بیا بریم",
+  "Come on, let's go!": "بیا، بریم!",
+  "Following you": "دنبالت میاد",
+  "Go home": "برو خونه",
+  Listening: "گوش می‌ده",
+  "Speaking…": "داره حرف می‌زنه…",
+  "Tell them": "بهش بگو",
+  "Thanks, you can go now.": "مرسی، دیگه می‌تونی بری.",
+  "This store?": "این مغازه؟",
+  "Wait here for me.": "همین‌جا منتظرم بمون.",
+  "Wait here": "همین‌جا بمون",
+  "What's this place like?": "این‌جا چطوره؟",
+  // ---- what people say
+  "Best place on this street, {place}.": "بهترین جای این خیابون همین {place}ـه.",
+  "Coming!": "اومدم!",
+  "Get the {item} at {place}, {price} toman. You won't regret it.": "{item} {place} رو بگیر، {price} تومن. پشیمون نمی‌شی.",
+  "Have you tried {place}? Their {item} is amazing.": "{place} رو امتحان کردی؟ {item}ش محشره.",
+  "I always get the {item} at {place}.": "من همیشه از {place} {item} می‌گیرم.",
+  "I'm right behind you.": "پشت سرتم.",
+  "Is {place} open now? I need something.": "{place} الان بازه؟ یه چیزی لازم دارم.",
+  "My cousin works at {place}.": "پسرخاله‌م توی {place} کار می‌کنه.",
+  "OK, I'll wait here for you.": "باشه، همین‌جا منتظرت می‌مونم.",
+  "OK, see you around!": "باشه، می‌بینمت!",
+  "The {item} at {place} is so good — {price} toman.": "{item} {place} خیلی خوبه — {price} تومن.",
+  "There's no shop right here I'd know.": "این‌جا مغازه‌ای نمی‌شناسم.",
+  "Wait for what?": "منتظر چی بمونم؟",
+  "{place} is always full — {rating} stars, they say.": "{place} همیشه شلوغه — می‌گن {rating} ستاره داره.",
+  "{place} is good — people give it {rating} stars.": "{place} خوبه — مردم بهش {rating} ستاره می‌دن.",
+  "{place} opened a while ago, I should try it.": "{place} تازه باز شده، باید یه بار برم.",
+  "{place}, {dist} {side}. I've never been in, to be honest.": "{place}، {dist} {side}. راستش تا حالا نرفتم توش.",
+  "{place}? Only {rating} stars… I'd go somewhere else.": "{place}؟ فقط {rating} ستاره… من جای دیگه می‌رفتم.",
+  "{place}? Their {item} is the best — about {price} toman.": "{place}؟ {item}ش حرف نداره — حدود {price} تومن.",
+  // ---- shopkeepers
+  "Call the police!": "زنگ بزنید پلیس!",
+  "Come in, come in — {store}'s {item} is the best in town!": "بفرمایید، بفرمایید — {item} {store} بهترینِ شهره!",
+  "Don't shoot!": "شلیک نکن!",
+  "Get inside, everyone inside!": "همه برید تو، همه برید تو!",
+  "Hello! This is {store}, come on in.": "سلام! این‌جا {store}ـه، بفرمایید تو.",
+  "Oh God, not again!": "وای خدا، باز شروع شد!",
+  "Shut the shutters, quick!": "کرکره رو بکش پایین، زود!",
+  "Welcome to {store}! Come in, have a look.": "به {store} خوش اومدید! بفرمایید یه نگاه بندازید.",
+  "Welcome to {store}! Try our {item} today.": "به {store} خوش اومدید! امروز {item}مون رو امتحان کنید.",
+  "{store} — we're open, come in!": "{store} — بازیم، بفرمایید!",
+  "{store}! Fresh {item}, come in!": "{store}! {item} تازه، بفرمایید!",
+  // ---- the police, when it's over
+  "All right, it's over — move along, please.": "خب، تموم شد — لطفاً متفرق شید.",
+  "Clear the street, please. It's done.": "خیابون رو خالی کنید لطفاً. تموم شد.",
+  "Nothing to see here, folks. Go on home.": "چیزی برای دیدن نیست مردم. برید خونه‌هاتون.",
+  // ---- signs, loading
+  Butcher: "قصابی",
+  "Fast food": "فست‌فود",
+  "Sweets & nuts": "شیرینی و آجیل",
+  "Waking up the street…": "خیابون داره بیدار می‌شه…",
+};
+
+export default street;

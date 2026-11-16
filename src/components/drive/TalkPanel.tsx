@@ -1,37 +1,64 @@
 "use client";
 // Talking to a passer-by in the 3D city (the rules: lib/street/npcTalk.ts). Walking up to someone on
 // foot shows "💬 Talk (Y)"; then a panel at the bottom — phone-first, one thumb — with what you can
-// say: hello, the way to a café / restaurant / pharmacy / supermarket, what's good round here, a
-// chat, some money, an insult, "follow me", goodbye. Their answer is spoken (voices.talk: the
-// on-device Persian voice, else the phone's) over their head, and written here as a subtitle. It
-// closes when they walk off, run, follow you, or you leave. Styles: app/drive-talk.css.
+// say: hello, the way to a café / restaurant / pharmacy / supermarket, what's good round here, what
+// about this store, a chat, some money, an insult, "follow me", goodbye. Their answer is spoken
+// (voices.talk: the on-device Persian voice, else the phone's) over their head, and written here as a
+// subtitle that runs with the voice — word by word from the moment it starts, while their face pulses.
+// Someone following you keeps the panel: "wait here", "come on", "go home" (a little crew of your own).
+// It closes when they walk off, run, or you leave. Styles: app/drive-talk.css.
 import { useEffect, useRef, useState } from "react";
 import { msg, t } from "@/lib/i18n";
 import { WAY_KINDS, type Mood, type React as Reaction, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
+import { revealWords } from "@/lib/street/subtitle";
 
-export type TalkAnswer = { text: string; react: Reaction; mood: Mood };
-type Line = { me: string; them: string };
+export type TalkAnswer = {
+  text: string;
+  react: Reaction;
+  mood: Mood;
+  /** Resolves when their voice starts, with how long it runs (s). */
+  speak?: Promise<number>;
+  /** They're following me now (the panel switches to their orders). */
+  following?: boolean;
+};
+type Line = { me: string; them: string; id: number };
 
 const MOOD_FACE: Record<Mood, string> = { friendly: "🙂", busy: "😬", grumpy: "😠" };
 const MOOD_LABEL: Record<Mood, string> = { friendly: msg("Friendly"), busy: msg("In a hurry"), grumpy: msg("Grumpy") };
-const ACTS: { act: TalkAct; emoji: string; label: string; said: string }[] = [
+type Act = { act: TalkAct; emoji: string; label: string; said: string; bad?: boolean };
+const ACTS: Act[] = [
   { act: "greet", emoji: "👋", label: msg("Say hello"), said: msg("Hello!") },
   { act: "way", emoji: "🧭", label: msg("Ask the way"), said: "" },
+  { act: "store", emoji: "🏪", label: msg("This store?"), said: msg("What's this place like?") },
   { act: "recommend", emoji: "⭐", label: msg("What's good here?"), said: msg("Is there anywhere good to eat round here?") },
   { act: "chat", emoji: "💬", label: msg("Chat"), said: msg("How's it going?") },
   { act: "money", emoji: "💵", label: msg("Give money"), said: msg("Here, take this.") },
   { act: "follow", emoji: "🚶", label: msg("Follow me"), said: msg("Come with me?") },
-  { act: "insult", emoji: "😤", label: msg("Insult"), said: msg("Get out of my way!") },
+  { act: "insult", emoji: "😤", label: msg("Insult"), said: msg("Get out of my way!"), bad: true },
   { act: "bye", emoji: "✋", label: msg("Goodbye"), said: msg("Bye!") },
 ];
+/** What you can tell someone who's following you. */
+const ORDERS: Act[] = [
+  { act: "wait", emoji: "✋", label: msg("Wait here"), said: msg("Wait here for me.") },
+  { act: "come", emoji: "🚶", label: msg("Come on"), said: msg("Come on, let's go!") },
+  { act: "store", emoji: "🏪", label: msg("This store?"), said: msg("What's this place like?") },
+  { act: "chat", emoji: "💬", label: msg("Chat"), said: msg("How's it going?") },
+  { act: "release", emoji: "🏠", label: msg("Go home"), said: msg("Thanks, you can go now.") },
+];
 
-export function TalkPanel({ woman, onAsk, onClose }: { woman: boolean; onAsk: (act: TalkAct, way?: WayKind) => TalkAnswer | null; onClose: () => void }) {
+export function TalkPanel({ woman, following: following0, onAsk, onClose }: { woman: boolean; following?: boolean; onAsk: (act: TalkAct, way?: WayKind) => TalkAnswer | null; onClose: () => void }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [mood, setMood] = useState<Mood | null>(null);
   const [ways, setWays] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [following, setFollowing] = useState(!!following0);
+  /** The last answer while it's being said: how much of it shows (0…1), and whether they're talking now. */
+  const [said, setSaid] = useState<{ id: number; k: number; talking: boolean } | null>(null);
+  const seq = useRef(0);
+  const raf = useRef(0);
   const log = useRef<HTMLDivElement>(null);
-  useEffect(() => void log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" }), [lines]);
+  useEffect(() => void log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" }), [lines, said?.k]);
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
   // Escape leaves.
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -39,36 +66,81 @@ export function TalkPanel({ woman, onAsk, onClose }: { woman: boolean; onAsk: (a
     return () => removeEventListener("keydown", key);
   }, [onClose]);
 
-  const ask = (act: TalkAct, way?: WayKind, said?: string) => {
+  /** Run the subtitle with the voice: dots until it starts, then the words as they're said. */
+  const play = (id: number, speak: Promise<number> | undefined) => {
+    cancelAnimationFrame(raf.current);
+    setSaid({ id, k: 0, talking: false });
+    const run = (secs: number) => {
+      if (seq.current !== id) return;
+      const t0 = performance.now(), dur = Math.max(0.6, secs) * 1000;
+      const step = () => {
+        if (seq.current !== id) return;
+        const k = Math.min(1, (performance.now() - t0) / dur);
+        setSaid({ id, k, talking: k < 1 });
+        if (k < 1) raf.current = requestAnimationFrame(step);
+      };
+      step();
+    };
+    // No word from the voice within 2.5 s (slow model, no voice at all): show it all the same.
+    const late = setTimeout(() => run(0.6), 2500);
+    if (speak) void speak.then((s) => (clearTimeout(late), run(s)));
+    else (clearTimeout(late), run(0.6));
+  };
+
+  const ask = (act: TalkAct, way?: WayKind, words?: string) => {
     if (ending) return;
     setWays(false);
     const a = onAsk(act, way);
     if (!a) return onClose();
     setMood(a.mood);
-    setLines((l) => [...l.slice(-3), { me: said ?? "", them: a.text }]);
-    // They walk off, run, or come with you: the conversation is over (after reading the answer).
-    if (a.react !== "stay" && a.react !== "angry") {
+    const id = ++seq.current;
+    setLines((l) => [...l.slice(-3), { me: words ?? "", them: a.text, id }]);
+    play(id, a.speak);
+    setFollowing(!!a.following);
+    // They walk off, run, or wait behind: the conversation is over (after reading the answer).
+    if (!a.following && a.react !== "stay" && a.react !== "angry") {
       setEnding(true);
-      setTimeout(onClose, 2600);
+      setTimeout(onClose, 2800);
     }
   };
 
+  const acts = following ? ORDERS : ACTS;
+  const talking = !!said?.talking;
   return (
-    <section className="talk" role="dialog" aria-label={t("Talking to someone")}>
+    <section className={`talk${talking ? " speaking" : ""}`} role="dialog" aria-label={t("Talking to someone")}>
       <header className="talk-head">
-        <span className="talk-face" aria-hidden>{woman ? "🧕" : "🧔"}</span>
-        <b>{woman ? t("A woman on the street") : t("A man on the street")}</b>
+        <span className="talk-face" aria-hidden>
+          {woman ? "🧕" : "🧔"}
+          <i className="talk-wave" />
+        </span>
+        <span className="talk-who">
+          <b>{woman ? t("A woman on the street") : t("A man on the street")}</b>
+          <small>{following ? t("Following you") : talking ? t("Speaking…") : mood ? t(MOOD_LABEL[mood]) : t("Listening")}</small>
+        </span>
         {mood && <span className={`talk-mood ${mood}`} title={t(MOOD_LABEL[mood])}>{MOOD_FACE[mood]}</span>}
         <button type="button" className="talk-x" onClick={onClose} aria-label={t("Leave")}>✕</button>
       </header>
       {lines.length > 0 && (
         <div className="talk-log" ref={log} aria-live="polite">
-          {lines.map((l, i) => (
-            <p key={i}>
-              {l.me && <span className="talk-me" dir="auto">{l.me}</span>}
-              <span className="talk-them" dir="auto">{l.them}</span>
-            </p>
-          ))}
+          {lines.map((l) => {
+            const live = said?.id === l.id;
+            const shown = live ? revealWords(l.them, said!.k) : l.them;
+            return (
+              <p key={l.id}>
+                {l.me && <span className="talk-me" dir="auto">{l.me}</span>}
+                <span className="talk-them" dir="auto">
+                  {live && said!.k === 0 ? (
+                    <span className="talk-dots" aria-label={t("Speaking…")}><i /><i /><i /></span>
+                  ) : (
+                    <>
+                      {shown}
+                      {live && said!.k < 1 && <span className="talk-rest" aria-hidden>{l.them.slice(shown.length)}</span>}
+                    </>
+                  )}
+                </span>
+              </p>
+            );
+          })}
         </div>
       )}
       {ways ? (
@@ -82,9 +154,9 @@ export function TalkPanel({ woman, onAsk, onClose }: { woman: boolean; onAsk: (a
           <button type="button" className="ghost" onClick={() => setWays(false)}>‹ {t("Back")}</button>
         </div>
       ) : (
-        <div className="talk-acts" role="group" aria-label={t("What to say")}>
-          {ACTS.map((a) => (
-            <button key={a.act} type="button" className={a.act === "insult" ? "bad" : ""} disabled={ending} onClick={() => (a.act === "way" ? setWays(true) : ask(a.act, undefined, t(a.said)))}>
+        <div className={`talk-acts${following ? " orders" : ""}`} role="group" aria-label={following ? t("Tell them") : t("What to say")}>
+          {acts.map((a) => (
+            <button key={a.act} type="button" className={a.bad ? "bad" : ""} disabled={ending} onClick={() => (a.act === "way" ? setWays(true) : ask(a.act, undefined, t(a.said)))}>
               <span aria-hidden>{a.emoji}</span>
               {t(a.label)}
             </button>

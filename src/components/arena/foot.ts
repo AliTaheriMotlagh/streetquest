@@ -34,7 +34,17 @@ export function newFoot(x: number, z: number, yaw: number): FootBody {
   return { x, z, y: 0, vx: 0, vz: 0, vy: 0, yaw, pitch: 0, crouch: false, air: false, sprint: false };
 }
 
-export function stepFoot(b: FootBody, inp: FootInput, dt: number, mobility: number, collide: Collide) {
+/** The highest thing you just step up onto (a kerb, a stair, a low wall's top), and how fast the body rises onto it / settles down off it (m/s). */
+export const STEP_UP = 0.45;
+const STEP_RISE = 3.2, STEP_DROP = 4.5;
+
+/**
+ * One step on foot. `floor` (optional): the top of whatever is under (x, z) at or below y — the
+ * street, a kerb, a stair, a footbridge, a roof. With it the body steps up anything up to
+ * STEP_UP (eased, not snapped), walks down steps the same way, and falls off anything higher.
+ * Without it the ground is flat at 0.
+ */
+export function stepFoot(b: FootBody, inp: FootInput, dt: number, mobility: number, collide: Collide, floor?: (x: number, z: number, y: number) => number) {
   const len = Math.min(1, Math.hypot(inp.mx, inp.mz));
   // Sprint only running forward-ish (any way when the body turns to where it goes), never while aiming or crouched.
   b.sprint = inp.sprint && (inp.free ? len > 0.5 : inp.mz > 0.5) && !inp.aim && !b.crouch && !b.air;
@@ -55,13 +65,17 @@ export function stepFoot(b: FootBody, inp: FootInput, dt: number, mobility: numb
   if (b.air) {
     b.vy -= GRAVITY * dt;
     b.y += b.vy * dt;
-    if (b.y <= 0) {
-      b.y = 0;
+    const g = floor ? floor(b.x, b.z, b.y + 0.05 - Math.min(0, b.vy * dt)) : 0;
+    if (b.y <= g) {
+      b.y = g;
       b.vy = 0;
       b.air = false;
     }
   }
-  const r = collide(b.x + b.vx * dt, b.z + b.vz * dt, FOOT_R, b.y, b.crouch ? 1.2 : 1.75);
+  // Walls start above what you can step onto (with a floor to step onto it). The collision world
+  // already lets a body pass over anything up to 0.3 m under it (physics.ts collide), so lifting
+  // the body's bottom by STEP_UP − 0.3 makes exactly the steps up to STEP_UP passable.
+  const r = collide(b.x + b.vx * dt, b.z + b.vz * dt, FOOT_R, b.y + (floor && !b.air ? STEP_UP - 0.3 : 0), b.crouch ? 1.2 : 1.75);
   if (r.hit) {
     // Slide along the wall: drop the velocity going into it.
     const into = b.vx * r.hit.nx + b.vz * r.hit.nz;
@@ -69,6 +83,12 @@ export function stepFoot(b: FootBody, inp: FootInput, dt: number, mobility: numb
   }
   b.x = r.x;
   b.z = r.z;
+  if (floor && !b.air) {
+    const g = floor(b.x, b.z, b.y + STEP_UP);
+    if (g > b.y + 0.005) b.y = Math.min(g, b.y + STEP_RISE * dt + (g - b.y) * 0.25);
+    else if (g < b.y - STEP_UP) (b.air = true), (b.vy = 0);
+    else if (g < b.y - 0.005) b.y = Math.max(g, b.y - STEP_DROP * dt);
+  }
   return Math.hypot(b.vx, b.vz);
 }
 

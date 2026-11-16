@@ -22,6 +22,7 @@ import "./directory.css";
 import "./filters.css";
 import "./travel.css";
 import "./list.css";
+import "./gallery.css";
 import "./drive-talk.css";
 import "./map-pins.css";
 import "./loading.css";

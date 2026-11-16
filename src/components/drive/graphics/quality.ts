@@ -178,6 +178,25 @@ export class Adaptive {
     return this.opts.target ?? 1000 / 60;
   }
 
+  /**
+   * A screen covered the city (a menu, a store, a search) and the frames it measured meanwhile
+   * were the page's, not the city's. Put the resolution and effects back to how they were before
+   * it opened — never lower — and start measuring afresh. Returns what changed, for the renderer.
+   */
+  restore(dpr: number, level: number, now: number): { dpr?: number; level?: number } {
+    this.times.length = 0;
+    this.before = 0;
+    this.goodWindows = 0;
+    this.futile = 0;
+    this.lastChange = now;
+    const out: { dpr?: number; level?: number } = {};
+    const d = Math.min(this.profile.maxDpr, Math.max(this.dpr, dpr));
+    if (d !== this.dpr) out.dpr = this.dpr = d;
+    const l = Math.max(0, Math.min(this.level, level));
+    if (l !== this.level) out.level = this.level = l;
+    return out;
+  }
+
   /** Feed one frame's duration (ms). Returns what to change, if anything. */
   sample(ms: number, now: number): Change | null {
     if (!(ms > 0) || ms > 250) return null; // a hitch (tab switch, GC) says nothing about the steady state

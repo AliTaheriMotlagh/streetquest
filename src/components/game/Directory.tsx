@@ -8,6 +8,7 @@
 //  (the list of every store round you is StoreBrowser.tsx, over every site, not only these);
 //  - ServicesSheet: home services (Achareh, Sanjagh, Khedmatazma) and the online shopping sites.
 // Every link out goes through the leave page (LeaveGuard).
+import { Gallery } from "./Gallery";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
@@ -74,18 +75,6 @@ export function SiteChip({ site, small }: { site: SiteId; small?: boolean }) {
 const stars = (r: number) => (r > 0 ? `⭐ ${fmtNum(r)}` : "");
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
 
-function Photos({ urls }: { urls: string[] }) {
-  if (!urls.length) return null;
-  return (
-    <div className="dir-photos" role="list">
-      {urls.map((u) => (
-        <div role="listitem" key={u} className="dir-photo">
-          <Pic src={u} />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function About({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -185,7 +174,7 @@ export function DirStoreCard({ s, onClose }: { s: DirStore; onClose: () => void 
         <SiteChip site={s.site} />
         {(s.also ?? []).map((a) => <SiteChip key={a} site={a} small />)}
       </div>
-      <Photos urls={photos} />
+      {photos.length > 0 && <Gallery photos={photos} alt={s.name} className="dir-gallery" ratio="16 / 9" />}
       {d?.offer && (
         <div className={`dir-deal${d.offer.available ? "" : " ended"}`}>
           <div className="grow">

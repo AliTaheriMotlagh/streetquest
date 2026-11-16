@@ -121,6 +121,33 @@ export class GraphicsEngine {
   cut() {
     this.post?.cut();
   }
+  /** What the resolution and effects were when a screen covered the city (null = nothing covers it). */
+  private coverSave: { dpr: number; level: number } | null = null;
+  /**
+   * A menu, a store or a search is over the city. While it is, the frame times are the page's
+   * (its own layout, images, blur) and would drag the resolution down — so they aren't counted;
+   * when it closes the picture comes back exactly as sharp as it was, not blurred.
+   */
+  cover(on: boolean) {
+    if (on) {
+      if (!this.coverSave) this.coverSave = { dpr: this.adaptive.dpr, level: this.adaptive.level };
+      return;
+    }
+    const s = this.coverSave;
+    if (!s) return;
+    this.coverSave = null;
+    const back = this.adaptive.restore(s.dpr, s.level, performance.now());
+    if (back.dpr != null) (this.renderer.setPixelRatio(back.dpr), (this.grade.sharpen = sharpenFor(back.dpr, window.devicePixelRatio || 1)));
+    if (back.level != null) {
+      this.profile = this.make(back.level);
+      this.post?.configure(this.postOpts());
+      for (const l of this.listeners) l(this.profile);
+    }
+    this.post?.cut();
+  }
+  get covered() {
+    return !!this.coverSave;
+  }
   /**
    * A 3D colour lookup table over the finished picture (`size`³ RGB values 0…1, red fastest
    * — a .cube file's order; lib/lut.ts reads one), or null for none.
@@ -217,7 +244,7 @@ export class GraphicsEngine {
       this.frames = 0;
       this.fpsAt = now;
     }
-    const ch = this.adaptive.sample(ms, now);
+    const ch = this.coverSave ? null : this.adaptive.sample(ms, now);
     if (ch?.kind === "dpr") (this.renderer.setPixelRatio(ch.dpr), (this.grade.sharpen = sharpenFor(ch.dpr, window.devicePixelRatio || 1)));
     else if (ch?.kind === "level") {
       this.profile = this.make(ch.level);

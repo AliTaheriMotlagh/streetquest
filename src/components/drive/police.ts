@@ -60,6 +60,8 @@ type Officer = {
   next: number;
   /** A shot just went off (for the gun's flash). */
   flash: number;
+  /** The chase is over and they've walked back and got in. */
+  boarded?: boolean;
 };
 
 export type Unit = {
@@ -94,7 +96,9 @@ export type PoliceEvent =
   | { kind: "boom"; x: number; z: number; yaw: number }
   | { kind: "ram"; unit: Unit; into: number; x: number; z: number; nx: number; nz: number }
   /** An officer shouting (the megaphone in a chase, orders when they get out): `where` follows them. */
-  | { kind: "talk"; say: "copStop" | "copHands"; where: () => { x: number; y: number; z: number } | null };
+  | { kind: "talk"; say: "copStop" | "copHands"; where: () => { x: number; y: number; z: number } | null }
+  /** It's over: an officer tells the onlookers to move along (any words, said aloud by the on-device voice). */
+  | { kind: "clear"; x: number; z: number; where: () => { x: number; y: number; z: number } | null };
 
 let nextId = 1;
 
@@ -144,7 +148,22 @@ export class Police {
 
   /** Every unit drives off; they vanish once out of sight. */
   standDown() {
-    for (const u of this.units) if (!u.leaving) u.leaving = 0.01;
+    let told = false;
+    for (const u of this.units) {
+      if (u.leaving) continue;
+      u.leaving = 0.01;
+      // One officer still on their feet sends the onlookers on their way before walking back.
+      const o = !told && u.officers.find((x) => !x.dead);
+      if (o) {
+        told = true;
+        this.events.push({ kind: "clear", x: o.x, z: o.z, where: () => (o.dead || o.boarded ? null : { x: o.x, y: 1.8, z: o.z }) });
+      }
+    }
+  }
+
+  /** Officers still walking back to this unit's car (it waits for them). */
+  private outside(u: Unit) {
+    return u.officers.some((o) => !o.dead && !o.boarded);
   }
 
   /** Footprints for the collision world (police cars are solid). */
@@ -192,24 +211,28 @@ export class Police {
         u.blind = d < 6 || this.world.raycast(ray, d) >= d - 1.5 ? 0 : u.blind + dt;
       }
       // Gone once well out of sight (or after a while driving off).
-      if ((u.leaving && (d > 110 || u.leaving > 30)) || d > 400 || (u.blind > 14 && d > 50 && !u.officers.length)) {
+      if ((u.leaving && !this.outside(u) && (d > 110 || u.leaving > 40)) || d > 400 || (u.blind > 14 && d > 50 && !u.officers.length)) {
         this.remove(u);
         continue;
       }
-      if (u.health.hp > 0) this.drive(u, dt, me, resp, d);
+      // Leaving: the car waits where it is till its officers are back in, then pulls away.
+      if (u.health.hp > 0 && u.leaving && this.outside(u) && u.leaving < 25) this.coast(u, dt);
+      else if (u.health.hp > 0) this.drive(u, dt, me, resp, d);
+      // A wreck only rolls to a stop. (The megaphone below once sat between this if and its else,
+      // so every live unit coasted — moved — a second time each frame.)
+      else this.coast(u, dt);
       // The megaphone, now and then, while it's after you and close.
       if (resp && !u.leaving && u.health.hp > 0 && !u.officers.length && d < 45 && performance.now() > u.talkAt) {
         u.talkAt = performance.now() + 9000 + this.rand() * 6000;
         this.events.push({ kind: "talk", say: "copStop", where: () => (this.units.includes(u) ? { x: u.body.x, y: FLEET[this.look.key].hgt + 0.5, z: u.body.z } : null) });
       }
-      else this.coast(u, dt);
       // Officers get out when the car pulls up near you.
       const alive = u.officers.filter((o) => !o.dead).length;
       if (resp && !u.leaving && u.health.hp > 0 && d < 22 && Math.hypot(u.body.vx, u.body.vz) < 2.5 && alive === 0 && !u.officers.length) this.deploy(u, me);
       for (const o of [...u.officers]) this.officer(o, dt, now, me, resp);
       // Officers who've been dead a while, or left behind, go.
       u.officers = u.officers.filter((o) => {
-        const gone = (o.dead && o.since > 30) || (!o.dead && (u.leaving || Math.hypot(o.x - me.x, o.z - me.z) > 70));
+        const gone = (o.dead && o.since > 30) || (!o.dead && (o.boarded || (u.leaving && u.leaving > 25) || (!u.leaving && Math.hypot(o.x - me.x, o.z - me.z) > 70)));
         if (gone) o.avatar?.dispose();
         return !gone;
       });
@@ -427,6 +450,25 @@ export class Police {
     if (o.dead) {
       o.since += dt;
       o.vx = o.vz = 0;
+    } else if (o.unit.leaving) {
+      // It's over: holster, a few seconds looking round, then a walk back to the car and in.
+      const u = o.unit, f = forward(u.body.yaw);
+      const door = { x: u.body.x - f.fz * 1.3, z: u.body.z + f.fx * 1.3 };
+      const dx = door.x - o.x, dz = door.z - o.z, d = Math.hypot(dx, dz);
+      const go = u.leaving > 2.5;
+      if (go && d < 1.1) o.boarded = true;
+      const sp = go ? 1.6 : 0;
+      o.vx = go && d > 0.01 ? (dx / d) * sp : 0;
+      o.vz = go && d > 0.01 ? (dz / d) * sp : 0;
+      if (go) {
+        const c = this.world.collide(o.x + o.vx * dt, o.z + o.vz * dt, 0.35, 0, 1.7);
+        // Stuck on a corner on the way: they get in anyway (no one's watching that closely).
+        if (Math.hypot(c.x - o.x, c.z - o.z) < sp * dt * 0.2 && u.leaving > 8) o.boarded = true;
+        o.x = c.x;
+        o.z = c.z;
+        const yaw = Math.atan2(-dx, -dz);
+        o.yaw += Math.atan2(Math.sin(yaw - o.yaw), Math.cos(yaw - o.yaw)) * Math.min(1, dt * 6);
+      }
     } else {
       const dx = me.x - o.x, dz = me.z - o.z, d = Math.hypot(dx, dz);
       const shootMe = !!resp && !me.down && ((me.onFoot && resp.shoot) || (me.inCar && resp.shootCars));

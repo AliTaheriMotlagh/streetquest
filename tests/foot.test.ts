@@ -44,3 +44,28 @@ describe("walking, GTA-style", () => {
     assert.ok(!run({ mz: 1, sprint: true, aim: true, free: true }).b.sprint, "never while aiming");
   });
 });
+
+it("with a floor, feet step up a kerb smoothly, walk down it, and fall off a roof's edge", async () => {
+  const { newFoot, stepFoot, STEP_UP } = await import("../src/components/arena/foot");
+  // A 0.2 m kerb from x > 2, a 3 m roof from x > 10.
+  const floor = (x: number, _z: number, y: number) => (x > 10 && y >= 3 ? 3 : x > 2 && y >= 0.2 ? 0.2 : 0);
+  const open = (x: number, z: number) => ({ x, z, hit: null });
+  const b = newFoot(0, 0, -Math.PI / 2); // facing +x
+  const go = { mx: 0, mz: 1, sprint: false, crouch: false, aim: false, jump: false };
+  let maxJump = 0, prev = 0;
+  for (let i = 0; i < 60; i++) {
+    stepFoot(b, go, 1 / 60, 1, open, floor);
+    maxJump = Math.max(maxJump, b.y - prev);
+    prev = b.y;
+  }
+  assert.ok(b.x > 2.5, `walked on: ${b.x}`);
+  assert.ok(Math.abs(b.y - 0.2) < 1e-6, `on the kerb: ${b.y}`);
+  assert.ok(maxJump < 0.2, "eased up, not snapped");
+  assert.equal(b.air, false);
+  // Off a 3 m roof: a fall, not a staircase.
+  const r = newFoot(11, 0, Math.PI / 2); // facing −x, toward the edge at x = 10
+  r.y = 3;
+  for (let i = 0; i < 30 && !r.air; i++) stepFoot(r, go, 1 / 60, 1, open, floor);
+  assert.equal(r.air, true, "stepped off the edge into the air");
+  assert.ok(3 > STEP_UP);
+});

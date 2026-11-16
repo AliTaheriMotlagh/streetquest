@@ -10,6 +10,8 @@ import { useMap, useMapEvents } from "react-leaflet";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
 import { CITIES, HUB_ZOOM, hubGlyphs, type City } from "@/lib/travel";
 import { advance, type Plane } from "@/lib/flights";
+import { cleanPlan, type LegPick } from "@/lib/travel/plan";
+import { tripRoutes } from "@/lib/travel/routes";
 import { api } from "./client";
 import { openTravel } from "./Filters";
 
@@ -149,3 +151,83 @@ function hubPopup(c: City, name: string) {
   el.appendChild(go);
   return el;
 }
+
+// ---------------------------------------------------------------- the rail network
+/**
+ * Every railway over the map (OpenRailwayMap's open overlay, no key): the lines a train trip
+ * would take, from the whole country down to a city. Street-level zooms leave it to the metro layer.
+ */
+export function RailLayer() {
+  const map = useMap();
+  useEffect(() => {
+    const layer = L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", {
+      subdomains: "abc",
+      minZoom: 4,
+      maxZoom: 14,
+      maxNativeZoom: 16,
+      opacity: 0.75,
+      zIndex: 4,
+      className: "tv-rail-tiles",
+      attribution: 'Rail: <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a> (CC-BY-SA)',
+    });
+    layer.addTo(map);
+    return () => void layer.remove();
+  }, [map]);
+  return null;
+}
+
+// ---------------------------------------------------------------- your trip across the map
+const TRIP_KEY = "sq-trip";
+const WAY_STYLE: Record<string, { color: string; dash?: string; emoji: string }> = {
+  flight: { color: "#5aa9ff", dash: "2 8", emoji: "✈️" },
+  train: { color: "#f0c05a", emoji: "🚆" },
+  bus: { color: "#5bd38c", dash: "10 6", emoji: "🚌" },
+  car: { color: "#c9ced8", dash: "4 6", emoji: "🚗" },
+};
+
+/** The trip planner's legs (kept on this phone) as routes: the way chosen for each, faint where none is yet. */
+export function TripRoutes() {
+  const map = useMap();
+  const [stamp, setStamp] = useState(0);
+  // The plan can change in the planner while the map is open: look again when the page gets focus or storage changes.
+  useEffect(() => {
+    const again = () => setStamp((n) => n + 1);
+    addEventListener("storage", again);
+    addEventListener("focus", again);
+    const id = setInterval(again, 5000);
+    return () => (removeEventListener("storage", again), removeEventListener("focus", again), clearInterval(id));
+  }, []);
+  const raw = typeof window === "undefined" ? null : (() => {
+    try {
+      return localStorage.getItem(TRIP_KEY);
+    } catch {
+      return null;
+    }
+  })();
+  useEffect(() => {
+    if (!raw) return;
+    let saved: { plan?: unknown; legs?: Record<string, LegPick> } | null = null;
+    try {
+      saved = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const plan = cleanPlan(saved?.plan);
+    if (!plan || !plan.stops.length) return;
+    const g = L.layerGroup().addTo(map);
+    for (const r of tripRoutes(plan, saved?.legs ?? {})) {
+      const st = r.way ? WAY_STYLE[r.way] : { color: "#ffffff", dash: "3 9", emoji: "❔" };
+      L.polyline(r.points, { color: "#0b0e14", weight: 7, opacity: r.way ? 0.45 : 0.2, interactive: false }).addTo(g);
+      L.polyline(r.points, { color: st.color, weight: 4, opacity: r.way ? 0.95 : 0.55, dashArray: st.dash, lineCap: "round", interactive: false }).addTo(g);
+      const m = L.marker(r.mid, { icon: L.divIcon({ className: `tv-route-ic${r.way ? "" : " open"}`, html: `<span>${st.emoji}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }), keyboard: true, title: `${cityNameOf(r.from)} → ${cityNameOf(r.to)}` });
+      m.on("click", () => openTravel(r.to));
+      g.addLayer(m);
+    }
+    return () => void g.remove();
+  }, [map, raw, stamp]);
+  return null;
+}
+const cityNameOf = (k: string) => {
+  const c = CITIES.find((x) => x.key === k);
+  return c ? (getLocale() === "fa" ? c.fa : c.en).replace(/_/g, " ") : k;
+};

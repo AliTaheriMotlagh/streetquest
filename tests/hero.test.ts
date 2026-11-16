@@ -102,6 +102,25 @@ describe("hero moves", () => {
     assert.equal(p.y, B.h);
     assert.equal(ps.mode, "ground");
   });
+  it("a zip blocked by another building lets go instead of pinning you to it forever", () => {
+    // A second wall (the building next door) between you and where the line caught.
+    const wall: HeroWorld = {
+      ...world,
+      collide: (x, z, r) => (z < -5 + r ? { x, z: -5 + r, hit: { nx: 0, nz: 1 } } : { x, z, hit: null }),
+    };
+    const b: HeroBody = { x: 0, y: 2, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0 };
+    const s = { ...newHero(), mode: "zip" as const, zip: { x: 0, y: 12, z: -20 }, zipT: 0, zipD: Infinity };
+    const kinds: string[] = [];
+    for (let i = 0; i < 120; i++) {
+      const e = stepHero(b, s, idle, 1 / 60, wall);
+      if (e) kinds.push(e.kind);
+    }
+    assert.notEqual(s.mode, "zip", `still zipping after 2 s: ${kinds.join(",")}`);
+    assert.equal(s.zip, null);
+    // …and a new line can be fired straight away.
+    stepHero(b, s, { ...idle, grapple: true }, 1 / 60, wall);
+    assert.ok(s.anchor, "the hook works again");
+  });
   it("a long hold is a swing, not a zip; a sky line can't be zipped to", () => {
     const b: HeroBody = { x: 0, y: 0, z: 60, vx: 0, vy: 0, vz: -8, yaw: 0 };
     const s = newHero();

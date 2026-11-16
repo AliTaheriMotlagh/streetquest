@@ -57,6 +57,15 @@ export const MAP_STYLES: MapStyle[] = [
   { id: "midnight", emoji: "🌑", name: msg("Midnight"), css: "midnight" },
   // OpenStreetMap Germany's style: softer colours, and names in the local script with a Latin line under them.
   { id: "voyager", emoji: "🧳", name: msg("Voyager"), tiles: { url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png", attribution: `${OSM}, style by <a href="https://www.openstreetmap.de/">OSM Germany</a>`, maxNativeZoom: 19 } },
+  // For a trip: OSM Germany's soft street map (names in the local script and Latin), every railway over it.
+  {
+    id: "traveller",
+    emoji: "🧳",
+    name: msg("Traveller"),
+    tiles: { url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png", attribution: `${OSM}, style by <a href="https://www.openstreetmap.de/">OSM Germany</a>`, maxNativeZoom: 19 },
+    labels: { url: "https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", attribution: 'Rail: <a href="https://www.openrailwaymap.org/">OpenRailwayMap</a> (CC-BY-SA)', subdomains: "abc", maxNativeZoom: 16 },
+    css: "traveller",
+  },
   { id: "esri-streets", emoji: "🚦", name: msg("City streets"), tiles: esri("World_Street_Map"), fallback: { url: "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", attribution: `${OSM}, style by <a href="https://www.openstreetmap.fr/">OSM France</a>`, subdomains: "abc", maxNativeZoom: 19 } },
   {
     id: "humanitarian",

@@ -8,6 +8,7 @@
 // newspaper kiosks on the main roads), building footprints for collisions, small solid footprints for the
 // furniture (a car stops at a tree or a lamp post), and the text to show: street names,
 // corner street-name signs, every shop and house number.
+import { packAlong } from "@/lib/signPack";
 import * as THREE from "three";
 import { countryAt } from "@/lib/region";
 import { hashStr, rng, type LatLng } from "@/lib/geo";
@@ -1740,10 +1741,10 @@ function cornerSigns(tile: CityTile, lines: Float32Array[], road: ReturnType<typ
  * Server (Overpass) tiles carry places instead of storefronts: they're shops here too.
  */
 function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprints: Footprint[], labels: Label[], obstacles: Footprint[], stand: (x: number, z: number, out: number) => { x: number; z: number; yaw: number } | null) {
-  const placed: { x: number; z: number; y: number; w: number }[] = [];
   const nearestWall = (x: number, z: number, reach: number) => {
-    let best = reach, hit: { x: number; z: number; nx: number; nz: number; len: number; f: Footprint } | null = null;
-    for (const f of footprints) {
+    let best = reach, hit: { x: number; z: number; nx: number; nz: number; len: number; f: Footprint; key: string; ax: number; az: number; ux: number; uz: number; along: number } | null = null;
+    for (let fi = 0; fi < footprints.length; fi++) {
+      const f = footprints[fi];
       if (x < f.minX - reach || x > f.maxX + reach || z < f.minZ - reach || z > f.maxZ + reach) continue;
       const p = f.pts;
       for (let i = 0; i < p.length; i += 2) {
@@ -1755,7 +1756,7 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
         if (d >= best) continue;
         const len = Math.sqrt(l2);
         best = d;
-        hit = { x: qx, z: qz, nx: dz / len, nz: -dx / len, len, f };
+        hit = { x: qx, z: qz, nx: dz / len, nz: -dx / len, len, f, key: `${fi}:${i}`, ax, az, ux: dx / len, uz: dz / len, along: k * len };
       }
     }
     return hit;
@@ -1770,6 +1771,10 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
       const q = frame.toXZ(pl.lat, pl.lng);
       shops.push({ x: q.x, z: q.z, n: pl.name, c: pl.cat });
     }
+  // Pass one: each shop finds its wall. Pass two: each wall lays out its shops side by side
+  // (lib/signPack.ts) — next-door shops no longer pile up into a tower of boards.
+  type OnWall = { s: (typeof shops)[number]; w: number; wall: NonNullable<ReturnType<typeof nearestWall>> };
+  const walls = new Map<string, OnWall[]>();
   for (const s of shops) {
     const { x, z } = s;
     const long = s.n.split("\n")[0];
@@ -1783,14 +1788,22 @@ function placeSigns(tile: VtCell, frame: ReturnType<typeof makeFrame>, footprint
       else labels.push({ text: s.n, x, z, angle: 0, w: Math.min(w, 4), y: 2.6, kind: "shop", cls: s.c, top: 3.2, noBoard: true });
       continue;
     }
-    const sw = Math.min(w, wall.len * 0.92);
-    const px = wall.x + wall.nx * 0.14, pz = wall.z + wall.nz * 0.14;
-    let y = Math.max(2.4, Math.min(3.6, wall.f.h - 0.7));
-    // Same stretch of wall already has a sign: go one row up (at most three rows).
-    for (let row = 0; row < 3 && placed.some((o) => Math.abs(o.y - y) < 0.6 && Math.hypot(o.x - px, o.z - pz) < (o.w + sw) / 2); row++) y += 1.05;
-    const full = y > wall.f.h - 0.3 || placed.some((o) => Math.abs(o.y - y) < 0.6 && Math.hypot(o.x - px, o.z - pz) < (o.w + sw) / 2);
-    if (!full) placed.push({ x: px, z: pz, y, w: sw });
-    labels.push({ text: s.n, x: px, z: pz, angle: Math.atan2(wall.nx, wall.nz), w: sw, y, kind: "shop", cls: s.c, top: wall.f.h, ...(full ? { noBoard: true } : {}) });
+    const list = walls.get(wall.key);
+    if (list) list.push({ s, w, wall });
+    else walls.set(wall.key, [{ s, w, wall }]);
+  }
+  for (const list of walls.values()) {
+    const wall = list[0].wall;
+    const out = packAlong(list.map((o) => ({ at: o.wall.along, w: o.w })), wall.len, { gap: 0.25, margin: 0.15, minW: 1.8, rows: wall.f.h > 6.5 ? 2 : 1 });
+    const base = Math.max(2.4, Math.min(3.6, wall.f.h - 0.7));
+    list.forEach((o, i) => {
+      const r = out[i], s = o.s;
+      const at = r.row >= 0 ? r.at : o.wall.along;
+      const px = wall.ax + wall.ux * at + wall.nx * 0.14, pz = wall.az + wall.uz * at + wall.nz * 0.14;
+      const y = base + Math.max(0, r.row) * 1.1;
+      const full = r.row < 0 || y > wall.f.h - 0.3;
+      labels.push({ text: s.n, x: px, z: pz, angle: Math.atan2(wall.nx, wall.nz), w: full ? Math.min(o.w, wall.len * 0.92) : r.w, y, kind: "shop", cls: s.c, top: wall.f.h, ...(full ? { noBoard: true } : {}) });
+    });
   }
   for (const h of tile.hn ?? []) {
     const [x, z] = frame.unpack(tile.cx, tile.cy, [h.x, h.y]);

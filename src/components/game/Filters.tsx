@@ -197,3 +197,45 @@ export function FindTabs({ on, onStores, onProducts }: { on: "stores" | "product
     </div>
   );
 }
+
+/**
+ * The sort, always in reach at the start of the filter bar: a pill that says how the list is
+ * ordered now ("⇅ Nearest first ▾"), opening a short menu of the other orders — one tap to see,
+ * one to change. (A bare <select> hid what each order was until it was opened, and looked like text.)
+ */
+export function SortMenu<K extends string>({ value, options, onChange }: { value: K; options: { key: K; label: string; emoji?: string }[]; onChange: (k: K) => void }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away, true);
+    addEventListener("keydown", key);
+    return () => (document.removeEventListener("pointerdown", away, true), removeEventListener("keydown", key));
+  }, [open]);
+  const cur = options.find((o) => o.key === value) ?? options[0];
+  return (
+    <div className="fx-sortm" ref={box}>
+      <button type="button" className={`fx-chip fx-sortm-btn${open ? " on" : ""}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+        <span aria-hidden>⇅</span>
+        <span className="fx-lb">{cur?.label}</span>
+        <span aria-hidden className="fx-sortm-car">▾</span>
+      </button>
+      {open && (
+        <ul className="fx-sortm-list" role="listbox" id={id} aria-label={t("Sort")}>
+          {options.map((o) => (
+            <li key={o.key} role="option" aria-selected={o.key === value}>
+              <button type="button" className={o.key === value ? "on" : ""} onClick={() => (onChange(o.key), setOpen(false))}>
+                {o.emoji && <span aria-hidden>{o.emoji}</span>}
+                <span className="grow">{o.label}</span>
+                {o.key === value && <span aria-hidden>✓</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

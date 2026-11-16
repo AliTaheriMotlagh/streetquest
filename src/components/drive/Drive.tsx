@@ -15,7 +15,7 @@
 import { Guard } from "../Guard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { bearingTo, distanceM, formatDistance, type LatLng } from "@/lib/geo";
+import { bearingTo, distanceM, formatDistance, hashStr, type LatLng } from "@/lib/geo";
 import { makeFrame, tileKey, tileOf, villageTile, withDetail, type CityTile } from "@/lib/city";
 import { CUSTOMER_DOOR, PLACE_CATS } from "@/lib/places";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
@@ -102,7 +102,11 @@ import { mixHex, mixRecord, phaseOf, skyFor, sunVector, WEATHER_LOOK, type TimeP
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
 import { storeKind, type StoreKind } from "@/lib/storeKinds";
-import { callsPolice, GOOD_STORES, reply as npcReply, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
+import { callsPolice, GOOD_STORES, reply as npcReply, storeGossip, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
+import { doorGreeting, panicLine } from "@/lib/street/shopTalk";
+import { hornFor } from "@/lib/street/carHorn";
+import { plateFor } from "@/lib/plate";
+import { Plates } from "./plates";
 import { TalkPanel, type TalkAnswer } from "./TalkPanel";
 import { ShopScreen } from "./ShopScreen";
 import { setNeuralLite } from "./tts/neural";
@@ -207,7 +211,7 @@ const SHOPS_M = 260; // shops on the minimap and for the store card this far
 /** On foot this close to a store's door (m), you can walk in (ShopScreen). */
 const ENTER_M = 22;
 /** On foot this close to someone (m), you can talk to them (TalkPanel). */
-const TALK_M = 3;
+const TALK_M = 4.5;
 /** The party's meeting point (Vasatyab) in the 3D city: its beacon, minimap dot and waypoint. */
 const VASA_COLOR = "#b18cff";
 const CORNER_M = 170; // street-name signs at corners this close
@@ -391,6 +395,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const gauge = useRef<HTMLDivElement>(null);
   const menuOpen = useRef(false);
   menuOpen.current = !!menu;
+  /** Something is over the city (graphics/engine.ts cover): 1 = a menu or sheet, 2 = the store screen (nothing of the city shows → not drawn). */
+  const coverRef = useRef(0);
+  coverRef.current = shopAt ? 2 : menu || storeSheet || productsAt || tripPlan ? 1 : 0;
   const menuTab = useRef<MenuTab | null>(null);
   menuTab.current = menu;
   // The pad's Start button (components/drive/gamepad.ts) opens and closes the menu.
@@ -443,6 +450,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     talkStart: (id: number) => void;
     /** The conversation is over (they can walk on). */
     talkEnd: () => void;
+    /** Is `id` following me (the talk panel shows the follower's orders)? */
+    following: (id: number) => boolean;
     /** The shopkeeper says this, right in front of me (ShopScreen). */
     shopkeeper: (text: string) => void;
   } | null>(null);
@@ -585,6 +594,15 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       modelKey = want;
       shownVehicle = currentKey();
       if (!VEHICLES[currentKey()].flies) st.alt = st.cruise = st.vy = 0;
+    };
+    // Number plates on whatever I'm driving (drive/plates.ts): mine keeps its number; a taxi's is yellow.
+    const plateSeed = hashStr(`plate:${live.current.me?.id ?? "guest"}`);
+    const plates = new Plates(plateFor(plateSeed));
+    let plateKey = "", frameNo = 0;
+    const fitPlates = () => {
+      const k = currentKey(), d = VEHICLES[k];
+      if (plateKey !== k) (plateKey = k), (plates.plate = plateFor(plateSeed + (streetCar ? hashStr(k + paintNow()) : 0), k === "taxi"));
+      plates.fit(model, d.flies ? "none" : d.bike ? "bike" : "car");
     };
     let camMode: CamMode = P.cam;
     const camPos = new THREE.Vector3(st.x, 6, st.z + 12);
@@ -966,6 +984,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const storefronts = new Storefronts(scene, lite ? "lite" : prof.tier, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     // A shopkeeper at the door of each open shop near you (their calls come from the same spot).
     const shopkeepers = new Shopkeepers(scene, storefronts, lite);
+    // The street's people built during the loading screen (their first appearance is the usual hitch).
+    let peopleReady = false;
+    void crowd.prewarm((o) => gfx.gate.whenReady(o)).finally(() => (peopleReady = true));
+    // Gunfire, a blast, a crash: the keepers nearby shout, run in and pull their shutters down.
+    shopkeepers.onShout = (text, at) => void street.converse(text, "m", () => at, false);
+    crowd.onAlarm = (x, z, r) => shopkeepers.alarm(x, z, Math.min(r, 40), (seed) => t(panicLine(seed)));
     storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
     storefronts.at = start;
     // The police of the country the city is in (their car, its livery, their uniform).
@@ -1592,11 +1616,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // recording's middle looped; without a file yet, two detuned reeds through a body filter
     // (the 420/500 Hz pair of a real car horn), never a bare square-wave beep.
     let hornOff: (() => void) | null = null;
-    const hornVoice = Math.floor(Math.random() * 3);
     const horn = (on = true) => {
       if (!on) return void (hornOff?.(), (hornOff = null));
       if (hornOff) return;
-      hornOff = holdSample("horn", 0.55, hornVoice);
+      // This vehicle's own horn (lib/street/carHorn.ts): its take and pitch — a scooter beeps, a bus blares.
+      const hv = hornFor(streetCar?.key ?? currentKey());
+      hornOff = holdSample("horn", hv.vol, hv.take, hv.rate);
       if (hornOff) return;
       const out = audioOut("vehicles");
       if (!out || isMuted()) return;
@@ -1739,6 +1764,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- talking to people (TalkPanel) and to shopkeepers (ShopScreen)
     /** Who I'm talking to, how many times I've insulted whom, how many turns each conversation had. */
     let convo: number | null = null;
+    /** Who the 💬 button offers now (kept while they're still near: no flicker). */
+    let talkOffer: number | null = null;
     const insults = new Map<number, number>(), turns = new Map<number, number>();
     /** A store round me as a place someone could point to: how far, and which way from where I'm looking (+ = right). */
     const spotOf = (sp: StoreSpot): NpcSpot => {
@@ -1754,34 +1781,52 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         .map((sp) => ({ sp, d: Math.hypot(sp.x - st.x, sp.z - st.z) }))
         .filter((x) => x.d <= within)
         .sort((a, b) => a.d - b.d);
+    /** The store right round me (≤ 40 m) as something a passer-by can talk about: its dish and price when the card's been read. */
+    const storeHere = () => {
+      const sp = shops.filter((x) => x.name).map((x) => ({ sp: x, d: Math.hypot(x.x - st.x, x.z - st.z) })).filter((x) => x.d <= 40).sort((a, b) => a.d - b.d)[0]?.sp;
+      if (!sp) return null;
+      const dish = storefronts.bestDish(sp.id);
+      return { ...spotOf(sp), ...(dish ? { item: dish.title, price: fmtNum(dish.price) } : {}) };
+    };
+    const lead = () => (combat.onFoot ? { x: st.x, z: st.z } : null);
     const talkTo = (id: number, act: TalkAct, way?: WayKind): TalkAnswer | null => {
       const p = crowd.person(id);
-      if (!p || Math.hypot(p.x - st.x, p.z - st.z) > 7) return null;
+      if (!p || Math.hypot(p.x - st.x, p.z - st.z) > 9) return null;
       convo = id;
       const turn = turns.get(id) ?? 0;
       turns.set(id, turn + 1);
+      const following = crowd.following(id);
       const wayTo = way ? nearestOf(WAY_STORES[way], 1500)[0] : undefined;
       const good = act === "recommend" ? nearestOf(GOOD_STORES, 600).slice(0, 6) : [];
       const best = good.length ? good[(id + turn) % good.length].sp : null;
-      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, fmt: formatDistance, tr: (k) => t(k) }, turn);
+      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, fmt: formatDistance, tr: (k) => t(k) }, turn);
       if (act === "insult") insults.set(id, (insults.get(id) ?? 0) + 1);
       const text = t(r.key, r.params);
-      street.converse(text, p.woman ? "f" : "m", () => crowd.head(id));
+      // The subtitle runs with the voice: the panel is told when it starts and how long it is.
+      let started: (secs: number) => void = () => {};
+      const speak = new Promise<number>((res) => (started = res));
+      street.converse(text, p.woman ? "f" : "m", () => crowd.head(id), true, (secs) => started(secs));
       if (r.react === "stay" || r.react === "angry") crowd.stopFor(id, r.secs + 6, st.x, st.z);
-      else if (r.react === "leave") (crowd.stopFor(id, 1.2, st.x, st.z), (convo = null));
+      else if (r.react === "leave") (crowd.dropFollow(id, 1.2, st.x, st.z), (convo = null));
       else if (r.react === "flee") {
+        crowd.dropFollow(id, 0, st.x, st.z);
         crowd.runFrom(id, st.x, st.z, r.secs);
         if (callsPolice(r)) street.complaint(p.x, p.z);
         convo = null;
-      } else if (r.react === "follow") (crowd.follow(id, () => (combat.onFoot ? { x: st.x, z: st.z } : null), r.secs), (convo = null));
-      return { text, react: r.react, mood: r.mood };
+      } else if (r.react === "wait") crowd.dropFollow(id, r.secs, st.x, st.z);
+      // Following: the conversation stays open — they're right behind you and take orders.
+      else if (r.react === "follow") crowd.follow(id, lead, r.secs);
+      return { text, react: r.react, mood: r.mood, speak, following: r.react === "follow" || (r.react !== "leave" && r.react !== "flee" && r.react !== "wait" && following) };
     };
 
     api3d.current = {
       talkTo,
       talkStart: (id) => {
-        if (crowd.stopFor(id, 14, st.x, st.z)) convo = id;
+        // Even when they won't stop (running, already off), the conversation holds on to them while they're near.
+        convo = id;
+        crowd.stopFor(id, 14, st.x, st.z);
       },
+      following: (id) => crowd.following(id),
       talkEnd: () => {
         if (convo != null) crowd.stopFor(convo, 0.8, st.x, st.z);
         convo = null;
@@ -1867,6 +1912,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let lastStore: string | null = null;
     let shownKey: VehicleKey | null = null;
     let lastShopCall = 0;
+    /** When a passer-by may next remark on a store. */
+    let gossipAt = performance.now() + 15_000;
     const shopCalled = new Map<string, number>();
     let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, fps = 60, lastWorld: World | null = null;
     let phase: Phase = "day";
@@ -2039,7 +2086,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             near++;
             if (s.mesh) (drawn++, s.mesh.real && real++);
           }
-        const b = bootProgress({ near, drawn, real, placed: !!P.placed, elapsedMs: now - bootAt });
+        const b = bootProgress({ near, drawn, real, placed: !!P.placed, elapsedMs: now - bootAt, people: peopleReady });
         if (b.done || skipBoot.current) {
           booted = true;
           setBoot({ ...b, pct: 100, done: true, canSkip: false });
@@ -2071,6 +2118,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         syncWorld();
       }
       if (`${currentKey()}|${paintNow()}` !== modelKey) rebuildModel();
+      if (frameNo++ % 20 === 0) fitPlates();
       const D = def();
 
       // -- on foot: the soldier moves (and owns the camera); "me" follows the soldier
@@ -2417,6 +2465,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       camera.getWorldDirection(camFwd);
       const flat = Math.hypot(camFwd.x, camFwd.z);
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
+      crowd.meR = onFoot ? 0.35 : 0;
       crowd.tick(dt, st.x, st.z);
       shopkeepers.tick(dt, st.x, st.z);
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
@@ -2424,7 +2473,24 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (!matchOn && now - lastShopCall > 1500 && !(D.flies && st.alt > 0.5) && Math.hypot(st.vx, st.vz) < 14) {
         lastShopCall = now;
         const sc = storefronts.nearestOpen(st.x, st.z, onFoot ? 14 : 22, (id) => now - (shopCalled.get(id) ?? -1e9) < 120_000);
-        if (sc && street.shopCall(sc.kind, sc.name, sc)) shopCalled.set(sc.id, now);
+        // On foot right by the door: the keeper says the store's own name (and its best dish) aloud.
+        if (sc && onFoot && Math.hypot(sc.x - st.x, sc.z - st.z) < 7) {
+          const dish = storefronts.bestDish(sc.id);
+          const g = doorGreeting(sc.name, dish?.title ?? null, Math.floor(now / 1000));
+          street.converse(t(g.key, g.params), "m", () => ({ x: sc.x, y: 1.75, z: sc.z }), false);
+          shopCalled.set(sc.id, now);
+        } else if (sc && street.shopCall(sc.kind, sc.name, sc)) shopCalled.set(sc.id, now);
+      }
+      // Now and then a passer-by by a store says something about it (on foot, nothing else going on).
+      if (onFoot && !matchOn && convo == null && now > gossipAt) {
+        gossipAt = now + 22_000 + Math.random() * 18_000;
+        const sc = storefronts.nearestOpen(st.x, st.z, 30, () => false);
+        const who = sc && crowd.cast(sc.x, sc.z, 0, 12, false);
+        if (sc && who && street.stars < 1) {
+          const dish = storefronts.bestDish(sc.id);
+          const g = storeGossip(sc.name, who.a, dish?.title, dish ? fmtNum(dish.price) : undefined, storefronts.ratingOf(sc.id) ?? undefined);
+          street.converse(t(g.key, g.params), who.woman[0] ? "f" : "m", () => crowd.head(who.a), false);
+        }
       }
       scenarios.tick(rdt, time, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, carKey: streetCar?.key ?? currentKey(), matchOn, flying: D.flies && st.alt > 0.5 });
       if (now - lightsAt > 500) {
@@ -2526,6 +2592,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       addReady();
 
       // -- adaptive quality (graphics/engine.ts): resolution first, then effects on "auto"
+      if (!!coverRef.current !== gfx.covered) gfx.cover(!!coverRef.current);
       gfx.frame(now);
       fps = gfx.fps;
 
@@ -2584,13 +2651,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         let talk: Hud["talk"] = null;
         if (combat.onFoot && !combat.inMatch && !D.flies) {
           const cur = convo != null ? crowd.person(convo) : null;
-          if (cur && Math.hypot(cur.x - st.x, cur.z - st.z) < 7) talk = { id: convo!, woman: cur.woman };
+          if (cur && Math.hypot(cur.x - st.x, cur.z - st.z) < 9) talk = { id: convo!, woman: cur.woman };
           else {
             if (convo != null) convo = null;
-            const sp = crowd.speaker(st.x, st.z, TALK_M, true);
-            if (sp) talk = { id: sp.id, woman: sp.woman };
+            // The one offered stays offered a little farther than they were found (no flicker as
+            // they walk past); standing still beside someone, they pause and look at you.
+            const was = talkOffer != null ? crowd.person(talkOffer) : null;
+            const sp = was && was.calm && Math.hypot(was.x - st.x, was.z - st.z) < TALK_M + 2.5 ? { id: talkOffer!, woman: was.woman } : crowd.speaker(st.x, st.z, TALK_M, true);
+            if (sp) {
+              talk = { id: sp.id, woman: sp.woman };
+              if (Math.hypot(st.vx, st.vz) < 0.6 && !crowd.following(sp.id)) crowd.stopFor(sp.id, 2.5, st.x, st.z);
+            }
           }
         } else convo = null;
+        talkOffer = talk?.id ?? null;
         const sig = [
           near?.id, near?.verb, navInfo && `${navInfo.label}|${Math.round(navInfo.dist / 5)}|${Math.round(navInfo.rel / 4)}`, loading, village, camMode, phase, streetName, D.flies, low,
           menuOpen.current ? list.map((j) => `${j.id}:${Math.round(j.dist / 10)}`).join(",") : list.length,
@@ -2752,6 +2826,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // Nothing nearer than the car is smeared: from the chase camera that's the car itself, behind the wheel the dashboard.
       G.sharpNear = onFoot ? 3.5 : camMode === "cockpit" ? 2.4 : Math.hypot(camera.position.x - st.x, camera.position.y - st.alt, camera.position.z - st.z) + 3.2;
       if (camMode !== filmCam || onFoot !== filmFoot) (filmCam = camMode), (filmFoot = onFoot), gfx.cut();
+      // A whole screen (a store, a search, the trip planner) covers the city: nothing to draw.
+      if (coverRef.current === 2) return;
       gfx.render(scene, camera);
       combat.renderOverlay();
     };
@@ -2789,6 +2865,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       nightLights.dispose();
       crowd.dispose();
       shopkeepers.dispose();
+      plates.dispose();
       skyline.dispose();
       pool.dispose();
       vtPool.dispose();
@@ -3348,6 +3425,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         <TalkPanel
           key={talkWith}
           woman={hud.talk.woman}
+          following={api3d.current?.following(talkWith) ?? false}
           onAsk={(act, way) => api3d.current?.talkTo(talkWith, act, way) ?? null}
           onClose={() => (api3d.current?.talkEnd(), setTalkWith(null))}
         />

@@ -8,7 +8,7 @@ import { fmtNum, getLocale, msg, t } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import type { LiveBus } from "@/lib/transit/iett";
 import type { BusStop, City, Line, Network, Station } from "@/lib/transit/network";
-import { departures, localMinutes, nearStations, planTrip, type Trip } from "@/lib/transit/plan";
+import { clockOf, departures, localMinutes, nearStations, planTrip, rideStops, timeline, type Trip } from "@/lib/transit/plan";
 import { Button } from "@/components/Button";
 import { api } from "./client";
 import { metroOf } from "./transit";
@@ -271,54 +271,15 @@ export function MetroSheet({ city, to, onClose, onStation }: { city: City; to?: 
   const [net, setNet] = useState<Network | null>(null);
   const [tab, setTab] = useState<"trip" | "lines" | "guide">(to ? "trip" : "lines");
   const [dest, setDest] = useState<Station | null>(to ?? null);
-  const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => void metroOf(city).then(setNet).catch(() => {}), [city]);
   const st = useMemo(() => new Map((net?.stations ?? []).map((x) => [x.id, x])), [net]);
   const lines = new Map((net?.lines ?? []).map((l) => [l.id, l]));
-  const from: LatLng | null = pos ?? null;
-  const trip: Trip | null = useMemo(() => (net && from && dest ? planTrip(net, from, dest) : null), [net, from?.lat, from?.lng, dest]); // eslint-disable-line react-hooks/exhaustive-deps
-  const near = net && from ? nearStations(net, from, 1, 1e7)[0] : null;
-  const found = q.trim().length >= 2 ? (net?.stations ?? []).filter((s) => `${s.name} ${s.en}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
   return (
     <Sheet title={city === "tehran" ? t("Tehran Metro") : t("Istanbul rail")} onClose={onClose} tall>
       <Tabs value={tab} onChange={setTab} tabs={[["trip", t("Trip")], ["lines", t("Lines")], ["guide", t("Guide")]]} />
       {!net && <p className="small muted">{t("Loading…")}</p>}
-      {net && tab === "trip" && (
-        <>
-          <p className="small muted">{near ? t("From you — nearest station {station}, {d} away", { station: nameOf(near.station), d: formatDistance(near.m) }) : t("Waiting for your position…")}</p>
-          <input className="input" value={dest ? nameOf(dest) : q} onChange={(e) => (setDest(null), setQ(e.target.value))} placeholder={t("Where to? A station's name")} aria-label={t("Destination station")} dir="auto" />
-          {!dest && found.length > 0 && (
-            <ul className="tr-found">
-              {found.map((s) => (
-                <li key={s.id}>
-                  <button type="button" className="row" onClick={() => (setDest(s), setQ(""))}>
-                    <span className="grow" dir="auto">{nameOf(s)}</span>
-                    {s.lines.map((id) => lines.get(id)).filter((l): l is Line => !!l).map((l) => <LineChip key={l.id} l={l} />)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {dest && from && !trip && <p className="small muted">{t("Walking there is quicker than the metro.")}</p>}
-          {trip && (
-            <div className="card tr-trip">
-              <b>{t("About {n} min · {c}", { n: fmtNum(trip.minutes), c: trip.changes ? t("{n} changes", { n: fmtNum(trip.changes) }) : t("no changes") })}</b>
-              <ol className="tr-legs">
-                {trip.legs.filter((g) => g.kind === "ride" || g.m >= 30).map((g, i) =>
-                  g.kind === "walk" ? (
-                    <li key={i} className="small">🚶 {g.to ? t("Walk {d} to {station} ({n} min)", { d: formatDistance(g.m), station: nameOf(st.get(g.to)!), n: fmtNum(g.minutes) }) : t("Walk {d} to where you're going ({n} min)", { d: formatDistance(g.m), n: fmtNum(g.minutes) })}</li>
-                  ) : (
-                    <li key={i} className="small">
-                      <LineChip l={lines.get(g.line)!} /> {t("{from} → {to}, {n} stops, towards {end} ({m} min, about {w} min wait)", { from: nameOf(st.get(g.from)!), to: nameOf(st.get(g.to)!), n: fmtNum(g.stops), end: nameOf(st.get(g.towards)!), m: fmtNum(g.minutes), w: fmtNum(g.wait) })}
-                    </li>
-                  ),
-                )}
-              </ol>
-            </div>
-          )}
-        </>
-      )}
+      {net && tab === "trip" && <MetroTrip net={net} city={city} here={pos ?? null} dest={dest} setDest={setDest} onStation={onStation} />}
       {net && tab === "lines" &&
         net.lines.map((l) => (
           <div key={l.id} className="card tr-line">
@@ -354,5 +315,155 @@ export function MetroSheet({ city, to, onClose, onStation }: { city: City; to?: 
       )}
       <p className="small muted ext-source">{t("Lines and stations from OpenStreetMap; times are estimates.")}</p>
     </Sheet>
+  );
+}
+
+/** A station picker: type a name, pick from the matches (or "where I am" for the start). */
+function StationPick({ net, value, onPick, label, here, placeholder }: { net: Network; value: Station | "here" | null; onPick: (s: Station | "here" | null) => void; label: string; here?: boolean; placeholder: string }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const lines = useMemo(() => new Map(net.lines.map((l) => [l.id, l])), [net]);
+  const found = q.trim().length >= 1 ? net.stations.filter((x) => `${x.name} ${x.en}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
+  const shown = value === "here" ? t("📍 Where I am") : value ? nameOf(value) : q;
+  return (
+    <div className="mt-pick">
+      <span className="mt-pick-lb">{label}</span>
+      <input
+        className="input"
+        value={open ? q : shown}
+        onFocus={() => (setOpen(true), setQ(""))}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={placeholder}
+        aria-label={label}
+        dir="auto"
+      />
+      {open && (here || found.length > 0) && (
+        <ul className="tr-found mt-found">
+          {here && !q && (
+            <li>
+              <button type="button" className="row" onMouseDown={(e) => e.preventDefault()} onClick={() => (onPick("here"), setOpen(false))}>
+                <span className="grow">{t("📍 Where I am")}</span>
+              </button>
+            </li>
+          )}
+          {found.map((x) => (
+            <li key={x.id}>
+              <button type="button" className="row" onMouseDown={(e) => e.preventDefault()} onClick={() => (onPick(x), setOpen(false))}>
+                <span className="grow" dir="auto">{nameOf(x)}</span>
+                {x.lines.map((id) => lines.get(id)).filter((l): l is Line => !!l).map((l) => <LineChip key={l.id} l={l} />)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The metro trip, start to finish: from where you are (or any station) to any station — the
+ * total time, when you'd leave and arrive, then each step on a timeline: the walk in, the line
+ * to take and which way (its colour, the next trains), every stop it passes (tap to unfold),
+ * where to change, the walk out.
+ */
+function MetroTrip({ net, city, here, dest, setDest, onStation }: { net: Network; city: City; here: LatLng | null; dest: Station | null; setDest: (s: Station | null) => void; onStation?: (s: Station) => void }) {
+  const [from, setFrom] = useState<Station | "here">("here");
+  const [open, setOpen] = useState<number | null>(null);
+  const st = useMemo(() => new Map(net.stations.map((x) => [x.id, x])), [net]);
+  const lines = useMemo(() => new Map(net.lines.map((l) => [l.id, l])), [net]);
+  const start: LatLng | null = from === "here" ? here : from;
+  const trip: Trip | null = useMemo(() => (start && dest ? planTrip(net, start, dest) : null), [net, start?.lat, start?.lng, dest]); // eslint-disable-line react-hooks/exhaustive-deps
+  const near = from === "here" && here ? nearStations(net, here, 1, 1e7)[0] : null;
+  const now = localMinutes(new Date(), net.tz);
+  const steps = trip ? timeline(trip, now) : [];
+  const swap = () => {
+    if (!dest) return;
+    const was = from;
+    setFrom(dest);
+    setDest(was === "here" ? null : was);
+  };
+  return (
+    <div className="mt-trip">
+      <div className="mt-ends card">
+        <StationPick net={net} value={from} onPick={(v) => setFrom(v ?? "here")} label={t("From")} here placeholder={t("A station, or where I am")} />
+        <button type="button" className="mt-swap" onClick={swap} disabled={!dest} aria-label={t("Swap")} title={t("Swap")}>⇅</button>
+        <StationPick net={net} value={dest} onPick={(v) => setDest(v === "here" ? null : v)} label={t("To")} placeholder={t("Where to? A station's name")} />
+      </div>
+      {from === "here" && <p className="small muted">{near ? t("From you — nearest station {station}, {d} away", { station: nameOf(near.station), d: formatDistance(near.m) }) : t("Waiting for your position…")}</p>}
+      {dest && start && !trip && <p className="small muted">{t("Walking there is quicker than the metro.")}</p>}
+      {trip && (
+        <section className="mt-plan" aria-label={t("Your trip")}>
+          <header className="mt-sum">
+            <b className="mt-min">{t("{n} min", { n: fmtNum(trip.minutes) })}</b>
+            <span className="small">
+              {t("Leave {a} · arrive about {b}", { a: clockOf(now), b: clockOf(now + trip.minutes) })}
+              <br />
+              <span className="muted">{trip.changes ? t("{n} changes", { n: fmtNum(trip.changes) }) : t("no changes")} · {t("{n} stops", { n: fmtNum(trip.legs.reduce((k, g) => k + (g.kind === "ride" ? g.stops : 0), 0)) })}</span>
+            </span>
+            <span className="mt-bar" aria-hidden>
+              {trip.legs.map((g, i) => (
+                <i key={i} style={{ flexGrow: Math.max(1, g.kind === "walk" ? g.minutes : g.wait + g.minutes), background: g.kind === "walk" ? "rgba(255,255,255,.25)" : lines.get(g.line)?.colour || "var(--sky)" }} />
+              ))}
+            </span>
+          </header>
+          <ol className="mt-steps">
+            {steps.map(({ leg: g, start: a }, i) => {
+              if (g.kind === "walk") {
+                const to = g.to ? st.get(g.to) : null;
+                if (!to && g.m < 30) return null;
+                return (
+                  <li key={i} className="mt-step walk">
+                    <time>{clockOf(a)}</time>
+                    <span className="mt-dot" aria-hidden>🚶</span>
+                    <div>
+                      <b>{to ? t("Walk to {station}", { station: nameOf(to) }) : t("Walk to where you're going")}</b>
+                      <span className="small muted">{t("{d} · {n} min", { d: formatDistance(g.m), n: fmtNum(g.minutes) })}</span>
+                      {to && onStation && <button type="button" className="link-btn small" onClick={() => onStation(to)}>{t("Show on the map")}</button>}
+                    </div>
+                  </li>
+                );
+              }
+              const l = lines.get(g.line)!;
+              const dep = departures(l, a, 3);
+              const stops = rideStops(l, g.from, g.to);
+              const change = i > 1 && trip.legs[i - 1]?.kind === "ride";
+              return (
+                <li key={i} className="mt-step ride" style={{ "--line": l.colour } as React.CSSProperties}>
+                  <time>{clockOf(a + g.wait)}</time>
+                  <span className="mt-dot" aria-hidden>{MODE_EMOJI[l.mode]}</span>
+                  <div>
+                    {change && <span className="mt-change small">{t("Change here — about 4 min through the corridors")}</span>}
+                    <b>
+                      <LineChip l={l} /> {t("Towards {end}", { end: nameOf(st.get(g.towards)!) })}
+                    </b>
+                    <span className="small">{t("Board at {station}", { station: nameOf(st.get(g.from)!) })}</span>
+                    <span className="small muted">
+                      {dep.running && dep.next.length ? t("Next trains in {list} min", { list: dep.next.map((n) => fmtNum(n)).join("، ") }) : t("Not running now — first train {time}", { time: clockOf(dep.first) })}
+                    </span>
+                    <button type="button" className="mt-stops-btn small" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
+                      {t("{n} stops · {m} min", { n: fmtNum(g.stops), m: fmtNum(g.minutes) })} {open === i ? "▴" : "▾"}
+                    </button>
+                    {open === i && (
+                      <ol className="mt-stops">
+                        {stops.map((id, k) => (
+                          <li key={id} className={k === 0 || k === stops.length - 1 ? "end" : ""} dir="auto">{nameOf(st.get(id)!)}</li>
+                        ))}
+                      </ol>
+                    )}
+                    <span className="small">{t("Get off at {station}", { station: nameOf(st.get(g.to)!) })}</span>
+                  </div>
+                </li>
+              );
+            })}
+            <li className="mt-step end">
+              <time>{clockOf(now + trip.minutes)}</time>
+              <span className="mt-dot" aria-hidden>🏁</span>
+              <div><b dir="auto">{nameOf(dest!)}</b></div>
+            </li>
+          </ol>
+        </section>
+      )}
+    </div>
   );
 }

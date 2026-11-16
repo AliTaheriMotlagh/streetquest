@@ -27,8 +27,29 @@ function skip(host: string) {
 }
 const open = (href: string) => window.open(href, "_blank", "noopener,noreferrer");
 
+/** What's being opened, when the link says (data-leave-title / -photo / -price / -sub): shown in the dialog. */
+type Item = { title: string; photo?: string; price?: string; sub?: string };
+function itemOf(a: HTMLAnchorElement): Item | null {
+  const d = a.closest<HTMLElement>("[data-leave-title]")?.dataset ?? a.dataset;
+  if (!d.leaveTitle) return null;
+  return { title: d.leaveTitle, photo: d.leavePhoto || undefined, price: d.leavePrice || undefined, sub: d.leaveSub || undefined };
+}
+
+/**
+ * A link out of the game with what it opens, for the leave dialog's preview: `item` — the
+ * product, hotel, ticket or outing (its name, photo, price). Any `<a target="_blank">` gets the
+ * dialog; this one also says what's behind it.
+ */
+export function LeaveLink({ href, item, className, children, site: _site }: { href: string; item?: Item; className?: string; children: React.ReactNode; site?: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" className={className} data-leave-title={item?.title} data-leave-photo={item?.photo} data-leave-price={item?.price} data-leave-sub={item?.sub}>
+      {children}
+    </a>
+  );
+}
+
 export function LeaveGuard() {
-  const [ask, setAsk] = useState<{ href: string; info: LeaveInfo } | null>(null);
+  const [ask, setAsk] = useState<{ href: string; info: LeaveInfo; item: Item | null } | null>(null);
   const [remember, setRemember] = useState(false);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -46,7 +67,7 @@ export function LeaveGuard() {
       if (!info || skipped().includes(info.host)) return;
       e.preventDefault();
       setRemember(false);
-      setAsk({ href, info });
+      setAsk({ href, info, item: itemOf(a) });
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
@@ -58,7 +79,7 @@ export function LeaveGuard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [ask]);
   if (!ask) return null;
-  const { info, href } = ask;
+  const { info, href, item } = ask;
   const site = info.site;
   const name = site ? t(site.name) : info.known ? t(info.known) : info.host;
   const go = () => {
@@ -69,9 +90,24 @@ export function LeaveGuard() {
   return (
     <div className="leave-back" role="presentation" onClick={() => setAsk(null)}>
       <div className="leave-card" role="dialog" aria-modal="true" aria-labelledby="leave-title" onClick={(e) => e.stopPropagation()} style={site ? ({ "--site": site.color } as React.CSSProperties) : undefined}>
-        <div className="leave-ico" aria-hidden>{site?.emoji ?? "🌐"}</div>
+        <div className="leave-hero" aria-hidden>
+          <span className="leave-from">🎮</span>
+          <span className="leave-path"><i /><i /><i /></span>
+          <span className="leave-ico">{site?.emoji ?? "🌐"}</span>
+        </div>
         <h3 id="leave-title">{t("You're leaving StreetQuest")}</h3>
         <p className="leave-to">{t("Opening {site} in a new tab", { site: name })}</p>
+        {item && (
+          <div className="leave-item">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {item.photo && <img src={item.photo} alt="" referrerPolicy="no-referrer" loading="lazy" onError={(e) => e.currentTarget.remove()} />}
+            <span className="grow">
+              <b dir="auto">{item.title}</b>
+              {item.sub && <small dir="auto">{item.sub}</small>}
+            </span>
+            {item.price && <span className="leave-price">{item.price}</span>}
+          </div>
+        )}
         {site && <p className="small muted leave-what">{t(site.what)}</p>}
         <div className="leave-url" dir="ltr">
           <span aria-hidden>{info.secure ? "🔒" : "⚠️"}</span>

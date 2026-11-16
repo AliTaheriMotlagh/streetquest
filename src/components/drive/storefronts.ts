@@ -16,8 +16,9 @@
 // Everything is instanced and pooled; counts are capped by the quality tier. No per-frame allocation.
 import * as THREE from "three";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
-import type { Week } from "@/lib/localData";
-import { isShop, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, usuallyAt, type StoreKind } from "@/lib/storeKinds";
+import type { MenuSection, Week } from "@/lib/localData";
+import { favourite } from "@/lib/street/shopTalk";
+import { isShop, KIND_LABEL, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, usuallyAt, type StoreKind } from "@/lib/storeKinds";
 import { inkOn, shade, type BrandTier } from "@/lib/business";
 import { patchShader, after } from "./graphics/shaders";
 import { BizBillboards } from "./bizBillboards";
@@ -25,8 +26,11 @@ import { nameLines } from "./trades";
 
 const FONT = `Vazirmatn, "Vazir", Tahoma, system-ui, -apple-system, "Segoe UI", sans-serif`;
 const RTL = /[֐-ࣿ]/;
-/** Atlas slot, pixels. A sign is drawn 100 units per metre tall, whatever its width, so text is never stretched. */
-const SW = 512, SH = 128;
+/** Atlas slot, pixels (phones; high and ultra get a sharper 768×160). A sign is drawn 100 units per metre tall, whatever its width, so text is never stretched. */
+const SW0 = 512, SH0 = 128;
+/** Narrowest sign (m): shops packed side by side on one wall shrink to this before a second row. */
+export const SIGN_MIN_W = 1.8;
+const signW = (w: number) => Math.max(SIGN_MIN_W, Math.min(7.5, w));
 
 /** A store's sign spot, as the tile worker placed it (Label in tileMesh.ts). */
 export type ShopLabel = { id: string; text: string; cls?: string; x: number; y: number; z: number; angle: number; w: number; pole?: boolean; d: number };
@@ -64,6 +68,8 @@ function canvas(w: number, h: number) {
 
 export class Storefronts {
   private cap: ReturnType<typeof storefrontCap>;
+  private SW = SW0;
+  private SH = SH0;
   private cols: number;
   private atlas: { c: HTMLCanvasElement; g: CanvasRenderingContext2D; tex: THREE.CanvasTexture };
   private slots = new Map<string, Slot>();
@@ -123,6 +129,10 @@ export class Storefronts {
   constructor(private scene: THREE.Scene, tier: "lite" | "low" | "medium" | "high" | "ultra", private reduceMotion = false) {
     this.cap = storefrontCap(tier);
     this.cols = tier === "lite" ? 2 : 4;
+    const sharp = tier === "high" || tier === "ultra";
+    this.SW = sharp ? 768 : SW0;
+    this.SH = sharp ? 160 : SH0;
+    const { SW, SH } = this;
     const rows = Math.ceil(this.cap.signs / this.cols);
     const a = canvas(SW * this.cols, SH * rows);
     const tex = new THREE.CanvasTexture(a.c);
@@ -348,69 +358,111 @@ export class Storefronts {
     return null;
   }
 
+  /**
+   * One store's sign, drawn like a real lit box sign: a dark metal frame, the trade's (or the
+   * brand's) colour with a glossy top, the logo in a white badge (the trade's emoji until the
+   * card is read), the name outlined so it reads from across the street, and a second line —
+   * the banner, else what it is and its stars. Open/closed tag, a deal sticker, the lamp strip.
+   */
   private drawSign(s: Slot, l: ShopLabel, kind: StoreKind, open: boolean, detail: "text" | "bar") {
+    const { SW, SH } = this;
     const g = this.atlas.g, look = STORE_LOOK[kind], info = this.infos.get(l.id);
-    const x0 = s.col * SW, y0 = s.row * SH, wm = Math.max(2.6, Math.min(7.5, l.w)), U = wm * 100;
+    const x0 = s.col * SW, y0 = s.row * SH, wm = signW(l.w), U = wm * 100;
     g.save();
     g.beginPath();
     g.rect(x0, y0, SW, SH);
     g.clip();
     g.setTransform(SW / U, 0, 0, SH / 100, x0, y0);
     const brand = branded(info) ? info!.brand! : null, col = brand?.color || "";
-    const grd = g.createLinearGradient(0, 0, 0, 100);
-    grd.addColorStop(0, col || look.sign[0]);
-    grd.addColorStop(1, col ? shade(col, -0.35) : look.sign[1]);
-    g.fillStyle = grd;
+    const top = col || look.sign[0], bottom = col ? shade(col, -0.35) : look.sign[1];
+    // The frame: dark brushed metal, a hairline of light on its top edge.
+    g.fillStyle = "#15181d";
     g.fillRect(0, 0, U, 100);
-    // Featured stores: a gold edge; the rest a faint white one.
-    g.strokeStyle = brand?.tier === "featured" ? "#f0c05a" : "rgba(255,255,255,.4)";
-    g.lineWidth = brand?.tier === "featured" ? 6 : 3;
-    g.strokeRect(3, 3, U - 6, 94);
+    const fr = brand?.tier === "featured" ? 7 : 5;
+    g.fillStyle = brand?.tier === "featured" ? "#e9b949" : "rgba(255,255,255,.16)";
+    g.fillRect(0, 0, U, 2);
+    // The face.
+    const grd = g.createLinearGradient(0, fr, 0, 100 - fr);
+    grd.addColorStop(0, shade(top, 0.12));
+    grd.addColorStop(0.55, top);
+    grd.addColorStop(1, bottom);
+    g.fillStyle = grd;
+    g.beginPath();
+    g.roundRect(fr, fr, U - fr * 2, 100 - fr * 2, 6);
+    g.fill();
+    // Gloss: the light box's plastic catches the sky along its top.
+    const gl = g.createLinearGradient(0, fr, 0, 46);
+    gl.addColorStop(0, "rgba(255,255,255,.28)");
+    gl.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gl;
+    g.fillRect(fr, fr, U - fr * 2, 40);
+    if (brand?.tier === "featured") (g.strokeStyle = "#f0c05a"), (g.lineWidth = 3), g.strokeRect(fr + 2, fr + 2, U - fr * 2 - 4, 100 - fr * 2 - 4);
     const ink = col ? inkOn(col) : "#fff";
-    // A joined store's own name, and its banner line under it (Starter and up).
+    const outline = ink === "#fff" || ink.toLowerCase() === "#ffffff" ? "rgba(0,0,0,.55)" : "rgba(255,255,255,.6)";
+    // A joined store's own name, and its banner line under it (Starter and up); else what it is ★ rating.
     const named = info?.brand && info.name ? info.name : l.text;
     const [main, second0] = nameLines(named);
-    const second = second0 ?? (brand?.tagline || undefined);
+    const stars = info?.rating ? `★ ${fmtNum(+info.rating.toFixed(1))}` : "";
+    const second = second0 ?? (brand?.tagline || (detail === "text" && wm >= 3.2 ? [t(KIND_LABEL[kind] ?? "Store"), stars].filter(Boolean).join("  ·  ") : undefined));
     const rtl = RTL.test(main);
-    // Icon (the logo once the card has read it) on the reading side's start.
-    const ix = rtl ? U - 50 : 50;
+    // The badge (the logo once the card has read it) on the reading side's start.
+    const ix = rtl ? U - 52 : 52;
     const logo = detail === "text" ? this.image(info?.logo) : null;
+    g.save();
+    g.shadowColor = "rgba(0,0,0,.45)";
+    g.shadowBlur = 8;
+    g.fillStyle = "#fff";
+    g.beginPath();
+    g.arc(ix, 50, 37, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+    g.lineWidth = 3;
+    g.strokeStyle = brand?.tier === "featured" ? "#f0c05a" : shade(top, -0.2);
+    g.beginPath();
+    g.arc(ix, 50, 37, 0, Math.PI * 2);
+    g.stroke();
     if (logo) {
       g.save();
       g.beginPath();
-      g.roundRect(ix - 36, 14, 72, 72, 12);
+      g.arc(ix, 50, 34, 0, Math.PI * 2);
       g.clip();
-      g.fillStyle = "#fff";
-      g.fillRect(ix - 36, 14, 72, 72);
-      g.drawImage(logo, ix - 36, 14, 72, 72);
+      const r = Math.min(68 / logo.width, 68 / logo.height), w = logo.width * r, h = logo.height * r;
+      g.drawImage(logo, ix - w / 2, 50 - h / 2, w, h);
       g.restore();
     } else {
-      g.font = `60px ${FONT}`;
+      g.font = `46px ${FONT}`;
       g.textAlign = "center";
       g.textBaseline = "middle";
-      g.fillStyle = ink;
-      g.fillText(look.emoji, ix, 52);
+      g.fillStyle = "#000";
+      g.fillText(look.emoji, ix, 53);
     }
-    const room = U - 125, mid = rtl ? (U - 100) / 2 : 100 + (U - 100) / 2;
+    const room = U - 128, mid = rtl ? (U - 104) / 2 : 104 + (U - 104) / 2;
     if (detail === "text") {
-      g.fillStyle = ink;
       g.textAlign = "center";
       g.textBaseline = "middle";
-      g.shadowColor = "rgba(0,0,0,.45)";
-      g.shadowBlur = 4;
-      const fit = (tx: string, size: number, min: number) => {
-        g.font = `800 ${size}px ${FONT}`;
-        while (size > min && g.measureText(tx).width > room) g.font = `800 ${(size -= 2)}px ${FONT}`;
+      g.lineJoin = "round";
+      const fit = (tx: string, size: number, min: number, weight = 800) => {
+        g.font = `${weight} ${size}px ${FONT}`;
+        while (size > min && g.measureText(tx).width > room) g.font = `${weight} ${(size -= 2)}px ${FONT}`;
+        return size;
+      };
+      const pen = (tx: string, y: number, size: number) => {
+        g.lineWidth = Math.max(3, size * 0.14);
+        g.strokeStyle = outline;
+        g.strokeText(tx, mid, y, room);
+        g.fillStyle = ink;
+        g.fillText(tx, mid, y, room);
       };
       g.direction = RTL.test(main) ? "rtl" : "ltr";
-      fit(main, second ? 40 : 52, 22);
-      g.fillText(main, mid, second ? 36 : 54, room);
+      const sz = fit(main, second ? 42 : 54, 20);
+      pen(main, second ? 38 : 52, sz);
       if (second) {
         g.direction = RTL.test(second) ? "rtl" : "ltr";
-        fit(second, 26, 16);
-        g.fillText(second, mid, 74, room);
+        const s2 = fit(second, 24, 14, 700);
+        g.globalAlpha = 0.92;
+        pen(second, 75, s2);
+        g.globalAlpha = 1;
       }
-      g.shadowBlur = 0;
       g.direction = "ltr";
     } else {
       // Far: a bar the width of the name, nothing to read.
@@ -420,43 +472,65 @@ export class Storefronts {
       g.fill();
     }
     // Open: a bright lamp strip along the bottom; shut: a dark one, the sign dimmed.
-    if (!open) (g.fillStyle = "rgba(0,0,0,.38)"), g.fillRect(0, 0, U, 100);
+    if (!open) (g.fillStyle = "rgba(0,0,0,.4)"), g.fillRect(0, 0, U, 100);
     g.fillStyle = open ? "#46ff94" : "#5a1414";
-    g.fillRect(14, 90, U - 28, 4);
-    // …and a tag you can read from the street: «باز» / «بسته» (Open / Closed), on the side away from the icon.
-    if (detail === "text" && isShop(l.cls, main)) {
+    g.fillRect(16, 92, U - 32, 3);
+    // …and a tag you can read from the street: «باز» / «بسته» (Open / Closed), on the side away from the badge.
+    if (detail === "text" && isShop(l.cls, main) && wm >= 2.4) {
       const tag = open ? t("Open") : t("Closed");
-      g.font = `800 20px ${FONT}`;
+      g.font = `800 18px ${FONT}`;
       g.direction = getLocale() === "fa" ? "rtl" : "ltr";
-      const tw = g.measureText(tag).width + 20, tx = rtl ? 14 : U - 14 - tw;
+      const tw = g.measureText(tag).width + 18, tx = rtl ? 12 : U - 12 - tw;
       g.fillStyle = open ? "#1f9d57" : "#8a2a2a";
       g.beginPath();
-      g.roundRect(tx, 64, tw, 24, 12);
+      g.roundRect(tx, 10, tw, 22, 11);
       g.fill();
       g.fillStyle = "#fff";
       g.textAlign = "center";
       g.textBaseline = "middle";
-      g.fillText(tag, tx + tw / 2, 77);
+      g.fillText(tag, tx + tw / 2, 21.5);
       g.direction = "ltr";
     }
     if (info?.deal && detail === "text") {
-      const dx = rtl ? 14 : U - 78;
+      const dx = rtl ? 12 : U - 74;
+      g.save();
+      g.translate(dx + 30, 76);
+      g.rotate(-0.12);
       g.fillStyle = "#ffd23f";
       g.beginPath();
-      g.roundRect(dx, 8, 64, 30, 8);
+      g.roundRect(-30, -13, 60, 26, 7);
       g.fill();
       g.fillStyle = "#3a2600";
-      g.font = `800 22px ${FONT}`;
+      g.font = `800 20px ${FONT}`;
       g.textAlign = "center";
       g.textBaseline = "middle";
       g.direction = "ltr";
-      g.fillText(`${fmtNum(info.deal)}٪`.replace("٪", "%"), dx + 32, 24);
+      g.fillText(`−${fmtNum(info.deal)}%`.replace("٪", "%"), 0, 1);
+      g.restore();
     }
     g.restore();
   }
 
   /** Open now, per store, worked out once a minute (the Intl clock behind it is costly, and syncs come many times a second). */
+  /** Stores whose keeper pulled the shutter down (gunfire nearby), until this time (performance.now ms). */
+  private panicUntil = new Map<string, number>();
+  /**
+   * Shots or a blast by these stores: shutters down, sign dimmed, for `secs`. The next sync
+   * redraws them shut; when the time is up they open again (if their hours say so).
+   */
+  panic(ids: string[], secs: number) {
+    const until = performance.now() + secs * 1000;
+    for (const id of ids) this.panicUntil.set(id, Math.max(this.panicUntil.get(id) ?? 0, until));
+    if (ids.length) this.openMin = -1;
+  }
+
   private isOpen(id: string, kind: StoreKind, week: Week | null | undefined) {
+    const p = this.panicUntil.get(id);
+    if (p != null) {
+      if (performance.now() < p) return false;
+      this.panicUntil.delete(id);
+      this.openMin = -1;
+    }
     const now = this.now(), min = Math.floor(now.getTime() / 60_000);
     if (min !== this.openMin) (this.openMemo.clear(), (this.openMin = min));
     let o = this.openMemo.get(id);
@@ -556,11 +630,12 @@ export class Storefronts {
     const slotAttr = this.signs.geometry.getAttribute("aSlot") as THREE.InstancedBufferAttribute;
     this.idOf.length = 0;
     let n = 0, b = 0, p = 0;
+    const { SW, SH } = this;
     const W = SW * this.cols, H = SH * Math.ceil(this.cap.signs / this.cols);
     for (const l of this.order) {
       const s = this.slots.get(l.id);
       if (!s) continue;
-      const wm = Math.max(2.6, Math.min(7.5, l.w)), fx = Math.sin(l.angle), fz = Math.cos(l.angle);
+      const wm = signW(l.w), fx = Math.sin(l.angle), fz = Math.cos(l.angle);
       const kind = storeKind(l.cls, nameLines(l.text)[0]);
       const open = this.isOpen(l.id, kind, this.infos.get(l.id)?.week);
       for (const back of l.pole ? [false, true] : [false]) {
@@ -950,6 +1025,16 @@ export class Storefronts {
   /** A store's sign spot (to find it again by id). */
   labelOf(id: string) {
     return this.order.find((o) => o.id === id) ?? null;
+  }
+
+  /** The dish a store is known for, once its card has been read (its popular list's top, else the first priced line). */
+  bestDish(id: string): { title: string; price: number } | null {
+    const info = this.infos.get(id);
+    if (!info) return null;
+    const f = info.menuSections?.length ? favourite(info.menuSections as MenuSection[]) : null;
+    if (f) return { title: f.title, price: f.priceNow || f.price };
+    const it = info.items?.find((i) => i.price > 0);
+    return it ? { title: it.title, price: it.price } : null;
   }
 
   dispose() {

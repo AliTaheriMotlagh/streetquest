@@ -2009,3 +2009,7 @@ html.game-on, html.game-on body { height: 100%; overflow: hidden; overscroll-beh
 .guard-card { display: grid; justify-items: center; gap: 8px; margin: 12px auto; padding: 16px; max-width: 360px; border-radius: 16px; background: var(--panel-solid, #141924); border: 1px solid var(--line-strong, rgba(255, 255, 255, .18)); color: var(--text, #eef1f7); text-align: center; pointer-events: auto; position: relative; z-index: 5; }
 .guard-card > span { font-size: 30px; }
 .guard-card p { margin: 0; font: 600 14px/1.5 var(--body); }
+
+/* A text button (no box): links that act. Panels can still restyle it. */
+.link-btn { background: none; border: 0; padding: 4px 2px; color: var(--sky); font: 700 13px/1.3 var(--body); cursor: pointer; }
+.link-btn:hover, .link-btn:focus-visible { text-decoration: underline; outline: none; }

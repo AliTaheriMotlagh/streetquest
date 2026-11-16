@@ -306,6 +306,68 @@ export type DirDetail = {
 };
 
 /** The business on a Bilbooard / Irangaah / Netbarg page (its JSON-LD). */
+/**
+ * Every photo of the place on its page, not only the one its structured data names: the gallery's
+ * `<img src / data-src / srcset>`, `og:image`, and links to full-size images — kept when they come
+ * from the same media host as the listed photos (or the site itself), never logos, icons, avatars,
+ * placeholders or map tiles. Biggest srcset entry; each photo once; at most `max`.
+ */
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return "";
+  }
+};
+
+export function galleryFromHtml(html: string, siteHost: string, seed: string[] = [], max = 16): string[] {
+  const hosts = new Set<string>([siteHost.replace(/^www\./, "")]);
+  for (const u of seed) {
+    try {
+      hosts.add(new URL(u).hostname.replace(/^www\./, ""));
+    } catch {}
+  }
+  const found: string[] = [...seed];
+  const take = (raw: string) => {
+    const u = raw.trim().replace(/&amp;/g, "&");
+    if (!/^https:\/\//.test(u) || !/\.(jpe?g|png|webp|avif)(\?|#|$)/i.test(u)) return;
+    if (/logo|icon|avatar|placeholder|sprite|favicon|default[-_]?(image|img)|no[-_]?image|\/tiles?\/|emoji|badge|app[-_]?store|google[-_]?play/i.test(u)) return;
+    let h = "";
+    try {
+      h = new URL(u).hostname.replace(/^www\./, "");
+    } catch {
+      return;
+    }
+    if (![...hosts].some((x) => h === x || h.endsWith(`.${x}`) || x.endsWith(`.${h}`))) return;
+    found.push(u);
+  };
+  for (const m of html.matchAll(/<meta[^>]+property=["']og:image(?::url)?["'][^>]*content=["']([^"']+)["']/gi)) take(m[1]);
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    const set = /\ssrcset=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (set) {
+      // The widest candidate.
+      const best = set.split(",").map((x) => x.trim().split(/\s+/)).map(([u, w]) => ({ u, w: parseFloat(w) || 0 })).sort((a, b) => b.w - a.w)[0];
+      if (best?.u) take(best.u);
+    }
+    for (const a of ["data-src", "data-lazy-src", "data-original", "src"]) {
+      const v = new RegExp(`\\s${a}=["']([^"']+)["']`, "i").exec(tag)?.[1];
+      if (v) take(v);
+    }
+  }
+  for (const m of html.matchAll(/<a\b[^>]+href=["']([^"']+\.(?:jpe?g|png|webp)(?:\?[^"']*)?)["']/gi)) take(m[1]);
+  // The same picture in several sizes (…/thumb/x.jpg, …/x-300x200.jpg) counts once: by its file name.
+  const seen = new Set<string>(), out: string[] = [];
+  for (const u of found) {
+    const k = u.replace(/[?#].*$/, "").replace(/^.*\//, "").replace(/[-_]\d{2,4}x\d{2,4}(?=\.)/, "");
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(u);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 export function detailFromLd(html: string, base: { id: string; site: MapSite; url: string }): DirDetail | null {
   const all = ldObjects(html);
   const biz = all.find((o) => BUSINESS.test(String(o["@type"] ?? "")) && (o.geo || o.address || o.telephone)) ?? null;
@@ -325,7 +387,7 @@ export function detailFromLd(html: string, base: { id: string; site: MapSite; ur
     name: clean(biz.name),
     ...(okPos(lat, lng) ? { lat, lng } : {}),
     description: clean(biz.description).slice(0, 1200),
-    photos,
+    photos: galleryFromHtml(html, hostOf(base.url), photos),
     address: typeof addr === "string" ? clean(addr) : clean(addr?.streetAddress),
     week: weekFromLd(biz.openingHoursSpecification),
     phones: phonesFrom(base.site === "irangaah" ? "irangaah" : base.site === "netbarg" ? "netbarg" : "map", clean(biz.telephone)),

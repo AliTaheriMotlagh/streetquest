@@ -133,6 +133,19 @@ describe("a store's page (JSON-LD)", () => {
     assert.deepEqual(d.week?.[3], []);
     assert.equal(d.links[0].label, "Instagram");
   });
+  it("the whole gallery on the page, not only the listed photo; never logos, icons or other hosts' images", async () => {
+    const { galleryFromHtml } = await import("@/lib/stores/directory");
+    const html = `
+      <meta property="og:image" content="https://cdn.bilbooard.ir/biz/7/cover.jpg">
+      <img src="https://cdn.bilbooard.ir/static/logo.png">
+      <img data-src="https://cdn.bilbooard.ir/biz/7/g1.webp" src="data:image/gif;base64,x">
+      <img srcset="https://cdn.bilbooard.ir/biz/7/g2-300x200.jpg 300w, https://cdn.bilbooard.ir/biz/7/g2.jpg 1200w">
+      <img src="https://ads.example.com/banner.jpg">
+      <a href="https://cdn.bilbooard.ir/biz/7/g3.png">full size</a>
+      <img src="https://cdn.bilbooard.ir/biz/7/g1-150x150.webp">`;
+    const g = galleryFromHtml(html, "bilbooard.ir", ["https://cdn.bilbooard.ir/biz/7/cover.jpg"]);
+    assert.deepEqual(g, ["https://cdn.bilbooard.ir/biz/7/cover.jpg", "https://cdn.bilbooard.ir/biz/7/g1.webp", "https://cdn.bilbooard.ir/biz/7/g2.jpg", "https://cdn.bilbooard.ir/biz/7/g3.png"]);
+  });
   it("finds the business in a @graph, and says nothing about a page without one", () => {
     const html = ld({ "@graph": [{ "@type": "WebSite" }, { "@type": "FoodEstablishment", name: "بازار", geo: { latitude: 35.7, longitude: 51.4 } }] });
     assert.equal(detailFromLd(html, { id: "irangaah:x", site: "irangaah", url: "u" })?.name, "بازار");

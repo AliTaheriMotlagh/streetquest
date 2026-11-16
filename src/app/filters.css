@@ -138,3 +138,19 @@
 .fx-title { text-align: left; }
 [dir="rtl"] .fx-title { text-align: right; }
 .fx-dot { opacity: .6; font-size: .85em; }
+
+/* Recent searches: a clock, the words as chips, and a quiet "× Clear" that looks like a chip, not a button from 1999. */
+.fx-recent-ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--muted); background: rgba(214, 224, 255, .06); }
+.fx-clear { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px dashed rgba(214, 224, 255, .2); background: transparent; color: var(--muted); font: 700 12.5px/1 var(--body); cursor: pointer; white-space: nowrap; }
+.fx-clear:hover, .fx-clear:focus-visible { color: var(--text); border-color: rgba(214, 224, 255, .4); outline: none; }
+
+/* The sort pill and its menu (Filters.tsx SortMenu). The bar scrolls sideways, so the menu is fixed-width and drops below. */
+.fx-sortm { position: relative; flex: none; }
+.fx-sortm-btn { font-weight: 800; color: var(--text); border-color: var(--line-strong, rgba(214, 224, 255, .26)); }
+.fx-sortm-car { font-size: 10px; opacity: .7; }
+.fx-sortm-list { position: fixed; z-index: 3000; margin: 6px 0 0; padding: 6px; list-style: none; min-width: 210px; border-radius: 14px; background: var(--panel-solid, #151924); border: 1px solid var(--line-strong, rgba(214, 224, 255, .26)); box-shadow: 0 16px 40px rgba(0, 0, 0, .5); animation: fx-pop .14s ease-out; }
+@keyframes fx-pop { from { opacity: 0; transform: translateY(-4px); } }
+.fx-sortm-list button { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 700 13.5px/1.2 var(--body); text-align: start; cursor: pointer; }
+.fx-sortm-list button:hover, .fx-sortm-list button:focus-visible { background: rgba(255, 255, 255, .06); outline: none; }
+.fx-sortm-list button.on { color: var(--gold, #f0c05a); }
+.fx-chips.fx-recent { flex-wrap: wrap; overflow: visible; }

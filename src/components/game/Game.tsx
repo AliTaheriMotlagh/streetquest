@@ -112,7 +112,7 @@ const SYNC_EVERY_MS = 4000, SYNC_IDLE_MS = 120_000, SYNC_IDLE_EVERY_MS = 12_000;
 const MAP_LOOK_KEY = "sq_map_look";
 const MAP_LAYERS_KEY = "sq_map_layers";
 /** What the map shows (its filter button, or ⋯ → On the map): all on until the player says otherwise. */
-type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "transit" | "deals" | "divar" | "traffic" | "travel" | "siktir" | ReturnType<typeof siteLayer>;
+type MapLayer = "money" | "jobs" | "players" | "biz" | "places" | VendorKind | "torob" | "cinema" | "transit" | "deals" | "divar" | "traffic" | "travel" | "rail" | "routes" | "siktir" | ReturnType<typeof siteLayer>;
 const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }[] = [
   { key: "money", emoji: "💵", label: msg("Money"), group: msg("The game") },
   { key: "jobs", emoji: "📦", label: msg("Store jobs"), group: msg("The game") },
@@ -123,7 +123,9 @@ const MAP_LAYERS: { key: MapLayer; emoji: string; label: string; group: string }
   { key: "torob", emoji: "🏷️", label: msg("Walk-in stores (Torob)"), group: msg("Around you") },
   { key: "cinema", emoji: "🎬", label: msg("Cinemas (Cinematicket)"), group: msg("Around you") },
   { key: "transit", emoji: "🚇", label: msg("Metro & buses"), group: msg("Around you") },
-  { key: "travel", emoji: "✈️", label: msg("Airports, stations & planes"), group: msg("Around you") },
+  { key: "travel", emoji: "✈️", label: msg("Airports, stations & planes"), group: msg("Travel") },
+  { key: "rail", emoji: "🛤️", label: msg("Rail network"), group: msg("Travel") },
+  { key: "routes", emoji: "🧭", label: msg("My trip's routes"), group: msg("Travel") },
   { key: "deals", emoji: "🏷️", label: msg("Deals (Takhfifan)"), group: msg("Around you") },
   { key: "divar", emoji: "📢", label: msg("Divar ads"), group: msg("Around you") },
   { key: "traffic", emoji: "🚦", label: msg("Live traffic"), group: msg("Around you") },
@@ -1431,6 +1433,8 @@ export default function Game() {
           ads={layers.includes(siteLayer("sheypoor")) ? dirData.ads : undefined}
           traffic={layers.includes("traffic")}
           travel={layers.includes("travel")}
+          rail={layers.includes("rail")}
+          routes={layers.includes("routes")}
           siktir={siktirOn ? siktirSpots : undefined}
           onLongPress={picker ? undefined : setSiktirAt}
           vasatyab={vasa}

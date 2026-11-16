@@ -35,7 +35,7 @@ import { driverLook } from "./crew";
 import { Voices } from "./voices";
 import { barkById, shopCallFor, textOf, type Situation, type VoiceKind } from "@/lib/street/barks";
 import type { StoreKind } from "@/lib/storeKinds";
-import { getLocale } from "@/lib/i18n";
+import { getLocale, msg, t } from "@/lib/i18n";
 import { pickScene, SCENE_GAP_S, sceneLength, sceneScript } from "@/lib/street/scenes";
 import { GETAWAY_MIN_STARS, secsLeft, startThief, THIEF_NOTICE_M, THIEF_REFLEE_S, tickThief, type StreetJob, type StreetJobKind } from "@/lib/street/jobs";
 import type { Solid, SolidHit, TrafficCars, TrafficEvent } from "./traffic";
@@ -43,6 +43,9 @@ import { FLEET } from "@/lib/fleet";
 
 /** My car's mass (kg) from its collision radius (a hatchback ≈ 1 t; a truck-sized one more). */
 const myMass = (r: number, heavy: boolean) => massOf({ len: r * 3.2, wid: r * 1.4, hgt: heavy ? 2.4 : 1.45 });
+
+/** What an officer says to the onlookers once it's over. */
+const CLEAR_LINES = [msg("All right, it's over — move along, please."), msg("Nothing to see here, folks. Go on home."), msg("Clear the street, please. It's done.")];
 
 export type StreetHost = {
   scene: THREE.Scene;
@@ -365,9 +368,10 @@ export class StreetLife {
    * to, the shopkeeper): bubble now, voice from the on-device model or the phone (voices.talk).
    * Returns how long it shows (s).
    */
-  converse(text: string, v: VoiceKind, where: () => { x: number; y: number; z: number } | null, close = true) {
+  converse(text: string, v: VoiceKind, where: () => { x: number; y: number; z: number } | null, close = true, onSpeak?: (secs: number) => void) {
     const me = this.me;
-    return me ? this.voices.talk(text, v, where, me, close) : 0;
+    if (!me) return onSpeak?.(1.5), 0;
+    return this.voices.talk(text, v, where, me, close, onSpeak);
   }
 
   /** Wanted stars now (people won't talk to you at 2+). */
@@ -757,6 +761,12 @@ export class StreetLife {
   private onPolice(e: PoliceEvent, me: StreetMe) {
     if (e.kind === "talk") {
       this.voices.say(e.say, "cop", e.where, me);
+      return;
+    }
+    if (e.kind === "clear") {
+      // It's over: "move along", and the people round about come to have a look at the scene.
+      this.voices.talk(t(CLEAR_LINES[Math.floor(Math.random() * CLEAR_LINES.length)]), "cop", e.where, me, false);
+      this.h.crowd.gather(e.x, e.z, 35, 5, 14);
       return;
     }
     if (e.kind === "boom" || e.kind === "fire") {

@@ -42,6 +42,8 @@ import social from "./social";
 import adminobjects from "./adminobjects";
 import scenarios from "./scenarios";
 import travel from "./travel";
+import street from "./street";
+import trips from "./trips";
 
 const fa: Messages = {
   ...arena,
@@ -74,6 +76,8 @@ const fa: Messages = {
   ...social,
   ...scenarios,
   ...travel,
+  ...street,
+  ...trips,
 };
 
 export default fa;

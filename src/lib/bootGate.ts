@@ -21,13 +21,16 @@ export type BootIn = {
   real: number;
   /** The car stands on a street. */
   placed: boolean;
+  /** The street's people are loaded and their bodies built (undefined: not waited for). */
+  people?: boolean;
   elapsedMs: number;
 };
-export type BootStage = "map" | "streets" | "car" | "ready";
+export type BootStage = "map" | "streets" | "car" | "people" | "ready";
 export const BOOT_STAGES: Record<BootStage, string> = {
   map: msg("Fetching the real map…"),
   streets: msg("Building the streets around you…"),
   car: msg("Putting your car on the street…"),
+  people: msg("Waking up the street…"),
   ready: msg("Ready"),
 };
 export type BootOut = { pct: number; stage: BootStage; done: boolean; canSkip: boolean };
@@ -35,9 +38,10 @@ export type BootOut = { pct: number; stage: BootStage; done: boolean; canSkip: b
 export function bootProgress(b: BootIn): BootOut {
   const near = Math.max(1, b.near);
   // Drawing counts most; the real map over the stand-in a little more; standing on a street the rest.
-  const pct = Math.round(Math.min(1, (b.drawn / near) * 0.6 + (b.real / near) * 0.25 + (b.placed ? 0.15 : 0)) * 100);
+  const waitPeople = b.people !== undefined;
+  const pct = Math.round(Math.min(1, (b.drawn / near) * (waitPeople ? 0.55 : 0.6) + (b.real / near) * 0.25 + (b.placed ? 0.15 : 0) - (waitPeople && !b.people ? 0.05 : 0)) * 100);
   const allDrawn = b.near > 0 && b.drawn >= b.near;
-  const stage: BootStage = !b.drawn ? "map" : !allDrawn ? "streets" : !b.placed ? "car" : "ready";
+  const stage: BootStage = !b.drawn ? "map" : !allDrawn ? "streets" : !b.placed ? "car" : waitPeople && !b.people ? "people" : "ready";
   const done = (stage === "ready" && b.elapsedMs >= BOOT_MIN_MS) || b.elapsedMs >= GIVE_UP_MS;
   return { pct: done ? 100 : Math.min(99, pct), stage, done, canSkip: !done && b.elapsedMs >= PLAY_ANYWAY_MS };
 }

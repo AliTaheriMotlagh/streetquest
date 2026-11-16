@@ -26,3 +26,15 @@ describe("loading the 3D city", () => {
     assert.ok(at({ elapsedMs: GIVE_UP_MS }).done);
   });
 });
+
+it("the loading screen waits for the street's people when asked to (and still gives up in time)", async () => {
+  const { bootProgress, BOOT_STAGES, GIVE_UP_MS } = await import("@/lib/bootGate");
+  const all = { near: 4, drawn: 4, real: 4, placed: true, elapsedMs: 2000 };
+  const waiting = bootProgress({ ...all, people: false });
+  assert.equal(waiting.stage, "people");
+  assert.equal(waiting.done, false);
+  assert.ok(BOOT_STAGES.people);
+  assert.equal(bootProgress({ ...all, people: true }).done, true);
+  assert.equal(bootProgress(all).done, true, "not waited for when not asked");
+  assert.equal(bootProgress({ ...all, people: false, elapsedMs: GIVE_UP_MS }).done, true);
+});

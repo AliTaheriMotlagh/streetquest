@@ -39,6 +39,22 @@ export const STORE_LOOK: Record<StoreKind, StoreLook> = {
   general: { emoji: "🏪", awning: "#5f6b78", sign: ["#3d4b59", "#222b33"], glow: "#fff0cf", props: ["rug"], cat: "shop" },
 };
 
+/** What each kind is called, for the sign's second line ("Café · ★ 4.6"). */
+export const KIND_LABEL: Record<StoreKind, string> = {
+  restaurant: msg("Restaurant"),
+  fastfood: msg("Fast food"),
+  cafe: msg("Café"),
+  bakery: msg("Bakery"),
+  sweets: msg("Sweets & nuts"),
+  market: msg("Supermarket"),
+  produce: msg("Fruit & veg"),
+  butcher: msg("Butcher"),
+  pharmacy: msg("Pharmacy"),
+  fashion: msg("Clothes & shoes"),
+  tech: msg("Phones & electronics"),
+  general: msg("Store"),
+};
+
 /** Persian / English words in a store's own name that say what it is (they sharpen a vague class). */
 const NAME_HINTS: [RegExp, StoreKind][] = [
   [/داروخانه|pharm/i, "pharmacy"],

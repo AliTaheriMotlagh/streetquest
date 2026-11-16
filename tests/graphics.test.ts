@@ -308,3 +308,20 @@ describe("procedural surfaces", () => {
     assert.ok(Math.abs(avg(asph, 0) - 0.5) < 0.05 && Math.abs(avg(pave, 1) - 0.5) < 0.05);
   });
 });
+
+it("Adaptive.restore: a menu over the city can't leave it blurred", () => {
+  const a = new Adaptive({ maxDpr: 2, minDpr: 1 }, { features: true });
+  const before = { dpr: a.dpr, level: a.level };
+  // Slow frames while the menu was up: the controller stepped down.
+  let now = 0;
+  for (let w = 0; w < 10; w++) for (let i = 0; i < 60; i++) a.sample(40, (now += 40));
+  assert.ok(a.dpr < before.dpr || a.level > before.level);
+  const back = a.restore(before.dpr, before.level, now);
+  assert.equal(a.dpr, 2);
+  assert.equal(a.level, 0);
+  assert.ok(back.dpr === 2 || back.level === 0);
+  // Never sharper than allowed, never lower than it already is.
+  const b = new Adaptive({ maxDpr: 1.5, minDpr: 1 }, { features: false });
+  assert.deepEqual(b.restore(3, 0, 0), {});
+  assert.equal(b.dpr, 1.5);
+});

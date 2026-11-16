@@ -156,6 +156,10 @@ mood scales XP; loot funds research; territory funds the army.
   the map or the 3D city with Accept / Decline (Join / Not now). The cards follow what the server still has open
   (`syncAsks`), so answering in the Crew panel or Play together clears the card too, and a new friend shows on the
   map at once. Friends are on the map in every view (List · Map · Game); other players only in the game's.
+- **Metro trips, step by step** (`TransitCard.tsx MetroTrip`, `lib/transit/plan.ts timeline/rideStops`): from where
+  you are or any station to any station (⇅ swaps them): the total, leave/arrive clock times, a coloured bar of walk and
+  rides, then a timeline — walk in, the line and which way, the next trains, every stop it passes (tap to unfold),
+  where to change, where to get off, the walk out.
 - **Metro & buses** (`lib/transit/*`, `game/TransitCard.tsx`, `server/transit.ts`, `/api/transit`): a map layer in
   Tehran and Istanbul with every metro, tram and funicular station (always on the map, in the line's colour), the bus
   stops round you and, in Istanbul, the buses live. A station's card lists its lines and the next trains each way; a
@@ -195,11 +199,26 @@ mood scales XP; loot funds research; territory funds the army.
 - **A shopkeeper in every open shop** (`drive/shopkeepers.ts`, `storefronts.openNear`): one of the street's people
   stands in the doorway facing the street, idling — closed shops, mosques, schools and hospitals have none (≤10 within
   60 m, ≤4 on lite); their calls (already spoken from the door) are that person's voice.
+- **Shopkeepers that talk and react** (`drive/shopkeepers.ts`, lines `lib/street/shopTalk.ts`): walk past an open
+  store's door on foot and its keeper says the store's own name aloud (and its best dish once the menu's been read:
+  "Welcome to Nayeb! Try our koobideh today."). Shots, a blast or a crash nearby: the keepers shout ("Don't shoot!"),
+  turn and run inside, and the shutter comes down for a while (`storefronts.panic`). Now and then a passer-by by a store
+  remarks on it ("The koobideh at Nayeb is so good — 250,000 toman") — `storeGossip` in `lib/street/npcTalk.ts`.
+- **Store signs that read from across the street** (`drive/storefronts.ts drawSign`, packing `lib/signPack.ts`): a lit
+  box sign — dark metal frame, the trade's (or brand's) colour with a glossy top, the logo in a white badge, the name
+  outlined, a second line (banner, else what it is ★ rating), open/closed tag, deal sticker; sharper (768×160) on high
+  and ultra. Shops on one wall lay their boards side by side over their own doors (sliding apart, then shrinking to
+  1.8 m) and only then use a second band — neighbours no longer stack into a tower or lose their board.
 - **Talk to anyone on foot** (`drive/TalkPanel.tsx`; rules `lib/street/npcTalk.ts`): beside a passer-by, 💬 Talk (Y)
   opens a conversation — say hello, ask the way to a real café, restaurant, pharmacy or supermarket nearby (they point:
   "on your left, about 80 m"), ask what's good around here, chat, give money, insult them or ask them to follow you.
   Each person has a mood (friendly, busy, grumpy) that changes how they answer; insulting a grumpy one twice brings a
-  complaint to the police (a wanted star). They answer out loud and in a subtitle, and walk off when you leave.
+  complaint to the police (a wanted star). They answer out loud and in a subtitle that runs with the voice (word by
+  word from the moment it starts — `lib/street/subtitle.ts`, `voices.talk` onSpeak), and walk off when you leave.
+  Ask about **this store** and they name its real dish and price. Someone **following you** keeps the panel open and
+  takes orders: wait here, come on, go home. The 💬 button holds on to whoever it offered a little longer (no flicker
+  as they pass, 4.5 m), and standing still beside someone makes them stop and look at you; people step aside for each
+  other and for you instead of walking through (`Crowd.separate`).
 - **Walk into a store** (`drive/ShopScreen.tsx`; lines `lib/street/shopTalk.ts`): on foot at an open shop's door,
   🚪 Enter (B) fills the screen with the inside — the shopkeeper greets you and, when asked, recommends dishes, names
   today's discounts and hours from the real menu (Snappfood), and adds up a basket; the order is finished on Snappfood.
@@ -514,7 +533,10 @@ mood scales XP; loot funds research; territory funds the army.
 - **Hero moves** (`lib/hero.ts`, on foot outside matches: 🦸 in the side bar) — hold the hook (T, or 🪝) to fire a line
   up and ahead onto the first wall (or high over an open street) and swing under it, pumping with forward; let go to be
   flung on. Hit a wall in the air and hold forward to run up it and vault onto the roof; jump kicks off; jump while
-  falling to glide. Rooftops are floors; heroes don't take fall damage.
+  falling to glide. Rooftops are floors; heroes don't take fall damage. A zip that something blocks (the building next
+  door, a corner) lets go after 0.3 s instead of pinning you; wedged in the air between buildings for 1.4 s, you're
+  lifted onto the roof above. Plain feet step up kerbs and stairs (≤ 45 cm, eased), walk down them, stand on roofs and
+  footbridges and fall off real edges (`arena/foot.ts` floor).
 - **Street life — crashes, crime and the police** (outside matches; `src/components/drive/street.ts`, numbers in
   `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game (each country's own police: Iran's
   green-band Samands, Turkey's white-and-blue «POLİS 155» saloons with navy uniforms — `lib/street/policeLook.ts`):
@@ -600,6 +622,13 @@ mood scales XP; loot funds research; territory funds the army.
     is switched off (admins only). E2E: `e2e/api/scenarios.spec.ts`.
   - All of it is local to your phone, like the traffic: nobody else sees your wanted level, and it never touches a
     match (a match is a clean shooter: no traffic, no people, no police).
+- **After the chase** (`drive/police.ts`): when the police stand down, an officer tells the onlookers to move along,
+  passers-by gather round the scene to look (`Crowd.gather`), and the officers walk back to their car and get in before
+  it pulls away — no one vanishes. (A police car used to be moved twice a frame — drive and coast — fixed.)
+- **Your number plate and your horn** (`drive/plates.ts`, `lib/plate.ts`, `lib/street/carHorn.ts`): the car you drive
+  wears a real Iranian plate front and back (white, the blue I.R. IRAN strip, «۱۲ ب ۳۴۵ | ۶۷»; yellow with «ت» on a
+  taxi; one at the back of a bike), the same number each time; every vehicle has its own horn — a scooter beeps high,
+  a bus blares low.
 - **Small phones** — on screens ≤ 380 px wide or ≤ 680 px tall (iPhone SE, 360×640 Androids) the HUD is a size
   smaller everywhere (`src/app/compact.css`): map chips, toasts (two at most, long text clamped), pop-ups, the 3D top
   bar (buttons beside the minimap), the driving and on-foot pads and the crime HUD.
@@ -803,6 +832,19 @@ mood scales XP; loot funds research; territory funds the army.
   bus search answers any site, so the phone (on its own Iranian connection) asks it; Alibaba's flights/trains,
   MrBilit (only its own origins), Jabama and adsb.lol refuse other sites' pages, so the server asks them — through
   the Iran relay. A phone search that fails falls back to the server.
+- **Travel, the rest of the trip** — the planner opens on a destination home (*Where to next?*: from-city, search,
+  the map of every city, trips by mood — sea & islands, history, the green north, desert, pilgrimage — and destination
+  cards). Each city has **things to do** (`lib/travel/activities.ts`: diving off Qeshm, the Greek ship on Kish,
+  Persepolis…), added with a price a person and how many go — rough estimates you edit — and counted in the bill (🎟️).
+  Every stay has **its own page** (all its photos, amenities, the bill for your nights and rooms). Photos everywhere
+  (stays, store directories, products) are a swipeable **gallery** with dots, a counter and full screen
+  (`game/Gallery.tsx`); Bilbooard/Irangaah store pages give their whole gallery, not just the listed photo
+  (`galleryFromHtml`). Sorting is a pill at the start of every filter bar (`Filters.tsx SortMenu`). Every link out goes
+  through the leave dialog, which now shows what you're opening (photo, name, price — `data-leave-*`).
+- **Maps for travellers** — map filter → *Travel*: ✈️ airports, stations & planes, 🛤️ the **rail network**
+  (OpenRailwayMap overlay), 🧭 **my trip's routes** (the planner's legs drawn by how they're travelled: flights bow,
+  trains solid, buses dashed — `lib/travel/routes.ts`); the 🧳 *Travelling* preset turns them on with the metro, places
+  and store sites; the 🧳 *Traveller* map look is a soft street map with the railways over it.
 - **Always answers, asks rarely** — every other site's data the server reads is kept in `ExtCache` and answered
   from: fresh copies as they are; a stale one at once while a fresh copy loads in the background, for up to 12× its
   TTL (tickets 4 h, planes 2 min, store lists a week); older, the request waits — and still gets the old copy if the

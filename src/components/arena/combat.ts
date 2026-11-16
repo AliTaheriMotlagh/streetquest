@@ -1505,10 +1505,11 @@ export class Combat {
         return { x: b.x, z: b.z, hit: b.hit ?? a.hit };
       };
       const heroOn = this.hero && !this.inMatch && !this.down;
-      const speed = heroOn ? this.heroStep(me, moveIn, dt, collideBoth) : stepFoot(me, moveIn, dt, W.mobility, collideBoth);
+      // Plain feet step up kerbs and stairs, walk on roofs and footbridges, and fall off edges (foot.ts floor).
+      // (collision.floor counts tops up to half a metre over the height asked: this asks for "at or below y".)
+      const floorAt = (x: number, z: number, y: number) => H.collision.floor(x, z, y - 0.5);
+      const speed = heroOn ? this.heroStep(me, moveIn, dt, collideBoth) : stepFoot(me, moveIn, dt, W.mobility, collideBoth, floorAt);
       if (!heroOn && this.rope) this.rope.visible = false;
-      // Hero moves turned off up on a roof: down to the street (plain feet only know the street).
-      if (!heroOn && me.y > 0 && !me.air) (me.air = true), (me.vy = 0);
       inp.jump = false;
 
       // -- act (plant / defuse), held

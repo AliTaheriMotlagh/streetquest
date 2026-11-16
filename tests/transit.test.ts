@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildBuses, buildNetwork, cityAt, cleanLine, cleanStation, hoursOf, minutesOf, modeOf, orderStops, type RawNode, type RawRel } from "@/lib/transit/network";
-import { departures, localMinutes, nearStations, planTrip } from "@/lib/transit/plan";
+import { clockOf, departures, localMinutes, nearStations, planTrip, rideStops, timeline } from "@/lib/transit/plan";
 import { arrivalsAt, asmxJson, busesNear, busOf, etaMin, soapBody, soapJson } from "@/lib/transit/iett";
 import { csvRow, csvTable, departuresAt, gtfsMinutes, TimetableBuilder, weekBits } from "@/lib/transit/gtfs";
 
@@ -113,6 +113,21 @@ describe("transit: getting about", () => {
     assert.equal(trip.legs[0].kind, "walk");
     assert.equal(trip.legs[trip.legs.length - 1].kind, "walk");
     assert.ok(trip.minutes > 10 && trip.minutes < 40, String(trip.minutes));
+  });
+  it("a trip as a timetable: each step's clock times, the stations each ride passes", () => {
+    const from = { lat: LAT + 3 * STEP, lng: LNG + 0.001 }, to = { lat: LAT + STEP, lng: LNG + 2 * STEP + 0.001 };
+    const trip = planTrip(net, from, to)!;
+    const steps = timeline(trip, 23 * 60 + 50);
+    assert.equal(steps.length, trip.legs.length);
+    for (let i = 1; i < steps.length; i++) assert.equal(steps[i].start, steps[i - 1].end);
+    assert.equal(clockOf(steps[0].start), "23:50");
+    assert.equal(clockOf(24 * 60 + 5), "00:05", "past midnight wraps");
+    const ride = trip.legs.find((l) => l.kind === "ride")!;
+    if (ride.kind !== "ride") throw new Error();
+    const stops = rideStops(line(ride.line.split(":")[1]), ride.from, ride.to);
+    assert.equal(stops.length, ride.stops + 1);
+    assert.equal(stops[0], ride.from);
+    assert.equal(stops[stops.length - 1], ride.to);
   });
   it("no trip when walking is quicker, or nothing is in reach", () => {
     assert.equal(planTrip(net, { lat: LAT, lng: LNG }, { lat: LAT + 0.001, lng: LNG }), null);

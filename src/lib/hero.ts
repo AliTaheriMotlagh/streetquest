@@ -54,8 +54,17 @@ export type HeroState = {
   chain: number;
   /** The best chain this time in the air. */
   best: number;
+  /** Zipping: for how long (s), and the nearest it has got to the point (m) — a zip that stops getting closer ends. */
+  zipT?: number;
+  zipD?: number;
+  zipStall?: number;
+  /** Off the ground and not getting anywhere (wedged between buildings): for how long (s), from where. */
+  stuckT?: number;
+  stuckAt?: { x: number; y: number; z: number };
 };
-export type HeroEvent = { kind: "fire" | "release" | "wall" | "vault" | "kick" | "land" | "zip" | "perch" | "dive" | "perfect"; hard?: number } | null;
+export type HeroEvent = { kind: "fire" | "release" | "wall" | "vault" | "kick" | "land" | "zip" | "perch" | "dive" | "perfect" | "unstuck"; hard?: number } | null;
+/** Off the ground this long within half a metre of one spot = wedged: popped out (s). */
+export const STUCK_S = 1.4;
 
 export const HERO = {
   run: 7.5,
@@ -152,6 +161,9 @@ export function stepHero(b: HeroBody, s: HeroState, inp: HeroInput, dt: number, 
       // A tap: zip to where it caught.
       s.mode = "zip";
       s.zip = { x: a.x, y: a.y, z: a.z };
+      s.zipT = 0;
+      s.zipD = Infinity;
+      s.zipStall = 0;
       ev = { kind: "zip" };
     } else {
       s.mode = "air";
@@ -204,7 +216,19 @@ export function stepHero(b: HeroBody, s: HeroState, inp: HeroInput, dt: number, 
     // Pulled straight along the line; at the end, up over the edge onto the roof (or off the wall).
     const z = s.zip, dx = z.x - b.x, dy = z.y - (b.y + 1.2), dz = z.z - b.z, d = Math.hypot(dx, dy, dz);
     const step = HERO.zip * dt;
-    if (d <= Math.max(1.2, step)) {
+    // Something in the way (the next building, a corner): no closer for a moment, or far too long — the line lets go.
+    s.zipT = (s.zipT ?? 0) + dt;
+    if (d < (s.zipD ?? Infinity) - 0.05) (s.zipD = d), (s.zipStall = 0);
+    else s.zipStall = (s.zipStall ?? 0) + dt;
+    const blocked = s.zipStall > 0.3 || s.zipT > 3.5;
+    if (blocked && d > Math.max(1.2, step)) {
+      s.zip = null;
+      s.mode = "air";
+      b.vx *= 0.2;
+      b.vz *= 0.2;
+      b.vy = Math.max(0, b.vy) * 0.3;
+      ev = { kind: "release" };
+    } else if (d <= Math.max(1.2, step)) {
       // Just past the point, into the building: a roof within reach of the hands there?
       const h = Math.hypot(dx, dz) || 1, ux = dx / h, uz = dz / h;
       const roof = w.floor(z.x + ux * 0.8, z.z + uz * 0.8, z.y + 2.5);
@@ -269,6 +293,9 @@ export function stepHero(b: HeroBody, s: HeroState, inp: HeroInput, dt: number, 
         b.x -= s.wall.nx * 1.2;
         b.z -= s.wall.nz * 1.2;
         b.y = Math.max(ny, w.floor(b.x, b.z, ny + 2));
+        // Over the top but into the wall of a taller building next door: back out to the edge.
+        const inside = w.collide(b.x, b.z, HERO.r, b.y, HERO.tall);
+        if (inside.hit) (b.x = inside.x), (b.z = inside.z);
         b.vy = 2;
         s.mode = "air";
         s.wall = null;
@@ -302,6 +329,25 @@ export function stepHero(b: HeroBody, s: HeroState, inp: HeroInput, dt: number, 
     }
     if (move(b, b.x + b.vx * dt, b.y + b.vy * dt, b.z + b.vz * dt, w, s)) ev ??= { kind: "wall" };
   }
+
+  // Wedged (between two buildings, in a gap, against a corner): off the ground and going nowhere
+  // for a while — up onto the nearest roof above, else out to the open street under you.
+  if (s.mode !== "ground" && !s.anchor) {
+    const at = s.stuckAt;
+    if (!at || Math.hypot(b.x - at.x, b.y - at.y, b.z - at.z) > 0.5) (s.stuckAt = { x: b.x, y: b.y, z: b.z }), (s.stuckT = 0);
+    else if ((s.stuckT = (s.stuckT ?? 0) + dt) > STUCK_S) {
+      const roof = w.floor(b.x, b.z, b.y + 40);
+      if (roof > b.y + 0.4) b.y = roof;
+      else b.y = w.floor(b.x, b.z, b.y + 0.3);
+      b.vx = b.vy = b.vz = 0;
+      s.mode = "ground";
+      s.wall = null;
+      s.zip = null;
+      s.stuckT = 0;
+      s.stuckAt = undefined;
+      ev = { kind: "unstuck" };
+    }
+  } else (s.stuckT = 0), (s.stuckAt = undefined);
 
   // Too fast is never fun: a cap on the whole speed.
   const v = Math.hypot(b.vx, b.vy, b.vz);
