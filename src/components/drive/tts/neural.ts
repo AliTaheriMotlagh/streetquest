@@ -7,20 +7,21 @@
 // NEXT_PUBLIC_TTS_BASE) and answers null meanwhile; the game speaks another way until the voice is on the device.
 // Lines are cut into sentences, kept decoded (the newest SPOKEN_CACHE), and asked one at a time.
 import type { VoiceKind } from "@/lib/street/barks";
-import { chunks, NEURAL_PREF_KEY, NEURAL_WOMEN_KEY, neuralPlan, parseNeuralPref, SPOKEN_CACHE, type DeviceInfo, type NeuralPlan, type NeuralPref } from "@/lib/tts/neural";
+import { chunks, NEURAL_PREF_KEY, NEURAL_WOMEN_KEY, neuralPlan, parseNeuralPref, parseNeuralWomen, SPOKEN_CACHE, type DeviceInfo, type NeuralPlan, type NeuralPref } from "@/lib/tts/neural";
 import { bytesToGet, mirrors, VOICE_CACHE, VOICE_KEYS_PATH, voiceFor, type SherpaVoice } from "@/lib/tts/sherpa";
 import { audioOut } from "../../game/sfx";
 
 // ---------------------------------------------------------------- the choice and the device
 let pref: NeuralPref = "auto";
-let women = false;
+/** Women speak in their own voice by default (they'd be silent on most phones otherwise); Settings can turn it off. */
+let women = true;
 let lite = false;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((f) => f());
 if (typeof window !== "undefined")
   try {
     pref = parseNeuralPref(localStorage.getItem(NEURAL_PREF_KEY));
-    women = localStorage.getItem(NEURAL_WOMEN_KEY) === "1";
+    women = parseNeuralWomen(localStorage.getItem(NEURAL_WOMEN_KEY));
   } catch {}
 
 export const neuralPref = () => pref;
@@ -142,6 +143,21 @@ function ask(v: SherpaVoice, sp: Speaker, text: string) {
     sp.waiting.set(id, ok);
     sp.w.postMessage({ t: "say", id, text });
   });
+}
+
+/**
+ * This speaker's voice is on the device (and its worker started): a line asked now is spoken, maybe after a moment
+ * while the model loads, so it's worth waiting for. Starts nothing.
+ */
+export function neuralReady(kind: VoiceKind): boolean {
+  if (!neuralNow().use) return false;
+  const v = voiceOf(kind);
+  return !!v && speakers.get(v.id)?.state === "ready";
+}
+
+/** A conversation is about to start with a man or a woman: get their voice loading (or downloading) now. */
+export function warmFor(kind: VoiceKind) {
+  warmNeural(kind === "cop" ? "m" : kind);
 }
 
 // ---------------------------------------------------------------- speaking

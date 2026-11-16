@@ -348,8 +348,9 @@ export class StreetLife {
 
   private shopRecent: string[] = [];
   /**
-   * A shopkeeper at an open store's door calls you in: their trade's line, spoken (when there's
-   * a voice for it), with the store's own name in the bubble — «Sangak Nayeb» Fresh bread, hot bread!
+   * A shopkeeper at an open store's door calls you in: their trade's line with the store's own name —
+   * «Sangak Nayeb» Fresh bread, hot bread! — in the bubble, and aloud where a voice can say the name
+   * (the on-device Persian voice, the phone's own); else the recorded line without it.
    */
   shopCall(kind: StoreKind, name: string, at: { x: number; z: number }) {
     const me = this.me;
@@ -358,7 +359,8 @@ export class StreetLife {
     if (!b) return false;
     const v = b.voices.includes("f") && Math.random() < 0.3 ? "f" : "m";
     const loc = getLocale(), words = textOf(b, v), line = loc === "fa" ? words.fa : loc === "tr" ? words.tr : words.en;
-    const ok = this.voices.line(b.id, v, () => ({ x: at.x, y: 1.75, z: at.z }), me, performance.now(), name ? `«${name}» ${line}` : line);
+    // The store's name is called out too ("Sangak Nayeb! Fresh bread, hot bread!") where a voice can say any words.
+    const ok = this.voices.line(b.id, v, () => ({ x: at.x, y: 1.75, z: at.z }), me, performance.now(), name ? `«${name}» ${line}` : line, name ? `${name}! ${line}` : undefined);
     if (ok) this.shopRecent = [b.id, ...this.shopRecent].slice(0, 4);
     return ok;
   }

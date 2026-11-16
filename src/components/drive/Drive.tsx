@@ -102,7 +102,7 @@ import { mixHex, mixRecord, phaseOf, skyFor, sunVector, WEATHER_LOOK, type TimeP
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
 import { storeKind, type StoreKind } from "@/lib/storeKinds";
-import { callsPolice, GOOD_STORES, reply as npcReply, storeGossip, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
+import { callsPolice, GOOD_STORES, LOOKOUT_SHOUTS, reply as npcReply, storeGossip, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
 import { doorGreeting, panicLine } from "@/lib/street/shopTalk";
 import { hornFor } from "@/lib/street/carHorn";
 import { plateFor } from "@/lib/plate";
@@ -1767,6 +1767,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     /** Who the 💬 button offers now (kept while they're still near: no flicker). */
     let talkOffer: number | null = null;
     const insults = new Map<number, number>(), turns = new Map<number, number>();
+    /** Followers told to keep watch: until when, and when each last shouted (ms). */
+    const lookouts = new Map<number, { until: number; shout: number }>();
     /** A store round me as a place someone could point to: how far, and which way from where I'm looking (+ = right). */
     const spotOf = (sp: StoreSpot): NpcSpot => {
       camera.getWorldDirection(camFwd);
@@ -1799,7 +1801,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const wayTo = way ? nearestOf(WAY_STORES[way], 1500)[0] : undefined;
       const good = act === "recommend" ? nearestOf(GOOD_STORES, 600).slice(0, 6) : [];
       const best = good.length ? good[(id + turn) % good.length].sp : null;
-      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, fmt: formatDistance, tr: (k) => t(k) }, turn);
+      // "Wait at the shop": the open store nearest (its door); "wait by my car": the car you left, if it's near.
+      const shopAt = act === "shop" ? storefronts.nearestOpen(st.x, st.z, 60, () => false) : null;
+      const carAt = act === "car" && parked && Math.hypot(parked.x - st.x, parked.z - st.z) < 250 ? parked : null;
+      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, shop: shopAt?.name ? { name: shopAt.name, dist: Math.round(Math.hypot(shopAt.x - st.x, shopAt.z - st.z)), rel: 0 } : null, car: carAt ? { dist: Math.round(Math.hypot(carAt.x - st.x, carAt.z - st.z)) } : null, fmt: formatDistance, tr: (k) => t(k) }, turn);
       if (act === "insult") insults.set(id, (insults.get(id) ?? 0) + 1);
       const text = t(r.key, r.params);
       // The subtitle runs with the voice: the panel is told when it starts and how long it is.
@@ -1814,9 +1819,23 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (callsPolice(r)) street.complaint(p.x, p.z);
         convo = null;
       } else if (r.react === "wait") crowd.dropFollow(id, r.secs, st.x, st.z);
+      else if (r.react === "watch") {
+        crowd.dropFollow(id, r.secs, st.x, st.z);
+        lookouts.set(id, { until: performance.now() + r.secs * 1000, shout: 0 });
+      } else if (r.react === "goto") {
+        // A spot a step off the door (or the car's side), toward you: they stand there, still your crew.
+        const to = shopAt ?? carAt;
+        if (to) {
+          const dx = st.x - to.x, dz = st.z - to.z, d = Math.hypot(dx, dz) || 1, off = shopAt ? 1.4 : 2;
+          crowd.goTo(id, to.x + (dx / d) * off, to.z + (dz / d) * off, r.secs);
+        }
+        convo = null;
+      }
       // Following: the conversation stays open — they're right behind you and take orders.
-      else if (r.react === "follow") crowd.follow(id, lead, r.secs);
-      return { text, react: r.react, mood: r.mood, speak, following: r.react === "follow" || (r.react !== "leave" && r.react !== "flee" && r.react !== "wait" && following) };
+      else if (r.react === "follow") (crowd.follow(id, lead, r.secs), crowd.setPace(id, r.pace ?? "normal"));
+      if (r.react !== "watch") lookouts.delete(id);
+      const stays = r.react === "follow" || (r.react !== "leave" && r.react !== "flee" && r.react !== "wait" && r.react !== "watch" && r.react !== "goto" && following);
+      return { text, react: r.react, mood: r.mood, speak, following: stays };
     };
 
     api3d.current = {
@@ -1914,6 +1933,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let lastShopCall = 0;
     /** When a passer-by may next remark on a store. */
     let gossipAt = performance.now() + 15_000;
+    let lookoutCheck = 0;
     const shopCalled = new Map<string, number>();
     let lastSlow = 0, lastHud = 0, lastGauge = 0, hudSig = "", lastMini = 0, fps = 60, lastWorld: World | null = null;
     let phase: Phase = "day";
@@ -2480,6 +2500,20 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           street.converse(t(g.key, g.params), "m", () => ({ x: sc.x, y: 1.75, z: sc.z }), false);
           shopCalled.set(sc.id, now);
         } else if (sc && street.shopCall(sc.kind, sc.name, sc)) shopCalled.set(sc.id, now);
+      }
+      // A follower keeping watch shouts when a patrol car comes near them or you (once in a while, not every frame).
+      if (lookouts.size && now - lookoutCheck > 700) {
+        lookoutCheck = now;
+        for (const [id, lk] of lookouts) {
+          const p = crowd.person(id);
+          if (!p || now > lk.until) {
+            lookouts.delete(id);
+            continue;
+          }
+          if (now - lk.shout < 15_000 || Math.min(street.police.nearest(p.x, p.z), street.police.nearest(st.x, st.z)) > 55) continue;
+          lk.shout = now;
+          street.converse(t(LOOKOUT_SHOUTS[Math.floor(Math.random() * LOOKOUT_SHOUTS.length)]), p.woman ? "f" : "m", () => crowd.head(id), false);
+        }
       }
       // Now and then a passer-by by a store says something about it (on foot, nothing else going on).
       if (onFoot && !matchOn && convo == null && now > gossipAt) {

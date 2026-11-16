@@ -8,6 +8,7 @@
 //  - Uniform and accent (helmet band, arm bands) tinted per player / team.
 //  - Far away the animation updates less often; past the fog it isn't drawn at all.
 import * as THREE from "three";
+import { slopePose } from "@/lib/walkSlope";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { WEAPON_KEYS, type WeaponKey } from "@/lib/arena/weapons";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -120,6 +121,8 @@ export type Pose = {
    * turns about the hips, eased, on top of whatever clip plays.
    */
   stunt?: { up: { x: number; y: number; z: number } | null; spin: number; kind: "flip" | "roll" } | null;
+  /** The ground's slope where it faces (rad, + = uphill ahead; lib/walkSlope.ts): the gait follows it. */
+  slope?: number;
 };
 
 type Clip = "Idle" | "Walk" | "Run" | "Back" | "StrafeL" | "StrafeR" | "Crouch" | "CrouchWalk" | "Jump" | "Death";
@@ -331,15 +334,19 @@ export class Avatar {
     right.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
     b.parent.getWorldQuaternion(qp);
     axisL.copy(right).applyQuaternion(qp.invert());
-    qa.setFromAxisAngle(axisL, p.pitch * 0.9);
+    // (On a slope the body is tipped into it about the hips — lean — and the spine takes most of that back.)
+    qa.setFromAxisAngle(axisL, p.pitch * 0.9 - (p.stunt ? 0 : slopePose(p.slope ?? 0).spine));
     b.quaternion.premultiply(qa);
   }
 
   /** Hero moves: turn the hips toward `stunt.up` (in the body's own frame), then spin a flip or a roll. */
   private lean(dt: number, p: Pose) {
     const st = p.stunt;
-    if (!st && this.hips.quaternion.w > 0.9999) return;
-    if (st?.up) {
+    // On a slope (and not mid-stunt): tipped into it about the hips, so the legs swing in the ground's plane.
+    const sl = !st && !p.dead && !p.air && p.slope ? slopePose(p.slope) : null;
+    if (!st && !sl && this.hips.quaternion.w > 0.9999) return void (this.hips.position.z = 0);
+    if (sl) qa.setFromAxisAngle(X, -sl.tilt);
+    else if (st?.up) {
       // The world direction into the body's frame (undo the yaw).
       const c = Math.cos(-p.yaw), s = Math.sin(-p.yaw);
       const u = st.up, l = Math.hypot(u.x, u.y, u.z) || 1;
@@ -354,6 +361,8 @@ export class Avatar {
       this.hips.quaternion.multiply(qp);
       this.hips.position.y = st.kind === "roll" ? HIP_Y * (1 - 0.45 * Math.sin(Math.PI * k)) : HIP_Y;
     } else this.hips.position.y = HIP_Y;
+    // (Tipped forward about the hips the feet swing back: the hips forward by as much keeps them under the body.)
+    this.hips.position.z = sl ? -HIP_Y * sl.shift : 0;
   }
 
   dispose() {

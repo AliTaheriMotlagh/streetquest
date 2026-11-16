@@ -8,8 +8,10 @@
 export type NeuralPref = "auto" | "on" | "off";
 export const NEURAL_PREFS: NeuralPref[] = ["auto", "on", "off"];
 export const NEURAL_PREF_KEY = "sq_neural_voice";
-/** The women's voice is a second download (Haaniye, ~81 MB): only when the player asks for it too. */
+/** The women's voice is a second download (Haaniye, ~81 MB): on with the men's unless the player turns it off. */
 export const NEURAL_WOMEN_KEY = "sq_neural_women";
+/** Women's own voice: on unless turned off ("0") — off, every woman in the street would be silent on most phones. */
+export const parseNeuralWomen = (v: string | null | undefined) => v !== "0";
 export const parseNeuralPref = (v: string | null | undefined): NeuralPref => (v === "on" || v === "off" ? v : "auto");
 
 /** What the browser says about this device (navigator.deviceMemory, hardwareConcurrency, connection). */

@@ -26,3 +26,16 @@ export function plateFor(seed: number, taxi = false): Plate {
 
 /** As it reads, left to right on the plate (Persian digits). */
 export const plateText = (p: Plate) => `${faDigits(p.two)} ${p.letter} ${faDigits(p.three)} | ${faDigits(p.region)}`;
+
+/**
+ * The traffic's plates (drive/plates.ts plateAtlas): this many real numbers on one sheet, PLATE_COLS
+ * across, the last PLATE_TAXI of them a taxi's yellow; cell i shows plateFor(plateSeed(i)).
+ */
+export const PLATE_COLS = 4, PLATE_ROWS = 16, PLATE_CELLS = PLATE_COLS * PLATE_ROWS, PLATE_TAXI = 8;
+export const plateSeed = (cell: number) => 7919 * (cell + 1);
+
+/** The sheet's cell a car's plate shows (the same car, the same number): a taxi's from the yellow ones. */
+export function plateCell(seed: number, taxi: boolean): number {
+  const n = Math.abs(seed | 0);
+  return taxi ? PLATE_CELLS - PLATE_TAXI + (n % PLATE_TAXI) : n % (PLATE_CELLS - PLATE_TAXI);
+}

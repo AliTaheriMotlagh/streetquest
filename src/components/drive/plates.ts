@@ -3,8 +3,9 @@
 // way the real ones look — white (yellow on a taxi), the blue strip with the flag and «I.R. IRAN»,
 // «۱۲ ب ۳۴۵», the «ایران» box with the region — and stuck on the front and back bumpers. The model
 // can change under them (a real car model arriving, a new vehicle): `fit` finds the bumpers again.
+// The traffic's plates come from one shared sheet of numbers (plateAtlas).
 import * as THREE from "three";
-import { faDigits, type Plate } from "@/lib/plate";
+import { faDigits, PLATE_CELLS, PLATE_COLS, PLATE_ROWS, PLATE_TAXI, plateFor, plateSeed, type Plate } from "@/lib/plate";
 
 const FONT = `Vazirmatn, "Vazir", Tahoma, system-ui, sans-serif`;
 /** A real plate is 52 × 11.5 cm. */
@@ -12,14 +13,8 @@ const W = 0.52, H = 0.115;
 
 const cache = new Map<string, THREE.CanvasTexture>();
 
-function texture(p: Plate) {
-  const key = `${p.two}${p.letter}${p.three}${p.region}${p.taxi ? "t" : ""}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const c = document.createElement("canvas");
-  c.width = 520;
-  c.height = 115;
-  const g = c.getContext("2d")!;
+/** One plate drawn into `g` on a 520 × 115 grid (the caller scales and moves it). */
+function drawPlate(g: CanvasRenderingContext2D, p: Plate) {
   // The plate, its black rim.
   g.fillStyle = p.taxi ? "#f2c230" : "#f6f6f1";
   g.beginPath();
@@ -58,22 +53,67 @@ function texture(p: Plate) {
   g.fillText("ایران", 454, 26);
   g.font = `800 54px ${FONT}`;
   g.fillText(faDigits(p.region), 454, 74);
+}
+
+/** Draw again once the Persian font is in (it may still be loading the first time). */
+function whenFont(redraw: () => void) {
+  if (typeof document !== "undefined" && document.fonts?.load) void document.fonts.load(`800 40px Vazirmatn`, "۱۲۳ب").then(redraw, () => {});
+}
+
+function texture(p: Plate) {
+  const key = `${p.two}${p.letter}${p.three}${p.region}${p.taxi ? "t" : ""}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = 520;
+  c.height = 115;
+  const g = c.getContext("2d")!;
+  drawPlate(g, p);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   cache.set(key, tex);
-  // The Persian font may still be loading: draw it again once it's in.
-  if (typeof document !== "undefined" && document.fonts?.load)
-    void document.fonts.load(`800 40px Vazirmatn`, "۱۲۳ب").then(() => {
-      if (cache.get(key) !== tex) return;
-      cache.delete(key);
-      const again = texture(p);
-      tex.image = again.image;
-      tex.needsUpdate = true;
-      cache.set(key, tex);
-    }, () => {});
+  whenFont(() => {
+    g.clearRect(0, 0, c.width, c.height);
+    drawPlate(g, p);
+    tex.needsUpdate = true;
+  });
   return tex;
 }
+
+/**
+ * The traffic's plates (fleet3d.ts draws them on every car near you): PLATE_CELLS real numbers on one
+ * canvas (lib/plate.ts PLATE_CELLS) — so every plate in the street is one instanced mesh picking its
+ * cell (plateCell).
+ */
+const CELL_W = 256, CELL_H = 56;
+let atlas: THREE.CanvasTexture | null = null;
+export function plateAtlas() {
+  if (atlas) return atlas;
+  const c = document.createElement("canvas");
+  c.width = CELL_W * PLATE_COLS;
+  c.height = CELL_H * PLATE_ROWS;
+  const g = c.getContext("2d");
+  const draw = () => {
+    // (No real 2D canvas — a headless test's stand-in — draws nothing: the plates stay blank.)
+    if (typeof g?.clearRect !== "function") return;
+    g.clearRect(0, 0, c.width, c.height);
+    for (let i = 0; i < PLATE_CELLS; i++) {
+      g.save();
+      g.translate((i % PLATE_COLS) * CELL_W, Math.floor(i / PLATE_COLS) * CELL_H);
+      g.scale(CELL_W / 520, CELL_H / 115);
+      drawPlate(g, plateFor(plateSeed(i), i >= PLATE_CELLS - PLATE_TAXI));
+      g.restore();
+    }
+  };
+  draw();
+  atlas = new THREE.CanvasTexture(c);
+  atlas.colorSpace = THREE.SRGBColorSpace;
+  atlas.anisotropy = 4;
+  whenFont(() => (draw(), (atlas!.needsUpdate = true)));
+  return atlas;
+}
+
 
 type Fits = { group: THREE.Group; body: THREE.Group; wheels: THREE.Object3D[] };
 

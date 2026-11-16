@@ -5,10 +5,14 @@
 // about this store, a chat, some money, an insult, "follow me", goodbye. Their answer is spoken
 // (voices.talk: the on-device Persian voice, else the phone's) over their head, and written here as a
 // subtitle that runs with the voice — word by word from the moment it starts, while their face pulses.
-// Someone following you keeps the panel: "wait here", "come on", "go home" (a little crew of your own).
+// Someone following you keeps the panel and takes orders (a little crew of your own): wait here, come on,
+// stay close, keep back, wait at the shop, wait by my car, keep watch (they shout when the police come), go home.
 // It closes when they walk off, run, or you leave. Styles: app/drive-talk.css.
+// On a phone the Persian voice is a download the player chooses (lib/tts/neural.ts): until then people are
+// silent there (phones have no Persian voice of their own), so the panel offers it in one tap.
 import { useEffect, useRef, useState } from "react";
-import { msg, t } from "@/lib/i18n";
+import { fmtNum, getLocale, msg, t } from "@/lib/i18n";
+import { downloadMb, neuralNow, onNeuralChange, progress, setNeuralPref, warmFor } from "./tts/neural";
 import { WAY_KINDS, type Mood, type React as Reaction, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
 import { revealWords } from "@/lib/street/subtitle";
 
@@ -41,6 +45,11 @@ const ACTS: Act[] = [
 const ORDERS: Act[] = [
   { act: "wait", emoji: "✋", label: msg("Wait here"), said: msg("Wait here for me.") },
   { act: "come", emoji: "🚶", label: msg("Come on"), said: msg("Come on, let's go!") },
+  { act: "close", emoji: "🏃", label: msg("Stay close"), said: msg("Stay close to me.") },
+  { act: "far", emoji: "↔️", label: msg("Keep back"), said: msg("Keep your distance, don't look like you're with me.") },
+  { act: "shop", emoji: "🛍️", label: msg("Wait at the shop"), said: msg("Wait for me at the shop.") },
+  { act: "car", emoji: "🚗", label: msg("Wait by my car"), said: msg("Go and wait by my car.") },
+  { act: "watch", emoji: "👀", label: msg("Keep watch"), said: msg("Keep watch here — shout if the police come.") },
   { act: "store", emoji: "🏪", label: msg("This store?"), said: msg("What's this place like?") },
   { act: "chat", emoji: "💬", label: msg("Chat"), said: msg("How's it going?") },
   { act: "release", emoji: "🏠", label: msg("Go home"), said: msg("Thanks, you can go now.") },
@@ -59,6 +68,8 @@ export function TalkPanel({ woman, following: following0, onAsk, onClose }: { wo
   const log = useRef<HTMLDivElement>(null);
   useEffect(() => void log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" }), [lines, said?.k]);
   useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  // Their voice starts loading as you walk up, so the first answer isn't late.
+  useEffect(() => warmFor(woman ? "f" : "m"), [woman]);
   // Escape leaves.
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -143,6 +154,7 @@ export function TalkPanel({ woman, following: following0, onAsk, onClose }: { wo
           })}
         </div>
       )}
+      <VoiceOffer woman={woman} />
       {ways ? (
         <div className="talk-acts" role="group" aria-label={t("Ask the way")}>
           {WAY_KINDS.map((w) => (
@@ -164,5 +176,40 @@ export function TalkPanel({ woman, following: following0, onAsk, onClose }: { wo
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * "🔊 Hear them speak" where the Persian voice isn't on: a phone (the player's choice), data saver, a slow
+ * connection. One tap turns it on and fetches it; the bar shows how far it is.
+ */
+function VoiceOffer({ woman }: { woman: boolean }) {
+  const [, redraw] = useState(0);
+  useEffect(() => onNeuralChange(() => redraw((n) => n + 1)), []);
+  if (getLocale() !== "fa") return null;
+  const plan = neuralNow();
+  const got = [...progress.values()];
+  if (plan.use) {
+    if (!got.length || got.every((x) => x >= 1)) return null;
+    return (
+      <p className="talk-voice" role="status">
+        🔊 {t("Downloading the voice… {n}%", { n: fmtNum(Math.round(Math.min(...got) * 100)) })}
+      </p>
+    );
+  }
+  if (plan.why !== "phone-ask" && plan.why !== "data-saver" && plan.why !== "slow-net") return null;
+  return (
+    <button
+      type="button"
+      className="talk-voice"
+      onClick={() => {
+        setNeuralPref("on");
+        // (The one you're talking to first.)
+        warmFor(woman ? "f" : "m");
+        warmFor(woman ? "m" : "f");
+      }}
+    >
+      🔊 {t("Hear them speak — get the Persian voice ({mb} MB)", { mb: fmtNum(downloadMb()) })}
+    </button>
   );
 }

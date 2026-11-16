@@ -27,6 +27,11 @@
 .talk-face { font-size: 26px; line-height: 1; }
 .talk-head b { flex: 1; font: 800 14.5px/1.2 var(--body); }
 .talk-mood { font-size: 20px; }
+.talk-voice {
+  margin: 0; min-height: 40px; padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255, 214, 102, .35);
+  background: rgba(255, 214, 102, .1); color: #ffe6a3; font: 700 13px/1.35 var(--body); text-align: start; cursor: pointer;
+}
+p.talk-voice { cursor: default; border-color: rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .06); color: #dfe6f0; }
 .talk-x { width: 40px; height: 40px; border: 0; border-radius: 12px; background: rgba(255, 255, 255, .08); color: #fff; font-size: 16px; cursor: pointer; }
 .talk-log { display: grid; gap: 8px; max-height: 180px; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
 .talk-log p { margin: 0; display: grid; gap: 4px; }
@@ -114,5 +119,7 @@
 .talk-dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes talkDot { 50% { opacity: 1; transform: translateY(-3px); } }
 .talk-acts.orders button { border-color: color-mix(in srgb, var(--sky, #63b3f2) 45%, transparent); }
+.talk-acts.orders { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.talk-acts.orders button { font-size: 12.5px; }
 @media (min-width: 560px) { .talk-acts.orders { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .talk.speaking .talk-wave, .talk-dots i { animation: none; } .talk-rest { opacity: .5; } }

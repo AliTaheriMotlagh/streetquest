@@ -7,7 +7,7 @@
 // first when NEXT_PUBLIC_TTS_BASE is set (folders wasm-<id>/ as on Hugging Face).
 //  - men and the police: Ganji (the clearest and fastest Persian Piper voice; the police through the megaphone
 //    filter, so no second download); phones get its int8 build (37 MB instead of 81, ~1.7× slower to speak);
-//  - women: Haaniye (Mimic 3, a woman's own voice — never a man's pitched up), only when the player asks for it too.
+//  - women: Haaniye (Mimic 3, a woman's own voice — never a man's pitched up), with the men's unless the player turns it off.
 import type { VoiceKind } from "../street/barks";
 
 export const REPO = "datasets/jiangzhuo9357/sherpa-onnx-tts-models";

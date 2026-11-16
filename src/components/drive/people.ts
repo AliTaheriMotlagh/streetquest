@@ -557,6 +557,22 @@ export class Crowd {
   private paused = new Map<number, number>();
   /** Stopped off the pavement (were following): they walk back to one when the stop ends. */
   private offPath = new Set<number>();
+  /**
+   * How a follower keeps up (lib/street/npcTalk.ts Pace): right behind at a run, well back — or "arrive":
+   * walking to a spot (a shop's door, your car) to wait there. Normal when not set.
+   */
+  private paces = new Map<number, "close" | "far" | "arrive">();
+  setPace(id: number, p: "close" | "far" | "arrive" | "normal") {
+    if (p === "normal") this.paces.delete(id);
+    else this.paces.set(id, p);
+  }
+  /** Person `id` (following you) walks to (x, z) and waits there `secs` s — still yours: "come on" brings them back. */
+  goTo(id: number, x: number, z: number, secs: number) {
+    const at = { x, z };
+    if (!this.follow(id, () => at, secs)) return false;
+    this.paces.set(id, "arrive");
+    return true;
+  }
 
   /** Person `id` stops following (told to wait here, or to go home): waits `secs` s, then back to a pavement. */
   dropFollow(id: number, secs: number, x: number, z: number) {
@@ -564,6 +580,7 @@ export class Crowd {
     if (!w || w.dead) return false;
     this.leaders.delete(id);
     this.paused.delete(id);
+    this.paces.delete(id);
     if (w.mode === "follow" || w.mode === "back") this.offPath.add(id);
     if (w.mode === "walk" || w.mode === "stop" || w.mode === "follow" || w.mode === "back") ((w.mode = "stop"), (w.t = secs), (w.fromX = x), (w.fromZ = z));
     return true;
@@ -601,6 +618,7 @@ export class Crowd {
     const w = this.walkers.find((v) => v.id === id);
     if (!w || w.dead || (w.mode !== "walk" && w.mode !== "stop" && w.mode !== "follow" && w.mode !== "back")) return false;
     this.leaders.set(id, lead);
+    this.paces.delete(id);
     this.paused.delete(id);
     this.offPath.add(id);
     w.mode = "follow";
@@ -677,6 +695,7 @@ export class Crowd {
     w.t -= dt;
     if (!lead || w.t <= 0) {
       this.leaders.delete(w.id);
+      this.paces.delete(w.id);
       this.offPath.delete(w.id);
       this.onlookers.delete(w.id);
       w.to = this.pavementNear(w.x, w.z, 25);
@@ -685,12 +704,14 @@ export class Crowd {
       return;
     }
     const dx = lead.x - w.x, dz = lead.z - w.z, d = Math.hypot(dx, dz);
-    if (d < 2) {
+    // How far behind they keep, and when they break into a run to catch up.
+    const pace = this.paces.get(w.id), gap = pace === "close" ? 1.3 : pace === "far" ? 7 : pace === "arrive" ? 0.7 : 2;
+    if (d < gap) {
       (w.vx = 0), (w.vz = 0);
-      this.face(w, Math.atan2(-dx, -dz), dt, 6);
+      if (pace !== "arrive") this.face(w, Math.atan2(-dx, -dz), dt, 6);
       return;
     }
-    const sp = Math.min(RUN_MS * 1.3, d > 6 ? RUN_MS : w.speed * 1.2);
+    const sp = Math.min(RUN_MS * 1.3, d > gap + (pace === "close" ? 1.2 : 4) ? RUN_MS : w.speed * 1.2);
     let vx = (dx / d) * sp, vz = (dz / d) * sp;
     if (this.walled(w.x + (vx / sp) * 0.6, w.z + (vz / sp) * 0.6))
       for (const a of [0.8, -0.8, 1.6, -1.6]) {

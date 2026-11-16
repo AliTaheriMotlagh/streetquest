@@ -454,7 +454,7 @@ export class TrafficCars {
         this.slide(c, dt);
         const burnt = c.health.exploded;
         // Still at the wheel while it slides (a parked car knocked loose has nobody in it).
-        this.fleet.put(c.kind, c.x, c.z, c.yaw, burnt ? BURNT : c.color, !burnt && c.health.hp > 0 && blink, c.spin, 0, { pose: c.loose, health: c.health, driver: !c.parked && c.health.hp > 0 ? c.id : undefined });
+        this.fleet.put(c.kind, c.x, c.z, c.yaw, burnt ? BURNT : c.color, !burnt && c.health.hp > 0 && blink, c.spin, 0, { pose: c.loose, health: c.health, driver: !c.parked && c.health.hp > 0 ? c.id : undefined, plate: c.id });
         const f = box(c.x, c.z, def.wid / 2 + 0.05, def.len / 2, c.yaw, def.hgt + c.loose.y);
         f.ref = c;
         out.push(f);
@@ -466,14 +466,15 @@ export class TrafficCars {
         continue;
       }
       const braking = c.v > c.want + 0.3 || c.v < 0.5;
-      this.fleet.put(c.kind, c.x, c.z, c.yaw, c.color, c.upset > 0 ? blink : braking, c.spin, c.lean, { health: c.health, driver: c.id });
+      this.fleet.put(c.kind, c.x, c.z, c.yaw, c.color, c.upset > 0 ? blink : braking, c.spin, c.lean, { health: c.health, driver: c.id, plate: c.id });
       const f = box(c.x, c.z, def.wid / 2 + 0.05, def.len / 2, c.yaw, def.hgt);
       f.ref = c;
       out.push(f);
       this.boxes.push({ f, ref: c });
     }
     for (const p of this.nearParked(px, pz)) {
-      this.fleet.put(p.key, p.x, p.z, p.yaw, p.color, false, 0);
+      // (Its plate from where it's parked: the same car keeps its number.)
+      this.fleet.put(p.key, p.x, p.z, p.yaw, p.color, false, 0, 0, { plate: Math.round(p.x * 7.3) ^ Math.round(p.z * 13.7) });
       out.push(p.box);
       this.boxes.push({ f: p.box, ref: p });
     }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chunks, neuralPlan, parseNeuralPref, type DeviceInfo } from "../src/lib/tts/neural";
+import { chunks, neuralPlan, parseNeuralPref, parseNeuralWomen, type DeviceInfo } from "../src/lib/tts/neural";
 import { bytesToGet, mirrors, SHERPA_VOICES, voiceBytes, voiceFor } from "../src/lib/tts/sherpa";
 import { haaniyeIds, HAANIYE, piperIds } from "../src/lib/tts/ids";
 
@@ -63,4 +63,10 @@ test("model ids: Piper pads every phoneme; haaniye ends words with #", () => {
   assert.deepEqual(piperIds(["a", "?", "b"], map), [1, 0, 5, 0, 6, 0, 2]);
   const id = (p: string) => HAANIYE.indexOf(p);
   assert.deepEqual(haaniyeIds(["s", "a", " ", "m"]), [id("^"), id("_"), id("s"), id("_"), id("a"), id("_"), id("#"), id("_"), id("m"), id("_"), id("#"), id("_"), id("$")]);
+});
+
+test("women speak in their own voice unless the player turned it off (else every woman in the street is mute)", () => {
+  assert.equal(parseNeuralWomen(null), true);
+  assert.equal(parseNeuralWomen("1"), true);
+  assert.equal(parseNeuralWomen("0"), false);
 });

@@ -17,6 +17,8 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { FLEET, type FleetKey } from "@/lib/fleet";
 import { tumbleOrigin } from "@/lib/street/carPhysics";
 import { crumple, type CarHealth } from "@/lib/street/damage";
+import { PLATE_COLS, PLATE_ROWS, plateCell } from "@/lib/plate";
+import { plateAtlas } from "./plates";
 import { carModel } from "./carModels";
 import { Crew, withCabin, type Seat } from "./crew";
 import { copyMarks, dentable, marksChanged, marksFor, releaseDentable, setMarks, withDents, type Marks } from "./fleetDamage";
@@ -45,7 +47,11 @@ export type FleetParts = {
   cargo: THREE.Vector3;
   /** The light version, for cars further off (real models only). */
   far?: FleetParts;
+  /** Where its number plates are (drawn models; a real one's are found from its size — plateSpots). */
+  plates?: PlateSpot[];
 };
+/** A number plate's centre on the model (its face `out` m proud of it), which way it faces, its lean. */
+export type PlateSpot = { y: number; z: number; back: boolean; tilt: number; taxi: boolean; out: number };
 
 const TRIM = "#1c1d20", CHROME = "#cfd3d8", GRILLE = "#0e0f11", PLATE = "#f4f4f0", PLATE_BLUE = "#1f4fa8", RUBBER = "#151517", RIM = "#aeb2b8";
 const BEVEL = 0.05;
@@ -57,6 +63,7 @@ type Slot = "paint" | "kit" | "glass" | "head" | "tail";
 
 class Build {
   private parts: Record<Slot, THREE.BufferGeometry[]> = { paint: [], kit: [], glass: [], head: [], tail: [] };
+  readonly plates: PlateSpot[] = [];
   constructor(readonly len: number) {}
   add(slot: Slot, g: THREE.BufferGeometry, color = "#ffffff") {
     this.parts[slot].push(tint(g, color));
@@ -151,6 +158,8 @@ function lamps(b: Build, slot: "head" | "tail", poly: P[], list: Lamp[], back: b
 /** An Iranian number plate: white, the blue "I.R. IRAN" strip on its left as you face it (yellow on a taxi). */
 function plate(b: Build, y: number, u: number, back: boolean, tilt = 0, yellow = false) {
   b.box("kit", 0.52, 0.115, 0.02, 0, y, u, yellow ? "#f2c230" : PLATE, tilt);
+  // (Its number: a decal from the shared sheet over this blank, on the cars near you — FleetInstances.)
+  b.plates.push({ y, z: u - b.len / 2, back, tilt, taxi: yellow, out: 0.0125 });
   b.box("kit", 0.07, 0.115, 0.024, back ? -0.225 : 0.225, y, u + (back ? 0.003 : -0.003), PLATE_BLUE, tilt);
 }
 
@@ -187,7 +196,28 @@ function finish(key: FleetKey, b: Build, w: Wheels, lamp: P, cargo: [number, num
     wheels: w.axles.flatMap((a, i) => (bike ? [0] : [-w.track, w.track]).map((x) => ({ x, y: w.r, z: a - len / 2, steers: i === 0 }))),
     lamp: { y: lamp[1], z: lamp[0] - len / 2 },
     cargo: new THREE.Vector3(cargo[0], cargo[1], cargo[2] - len / 2),
+    plates: b.plates,
   };
+}
+
+const spotsOf = new WeakMap<FleetParts, PlateSpot[]>();
+/**
+ * A model's plates: where the drawn one put them, else (a real model) on its nose and tail at bumper height —
+ * a bike's on the back only.
+ */
+export function plateSpots(parts: FleetParts): PlateSpot[] {
+  if (parts.plates) return parts.plates;
+  let s = spotsOf.get(parts);
+  if (s) return s;
+  if (!parts.paint.boundingBox) parts.paint.computeBoundingBox();
+  const bb = parts.paint.boundingBox!, h = bb.max.y - bb.min.y, y = bb.min.y + Math.max(0.3, Math.min(0.62, h * 0.3));
+  const bike = !!FLEET[parts.key]?.bike, taxi = parts.key === "taxi";
+  s = [
+    ...(bike ? [] : [{ y, z: bb.min.z, back: false, tilt: 0, taxi, out: 0.006 }]),
+    { y: bike ? bb.min.y + Math.min(0.75, h * 0.55) : y, z: bb.max.z, back: true, tilt: 0, taxi, out: 0.006 },
+  ];
+  spotsOf.set(parts, s);
+  return s;
 }
 
 // ---------------------------------------------------------------- saloons and hatchbacks
@@ -636,6 +666,29 @@ export function blobTexture() {
   return (blobTex = new THREE.CanvasTexture(c));
 }
 
+/**
+ * The plates' material: the shared sheet of numbers (plates.ts plateAtlas), each instance showing its own
+ * cell (the aCell attribute shifts the map's uv). Lifted off the blank plate beneath it.
+ */
+function plateMaterial(real: boolean) {
+  const mat = real
+    ? new THREE.MeshStandardMaterial({ map: plateAtlas(), roughness: 0.38, metalness: 0.1 })
+    : new THREE.MeshLambertMaterial({ map: plateAtlas() });
+  mat.polygonOffset = true;
+  mat.polygonOffsetFactor = -2;
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float aCell;")
+      .replace(
+        "#include <uv_vertex>",
+        `#include <uv_vertex>
+        vMapUv = (vMapUv + vec2(mod(aCell, ${PLATE_COLS}.0), ${PLATE_ROWS - 1}.0 - floor(aCell / ${PLATE_COLS}.0))) / vec2(${PLATE_COLS}.0, ${PLATE_ROWS}.0);`,
+      );
+  };
+  mat.customProgramCacheKey = () => "plate-atlas";
+  return mat;
+}
+
 // ---------------------------------------------------------------- traffic, instanced
 const Y = new THREE.Vector3(0, 1, 0), ZA = new THREE.Vector3(0, 0, 1), XA = new THREE.Vector3(1, 0, 0);
 // Lit brake lamps are brighter than white (instance colours are floats), so the HDR pipeline blooms them.
@@ -645,6 +698,9 @@ const BLOB = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 const TURN = new THREE.Matrix4().makeRotationY(Math.PI);
 /** Cars nearer than this get a real model's full detail. */
 const NEAR_M = 30;
+/** Number plates are readable this near (m); fewer on the lite tier. At most PLATE_MAX of them at once. */
+const PLATE_M = 32, PLATE_M_LITE = 16, PLATE_MAX = 96;
+const PLATE_GEO = new THREE.PlaneGeometry(0.52, 0.115);
 /** A model nobody has drawn for this many frames gives its GPU memory back. */
 const IDLE_FRAMES = 600;
 /** `marks`: dents and bullet holes, one set per copy, shared by every part of the body (fleetDamage.ts); `seat`: where its driver sits (null: no cabin — a bike). */
@@ -662,6 +718,8 @@ export type PutOpts = {
   driver?: number;
   /** The driver's shirt, when it's a uniform. */
   uniform?: THREE.ColorRepresentation;
+  /** Its number (any whole number: the same one, the same plate) — no plates without it. */
+  plate?: number;
 };
 
 /**
@@ -683,6 +741,11 @@ export class FleetInstances {
   private mats: { paint: THREE.Material; kit: THREE.Material; glass: THREE.Material; head: THREE.Material; tail: THREE.Material; wheel: THREE.Material; blob: THREE.Material };
   private blob: THREE.InstancedMesh;
   private blobN = 0;
+  /** Every plate's number near you: one quad each, picking its cell of the shared sheet (aCell). */
+  private plates: THREE.InstancedMesh;
+  private plateCells: THREE.InstancedBufferAttribute;
+  private plateN = 0;
+  private pm = new THREE.Matrix4();
   private m = new THREE.Matrix4();
   private w = new THREE.Matrix4();
   private s = new THREE.Matrix4();
@@ -722,6 +785,11 @@ export class FleetInstances {
     };
     // Traffic and the parked cars near you.
     this.blob = this.inst(BLOB, this.mats.blob, 160);
+    const plateGeo = PLATE_GEO.clone();
+    this.plateCells = new THREE.InstancedBufferAttribute(new Float32Array(PLATE_MAX), 1);
+    this.plateCells.setUsage(THREE.DynamicDrawUsage);
+    plateGeo.setAttribute("aCell", this.plateCells);
+    this.plates = this.inst(plateGeo, plateMaterial(real), PLATE_MAX);
     this.crew = new Crew(scene, lite ? 24 : 48);
   }
 
@@ -787,6 +855,7 @@ export class FleetInstances {
   begin(x = this.eye.x, z = this.eye.z) {
     for (const p of this.pools.values()) p.n = 0;
     this.blobN = 0;
+    this.plateN = 0;
     this.crew.begin();
     this.eye.x = x;
     this.eye.z = z;
@@ -841,6 +910,17 @@ export class FleetInstances {
       this.w.setPosition(W[j].x, W[j].y, W[j].z);
       p.wheel.setMatrixAt(i * W.length + j, this.s.multiplyMatrices(this.m, this.w));
     }
+    if (o.plate != null && !health?.exploded && (x - this.eye.x) ** 2 + (z - this.eye.z) ** 2 < (this.lite ? PLATE_M_LITE : PLATE_M) ** 2)
+      for (const sp of plateSpots(p.parts)) {
+        if (this.plateN >= PLATE_MAX) break;
+        // Faces out of the nose or the tail, leaning with the bodywork, just proud of the blank plate.
+        this.q.setFromAxisAngle(XA, sp.tilt);
+        if (!sp.back) this.q.multiply(this.qr.setFromAxisAngle(Y, Math.PI));
+        this.p.set(0, 0, 1).applyQuaternion(this.q).multiplyScalar(sp.out).add(this.sc.set(0, sp.y, sp.z));
+        this.pm.compose(this.p, this.q, this.one);
+        this.plates.setMatrixAt(this.plateN, this.s.multiplyMatrices(this.m, this.pm));
+        this.plateCells.setX(this.plateN++, plateCell(o.plate, sp.taxi));
+      }
     if (this.blobN < this.blob.instanceMatrix.count) {
       this.q.setFromAxisAngle(Y, yaw);
       this.blob.setMatrixAt(this.blobN++, this.s.compose(this.p.set(x, 0.06, z), this.q, this.sc.set(p.parts.wid + 0.9, 1, p.parts.len + 0.9)));
@@ -868,6 +948,9 @@ export class FleetInstances {
     }
     this.blob.count = this.blobN;
     this.blob.instanceMatrix.needsUpdate = true;
+    this.plates.count = this.plateN;
+    this.plates.instanceMatrix.needsUpdate = true;
+    this.plateCells.needsUpdate = true;
     this.crew.end();
   }
 
@@ -888,6 +971,10 @@ export class FleetInstances {
     this.pools.clear();
     this.scene.remove(this.blob);
     this.blob.dispose();
+    this.scene.remove(this.plates);
+    this.plates.geometry.dispose();
+    (this.plates.material as THREE.Material).dispose();
+    this.plates.dispose();
     for (const [kit, c] of this.cabins) if (c.kit !== kit) c.kit.dispose();
     this.cabins.clear();
     this.crew.dispose();

@@ -216,7 +216,10 @@ mood scales XP; loot funds research; territory funds the army.
   complaint to the police (a wanted star). They answer out loud and in a subtitle that runs with the voice (word by
   word from the moment it starts — `lib/street/subtitle.ts`, `voices.talk` onSpeak), and walk off when you leave.
   Ask about **this store** and they name its real dish and price. Someone **following you** keeps the panel open and
-  takes orders: wait here, come on, go home. The 💬 button holds on to whoever it offered a little longer (no flicker
+  takes orders: wait here, come on, **stay close** (right behind you at a run), **keep back** (~7 m behind),
+  **wait at the shop** (walks to the nearest open store's door and waits), **wait by my car**, **keep watch** (waits
+  and shouts «پلیس!» when a patrol car comes within ~55 m of them or you), go home (`npcTalk.ts` `Pace`,
+  `Crowd.setPace` / `goTo`). The 💬 button holds on to whoever it offered a little longer (no flicker
   as they pass, 4.5 m), and standing still beside someone makes them stop and look at you; people step aside for each
   other and for you instead of walking through (`Crowd.separate`).
 - **Walk into a store** (`drive/ShopScreen.tsx`; lines `lib/street/shopTalk.ts`): on foot at an open shop's door,
@@ -226,12 +229,15 @@ mood scales XP; loot funds research; territory funds the army.
   shopkeeper and passers-by say that isn't a recorded line is spoken by sherpa-onnx (WebAssembly) running Persian
   Piper/Mimic 3 models in a Web Worker — the same pinned builds as the khabar news site. Men and the police: Ganji
   (12 MB runtime + 81 MB model on a computer, the 37 MB int8 build on a phone; the police through the megaphone
-  filter); women: Haaniye, a woman's own voice, as a second download only when asked (Settings → Voices). Files come
+  filter); women: Haaniye, a woman's own voice, a second download that comes with the men's unless turned off
+  (Settings → Voices) — without it every woman in the street was mute on most phones. Files come
   from Hugging Face, else hf-mirror.com where it's blocked (or `NEXT_PUBLIC_TTS_BASE` first), in 8 MB parts that
   resume after a dropped connection, each checked against its SHA-256, kept in Cache Storage; the runtime is shared by
   every voice. Never on the render thread, never blocking a line: until the voice is on the device the phone's own
   voice speaks. Settings → Voices: Auto (only on a strong computer that isn't saving data), On or Off; phones ask
-  first. Without a neural voice the game uses the phone's voice, and where the phone has no Persian voice either
+  first — and the talk panel itself offers it on a phone in one tap («🔊 Hear them speak», with download progress).
+  Once a voice is on the device a conversation's answer is waited for (up to 15 s: the model's first load on a phone
+  is slow) instead of dropped, it's never crowded out of the mix by traffic, and a new answer cuts the last one off. Without a neural voice the game uses the phone's voice, and where the phone has no Persian voice either
   (most), the speaker says one recorded
   greeting in their own voice per conversation (`talkClip`, `lib/street/voiceLang.ts`) while the bubble carries the
   words. The recorded lines are fetched as bytes when the city opens and decoded on first use, so a city opened
@@ -536,7 +542,9 @@ mood scales XP; loot funds research; territory funds the army.
   falling to glide. Rooftops are floors; heroes don't take fall damage. A zip that something blocks (the building next
   door, a corner) lets go after 0.3 s instead of pinning you; wedged in the air between buildings for 1.4 s, you're
   lifted onto the roof above. Plain feet step up kerbs and stairs (≤ 45 cm, eased), walk down them, stand on roofs and
-  footbridges and fall off real edges (`arena/foot.ts` floor).
+  footbridges and fall off real edges (`arena/foot.ts` floor). On a slope (a ramp, a sloping street, stairs) the walk
+  follows the ground: the body tips into it about the hips so the legs swing in the ground's plane, and the spine takes
+  most of it back — leaning into a climb, sitting back a little going down (`lib/walkSlope.ts`, eased, ≤ 20°).
 - **Street life — crashes, crime and the police** (outside matches; `src/components/drive/street.ts`, numbers in
   `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game (each country's own police: Iran's
   green-band Samands, Turkey's white-and-blue «POLİS 155» saloons with navy uniforms — `lib/street/policeLook.ts`):
@@ -627,7 +635,10 @@ mood scales XP; loot funds research; territory funds the army.
   it pulls away — no one vanishes. (A police car used to be moved twice a frame — drive and coast — fixed.)
 - **Your number plate and your horn** (`drive/plates.ts`, `lib/plate.ts`, `lib/street/carHorn.ts`): the car you drive
   wears a real Iranian plate front and back (white, the blue I.R. IRAN strip, «۱۲ ب ۳۴۵ | ۶۷»; yellow with «ت» on a
-  taxi; one at the back of a bike), the same number each time; every vehicle has its own horn — a scooter beeps high,
+  taxi; one at the back of a bike), the same number each time. Traffic and parked cars near you (≤ 32 m, 16 m on
+  lite) wear real numbers too: one sheet of 64 plates (`plateAtlas`, `lib/plate.ts` `plateCell`, 8 of them taxi
+  yellow) drawn as a single instanced mesh over each model's blank plate (`fleet3d.ts` `plateSpots`; a real model's
+  are found from its size). Every vehicle has its own horn — a scooter beeps high,
   a bus blares low.
 - **Small phones** — on screens ≤ 380 px wide or ≤ 680 px tall (iPhone SE, 360×640 Androids) the HUD is a size
   smaller everywhere (`src/app/compact.css`): map chips, toasts (two at most, long text clamped), pop-ups, the 3D top
@@ -666,7 +677,8 @@ mood scales XP; loot funds research; territory funds the army.
   ids; `/api/radio` looks up today's https stream addresses (`lib/radio.ts`, `server/radio.ts`, `drive/radio.ts`). It plays in the
   car only and pauses when you get out; its own slider in the mixer (iOS ignores a media element's volume, so there
   the slider only mutes it at 0). **Shopkeepers** call you in as you walk or cruise past an open store — their trade's
-  line spoken («نون تازه، نون داغ!», «هندونه به شرط چاقو!») with the store's real name in the bubble (`barks.ts`
+  line with the store's real name, in the bubble and called out loud («نونوایی نایب! نون تازه، نون داغ!») where a voice
+  can say any words (the on-device Persian voice, the phone's own) — else the recorded line without the name (`barks.ts`
   `shopCall` lines, `SHOP_CALLS`, `street.ts` `shopCall`, `storefronts.ts` `nearestOpen`); signs carry a readable
   «باز» / «بسته» tag and a shut store's sign dims; carpet and general stores hang a Persian rug by the door, cafés
   and restaurants keep a brass samovar on the sill. Stores only the store sites know of (Snappfood, Torob, the directories) get a sign on a pole at the nearest

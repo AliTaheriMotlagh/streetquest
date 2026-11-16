@@ -123,14 +123,15 @@ export type Placed = {
  * lasting `lifeS`. Null when it isn't worth playing: muted, audio asleep, out of earshot,
  * or every voice is busy with something louder.
  */
-export function place(at: Vec | null | undefined, kind: SoundKind, lifeS: number): Placed | null {
+export function place(at: Vec | null | undefined, kind: SoundKind, lifeS: number, must = false): Placed | null {
   const o = audioOut(busOfKind(kind));
   // Still waking up: skip this one rather than have it fire late with the next ones.
   if (!o || isMuted() || o.ctx.state !== "running") return null;
   const { ctx } = o;
   const h = at ? hear(ears, at) : null;
   const gain = h ? gainAt(h.dist, kind) : 1;
-  if (!admit(live, maxVoices(), gain)) return null;
+  // (`must`: the person you're talking to — never crowded out by the traffic and footsteps round you.)
+  if (!must && !admit(live, maxVoices(), gain)) return null;
   const wait = h ? delayS(h.dist) : 0;
   live++;
   if (!at) {

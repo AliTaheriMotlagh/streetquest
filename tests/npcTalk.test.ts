@@ -78,3 +78,18 @@ test("street gossip about a store is the same line for the same seed and names t
   assert.equal(storeGossip("Nayeb", 1).params.place, "Nayeb");
   assert.match(storeGossip("Nayeb", 0, "Kabab", "100").key, /\{item\}/);
 });
+
+test("a follower takes more orders: stay close, keep back, wait at the shop or by the car, keep watch", () => {
+  const f = (p: Partial<TalkCtx>) => reply(ctx({ following: true, ...p }));
+  assert.deepEqual([f({ act: "close" }).react, f({ act: "close" }).pace], ["follow", "close"]);
+  assert.deepEqual([f({ act: "far" }).react, f({ act: "far" }).pace], ["follow", "far"]);
+  const shop = f({ act: "shop", shop: { name: "Nayeb", dist: 20, rel: 0 } });
+  assert.equal(shop.react, "goto");
+  assert.equal(shop.params?.place, "Nayeb");
+  assert.equal(f({ act: "shop", shop: null }).react, "stay");
+  assert.equal(f({ act: "car", car: { dist: 30 } }).react, "goto");
+  assert.equal(f({ act: "car", car: null }).react, "stay");
+  assert.equal(f({ act: "watch" }).react, "watch");
+  // Someone who isn't following you takes no orders.
+  for (const act of ["close", "far", "shop", "car", "watch"] as const) assert.equal(reply(ctx({ act, shop: { name: "x", dist: 1, rel: 0 }, car: { dist: 1 } })).react, "stay", act);
+});

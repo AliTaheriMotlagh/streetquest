@@ -11,6 +11,9 @@
 //  - Players not in Persian hear English: the recordings in /sounds/voice/en/ (lib/street/
 //    voiceLang.ts), else the device's English voice (a woman's for a woman, where its name
 //    tells), else only the bubble. (/api/tts speaks Persian only.)
+//  - Conversations (talk) and shopkeepers calling out their store's name (line with `spoken`) say any words: the
+//    on-device Persian voice (tts/neural.ts — on by default on computers, one tap in the talk panel on a phone; women in
+//    their own voice), else the phone's own voice, else a recorded line. A new answer cuts the last one off.
 //  - Nobody talks over anybody: one line at a time near you, and each situation has its
 //    quiet spell (QUIET_S) so a crowd running from a blast isn't a chorus.
 import * as THREE from "three";
@@ -20,7 +23,7 @@ import { lineFile, manifestPaths, pickDeviceVoice, talkClip, voiceLangOf, type V
 import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
-import { speakNeural, warmNeural } from "./tts/neural";
+import { neuralReady, speakNeural, warmNeural } from "./tts/neural";
 
 /** The country the player is in (Drive sets it as they move): people in Turkey speak Turkish (voiceLangOf). */
 let voiceCountry: string | null = null;
@@ -140,7 +143,7 @@ export class Voices {
     // The recordings of the player's language, in the background (they're small).
     const lang = voiceLangOf(getLocale(), voiceCountry);
     // The on-device Persian voice, brought onto the device now (where it should run) so the first conversation is spoken.
-    if (lang === "fa") warmNeural("m");
+    if (lang === "fa") (warmNeural("m"), warmNeural("f"));
     void files().then((s) => s.forEach((f) => (lang === "fa" ? !/^(en|tr)\//.test(f) : f.startsWith(`${lang}/`)) && void fetchLine(f)));
   }
 
@@ -168,22 +171,36 @@ export class Voices {
    * A street scene's line (lib/street/scenes.ts): this exact line, now — the scene keeps
    * its own timing, so nobody's quiet spell holds it back. False if it's too far to matter.
    */
-  line(id: string, v: VoiceKind, where: Where, me: { x: number; z: number; yaw?: number }, now = performance.now(), caption?: string) {
+  line(id: string, v: VoiceKind, where: Where, me: { x: number; z: number; yaw?: number }, now = performance.now(), caption?: string, spoken?: string) {
     const b = barkById(id), at = where();
     if (!b || !at) return false;
     const d = Math.hypot(at.x - me.x, at.z - me.z);
     if (d > SEE_M) return false;
     this.busyUntil = Math.max(this.busyUntil, now + sayFor(b, v) * 600);
-    if (d < HEAR_M) this.speak(b, v, d, at, me);
+    if (d < HEAR_M) {
+      // Words of its own (a shopkeeper calling out the store's name): said as they are where a voice here can say
+      // any words — else the recorded line, which can't.
+      if (spoken && !isMuted()) this.sayWords(b, v, spoken, d, at, me);
+      else this.speak(b, v, d, at, me);
+    }
     this.bubble(b, v, where, caption);
     return true;
   }
 
+  /** `text` in place of the bark `b`: the on-device voice (Persian) or the phone's own; else `b` as recorded. */
+  private sayWords(b: Bark, v: VoiceKind, text: string, d: number, at: { x: number; z: number }, me: { x: number; z: number; yaw?: number }) {
+    const lang = voiceLangOf(getLocale(), voiceCountry), vol = gainAt(d, "voice");
+    const recorded = () => this.speak(b, v, d, at, me);
+    if (lang === "fa" && neuralReady(v)) return this.neuralOr(text, v, at, lang, 5000, recorded);
+    if (lang !== "fa" && this.deviceText(text, v, vol, lang)) return;
+    recorded();
+  }
+
   /** Into the game's audio: quieter further off, panned to where it is; the police through a megaphone. */
-  private play(buf: AudioBuffer, at: { x: number; z: number }, megaphone: boolean) {
+  private play(buf: AudioBuffer, at: { x: number; z: number }, megaphone: boolean, must = false): AudioBufferSourceNode | null {
     // Heard from where they stand (game/spatial.ts): how loud, from which side, how muffled.
-    const o = place({ x: at.x, y: 1.6, z: at.z }, "voice", buf.duration + 0.2);
-    if (!o) return;
+    const o = place({ x: at.x, y: 1.6, z: at.z }, "voice", buf.duration + 0.2, must);
+    if (!o) return null;
     const src = o.ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = 0.97 + Math.random() * 0.06;
@@ -206,6 +223,7 @@ export class Voices {
     head.connect(g).connect(o.dest);
     src.onended = () => g.disconnect();
     src.start(o.t);
+    return src;
   }
 
   private speak(b: Bark, v: VoiceKind, d: number, at: { x: number; z: number }, me: { x: number; z: number; yaw?: number }) {
@@ -250,7 +268,7 @@ export class Voices {
    * The on-device neural voice (tts/neural.ts — Persian, where this device runs it) if it's ready
    * within `wait` ms; else `fallback` (the phone's own voice) straight away.
    */
-  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void, onPlay?: (secs: number) => void) {
+  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void, onPlay?: (secs: number) => void, must = false, live: () => boolean = () => true) {
     const n = lang === "fa" ? speakNeural(text, v) : null;
     if (!n) return fallback();
     const asked = performance.now();
@@ -260,7 +278,13 @@ export class Voices {
       if (done) return;
       clearTimeout(late);
       done = true;
-      if (buf && performance.now() - asked < wait) (this.play(buf, at, v === "cop"), onPlay?.(buf.duration));
+      // (A conversation's answer that's no longer the latest isn't said: the next one has been asked.)
+      if (!live()) return;
+      if (buf && performance.now() - asked < wait) {
+        const src = this.play(buf, at, v === "cop", must);
+        if (must) this.answer = src;
+        onPlay?.(buf.duration);
+      }
       else fallback();
     });
   }
@@ -289,7 +313,12 @@ export class Voices {
     if (isMuted() || d > HEAR_M) return said(secs), secs;
     const lang = voiceLangOf(getLocale(), voiceCountry);
     const vol = close ? 1 : gainAt(d, "voice");
-    this.neuralOr(text, v, at, lang, close ? 6000 : 2500, () => {
+    // A new answer in a conversation: the last one stops (no two answers over each other).
+    const turn = close ? ++this.turn : this.turn;
+    if (close) this.stopAnswer();
+    // (Asked only when the voice is on the device: then it's worth waiting for — the model's first load on a phone
+    // takes several seconds, and a conversation's answer dropped for being late left the person mute.)
+    this.neuralOr(text, v, at, lang, close ? 15000 : 6000, () => {
       if (this.deviceText(text, v, vol, lang, () => said(secs))) return;
       said(secs);
       // No voice for these words on this device (most phones have no Persian voice, and the neural
@@ -299,10 +328,19 @@ export class Voices {
       if (talkClip({ neural: false, device: false, now, lastClip: this.clipAt })) {
         const b = pickBark("greet", v === "cop" ? "m" : v, Math.random, this.recent);
         const rec = b && decoded(lineFile(b, v === "cop" ? "m" : v, lang));
-        if (rec) (this.clipAt = now), void Promise.resolve(rec).then((buf) => buf && this.play(buf, at, false));
+        if (rec) (this.clipAt = now), void Promise.resolve(rec).then((buf) => buf && this.play(buf, at, false, close));
       }
-    }, said);
+    }, said, close, () => !close || turn === this.turn);
     return secs;
+  }
+  /** The conversation's answer being said now, and which answer is the latest. */
+  private answer: AudioBufferSourceNode | null = null;
+  private turn = 0;
+  private stopAnswer() {
+    try {
+      this.answer?.stop();
+    } catch {}
+    this.answer = null;
   }
   /** When a recorded greeting last stood in for a conversation's words. */
   private clipAt = -Infinity;
@@ -410,6 +448,7 @@ export class Voices {
   /** Quiet (a match started, drive mode closing). */
   clear() {
     for (const b of this.bubbles) (b.t = 0), (b.sprite.visible = false);
+    this.stopAnswer();
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
   }
 

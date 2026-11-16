@@ -4,11 +4,13 @@
 // money, insult them, ask them to follow you, say goodbye. Each person has a mood (friendly, busy or
 // grumpy — from who they are, so the same person stays the same); being wanted by the police makes
 // everyone run. The answer is words (an i18n key + params, said aloud by voices.talk) and what they do.
+// Someone following you takes orders: wait here, come on, stay close, keep your distance, wait at the
+// shop, wait by my car, keep watch (shout when the police come), go home.
 import { hashStr } from "../geo";
 import { msg } from "../i18n";
 import type { StoreKind } from "../storeKinds";
 
-export type TalkAct = "greet" | "way" | "recommend" | "chat" | "money" | "insult" | "follow" | "bye" | "store" | "wait" | "come" | "release";
+export type TalkAct = "greet" | "way" | "recommend" | "chat" | "money" | "insult" | "follow" | "bye" | "store" | "wait" | "come" | "release" | "close" | "far" | "shop" | "car" | "watch";
 export type Mood = "friendly" | "busy" | "grumpy";
 /** What the asked-for place is, for "the way to…". */
 export type WayKind = "cafe" | "food" | "pharmacy" | "market";
@@ -22,8 +24,14 @@ export const WAY_KINDS: { key: WayKind; emoji: string; label: string }[] = [
 export const WAY_STORES: Record<WayKind, StoreKind[]> = { cafe: ["cafe"], food: ["restaurant", "fastfood"], pharmacy: ["pharmacy"], market: ["market", "produce"] };
 /** Places worth recommending. */
 export const GOOD_STORES: StoreKind[] = ["restaurant", "fastfood", "cafe", "sweets", "bakery"];
-/** What they do after answering. */
-export type React = "stay" | "leave" | "flee" | "follow" | "angry" | "wait";
+/**
+ * What they do after answering. `pace`: following you right behind at a run ("close") or well back
+ * ("far"); `goto`: walking off to wait somewhere (the shop's door, your car); `watch`: waiting here,
+ * shouting if the police come.
+ */
+export type React = "stay" | "leave" | "flee" | "follow" | "angry" | "wait" | "goto" | "watch";
+/** How a follower keeps up: right behind you, a few metres back (normal), well back. */
+export type Pace = "close" | "normal" | "far";
 /** A place they could point to: its name, how far (m) and its bearing from you relative to where you face (degrees, + = right). */
 export type Spot = { name: string; dist: number; rel: number; rating?: number };
 
@@ -42,12 +50,16 @@ export type TalkCtx = {
   store?: (Spot & { item?: string; price?: string }) | null;
   /** They're already following you (the follower's own words: waiting, coming, going home). */
   following?: boolean;
+  /** "Wait at the shop": the open store nearest you (null: none round here). */
+  shop?: Spot | null;
+  /** "Wait by my car": how far your car is (null: you've none parked, or it's too far). */
+  car?: { dist: number } | null;
   /** A distance in words ("200 m"). */
   fmt: (m: number) => string;
   /** Translates the words put inside the answer ("on your right", "a café"); the answer's own key is translated by the caller. */
   tr?: (key: string) => string;
 };
-export type Reply = { key: string; params?: Record<string, string | number>; react: React; secs: number; mood: Mood };
+export type Reply = { key: string; params?: Record<string, string | number>; react: React; secs: number; mood: Mood; pace?: Pace };
 
 /** A person's mood, the same each time you meet them. */
 export function moodOf(id: number): Mood {
@@ -121,6 +133,23 @@ export function reply(c: TalkCtx, seed = 0): Reply {
       return c.following || mood !== "grumpy" ? r(msg("Coming!"), "follow", 90) : r(msg("No, I've got things to do."), "leave", 4);
     case "release":
       return r(msg("OK, see you around!"), "leave", 3);
+    case "close":
+      if (!c.following) return r(msg("Close to what?"), "stay", 4);
+      return { ...r(msg("Right behind you!"), "follow", 90), pace: "close" };
+    case "far":
+      if (!c.following) return r(msg("I'm not following you."), "stay", 4);
+      return { ...r(msg("Fine, I'll keep back a bit."), "follow", 90), pace: "far" };
+    case "shop":
+      if (!c.following) return r(msg("Wait for what?"), "stay", 4);
+      if (!c.shop) return r(msg("There's no shop near here to wait at."), "stay", 4);
+      return r(msg("OK, I'll wait for you at {place}."), "goto", 180, { place: c.shop.name });
+    case "car":
+      if (!c.following) return r(msg("Wait for what?"), "stay", 4);
+      if (!c.car) return r(msg("What car? I don't see one."), "stay", 4);
+      return r(msg("OK, I'll wait by your car."), "goto", 180);
+    case "watch":
+      if (!c.following) return r(msg("Wait for what?"), "stay", 4);
+      return r(mood === "grumpy" ? msg("Fine. I'll shout if the police come.") : msg("I'll keep watch — I'll shout if the police come!"), "watch", 150);
     case "bye":
       return r(mood === "grumpy" ? msg("Finally.") : msg("Goodbye, take care!"), "leave", 3);
   }
@@ -142,3 +171,6 @@ export function storeGossip(place: string, seed: number, item?: string, price?: 
 
 /** Insulting a grumpy person twice, they call the police: a little heat (lib/street/wanted.ts). */
 export const callsPolice = (r: Reply) => r.react === "flee" && r.key === "That's it, I'm calling the police!";
+
+/** What a lookout shouts when a patrol car comes near (one at random). */
+export const LOOKOUT_SHOUTS = [msg("Police! The police are coming!"), msg("Watch out — police!"), msg("Cops! Run!")];

@@ -505,6 +505,7 @@ const world: Record<string, string> = {
   "On: shopkeepers and people speak Persian with a natural voice, made on this device.": "روشن: فروشنده‌ها و آدم‌ها با صدای طبیعی فارسی حرف می‌زنن، ساخته‌شده روی همین دستگاه.",
   "On for this device: shopkeepers and people speak Persian with a natural voice.": "برای این دستگاه روشنه: فروشنده‌ها و آدم‌ها با صدای طبیعی فارسی حرف می‌زنن.",
   "Natural Persian voices": "صدای طبیعی فارسی",
+  "Hear them speak — get the Persian voice ({mb} MB)": "صداشون رو بشنوید — دانلود صدای فارسی ({mb} مگابایت)",
   "Downloading the voice… {n}%": "دانلود صدا… {n}٪",
   "Get the voice now": "همین حالا دانلود کن",
   "a café": "کافه",

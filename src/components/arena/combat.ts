@@ -14,6 +14,7 @@
 //  - touch aim assist (slowdown + gentle pull near a target) and optional auto-fire;
 //  - the HUD's state, published through a tiny store (≤ 10 updates a second; the
 //    crosshair and hit marker are written straight to the DOM every frame).
+import { easeSlope } from "@/lib/walkSlope";
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { t } from "@/lib/i18n";
@@ -632,6 +633,8 @@ export class Combat {
   }
   /** Which way my body faces in third person (foot.ts faceYaw): where I walk, or where I aim. */
   private face = 0;
+  /** The ground's slope under me where I face (rad, eased; lib/walkSlope.ts). */
+  private slope = 0;
 
   /** Metres from me (on foot) to the middle of my parked car; Infinity without one. */
   private ownCarAt() {
@@ -1548,7 +1551,11 @@ export class Combat {
         this.avatar.group.visible = !fps;
         this.avatar.group.position.set(me.x, me.y, me.z);
         this.face = faceYaw(this.face, me.yaw, me.vx, me.vz, squared, dt);
-        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: this.face, pitch: squared ? me.pitch : 0, crouch: me.crouch, air: me.air, dead: this.down, stunt: heroOn ? this.heroLean(me) : null }, 0);
+        // The ground's slope where it faces (a ramp, a sloping street, stairs): the walk leans into it (lib/walkSlope.ts).
+        const fx = -Math.sin(this.face), fz = -Math.cos(this.face), walking = !me.air && !heroOn && !this.down && Math.hypot(me.vx, me.vz) > 0.4;
+        const rise = walking ? floorAt(me.x + fx * 0.45, me.z + fz * 0.45, me.y + 0.95) - floorAt(me.x - fx * 0.45, me.z - fz * 0.45, me.y + 0.95) : 0;
+        this.slope = easeSlope(this.slope, rise, 0.9, dt, walking);
+        this.avatar.update(dt, { vx: me.vx, vz: me.vz, yaw: this.face, pitch: squared ? me.pitch : 0, crouch: me.crouch, air: me.air, dead: this.down, stunt: heroOn ? this.heroLean(me) : null, slope: this.slope }, 0);
       }
       this.placeCamera(me, dt, fps);
       const scoped = this.snapshot.scoped;
