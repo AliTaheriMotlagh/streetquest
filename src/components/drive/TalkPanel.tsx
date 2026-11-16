@@ -8,11 +8,11 @@
 // Someone following you keeps the panel and takes orders (a little crew of your own): wait here, come on,
 // stay close, keep back, wait at the shop, wait by my car, keep watch (they shout when the police come), go home.
 // It closes when they walk off, run, or you leave. Styles: app/drive-talk.css.
-// On a phone the Persian voice is a download the player chooses (lib/tts/neural.ts): until then people are
-// silent there (phones have no Persian voice of their own), so the panel offers it in one tap.
+// The voice of the player's language comes while the city loads (lib/tts/neural.ts); held back on data saver or a
+// slow connection, the panel offers it in one tap (phones mostly have no Persian voice of their own).
 import { useEffect, useRef, useState } from "react";
-import { fmtNum, getLocale, msg, t } from "@/lib/i18n";
-import { downloadMb, neuralNow, onNeuralChange, progress, setNeuralPref, warmFor } from "./tts/neural";
+import { fmtNum, msg, t } from "@/lib/i18n";
+import { downloadMb, languageProgress, neuralNow, onNeuralChange, setNeuralPref, warmFor, warmLanguage } from "./tts/neural";
 import { WAY_KINDS, type Mood, type React as Reaction, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
 import { revealWords } from "@/lib/street/subtitle";
 
@@ -180,36 +180,35 @@ export function TalkPanel({ woman, following: following0, onAsk, onClose }: { wo
 }
 
 /**
- * "🔊 Hear them speak" where the Persian voice isn't on: a phone (the player's choice), data saver, a slow
- * connection. One tap turns it on and fetches it; the bar shows how far it is.
+ * The voice of the player's language while it's still coming ("🔊 Downloading the voice… 40%"), or — where it was held
+ * back (data saver, a slow connection) — "🔊 Hear them speak": one tap turns voices on and fetches them.
  */
 function VoiceOffer({ woman }: { woman: boolean }) {
   const [, redraw] = useState(0);
   useEffect(() => onNeuralChange(() => redraw((n) => n + 1)), []);
-  if (getLocale() !== "fa") return null;
   const plan = neuralNow();
-  const got = [...progress.values()];
   if (plan.use) {
-    if (!got.length || got.every((x) => x >= 1)) return null;
+    const lp = languageProgress();
+    if (!lp.busy) return null;
     return (
       <p className="talk-voice" role="status">
-        🔊 {t("Downloading the voice… {n}%", { n: fmtNum(Math.round(Math.min(...got) * 100)) })}
+        🔊 {t("Downloading the voice… {n}%", { n: fmtNum(Math.round(lp.pct * 100)) })}
       </p>
     );
   }
-  if (plan.why !== "phone-ask" && plan.why !== "data-saver" && plan.why !== "slow-net") return null;
+  if (plan.why !== "data-saver" && plan.why !== "slow-net") return null;
   return (
     <button
       type="button"
       className="talk-voice"
       onClick={() => {
         setNeuralPref("on");
-        // (The one you're talking to first.)
+        // (The one you're talking to first, then the rest of the language.)
         warmFor(woman ? "f" : "m");
-        warmFor(woman ? "m" : "f");
+        warmLanguage();
       }}
     >
-      🔊 {t("Hear them speak — get the Persian voice ({mb} MB)", { mb: fmtNum(downloadMb()) })}
+      🔊 {t("Hear them speak — get the voice ({mb} MB)", { mb: fmtNum(downloadMb()) })}
     </button>
   );
 }

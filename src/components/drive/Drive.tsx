@@ -1810,7 +1810,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // The subtitle runs with the voice: the panel is told when it starts and how long it is.
       let started: (secs: number) => void = () => {};
       const speak = new Promise<number>((res) => (started = res));
-      street.converse(text, p.woman ? "f" : "m", () => crowd.head(id), true, (secs) => started(secs));
+      street.converse(text, p.woman ? "f" : "m", () => crowd.head(id), true, (secs) => started(secs), id);
       if (r.react === "stay" || r.react === "angry") crowd.stopFor(id, r.secs + 6, st.x, st.z);
       else if (r.react === "leave") (crowd.dropFollow(id, 1.2, st.x, st.z), (convo = null));
       else if (r.react === "flee") {
@@ -2497,9 +2497,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (sc && onFoot && Math.hypot(sc.x - st.x, sc.z - st.z) < 7) {
           const dish = storefronts.bestDish(sc.id);
           const g = doorGreeting(sc.name, dish?.title ?? null, Math.floor(now / 1000));
-          street.converse(t(g.key, g.params), "m", () => ({ x: sc.x, y: 1.75, z: sc.z }), false);
+          street.converse(t(g.key, g.params), "m", () => ({ x: sc.x, y: 1.75, z: sc.z }), false, undefined, hashStr(sc.id));
           shopCalled.set(sc.id, now);
-        } else if (sc && street.shopCall(sc.kind, sc.name, sc)) shopCalled.set(sc.id, now);
+        } else if (sc && street.shopCall(sc.kind, sc.name, sc, hashStr(sc.id))) shopCalled.set(sc.id, now);
       }
       // A follower keeping watch shouts when a patrol car comes near them or you (once in a while, not every frame).
       if (lookouts.size && now - lookoutCheck > 700) {
@@ -2512,7 +2512,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           }
           if (now - lk.shout < 15_000 || Math.min(street.police.nearest(p.x, p.z), street.police.nearest(st.x, st.z)) > 55) continue;
           lk.shout = now;
-          street.converse(t(LOOKOUT_SHOUTS[Math.floor(Math.random() * LOOKOUT_SHOUTS.length)]), p.woman ? "f" : "m", () => crowd.head(id), false);
+          street.converse(t(LOOKOUT_SHOUTS[Math.floor(Math.random() * LOOKOUT_SHOUTS.length)]), p.woman ? "f" : "m", () => crowd.head(id), false, undefined, id);
         }
       }
       // Now and then a passer-by by a store says something about it (on foot, nothing else going on).
@@ -2523,7 +2523,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (sc && who && street.stars < 1) {
           const dish = storefronts.bestDish(sc.id);
           const g = storeGossip(sc.name, who.a, dish?.title, dish ? fmtNum(dish.price) : undefined, storefronts.ratingOf(sc.id) ?? undefined);
-          street.converse(t(g.key, g.params), who.woman[0] ? "f" : "m", () => crowd.head(who.a), false);
+          street.converse(t(g.key, g.params), who.woman[0] ? "f" : "m", () => crowd.head(who.a), false, undefined, who.a);
         }
       }
       scenarios.tick(rdt, time, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, carKey: streetCar?.key ?? currentKey(), matchOn, flying: D.flies && st.alt > 0.5 });

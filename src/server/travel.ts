@@ -3,7 +3,7 @@
 // same trip share one request, and each site keeps its own gentle pace (lib/pace.ts). Each site can
 // go through the Iran relay or be switched off (lib/relayUrl.ts):
 //
-//   ALIBABA_URL / MRBILIT_FLIGHT_URL / MRBILIT_TRAIN_URL / JABAMA_URL / ADSB_URL = "off" | <base>
+//   ALIBABA_URL / MRBILIT_FLIGHT_URL / MRBILIT_TRAIN_URL / JABAMA_URL / JABAMA_EVENTS_URL / ADSB_URL = "off" | <base>
 //
 // A site that fails is named in `failed`; the others still answer.
 import { siteBase } from "@/lib/relayUrl";
@@ -13,10 +13,13 @@ import {
 } from "@/lib/travel";
 import { fromAdsb, iranTime, mergePlanes, scheduledPlane, type Plane, type Scheduled } from "@/lib/flights";
 import { cached, getJson } from "./localData";
+import { fromJabamaEvents, jabamaCity, type Experience } from "@/lib/travel/experiences";
 
 const MIN = 60_000;
 const TICKETS_TTL = 20 * MIN;
 const STAYS_TTL = 3 * 60 * MIN;
+/** Bookable experiences change slowly (a new session a day): an hour. */
+const EXPERIENCES_TTL = 60 * MIN;
 const PLANES_TTL = 10_000;
 const SCHEDULE_TTL = 30 * MIN;
 /** Alibaba answers a search with an id; its results are read this long after (ms) and once more if empty. */
@@ -27,6 +30,7 @@ const base = {
   mrbilitFlight: () => siteBase("mrbilit", process.env.MRBILIT_FLIGHT_URL, "https://flight.atighgasht.com/api"),
   mrbilitTrain: () => siteBase("mrbilit", process.env.MRBILIT_TRAIN_URL, "https://train.atighgasht.com/TrainService/api"),
   jabama: () => siteBase("jabama", process.env.JABAMA_URL, "https://gw.jabama.com/api"),
+  jabamaEvents: () => siteBase("jabama", process.env.JABAMA_EVENTS_URL, "https://api.jabama.events"),
   adsb: () => siteBase("adsb", process.env.ADSB_URL, "https://api.adsb.lol/v2"),
 };
 
@@ -124,6 +128,23 @@ export async function staysIn(cityKey: string, here?: LatLng | null): Promise<{ 
   const near = here ?? (c.lat != null ? { lat: c.lat, lng: c.lng! } : null);
   const stays = pages.flatMap((p) => (p ? fromJabama(p, near, c.key) : [])).filter((s) => !seen.has(s.id) && !!seen.add(s.id));
   return { stays, failed: pages.every((p) => !p) };
+}
+
+/**
+ * Things to book in a city (Jabama Events — lib/travel/experiences.ts): tours, walks, workshops, shows, with their
+ * price a person, next date and reviews; two pages (40), cached an hour. `covered`: the site has the city at all.
+ */
+export async function experiencesIn(cityKey: string): Promise<{ experiences: Experience[]; covered: boolean; failed: boolean }> {
+  const slug = jabamaCity(cityKey), root = base.jabamaEvents();
+  if (!slug || !root) return { experiences: [], covered: !!slug, failed: !!slug && !root };
+  const first = await cached<unknown>(`je:${slug}:1`, EXPERIENCES_TTL, () => getJson(`${root}/events?city=${slug}`)).catch(() => null);
+  const cursor = (first as { nextCursor?: unknown } | null)?.nextCursor;
+  const second = typeof cursor === "string" && cursor
+    ? await cached<unknown>(`je:${slug}:2`, EXPERIENCES_TTL, () => getJson(`${root}/events?city=${slug}&cursor=${encodeURIComponent(cursor)}`)).catch(() => null)
+    : null;
+  const seen = new Set<string>();
+  const experiences = [first, second].flatMap((p) => fromJabamaEvents(p)).filter((e) => !seen.has(e.id) && !!seen.add(e.id));
+  return { experiences, covered: true, failed: !first };
 }
 
 // ---------------------------------------------------------------- planes

@@ -30,6 +30,7 @@ import { Sheet } from "./ui";
 import { Chip, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, SortMenu } from "./Filters";
 import { ACT_KINDS, activitiesIn, activityUrl, MOOD_KEYS, MOODS, moodOf, type ActKind, type Mood } from "@/lib/travel/activities";
 import type { ActPick } from "@/lib/travel/plan";
+import { cityExperiencesUrl, experienceUrl, jabamaCity, matchExperience, type Experience } from "@/lib/travel/experiences";
 import { LeaveLink } from "./LeaveGuard";
 import { Gallery } from "./Gallery";
 import { createPortal } from "react-dom";
@@ -580,15 +581,42 @@ function StopBlock({ leg, answer, pick, travellers, stop, when, stay, stays, act
 /**
  * What to do there (lib/travel/activities.ts): pick outings, each with its price a person (a
  * rough figure from the list — change it to what you're quoted) and how many of you go; they're
- * counted in the trip's bill. "Find it" searches for who runs it now (through the leave dialog).
+ * counted in the trip's bill. Where Jabama Events sells it (lib/travel/experiences.ts) the outing links to that very
+ * experience — its real price a person, its next date — and the city's other bookable tours, walks and workshops can
+ * be added too; elsewhere "Find it" searches for who runs it now (all through the leave dialog).
  */
 function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { city: string; travellers: number; picked: ActPick[]; onChange: (l: ActPick[]) => void; onBack: () => void; onClose: () => void }) {
   const all = activitiesIn(city);
   const [kind, setKind] = useState<ActKind | null>(null);
+  // What can really be booked there (null: still asking, or the site doesn't have the city).
+  const slug = jabamaCity(city);
+  const [ex, setEx] = useState<Experience[] | null>(null);
+  const [moreEx, setMoreEx] = useState(false);
+  useEffect(() => {
+    if (!slug) return;
+    let live = true;
+    api<{ experiences: Experience[] }>(`/api/travel?experiences=${encodeURIComponent(city)}`)
+      .then((r) => live && setEx(r.experiences ?? []))
+      .catch(() => live && setEx([]));
+    return () => void (live = false);
+  }, [city, slug]);
+  const faName = cityByKey(city)?.fa;
+  const matchOf = useMemo(() => new Map(all.map((a) => [a.id, ex ? matchExperience(a, ex, faName) : null])), [all, ex, faName]);
+  // The bookable ones no outing in the list already stands for.
+  const extra = useMemo(() => {
+    const used = new Set([...matchOf.values()].filter(Boolean).map((e) => e!.id));
+    return (ex ?? []).filter((e) => !used.has(e.id));
+  }, [ex, matchOf]);
+  const nextOf = (e: Experience) => (e.next ? t("next: {day}", { day: fmtDate(e.next, { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Tehran" }) }) : null);
+  const flipEx = (e: Experience) => {
+    const id = `jx:${e.id}`;
+    onChange(picked.find((p) => p.id === id) ? picked.filter((p) => p.id !== id) : [...picked, { id, city, title: e.title, emoji: "🎟️", price: e.price, people: travellers }]);
+  };
   const kinds = [...new Set(all.map((a) => a.kind))];
   const shown = kind ? all.filter((a) => a.kind === kind) : all;
   const has = (id: string) => picked.find((p) => p.id === id);
-  const flip = (a: (typeof all)[number]) => (has(a.id) ? onChange(picked.filter((p) => p.id !== a.id)) : onChange([...picked, { id: a.id, city, title: t(a.title), emoji: a.emoji, price: a.price, people: travellers }]));
+  // (Added with the bookable one's real price when there is one, the rough figure otherwise.)
+  const flip = (a: (typeof all)[number]) => (has(a.id) ? onChange(picked.filter((p) => p.id !== a.id)) : onChange([...picked, { id: a.id, city, title: t(a.title), emoji: a.emoji, price: matchOf.get(a.id)?.price || a.price, people: travellers }]));
   const edit = (id: string, f: Partial<ActPick>) => onChange(picked.map((p) => (p.id === id ? { ...p, ...f } : p)));
   const sum = picked.reduce((n, a) => n + a.price * a.people, 0);
   return (
@@ -599,14 +627,19 @@ function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { cit
       </div>
       <ul className="ta-list">
         {shown.map((a) => {
-          const p = has(a.id);
+          const p = has(a.id), m = matchOf.get(a.id);
           return (
             <li key={a.id} className={`ta-item${p ? " on" : ""}`}>
               <button type="button" className="ta-main" onClick={() => flip(a)} aria-pressed={!!p}>
                 <span className="ta-emoji" aria-hidden>{a.emoji}</span>
                 <span className="grow">
                   <b dir="auto">{t(a.title)}</b>
-                  <small>{[a.price ? t("about {price} a person", { price: toman(a.price) }) : t("Free"), t("{n} h", { n: fmtNum(a.hours) }), t(ACT_KINDS[a.kind].label)].join(" · ")}</small>
+                  <small>
+                    {m
+                      ? [m.price ? t("{price} a person", { price: toman(m.price) }) : t("Free"), nextOf(m), m.rating ? `★ ${fmtNum(m.rating)}` : null].filter(Boolean).join(" · ")
+                      : [a.price ? t("about {price} a person", { price: toman(a.price) }) : t("Free"), t("{n} h", { n: fmtNum(a.hours) }), t(ACT_KINDS[a.kind].label)].join(" · ")}
+                  </small>
+                  {m && <span className="ta-bookable">🎟️ {t("Bookable online")}</span>}
                 </span>
                 <span className="ta-check" aria-hidden>{p ? "✓" : "＋"}</span>
               </button>
@@ -620,13 +653,53 @@ function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { cit
                     <span>{t("People")}</span>
                     <Stepper value={p.people} min={1} max={MAX_TRAVELLERS} onChange={(n) => edit(a.id, { people: n })} label={t("People")} />
                   </div>
-                  <LeaveLink className="link-btn small" href={activityUrl(a)} site={t("Google")}>{t("Find who runs it ↗")}</LeaveLink>
+                  {m ? (
+                    <LeaveLink className="btn small" href={experienceUrl(m)} site={t("Jabama Events")}>{t("Book it ↗")}</LeaveLink>
+                  ) : slug ? (
+                    <LeaveLink className="link-btn small" href={cityExperiencesUrl(slug)} site={t("Jabama Events")}>{t("What's bookable in {city} ↗", { city: cityName(city) })}</LeaveLink>
+                  ) : (
+                    <LeaveLink className="link-btn small" href={activityUrl(a)} site={t("Google")}>{t("Find who runs it ↗")}</LeaveLink>
+                  )}
                 </div>
               )}
             </li>
           );
         })}
       </ul>
+      {slug && ex == null && <p className="tiny muted">{t("Looking for what can be booked in {city}…", { city: cityName(city) })}</p>}
+      {extra.length > 0 && (
+        <>
+          <h3 className="ta-head">🎟️ {t("Book online in {city}", { city: cityName(city) })}</h3>
+          <ul className="ta-list">
+            {(moreEx ? extra : extra.slice(0, 6)).map((e) => {
+              const p = has(`jx:${e.id}`);
+              return (
+                <li key={e.id} className={`ta-item${p ? " on" : ""}`}>
+                  <button type="button" className="ta-main" onClick={() => flipEx(e)} aria-pressed={!!p}>
+                    {e.image ? <img className="ta-emoji ta-img" src={`${e.image}?x-img=v1/resize,w_160/optimize,q_70`} alt="" loading="lazy" /> : <span className="ta-emoji" aria-hidden>🎟️</span>}
+                    <span className="grow">
+                      <b dir="auto">{e.title}</b>
+                      <small>{[e.price ? t("{price} a person", { price: toman(e.price) }) : t("Free"), e.duration || null, nextOf(e), e.rating ? `★ ${fmtNum(e.rating)} (${fmtNum(e.reviews)})` : null].filter(Boolean).join(" · ")}</small>
+                    </span>
+                    <span className="ta-check" aria-hidden>{p ? "✓" : "＋"}</span>
+                  </button>
+                  {p && (
+                    <div className="ta-edit">
+                      <div className="ta-people">
+                        <span>{t("People")}</span>
+                        <Stepper value={p.people} min={1} max={MAX_TRAVELLERS} onChange={(n) => edit(p.id, { people: n })} label={t("People")} />
+                      </div>
+                      <LeaveLink className="btn small" href={experienceUrl(e)} site={t("Jabama Events")}>{t("Book it ↗")}</LeaveLink>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {!moreEx && extra.length > 6 && <button type="button" className="link-btn small" onClick={() => setMoreEx(true)}>{t("Show {n} more", { n: fmtNum(extra.length - 6) })}</button>}
+          <p className="tiny muted">{t("Booked and paid on Jabama Events, where you pick the date — prices are a person, in toman.")}</p>
+        </>
+      )}
       <p className="tiny muted">{t("Prices are rough estimates to plan with — change them to what you're quoted.")}</p>
       {picked.length > 0 && (
         <div className="tp-bill" role="status">

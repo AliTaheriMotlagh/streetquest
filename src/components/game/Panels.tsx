@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ASKS_CHANGED } from "@/lib/asks";
 import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
 import { NEURAL_PREFS, type NeuralPref, type NeuralWhy } from "@/lib/tts/neural";
-import { downloadMb, neuralNow, neuralPref, neuralWomen, onNeuralChange, progress, setNeuralPref, setNeuralWomen, warmNeural } from "../drive/tts/neural";
+import { downloadMb, extrasOf, languageProgress, neuralNow, neuralPref, onNeuralChange, pickOf, previewVoice, setExtra, setNeuralPref, setPick, speakers, ttsLang, voiceState, warmLanguage } from "../drive/tts/neural";
+import { ROLES, type Role, type TtsLang, type VoiceFamily } from "@/lib/tts/sherpa";
 import { DownloadRow } from "./GameDownload";
 import { ACHIEVEMENTS } from "@/lib/progression";
 import { S } from "@/lib/settings";
@@ -1331,19 +1332,23 @@ const NEURAL_WHY: Record<NeuralWhy, string> = {
   weak: msg("This device is too weak for the voice models — it uses its own voice."),
   "data-saver": msg("Data saver is on: no {mb} MB downloads until you turn this on."),
   "slow-net": msg("A slow connection: turn this on to download the voices anyway (about {mb} MB each)."),
-  "phone-ask": msg("On a phone it's your choice: each voice is about {mb} MB, downloaded once."),
-  on: msg("On: shopkeepers and people speak Persian with a natural voice, made on this device."),
-  auto: msg("On for this device: shopkeepers and people speak Persian with a natural voice."),
+  on: msg("On: shopkeepers and people speak with a natural voice, made on this device."),
+  auto: msg("On for this device: the voices of your language come while the 3D city loads, once."),
 };
+const VOICE_LANG: Record<TtsLang, string> = { fa: msg("Persian"), en: msg("English"), tr: msg("Turkish") };
+const ROLE_LABEL: Record<Role, string> = { m: msg("Men"), f: msg("Women"), cop: msg("Police") };
+const ROLE_EMOJI: Record<Role, string> = { m: "👨", f: "👩", cop: "👮" };
+/** How a voice keeps up on a phone (khabar's rule: a phone is 2–4× slower than the measured core). */
+const speedOf = (rtf: number) => (rtf <= 0.2 ? msg("fast") : rtf <= 0.35 ? msg("medium speed") : msg("slow on phones"));
+
 function NeuralVoiceRow() {
   const [, force] = useState(0);
   useEffect(() => onNeuralChange(() => force((n) => n + 1)), []);
-  const plan = neuralNow();
-  const got = [...progress.values()];
+  const plan = neuralNow(), lp = languageProgress();
   return (
     <>
       <div className="row">
-        <span className="grow">🗣️ {t("Natural Persian voices")}</span>
+        <span className="grow">🗣️ {t("Natural voices")}</span>
         <div className="tabs" style={{ margin: 0 }}>
           {NEURAL_PREFS.map((p) => (
             <button key={p} className={neuralPref() === p ? "on" : ""} onClick={() => setNeuralPref(p)}>{t(NEURAL_LABELS[p])}</button>
@@ -1351,20 +1356,67 @@ function NeuralVoiceRow() {
         </div>
       </div>
       <p className="small muted" style={{ margin: 0 }}>
-        {t(NEURAL_WHY[plan.why], { mb: fmtNum(downloadMb(false)) })}
-        {got.some((x) => x < 1) && ` ${t("Downloading the voice… {n}%", { n: fmtNum(Math.round(Math.min(...got) * 100)) })}`}
-        {plan.use && !got.length && (
+        {t(NEURAL_WHY[plan.why], { mb: fmtNum(downloadMb()) })}
+        {lp.busy && ` ${t("Downloading the voice… {n}%", { n: fmtNum(Math.round(lp.pct * 100)) })}`}
+        {plan.use && !lp.busy && lp.pct < 1 && (
           <>
             {" "}
-            <button type="button" className="link-btn small" onClick={() => warmNeural("m")}>{t("Get the voice now")}</button>
+            <button type="button" className="link-btn small" onClick={() => warmLanguage()}>{t("Get the voice now")}</button>
           </>
         )}
       </p>
-      {plan.use && (
-        <label className="row">
-          <span className="grow">👩 {t("Women's own voice too (+{mb} MB)", { mb: fmtNum(downloadMb(true) - downloadMb(false)) })}</span>
-          <input type="checkbox" checked={neuralWomen()} onChange={(e) => setNeuralWomen(e.target.checked)} />
-        </label>
+      {plan.use && <VoicePicker />}
+    </>
+  );
+}
+
+/**
+ * Who speaks with which voice, in the player's language (the same downloadable voices as the khabar site, plus small
+ * English and Turkish ones — lib/tts/sherpa.ts): men, women (or none: the phone's own voice) and the police (through
+ * the megaphone), each with its size and speed, a ▶ to hear it, and extra voices the street's people share out.
+ * Only this language's voices are ever downloaded.
+ */
+function VoicePicker() {
+  const lang = ttsLang(), all = speakers(lang), extra = extrasOf(lang);
+  const [note, setNote] = useState<string | null>(null);
+  const label = (s: (typeof all)[number]) =>
+    [s.name, t("{mb} MB", { mb: fmtNum(s.mb) }), t(speedOf(s.rtf)), voiceState(s.family) === "ready" ? "✓" : s.got != null && s.got < 1 ? `${fmtNum(Math.round(s.got * 100))}%` : ""].filter(Boolean).join(" · ");
+  const play = async (role: Role) => {
+    const f = pickOf(role, lang);
+    if (!f) return;
+    const r = await previewVoice(f, role, lang);
+    setNote(r === "downloading" ? t("Downloading that voice — try ▶ again in a moment.") : r === "none" ? t("This device can't play the voice.") : null);
+  };
+  const picked = new Set(ROLES.map((r) => pickOf(r, lang)));
+  const others = all.filter((s) => !picked.has(s.family));
+  return (
+    <>
+      <p className="small" style={{ margin: "6px 0 0" }}><b>{t("Voices in {lang}", { lang: t(VOICE_LANG[lang]) })}</b></p>
+      {ROLES.map((role) => {
+        const g = role === "f" ? "f" : "m", options = all.filter((s) => s.gender === g), cur = pickOf(role, lang);
+        return (
+          <div key={role} className="row">
+            <span className="grow">{ROLE_EMOJI[role]} {t(ROLE_LABEL[role])}</span>
+            <select className="input" style={{ width: "auto", maxWidth: "62vw" }} value={cur ?? "off"} onChange={(e) => setPick(role, e.target.value === "off" ? null : (e.target.value as VoiceFamily), lang)}>
+              {options.map((s) => <option key={s.family} value={s.family}>{label(s)}</option>)}
+              <option value="off">{t("None (the phone's voice)")}</option>
+            </select>
+            <button type="button" className="btn small ghost" onClick={() => void play(role)} disabled={!cur} aria-label={t("Hear it")}>▶</button>
+          </div>
+        );
+      })}
+      {lang === "tr" && <p className="tiny muted" style={{ margin: 0 }}>{t("There's no Turkish woman's voice yet: women use the phone's own.")}</p>}
+      {note && <p className="tiny muted" role="status" style={{ margin: 0 }}>{note}</p>}
+      {others.length > 0 && (
+        <details>
+          <summary className="small">{t("More voices — people in the street share them out")}</summary>
+          {others.map((s) => (
+            <label key={s.family} className="row">
+              <span className="grow">{s.gender === "f" ? "👩" : "👨"} {label(s)}</span>
+              <input type="checkbox" checked={extra.includes(s.family)} onChange={(e) => setExtra(s.family, e.target.checked, lang)} />
+            </label>
+          ))}
+        </details>
       )}
     </>
   );

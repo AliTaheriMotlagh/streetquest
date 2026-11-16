@@ -12,8 +12,9 @@
 //    voiceLang.ts), else the device's English voice (a woman's for a woman, where its name
 //    tells), else only the bubble. (/api/tts speaks Persian only.)
 //  - Conversations (talk) and shopkeepers calling out their store's name (line with `spoken`) say any words: the
-//    on-device Persian voice (tts/neural.ts — on by default on computers, one tap in the talk panel on a phone; women in
-//    their own voice), else the phone's own voice, else a recorded line. A new answer cuts the last one off.
+//    on-device voice of the player's language (tts/neural.ts — Persian, English or Turkish, downloaded while the city
+//    loads; men, women and the police each as picked in Settings), else the phone's own voice, else a recorded line.
+//    A new answer cuts the last one off.
 //  - Nobody talks over anybody: one line at a time near you, and each situation has its
 //    quiet spell (QUIET_S) so a crowd running from a blast isn't a chorus.
 import * as THREE from "three";
@@ -23,11 +24,11 @@ import { lineFile, manifestPaths, pickDeviceVoice, talkClip, voiceLangOf, type V
 import { gainAt } from "@/lib/audio/spatial";
 import { audioOut, isMuted } from "../game/sfx";
 import { place } from "../game/spatial";
-import { neuralReady, speakNeural, warmNeural } from "./tts/neural";
+import { neuralReady, setTtsCountry, speakNeural, warmLanguage } from "./tts/neural";
 
 /** The country the player is in (Drive sets it as they move): people in Turkey speak Turkish (voiceLangOf). */
 let voiceCountry: string | null = null;
-export const setVoiceCountry = (c: string | null) => void (voiceCountry = c);
+export const setVoiceCountry = (c: string | null) => void ((voiceCountry = c), setTtsCountry(c));
 
 type Where = () => { x: number; y: number; z: number } | null;
 type Bubble = { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; tex: THREE.CanvasTexture; c: HTMLCanvasElement; where: Where | null; t: number };
@@ -142,8 +143,9 @@ export class Voices {
     }
     // The recordings of the player's language, in the background (they're small).
     const lang = voiceLangOf(getLocale(), voiceCountry);
-    // The on-device Persian voice, brought onto the device now (where it should run) so the first conversation is spoken.
-    if (lang === "fa") (warmNeural("m"), warmNeural("f"));
+    // The on-device voices of the player's language (only that one), brought onto the device while the city loads
+    // (DriveBoot shows how far) so the first conversation is spoken.
+    warmLanguage(lang);
     void files().then((s) => s.forEach((f) => (lang === "fa" ? !/^(en|tr)\//.test(f) : f.startsWith(`${lang}/`)) && void fetchLine(f)));
   }
 
@@ -171,7 +173,7 @@ export class Voices {
    * A street scene's line (lib/street/scenes.ts): this exact line, now — the scene keeps
    * its own timing, so nobody's quiet spell holds it back. False if it's too far to matter.
    */
-  line(id: string, v: VoiceKind, where: Where, me: { x: number; z: number; yaw?: number }, now = performance.now(), caption?: string, spoken?: string) {
+  line(id: string, v: VoiceKind, where: Where, me: { x: number; z: number; yaw?: number }, now = performance.now(), caption?: string, spoken?: string, who?: number) {
     const b = barkById(id), at = where();
     if (!b || !at) return false;
     const d = Math.hypot(at.x - me.x, at.z - me.z);
@@ -180,7 +182,7 @@ export class Voices {
     if (d < HEAR_M) {
       // Words of its own (a shopkeeper calling out the store's name): said as they are where a voice here can say
       // any words — else the recorded line, which can't.
-      if (spoken && !isMuted()) this.sayWords(b, v, spoken, d, at, me);
+      if (spoken && !isMuted()) this.sayWords(b, v, spoken, d, at, me, who);
       else this.speak(b, v, d, at, me);
     }
     this.bubble(b, v, where, caption);
@@ -188,10 +190,10 @@ export class Voices {
   }
 
   /** `text` in place of the bark `b`: the on-device voice (Persian) or the phone's own; else `b` as recorded. */
-  private sayWords(b: Bark, v: VoiceKind, text: string, d: number, at: { x: number; z: number }, me: { x: number; z: number; yaw?: number }) {
+  private sayWords(b: Bark, v: VoiceKind, text: string, d: number, at: { x: number; z: number }, me: { x: number; z: number; yaw?: number }, who?: number) {
     const lang = voiceLangOf(getLocale(), voiceCountry), vol = gainAt(d, "voice");
     const recorded = () => this.speak(b, v, d, at, me);
-    if (lang === "fa" && neuralReady(v)) return this.neuralOr(text, v, at, lang, 5000, recorded);
+    if (neuralReady(v, who, lang)) return this.neuralOr(text, v, at, lang, 5000, recorded, undefined, false, undefined, who);
     if (lang !== "fa" && this.deviceText(text, v, vol, lang)) return;
     recorded();
   }
@@ -249,7 +251,8 @@ export class Voices {
   private unrecorded(b: Bark, v: VoiceKind, vol: number, at: { x: number; z: number }, lang: VoiceLang) {
     // English: the device's voice (it always has one). Persian and Turkish: the server's spoken copy
     // (Azure / OpenAI) — now if it's here, else as soon as it arrives (if that's soon) — then the device's.
-    if (lang === "en") return this.device(b, v, vol, lang);
+    // English: no server copy — the on-device English voice, else the device's own.
+    if (lang === "en") return this.neuralOr(textOf(b, v)[lang], v, at, lang, 2500, () => this.device(b, v, vol, lang));
     const spoken = ttsLine(b, v, lang);
     if (spoken instanceof AudioBuffer) return this.play(spoken, at, v === "cop");
     if (spoken) {
@@ -268,8 +271,8 @@ export class Voices {
    * The on-device neural voice (tts/neural.ts — Persian, where this device runs it) if it's ready
    * within `wait` ms; else `fallback` (the phone's own voice) straight away.
    */
-  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void, onPlay?: (secs: number) => void, must = false, live: () => boolean = () => true) {
-    const n = lang === "fa" ? speakNeural(text, v) : null;
+  private neuralOr(text: string, v: VoiceKind, at: { x: number; z: number }, lang: VoiceLang, wait: number, fallback: () => void, onPlay?: (secs: number) => void, must = false, live: () => boolean = () => true, who?: number) {
+    const n = speakNeural(text, v, who, lang);
     if (!n) return fallback();
     const asked = performance.now();
     let done = false;
@@ -295,7 +298,7 @@ export class Voices {
    * phone's own voice, else the bubble alone. `close`: right beside you (a conversation) — full
    * volume, waited for a little longer. Returns how long the bubble stays (s).
    */
-  talk(text: string, v: VoiceKind, where: Where, me: { x: number; z: number }, close = true, onSpeak?: (secs: number) => void): number {
+  talk(text: string, v: VoiceKind, where: Where, me: { x: number; z: number }, close = true, onSpeak?: (secs: number) => void, who?: number): number {
     const at = where();
     const secs = Math.min(9, 1.6 + text.length * 0.065);
     // The subtitles follow the voice: told once, when it actually starts, how long it runs.
@@ -330,7 +333,7 @@ export class Voices {
         const rec = b && decoded(lineFile(b, v === "cop" ? "m" : v, lang));
         if (rec) (this.clipAt = now), void Promise.resolve(rec).then((buf) => buf && this.play(buf, at, false, close));
       }
-    }, said, close, () => !close || turn === this.turn);
+    }, said, close, () => !close || turn === this.turn, who);
     return secs;
   }
   /** The conversation's answer being said now, and which answer is the latest. */

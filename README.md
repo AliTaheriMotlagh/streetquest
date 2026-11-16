@@ -196,6 +196,16 @@ mood scales XP; loot funds research; territory funds the army.
   sessions. A film with a trailer on Cinematicket gets ▶ Trailer on the cinema card (with sound), and the 3D billboard
   nearest you (≤70 m) plays it muted where the sessions are, poster beside it (Aparat's MP4s allow it as a texture; ≤15
   frames a second; not on the lite tier).
+- **Stores that show themselves off** (`drive/storefronts.ts`, rules `lib/storeReveal.ts`): every dressed front's
+  window shows **what's inside** — the store's own photo (once its card is read) cropped to the window, else an
+  interior drawn for its trade (bread on racks, cakes in a lit counter, fruit bins, packs on shelves, medicine with
+  the green cross, a clothes rail and a mannequin, phones, a café counter, restaurant tables; banks and offices a
+  counter with screens) — one window atlas, a slot each, a reflection and the frame on top, lit brighter by day so
+  the goods read. After dark each open store **spills its light** on the pavement (a soft additive pool in its trade's
+  glow). The first time you come within 16 m of an open store its **sign ignites** like neon switching on — a few
+  stutters, a surge (stronger by day), settling in 1.8 s — and its window lights with it (not with reduced motion).
+  A store with a discount (its Takhfifan deal or its menu's biggest cut) hangs a **turning gold medal** «٪۳۰ تخفیف»
+  on its sign's corner (the nearest three; one on lite).
 - **A shopkeeper in every open shop** (`drive/shopkeepers.ts`, `storefronts.openNear`): one of the street's people
   stands in the doorway facing the street, idling — closed shops, mosques, schools and hospitals have none (≤10 within
   60 m, ≤4 on lite); their calls (already spoken from the door) are that person's voice.
@@ -225,18 +235,27 @@ mood scales XP; loot funds research; territory funds the army.
 - **Walk into a store** (`drive/ShopScreen.tsx`; lines `lib/street/shopTalk.ts`): on foot at an open shop's door,
   🚪 Enter (B) fills the screen with the inside — the shopkeeper greets you and, when asked, recommends dishes, names
   today's discounts and hours from the real menu (Snappfood), and adds up a basket; the order is finished on Snappfood.
-- **On-device Persian voices** (`drive/tts/`, rules `lib/tts/neural.ts`, voices `lib/tts/sherpa.ts`): what the
-  shopkeeper and passers-by say that isn't a recorded line is spoken by sherpa-onnx (WebAssembly) running Persian
-  Piper/Mimic 3 models in a Web Worker — the same pinned builds as the khabar news site. Men and the police: Ganji
-  (12 MB runtime + 81 MB model on a computer, the 37 MB int8 build on a phone; the police through the megaphone
-  filter); women: Haaniye, a woman's own voice, a second download that comes with the men's unless turned off
-  (Settings → Voices) — without it every woman in the street was mute on most phones. Files come
-  from Hugging Face, else hf-mirror.com where it's blocked (or `NEXT_PUBLIC_TTS_BASE` first), in 8 MB parts that
-  resume after a dropped connection, each checked against its SHA-256, kept in Cache Storage; the runtime is shared by
-  every voice. Never on the render thread, never blocking a line: until the voice is on the device the phone's own
-  voice speaks. Settings → Voices: Auto (only on a strong computer that isn't saving data), On or Off; phones ask
-  first — and the talk panel itself offers it on a phone in one tap («🔊 Hear them speak», with download progress).
-  Once a voice is on the device a conversation's answer is waited for (up to 15 s: the model's first load on a phone
+- **On-device voices — Persian, English, Turkish** (`drive/tts/`, rules `lib/tts/neural.ts`, voices
+  `lib/tts/sherpa.ts`): what the shopkeeper and passers-by say that isn't a recorded line is spoken by sherpa-onnx
+  (WebAssembly) in a Web Worker, in the player's language (`voiceLangOf`: the game's language, Turkish in Turkey).
+  Persian has every voice the khabar news site offers, the same pinned builds: Ganji, Amir, Reza (and bilingual
+  Reza), Gyro, Ganji Adabi, Musa for men; Khadije (Matcha — the clearest Persian of all in khabar's Whisper test) and
+  Haaniye for women. English (Ryan, Danny, Alan; Amy, Kathleen, Lessac) and Turkish (Fahrettin, Fettah, DFKI — no
+  woman's voice yet: Turkish women use the phone's) are the smallest int8 Piper builds, 36 MB each. Defaults: Persian
+  men and police Ganji, women Khadije; English Ryan / Amy; Turkish Fahrettin. **Only the player's own language is
+  downloaded, on the 3D city's loading screen** (`warmLanguage`, the «🗣️ Downloading the Persian voice · 40%» line
+  under the game files' one — `drive/VoiceLine.tsx`): the men's voice first (and loaded), then the women's, then the
+  police's if it's another; phones too, unless saving data, on 2G, or weak (< 4 GB, < 4 cores, the lite mode).
+  Chrome calls Iran's high-latency links "3g" even at a megabyte a second, so 3G doesn't hold voices back.
+  **Settings → Natural voices**: Auto / On / Off, then «Voices in Persian»: a picker each for 👨 men, 👩 women and
+  👮 police (any of that language's voices, or none — the phone's own), each with its size, its speed on a phone and
+  a ✓ once it's here, and ▶ to hear it (`previewVoice`); «More voices» downloads extra ones the street's people share
+  out, each person keeping theirs (`familyFor`). Picks are saved per language (`sq_voice_picks`, `sq_voice_extras`).
+  Files come from Hugging Face, else hf-mirror.com where it's blocked (or `NEXT_PUBLIC_TTS_BASE` first), in 8 MB
+  parts that resume after a dropped connection, each checked against its SHA-256, kept in Cache Storage; the 12 MB
+  runtime is shared by every voice. Never on the render thread, never blocking a line: until the voice is on the
+  device the phone's own voice speaks; held back (data saver, 2G), the talk panel offers it in one tap
+  («🔊 Hear them speak»). Once a voice is on the device a conversation's answer is waited for (up to 15 s: the model's first load on a phone
   is slow) instead of dropped, it's never crowded out of the mix by traffic, and a new answer cuts the last one off. Without a neural voice the game uses the phone's voice, and where the phone has no Persian voice either
   (most), the speaker says one recorded
   greeting in their own voice per conversation (`talkClip`, `lib/street/voiceLang.ts`) while the bubble carries the
@@ -848,6 +867,13 @@ mood scales XP; loot funds research; territory funds the army.
   the map of every city, trips by mood — sea & islands, history, the green north, desert, pilgrimage — and destination
   cards). Each city has **things to do** (`lib/travel/activities.ts`: diving off Qeshm, the Greek ship on Kish,
   Persepolis…), added with a price a person and how many go — rough estimates you edit — and counted in the bill (🎟️).
+  **Booking** (`lib/travel/experiences.ts`, `server/travel.ts` `experiencesIn`, `/api/travel?experiences=<city>`): in
+  the cities Jabama Events covers (Tehran, Shiraz, Isfahan, Yazd, Mashhad, Kashan, Rasht, Tabriz, Ramsar, Kerman) an
+  outing that it sells links straight to that experience — «🎟️ Bookable online», its real price a person (toman), next
+  date and stars, added to the bill at that price — and the city's other tours, walks and workshops are listed under
+  «Book online in …» to add too. The booking and payment finish on jabama.events/events/<id>, where you pick the
+  session (the site has no link that picks one). Elsewhere (Kish, Qeshm…) the outing keeps its search link. Cached an
+  hour; `JABAMA_EVENTS_URL` (`off` disables; through the relay with `jabama` in `RELAY_FOR`).
   Every stay has **its own page** (all its photos, amenities, the bill for your nights and rooms). Photos everywhere
   (stays, store directories, products) are a swipeable **gallery** with dots, a counter and full screen
   (`game/Gallery.tsx`); Bilbooard/Irangaah store pages give their whole gallery, not just the listed photo

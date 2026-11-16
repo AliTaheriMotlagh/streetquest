@@ -7,6 +7,7 @@ import { msg, t } from "@/lib/i18n";
 import { BOOT_STAGES, type BootOut } from "@/lib/bootGate";
 import { LoadingScene } from "../LoadingScene";
 import { DownloadLine } from "../game/GameDownload";
+import { VoiceLine } from "./VoiceLine";
 
 const TIPS = [
   msg("Slow down past a shop to see its menu and prices."),
@@ -33,7 +34,7 @@ export function DriveBoot({ boot, onSkip, onExit, onGone }: { boot: BootOut; onS
     return () => clearTimeout(id);
   }, [boot.done]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <LoadingScene className={boot.done ? "" : "dboot"} out={boot.done} pct={boot.pct} title={t("StreetQuest")} sub={t("Your real city, in 3D")} stage={t(BOOT_STAGES[boot.stage])} tip={t(TIPS[tip])} note={<DownloadLine />}>
+    <LoadingScene className={boot.done ? "" : "dboot"} out={boot.done} pct={boot.pct} title={t("StreetQuest")} sub={t("Your real city, in 3D")} stage={t(BOOT_STAGES[boot.stage])} tip={t(TIPS[tip])} note={<><DownloadLine /><VoiceLine /></>}>
       {boot.canSkip && !boot.done && (
         <button type="button" className="btn yellow" onClick={onSkip}>
           {t("Play now")}

@@ -12,7 +12,11 @@
 //    line on the sign, an awning in their colour, dressed first and from farther; featured ones
 //    (Pro, Chain) get a lit billboard over the store (bizBillboards.ts);
 //  - one floating panel by the store you're passing (name, rating, open now, a deal, the first
-//    menu lines) that pops in and out.
+//    menu lines) that pops in and out;
+//  - the reveal (lib/storeReveal.ts): each dressed window shows what's inside — the store's own photo once
+//    its card is read, else an interior drawn for its trade — from one window atlas; open stores spill
+//    their light onto the pavement at night; a store you come up to for the first time "ignites" its sign
+//    like neon switching on; a store with a discount hangs a turning gold medal with the % by its sign.
 // Everything is instanced and pooled; counts are capped by the quality tier. No per-frame allocation.
 import * as THREE from "three";
 import { fmtNum, getLocale, t } from "@/lib/i18n";
@@ -21,6 +25,8 @@ import { favourite } from "@/lib/street/shopTalk";
 import { isShop, KIND_LABEL, menuHighlights, neonFlicker, signDetail, STORE_LOOK, storeKind, storefrontCap, storeOpen, usuallyAt, type StoreKind } from "@/lib/storeKinds";
 import { inkOn, shade, type BrandTier } from "@/lib/business";
 import { patchShader, after } from "./graphics/shaders";
+import { dealPercent, ignition, OFFICE_SCENE, REVEAL_M, REVEAL_S, WINDOW_SCENE, type WindowScene } from "@/lib/storeReveal";
+import { KERB_H } from "./tileMesh";
 import { BizBillboards } from "./bizBillboards";
 import { nameLines } from "./trades";
 
@@ -31,6 +37,23 @@ const SW0 = 512, SH0 = 128;
 /** Narrowest sign (m): shops packed side by side on one wall shrink to this before a second row. */
 export const SIGN_MIN_W = 1.8;
 const signW = (w: number) => Math.max(SIGN_MIN_W, Math.min(7.5, w));
+/** A dressed front's size: its width along the wall, the awning's height, the window's height (m). */
+function frontOf(l: { w: number; y: number }) {
+  const wm = Math.max(2.6, Math.min(7.5, l.w)), yA = Math.max(2.3, l.y - 0.62);
+  return { wm, yA, wh: Math.max(0.8, yA - 0.2 - 0.25) };
+}
+/** Window atlas slot (px): one per dressed front. */
+const WW = 256, WH = 128;
+/** An open window's light by day (× its trade's glow); 1.15 at night. */
+const WIN_DAY = 0.6;
+/** Deal medals at once (the nearest stores with a discount). */
+const MEDALS = 3;
+/** A stable number from a store's id (its window's interior varies with it). */
+const idSeed = (id: string) => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(h);
+};
 
 /** A store's sign spot, as the tile worker placed it (Label in tileMesh.ts). */
 export type ShopLabel = { id: string; text: string; cls?: string; x: number; y: number; z: number; angle: number; w: number; pole?: boolean; d: number };
@@ -115,6 +138,21 @@ export class Storefronts {
   private litAttr: THREE.InstancedBufferAttribute;
   private billboards: BizBillboards;
   private signLit: number[] = [];
+  // The reveal (lib/storeReveal.ts).
+  private win: { c: HTMLCanvasElement; g: CanvasRenderingContext2D; tex: THREE.CanvasTexture; cols: number; rows: number };
+  private winSlots = new Map<string, { n: number; sig: string }>();
+  private winFree: number[] = [];
+  private winAttr: THREE.InstancedBufferAttribute;
+  private winDirty = false;
+  /** Light from each open window on the pavement, at night. */
+  private spill: THREE.InstancedMesh;
+  /** When each store first lit up for you (ms), and the ones lighting up now. */
+  private revealed = new Map<string, number>();
+  private revealing: string[] = [];
+  private medals: { mesh: THREE.Group; face: THREE.MeshStandardMaterial; id: string | null; pct: number; x: number; y: number; z: number; seed: number }[] = [];
+  private medalTex = new Map<number, THREE.CanvasTexture>();
+  /** Each dressed store's window instance (for the reveal). */
+  private glassOf = new Map<string, number>();
   /** Where ground props may stand (not on a street); set by the city. */
   blocked: (x: number, z: number) => boolean = () => false;
   /** The clock (a test can hold it at night). */
@@ -168,8 +206,45 @@ export class Storefronts {
     const awnMat = own(new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.85 }));
     this.awnings = this.mesh(own(new THREE.BoxGeometry(1, 0.05, 1).translate(0, 0, 0.5)), awnMat, D, true);
     this.lips = this.mesh(own(new THREE.BoxGeometry(1, 0.2, 0.04)), awnMat, D, true);
-    const glassTex = own(this.windowTexture(false));
-    this.glass = this.mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: glassTex })), D, true);
+    // Windows: one atlas, a slot per dressed front (its photo, or its trade's interior), picked per instance.
+    const wcols = 4, wrows = Math.max(1, Math.ceil(D / wcols));
+    const wa = canvas(WW * wcols, WH * wrows);
+    const wtex = own(new THREE.CanvasTexture(wa.c));
+    wtex.colorSpace = THREE.SRGBColorSpace;
+    wtex.generateMipmaps = false;
+    wtex.minFilter = THREE.LinearFilter;
+    this.win = { ...wa, tex: wtex, cols: wcols, rows: wrows };
+    for (let i = D - 1; i >= 0; i--) this.winFree.push(i);
+    const wplane = own(new THREE.PlaneGeometry(1, 1));
+    this.winAttr = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, D) * 4), 4);
+    wplane.setAttribute("aWin", this.winAttr);
+    const winMat = own(new THREE.MeshBasicMaterial({ map: wtex }));
+    patchShader(winMat, "storefront-window", (sh) => {
+      sh.vertexShader = `attribute vec4 aWin;\n${sh.vertexShader}`;
+      sh.vertexShader = after(sh.vertexShader, "uv_vertex", "vMapUv = vMapUv * aWin.zw + aWin.xy;");
+    });
+    this.glass = this.mesh(wplane, winMat, D, true);
+    // The windows' light on the pavement: a soft pool, added on top, only at night.
+    const pool = own(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5));
+    this.spill = this.mesh(pool, own(new THREE.MeshBasicMaterial({ map: own(this.poolTexture()), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })), D, true);
+    this.spill.renderOrder = 3;
+    // Deal medals: a gold coin, the % on both faces.
+    const coin = own(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 28, 1, true).rotateX(Math.PI / 2));
+    const disc = own(new THREE.CircleGeometry(0.3, 28));
+    const rim = own(new THREE.MeshStandardMaterial({ color: "#d9a92e", metalness: 0.9, roughness: 0.25, emissive: new THREE.Color("#5a3c00") }));
+    for (let i = 0; i < (tier === "lite" ? 1 : MEDALS); i++) {
+      const face = own(new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.6, roughness: 0.3, emissive: new THREE.Color("#ffffff"), emissiveIntensity: 0.25 }));
+      // The rim, and a face each side (a circle maps the % upright; the coin's own caps would turn it).
+      const mesh = new THREE.Group();
+      const front = new THREE.Mesh(disc, face), back = new THREE.Mesh(disc, face);
+      front.position.z = 0.026;
+      back.position.z = -0.026;
+      back.rotation.y = Math.PI;
+      mesh.add(new THREE.Mesh(coin, rim), front, back);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.medals.push({ mesh, face, id: null, pct: 0, x: 0, y: 0, z: 0, seed: i });
+    }
     this.shutters = this.mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshStandardMaterial({ map: own(this.windowTexture(true)), roughness: 0.5, metalness: 0.6 })), D, true);
 
     // Props.
@@ -265,6 +340,290 @@ export class Storefronts {
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
+  /** A soft pool of light, brightest by the wall (the plane's near edge), fading out across the pavement. */
+  private poolTexture() {
+    // (An ellipse that reaches nothing at the sides and the far edge — no hard rectangle on the pavement.)
+    const { c, g } = canvas(64, 64);
+    g.save();
+    g.scale(1, 2);
+    const grd = g.createRadialGradient(32, 0, 1, 32, 0, 31);
+    grd.addColorStop(0, "rgba(255,255,255,.9)");
+    grd.addColorStop(0.4, "rgba(255,255,255,.4)");
+    grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 64, 32);
+    g.restore();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  /** A deal medal's face: a gold coin stamped with the % and «تخفیف» (made once per percentage). */
+  private medalTexture(pct: number) {
+    let tex = this.medalTex.get(pct);
+    if (tex) return tex;
+    const { c, g } = canvas(128, 128);
+    const grd = g.createRadialGradient(48, 40, 6, 64, 64, 64);
+    grd.addColorStop(0, "#fff3b0");
+    grd.addColorStop(0.55, "#f0c040");
+    grd.addColorStop(1, "#a8740f");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 128, 128);
+    g.strokeStyle = "rgba(90,60,0,.55)";
+    g.lineWidth = 5;
+    g.beginPath();
+    g.arc(64, 64, 54, 0, Math.PI * 2);
+    g.stroke();
+    const fa = getLocale() === "fa";
+    g.fillStyle = "#5a2d00";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = `900 46px ${FONT}`;
+    g.fillText(fa ? `٪${fmtNum(pct)}` : `${pct}%`, 64, 56);
+    g.font = `800 19px ${FONT}`;
+    g.fillText(fa ? "تخفیف" : t("off"), 64, 92);
+    tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.medalTex.set(pct, tex);
+    return tex;
+  }
+
+  /**
+   * One dressed front's window into its atlas slot: the store's own photo (cropped to the window's shape) or its
+   * trade's interior (lib/storeReveal.ts WINDOW_SCENE), then the shop's light, a reflection across the glass and the
+   * frame. `aspect`: the window's width ÷ height, so nothing looks stretched on it.
+   */
+  private drawWindow(n: number, kind: StoreKind | "office", aspect: number, seed: number, photo: HTMLImageElement | null) {
+    const { g, cols } = this.win;
+    const x0 = (n % cols) * WW, y0 = Math.floor(n / cols) * WH;
+    const V = 100 * aspect, H = 100;
+    g.save();
+    g.beginPath();
+    g.rect(x0, y0, WW, WH);
+    g.clip();
+    g.setTransform(WW / V, 0, 0, WH / H, x0, y0);
+    const sc = kind === "office" ? OFFICE_SCENE : WINDOW_SCENE[kind];
+    if (photo && photo.naturalWidth > 0) {
+      // Cover: the photo's middle at the window's shape (the slot's stretch undoes itself on the glass).
+      const pw = photo.naturalWidth, ph = photo.naturalHeight, want = V / H;
+      const sw = pw / ph > want ? ph * want : pw, sh = pw / ph > want ? ph : pw / want;
+      g.drawImage(photo, (pw - sw) / 2, (ph - sh) / 2, sw, sh, 0, 0, V, H);
+      g.fillStyle = "rgba(255,190,120,.12)";
+      g.fillRect(0, 0, V, H);
+    } else this.interior(g, sc, V, H, seed);
+    // The shop's light: bright in the middle, falling off at the sides.
+    const light = g.createRadialGradient(V / 2, H * 0.35, 4, V / 2, H * 0.45, Math.max(V, H) * 0.75);
+    light.addColorStop(0, "rgba(255,240,210,.22)");
+    light.addColorStop(1, "rgba(0,0,0,.38)");
+    g.fillStyle = light;
+    g.fillRect(0, 0, V, H);
+    // A reflection running across the glass.
+    g.fillStyle = "rgba(255,255,255,.13)";
+    g.beginPath();
+    g.moveTo(V * 0.12, H);
+    g.lineTo(V * 0.3, 0);
+    g.lineTo(V * 0.38, 0);
+    g.lineTo(V * 0.2, H);
+    g.fill();
+    g.fillStyle = "rgba(255,255,255,.07)";
+    g.beginPath();
+    g.moveTo(V * 0.42, H);
+    g.lineTo(V * 0.55, 0);
+    g.lineTo(V * 0.58, 0);
+    g.lineTo(V * 0.45, H);
+    g.fill();
+    // The frame and the mullions (a door on the right third).
+    g.fillStyle = "#2a2c30";
+    g.fillRect(0, 0, V, 3);
+    g.fillRect(0, H - 4, V, 4);
+    g.fillRect(0, 0, 3, H);
+    g.fillRect(V - 3, 0, 3, H);
+    g.fillRect(V * 0.66, 0, 2.5, H);
+    g.fillRect(V * 0.66 + 10, H * 0.5, 1.5, 7);
+    g.restore();
+    this.winDirty = true;
+  }
+
+  /** A trade's interior seen through its window: back wall, the goods, the lamps (seeded: shops of a kind differ). */
+  private interior(g: CanvasRenderingContext2D, sc: WindowScene, V: number, H: number, seed: number) {
+    const R = (k: number) => Math.abs(Math.sin(seed * 91.7 + k * 12.9898) * 43758.5453) % 1;
+    const col = (k: number) => sc.colors[Math.floor(R(k) * sc.colors.length) % sc.colors.length];
+    const wall = g.createLinearGradient(0, 0, 0, H);
+    wall.addColorStop(0, shade(sc.wall, 0.12));
+    wall.addColorStop(1, shade(sc.wall, -0.25));
+    g.fillStyle = wall;
+    g.fillRect(0, 0, V, H);
+    g.fillStyle = sc.floor;
+    g.fillRect(0, H * 0.84, V, H * 0.16);
+    const shelves = (rows: number[], item: (x: number, y: number, i: number) => void, step = 9) => {
+      for (const [r, y] of rows.entries()) {
+        g.fillStyle = "rgba(0,0,0,.35)";
+        g.fillRect(4, y + 1, V - 8, 2.5);
+        for (let x = 7, i = 0; x < V - 8; x += step + R(r * 31 + i) * 3, i++) item(x, y, r * 50 + i);
+      }
+    };
+    switch (sc.goods) {
+      case "loaves":
+        shelves([30, 52, 74], (x, y, i) => {
+          g.fillStyle = col(i);
+          g.beginPath();
+          g.ellipse(x + 4, y - 4, 5, 3.6, 0, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = "rgba(255,255,255,.25)";
+          g.fillRect(x + 1, y - 6, 6, 1);
+        }, 11);
+        break;
+      case "cakes":
+        // A lit glass counter of cakes, and cakes on stands behind.
+        g.fillStyle = "rgba(255,255,255,.5)";
+        g.fillRect(4, 58, V - 8, 26);
+        shelves([70, 82], (x, y, i) => {
+          g.fillStyle = col(i);
+          g.fillRect(x, y - 7, 7, 7);
+          g.fillStyle = "#fff";
+          g.fillRect(x, y - 7, 7, 1.5);
+        }, 10);
+        shelves([34], (x, y, i) => {
+          g.fillStyle = col(i + 9);
+          g.beginPath();
+          g.arc(x + 5, y - 6, 6, Math.PI, 0);
+          g.fill();
+        }, 16);
+        break;
+      case "fruit":
+        shelves([44, 66, 84], (x, y, i) => {
+          g.fillStyle = col(i);
+          for (let k = 0; k < 5; k++) (g.beginPath(), g.arc(x + (k % 3) * 3 + 2, y - 3 - Math.floor(k / 3) * 3, 2.2, 0, Math.PI * 2), g.fill());
+        }, 12);
+        break;
+      case "packs":
+      case "medicine":
+        shelves([26, 46, 66, 84], (x, y, i) => {
+          const h = sc.goods === "medicine" ? 5 : 6 + R(i) * 7, w = sc.goods === "medicine" ? 4 : 4 + R(i + 3) * 3;
+          g.fillStyle = col(i);
+          g.fillRect(x, y - h, w, h);
+          g.fillStyle = "rgba(255,255,255,.35)";
+          g.fillRect(x, y - h, w, 1);
+        }, 6);
+        if (sc.goods === "medicine") {
+          g.fillStyle = "#1fbf6a";
+          g.fillRect(V / 2 - 2.5, 4, 5, 14);
+          g.fillRect(V / 2 - 7, 8.5, 14, 5);
+        }
+        break;
+      case "meat":
+        g.fillStyle = "rgba(255,255,255,.4)";
+        for (let x = 0; x < V; x += 8) for (let y = 0; y < H * 0.6; y += 8) g.fillRect(x + 0.5, y + 0.5, 7, 7);
+        g.fillStyle = "#777";
+        g.fillRect(4, 10, V - 8, 1.5);
+        for (let x = 10, i = 0; x < V - 10; x += 14, i++) {
+          g.fillStyle = col(i);
+          g.beginPath();
+          g.ellipse(x, 26, 4.5, 12, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.fillStyle = "rgba(255,255,255,.55)";
+        g.fillRect(4, 62, V - 8, 22);
+        break;
+      case "clothes":
+        g.fillStyle = "#999";
+        g.fillRect(6, 18, V - 12, 1.5);
+        for (let x = 10, i = 0; x < V - 12; x += 7 + R(i) * 2, i++) {
+          g.fillStyle = col(i);
+          g.beginPath();
+          g.moveTo(x - 3, 20);
+          g.lineTo(x + 3, 20);
+          g.lineTo(x + 4.5, 48 + R(i + 5) * 14);
+          g.lineTo(x - 4.5, 48 + R(i + 5) * 14);
+          g.fill();
+        }
+        // A mannequin in the window.
+        g.fillStyle = "#e9e4dc";
+        g.beginPath();
+        g.arc(V * 0.33, 34, 4, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = col(99);
+        g.fillRect(V * 0.33 - 6, 39, 12, 26);
+        g.fillStyle = "#1c1c1c";
+        g.fillRect(V * 0.33 - 5, 65, 4, 19);
+        g.fillRect(V * 0.33 + 1, 65, 4, 19);
+        break;
+      case "phones":
+        shelves([40, 64, 84], (x, y, i) => {
+          g.fillStyle = "#0b0d10";
+          g.fillRect(x, y - 13, 7, 12);
+          g.fillStyle = col(i);
+          g.fillRect(x + 0.8, y - 12, 5.4, 10);
+        }, 11);
+        break;
+      case "desks":
+        // A bank, an office, a clinic: a counter with its screens, a waiting bench, a plant.
+        g.fillStyle = shade(sc.wall, -0.3);
+        g.fillRect(V * 0.3, 58, V * 0.66, 26);
+        for (let x = V * 0.36, i = 0; x < V * 0.9; x += 18, i++) {
+          g.fillStyle = "#16191e";
+          g.fillRect(x, 46, 11, 9);
+          g.fillStyle = col(i);
+          g.fillRect(x + 1, 47, 9, 7);
+        }
+        g.fillStyle = "rgba(0,0,0,.4)";
+        g.fillRect(6, 70, V * 0.18, 4);
+        g.fillStyle = "#3d8b3d";
+        g.beginPath();
+        g.arc(V * 0.24, 70, 6, 0, Math.PI * 2);
+        g.fill();
+        break;
+      case "cafe":
+      case "tables": {
+        if (sc.goods === "cafe") {
+          // The counter, the espresso machine, cups on a shelf, a plant.
+          g.fillStyle = shade(sc.wall, -0.4);
+          g.fillRect(V * 0.45, 56, V * 0.5, 28);
+          g.fillStyle = "#c9ccd1";
+          g.fillRect(V * 0.6, 44, 16, 12);
+          shelves([30], (x, y, i) => {
+            g.fillStyle = col(i);
+            g.fillRect(x, y - 4, 4, 4);
+          }, 7);
+          g.fillStyle = "#3d8b3d";
+          g.beginPath();
+          g.arc(10, 66, 8, 0, Math.PI * 2);
+          g.fill();
+        }
+        // Tables with their cloths, chairs either side.
+        for (let x = sc.goods === "cafe" ? 22 : 12, i = 0; x < (sc.goods === "cafe" ? V * 0.42 : V - 12); x += 26, i++) {
+          g.fillStyle = col(i);
+          g.fillRect(x, 62, 16, 3);
+          g.fillStyle = "rgba(0,0,0,.45)";
+          g.fillRect(x + 7, 65, 2, 18);
+          g.fillRect(x - 5, 66, 4, 17);
+          g.fillRect(x + 17, 66, 4, 17);
+        }
+        break;
+      }
+    }
+    // The lamps.
+    g.fillStyle = "rgba(255,236,190,.95)";
+    if (sc.lamps === "strip") g.fillRect(4, 2, V - 8, 2.5);
+    else
+      for (let x = 14; x < V - 8; x += 26) {
+        if (sc.lamps === "pendant") {
+          g.fillStyle = "rgba(0,0,0,.5)";
+          g.fillRect(x, 0, 0.8, 9);
+          g.fillStyle = "rgba(255,226,170,.95)";
+          g.beginPath();
+          g.arc(x + 0.4, 11, 3.2, Math.PI, 0);
+          g.fill();
+        } else {
+          const sp = g.createRadialGradient(x, 2, 0, x, 2, 20);
+          sp.addColorStop(0, "rgba(255,245,220,.6)");
+          sp.addColorStop(1, "rgba(255,245,220,0)");
+          g.fillStyle = sp;
+          g.fillRect(x - 20, 0, 40, 40);
+        }
+      }
+  }
+
   /** A Persian rug: a red field, a navy border with a cream guard stripe, a medallion and corner pieces. */
   private rugTexture() {
     const { c, g } = canvas(128, 192);
@@ -589,6 +948,36 @@ export class Storefronts {
       if (!l.pole && dressed.length < this.cap.dressed && l.d < (branded(info) ? 120 : 70)) dressed.push({ l, kind, open, fx: Math.sin(l.angle), fz: Math.cos(l.angle), seed: dressed.length + (l.x * 7 + l.z * 13) % 5 });
     }
     this.dressed = dressed;
+    // Windows: a slot per dressed front, kept while it stays dressed, redrawn when what it shows changes (its photo
+    // arrived) — a few a call, so a street coming into view doesn't stall a frame.
+    const wantWin = new Set(dressed.map((d) => d.l.id));
+    for (const [id, w] of this.winSlots) if (!wantWin.has(id)) (this.winFree.push(w.n), this.winSlots.delete(id));
+    let winDraws = 0;
+    for (const d of dressed) {
+      let w = this.winSlots.get(d.l.id);
+      if (!w) {
+        const n = this.winFree.pop();
+        if (n == null) continue;
+        this.winSlots.set(d.l.id, (w = { n, sig: "" }));
+      }
+      const info = this.infos.get(d.l.id), photo = this.image(info?.photo);
+      const f = frontOf(d.l), aspect = (f.wm * 0.88) / f.wh;
+      const sig = `${d.kind}|${d.l.cls ?? ""}|${photo ? info!.photo : ""}|${aspect.toFixed(1)}`;
+      if (w.sig !== sig && winDraws < 4) {
+        w.sig = sig;
+        winDraws++;
+        this.drawWindow(w.n, isShop(d.l.cls, nameLines(d.l.text)[0]) ? d.kind : "office", aspect, idSeed(d.l.id), photo);
+      }
+    }
+    if (this.winDirty) ((this.winDirty = false), (this.win.tex.needsUpdate = true));
+    // The reveal: an open store you come up to for the first time lights its sign up for you.
+    const nowMs = performance.now();
+    for (const l of shops) {
+      if (l.d >= REVEAL_M || this.revealed.has(l.id)) continue;
+      if (!this.isOpen(l.id, storeKind(l.cls, nameLines(l.text)[0]), this.infos.get(l.id)?.week)) continue;
+      this.revealed.set(l.id, nowMs);
+      if (!this.reduceMotion) this.revealing.push(l.id);
+    }
     this.layout();
     this.billboards.sync(list, this.infos, (l) => this.isOpen(l.id, storeKind(l.cls, nameLines(l.text)[0]), this.infos.get(l.id)?.week), this.fontReady);
     if (this.dirty && performance.now() - this.lastUpload > 350) {
@@ -611,10 +1000,14 @@ export class Storefronts {
     for (let i = 0; i < this.dressed.length; i++) {
       const d = this.dressed[i], look = STORE_LOOK[d.kind];
       const glow = TMP_C.set(look.glow);
-      const day = 0.28, lit = d.open ? day + (1.15 - day) * this.night : 0;
+      // (By day the window still has to show its goods: the shop's lights are on behind the glass.)
+      const day = WIN_DAY, lit = d.open ? day + (1.15 - day) * this.night : 0;
       this.glass.setColorAt(i, glow.multiplyScalar(Math.max(0.05, lit)));
       this.shutters.setColorAt(i, TMP_C.setScalar(0.5 - this.night * 0.38));
+      // The pavement in front catches it after dark.
+      this.spill.setColorAt(i, d.open ? TMP_C.set(look.glow).multiplyScalar(this.night * 0.32) : TMP_C.setScalar(0));
     }
+    if (this.spill.instanceColor) this.spill.instanceColor.needsUpdate = true;
     if (this.glass.instanceColor) this.glass.instanceColor.needsUpdate = true;
     if (this.shutters.instanceColor) this.shutters.instanceColor.needsUpdate = true;
   }
@@ -657,6 +1050,7 @@ export class Storefronts {
     this.litAttr.needsUpdate = true;
 
     // Dressed fronts.
+    this.glassOf.clear();
     const cnt = { awn: 0, glass: 0, shut: 0, crate: 0, prod: 0, menu: 0, neon: 0, cross: 0, garm: 0, screen: 0, steam: 0, rug: 0, samovar: 0 };
     this.neonList.length = this.crossList.length = this.screenList.length = this.steamSrc.length = 0;
     const R = (seed: number, k: number) => Math.abs(Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453) % 1;
@@ -677,6 +1071,12 @@ export class Storefronts {
       const wh = Math.max(0.8, yA - 0.2 - 0.25), wy = 0.25 + wh / 2;
       const gi = cnt.glass++, si = cnt.shut++;
       this.place(this.glass, gi, l.x + fx * 0.05, wy, l.z + fz * 0.05, l.angle, wm * 0.88, d.open ? wh : 0.0001, 1);
+      // Its own slot of the window atlas (its photo or its trade's interior).
+      const ws = this.winSlots.get(l.id), WA = this.win.cols * WW, HA = this.win.rows * WH;
+      if (ws) this.winAttr.setXYZW(gi, ((ws.n % this.win.cols) * WW + 1) / WA, 1 - ((Math.floor(ws.n / this.win.cols) + 1) * WH - 1) / HA, (WW - 2) / WA, (WH - 2) / HA);
+      this.glassOf.set(l.id, gi);
+      // Its light on the pavement (lit in tintWindows, by night).
+      this.place(this.spill, gi, l.x + fx * 0.08, KERB_H + 0.015, l.z + fz * 0.08, l.angle, wm * 1.15, 1, 2.6);
       this.place(this.shutters, si, l.x + fx * 0.06, wy, l.z + fz * 0.06, l.angle, wm * 0.88, d.open ? 0.0001 : wh, 1);
       // Props.
       const ground = (o: number) => ({ x: l.x + fx * 1.0 + rx * o, z: l.z + fz * 1.0 + rz * o });
@@ -730,7 +1130,28 @@ export class Storefronts {
       }
     }
     this.awnings.count = this.lips.count = cnt.awn;
-    this.glass.count = cnt.glass;
+    this.glass.count = this.spill.count = cnt.glass;
+    this.winAttr.needsUpdate = true;
+    this.spill.instanceMatrix.needsUpdate = true;
+    // Deal medals: the nearest open fronts with a discount, by the end of their sign.
+    let mi = 0;
+    for (const d of this.dressed) {
+      if (mi >= this.medals.length) break;
+      const pct = d.open ? dealPercent(this.infos.get(d.l.id)) : null;
+      if (pct == null) continue;
+      // On the sign's top corner, a little proud of it: seen from the front, not only from the side.
+      const m = this.medals[mi++], { l, fx, fz } = d, off = signW(l.w) / 2 - 0.15;
+      (m.id = l.id), (m.x = l.x + fx * 0.35 + fz * off), (m.y = l.y + 0.5), (m.z = l.z + fz * 0.35 - fx * off), (m.seed = idSeed(l.id) % 7);
+      m.mesh.rotation.y = l.angle;
+      if (m.pct !== pct) {
+        m.pct = pct;
+        m.face.map = m.face.emissiveMap = this.medalTexture(pct);
+        m.face.needsUpdate = true;
+      }
+      m.mesh.position.set(m.x, m.y, m.z);
+      m.mesh.visible = true;
+    }
+    for (; mi < this.medals.length; mi++) (this.medals[mi].id = null), (this.medals[mi].mesh.visible = false);
     this.shutters.count = cnt.shut;
     this.crates.count = cnt.crate;
     this.produce.count = cnt.prod;
@@ -790,8 +1211,48 @@ export class Storefronts {
       this.steam.instanceMatrix.needsUpdate = true;
       if (this.steam.instanceColor) this.steam.instanceColor.needsUpdate = true;
     }
+    this.reveal();
+    // Deal medals turn and bob by their sign.
+    for (const m of this.medals) {
+      if (!m.id) continue;
+      m.mesh.position.y = m.y + Math.sin(t * 2.2 + m.seed) * 0.06 * motion;
+      if (motion) m.mesh.rotation.y = t * 1.7 + m.seed;
+      m.face.emissiveIntensity = 0.25 + this.night * 0.9;
+    }
     this.billboards.update(t);
     this.updatePanel(dt, cam);
+  }
+
+  /**
+   * Stores lighting up for you (sync starts them): their sign stutters on and surges (lib/storeReveal.ts ignition) —
+   * by day the surge is stronger, or it wouldn't show in the sun — and the window's lights come up with it.
+   */
+  private reveal() {
+    if (!this.revealing.length) return;
+    const now = performance.now(), day = 1 - this.night;
+    for (let n = 0; n < this.signs.count; n++) {
+      const at = this.revealed.get(this.idOf[n]);
+      if (at == null || !this.revealing.includes(this.idOf[n])) continue;
+      const ig = ignition((now - at) / 1000);
+      this.litAttr.setX(n, this.signLit[n] * (ig > 1 ? 1 + (ig - 1) * (1 + 3 * day) : ig));
+    }
+    this.litAttr.needsUpdate = true;
+    let glassTouched = false;
+    for (const id of this.revealing) {
+      const gi = this.glassOf.get(id), d = gi != null ? this.dressed[gi] : undefined;
+      if (gi == null || !d || d.l.id !== id || !d.open) continue;
+      const ig = ignition((now - this.revealed.get(id)!) / 1000), base = WIN_DAY + (1.15 - WIN_DAY) * this.night;
+      this.glass.setColorAt(gi, TMP_C.set(STORE_LOOK[d.kind].glow).multiplyScalar(base * Math.max(0.3, ig)));
+      glassTouched = true;
+    }
+    if (glassTouched && this.glass.instanceColor) this.glass.instanceColor.needsUpdate = true;
+    this.revealing = this.revealing.filter((id) => now - this.revealed.get(id)! < REVEAL_S * 1000);
+    // (Done: every sign and window back to its own level.)
+    if (!this.revealing.length) {
+      for (let n = 0; n < this.signs.count; n++) this.litAttr.setX(n, this.signLit[n]);
+      this.litAttr.needsUpdate = true;
+      this.tintWindows();
+    }
   }
 
   // ---------------------------------------------------------------- the panel
@@ -1041,6 +1502,7 @@ export class Storefronts {
     this.scene.remove(this.group);
     for (const o of this.owned) o.dispose();
     this.atlas.tex.dispose();
+    for (const tex of this.medalTex.values()) tex.dispose();
     this.billboards.dispose();
     for (const m of this.group.children) if ((m as THREE.InstancedMesh).isInstancedMesh) (m as THREE.InstancedMesh).dispose();
   }

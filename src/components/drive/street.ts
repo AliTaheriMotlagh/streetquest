@@ -352,7 +352,7 @@ export class StreetLife {
    * «Sangak Nayeb» Fresh bread, hot bread! — in the bubble, and aloud where a voice can say the name
    * (the on-device Persian voice, the phone's own); else the recorded line without it.
    */
-  shopCall(kind: StoreKind, name: string, at: { x: number; z: number }) {
+  shopCall(kind: StoreKind, name: string, at: { x: number; z: number }, who?: number) {
     const me = this.me;
     if (!me || me.matchOn) return false;
     const b = shopCallFor(kind, Math.random, this.shopRecent);
@@ -360,7 +360,7 @@ export class StreetLife {
     const v = b.voices.includes("f") && Math.random() < 0.3 ? "f" : "m";
     const loc = getLocale(), words = textOf(b, v), line = loc === "fa" ? words.fa : loc === "tr" ? words.tr : words.en;
     // The store's name is called out too ("Sangak Nayeb! Fresh bread, hot bread!") where a voice can say any words.
-    const ok = this.voices.line(b.id, v, () => ({ x: at.x, y: 1.75, z: at.z }), me, performance.now(), name ? `«${name}» ${line}` : line, name ? `${name}! ${line}` : undefined);
+    const ok = this.voices.line(b.id, v, () => ({ x: at.x, y: 1.75, z: at.z }), me, performance.now(), name ? `«${name}» ${line}` : line, name ? `${name}! ${line}` : undefined, who);
     if (ok) this.shopRecent = [b.id, ...this.shopRecent].slice(0, 4);
     return ok;
   }
@@ -370,10 +370,10 @@ export class StreetLife {
    * to, the shopkeeper): bubble now, voice from the on-device model or the phone (voices.talk).
    * Returns how long it shows (s).
    */
-  converse(text: string, v: VoiceKind, where: () => { x: number; y: number; z: number } | null, close = true, onSpeak?: (secs: number) => void) {
+  converse(text: string, v: VoiceKind, where: () => { x: number; y: number; z: number } | null, close = true, onSpeak?: (secs: number) => void, who?: number) {
     const me = this.me;
     if (!me) return onSpeak?.(1.5), 0;
-    return this.voices.talk(text, v, where, me, close, onSpeak);
+    return this.voices.talk(text, v, where, me, close, onSpeak, who);
   }
 
   /** Wanted stars now (people won't talk to you at 2+). */
