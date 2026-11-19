@@ -1,7 +1,7 @@
 # StreetQuest — backlog (the one place for open work)
 
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
-(then delete it next time), add what's new. Last gathered: 2026-11-19.
+(then delete it next time), add what's new. Last gathered: 2026-11-19 (evening: steps 0–2 worked; resume at step 2 budgets, then 3).
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
@@ -37,20 +37,18 @@ Everything unfinished from every session, in one list. Update it at the end of e
          `listeners` (shown under the playing row). Headless Chrome: plays, title + next + listeners show, off → frame
          gone. Note for Remixt itself: its embed logs CORS errors fetching some R2 stems (bucket lacks CORS for
          remixt-free.vercel.app) — still plays. Not yet checked: iOS sim tap card, 360 px Persian screenshot.
-   - [~] **SEO / indexing / Persian SEO** (2026-11-19, session stopped early — tokens ran out):
-         done: `/features` + 6 `/features/<slug>` pages (`lib/features.ts`, fa/tr `i18n/*/seo.ts`), in sitemap, footer
-         + home links; Persian brand «استریت کوئست» as `alternateName` and in fa page titles; verification tags from
-         `NEXT_PUBLIC_{GOOGLE,BING,YANDEX}_VERIFICATION`; IndexNow (`INDEXNOW_KEY`, `/indexnow.txt`, `server/indexNow.ts`,
-         pinged on public event + new product). Unit tests: tests/seo.test.ts, tests/features.test.ts green.
-         TODO: full `npm test` (typecheck not run since the fa title change in layout.tsx), README + .env.example for the
-         4 new env vars, e2e for /features + /indexnow.txt, 360×740 Persian screenshots, `graphify update .`, commit.
-         After deploy: add the site in Bing Webmaster + Yandex Webmaster, set INDEXNOW_KEY, resubmit /sitemap.xml.
+   - [x] SEO finished (2026-11-19): README + .env.example for the verification/IndexNow vars, e2e for /features +
+         /indexnow.txt (site.spec 11/11), 360 px Persian shots, RTL logo order fixed (was "QUEST STREET").
+         After deploy: Bing + Yandex Webmaster, set INDEXNOW_KEY, resubmit /sitemap.xml.
 1. **iPad bugs**
    - [~] Zoom stuck after landscape → portrait: `components/game/zoomGuard.ts` re-sets the viewport meta when zoomed
          after a rotation — never seen on a real iPad/simulator yet.
-   - [ ] iPad Chrome map view: panel missing / can't zoom back → `100dvh` + `env(safe-area-inset-*)`, layout from `visualViewport`.
-   - [ ] Settings tab doesn't fit / won't scroll → own scroller (`overflow-y:auto; overscroll-behavior:contain;
-         touch-action: pan-y`), canvas touch handlers ignore events from inside panels; 2 columns ≥768 px.
+   - [~] iPad Chrome map view: panel missing / can't zoom back → likely a page pinch-zoom (iOS ignores user-scalable=no).
+         Now blocked in the whole game: gesturestart/gesturechange cancelled (zoomGuard.ts) + `.game` touch-action
+         pan-x pan-y. Check on a real iPad.
+   - [~] Settings doesn't fit / won't scroll: NOT reproduced in WebKit at iPad 7 size (810×1080 + landscape, en/fa):
+         2D Profile→Settings and the 3D menu's Settings fit and have their own scrollers. Real-iPad touch check left.
+   - [x] Persian digits in the invite link (Vazirmatn FD): `.mono[dir=ltr]` now a Latin mono font.
    - [x] Inputs < 16 px zoom on focus: the 16 px rule now also covers `any-pointer: coarse` (iPad with a trackpad).
    - Tools: iPad simulator (iPad 10th gen + iPad Pro) Safari and Chrome, `xcrun simctl` rotate + screenshot,
      Playwright WebKit iPad profile for regressions, Safari Web Inspector on the sim.
@@ -60,9 +58,19 @@ Everything unfinished from every session, in one list. Update it at the end of e
    - [ ] `lib/perf/features.ts` (pure): registry {id, cost, minTier} for post-processing, shadows, MSAA, SSR, rain,
          crowd/traffic/parked counts, street kit, real 3D people (impostors on low), sherpa voices (phone voice on low),
          HRTF, radio, interiors, hidden 2D map. Settings: "Turned off on this device for smoothness: …" + toggles.
-   - [ ] Heat: 30 fps cap with real frame pacing on low/mid, DPR 1 on low, ~10 fps when idle (no input, nothing
-         moving), no drawing under menus/hidden tab, battery-saver switch, auto step-down when frame time climbs.
-   - [ ] Budgets as tests: draw calls / triangles per tier asserted from `renderer.info` in a headless run.
+   - [x] Heat (2026-11-19): `lib/perf/pace.ts` (pure, tests/pace.test.ts) — 30 fps on low/medium, battery saver or under a
+         side menu; 20 fps idle (12 s no input, camera still; 20 not 10 because the sim clamps dt at 50 ms); nothing drawn
+         under a full-screen menu/store; Adaptive.setPace so a cap isn't read as a slow GPU; never paced in ?bench.
+         Settings: Battery saver toggle (auto on ≤20 % battery, not charging) + "Turned off on this device: …"
+         (`offEffects` in quality.ts). Verified headless: idle 21 fps, saver 30, full-screen menu draw:false.
+   - [x] Low tier trees: 20-tri blobs (`makeTemplates(style, lite)`) — trees were ~480k of the low tier's 1.14M triangles.
+   - [ ] Budgets as tests: NOT done. Numbers measured (Tehran 35.7006,51.4013, 1280×800, before the tree change):
+         low 268 calls/1.14M tris, medium 307/1.86M, high 327/1.97M, ultra 322/2.07M. After: low read 54/20k (tiles
+         probably not all loaded — re-measure). Next: GFX_BUDGETS per tier in lib/perf/frameStats.ts, judged in
+         benchResult, printed by test:lag. Medium/high triangles also high: find the next big meshes (instanced
+         unnamed 911-tri ×84 = cars?).
+     Testing note: headless guests hit the 20/h/IP guest limit → send `x-forwarded-for: 10.x.x.x` per context.
+     Chrome Energy Saver caps rAF at 30 fps below 20 % battery — lag numbers on a low Mac battery are meaningless.
    - Tools: Xcode Instruments (Energy Log + GPU) and Safari Web Inspector Timelines on a cabled iPad, `stats-gl` dev
      overlay, Spector.js for draw calls, `npm run test:lag`, Chrome CPU 4× throttle. Practices: instancing, LOD +
      impostors, object pools, a per-frame time-budgeted work queue (≤4 ms), no React state per frame, KTX2/meshopt assets.

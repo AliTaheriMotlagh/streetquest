@@ -386,6 +386,22 @@ const drive: Record<string, string> = {
   "Remixes — listeners vote": "ریمیکس‌ها — شنونده‌ها رأی می‌دن",
   "Next: {song}": "بعدی: {song}",
   "{n} listening": "{n} نفر دارن گوش می‌دن",
+  "shadows": "سایه‌ها",
+  "reflections": "بازتاب‌ها",
+  "contact shadows": "سایه‌های تماسی",
+  "film look": "حال‌وهوای سینمایی",
+  "haze": "مه",
+  "glow": "درخشش",
+  "clouds": "ابرها",
+  "glossy paint": "رنگ براق ماشین",
+  "night lights": "چراغ‌های شب",
+  "road and wall detail": "جزئیات جاده و دیوار",
+  "swaying trees": "تکان درخت‌ها",
+  "smooth edges": "لبه‌های نرم",
+  "Turned off on this device for smoothness: {list}.": "برای روان‌تر شدن، روی این دستگاه خاموشه: {list}.",
+  "Battery saver": "صرفه‌جویی باتری",
+  "30 frames a second: a cooler phone and a longer battery. It also comes on by itself when the battery is low, and the city slows to 20 frames a second while you stand still.": "۳۰ فریم در ثانیه: گوشی خنک‌تر و باتری طولانی‌تر. وقتی باتری کمه خودش روشن می‌شه، و وقتی وایستادی شهر به ۲۰ فریم در ثانیه می‌ره.",
+  "On by itself right now: the battery is low.": "الان خودش روشنه: باتری کمه.",
 };
 
 export default drive;

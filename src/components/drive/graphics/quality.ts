@@ -132,6 +132,26 @@ export function effective(tier: Tier, level: number, base: Profile = PROFILES[ti
 }
 export const MAX_LEVEL = 5;
 
+/** Effects a player would notice, in the order Settings lists them as "turned off on this device". */
+export type Fx = "shadows" | "reflections" | "ao" | "film" | "haze" | "bloom" | "clouds" | "paint" | "lights" | "surfaces" | "wind" | "smoothEdges";
+/** What `p` leaves out that the full (ultra) picture has — Settings shows it, so a plain look is explained, not a bug. */
+export function offEffects(p: Profile): Fx[] {
+  const out: Fx[] = [];
+  if (!p.shadows) out.push("shadows");
+  if (!p.ssr) out.push("reflections");
+  if (!p.ao) out.push("ao");
+  if (!p.cinematic) out.push("film");
+  if (!p.haze) out.push("haze");
+  if (!p.bloom) out.push("bloom");
+  if (!p.clouds) out.push("clouds");
+  if (!p.clearcoat) out.push("paint");
+  if (!p.nightLights) out.push("lights");
+  if (!p.surfaces) out.push("surfaces");
+  if (!p.wind) out.push("wind");
+  if (!p.msaa && !p.fxaa) out.push("smoothEdges");
+  return out;
+}
+
 /**
  * What this device can't do, taken out of a profile: without half-float render targets
  * there is no HDR pipeline at all (the picture goes straight to the screen, as on low).
@@ -175,7 +195,19 @@ export class Adaptive {
 
   /** Frame budget in ms (60 fps by default; 30 fps screens never get here thanks to `futile`). */
   private get target() {
-    return this.opts.target ?? 1000 / 60;
+    return this.paced ? 1000 / this.paced : (this.opts.target ?? 1000 / 60);
+  }
+  private paced = 0;
+  /**
+   * The city is paced to `fps` (lib/perf/pace.ts; 0 = the screen's rate): frames that wait for their turn aren't the
+   * device being slow, so the budget becomes the paced frame's, and measuring starts afresh.
+   */
+  setPace(fps: number) {
+    if (fps === this.paced) return;
+    this.paced = fps;
+    this.times.length = 0;
+    this.before = 0;
+    this.goodWindows = 0;
   }
 
   /**

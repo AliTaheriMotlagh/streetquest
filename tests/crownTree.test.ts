@@ -32,4 +32,14 @@ describe("street trees", () => {
     assert.ok(out / crown > 0.6, `${out}/${crown} face out`);
     assert.ok(light / crown > 0.9);
   });
+  it("the low graphics tier gets trees at about a quarter of the triangles, same size", () => {
+    const lite = makeTemplates("real", true);
+    for (const [a, b] of [[tpl.tree, lite.tree], ...tpl.variants.map((g, i) => [g, lite.variants[i]])]) {
+      const full = a.getAttribute("position").count / 3, low = b.getAttribute("position").count / 3;
+      assert.ok(low < full * 0.35 && low < 200, `${low} vs ${full}`);
+      a.computeBoundingBox();
+      b.computeBoundingBox();
+      assert.ok(Math.abs(a.boundingBox!.max.y - b.boundingBox!.max.y) < 0.6, "as tall");
+    }
+  });
 });

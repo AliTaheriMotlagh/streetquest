@@ -7,7 +7,9 @@ import { GARAGE_KEYS, PAINTS, unlocked, VEHICLES, type VehicleKey } from "@/lib/
 import { PARTY_GAMES, type PartyGame } from "@/lib/party";
 import { Button } from "@/components/Button";
 import type { TimePick, Weather } from "@/lib/daylight";
-import type { QualityPick, Tier } from "./graphics/quality";
+import type { Fx, QualityPick, Tier } from "./graphics/quality";
+import { saverPick, setSaverPick, watchBattery } from "./graphics/caps";
+import { lowBattery } from "@/lib/perf/pace";
 import type { Style } from "./tileMesh";
 import type { NameMode } from "./vectorTile";
 import { canFullscreen, isFullscreen, onFullscreenChange, setFullscreen } from "./fullscreen";
@@ -35,6 +37,10 @@ const QUALITY: { key: QualityPick; label: string }[] = [
   { key: "medium", label: msg("Medium") },
   { key: "low", label: msg("Low") },
 ];
+const FX_LABEL: Record<Fx, string> = {
+  shadows: msg("shadows"), reflections: msg("reflections"), ao: msg("contact shadows"), film: msg("film look"), haze: msg("haze"), bloom: msg("glow"),
+  clouds: msg("clouds"), paint: msg("glossy paint"), lights: msg("night lights"), surfaces: msg("road and wall detail"), wind: msg("swaying trees"), smoothEdges: msg("smooth edges"),
+};
 const TIER_LABEL: Record<Tier, string> = { ultra: msg("Ultra"), high: msg("High"), medium: msg("Medium"), low: msg("Low") };
 
 const TIMES: { key: TimePick; icon: IconName; label: string }[] = [
@@ -77,11 +83,16 @@ type Props = {
   onClose: () => void;
   /** Inside the drive menu: no window of its own. */
   embedded?: boolean;
+  /** Effects off on this device right now (graphics/quality.ts offEffects). */
+  offFx?: Fx[];
   /** The pause menu splits this in two tabs: the vehicles, and everything about how it looks and handles. */
   section?: "garage" | "settings";
 };
 
-export function DriveGarage({ level, vehicle, paint, style, names, quality, autoTier, timeOfDay, weather, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onQuality, onTime, onWeather, onCtl, onClose, section, embedded }: Props) {
+export function DriveGarage({ level, vehicle, paint, style, names, quality, autoTier, timeOfDay, weather, fps, locked, ctl, onVehicle, onPaint, onStyle, onNames, onQuality, onTime, onWeather, onCtl, onClose, section, embedded, offFx = [] }: Props) {
+  const [saver, setSaver] = useState(saverPick);
+  const [lowBat, setLowBat] = useState(false);
+  useEffect(() => watchBattery((b) => setLowBat(lowBattery(b))), []);
   const groundOnly = !!locked && PARTY_GAMES[locked].groundOnly;
   const [tiltError, setTiltError] = useState(false);
   const [full, setFull] = useState(false);
@@ -166,6 +177,15 @@ export function DriveGarage({ level, vehicle, paint, style, names, quality, auto
         ))}
       </div>
       {quality === "auto" && <p className="small muted">{t("Auto chose {tier} for this device, and steps down by itself if the frame rate drops.", { tier: t(TIER_LABEL[autoTier]) })}</p>}
+      {offFx.length > 0 && <p className="small muted">{t("Turned off on this device for smoothness: {list}.", { list: offFx.map((f) => t(FX_LABEL[f])).join(t(", ")) })}</p>}
+      <b className="small">{t("Battery saver")}</b>
+      <div className="seg">
+        <Button className={`btn small ${saver ? "yellow" : "ghost"}`} aria-pressed={saver} onClick={() => (setSaverPick(!saver), setSaver(!saver))}>
+          <Icon name="bolt" size={16} /> {t(saver ? "On" : "Off")}
+        </Button>
+      </div>
+      {lowBat && !saver && <p className="small" style={{ margin: 0 }}>{t("On by itself right now: the battery is low.")}</p>}
+      <p className="small muted" style={{ margin: 0 }}>{t("30 frames a second: a cooler phone and a longer battery. It also comes on by itself when the battery is low, and the city slows to 20 frames a second while you stand still.")}</p>
       <b className="small">{t("Wide view")}</b>
       {canFullscreen() && (
         <div className="seg">

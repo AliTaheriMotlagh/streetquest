@@ -1,63 +1,54 @@
-// A polite client of the store sites: spaced out, capped a minute, backing off when told to.
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { PACE_MAX_WAIT_MS, PACE_RULES, Pacer, pacerFor, siteOfUrl } from "@/lib/pace";
+import { CAP_FPS, IDLE_FPS, IDLE_MS, lowBattery, pace, Pacer, type PaceIn } from "../src/lib/perf/pace";
 
-describe("pacing the store sites", () => {
-  it("knows a site from its URL — straight or through the relay — and leaves others alone", () => {
-    assert.equal(siteOfUrl("https://snappfood.ir/mobile/v2/restaurant/details/dynamic?x=1"), "snappfood");
-    assert.equal(siteOfUrl("http://37.0.0.1:8790/key/https/snappfood.ir/search/api/v1/desktop/search"), "snappfood");
-    assert.equal(siteOfUrl("https://api.torob.com/v4/base-product/search/"), "torob");
-    assert.equal(siteOfUrl("https://search.raah.ir/v6/bundle-search"), "balad");
-    assert.equal(siteOfUrl("http://localhost:4010/stub/vendors"), "");
-    assert.equal(pacerFor("http://localhost:4010/stub/vendors", {}), null);
-    assert.equal(pacerFor("https://snappfood.ir/x", { SITE_PACE: "off" }), null);
-    assert.ok(pacerFor("https://snappfood.ir/x", {}) === pacerFor("https://snappfood.ir/y", {}), "one pacer per site");
-    // Snappfood is the one we can least afford to lose: no other store site is paced more gently.
-    // (OSRM, the routing service, follows its own published one-a-second policy.)
-    const sf = PACE_RULES.find((r) => r.site === "snappfood")!.rule;
-    assert.equal(PACE_RULES.find((r) => r.site === "osrm")?.rule.gapMs, 1000);
-    for (const r of PACE_RULES) if (r.site !== "torob" && r.site !== "osrm") assert.ok(sf.gapMs >= r.rule.gapMs && sf.perMin <= r.rule.perMin, r.site);
-  });
+const base: PaceIn = { tier: "high", saver: false, sinceActive: 0, busy: false, covered: false, hidden: false };
 
-  it("spaces requests out: a burst leaves one at a time", () => {
-    const p = new Pacer({ gapMs: 300, perMin: 100, coolOn: [429], strikes: 2, coolMs: 60_000 });
-    assert.deepEqual([p.take(1000), p.take(1000), p.take(1000), p.take(1100)], [0, 300, 600, 800]);
-    // After a quiet spell the next one goes at once.
-    assert.equal(p.take(10_000), 0);
-    // A queue that would wait too long isn't joined: the cache answers instead.
-    const slow = new Pacer({ gapMs: 2500, perMin: 100, coolOn: [], strikes: 1, coolMs: 0 });
-    assert.deepEqual([slow.take(0), slow.take(0), slow.take(0)], [0, 2500, 5000]);
-    assert.ok(7500 > PACE_MAX_WAIT_MS);
-    assert.equal(slow.take(0), null);
-  });
+test("high/ultra run at the screen's rate and measure; low/medium and the battery saver cap at 30", () => {
+  assert.deepEqual(pace(base), { fps: 0, draw: true, measure: true });
+  assert.deepEqual(pace({ ...base, tier: "ultra" }), { fps: 0, draw: true, measure: true });
+  for (const tier of ["low", "medium"] as const) assert.deepEqual(pace({ ...base, tier }), { fps: CAP_FPS, draw: true, measure: true });
+  assert.equal(pace({ ...base, saver: true }).fps, CAP_FPS);
+});
 
-  it("caps a minute, and the budget comes back as the minute passes", () => {
-    const p = new Pacer({ gapMs: 0, perMin: 3, coolOn: [], strikes: 1, coolMs: 0 });
-    assert.deepEqual([p.take(0), p.take(10), p.take(20), p.take(30)], [0, 0, 0, null]);
-    assert.equal(p.take(59_000), null);
-    assert.equal(p.take(60_001), 0, "the first one is a minute old");
-    assert.equal(p.state(60_001).lastMin, 3);
-  });
+test("idle (no input, standing still) drops to 20 fps and stops measuring; a match or flight is never idle", () => {
+  assert.deepEqual(pace({ ...base, sinceActive: IDLE_MS }), { fps: IDLE_FPS, draw: true, measure: false });
+  assert.equal(pace({ ...base, sinceActive: IDLE_MS - 1 }).fps, 0);
+  assert.equal(pace({ ...base, sinceActive: IDLE_MS * 5, busy: true }).fps, 0);
+});
 
-  it("stops asking once the site says no several times running, then starts again", () => {
-    const p = new Pacer({ gapMs: 0, perMin: 100, coolOn: [403, 429], strikes: 3, coolMs: 15 * 60_000 });
-    p.saw(403, 0);
-    p.saw(200, 1); // a good answer in between: not "several running"
-    p.saw(403, 2);
-    p.saw(429, 3);
-    assert.equal(p.cooling(4), false);
-    assert.equal(p.take(4), 0);
-    p.saw(403, 5);
-    assert.equal(p.cooling(6), true, "three refusals in a row");
-    assert.equal(p.take(6), null);
-    assert.equal(p.state(6).coolS, 900);
-    // A missing page or a timeout is nobody saying "go away".
-    const q = new Pacer({ gapMs: 0, perMin: 100, coolOn: [429], strikes: 1, coolMs: 1000 });
-    q.saw(404, 0);
-    q.saw(0, 0);
-    q.saw(500, 0);
-    assert.equal(q.cooling(1), false);
-    assert.equal(p.take(5 + 15 * 60_000), 0, "and we ask again afterwards");
-  });
+test("a side menu caps at 30 without measuring; a full-screen one keeps the city ticking but draws nothing", () => {
+  assert.deepEqual(pace({ ...base, covered: true }), { fps: CAP_FPS, draw: true, measure: false });
+  assert.deepEqual(pace({ ...base, covered: true, hidden: true }), { fps: IDLE_FPS, draw: false, measure: false });
+});
+
+const run = (hz: number, fps: number, ms: number, jitter = 0) => {
+  const p = new Pacer();
+  let n = 0;
+  for (let i = 0, t = 1000; t < 1000 + ms; i++, t = 1000 + i * (1000 / hz) + (i % 2 ? jitter : -jitter)) if (p.ready(t, fps)) n++;
+  return n;
+};
+
+test("the pacer lets 30 frames a second through on 60 and 120 Hz screens, with jitter, without drifting", () => {
+  for (const hz of [60, 120]) {
+    const n = run(hz, 30, 10_000, 0.8);
+    assert.ok(n >= 299 && n <= 301, `${hz} Hz → ${n}`);
+  }
+  assert.ok(Math.abs(run(120, 20, 10_000) - 200) <= 1);
+  assert.equal(run(60, 0, 1000), 60);
+});
+
+test("after a long pause the pacer starts over instead of catching up", () => {
+  const p = new Pacer();
+  assert.equal(p.ready(0, 30), true);
+  assert.equal(p.ready(5000, 30), true);
+  assert.equal(p.ready(5016, 30), false);
+  assert.equal(p.ready(5034, 30), true);
+});
+
+test("low battery is ≤ 20 % and not charging", () => {
+  assert.equal(lowBattery({ level: 0.15, charging: false }), true);
+  assert.equal(lowBattery({ level: 0.15, charging: true }), false);
+  assert.equal(lowBattery({ level: 0.5, charging: false }), false);
+  assert.equal(lowBattery(null), false);
 });

@@ -234,7 +234,9 @@ export class GraphicsEngine {
   }
 
   /** Call once per frame before rendering: feeds the frame-rate controller. */
-  frame(now: number) {
+  /** One frame. `paceFps` (lib/perf/pace.ts) is the rate the city is held to, 0 = the screen's; `measure` false: these frame times say nothing about the device. */
+  frame(now: number, paceFps = 0, measure = true) {
+    this.adaptive.setPace(paceFps);
     const ms = now - this.lastFrame;
     this.lastFrame = now;
     this.frames++;
@@ -244,7 +246,7 @@ export class GraphicsEngine {
       this.frames = 0;
       this.fpsAt = now;
     }
-    const ch = this.coverSave ? null : this.adaptive.sample(ms, now);
+    const ch = this.coverSave || !measure ? null : this.adaptive.sample(ms, now);
     if (ch?.kind === "dpr") (this.renderer.setPixelRatio(ch.dpr), (this.grade.sharpen = sharpenFor(ch.dpr, window.devicePixelRatio || 1)));
     else if (ch?.kind === "level") {
       this.profile = this.make(ch.level);

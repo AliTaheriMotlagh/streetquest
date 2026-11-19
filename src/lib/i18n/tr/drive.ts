@@ -386,6 +386,22 @@ const drive: Record<string, string> = {
   "Remixes — listeners vote": "Remiksler — dinleyiciler oy verir",
   "Next: {song}": "Sıradaki: {song}",
   "{n} listening": "{n} kişi dinliyor",
+  "shadows": "gölgeler",
+  "reflections": "yansımalar",
+  "contact shadows": "temas gölgeleri",
+  "film look": "sinema havası",
+  "haze": "pus",
+  "glow": "parlama",
+  "clouds": "bulutlar",
+  "glossy paint": "parlak boya",
+  "night lights": "gece ışıkları",
+  "road and wall detail": "yol ve duvar ayrıntısı",
+  "swaying trees": "sallanan ağaçlar",
+  "smooth edges": "yumuşak kenarlar",
+  "Turned off on this device for smoothness: {list}.": "Akıcılık için bu cihazda kapalı: {list}.",
+  "Battery saver": "Pil tasarrufu",
+  "30 frames a second: a cooler phone and a longer battery. It also comes on by itself when the battery is low, and the city slows to 20 frames a second while you stand still.": "Saniyede 30 kare: daha serin bir telefon ve daha uzun pil. Pil azaldığında kendiliğinden açılır; dururken şehir saniyede 20 kareye iner.",
+  "On by itself right now: the battery is low.": "Şu an kendiliğinden açık: pil az.",
 };
 
 export default drive;

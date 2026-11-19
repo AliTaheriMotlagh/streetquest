@@ -66,6 +66,34 @@ export const qualityPick = (): QualityPick => {
 };
 export const setQualityPick = (q: QualityPick) => set(QUALITY_KEY, q === "auto" ? null : q);
 
+// Battery saver (lib/perf/pace.ts): the city at 30 frames a second. The low-battery half is watched by watchSaver.
+const SAVER_KEY = "sq_saver";
+export const saverPick = () => get(SAVER_KEY) === "1";
+export const setSaverPick = (on: boolean) => {
+  set(SAVER_KEY, on ? "1" : null);
+  window.dispatchEvent(new Event("sq:saver"));
+};
+type BatteryLike = EventTarget & { level: number; charging: boolean };
+/** Calls `on` with the battery state now and on every change (Chrome/Android; Safari has no Battery API: null). */
+export function watchBattery(on: (b: { level: number; charging: boolean } | null) => void): () => void {
+  let bat: BatteryLike | null = null, gone = false;
+  const tell = () => on(bat && { level: bat.level, charging: bat.charging });
+  const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryLike> };
+  if (!nav.getBattery) return on(null), () => {};
+  nav.getBattery().then((b) => {
+    if (gone) return;
+    bat = b;
+    b.addEventListener("levelchange", tell);
+    b.addEventListener("chargingchange", tell);
+    tell();
+  }, () => on(null));
+  return () => {
+    gone = true;
+    bat?.removeEventListener("levelchange", tell);
+    bat?.removeEventListener("chargingchange", tell);
+  };
+}
+
 export const timePick = (): TimePick => {
   const v = get(TIME_KEY) as TimePick | null;
   return v && TIME_PICKS.includes(v) ? v : "day";

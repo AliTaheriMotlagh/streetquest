@@ -94,7 +94,9 @@ import { Scenarios } from "./scenarios";
 import { signalPhase } from "@/lib/traffic";
 import { Skyline } from "./skyline";
 import { GraphicsEngine } from "./graphics/engine";
-import { autoTier, forgetDemotion, qualityPick, setQualityPick, setTimePick, setWeatherPick, timePick, weatherPick } from "./graphics/caps";
+import { autoTier, forgetDemotion, qualityPick, saverPick, setQualityPick, setTimePick, setWeatherPick, timePick, watchBattery, weatherPick } from "./graphics/caps";
+import { lowBattery, pace, Pacer, type Pace } from "@/lib/perf/pace";
+import { offEffects } from "./graphics/quality";
 import type { QualityPick } from "./graphics/quality";
 import { surfaces } from "./graphics/surfaces";
 import { Rain } from "./graphics/weather";
@@ -399,6 +401,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   });
   const gauge = useRef<HTMLDivElement>(null);
   const menuOpen = useRef(false);
+  /** The graphics engine while the city runs: Settings lists what it has turned off. */
+  const gfxNow = useRef<GraphicsEngine | null>(null);
   menuOpen.current = !!menu;
   /** Something is over the city (graphics/engine.ts cover): 1 = a menu or sheet, 2 = the store screen (nothing of the city shows → not drawn). */
   const coverRef = useRef(0);
@@ -487,6 +491,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // ---- renderer & scene
     // graphics/engine.ts: the quality tier, dynamic resolution, the HDR pipeline (high/ultra).
     const gfx = new GraphicsEngine(el, { lite, direct: style === "toon" });
+    gfxNow.current = gfx;
     setAvatarStyle(style); // soldiers, police and players drawn in the city's look
     const renderer = gfx.renderer;
     let prof = gfx.profile;
@@ -519,7 +524,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Rain streaks around the camera (shown in rainy weather).
     const rain = new Rain(prof.rainDrops);
     scene.add(rain.mesh);
-    const tpl = makeTemplates(style);
+    const tpl = makeTemplates(style, gfx.profile.tier === "low");
     // Real street furniture once its models are in (the drawn ones meanwhile, and always in
     // the storybook city): new tiles use them, and tiles already up swap theirs over.
     if (style === "real")
@@ -2098,10 +2103,40 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     let bSat = 1, bVig = 0.2, aSat = -1, aVig = -1;
     const bootAt = performance.now();
     let booted = false, bootCheck = 0;
+    // -- frame pacing (lib/perf/pace.ts): 30 fps on low/medium, battery saver or under a menu, 20 when idle, nothing
+    // drawn under a full-screen one — a cooler phone, a longer battery.
+    const pacer = new Pacer();
+    // The lag test (/play?bench=…) measures the device flat out: never paced.
+    const paced = !benchOn();
+    let lastActive = performance.now(), saver = saverPick(), lowBat = false, camX = 0, camY = 0, camZ = 0;
+    let pc: Pace = { fps: 0, draw: true, measure: true };
+    const poke = () => (lastActive = performance.now());
+    const onSaver = () => (saver = saverPick());
+    const POKES = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    for (const ev of POKES) window.addEventListener(ev, poke, { passive: true, capture: true });
+    window.addEventListener("sq:saver", onSaver);
+    const stopBattery = watchBattery((b) => (lowBat = lowBattery(b)));
     const tick = () => {
       if (disposed) return;
       raf = requestAnimationFrame(tick);
       const now = performance.now();
+      if (booted) {
+        const cp = camera.position;
+        if (Math.abs(cp.x - camX) + Math.abs(cp.y - camY) + Math.abs(cp.z - camZ) > 0.02) lastActive = now;
+        (camX = cp.x), (camY = cp.y), (camZ = cp.z);
+        const cover = coverRef.current;
+        pc = pace({
+          tier: gfx.profile.tier,
+          saver: saver || lowBat,
+          sinceActive: now - lastActive,
+          busy: combat.inMatch || !!chute || def().flies,
+          covered: cover > 0,
+          // The pause menu fills a phone or a portrait tablet (app/hud.css: a side column from 900 px).
+          hidden: cover === 2 || (menuOpen.current && el.clientWidth < 900),
+        });
+        if (!paced) pc = { fps: 0, draw: pc.draw, measure: true };
+        if (!pacer.ready(now, pc.fps)) return;
+      }
       // -- loading screen: count what's drawn round the car a few times a second until it may start
       if (!booted && now - bootCheck > 200) {
         bootCheck = now;
@@ -2632,7 +2667,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
       // -- adaptive quality (graphics/engine.ts): resolution first, then effects on "auto"
       if (!!coverRef.current !== gfx.covered) gfx.cover(!!coverRef.current);
-      gfx.frame(now);
+      gfx.frame(now, pc.fps, pc.measure);
       fps = gfx.fps;
 
       // -- instruments (~20 Hz, straight into the DOM: a moving needle never re-renders React)
@@ -2865,14 +2900,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // Nothing nearer than the car is smeared: from the chase camera that's the car itself, behind the wheel the dashboard.
       G.sharpNear = onFoot ? 3.5 : camMode === "cockpit" ? 2.4 : Math.hypot(camera.position.x - st.x, camera.position.y - st.alt, camera.position.z - st.z) + 3.2;
       if (camMode !== filmCam || onFoot !== filmFoot) (filmCam = camMode), (filmFoot = onFoot), gfx.cut();
-      // A whole screen (a store, a search, the trip planner) covers the city: nothing to draw.
-      if (coverRef.current === 2) return;
+      // A whole screen (a store, a full-screen menu) covers the city: nothing to draw.
+      if (!pc.draw) return;
       gfx.render(scene, camera);
       combat.renderOverlay();
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign } };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pace: () => ({ ...pc, booted, idleMs: Math.round(performance.now() - lastActive), cover: coverRef.current, saver, lowBat, menu: menuOpen.current }), pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign } };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -2886,6 +2921,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     return () => {
       disposed = true;
+      for (const ev of POKES) window.removeEventListener(ev, poke, { capture: true });
+      window.removeEventListener("sq:saver", onSaver);
+      stopBattery();
+      gfxNow.current = null;
       pad.stop();
       horn(false);
       cancelAnimationFrame(raf);
@@ -3397,6 +3436,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             names={names}
             quality={quality}
             autoTier={autoTier()}
+            offFx={gfxNow.current ? offEffects(gfxNow.current.profile) : []}
             timeOfDay={timeOfDay}
             weather={weather}
             fps={hud?.fps ?? 0}
@@ -3424,6 +3464,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             names={names}
             quality={quality}
             autoTier={autoTier()}
+            offFx={gfxNow.current ? offEffects(gfxNow.current.profile) : []}
             timeOfDay={timeOfDay}
             weather={weather}
             fps={hud?.fps ?? 0}

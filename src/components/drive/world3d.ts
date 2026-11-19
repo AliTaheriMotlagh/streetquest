@@ -959,11 +959,15 @@ export function crownTree(shape: CrownShape, detail = 1) {
 }
 
 export type Templates = ReturnType<typeof makeTemplates>;
-/** One geometry per kind of prop, shared by every tile's instanced meshes. */
-export function makeTemplates(style: Style) {
+/**
+ * One geometry per kind of prop, shared by every tile's instanced meshes. `lite` (the low graphics tier): trees from
+ * 20-triangle blobs instead of 80 — the trees were half of everything a slow tablet drew (~480k of 1.1M triangles).
+ */
+export function makeTemplates(style: Style, lite = false) {
   const real = style === "real";
+  const leaf = lite ? 0 : 1;
   const tree = real
-    ? crownTree(CROWNS.plane)
+    ? crownTree(CROWNS.plane, leaf)
     : mergeGeometries([
         paint(at(new THREE.CylinderGeometry(0.22, 0.32, 2.4, 6), 0, 1.2, 0), "#b98a62"),
         paint(at(new THREE.IcosahedronGeometry(1.9, 1), 0, 3.6, 0), "#ffffff"),
@@ -1040,7 +1044,7 @@ export function makeTemplates(style: Style) {
   const tpl = {
     tree, lamp, lampHead, pool, signal, signalRed: signalLamps[0], signalAmber: signalLamps[1], signalGreen: signalLamps[2], bus, bench, bin, hydrant, fountain, charity, kiosk, ...kit, dumpster,
     /** Other kinds of tree: a street's trees are spread over all of them (the realistic city's cypress and young tree). */
-    variants: (real ? [crownTree(CROWNS.cypress), crownTree(CROWNS.young)] : []) as THREE.BufferGeometry[],
+    variants: (real ? [crownTree(CROWNS.cypress, leaf), crownTree(CROWNS.young, leaf)] : []) as THREE.BufferGeometry[],
     /** Real models are in (tree tints soften: the models bring their own colours). */
     modelled: false,
     dispose() {

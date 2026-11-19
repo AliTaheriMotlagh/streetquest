@@ -3,7 +3,7 @@
 // HDR pipeline relies on, and the procedural surface textures.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { Adaptive, detectTier, effective, MAX_LEVEL, PROFILES, TIERS, withCaps, type Caps } from "@/components/drive/graphics/quality";
+import { Adaptive, detectTier, effective, MAX_LEVEL, offEffects, PROFILES, TIERS, withCaps, type Caps } from "@/components/drive/graphics/quality";
 import { aces, acesInverse } from "@/components/drive/graphics/shaders";
 import { asphaltData, fbm, heightToNormal, noiseData, pavingData, prng } from "@/components/drive/graphics/surfaces";
 import { mixHex, mixRecord, skyAt, skyFor, sunPosition, sunVector, WEATHER_LOOK } from "@/lib/daylight";
@@ -324,4 +324,28 @@ it("Adaptive.restore: a menu over the city can't leave it blurred", () => {
   const b = new Adaptive({ maxDpr: 1.5, minDpr: 1 }, { features: false });
   assert.deepEqual(b.restore(3, 0, 0), {});
   assert.equal(b.dpr, 1.5);
+});
+
+describe("what Settings says is turned off on this device", () => {
+  it("ultra has everything; low lists the big ones; stripping levels adds to the list", () => {
+    assert.deepEqual(offEffects(PROFILES.ultra), []);
+    const low = offEffects(PROFILES.low);
+    for (const fx of ["shadows", "reflections", "bloom", "lights", "smoothEdges"] as const) assert.ok(low.includes(fx), fx);
+    assert.ok(offEffects(effective("high", MAX_LEVEL)).length > offEffects(PROFILES.high).length);
+  });
+});
+
+describe("the adaptive controller under frame pacing", () => {
+  it("30 fps frames are not 'slow' once the controller knows the city is paced to 30", () => {
+    const a = new Adaptive({ maxDpr: 2, minDpr: 1 }, { features: true, window: 30 });
+    a.setPace(30);
+    let now = 0;
+    for (let i = 0; i < 300; i++) assert.equal(a.sample(33.4, (now += 33.4)), null);
+    assert.equal(a.dpr, 2);
+    const b = new Adaptive({ maxDpr: 2, minDpr: 1 }, { features: true, window: 30 });
+    let changed = false;
+    now = 0;
+    for (let i = 0; i < 300; i++) changed ||= !!b.sample(33.4 + (i % 3), (now += 33.4));
+    assert.ok(changed, "unpaced, 30 fps frames are slow");
+  });
 });
