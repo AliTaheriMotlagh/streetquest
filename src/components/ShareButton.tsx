@@ -3,7 +3,7 @@ import { t } from "@/lib/i18n";
 import { useState } from "react";
 import { Button } from "./Button";
 
-export function ShareButton({ title, text, url }: { title: string; text?: string; url?: string }) {
+export function ShareButton({ title, text, url, className = "btn cyan" }: { title: string; text?: string; url?: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   const share = async () => {
     const link = url ?? window.location.href;
@@ -16,7 +16,7 @@ export function ShareButton({ title, text, url }: { title: string; text?: string
     }
   };
   return (
-    <Button className="btn cyan" onClick={share}>
+    <Button className={className} onClick={share}>
       {copied ? t("Link copied ✓") : t("Share")}
     </Button>
   );

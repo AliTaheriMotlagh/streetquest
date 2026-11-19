@@ -8,6 +8,7 @@
 //   picks = per leg: a ticket (a Trip from lib/travel) or "car"; per stop: a stay
 import { distanceM } from "../geo";
 import { msg } from "../i18n";
+import { S } from "../settings";
 import { cityByKey, isoDay, type City, type Mode, type Stay, type Trip } from "./index";
 
 /** How a leg is travelled: a ticket (flight, train, bus) or your own car. */
@@ -32,6 +33,8 @@ export type Plan = {
   start: string;
   /** Things to do on the way (lib/travel/activities.ts), each with its price a person and how many go. */
   acts?: ActPick[];
+  /** "My fuel card still has quota": the car's petrol at the cheaper tiers first (fuelCost). */
+  quota?: boolean;
 };
 /** An outing added to the trip: the price a person (toman, editable — the list's is an estimate) and how many of you go. */
 export type ActPick = { id: string; city: string; title: string; emoji: string; price: number; people: number };
@@ -84,20 +87,31 @@ export const ROAD_FACTOR = 1.3;
 export const ROAD_KMH = 80;
 /** A family car on the highway (litres per 100 km). */
 export const CAR_L_PER_100KM = 8;
-/** Petrol, toman a litre (Iran's second-tier price, beyond the monthly card quota). */
-export const FUEL_TOMAN = 3000;
+export type FuelPrices = { quotaToman: number; quotaLitres: number; tier2Toman: number; tier2Litres: number; toman: number };
+/** Today's petrol prices (Admin → Game settings → Travel planner). */
+export const fuelPrices = (): FuelPrices => ({ quotaToman: S.fuelQuotaToman, quotaLitres: S.fuelQuotaLitres, tier2Toman: S.fuelTier2Toman, tier2Litres: S.fuelTier2Litres, toman: S.fuelToman });
+
+/**
+ * One car's petrol in toman. A trip is extra driving, so by default every litre is at the price beyond the quota;
+ * with quota left the first litres are at the quota price, the next at the second tier, the rest beyond.
+ */
+export function fuelCost(litres: number, quota = false, f: FuelPrices = fuelPrices()): number {
+  if (!quota) return litres * f.toman;
+  const a = Math.min(litres, f.quotaLitres), b = Math.min(litres - a, f.tier2Litres);
+  return a * f.quotaToman + b * f.tier2Toman + (litres - a - b) * f.toman;
+}
 /** People per car. */
 export const CAR_SEATS = 4;
 
 export type Drive = { km: number; minutes: number; litres: number; fuel: number; cars: number };
 
 /** Driving a leg yourself: road distance, time, petrol and its cost for every car needed (null: a city without a position). */
-export function driveOf(from: City | null, to: City | null, travellers = 1): Drive | null {
+export function driveOf(from: City | null, to: City | null, travellers = 1, quota = false): Drive | null {
   if (from?.lat == null || from.lng == null || to?.lat == null || to.lng == null) return null;
   const km = Math.round((distanceM({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }) / 1000) * ROAD_FACTOR);
   const cars = Math.max(1, Math.ceil(travellers / CAR_SEATS));
   const litres = Math.round((km * CAR_L_PER_100KM) / 100);
-  return { km, minutes: Math.round((km / ROAD_KMH) * 60), litres, fuel: litres * FUEL_TOMAN * cars, cars };
+  return { km, minutes: Math.round((km / ROAD_KMH) * 60), litres, fuel: fuelCost(litres, quota) * cars, cars };
 }
 
 // ---------------------------------------------------------------- the bill
@@ -120,7 +134,7 @@ export function billOf(p: Plan, legPicks: Record<number, LegPick | undefined>, s
   for (const l of legs) {
     const pick = legPicks[l.i];
     if (!pick) openLegs++;
-    else if (pick.way === "car") fuel += driveOf(cityByKey(l.from), cityByKey(l.to), p.travellers)?.fuel ?? 0;
+    else if (pick.way === "car") fuel += driveOf(cityByKey(l.from), cityByKey(l.to), p.travellers, !!p.quota)?.fuel ?? 0;
     else tickets += pick.trip.price * p.travellers;
   }
   p.stops.forEach((s, i) => {
@@ -170,10 +184,10 @@ export const roomsFor = (s: Stay, travellers: number) => Math.max(1, Math.ceil(t
 export type WayBest = { way: Way; n: number; cheapest?: Trip; fastest?: Trip; drive?: Drive; none?: boolean };
 
 /** Each way side by side for one leg: how many, the cheapest and the fastest (with seats); the car's numbers. */
-export function compareWays(trips: Trip[], from: City | null, to: City | null, travellers = 1, none: Mode[] = []): WayBest[] {
+export function compareWays(trips: Trip[], from: City | null, to: City | null, travellers = 1, none: Mode[] = [], quota = false): WayBest[] {
   return WAY_KEYS.map((way) => {
     if (way === "car") {
-      const drive = driveOf(from, to, travellers);
+      const drive = driveOf(from, to, travellers, quota);
       return { way, n: drive ? 1 : 0, drive: drive ?? undefined, none: !drive };
     }
     const list = trips.filter((x) => x.mode === way && (x.seats == null || x.seats >= travellers));
@@ -202,5 +216,5 @@ export function cleanPlan(v: unknown, now = Date.now()): Plan | null {
     .filter((a): a is ActPick => !!a && typeof a.id === "string" && typeof a.city === "string" && typeof a.title === "string")
     .slice(0, 40)
     .map((a) => ({ id: a.id, city: a.city, title: a.title.slice(0, 120), emoji: typeof a.emoji === "string" ? a.emoji.slice(0, 8) : "", price: Math.max(0, Math.min(1e10, Math.round(Number(a.price) || 0))), people: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(a.people) || 1))) }));
-  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}) };
+  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}), ...(o.quota === true ? { quota: true } : {}) };
 }

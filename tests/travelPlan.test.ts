@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { billOf, cleanPlan, compareWays, driveOf, itinerary, legsOf, newPlan, roomsFor, stopDays, tripDays, type Plan } from "../src/lib/travel/plan";
+import { billOf, cleanPlan, compareWays, driveOf, fuelCost, itinerary, legsOf, newPlan, roomsFor, stopDays, tripDays, type Plan } from "../src/lib/travel/plan";
 import { cityByKey, type Stay, type Trip } from "../src/lib/travel";
 
 const plan = (over: Partial<Plan> = {}): Plan => ({ home: "tehran", stops: [{ city: "isfahan", nights: 2 }, { city: "shiraz", nights: 3 }], back: true, travellers: 2, start: "2026-12-01", ...over });
@@ -28,7 +28,17 @@ test("driving yourself: road distance, time and petrol for every car", () => {
   assert.ok(d.km > 380 && d.km < 520, `${d.km} km`);
   assert.equal(d.cars, 2);
   assert.ok(d.minutes > 240);
-  assert.equal(d.fuel, d.litres * 3000 * 2);
+  assert.equal(d.fuel, d.litres * 10_000 * 2, "a trip is extra driving: the price beyond the quota");
+  assert.equal(driveOf(cityByKey("tehran"), cityByKey("isfahan"), 5, true)!.fuel, fuelCost(d.litres, true) * 2);
+});
+
+test("petrol: beyond the quota by default; with quota left, the cheaper tiers first", () => {
+  const f = { quotaToman: 1500, quotaLitres: 60, tier2Toman: 3000, tier2Litres: 50, toman: 10_000 };
+  assert.equal(fuelCost(40, false, f), 400_000);
+  assert.equal(fuelCost(40, true, f), 40 * 1500);
+  assert.equal(fuelCost(80, true, f), 60 * 1500 + 20 * 3000);
+  assert.equal(fuelCost(130, true, f), 60 * 1500 + 50 * 3000 + 20 * 10_000);
+  assert.equal(fuelCost(0, true, f), 0);
 });
 
 test("the bill: tickets for everyone, fuel per car, stays for each night and enough rooms", () => {

@@ -6,8 +6,9 @@ import { bbox } from "@/lib/geo";
 import { t } from "@/lib/i18n";
 import { S } from "@/lib/settings";
 import { MAX_PREPAID_PERIODS, SHOP_CATEGORY_KEYS, SHOP_LIMITS, shopPeriodMs } from "@/lib/shops";
+import { cleanPayLink, cleanPhone } from "@/lib/shopKinds";
 import { requireUser } from "@/server/auth";
-import { actionRoute, body, HttpError, route } from "@/server/http";
+import { actionRoute, body, HttpError, patch, route } from "@/server/http";
 import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { lastKnownLocation, spendCoins, track, unlock } from "@/server/rewards";
 import { OwnerLinks } from "@/server/localData";
@@ -67,12 +68,15 @@ const Details = z.object({
   emoji: z.string().min(1).max(8).default("🏪"),
   category: z.enum(SHOP_CATEGORY_KEYS).default("other"),
   address: text(SHOP_LIMITS.address).default(""),
+  // For toman products (paid to the seller directly): checked by lib/shopKinds.ts below.
+  phone: z.string().max(30).default(""),
+  payLink: z.string().max(300).default(""),
   ...OwnerLinks,
 });
 
 const Schema = z.discriminatedUnion("action", [
   Details.extend({ action: z.literal("create"), cover: z.string().max(MAX_PHOTO_DATA_URL).optional() }),
-  Details.partial().extend({ action: z.literal("update"), open: z.boolean().optional() }),
+  patch(Details).extend({ action: z.literal("update"), open: z.boolean().optional() }),
   z.object({ action: z.literal("cover"), photo: z.string().max(MAX_PHOTO_DATA_URL).nullable() }),
   z.object({ action: z.literal("move") }),
   z.object({ action: z.literal("renew") }),
@@ -82,6 +86,17 @@ export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
   const now = Date.now();
+  // The seller's phone and payment page (toman products): stored clean, refused when they can't be used.
+  if ((d.action === "create" || d.action === "update") && d.phone !== undefined) {
+    const phone = cleanPhone(d.phone);
+    if (d.phone.trim() && !phone) throw new HttpError(400, t("That phone number doesn't look right"));
+    d.phone = phone;
+  }
+  if ((d.action === "create" || d.action === "update") && d.payLink !== undefined) {
+    const link = cleanPayLink(d.payLink);
+    if (link === null) throw new HttpError(400, t("The payment link must be a full https:// address"));
+    d.payLink = link;
+  }
 
   if (d.action === "create") {
     if (!S.shopsEnabled) throw new HttpError(400, t("Shops are closed right now"));

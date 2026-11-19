@@ -15,6 +15,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtDate, fmtNum, getLocale, t } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
+import { S } from "@/lib/settings";
 import {
   bookUrl, CITIES, cityByKey, cityHas, COMPARE, POPULAR, DAY_PART_KEYS, DAY_PARTS, filterStays, filterTrips, findCities, hotelLinks, isoDay, AMENITIES, MODE_KEYS, MODES, nearestCity, STAY_KINDS, STAY_SORT_KEYS, STAY_SORTS,
   tourLink, TRAVEL_SITES, TRIP_SORT_KEYS, TRIP_SORTS, tripFacets, type City, type DayPart, type Mode, type Amenity, type Stay, type StayKind, type StaySort, type Trip, type TripSort,
@@ -250,6 +251,12 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
             <span>{t("Round trip")}</span>
             <i aria-hidden />
           </button>
+          {Object.values(legPicks).some((p) => p?.way === "car") && (
+            <button type="button" className={`tp-ctl tp-toggle${plan.quota ? " on" : ""}`} aria-pressed={!!plan.quota} onClick={() => setPlan((p) => ({ ...p, quota: !p.quota }))} title={t("Off: every litre at {n} toman, the price beyond the quota", { n: fmtNum(S.fuelToman) })}>
+              <span>⛽ {t("My fuel card still has quota")}</span>
+              <i aria-hidden />
+            </button>
+          )}
         </div>
 
         {legs.length > 0 && (
@@ -273,6 +280,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
                 answer={leg ? answers[legKey(leg)] : undefined}
                 pick={leg ? legPicks[leg.i] : undefined}
                 travellers={plan.travellers}
+                quota={plan.quota}
                 stop={s}
                 when={days[i]}
                 stay={stayPicks[i]?.stay}
@@ -299,7 +307,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
             const leg = legs.at(-1)!;
             return (
               <>
-                <LegRow leg={leg} answer={answers[legKey(leg)]} pick={legPicks[leg.i]} travellers={plan.travellers} onOpen={() => setView({ kind: "leg", key: legKey(leg) })} />
+                <LegRow leg={leg} answer={answers[legKey(leg)]} pick={legPicks[leg.i]} travellers={plan.travellers} quota={plan.quota} onOpen={() => setView({ kind: "leg", key: legKey(leg) })} />
                 <li className="tp-node home">
                   <span className="tp-dot" aria-hidden>🏠</span>
                   <div className="tp-city static">
@@ -344,8 +352,8 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
 
 // ---------------------------------------------------------------- the trip at a glance
 /** A leg's way, time and price for everyone: the one chosen, else the cheapest on offer (faded). */
-function legLook(l: Leg, pick: LegPick | undefined, answer: Answer | undefined, travellers: number) {
-  const drive = driveOf(cityByKey(l.from), cityByKey(l.to), travellers);
+function legLook(l: Leg, pick: LegPick | undefined, answer: Answer | undefined, travellers: number, quota = false) {
+  const drive = driveOf(cityByKey(l.from), cityByKey(l.to), travellers, quota);
   if (pick?.way === "car") return { set: true, emoji: WAYS.car.emoji, minutes: drive?.minutes, price: drive?.fuel ?? 0, depart: undefined as string | undefined };
   if (pick) return { set: true, emoji: WAYS[pick.way].emoji, minutes: pick.trip.minutes, price: pick.trip.price * travellers, depart: pick.trip.depart };
   const best = cheapestTrip(answer?.data?.trips ?? [], travellers);
@@ -370,7 +378,7 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
     { k: "stays", n: bill.stays, label: t("Stays"), emoji: "🏨" },
   ].filter((x) => x.n > 0);
   const seg = (l: Leg) => {
-    const x = legLook(l, legPicks[l.i], answers[legKey(l)], plan.travellers);
+    const x = legLook(l, legPicks[l.i], answers[legKey(l)], plan.travellers, !!plan.quota);
     return (
       <li key={`seg${l.i}`} className={`tg-seg${x.set ? " set" : ""}`}>
         <button type="button" onClick={() => onLeg(l)} aria-label={`${cityName(l.from)} ${arrow()} ${cityName(l.to)}`}>
@@ -432,7 +440,7 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
               <ul>
                 {d.items.map((it, k) => {
                   if (it.kind === "go") {
-                    const x = legLook(it.leg, it.pick, answers[legKey(it.leg)], plan.travellers);
+                    const x = legLook(it.leg, it.pick, answers[legKey(it.leg)], plan.travellers, !!plan.quota);
                     return (
                       <li key={k} className={`tg-item go${x.set ? " set" : ""}`}>
                         <button type="button" onClick={() => onLeg(it.leg)}>
@@ -500,10 +508,10 @@ function Stepper({ value, min, max, onChange, label, unit }: { value: number; mi
 }
 
 /** A leg on the timeline: what was chosen (way, times, price for everyone), or the best on offer. */
-function LegRow({ leg, answer, pick, travellers, onOpen }: { leg: Leg; answer?: Answer; pick?: LegPick; travellers: number; onOpen: () => void }) {
+function LegRow({ leg, answer, pick, travellers, quota, onOpen }: { leg: Leg; answer?: Answer; pick?: LegPick; travellers: number; quota?: boolean; onOpen: () => void }) {
   const from = cityByKey(leg.from), to = cityByKey(leg.to);
   const best = cheapestTrip(answer?.data?.trips ?? [], travellers);
-  const drive = driveOf(from, to, travellers);
+  const drive = driveOf(from, to, travellers, !!quota);
   let body;
   if (pick?.way === "car" && drive) body = (<><b>{WAYS.car.emoji} {t("Own car")}</b><small>{t("{km} km · {time} · fuel {fuel}", { km: fmtNum(drive.km), time: span(drive.minutes), fuel: toman(drive.fuel) })}</small></>);
   else if (pick && pick.way !== "car") body = (<><b>{WAYS[pick.way].emoji} {clock(pick.trip.depart)}{pick.trip.arrive ? ` → ${clock(pick.trip.arrive)}` : ""} · <bdi>{pick.trip.company}</bdi></b><small>{toman(pick.trip.price * travellers)}{travellers > 1 ? ` · ${t("{n} each", { n: fmtNum(pick.trip.price) })}` : ""}</small></>);
@@ -519,8 +527,8 @@ function LegRow({ leg, answer, pick, travellers, onOpen }: { leg: Leg; answer?: 
   );
 }
 
-function StopBlock({ leg, answer, pick, travellers, stop, when, stay, stays, acts, onLeg, onStay, onActs, onCity, onNights, onRemove }: {
-  leg?: Leg; answer?: Answer; pick?: LegPick; travellers: number; stop: { city: string; nights: number }; when: { arrive: string; leave: string }; stay?: Stay; stays?: Stay[] | null; acts: ActPick[];
+function StopBlock({ leg, answer, pick, travellers, quota, stop, when, stay, stays, acts, onLeg, onStay, onActs, onCity, onNights, onRemove }: {
+  leg?: Leg; answer?: Answer; pick?: LegPick; travellers: number; quota?: boolean; stop: { city: string; nights: number }; when: { arrive: string; leave: string }; stay?: Stay; stays?: Stay[] | null; acts: ActPick[];
   onLeg: () => void; onStay: () => void; onActs: () => void; onCity: () => void; onNights: (n: number) => void; onRemove: () => void;
 }) {
   const ideas = activitiesIn(stop.city).length;
@@ -528,7 +536,7 @@ function StopBlock({ leg, answer, pick, travellers, stop, when, stay, stays, act
   const cheapest = (stays ?? []).reduce<number>((m, s) => (s.price > 0 && (!m || s.price < m) ? s.price : m), 0);
   return (
     <>
-      {leg && <LegRow leg={leg} answer={answer} pick={pick} travellers={travellers} onOpen={onLeg} />}
+      {leg && <LegRow leg={leg} answer={answer} pick={pick} travellers={travellers} quota={quota} onOpen={onLeg} />}
       <li className="tp-node stop">
         <span className="tp-dot" aria-hidden>🏙️</span>
         <div className="tp-stop">
@@ -719,7 +727,7 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
   const from = cityByKey(leg.from)!, to = cityByKey(leg.to)!;
   const trips = useMemo(() => answer?.data?.trips ?? [], [answer]);
   const none = answer?.data?.none ?? [];
-  const ways = useMemo(() => compareWays(trips, from, to, plan.travellers, none), [trips, from, to, plan.travellers, none]);
+  const ways = useMemo(() => compareWays(trips, from, to, plan.travellers, none, !!plan.quota), [trips, from, to, plan.travellers, none, plan.quota]);
   const firstWay = (picked?.way ?? ways.filter((w) => w.way !== "car" && w.n).sort((a, b) => (a.cheapest?.price ?? 0) - (b.cheapest?.price ?? 0))[0]?.way ?? "bus") as Way;
   const [way, setWay] = useState<Way>(firstWay);
   useEffect(() => {
@@ -741,7 +749,7 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
   const nFilters = parts.length + companies.length + (max ? 1 : 0) + (refundable ? 1 : 0) + (direct ? 1 : 0);
   const clear = () => (setParts([]), setCompanies([]), setMax(0), setRefundable(false), setDirect(false));
   const dates = Array.from({ length: 21 }, (_, n) => addDays(minDate, n));
-  const drive = driveOf(from, to, plan.travellers);
+  const drive = driveOf(from, to, plan.travellers, !!plan.quota);
   const pickedId = picked && picked.way !== "car" ? picked.trip.id : null;
   // The chosen day's chip in view (it can sit past the screen's edge).
   const daysRef = useRef<HTMLDivElement>(null);

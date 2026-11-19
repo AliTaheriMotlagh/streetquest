@@ -9,6 +9,7 @@ import { distanceM, type LatLng } from "../lib/geo";
 import { t } from "../lib/i18n";
 import { S } from "../lib/settings";
 import { discountLive, priceNow, SHOP_WARN_MS } from "../lib/shops";
+import { cleanDetails, cleanPayLink, cleanPhone, currencyOf, expired, kindOf } from "../lib/shopKinds";
 import { HttpError } from "./http";
 import { notify } from "./hub";
 
@@ -18,6 +19,9 @@ export const PRODUCT_SELECT = {
   title: true,
   description: true,
   price: true,
+  kind: true,
+  details: true,
+  currency: true,
   discountPct: true,
   discountUntil: true,
   stock: true,
@@ -41,6 +45,8 @@ export const SHOP_SELECT = {
   snappfood: true,
   torob: true,
   divar: true,
+  phone: true,
+  payLink: true,
   lat: true,
   lng: true,
   coverId: true,
@@ -56,11 +62,17 @@ type ShopRow = Prisma.ShopGetPayload<{ select: typeof SHOP_SELECT }>;
 export const shopLive = (s: { open: boolean; expiresAt: Date }, now = Date.now()) => s.open && s.expiresAt.getTime() > now;
 
 export function productView(p: ProductRow, now = Date.now()) {
-  const live = discountLive(p, now);
+  const live = discountLive(p, now), kind = kindOf(p.kind);
   return {
     id: p.id,
     title: p.title,
     description: p.description,
+    /** What it is (lib/shopKinds.ts) and that kind's details; coins (bought here) or toman (paid to the seller). */
+    kind,
+    details: cleanDetails(kind, p.details).details,
+    currency: currencyOf(p.currency),
+    /** A ticket for a show that's over, a deal past its date: not for sale. */
+    over: expired(kind, p.details, now),
     price: p.price,
     priceNow: priceNow(p, now),
     /** The discount running right now (0 if none). */
@@ -93,6 +105,9 @@ export function shopView(s: ShopRow, products: ProductRow[], viewerId: string, h
     snappfood: s.snappfood,
     torob: s.torob,
     divar: s.divar,
+    /** For toman products: the seller's phone and own payment page (paid to them directly). */
+    phone: cleanPhone(s.phone),
+    payLink: cleanPayLink(s.payLink) || "",
     lat: s.lat,
     lng: s.lng,
     coverId: s.coverId,
@@ -104,8 +119,8 @@ export function shopView(s: ShopRow, products: ProductRow[], viewerId: string, h
     owner: s.owner,
     mine,
     distanceM: here ? Math.round(distanceM(here, s)) : null,
-    deal: Math.max(0, ...list.filter((p) => p.active && p.stock > 0).map((p) => p.deal)),
-    inStock: list.filter((p) => p.active && p.stock > 0).length,
+    deal: Math.max(0, ...list.filter((p) => p.active && p.stock > 0 && !p.over).map((p) => p.deal)),
+    inStock: list.filter((p) => p.active && p.stock > 0 && !p.over).length,
     products: list,
   };
 }
@@ -114,13 +129,13 @@ export type ShopView = ReturnType<typeof shopView>;
 /** A shop in a list: the window display instead of the whole stock. */
 export function shopCard(s: ShopRow, products: ProductRow[], viewerId: string, here: LatLng | null, match?: string) {
   const { products: list, about: _about, ...rest } = shopView(s, products, viewerId, here);
-  const forSale = list.filter((p) => p.active && p.stock > 0);
+  const forSale = list.filter((p) => p.active && p.stock > 0 && !p.over);
   const q = match?.toLowerCase();
   // Searching: show what matched. Otherwise: the shop window, then the best deals.
   const window = q
     ? forSale.filter((p) => p.title.toLowerCase().includes(q))
     : [...forSale.filter((p) => p.featured), ...forSale.filter((p) => !p.featured).sort((a, b) => b.deal - a.deal)];
-  return { ...rest, showcase: window.slice(0, 6).map(({ id, title, price, priceNow, deal, photos }) => ({ id, title, price, priceNow, deal, photo: photos[0] ?? null })) };
+  return { ...rest, kinds: [...new Set(forSale.map((p) => p.kind))], showcase: window.slice(0, 6).map(({ id, title, price, priceNow, deal, photos, kind, details, currency }) => ({ id, title, price, priceNow, deal, kind, details, currency, photo: photos[0] ?? null })) };
 }
 export type ShopCard = ReturnType<typeof shopCard>;
 

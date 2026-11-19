@@ -1094,6 +1094,10 @@ model Shop {
   snappfood String      @default("")
   torob     String      @default("")
   divar     String      @default("")
+  // For products priced in toman (paid to the seller directly): a phone buyers can call and the seller's own
+  // payment page (their Zarinpal / IDPay link). The game never touches that money (lib/shopKinds.ts).
+  phone     String      @default("")
+  payLink   String      @default("")
   lat       Float
   lng       Float
   coverId   String? // ShopImage shown as the banner
@@ -1117,7 +1121,12 @@ model Product {
   shopId        String
   title         String
   description   String      @default("")
-  price         Int // coins, before any discount
+  price         Int // before any discount: coins, or toman when currency says so
+  // What it is (lib/shopKinds.ts): item | food | ticket | ad | deal | service, and that kind's details.
+  kind          String      @default("item")
+  details       Json        @default("{}")
+  // coins: bought in the game (escrow); toman: paid to the seller directly, like a classified ad.
+  currency      String      @default("coins")
   discountPct   Int         @default(0) // 0–90
   discountUntil DateTime? // null: the discount has no end date
   stock         Int         @default(1)
@@ -1130,6 +1139,7 @@ model Product {
   photos        ShopImage[]
 
   @@index([shopId, active])
+  @@index([kind])
 }
 
 // Shop banners and product photos. Rows never change (a new photo is a new row), so

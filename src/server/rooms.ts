@@ -1,5 +1,6 @@
 import { prisma } from "../lib/db";
 import { regionKey } from "../lib/geo";
+import { parseShopRoom } from "../lib/shopKinds";
 
 export const dmRoom = (a: string, b: string) => `dm:${[a, b].sort().join(":")}`;
 
@@ -37,6 +38,14 @@ export async function roomAudience(userId: string, room: string): Promise<"broad
     const [, a, b] = room.split(":");
     if (userId !== a && userId !== b) return null;
     return (await canDm(a, b)) ? [a, b] : null;
+  }
+  // A buyer asking a shop about a product (paid in toman, or just a question): that buyer and the shop's owner.
+  if (room.startsWith("shop:")) {
+    const r = parseShopRoom(room);
+    if (!r) return null;
+    const shop = await prisma.shop.findUnique({ where: { id: r.shopId }, select: { ownerId: true } });
+    if (!shop || shop.ownerId === r.buyerId) return null;
+    return userId === r.buyerId || userId === shop.ownerId ? [r.buyerId, shop.ownerId] : null;
   }
   if (room.startsWith("event:")) {
     const eventId = room.slice(6);

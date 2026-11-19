@@ -262,7 +262,8 @@ export function ModePrompt({ name, home, onPick, onClose }: { name: string; home
     return () => window.removeEventListener("keydown", onKey);
   }); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="modal-bg" style={{ zIndex: 950 }} onClick={(e) => e.target === e.currentTarget && pick(home)}>
+    // Above the 3D city too (.drive is fixed at 2900; Game holds this back until its loading scene lifts), under calls (3500).
+    <div className="modal-bg" style={{ zIndex: 3100, position: "fixed" }} onClick={(e) => e.target === e.currentTarget && pick(home)}>
       <div className="modal mode-prompt" role="dialog" aria-modal="true" aria-labelledby="mode-title" aria-describedby="mode-sub">
         <button className="close mode-x" onClick={() => pick(home)} aria-label={t("Keep the current mode")} title={t("Keep the current mode")}>✕</button>
         <div className="mode-wave" aria-hidden>👋</div>

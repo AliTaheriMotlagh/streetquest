@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { liveStations, radioVolume, stationAfter, STATIONS } from "@/lib/radio";
+import { liveStations, radioVolume, remixtEmbed, remixtState, remixtStation, stationAfter, STATIONS } from "@/lib/radio";
 
 describe("car radio", () => {
   it("cycles off → each station → off", () => {
@@ -47,10 +47,34 @@ describe("the stations' stream addresses", () => {
       return Response.json([{ stationuuid: STATIONS[0].id, url_resolved: "https://p.example/s" }]);
     }) as unknown as typeof fetch;
     const list = await radioStations(fake, 1000);
-    assert.equal(list.length, 1);
+    assert.deepEqual(list.map((s) => s.id), ["remixt", STATIONS[0].id], "Remixt Radio first, without a lookup");
     assert.equal(asked.length, 2, "second mirror after the first failed");
     assert.ok(asked[1].includes(STATIONS[5].id), "every station in one request");
     await radioStations(fake, 2000);
     assert.equal(asked.length, 2, "cached");
+  });
+});
+
+describe("Remixt Radio", () => {
+  it("plays through the station's embed for games, https and a /radio/<slug> page only", () => {
+    assert.deepEqual(remixtEmbed("https://remixt-free.vercel.app/radio/remixt-radio"), { url: "https://remixt-free.vercel.app/radio/remixt-radio/embed?autoplay=1", origin: "https://remixt-free.vercel.app" });
+    assert.equal(remixtEmbed("http://remixt-free.vercel.app/radio/remixt-radio"), null);
+    assert.equal(remixtEmbed("https://evil.example/radio/x/../../steal"), null);
+    assert.equal(remixtEmbed("https://a:b@remixt.example/radio/x"), null);
+    assert.equal(remixtEmbed("javascript:alert(1)"), null);
+    assert.equal(remixtEmbed(""), null);
+    const st = remixtStation()!;
+    assert.equal(st.id, "remixt");
+    assert.equal(st.embed, true);
+    assert.equal(remixtStation(""), null, "an empty address switches it off");
+  });
+  it("reads only well-formed state messages from the embed", () => {
+    assert.deepEqual(remixtState({ type: "remixt-radio:state", playing: true, now: { title: "  Club   Groove ", artist: "Minh Vo" } }), { playing: true, title: "Club Groove", artist: "Minh Vo" });
+    assert.deepEqual(remixtState({ type: "remixt-radio:state", playing: false, now: null }), { playing: false, title: "", artist: "" });
+    assert.equal(remixtState({ type: "remixt-radio:state", playing: "yes" }), null);
+    assert.equal(remixtState({ type: "other", playing: true }), null);
+    assert.equal(remixtState("remixt-radio:state"), null);
+    assert.equal(remixtState(null), null);
+    assert.equal(remixtState({ type: "remixt-radio:state", playing: true, now: { title: "x".repeat(500) } })!.title.length, 120);
   });
 });

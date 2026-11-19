@@ -2,7 +2,10 @@
 // The Market: players' shops at real places. Browse shops and deals around you, open
 // a shop to see its window and shelves, buy (coins wait in escrow until pickup), and
 // run your own shop: products with photos, prices, discounts and a shop window, plus
-// the orders you hand over with the buyer's pickup code.
+// the orders you hand over with the buyer's pickup code. A product is any kind the store sites
+// carry (lib/shopKinds.ts: an item, food, a ticket, an ad, a deal, a service) with that kind's
+// details; priced in coins (bought here) or toman (paid to the seller directly: call, their
+// payment link, or a message in the game).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
@@ -17,8 +20,12 @@ import { resizePhoto } from "./photo";
 import { sfx } from "./sfx";
 import { MoveIcon, revealInSheet, Sheet, useGame } from "./ui";
 import { OwnerLinkFields, StoreExtras } from "./StoreInfo";
+import { ShareButton } from "@/components/ShareButton";
+import { cleanPayLink, cleanPhone, contactOf, detailRows, KINDS, kindLine, priceProblem, PRODUCT_KIND_KEYS, shopRoom, type Currency, type FieldDef, type Pair, type ProductKind } from "@/lib/shopKinds";
 
 const img = (id: string) => `/shop-img/${id}`;
+/** A shop's public page (app/s/[id]): the link to share. */
+const shopUrl = (id: string) => `${typeof location === "undefined" ? "" : location.origin}/s/${id}`;
 
 type View =
   | { v: "browse" }
@@ -139,12 +146,17 @@ function Photo({ id, alt, fallback, className }: { id: string | null | undefined
   );
 }
 
+/** A price in its currency: "120 🪙", "85,000 toman", or "Ask the seller" for a toman price of 0. */
+const money = (n: number, currency: Currency = "coins") => (currency === "toman" ? (n ? t("{n} toman", { n: fmtNum(n) }) : t("Ask the seller")) : `${fmtNum(n)} 🪙`);
+/** Kind-specific words and numbers in the player's language (lib/shopKinds.ts). */
+const kindFmt = { num: (n: number) => fmtNum(n), date: (ms: number) => fmtTime(ms) };
+
 /** Price with the discount shown the way shops do: −20%, old price struck through. */
-function Price({ price, priceNow: now, deal, big }: { price: number; priceNow: number; deal: number; big?: boolean }) {
+function Price({ price, priceNow: now, deal, big, currency }: { price: number; priceNow: number; deal: number; big?: boolean; currency?: Currency }) {
   return (
     <span className={`price-tag ${big ? "big" : ""}`}>
-      <b>{fmtNum(now)} 🪙</b>
-      {deal > 0 && (
+      <b>{money(now, currency)}</b>
+      {deal > 0 && price > 0 && (
         <>
           <s>{fmtNum(price)}</s>
           <span className="deal-pill">{t("−{n}%", { n: deal })}</span>
@@ -154,17 +166,21 @@ function Price({ price, priceNow: now, deal, big }: { price: number; priceNow: n
   );
 }
 
-function ProductTile({ p, emoji, onOpen }: { p: { id: string; title: string; price: number; priceNow: number; deal: number; photo?: string | null; photos?: string[]; stock?: number; active?: boolean; featured?: boolean }; emoji: string; onOpen: () => void }) {
+type TileProduct = { id: string; title: string; price: number; priceNow: number; deal: number; photo?: string | null; photos?: string[]; stock?: number; active?: boolean; featured?: boolean; kind?: ProductKind; details?: unknown; currency?: Currency; over?: boolean };
+function ProductTile({ p, emoji, onOpen }: { p: TileProduct; emoji: string; onOpen: () => void }) {
   const soldOut = p.stock === 0;
+  const kind = p.kind ?? "item";
+  const line = kindLine(kind, p.details, kindFmt);
   return (
-    <button className={`prod-tile ${soldOut ? "sold-out" : ""} ${p.active === false ? "hidden-prod" : ""}`} onClick={onOpen}>
-      <Photo id={p.photo ?? p.photos?.[0]} alt={p.title} fallback={emoji} className="square" />
-      {p.deal > 0 && !soldOut && <span className="ribbon">{t("−{n}%", { n: p.deal })}</span>}
-      {soldOut && <span className="ribbon gray">{t("Sold out")}</span>}
+    <button className={`prod-tile ${soldOut || p.over ? "sold-out" : ""} ${p.active === false ? "hidden-prod" : ""}`} onClick={onOpen}>
+      <Photo id={p.photo ?? p.photos?.[0]} alt={p.title} fallback={kind === "item" ? emoji : KINDS[kind].emoji} className="square" />
+      {p.deal > 0 && !soldOut && !p.over && <span className="ribbon">{t("−{n}%", { n: p.deal })}</span>}
+      {p.over ? <span className="ribbon gray">{t("Over")}</span> : soldOut && <span className="ribbon gray">{t("Sold out")}</span>}
       {p.active === false && <span className="ribbon gray">{t("Hidden")}</span>}
       <span className="prod-info">
-        <span className="prod-title" dir="auto">{p.title}</span>
-        <Price price={p.price} priceNow={p.priceNow} deal={p.deal} />
+        <span className="prod-title" dir="auto">{kind !== "item" && `${KINDS[kind].emoji} `}{p.title}</span>
+        {line && <span className="prod-line small muted ellipsis" dir="auto">{line}</span>}
+        <Price price={p.price} priceNow={p.priceNow} deal={p.deal} currency={p.currency} />
       </span>
     </button>
   );
@@ -239,7 +255,7 @@ function Browse({ onShop, onProduct, onOpenMine }: { onShop: (id: string) => voi
                 <span className="ribbon">{t("−{n}%", { n: d.deal })}</span>
                 <span className="prod-info">
                   <span className="prod-title" dir="auto">{d.title}</span>
-                  <Price price={d.price} priceNow={d.priceNow} deal={0} />
+                  <Price price={d.price} priceNow={d.priceNow} deal={0} currency={d.currency} />
                   <span className="small muted ellipsis" dir="auto">{d.shopEmoji} {d.shopName}</span>
                 </span>
               </button>
@@ -292,7 +308,7 @@ function ShopTile({ s, onOpen, onProduct }: { s: ShopCard; onOpen: () => void; o
           {s.showcase.map((p) => (
             <button key={p.id} className="mini-prod" onClick={() => onProduct(p.id)} aria-label={p.title}>
               <Photo id={p.photo} alt={p.title} fallback={s.emoji} className="square" />
-              <span className="mini-price">{fmtNum(p.priceNow)} 🪙</span>
+              <span className="mini-price">{money(p.priceNow, p.currency)}</span>
               {p.deal > 0 && <span className="mini-deal">{t("−{n}%", { n: p.deal })}</span>}
             </button>
           ))}
@@ -313,7 +329,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
   if (error && !data) return <div className="empty">{error}</div>;
   if (!data) return <div className="empty">{t("Loading…")}</div>;
   const s = data.shop;
-  const window = s.products.filter((p) => p.featured && p.active);
+  const window = s.products.filter((p) => p.featured && p.active && !p.over);
   let shelf = s.products.filter((p) => (s.mine || p.active) && (!onSale || p.deal > 0));
   shelf = [...shelf].sort((a, b) => (sort === "cheap" ? a.priceNow - b.priceNow : sort === "deal" ? b.deal - a.deal : 0) || Number(b.stock > 0) - Number(a.stock > 0));
   const cat = categoryOf(s.category);
@@ -341,6 +357,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
         )}
         <div className="row wrap" style={{ marginTop: 10 }}>
           {s.mine ? <Button className="btn yellow small" onClick={onManage}>🛠️ {t("Manage my shop")}</Button> : <GoToShop to={s} />}
+          <ShareButton title={s.name} text={s.tagline || undefined} url={shopUrl(s.id)} className="btn cyan small" />
         </div>
         <StoreExtras query={{ store: "shop", id: s.id }} />
       </div>
@@ -356,7 +373,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
                 {p.stock === 0 && <span className="ribbon gray">{t("Sold out")}</span>}
                 <span className="prod-info">
                   <span className="prod-title" dir="auto">{p.title}</span>
-                  <Price price={p.price} priceNow={p.priceNow} deal={p.deal} />
+                  <Price price={p.price} priceNow={p.priceNow} deal={p.deal} currency={p.currency} />
                 </span>
               </button>
             ))}
@@ -394,7 +411,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
 
 // ---------------------------------------------------------------- one product
 function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: string; productId: string; onShop: () => void; onBought: (orderId: string) => void; onEdit: () => void }) {
-  const { me, act, pos } = useGame();
+  const { me, act, pos, openChat } = useGame();
   const at = pos ? `?lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}` : "";
   const { data, error, reload } = useApi<{ shop: ShopView }>(`/api/shops/${shopId}${at}`);
   const [qty, setQty] = useState(1);
@@ -414,7 +431,11 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
   const max = Math.min(p.stock, SHOP_LIMITS.qty);
   const n = Math.max(1, Math.min(qty, max));
   const total = unit * n;
-  const why = !s.live ? t("This shop is closed right now") : p.stock === 0 ? t("Sold out") : total > me.coins ? t("Not enough coins — you have {n}", { n: me.coins }) : null;
+  const toman = p.currency === "toman";
+  const kind = KINDS[p.kind];
+  const rows = detailRows(p.kind, p.details, kindFmt);
+  const why = !s.live ? t("This shop is closed right now") : p.over ? t("That's already over") : p.stock === 0 ? t("Sold out") : !toman && total > me.coins ? t("Not enough coins — you have {n}", { n: me.coins }) : null;
+  const contact = contactOf(p.kind, p.details, s);
 
   const onScroll = () => {
     const g = gallery.current;
@@ -452,15 +473,26 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
         )}
       </div>
 
+      <p className="small muted product-kind">{kind.emoji} {t(kind.label)}{p.details.negotiable === true && ` · ${t("Price negotiable")}`}</p>
       <h3 className="product-title" dir="auto">{p.title}</h3>
       <div className="row wrap" style={{ alignItems: "baseline" }}>
-        <Price price={p.price} priceNow={unit} deal={dealOn ? p.deal : 0} big />
+        <Price price={p.price} priceNow={unit} deal={dealOn ? p.deal : 0} big currency={p.currency} />
       </div>
       {dealOn && p.dealEnds && <p className="small deal-ends">⏳ {t("Discount ends in {time}", { time: fmtCountdown(p.dealEnds - now) })}</p>}
       <p className="small muted" style={{ margin: "6px 0" }}>
-        {p.stock === 0 ? t("Sold out") : p.stock <= 3 ? t("Only {n} left!", { n: p.stock }) : t("{n} in stock", { n: p.stock })}
+        {p.over ? t("That's already over") : p.stock === 0 ? t("Sold out") : p.kind === "item" ? (p.stock <= 3 ? t("Only {n} left!", { n: p.stock }) : t("{n} in stock", { n: p.stock })) : `${t(kind.stock)}: ${fmtNum(p.stock)}`}
         {p.sold > 0 && ` · ${t("{n} sold", { n: p.sold })}`}
       </p>
+      {!!rows.length && (
+        <dl className="detail-rows">
+          {rows.map((r, i) => (
+            <div key={i}>
+              <dt dir="auto">{t(r.label)}</dt>
+              <dd dir="auto">{r.tr ? t(r.value) : r.value}{r.unit && ` ${t(r.unit)}`}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {p.description && <p className="product-desc" dir="auto">{p.description}</p>}
 
       <button className="card list-item shop-link" onClick={onShop}>
@@ -476,9 +508,21 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
 
       {s.mine ? (
         <Button className="btn yellow block" onClick={onEdit}>✏️ {t("Edit product")}</Button>
+      ) : toman ? (
+        <div className="card buy-box contact-box">
+          <b>🤝 {t("Paid to the seller directly")}</b>
+          <p className="small muted" style={{ margin: "4px 0 10px" }}>{t("The game doesn't hold this money: agree with the seller, then pay them in person, by card, or on their payment page.")}</p>
+          {why && <p className="small" style={{ color: "var(--yellow)", margin: "0 0 8px" }}>{why}</p>}
+          <div className="row wrap">
+            {contact.phone && <a className="btn green small" href={`tel:${contact.phone}`} dir="ltr">📞 {t("Call")} {contact.phone}</a>}
+            {contact.payLink && !why && <a className="btn yellow small" href={contact.payLink} target="_blank" rel="noopener noreferrer nofollow">💳 {t("Pay the seller")}</a>}
+            <Button className="btn cyan small" onClick={() => openChat(shopRoom(s.id, me.id), `${s.emoji} ${s.name}`)}>💬 {t("Message the seller")}</Button>
+          </div>
+          <p className="small muted" style={{ margin: "8px 0 0" }}>⚠️ {t("Never pay before you've seen it, and never share a bank code.")}</p>
+        </div>
       ) : (
         <div className="card buy-box">
-          {p.stock > 0 && s.live && (
+          {p.stock > 0 && s.live && !p.over && (
             <>
               <div className="row">
                 <span className="grow">{t("Quantity")}</span>
@@ -495,6 +539,7 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
             🛍️ {t("Buy for {n} 🪙", { n: total })}
           </Button>
           {why ? <p className="small" style={{ color: "var(--yellow)", margin: "6px 0 0" }}>{why}</p> : <p className="small muted" style={{ margin: "8px 0 0" }}>🔒 {t("Your coins are held safely until you pick it up. Changed your mind? Cancel any time before pickup for a full refund.")}</p>}
+          <button className="link-btn small" style={{ marginTop: 8 }} onClick={() => openChat(shopRoom(s.id, me.id), `${s.emoji} ${s.name}`)}>💬 {t("Ask the seller a question")}</button>
         </div>
       )}
     </div>
@@ -502,10 +547,11 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
 }
 
 // ---------------------------------------------------------------- my shop
-type Mine = { shop: ShopView | null; orders: ShopOrder[]; stats: { pending: number; sold: number; earned: number } | null };
+type ShopChat = { room: string; buyer: { id: string; username: string; avatar: string }; last: string; fromBuyer: boolean; at: number };
+type Mine = { shop: ShopView | null; orders: ShopOrder[]; stats: { pending: number; sold: number; earned: number } | null; chats?: ShopChat[] };
 
 function MyShop({ go }: { go: (v: View) => void }) {
-  const { act, me, refresh } = useGame();
+  const { act, me, refresh, openChat } = useGame();
   const { data, error, reload } = useApi<Mine>("/api/shops/mine");
   if (error && !data) return <div className="empty">{error}</div>;
   if (!data) return <div className="empty">{t("Loading…")}</div>;
@@ -556,6 +602,7 @@ function MyShop({ go }: { go: (v: View) => void }) {
           <div className="row wrap" style={{ marginTop: 10 }}>
             <Button className={`btn small ${left < SHOP_WARN_MS ? "yellow" : "ghost"}`} onClick={renew}>🔁 {t("Renew · {n} 🪙", { n: S.shopRenewCost })}</Button>
             <Button className="btn ghost small" onClick={() => go({ v: "shop", id: s.id })}>👀 {t("View as a buyer")}</Button>
+            <ShareButton title={s.name} text={s.tagline || undefined} url={shopUrl(s.id)} className="btn cyan small" />
             {left > 0 && (
               <Button className="btn ghost small" onClick={() => act(() => api("/api/shops", { body: { action: "update", open: !s.open } })).then((ok) => ok && reload())}>
                 {s.open ? `⏸️ ${t("Pause sales")}` : `▶️ ${t("Reopen")}`}
@@ -578,6 +625,22 @@ function MyShop({ go }: { go: (v: View) => void }) {
         </>
       )}
 
+      {!!data.chats?.length && (
+        <>
+          <div className="sec-head"><b>💬 {t("Messages from buyers")}</b></div>
+          {data.chats.map((c) => (
+            <button key={c.room} className="card list-item shop-link" onClick={() => openChat(c.room, `${c.buyer.avatar} ${c.buyer.username}`)}>
+              <span className="icon-tile">{c.buyer.avatar}</span>
+              <span className="grow" style={{ minWidth: 0 }}>
+                <b dir="auto">{c.buyer.username}</b>
+                <span className="small muted ellipsis" dir="auto" style={{ display: "block" }}>{c.fromBuyer ? "" : `${t("You")}: `}{c.last}</span>
+              </span>
+              <span className="small muted">{fmtTime(c.at)}</span>
+            </button>
+          ))}
+        </>
+      )}
+
       <div className="sec-head">
         <b>🛒 {t("Products")}</b>
         <span className="small muted">{fmtNum(s.products.length)}/{fmtNum(S.shopMaxProducts)}</span>
@@ -591,7 +654,7 @@ function MyShop({ go }: { go: (v: View) => void }) {
             <Photo id={p.photos[0]} alt={p.title} fallback={s.emoji} className="thumb" />
             <span className="grow" style={{ minWidth: 0 }}>
               <b className="ellipsis" dir="auto" style={{ display: "block" }}>{p.title}</b>
-              <Price price={p.price} priceNow={p.priceNow} deal={p.deal} />
+              <Price price={p.price} priceNow={p.priceNow} deal={p.deal} currency={p.currency} />
               <span className="small muted" style={{ display: "block" }}>
                 {p.stock ? t("{n} in stock", { n: p.stock }) : t("Sold out")} {p.sold > 0 && `· ${t("{n} sold", { n: p.sold })}`}
               </span>
@@ -662,18 +725,20 @@ function ShopForm({ onDone }: { onDone: () => void }) {
   const { act, me, pos, toast, refresh } = useGame();
   const { data } = useApi<Mine>(me.shop ? "/api/shops/mine" : null);
   const existing = data?.shop ?? null;
-  const [f, setF] = useState({ name: "", tagline: "", about: "", emoji: "🏪", category: "other", address: "", snappfood: "", torob: "", divar: "" });
+  const [f, setF] = useState({ name: "", tagline: "", about: "", emoji: "🏪", category: "other", address: "", snappfood: "", torob: "", divar: "", phone: "", payLink: "" });
   const [cover, setCover] = useState<string | null>(null);
   const filled = useRef(false);
   useEffect(() => {
     if (!existing || filled.current) return;
     filled.current = true;
-    setF({ name: existing.name, tagline: existing.tagline, about: existing.about, emoji: existing.emoji, category: existing.category, address: existing.address, snappfood: existing.snappfood, torob: existing.torob, divar: existing.divar });
+    setF({ name: existing.name, tagline: existing.tagline, about: existing.about, emoji: existing.emoji, category: existing.category, address: existing.address, snappfood: existing.snappfood, torob: existing.torob, divar: existing.divar, phone: existing.phone, payLink: existing.payLink });
   }, [existing]);
   if (me.shop && !existing) return <div className="empty">{t("Loading…")}</div>;
 
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const short = f.name.trim().length < 2;
+  const badPhone = !!f.phone.trim() && !cleanPhone(f.phone);
+  const badLink = cleanPayLink(f.payLink) === null;
   const save = async () => {
     const ok = existing
       ? await act(() => api("/api/shops", { body: { action: "update", ...f } }))
@@ -734,6 +799,11 @@ function ShopForm({ onDone }: { onDone: () => void }) {
       <label>{t("About the shop")}</label>
       <textarea rows={3} value={f.about} onChange={set("about")} maxLength={SHOP_LIMITS.about} placeholder={t("What you sell, opening hours, how pickup works…")} />
       <OwnerLinkFields v={f} set={(k, v) => setF({ ...f, [k]: v })} at={pos} />
+      <label>{t("Phone for buyers (optional)")}</label>
+      <input type="tel" inputMode="tel" dir="ltr" value={f.phone} onChange={set("phone")} maxLength={30} placeholder="0912…" aria-invalid={badPhone} />
+      <label>{t("Your payment page (optional)")}</label>
+      <input type="url" inputMode="url" dir="ltr" value={f.payLink} onChange={set("payLink")} maxLength={300} placeholder="https://zarinp.al/…" aria-invalid={badLink} />
+      <p className="small muted">{badPhone ? <span className="warn-text">{t("That phone number doesn't look right")}</span> : badLink ? <span className="warn-text">{t("The payment link must be a full https:// address")}</span> : t("Shown on products you price in toman: buyers pay you directly, the game never touches that money.")}</p>
 
       {!existing && (
         <div className="card small" style={{ marginTop: 12 }}>
@@ -742,7 +812,7 @@ function ShopForm({ onDone }: { onDone: () => void }) {
           🗓️ {t("{cost} coins keeps it open for {days} days; renew any time.", { cost: S.shopOpenCost, days: S.shopDays })}
         </div>
       )}
-      <Button className="btn yellow block big-btn" style={{ marginTop: 12 }} disabled={short || (!existing && (!pos || me.coins < S.shopOpenCost))} onClick={save}>
+      <Button className="btn yellow block big-btn" style={{ marginTop: 12 }} disabled={short || badPhone || badLink || (!existing && (!pos || me.coins < S.shopOpenCost))} onClick={save}>
         {existing ? `💾 ${t("Save")}` : `🏪 ${t("Open shop · {n} 🪙", { n: S.shopOpenCost })}`}
       </Button>
       {!existing && (short ? <p className="small muted">{t("Give your shop a name (at least 2 letters)")}</p> : !pos ? <p className="small warn-text">{t("Waiting for your location…")}</p> : me.coins < S.shopOpenCost ? <p className="small warn-text">{t("Not enough coins — you have {n}", { n: me.coins })}</p> : null)}
@@ -766,12 +836,79 @@ const localInput = (ms: number) => {
   return d.toISOString().slice(0, 16);
 };
 
+/** One field of a product kind (lib/shopKinds.ts) in the seller's form. */
+function KindField({ field, value, set }: { field: FieldDef; value: unknown; set: (v: unknown) => void }) {
+  const digits = (v: string) => toAsciiDigits(v).replace(/\D/g, "");
+  if (field.type === "bool")
+    return (
+      <div className="toggles">
+        <button className={`toggle ${value === true ? "on" : ""}`} onClick={() => set(value === true ? undefined : true)} aria-pressed={value === true}>
+          <i /> {t(field.label)}
+        </button>
+      </div>
+    );
+  const label = <label>{t(field.label)}{field.type === "datetime" && field.required ? " *" : ""}{field.type === "number" && field.unit ? ` (${t(field.unit)})` : ""}</label>;
+  if (field.type === "select")
+    return (
+      <>
+        {label}
+        <select value={typeof value === "string" ? value : ""} onChange={(e) => set(e.target.value || undefined)}>
+          <option value="">—</option>
+          {field.options.map((o) => <option key={o.key} value={o.key}>{t(o.label)}</option>)}
+        </select>
+      </>
+    );
+  if (field.type === "datetime")
+    return (
+      <>
+        {label}
+        <input type="datetime-local" value={typeof value === "number" ? localInput(value) : ""} onChange={(e) => set(e.target.value ? new Date(e.target.value).getTime() : undefined)} aria-label={t(field.label)} />
+      </>
+    );
+  if (field.type === "number")
+    return (
+      <>
+        {label}
+        <input inputMode="numeric" value={value == null ? "" : String(value)} onChange={(e) => set(digits(e.target.value) ? Math.min(field.max, Number(digits(e.target.value))) : undefined)} />
+      </>
+    );
+  if (field.type === "pairs") {
+    const pairs = Array.isArray(value) ? (value as Pair[]) : [];
+    const put = (i: number, k: "k" | "v", v: string) => set(pairs.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
+    return (
+      <>
+        {label}
+        {pairs.map((p, i) => (
+          <div key={i} className="pair-row">
+            <input value={p.k} onChange={(e) => put(i, "k", e.target.value)} maxLength={30} placeholder={t("e.g. Area")} aria-label={t("Name")} />
+            <input value={p.v} onChange={(e) => put(i, "v", e.target.value)} maxLength={60} placeholder={t("e.g. 85 m²")} aria-label={t("Value")} />
+            <button className="btn ghost small" onClick={() => set(pairs.filter((_, j) => j !== i))} aria-label={t("Remove")}>✕</button>
+          </div>
+        ))}
+        {pairs.length < field.max && <button className="btn ghost small" onClick={() => set([...pairs, { k: "", v: "" }])}>＋ {t("Add a detail")}</button>}
+      </>
+    );
+  }
+  const str = typeof value === "string" ? value : "";
+  return (
+    <>
+      {label}
+      {field.type === "long" ? (
+        <textarea rows={2} value={str} onChange={(e) => set(e.target.value)} maxLength={field.max} placeholder={field.hint ? t(field.hint) : undefined} />
+      ) : (
+        <input type={field.type === "phone" ? "tel" : "text"} inputMode={field.type === "phone" ? "tel" : undefined} dir={field.type === "phone" ? "ltr" : undefined} value={str} onChange={(e) => set(e.target.value)} maxLength={field.type === "phone" ? 30 : field.max} placeholder={field.hint ? t(field.hint) : undefined} />
+      )}
+    </>
+  );
+}
+
 function ProductForm({ productId, onDone }: { productId: string | null; onDone: () => void }) {
   const { act, toast } = useGame();
   const { data } = useApi<Mine>("/api/shops/mine");
   const shop = data?.shop;
   const product = productId ? shop?.products.find((p) => p.id === productId) : null;
-  const [f, setF] = useState({ title: "", description: "", price: "", stock: 1, discountPct: 0, discountUntil: null as number | null, featured: false, active: true });
+  const [f, setF] = useState({ title: "", description: "", price: "", stock: 1, discountPct: 0, discountUntil: null as number | null, featured: false, active: true, kind: "item" as ProductKind, currency: "coins" as Currency });
+  const [det, setDet] = useState<Record<string, unknown>>({});
   const [pics, setPics] = useState<Pic[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const keyN = useRef(0);
@@ -780,7 +917,8 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
     if (filled.current || !shop || (productId && !product)) return;
     filled.current = true;
     if (product) {
-      setF({ title: product.title, description: product.description, price: String(product.price), stock: product.stock, discountPct: product.discountPct, discountUntil: product.discountUntil, featured: product.featured, active: product.active });
+      setF({ title: product.title, description: product.description, price: String(product.price), stock: product.stock, discountPct: product.discountPct, discountUntil: product.discountUntil, featured: product.featured, active: product.active, kind: product.kind, currency: product.currency });
+      setDet(product.details);
       setPics(product.photos.map((id) => ({ id })));
     }
   }, [shop, product, productId]);
@@ -788,11 +926,18 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
   if (productId && !product) return <div className="empty">{t("That product isn't in your shop")}</div>;
 
   const price = Number(f.price) || 0;
+  const coins = f.currency === "coins";
+  const kind = KINDS[f.kind];
   const salePrice = priceNow({ price, discountPct: f.discountPct, discountUntil: f.discountUntil });
   const windowUsed = shop.products.filter((p) => p.featured && p.id !== productId).length;
   const windowFull = !f.featured && windowUsed >= S.shopMaxFeatured;
+  const missing = kind.fields.find((x) => x.type === "datetime" && x.required && typeof det[x.key] !== "number");
+  const priceWhy = f.price === "" && coins ? "Set a price" : priceProblem(f.currency, price, S.shopMaxPrice);
   const problem =
-    f.title.trim().length < 2 ? t("Give the product a name (at least 2 letters)") : price < 1 ? t("Set a price") : price > S.shopMaxPrice ? t("The highest price allowed is {n} coins", { n: S.shopMaxPrice }) : f.discountPct > 0 && f.discountUntil != null && f.discountUntil <= Date.now() ? t("Pick a discount end time in the future") : null;
+    f.title.trim().length < 2 ? t("Give the product a name (at least 2 letters)") : priceWhy ? t(priceWhy, { n: S.shopMaxPrice }) : missing ? t("Pick the date and time") : f.discountPct > 0 && f.discountUntil != null && f.discountUntil <= Date.now() ? t("Pick a discount end time in the future") : null;
+  const noContact = !coins && !shop.phone && !shop.payLink && !(f.kind === "ad" && cleanPhone(det.phone));
+  // A new product takes the kind's usual currency (a ticket in toman, food in coins) until the seller picks one.
+  const pickKind = (k: ProductKind) => setF({ ...f, kind: k, currency: productId ? f.currency : KINDS[k].currency });
 
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -811,7 +956,7 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
 
   const save = async () => {
     if (problem) return;
-    const fields = { title: f.title, description: f.description, price, stock: f.stock, discountPct: f.discountPct, discountUntil: f.discountPct ? f.discountUntil : null, featured: f.featured, active: f.active };
+    const fields = { title: f.title, description: f.description, price, kind: f.kind, details: det, currency: f.currency, stock: f.stock, discountPct: f.discountPct, discountUntil: f.discountPct ? f.discountUntil : null, featured: f.featured, active: f.active };
     const ok = await act(async () => {
       let id = productId;
       let message: string;
@@ -871,21 +1016,49 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
         )}
       </div>
 
+      <label>{t("What are you selling?")}</label>
+      <div className="kind-pick" role="radiogroup" aria-label={t("What are you selling?")}>
+        {PRODUCT_KIND_KEYS.map((k) => (
+          <button key={k} type="button" role="radio" aria-checked={f.kind === k} className={f.kind === k ? "on" : ""} onClick={() => pickKind(k)}>
+            <span aria-hidden>{KINDS[k].emoji}</span> {t(KINDS[k].label)}
+          </button>
+        ))}
+      </div>
+      <p className="small muted" style={{ margin: "4px 0 0" }}>{t(kind.what)}</p>
+
       <label>{t("Product name")}</label>
       <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={SHOP_LIMITS.title} placeholder={t("e.g. Handmade wool scarf")} />
       <label>{t("Description")}</label>
       <textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={SHOP_LIMITS.description} placeholder={t("Size, color, condition, what's included…")} />
 
+      {kind.fields.map((field) => (
+        <KindField key={`${f.kind}-${field.key}`} field={field} value={det[field.key]} set={(v) => setDet((d) => ({ ...d, [field.key]: v }))} />
+      ))}
+
+      <label>{t("Paid in")}</label>
+      <div className="tabs">
+        <button className={coins ? "on" : ""} onClick={() => setF({ ...f, currency: "coins" })}>🪙 {t("Coins, in the game")}</button>
+        <button className={!coins ? "on" : ""} onClick={() => setF({ ...f, currency: "toman" })}>💵 {t("Toman, to you directly")}</button>
+      </div>
+      <p className="small muted" style={{ margin: "4px 0 0" }}>
+        {coins ? t("Buyers pay in coins, held safely until they pick it up.") : t("Like a classified ad: buyers call, message or pay you on your own payment page. The game never touches that money.")}
+      </p>
+      {noContact && (
+        <p className="small warn-text">
+          {t("Add your phone or payment page in the shop details so buyers can pay you — until then they can only message you.")}
+        </p>
+      )}
+
       <div className="grid2">
         <div>
-          <label>{t("Price (🪙)")}</label>
-          <input inputMode="numeric" value={f.price} onChange={(e) => setF({ ...f, price: toAsciiDigits(e.target.value).replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 9) })} placeholder="100" />
+          <label>{coins ? t("Price (🪙)") : t("Price (toman)")}</label>
+          <input inputMode="numeric" value={f.price} onChange={(e) => setF({ ...f, price: toAsciiDigits(e.target.value).replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, coins ? 9 : 12) })} placeholder={coins ? "100" : t("0 = ask the seller")} />
         </div>
         <div>
-          <label>{t("In stock")}</label>
+          <label>{t(kind.stock)}</label>
           <div className="stepper qty-stepper">
             <button onClick={() => setF({ ...f, stock: Math.max(0, f.stock - 1) })} aria-label={t("Fewer")}>−</button>
-            <input inputMode="numeric" value={String(f.stock)} onChange={(e) => setF({ ...f, stock: Math.min(9999, Number(toAsciiDigits(e.target.value).replace(/\D/g, "")) || 0) })} aria-label={t("In stock")} />
+            <input inputMode="numeric" value={String(f.stock)} onChange={(e) => setF({ ...f, stock: Math.min(9999, Number(toAsciiDigits(e.target.value).replace(/\D/g, "")) || 0) })} aria-label={t(kind.stock)} />
             <button onClick={() => setF({ ...f, stock: Math.min(9999, f.stock + 1) })} aria-label={t("More")}>+</button>
           </div>
         </div>
@@ -920,7 +1093,7 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
           <input type="datetime-local" value={f.discountUntil ? localInput(f.discountUntil) : ""} onChange={(e) => setF({ ...f, discountUntil: e.target.value ? new Date(e.target.value).getTime() : null })} aria-label={t("Discount ends")} />
           {price > 0 && (
             <p className="small" style={{ color: "var(--green)" }}>
-              {t("Buyers pay {now} 🪙 instead of {was} 🪙", { now: salePrice, was: price })}
+              {coins ? t("Buyers pay {now} 🪙 instead of {was} 🪙", { now: salePrice, was: price }) : t("Buyers pay {now} instead of {was}", { now: money(salePrice, "toman"), was: money(price, "toman") })}
               {f.discountUntil ? ` · ${t("until {when}", { when: fmtTime(f.discountUntil) })}` : ""}
             </p>
           )}
@@ -935,7 +1108,7 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
           <i /> 👁️ {t("Visible to buyers")}
         </button>
       </div>
-      {price > 0 && <p className="small muted">{t("You receive {n} 🪙 per sale after the {fee}% market fee.", { n: salePrice - shopFee(salePrice), fee: S.shopFeePct })}</p>}
+      {price > 0 && coins && <p className="small muted">{t("You receive {n} 🪙 per sale after the {fee}% market fee.", { n: salePrice - shopFee(salePrice), fee: S.shopFeePct })}</p>}
 
       <Button className="btn yellow block big-btn" style={{ marginTop: 12 }} disabled={!!problem} onClick={save}>
         {status ?? (productId ? `💾 ${t("Save")}` : `✅ ${t("Put it on sale")}`)}

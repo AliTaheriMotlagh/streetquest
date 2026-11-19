@@ -44,8 +44,9 @@ export const POST = route(async (req) => {
     const tag = `chat-${d.room}`;
     const preview = d.body.length > 120 ? `${d.body.slice(0, 119)}…` : d.body;
     for (const id of audience.filter((x) => x !== u.id).slice(0, 50)) {
-      const title = await asUser(id, () => (d.room.startsWith("dm:") ? t("💬 {name}", { name: u.username }) : t("💬 {name} in your event", { name: u.username })));
-      pushSoon(id, { title, body: preview, kind: "social", tag, url: "/play?panel=crew" });
+      const shopChat = d.room.startsWith("shop:");
+      const title = await asUser(id, () => (d.room.startsWith("dm:") ? t("💬 {name}", { name: u.username }) : shopChat ? t("🏪 {name} about your shop", { name: u.username }) : t("💬 {name} in your event", { name: u.username })));
+      pushSoon(id, { title, body: preview, kind: "social", tag, url: shopChat ? "/play?panel=market" : "/play?panel=crew" });
     }
   }
   const { authorId: _a, ...msg } = m;

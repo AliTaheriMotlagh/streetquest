@@ -2,6 +2,7 @@
 // at pickup the buyer shows a 4-digit code and the seller enters it, which hands the
 // coins over (minus the market fee). Either side can call an open order off and the
 // buyer gets everything back.
+import { currencyOf, expired, kindOf } from "@/lib/shopKinds";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { t, toAsciiDigits } from "@/lib/i18n";
@@ -42,10 +43,13 @@ export const POST = actionRoute(async (req) => {
   if (d.action === "buy") {
     const p = await prisma.product.findUnique({
       where: { id: d.productId },
-      select: { id: true, title: true, price: true, discountPct: true, discountUntil: true, stock: true, active: true, photos: { select: { id: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 1 }, shop: { select: { id: true, name: true, ownerId: true, open: true, expiresAt: true } } },
+      select: { id: true, title: true, price: true, discountPct: true, discountUntil: true, stock: true, active: true, kind: true, details: true, currency: true, photos: { select: { id: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 1 }, shop: { select: { id: true, name: true, ownerId: true, open: true, expiresAt: true } } },
     });
     if (!p || !p.active) throw new HttpError(404, t("This product isn't for sale any more"));
     if (p.shop.ownerId === u.id) throw new HttpError(400, t("That's your own shop"));
+    // Toman prices are paid to the seller directly (like a classified ad): the game holds coins only.
+    if (currencyOf(p.currency) === "toman") throw new HttpError(400, t("This one is paid to the seller directly — contact them"));
+    if (expired(kindOf(p.kind), p.details)) throw new HttpError(400, t("That's already over"));
     if (!shopLive(p.shop)) throw new HttpError(400, t("{shop} is closed right now", { shop: p.shop.name }));
     if (p.stock < d.qty) throw new HttpError(409, p.stock ? t("Only {n} left", { n: p.stock }) : t("Sold out"));
     const unit = priceNow(p);

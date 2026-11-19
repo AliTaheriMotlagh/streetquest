@@ -23,6 +23,26 @@ test.describe("site & SEO", () => {
     expect(html).toContain('href="/play"');
   });
 
+  test("every language has its own canonical page and hreflang links; the footer links them for crawlers", async ({ request }) => {
+    for (const l of ["en", "fa", "tr"]) {
+      for (const path of ["/", "/events"]) {
+        const html = await (await request.get(`${path}?lang=${l}`)).text();
+        expect(html).toMatch(new RegExp(`<html lang="${l}"`));
+        expect(html).toMatch(new RegExp(`rel="canonical" href="[^"]*${path === "/" ? "/" : path}\\?lang=${l}"`));
+        for (const h of ["en", "fa-IR", "tr-TR", "x-default"]) expect(html).toMatch(new RegExp(`rel="alternate" hrefLang="${h}"`));
+      }
+    }
+    const fa = await (await request.get("/?lang=fa")).text();
+    expect(fa).toContain('href="?lang=tr" hrefLang="tr-TR"');
+    expect(fa).toContain('"@type":"Organization"');
+  });
+
+  test("Google Search Console verification file is served as is", async ({ request }) => {
+    const r = await request.get("/google9dca6b8d6eae63d6.html");
+    expect(r.status()).toBe(200);
+    expect((await r.text()).trim()).toBe("google-site-verification: google9dca6b8d6eae63d6.html");
+  });
+
   test("robots, sitemap and manifest are served", async ({ request }) => {
     const robots = await request.get("/robots.txt");
     expect(robots.status()).toBe(200);
@@ -30,7 +50,10 @@ test.describe("site & SEO", () => {
 
     const sitemap = await request.get("/sitemap.xml");
     expect(sitemap.status()).toBe(200);
-    expect(await sitemap.text()).toContain("<urlset");
+    const xml = await sitemap.text();
+    expect(xml).toContain("<urlset");
+    expect(xml).toMatch(/hreflang="fa-IR" href="[^"]*\/events\?lang=fa"/);
+    expect(await robots.text()).toMatch(/Disallow: \/api\//);
 
     const manifest = await request.get("/manifest.webmanifest");
     expect(manifest.status()).toBe(200);

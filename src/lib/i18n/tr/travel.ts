@@ -227,6 +227,19 @@ const travel: Record<string, string> = {
   "{n}M": "{n} Mn",
   "{n}K": "{n} B",
   "Airports, stations & planes": "Havalimanı, istasyon ve uçaklar",
+
+  // ---- fuel tiers (lib/travel/plan.ts fuelCost, Admin → Travel planner)
+  "Off: every litre at {n} toman, the price beyond the quota": "Kapalı: her litre {n} tümen, kota dışı fiyat",
+  "My fuel card still has quota": "Yakıt kartımda hâlâ kota var",
+  "Travel planner": "Gezi planlayıcı",
+  "Petrol, quota price (toman a litre)": "Benzin, kota fiyatı (litresi tümen)",
+  "The fuel card's monthly quota.": "Yakıt kartının aylık kotası.",
+  "Quota litres a month": "Aylık kota litresi",
+  "Petrol, second price (toman a litre)": "Benzin, ikinci fiyat (litresi tümen)",
+  "After the quota, up to the second-tier litres.": "Kotadan sonra, ikinci kademe litreye kadar.",
+  "Second-tier litres a month": "Aylık ikinci kademe litresi",
+  "Petrol beyond the quota (toman a litre)": "Kota dışı benzin (litresi tümen)",
+  "What a trip's fuel costs by default — a trip is extra driving.": "Bir yolculuğun varsayılan yakıt maliyeti — yolculuk ek sürüştür.",
 };
 
 export default travel;

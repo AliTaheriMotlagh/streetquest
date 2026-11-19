@@ -228,6 +228,19 @@ const travel: Record<string, string> = {
   "{n}M": "{n} میلیون",
   "{n}K": "{n} هزار",
   "Airports, stations & planes": "فرودگاه، ایستگاه و هواپیما",
+
+  // ---- fuel tiers (lib/travel/plan.ts fuelCost, Admin → Travel planner)
+  "Off: every litre at {n} toman, the price beyond the quota": "خاموش: هر لیتر {n} تومان، قیمت بیش از سهمیه",
+  "My fuel card still has quota": "کارت سوختم هنوز سهمیه داره",
+  "Travel planner": "برنامه‌ریز سفر",
+  "Petrol, quota price (toman a litre)": "بنزین، قیمت سهمیه‌ای (تومان هر لیتر)",
+  "The fuel card's monthly quota.": "سهمیهٔ ماهانهٔ کارت سوخت.",
+  "Quota litres a month": "لیتر سهمیه در ماه",
+  "Petrol, second price (toman a litre)": "بنزین، نرخ دوم (تومان هر لیتر)",
+  "After the quota, up to the second-tier litres.": "بعد از سهمیه، تا سقف لیترهای نرخ دوم.",
+  "Second-tier litres a month": "لیتر نرخ دوم در ماه",
+  "Petrol beyond the quota (toman a litre)": "بنزین بیش از سهمیه (تومان هر لیتر)",
+  "What a trip's fuel costs by default — a trip is extra driving.": "هزینهٔ پیش‌فرض سوخت سفر — سفر یعنی رانندگی اضافه.",
 };
 
 export default travel;

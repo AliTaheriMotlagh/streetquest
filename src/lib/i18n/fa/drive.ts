@@ -379,6 +379,11 @@ const drive: Record<string, string> = {
   "Stop the course": "توقف مسیر",
   "Sky Rings": "حلقه‌های آسمان",
   "Swing, zip and glide through gold rings over the rooftops, against the clock": "روی پشت‌بام‌ها تاب بخور، بپر و سُر بخور و از حلقه‌های طلایی رد شو — با زمان مسابقه بده",
+
+  // ---- Remixt Radio in the car (components/drive/radio.ts)
+  "Tap ▶ on the card below": "روی ▶ کارت پایین بزن",
+  "Tap ▶ to start Remixt Radio": "برای پخش رادیو ریمیکست روی ▶ بزن",
+  "Remixes — listeners vote": "ریمیکس‌ها — شنونده‌ها رأی می‌دن",
 };
 
 export default drive;

@@ -22,6 +22,10 @@ only the section you need.
 | Settings & economy defaults | `src/lib/settings.ts` (Admin → Game settings edits them live) |
 | Translations | `src/lib/i18n/fa/*.ts` — every `t()`/`msg()` key needs a Persian entry |
 
+## Open work
+All unfinished tasks, plans, pending decisions and never-verified items: `BACKLOG.md` (read "Now" first; update it at
+the end of every session).
+
 ## Commands
 - `npm test` — unit tests (`tests/*.test.ts`, Node test runner via tsx) + typecheck + i18n check. Run before finishing.
 - `npm run test:e2e:api -- e2e/api/<file>.spec.ts --workers=1` — one API spec (starts its own server on :3200; slow cold).

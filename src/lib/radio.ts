@@ -7,10 +7,48 @@
 import { msg } from "./i18n";
 import { sliderGain, type Mix } from "./audio/mix";
 
-export type StationGroup = "persian" | "world";
+export type StationGroup = "remixt" | "persian" | "world";
 export type Station = { id: string; name: string; genre: string; group: StationGroup };
-/** A station with somewhere to play it from (what /api/radio answers). */
-export type LiveStation = Station & { url: string };
+/**
+ * A station with somewhere to play it from (what /api/radio answers). `embed`: a Remixt station — not a stream but
+ * Remixt's own player in a frame (it mixes each song's lanes in sync with every other listener), see remixtStation.
+ */
+export type LiveStation = Station & { url: string; embed?: true };
+
+// ---------------------------------------------------------------- Remixt Radio
+// remixt-free.vercel.app's station, played through its documented embed for games: /radio/<slug>/embed?autoplay=1,
+// driven with postMessage({ type: "remixt-radio", action: "play" | "pause" | "volume", value }) and telling back
+// { type: "remixt-radio:state", playing, now: { title, artist, cover } }. Its address is NEXT_PUBLIC_REMIXT_RADIO
+// (the station's page, e.g. https://remixt-free.vercel.app/radio/remixt-radio); empty switches it off.
+export const REMIXT_DEFAULT = "https://remixt-free.vercel.app/radio/remixt-radio";
+
+/** The embed address for a Remixt station page (https only, a /radio/<slug> path), or null. */
+export function remixtEmbed(page: string | undefined | null): { url: string; origin: string } | null {
+  if (!page) return null;
+  try {
+    const u = new URL(page);
+    const m = /^\/radio\/([a-z0-9-]{1,60})\/?$/.exec(u.pathname);
+    if (u.protocol !== "https:" || !m || u.username || u.password) return null;
+    return { url: `${u.origin}/radio/${m[1]}/embed?autoplay=1`, origin: u.origin };
+  } catch {
+    return null;
+  }
+}
+
+/** Remixt Radio as a station (first in the list), when its address is set and valid. */
+export function remixtStation(page: string | undefined | null = REMIXT_DEFAULT): LiveStation | null {
+  const e = remixtEmbed(page);
+  return e ? { id: "remixt", name: "Remixt Radio", genre: msg("Remixes — listeners vote"), group: "remixt", url: e.url, embed: true } : null;
+}
+
+export type RemixtState = { playing: boolean; title: string; artist: string };
+/** A message from the Remixt embed, checked: its kind and fields, text cut short; anything else → null. */
+export function remixtState(data: unknown): RemixtState | null {
+  const d = data as { type?: unknown; playing?: unknown; now?: { title?: unknown; artist?: unknown } | null } | null;
+  if (!d || typeof d !== "object" || d.type !== "remixt-radio:state" || typeof d.playing !== "boolean") return null;
+  const str = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 120) : "");
+  return { playing: d.playing, title: str(d.now?.title), artist: str(d.now?.artist) };
+}
 
 export const STATIONS: Station[] = [
   { id: "aa408a3b-3d07-415d-8af1-a60b64e07043", name: "Radio Navahang", genre: msg("Persian pop"), group: "persian" },

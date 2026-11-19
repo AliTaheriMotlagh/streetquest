@@ -151,6 +151,8 @@ type Props = {
   onExit: () => void;
   /** Stores the sites know of (Snappfood, Torob, the directories) — each gets a sign where the map has none. */
   stores?: { id: string; name: string; lat: number; lng: number; cls?: string }[];
+  /** The loading scene has lifted: the city is playable (prompts held back until now may show). */
+  onBooted?: () => void;
 };
 
 type Job = {
@@ -231,7 +233,7 @@ const store = {
   },
 };
 
-export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCollect, onSelect, onProfile, onExit, stores }: Props) {
+export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCollect, onSelect, onProfile, onExit, stores, onBooted }: Props) {
   const storesRef = useRef(stores);
   storesRef.current = stores;
   const { me, world, act, refresh, toast } = useGame();
@@ -248,6 +250,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const skipBoot = useRef(false);
   /** The loading scene has finished lifting away (it stays up while it does). */
   const [bootGone, setBootGone] = useState(false);
+  useEffect(() => {
+    if (bootGone) onBooted?.();
+  }, [bootGone]); // eslint-disable-line react-hooks/exhaustive-deps
   const [menu, setMenu] = useState<MenuTab | null>(null);
   const [showKeys, setShowKeys] = useState(true);
   useEffect(() => {
@@ -3209,16 +3214,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                   <Icon name="close" size={16} />
                 </button>
               </div>
-              {(["persian", "world"] as const).map((grp) => (
+              {(["remixt", "persian", "world"] as const).map((grp) => (
                 <div key={grp} className="radio-grp">
-                  <span className="radio-grp-t">{grp === "persian" ? t("Persian") : t("International")}</span>
+                  <span className="radio-grp-t">{grp === "remixt" ? "Remixt" : grp === "persian" ? t("Persian") : t("International")}</span>
                   {(radioRef.current?.stations() ?? []).filter((st) => st.group === grp).map((st) => {
                     const on = radio.station?.id === st.id && radio.status !== "off";
                     return (
                       <button key={st.id} type="button" role="menuitemradio" aria-checked={on} className={`radio-row ${on ? "on" : ""}`} onClick={() => radioRef.current?.pick(on ? null : st.id)}>
                         <span className="radio-name">{st.name}</span>
-                        <span className="radio-genre">{t(st.genre)}</span>
-                        {on && (radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <span className="radio-genre">{radio.status === "tuning" ? t("Tuning…") : t("No signal")}</span>)}
+                        <span className="radio-genre" dir="auto">{on && radio.now?.title ? `♪ ${radio.now.title}${radio.now.artist ? ` · ${radio.now.artist}` : ""}` : t(st.genre)}</span>
+                        {on && (radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <span className="radio-genre">{radio.status === "tuning" ? t("Tuning…") : radio.status === "tap" ? t("Tap ▶ on the card below") : t("No signal")}</span>)}
                       </button>
                     );
                   })}

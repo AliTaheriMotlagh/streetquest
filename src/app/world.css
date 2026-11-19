@@ -667,7 +667,7 @@ html[lang="fa"] .scn-k { letter-spacing: 0; }
 .radio-row.on { background: rgba(240, 192, 90, .18); box-shadow: inset 0 0 0 1.5px #f0c05a; }
 .radio-row.off { width: 100%; margin-top: 8px; justify-content: center; color: rgba(255, 255, 255, .75); }
 .radio-name { font-weight: 700; flex: 1; }
-.radio-genre { font-size: 12px; color: rgba(255, 255, 255, .55); }
+.radio-genre { font-size: 12px; color: rgba(255, 255, 255, .55); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .radio-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
 .radio-eq i { width: 3px; height: 100%; border-radius: 2px; background: #f0c05a; animation: radioEq .9s ease-in-out infinite; transform-origin: bottom; }
 .radio-eq i:nth-child(2) { animation-delay: -.3s; }
@@ -721,3 +721,16 @@ html[lang="fa"] .scn-k { letter-spacing: 0; }
 .biz-dispute .link-btn { background: none; border: 0; color: var(--sky, #5aa9ff); font: 700 13px/1.3 var(--body, inherit); cursor: pointer; padding: 6px; }
 .biz-dispute .card { text-align: start; display: grid; gap: 6px; }
 .map.traveller .leaflet-tile-pane { filter: saturate(1.08) contrast(1.02); }
+
+/* Remixt Radio's frame (components/drive/radio.ts): a 2 px speck in a corner while it plays (kept in view so the
+   browser doesn't throttle it), a card over the city when it needs one tap on its ▶ (iOS). */
+.remixt-dock { position: fixed; left: 0; bottom: 0; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; z-index: 3050; }
+.remixt-dock iframe { display: block; width: 100%; height: 152px; border: 0; color-scheme: dark; }
+.remixt-dock-head { display: none; }
+.remixt-dock.show {
+  left: 50%; bottom: calc(16px + var(--safe-b, 0px)); width: min(380px, calc(100vw - 24px)); height: auto; transform: translateX(-50%);
+  opacity: 1; pointer-events: auto; border-radius: 18px; background: #0b0e14; border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+  animation: menuIn .18s ease-out;
+}
+.remixt-dock.show .remixt-dock-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; color: #fff; font: 600 13px/1.3 var(--body); }
+.remixt-dock-head button { min-width: 36px; min-height: 36px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, .08); color: #fff; cursor: pointer; }

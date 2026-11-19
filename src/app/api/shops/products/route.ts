@@ -1,4 +1,5 @@
-// A seller's shelves: add, edit and remove products and their photos. Photos go up
+// A seller's shelves: add, edit and remove products — any kind (lib/shopKinds.ts: an item, food, a ticket, an ad, a
+// deal, a service) with its details, priced in coins or toman — and their photos. Photos go up
 // one per request (each is already resized on the phone), so a slow connection
 // uploads them one by one instead of failing one giant request.
 import { z } from "zod";
@@ -6,15 +7,20 @@ import { prisma } from "@/lib/db";
 import { t } from "@/lib/i18n";
 import { S } from "@/lib/settings";
 import { MAX_DISCOUNT, SHOP_LIMITS } from "@/lib/shops";
+import { cleanDetails, CURRENCIES, PRODUCT_KIND_KEYS, priceProblem, type Currency, type ProductKind } from "@/lib/shopKinds";
 import { requireUser } from "@/server/auth";
-import { actionRoute, body, HttpError } from "@/server/http";
+import { actionRoute, body, HttpError, patch } from "@/server/http";
 import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { PRODUCT_SELECT, productView } from "@/server/shops";
 
 const Fields = z.object({
   title: z.string().trim().min(2, "Give the product a name (at least 2 letters)").max(SHOP_LIMITS.title),
   description: z.string().trim().max(SHOP_LIMITS.description).default(""),
-  price: z.number().int().min(1, "The price must be at least 1 coin"),
+  // Coins (≥ 1) or toman (0 = "ask the seller"): checked against the currency below.
+  price: z.number().int().min(0),
+  kind: z.enum(PRODUCT_KIND_KEYS as [ProductKind, ...ProductKind[]]).default("item"),
+  details: z.record(z.string(), z.unknown()).default({}),
+  currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).default("coins"),
   stock: z.number().int().min(0).max(9999).default(1),
   discountPct: z.number().int().min(0).max(MAX_DISCOUNT).default(0),
   discountUntil: z.number().int().nullable().default(null), // ms since epoch; null = no end date
@@ -24,7 +30,7 @@ const Fields = z.object({
 
 const Schema = z.discriminatedUnion("action", [
   Fields.extend({ action: z.literal("create") }),
-  Fields.partial().extend({ action: z.literal("update"), productId: z.string() }),
+  patch(Fields).extend({ action: z.literal("update"), productId: z.string() }),
   z.object({ action: z.literal("delete"), productId: z.string() }),
   z.object({ action: z.literal("addPhoto"), productId: z.string(), photo: z.string().max(MAX_PHOTO_DATA_URL) }),
   z.object({ action: z.literal("removePhoto"), productId: z.string(), photoId: z.string() }),
@@ -37,8 +43,15 @@ export const POST = actionRoute(async (req) => {
   const shop = await prisma.shop.findUnique({ where: { ownerId: u.id }, select: { id: true } });
   if (!shop) throw new HttpError(404, t("You don't have a shop yet"));
 
-  const checkPrice = (price?: number) => {
-    if (price !== undefined && price > S.shopMaxPrice) throw new HttpError(400, t("The highest price allowed is {n} coins", { n: S.shopMaxPrice }));
+  const checkPrice = (price: number | undefined, currency: Currency) => {
+    const why = price === undefined ? null : priceProblem(currency, price, S.shopMaxPrice);
+    if (why) throw new HttpError(400, t(why, { n: S.shopMaxPrice }));
+  };
+  /** The kind's details, cleaned (lib/shopKinds.ts); a ticket without its date is refused. */
+  const checkDetails = (kind: ProductKind, details: unknown) => {
+    const c = cleanDetails(kind, details);
+    if (c.problem) throw new HttpError(400, t(c.problem));
+    return c.details;
   };
   const checkDiscount = (pct?: number, until?: number | null) => {
     if (pct && until != null && until <= Date.now()) throw new HttpError(400, t("Pick a discount end time in the future"));
@@ -49,26 +62,30 @@ export const POST = actionRoute(async (req) => {
   };
 
   if (d.action === "create") {
-    checkPrice(d.price);
+    checkPrice(d.price, d.currency);
+    d.details = checkDetails(d.kind, d.details);
     checkDiscount(d.discountPct, d.discountUntil);
     if ((await prisma.product.count({ where: { shopId: shop.id } })) >= S.shopMaxProducts) throw new HttpError(400, t("Your shop is full ({n} products) — remove one first", { n: S.shopMaxProducts }));
     if (d.featured) await checkWindow();
     const { action: _a, discountUntil, ...data } = d;
-    const p = await prisma.product.create({ data: { ...data, shopId: shop.id, discountUntil: discountUntil ? new Date(discountUntil) : null }, select: PRODUCT_SELECT });
+    const p = await prisma.product.create({ data: { ...data, details: data.details as object, shopId: shop.id, discountUntil: discountUntil ? new Date(discountUntil) : null }, select: PRODUCT_SELECT });
     return { message: t("✅ {title} is on your shelves", { title: p.title }), product: productView(p) };
   }
 
-  const product = await prisma.product.findFirst({ where: { id: d.productId, shopId: shop.id }, select: { id: true, title: true, featured: true, discountPct: true, discountUntil: true } });
+  const product = await prisma.product.findFirst({ where: { id: d.productId, shopId: shop.id }, select: { id: true, title: true, featured: true, discountPct: true, discountUntil: true, kind: true, details: true, currency: true, price: true } });
   if (!product) throw new HttpError(404, t("That product isn't in your shop"));
 
   if (d.action === "update") {
-    checkPrice(d.price);
+    const kind = (d.kind ?? product.kind) as ProductKind, currency = (d.currency ?? product.currency) as Currency;
+    checkPrice(d.price ?? (d.currency ? product.price : undefined), currency);
+    // New details, or a new kind: what's kept is cleaned against the kind it is now.
+    if (d.details !== undefined || d.kind !== undefined) d.details = checkDetails(kind, d.details ?? product.details);
     checkDiscount(d.discountPct ?? product.discountPct, d.discountUntil !== undefined ? d.discountUntil : product.discountUntil?.getTime() ?? null);
     if (d.featured && !product.featured) await checkWindow(product.id);
     const { action: _a, productId: _p, discountUntil, ...data } = d;
     const p = await prisma.product.update({
       where: { id: product.id },
-      data: { ...data, ...(discountUntil !== undefined ? { discountUntil: discountUntil ? new Date(discountUntil) : null } : {}) },
+      data: { ...data, ...(data.details !== undefined ? { details: data.details as object } : {}), ...(discountUntil !== undefined ? { discountUntil: discountUntil ? new Date(discountUntil) : null } : {}) },
       select: PRODUCT_SELECT,
     });
     return { message: t("✅ Saved"), product: productView(p) };

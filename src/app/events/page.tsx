@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { LocalTime } from "@/components/LocalTime";
 import { prisma } from "@/lib/db";
+import { pageAlternates } from "@/lib/seo";
 import { getT } from "@/server/i18n";
 
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = await getT();
+  const { t, locale } = await getT();
   return {
     title: t("Live & upcoming real-world events"),
     description: t("Join StreetQuest group quests near you. Meet up, check in with GPS and earn squad XP bonuses."),
-    alternates: { canonical: "/events" },
+    alternates: pageAlternates("/events", locale),
   };
 }
 
@@ -42,6 +44,7 @@ export default async function EventsPage() {
           </Link>
         ))}
       </div>
+      <SiteFooter />
     </main>
   );
 }

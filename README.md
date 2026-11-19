@@ -691,7 +691,10 @@ mood scales XP; loot funds research; territory funds the army.
   and you land on foot while the helicopter flies itself down under where you jumped and waits there
   (`physics.ts` `stepChute`, `chute3d.ts`). **Car radio** (📻 button beside the camera opens the station list — Persian and international, the playing one
   bouncing — or N steps through them): real music stations,
-  Persian (Navahang, Radio Faaz, Radio Simorgh) and international (Capital UK, NRJ Paris, classic rock), picked from
+  [Remixt Radio](https://remixt-free.vercel.app/radio/remixt-radio) first — songs and remixes its listeners vote for,
+  played through Remixt's own embed for games (a frame made only while it's the station and removed after, driven
+  by postMessage; on iOS its card shows once for a tap on ▶; `NEXT_PUBLIC_REMIXT_RADIO` sets the station page, empty
+  turns it off) — then Persian (Navahang, Radio Faaz, Radio Simorgh) and international (Capital UK, NRJ Paris, classic rock), picked from
   radio-browser.info's open directory — music only, no news, talk, politics or religion — kept by the directory's stable
   ids; `/api/radio` looks up today's https stream addresses (`lib/radio.ts`, `server/radio.ts`, `drive/radio.ts`). It plays in the
   car only and pauses when you get out; its own slider in the mixer (iOS ignores a media element's volume, so there
@@ -829,7 +832,9 @@ mood scales XP; loot funds research; territory funds the army.
   **round trip**, for 1–9 travellers. The plan is a timeline: each leg with its day, how it's travelled and its price
   for everyone; each city with its dates, nights (− / +) and its stay. A leg opens **flight, train, bus and your own
   car side by side** (cheapest, fastest, how many; the car's road km, hours and petrol for every car needed — ~1.3× the
-  straight line, 80 km/h, 8 L/100 km at 3,000 toman), then that way's tickets; any day can be moved (the first leg
+  straight line, 80 km/h, 8 L/100 km at the petrol price beyond the quota — 10,000 toman; "My fuel card still has
+  quota" prices the first 60 L at 1,500 and the next 50 L at 3,000; all five numbers are in Admin → Game settings →
+  Travel planner, `fuelCost` in `lib/travel/plan.ts`), then that way's tickets; any day can be moved (the first leg
   moves the trip, a later one the nights before it). The **bill** stays at the bottom: total, per person, tickets /
   fuel / stays, and what's still to choose — **Cheapest everywhere** fills every open leg and stay. The plan and
   every answer are kept on the phone (`lib/travel/plan.ts`, pure, `tests/travelPlan.test.ts`). Tickets: each list reads
@@ -907,6 +912,20 @@ mood scales XP; loot funds research; territory funds the army.
   hours like `09:00-22:00`, `09:00-13:00, 16:00-21:00` or `24`, closed days). Rules: `lib/business.ts`
   (`bizLook`, `bizWeek`); 3D: `drive/markers.ts`, `drive/storefronts.ts`, `drive/bizBillboards.ts`; logo:
   `/api/business/logo`. Every joined store within 1.5 km comes in the world, mission or not.
+- **Player shops (Market)** — open a shop where you stand and sell any kind of thing the store sites carry
+  (`lib/shopKinds.ts`): a product (brand, model, condition, warranty), food (menu section, what's in it, ready in),
+  a ticket (date, venue, from → to, seat — a show that's over can't be bought), a classified ad (category,
+  negotiable, any facts, neighbourhood, phone), a deal voucher, or a service. Price it in **coins** (bought in the
+  game, held until the buyer shows their pickup code) or in **toman** (paid to the seller directly — call, their own
+  payment page, or a message in the game: the game never touches that money). Buyers can message a shop about any
+  product; the seller sees the chats under My shop → Messages from buyers. Every shop has a public page `/s/<id>`
+  (indexed while it's open and stocked, Store + Offer structured data) with Share and "Open in the game"
+  (`/play?shop=<id>`).
+- **Search engines & sharing** — every public page names its language versions (`?lang=en|fa|tr`, hreflang,
+  x-default) with a canonical per language, so the Persian and Turkish pages get indexed too (`lib/seo.ts`); the
+  footer links them for crawlers; the sitemap lists pages, events and open shops with their language versions;
+  JSON-LD (VideoGame, Organization, WebSite, FAQ, Event, Store) is escaped so user text can't break out of it.
+  Google Search Console's verification file is `public/google9dca6b8d6eae63d6.html`.
 - **Real menus & prices** — every store card (real places, businesses, Market shops) shows the store's real menu or
   catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~150 m, or up to
   400 m when every word of the name matches, from the area's whole vendor list or else Snappfood's own search) and,

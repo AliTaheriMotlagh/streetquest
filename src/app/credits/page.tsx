@@ -4,13 +4,14 @@ import type { Credit } from "@/lib/assetLicense";
 import downloaded from "../../../assets/credits.json";
 import { PROP_MODELS } from "@/lib/propModels";
 import { PEOPLE_MODELS } from "@/lib/peopleModels";
+import { pageAlternates } from "@/lib/seo";
 import { getT } from "@/server/i18n";
 import { soundCredits } from "@/lib/soundSlots";
 import soundManifest from "../../../public/sounds/manifest.json";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = await getT();
-  return { title: t("Credits") };
+  const { t, locale } = await getT();
+  return { title: t("Credits"), description: t("Who made the maps, 3D models and sounds StreetQuest is built from, and their licences."), alternates: pageAlternates("/credits", locale) };
 }
 
 // Who made what the 3D city is built from: the map (OpenStreetMap, ODbL), the street cars'

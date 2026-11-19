@@ -811,6 +811,8 @@ export function CrewPanel({ onClose, peek, chat, setChat }: { onClose: () => voi
     ...events.map((e) => ({ room: `event:${e.id}`, label: `🎉 ${e.title}` })),
     ...data.friends.map((f) => ({ room: `dm:${[me.id, f.id].sort().join(":")}`, label: `${f.avatar} ${f.username}` })),
   ];
+  // A room opened from elsewhere (a shop's "Message the seller", a buyer in My shop): its own chip, first.
+  if (chat && !rooms.some((r) => r.room === chat.room)) rooms.unshift(chat);
   const active = chat ?? rooms[0];
 
   return (

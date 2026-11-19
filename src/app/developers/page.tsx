@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import "./developers.css";
 import { DeveloperKeys } from "@/components/DeveloperKeys";
 import { openApi, SOURCES } from "@/lib/apiV1";
+import { pageAlternates } from "@/lib/seo";
+import { SiteFooter } from "@/components/SiteFooter";
 import { getT } from "@/server/i18n";
 import { QuickStart } from "./QuickStart";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = await getT();
-  return { title: t("Developers") };
+  const { t, locale } = await getT();
+  return { title: t("Developers"), description: t("The StreetQuest public API: stores, menus, prices and deals near any point, with free keys and examples."), alternates: pageAlternates("/developers", locale) };
 }
 
 type Param = { name: string; in: string; required?: boolean; description?: string };
@@ -99,6 +101,7 @@ export default async function Developers() {
           </ul>
         </section>
       </div>
+      <SiteFooter />
     </main>
   );
 }

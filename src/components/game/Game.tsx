@@ -31,6 +31,7 @@ import { SHOP_WARN_MS } from "@/lib/shops";
 import { Ctx, MoveIcon, Sheet, useGame, type GameCtx, type PanelId, type Toast } from "./ui";
 import { getLocation, useLocation, useWakeLock } from "./useLocation";
 import { GpsChip, LocationGate, markModeAsked, ModePrompt, useModePrompt } from "./LocationUi";
+import { guardPageZoom } from "./zoomGuard";
 import { AdModal, type AdOffer, celebrate, CelebrationLayer, Directions, GpsBanner, PlayPanel, StorePanel, useGpsGame } from "./Play";
 import { flyRewards, parseRewards } from "./Rewards";
 import { Toasts, toastLife } from "./Toasts";
@@ -509,9 +510,15 @@ export default function Game() {
       onSelect: (s: Selected) => (driveFns.current.leaveDrive(), driveFns.current.select(s)),
       onProfile: () => (driveFns.current.leaveDrive(), driveFns.current.profile()),
       onExit: () => driveFns.current.leaveDrive(),
+      onBooted: () => setDriveBooted(true),
     }),
     [],
   );
+  // The 3D city's loading scene is up: "how are you playing?" waits until it lifts (it popped over it).
+  const [driveBooted, setDriveBooted] = useState(false);
+  useEffect(() => {
+    if (!driveOn) setDriveBooted(false);
+  }, [driveOn]);
   const driveStart = useMemo(() => (driveOn ? pos ?? me?.lastPos ?? null : null), [driveOn]); // eslint-disable-line react-hooks/exhaustive-deps
   // In the 3D city the 2D map is hidden underneath: its store layers wait (no matching stores
   // against each other every time the car reports where it is — that was most of the lag).
@@ -1034,6 +1041,14 @@ export default function Game() {
       void ringNow(ringing, sp.get("answer") === "1");
       return;
     }
+    // A shop's public page (/s/<id>) → "Open in the game": that shop in the Market.
+    const shopId = sp.get("shop");
+    if (shopId && me && /^[a-z0-9]{10,40}$/.test(shopId)) {
+      history.replaceState(null, "", "/play");
+      setMarketFocus(shopId);
+      setPanel("market");
+      return;
+    }
     // Home-screen shortcuts: /play?panel=wallet|play|me…
     const want = sp.get("panel");
     if (want && me && ["nearby", "wallet", "play", "market", "jobs", "crew", "me", "store", "inbox", "events"].includes(want)) {
@@ -1047,9 +1062,14 @@ export default function Game() {
     act(() => api(`/api/events/${id}`, { body: { action: "join" } })).then(() => setPanel("events"));
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // iPad: a rotation can leave the page zoomed in (components/game/zoomGuard.ts).
+  useEffect(() => guardPageZoom(), []);
+
   // The home-screen shortcut straight into the 3D city: /play?drive=1 (once there's somewhere to start).
   const wantDrive = useRef(typeof location !== "undefined" && new URLSearchParams(location.search).get("drive") === "1");
   const canStart = !!(pos || me?.lastPos);
+  /** The 3D city is about to open or still loading (its own loading scene is up). */
+  const driveBooting = (!!driveOn && !driveBooted) || (wantDrive.current && canStart);
   useEffect(() => {
     if (!wantDrive.current || !me || !canStart) return;
     wantDrive.current = false;
@@ -1549,7 +1569,7 @@ export default function Game() {
           </div>
         )}
 
-        {modeAsk && (
+        {modeAsk && !driveBooting && (
           <ModePrompt
             name={me.username}
             home={!!me.remotePlay}
@@ -1806,6 +1826,7 @@ export default function Game() {
             onSelect={driveCbs.onSelect}
             onProfile={driveCbs.onProfile}
             onExit={driveCbs.onExit}
+            onBooted={driveCbs.onBooted}
             stores={driveStores}
           />
           </Guard>

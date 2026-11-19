@@ -37,7 +37,10 @@ export const GET = route(async (req) => {
   }
 
   // Everything in one round trip (one poll per player every few seconds: latency and connections add up).
-  const events = await prisma.eventParticipant.findMany({ where: { userId: u.id }, select: { eventId: true } });
+  const [events, myShop] = await Promise.all([
+    prisma.eventParticipant.findMany({ where: { userId: u.id }, select: { eventId: true } }),
+    prisma.shop.findUnique({ where: { ownerId: u.id }, select: { id: true } }),
+  ]);
   const [notifications, unread, inbox, ring, cfg] = await Promise.all([
     prisma.notification.findMany({ where: { userId: u.id, createdAt: { gt: since } }, orderBy: { createdAt: "asc" }, take: 20, select: { id: true, kind: true, tag: true, title: true, body: true, link: true } }),
     // Private rooms only (DMs + my events) count toward the unread badge (Message @@index([createdAt]): only the last seconds are read).
@@ -45,7 +48,13 @@ export const GET = route(async (req) => {
       where: {
         createdAt: { gt: since },
         authorId: { not: u.id },
-        OR: [{ room: { startsWith: "dm:", contains: u.id } }, { room: { in: events.map((e) => `event:${e.eventId}`) } }],
+        OR: [
+          { room: { startsWith: "dm:", contains: u.id } },
+          { room: { in: events.map((e) => `event:${e.eventId}`) } },
+          // Shop chats: mine as a buyer ("shop:<shop>:<me>"), and every buyer's when I run the shop.
+          { room: { startsWith: "shop:", endsWith: `:${u.id}` } },
+          ...(myShop ? [{ room: { startsWith: `shop:${myShop.id}:` } }] : []),
+        ],
       },
     }),
     prisma.notification.count({ where: { userId: u.id, readAt: null, hiddenAt: null } }),

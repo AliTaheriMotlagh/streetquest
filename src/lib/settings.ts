@@ -156,6 +156,14 @@ const DEFAULTS = {
   shopMaxPrice: 1_000_000,
   shopOrderDays: 7,
 
+  // ---- travel planner: petrol in toman a litre (Iran, 1405) — a trip's fuel uses the price beyond the quota unless
+  // the traveller says their card still has quota (lib/travel/plan.ts fuelCost)
+  fuelQuotaToman: 1500,
+  fuelQuotaLitres: 60,
+  fuelTier2Toman: 3000,
+  fuelTier2Litres: 50,
+  fuelToman: 10000,
+
   // ---- game data (stat overrides, edited in the admin "Game data" tab)
   catalog: {} as CatalogOverrides,
 };
@@ -264,6 +272,11 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "shopMaxPhotos", group: msg("Player shops"), label: msg("Photos per product"), help: "", min: 1, max: 10 },
   { key: "shopMaxPrice", group: msg("Player shops"), label: msg("Highest price (coins)"), help: "", min: 10, max: 100000000 },
   { key: "shopOrderDays", group: msg("Player shops"), label: msg("Days to hand an order over"), help: msg("Orders not handed over in time are refunded to the buyer automatically."), min: 1, max: 60 },
+  { key: "fuelQuotaToman", group: msg("Travel planner"), label: msg("Petrol, quota price (toman a litre)"), help: msg("The fuel card's monthly quota."), min: 0, max: 1_000_000 },
+  { key: "fuelQuotaLitres", group: msg("Travel planner"), label: msg("Quota litres a month"), help: "", min: 0, max: 1000 },
+  { key: "fuelTier2Toman", group: msg("Travel planner"), label: msg("Petrol, second price (toman a litre)"), help: msg("After the quota, up to the second-tier litres."), min: 0, max: 1_000_000 },
+  { key: "fuelTier2Litres", group: msg("Travel planner"), label: msg("Second-tier litres a month"), help: "", min: 0, max: 1000 },
+  { key: "fuelToman", group: msg("Travel planner"), label: msg("Petrol beyond the quota (toman a litre)"), help: msg("What a trip's fuel costs by default — a trip is extra driving."), min: 0, max: 1_000_000 },
   { key: "gfx", group: msg("Graphics"), label: msg("Graphics overrides"), help: msg("Edited in the Graphics tab.") },
   { key: "catalog", group: msg("Game data"), label: msg("Stat overrides"), help: msg("Edited in the Game data tab.") },
 ];

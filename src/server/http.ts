@@ -1,4 +1,4 @@
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { t } from "../lib/i18n";
 import { ensureSettings } from "./settings";
 import { withUserLock } from "./lock";
@@ -72,4 +72,14 @@ export const actionRoute = <T>(fn: (req: Request, ctx: Ctx) => Promise<T>) => ro
 
 export async function body<T>(req: Request, schema: { parse: (v: unknown) => T }): Promise<T> {
   return schema.parse(await req.json().catch(() => ({})));
+}
+
+type NoDefault<T> = T extends z.ZodDefault<infer I> ? I : T;
+/**
+ * An "update" schema from a "create" one: every field optional and WITHOUT its default. (Zod 4's .partial() still
+ * fills in defaults, so an update sending one field — a ⭐ toggle, "pause sales" — would reset every other field.)
+ */
+export function patch<S extends z.ZodRawShape>(o: z.ZodObject<S>) {
+  const shape = Object.fromEntries(Object.entries(o.shape).map(([k, v]) => [k, ((v instanceof z.ZodDefault ? v.unwrap() : v) as z.ZodType).optional()]));
+  return z.object(shape) as unknown as z.ZodObject<{ [K in keyof S]: z.ZodOptional<NoDefault<S[K]>> }>;
 }

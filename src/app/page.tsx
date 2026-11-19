@@ -3,10 +3,12 @@ import { Icon } from "@/components/drive/icons";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { AutoVideo } from "@/components/AutoVideo";
 import { VisitCount } from "@/components/VisitCount";
 import { ArtSprite, ArtUse } from "@/components/art/ArtSprite";
 import { prisma } from "@/lib/db";
+import { ldJson, pageAlternates } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 import { fmtNum, msg } from "@/lib/i18n";
 import { getT } from "@/server/i18n";
@@ -14,7 +16,9 @@ import { visitTotals } from "@/server/visits";
 import "./landing.css";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { alternates: { canonical: "/" } };
+// No `alternates` here: Next.js resolves "/?lang=fa" to the bare origin, so the home page writes its canonical and
+// hreflang links itself (below; React puts <link> into <head>).
+export const metadata: Metadata = {};
 
 /** The three big reasons to play, with their art. */
 const PILLARS = [
@@ -60,6 +64,7 @@ export default async function Home() {
     visitTotals().catch(() => ({ total: 0, today: 0, unique: 0 })),
   ]);
 
+  const alt = pageAlternates("/", locale, SITE.url);
   const jsonLd = [
     {
       "@context": "https://schema.org",
@@ -73,6 +78,9 @@ export default async function Home() {
       applicationCategory: "Game",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
     },
+    // Who runs the site and its name in search results (sitelinks, the knowledge panel).
+    { "@context": "https://schema.org", "@type": "Organization", name: SITE.name, url: SITE.url, logo: `${SITE.url}/icons/icon-512.png` },
+    { "@context": "https://schema.org", "@type": "WebSite", name: SITE.name, url: SITE.url, inLanguage: locale, description: t(SITE.tagline) },
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
@@ -82,7 +90,9 @@ export default async function Home() {
 
   return (
     <main className="page lp">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(jsonLd) }} />
+      <link rel="canonical" href={alt.canonical} />
+      {Object.entries(alt.languages).map(([l, href]) => <link key={l} rel="alternate" hrefLang={l} href={href} />)}
       <ArtSprite keys={ART} />
       <SiteHeader />
       <div className="wrap">
@@ -235,15 +245,7 @@ export default async function Home() {
           </Link>
         </section>
       </div>
-      <footer className="footer">
-        <div className="wrap row wrap">
-          <span>© {fmtNum(new Date().getFullYear(), locale).replace(/٬|,/g, "")} {t(SITE.name)}</span>
-          <span className="grow" />
-          <span>{t("Play safe: stay aware of your surroundings, respect private property and traffic laws.")}</span>
-          <a href="/developers">{t("Developers")}</a>
-          <a href="/credits">{t("Credits")}</a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

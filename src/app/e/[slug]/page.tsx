@@ -3,9 +3,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { LocalTime } from "@/components/LocalTime";
 import { ShareButton } from "@/components/ShareButton";
 import { prisma } from "@/lib/db";
+import { ldJson, metaDescription, pageAlternates } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 import { getT } from "@/server/i18n";
 
@@ -15,14 +17,15 @@ const load = (slug: string) =>
   prisma.event.findUnique({ where: { slug }, include: { _count: { select: { participants: true } }, creator: { select: { username: true } } } });
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const e = await load((await params).slug);
-  if (!e) return { title: t("Event not found") };
+  if (!e) return { title: t("Event not found"), robots: { index: false } };
+  const description = metaDescription(e.description || t("Real-world group quest on {name}. Show up, check in, earn squad XP.", { name: SITE.name }));
   return {
     title: e.title,
-    description: e.description || t("Real-world group quest on {name}. Show up, check in, earn squad XP.", { name: SITE.name }),
-    alternates: { canonical: `/e/${e.slug}` },
-    openGraph: { title: `${e.title} · ${SITE.name}`, description: e.description, type: "website" },
+    description,
+    alternates: pageAlternates(`/e/${e.slug}`, locale),
+    openGraph: { title: `${e.title} · ${SITE.name}`, description, type: "website", url: `/e/${e.slug}` },
     robots: { index: e.isPublic, follow: true },
   };
 }
@@ -47,7 +50,7 @@ export default async function EventPage({ params }: Props) {
   const osm = `https://www.openstreetmap.org/?mlat=${e.lat}&mlon=${e.lng}#map=17/${e.lat}/${e.lng}`;
   return (
     <main className="page">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(jsonLd) }} />
       <SiteHeader />
       <div className="wrap section" style={{ maxWidth: 700 }}>
         {e.official && <span className="tag" style={{ color: "var(--yellow)" }}>{t("⭐ Official event")}</span>}
@@ -68,6 +71,7 @@ export default async function EventPage({ params }: Props) {
         </div>
         <p className="small muted" style={{ marginTop: 20 }}>{t("Hosted by {name}. Check in with GPS within {r} m of the meeting point.", { name: e.creator.username, r: e.radiusM })}</p>
       </div>
+      <SiteFooter />
     </main>
   );
 }
