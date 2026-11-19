@@ -405,7 +405,7 @@ export function AdminPanel() {
                 ))}
               </div>
               <div className="row" style={{ marginTop: 10 }}>
-                <input readOnly value={utmUrl} className="mono small" />
+                <input readOnly value={utmUrl} className="mono small" dir="ltr" />
                 <Button className="btn cyan small" onClick={() => navigator.clipboard.writeText(utmUrl)}>{t("Copy")}</Button>
               </div>
             </div>

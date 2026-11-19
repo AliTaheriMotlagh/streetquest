@@ -87,6 +87,8 @@ html[lang="fa"] {
 }
 html[lang="fa"] *, html[lang="fa"] *::before, html[lang="fa"] *::after { letter-spacing: 0 !important; }
 html[lang="fa"] .mono { font-family: "Vazirmatn", ui-monospace, Menlo, monospace; }
+/* Links and codes written left-to-right keep Latin digits (Vazirmatn FD draws every digit in Persian). */
+html[lang="fa"] .mono[dir="ltr"] { font-family: ui-monospace, Menlo, Consolas, monospace; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--body); -webkit-tap-highlight-color: transparent; }
@@ -638,6 +640,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .fab-col { inset-inline-end: calc(12px + var(--safe-e)); }
 html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 .game { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* No page pinch/double-tap zoom anywhere in the game (iOS ignores user-scalable=no); the map and the 3D city zoom
+   themselves. WebKit starts over at every scroller, so the panels' scrollers say it again. */
+.game, .game :is(.sheet-body, .pm-scroll, .chat-log, .tabs) { touch-action: pan-x pan-y; }
 .game input, .game textarea, .chat-log, .msg { -webkit-user-select: text; user-select: text; }
 /* iOS zooms into inputs under 16px — keep them at 16px on touch screens. */
 @media (pointer: coarse), (any-pointer: coarse) {
