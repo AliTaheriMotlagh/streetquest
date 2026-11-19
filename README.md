@@ -926,6 +926,11 @@ mood scales XP; loot funds research; territory funds the army.
   footer links them for crawlers; the sitemap lists pages, events and open shops with their language versions;
   JSON-LD (VideoGame, Organization, WebSite, FAQ, Event, Store) is escaped so user text can't break out of it.
   Google Search Console's verification file is `public/google9dca6b8d6eae63d6.html`.
+  `/features` and `/features/<slug>` describe each part of the game in every language (`lib/features.ts`); Persian
+  pages carry the Persian name «استریت کوئست». Search-console verification: the files in `public/` (Google, Bing
+  `BingSiteAuth.xml`, Yandex) or meta tags from `NEXT_PUBLIC_GOOGLE_VERIFICATION` / `NEXT_PUBLIC_BING_VERIFICATION` /
+  `NEXT_PUBLIC_YANDEX_VERIFICATION`. With `INDEXNOW_KEY` set (and an https site URL) new public events and products
+  are pushed to Bing/Yandex through IndexNow at once; the key file is served at `/indexnow.txt`.
 - **Real menus & prices** — every store card (real places, businesses, Market shops) shows the store's real menu or
   catalog from Snappfood (restaurants, cafés, bakeries, supermarkets — matched by name within ~150 m, or up to
   400 m when every word of the name matches, from the area's whole vendor list or else Snappfood's own search) and,

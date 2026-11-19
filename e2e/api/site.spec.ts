@@ -43,6 +43,32 @@ test.describe("site & SEO", () => {
     expect((await r.text()).trim()).toBe("google-site-verification: google9dca6b8d6eae63d6.html");
   });
 
+  test("feature pages are indexed in every language and listed in the sitemap", async ({ request }) => {
+    const list = await request.get("/features?lang=fa");
+    expect(list.status()).toBe(200);
+    const html = await list.text();
+    expect(html).toContain('<html lang="fa"');
+    expect(html).toContain('href="/features/3d-city');
+    for (const l of ["en", "fa", "tr"]) {
+      const r = await request.get(`/features/3d-city?lang=${l}`);
+      expect(r.status()).toBe(200);
+      const page = await r.text();
+      expect(page).toMatch(/<h1[^>]*>[^<]+<\/h1>/);
+      expect(page).toMatch(new RegExp(`rel="canonical" href="[^"]*/features/3d-city\\?lang=${l}"`));
+    }
+    expect((await request.get("/features/no-such-thing")).status()).toBe(404);
+    const xml = await (await request.get("/sitemap.xml")).text();
+    expect(xml).toMatch(/\/features\/street-arena/);
+  });
+
+  test("IndexNow key file is served and the Bing/Yandex verification files are there", async ({ request }) => {
+    const r = await request.get("/indexnow.txt");
+    expect(r.status()).toBe(200);
+    expect((await r.text()).trim()).toBe("e2e0indexnow0key");
+    expect((await request.get("/BingSiteAuth.xml")).status()).toBe(200);
+    expect((await request.get("/yandex_9a8b0718e95bd272.html")).status()).toBe(200);
+  });
+
   test("robots, sitemap and manifest are served", async ({ request }) => {
     const robots = await request.get("/robots.txt");
     expect(robots.status()).toBe(200);

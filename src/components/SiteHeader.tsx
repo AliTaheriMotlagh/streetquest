@@ -12,7 +12,7 @@ export async function SiteHeader() {
         </svg>
         STREET<span>QUEST</span>
       </Link>
-      <nav className="row" style={{ marginLeft: "auto" }}>
+      <nav className="row" style={{ marginInlineStart: "auto" }}>
         <Link href="/events" className="btn ghost small hide-sm">
           {t("Events")}
         </Link>

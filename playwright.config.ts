@@ -51,6 +51,8 @@ export default defineConfig({
           NEXT_PUBLIC_SITE_URL: `http://localhost:${PORT}`,
           // Real timers: tests rely on construction taking minutes, not milliseconds.
           GAME_SPEED: "1",
+          // IndexNow key file (/indexnow.txt); no pings go out since the site URL is not https.
+          INDEXNOW_KEY: "e2e0indexnow0key",
           // Relayed Street Arena matches pay out right away (e2e/api/arena.spec.ts).
           ARENA_PAID_MIN_S: "0",
           // No OpenStreetMap downloads for the random test spots: tests upload their own tiles.
