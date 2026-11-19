@@ -14,6 +14,7 @@ export async function SiteFooter() {
         <span>© {fmtNum(new Date().getFullYear(), locale).replace(/٬|,/g, "")} {t(SITE.name)}</span>
         <span className="grow" />
         <span>{t("Play safe: stay aware of your surroundings, respect private property and traffic laws.")}</span>
+        <Link href="/features">{t("Features")}</Link>
         <Link href="/events">{t("Events")}</Link>
         <a href="/developers">{t("Developers")}</a>
         <a href="/credits">{t("Credits")}</a>

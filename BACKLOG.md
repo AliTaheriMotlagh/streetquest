@@ -33,9 +33,18 @@ Everything unfinished from every session, in one list. Update it at the end of e
          open shops, escaped JSON-LD (event titles could break out of the script tag), Organization/WebSite/Store
          data, Search Console file. → After deploy: submit `/sitemap.xml` in Search Console; NEXT_PUBLIC_SITE_URL must
          be the real domain.
-   - [ ] **Remixt Radio** (code + unit tests done: `lib/radio.ts` remixt*, `components/drive/radio.ts`): browser
-         playback check paused — the user is updating Remixt and will say when to finish. Then: pick it in the 3D
-         city (Chrome: starts on its own; iOS sim: the tap card), check the song title shows, switch off → frame gone.
+   - [x] **Remixt Radio** after the Remixt update (2026-11-19): embed protocol unchanged; now also reads `next` +
+         `listeners` (shown under the playing row). Headless Chrome: plays, title + next + listeners show, off → frame
+         gone. Note for Remixt itself: its embed logs CORS errors fetching some R2 stems (bucket lacks CORS for
+         remixt-free.vercel.app) — still plays. Not yet checked: iOS sim tap card, 360 px Persian screenshot.
+   - [~] **SEO / indexing / Persian SEO** (2026-11-19, session stopped early — tokens ran out):
+         done: `/features` + 6 `/features/<slug>` pages (`lib/features.ts`, fa/tr `i18n/*/seo.ts`), in sitemap, footer
+         + home links; Persian brand «استریت کوئست» as `alternateName` and in fa page titles; verification tags from
+         `NEXT_PUBLIC_{GOOGLE,BING,YANDEX}_VERIFICATION`; IndexNow (`INDEXNOW_KEY`, `/indexnow.txt`, `server/indexNow.ts`,
+         pinged on public event + new product). Unit tests: tests/seo.test.ts, tests/features.test.ts green.
+         TODO: full `npm test` (typecheck not run since the fa title change in layout.tsx), README + .env.example for the
+         4 new env vars, e2e for /features + /indexnow.txt, 360×740 Persian screenshots, `graphify update .`, commit.
+         After deploy: add the site in Bing Webmaster + Yandex Webmaster, set INDEXNOW_KEY, resubmit /sitemap.xml.
 1. **iPad bugs**
    - [~] Zoom stuck after landscape → portrait: `components/game/zoomGuard.ts` re-sets the viewport meta when zoomed
          after a rotation — never seen on a real iPad/simulator yet.

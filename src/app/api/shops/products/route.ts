@@ -12,6 +12,7 @@ import { requireUser } from "@/server/auth";
 import { actionRoute, body, HttpError, patch } from "@/server/http";
 import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { PRODUCT_SELECT, productView } from "@/server/shops";
+import { pingIndexNow } from "@/server/indexNow";
 
 const Fields = z.object({
   title: z.string().trim().min(2, "Give the product a name (at least 2 letters)").max(SHOP_LIMITS.title),
@@ -69,6 +70,7 @@ export const POST = actionRoute(async (req) => {
     if (d.featured) await checkWindow();
     const { action: _a, discountUntil, ...data } = d;
     const p = await prisma.product.create({ data: { ...data, details: data.details as object, shopId: shop.id, discountUntil: discountUntil ? new Date(discountUntil) : null }, select: PRODUCT_SELECT });
+    pingIndexNow([`/s/${shop.id}`]); // a shop with products is in the sitemap; tell Bing/Yandex now
     return { message: t("✅ {title} is on your shelves", { title: p.title }), product: productView(p) };
   }
 

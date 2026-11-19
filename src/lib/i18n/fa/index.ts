@@ -38,6 +38,7 @@ import landmarks from "./landmarks";
 import arena from "./arena";
 import local from "./local";
 import directory from "./directory";
+import seo from "./seo";
 import social from "./social";
 import adminobjects from "./adminobjects";
 import scenarios from "./scenarios";
@@ -73,6 +74,7 @@ const fa: Messages = {
   ...transit,
   ...developer,
   ...directory,
+  ...seo,
   ...social,
   ...scenarios,
   ...travel,

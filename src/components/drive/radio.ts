@@ -17,8 +17,8 @@ export type RadioState = {
   station: LiveStation | null;
   /** tap: Remixt's card is showing, waiting for a tap on its ▶ (the browser blocked sound starting by itself). */
   status: "off" | "tuning" | "on" | "error" | "tap";
-  /** What's on (Remixt tells it). */
-  now?: { title: string; artist: string };
+  /** What's on (Remixt tells it), the song after and how many are listening. */
+  now?: { title: string; artist: string; next?: string; listeners?: number };
 };
 
 /** The station list, once per tab (the same for everyone; the server keeps the directory's answer six hours). */
@@ -179,7 +179,7 @@ export class CarRadio {
     if (!this.frame || e.source !== this.frame.contentWindow || e.origin !== this.frameOrigin) return;
     const s = remixtState(e.data);
     if (!s) return;
-    const now = s.title ? { title: s.title, artist: s.artist } : undefined;
+    const now = s.title ? { title: s.title, artist: s.artist, next: s.next, listeners: s.listeners } : undefined;
     if (s.playing) {
       clearTimeout(this.tapTimer);
       this.dock?.classList.remove("show");

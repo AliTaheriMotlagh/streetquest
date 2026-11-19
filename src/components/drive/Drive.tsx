@@ -3224,6 +3224,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                         <span className="radio-name">{st.name}</span>
                         <span className="radio-genre" dir="auto">{on && radio.now?.title ? `♪ ${radio.now.title}${radio.now.artist ? ` · ${radio.now.artist}` : ""}` : t(st.genre)}</span>
                         {on && (radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <span className="radio-genre">{radio.status === "tuning" ? t("Tuning…") : radio.status === "tap" ? t("Tap ▶ on the card below") : t("No signal")}</span>)}
+                        {on && radio.status === "on" && (radio.now?.next || radio.now?.listeners) ? (
+                          <span className="radio-next" dir="auto">
+                            {[radio.now.next ? t("Next: {song}", { song: radio.now.next }) : "", radio.now.listeners ? t("{n} listening", { n: fmtNum(radio.now.listeners) }) : ""].filter(Boolean).join(" · ")}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}

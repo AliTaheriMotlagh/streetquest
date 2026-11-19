@@ -41,13 +41,21 @@ export function remixtStation(page: string | undefined | null = REMIXT_DEFAULT):
   return e ? { id: "remixt", name: "Remixt Radio", genre: msg("Remixes — listeners vote"), group: "remixt", url: e.url, embed: true } : null;
 }
 
-export type RemixtState = { playing: boolean; title: string; artist: string };
-/** A message from the Remixt embed, checked: its kind and fields, text cut short; anything else → null. */
+export type RemixtState = { playing: boolean; title: string; artist: string; next?: string; listeners?: number };
+/**
+ * A message from the Remixt embed, checked: its kind and fields, text cut short; anything else → null. Since the
+ * 2026-11 update it also tells the song after (`next: { title, artist }`) and how many are listening.
+ */
 export function remixtState(data: unknown): RemixtState | null {
-  const d = data as { type?: unknown; playing?: unknown; now?: { title?: unknown; artist?: unknown } | null } | null;
+  type Song = { title?: unknown; artist?: unknown } | null;
+  const d = data as { type?: unknown; playing?: unknown; now?: Song; next?: Song; listeners?: unknown } | null;
   if (!d || typeof d !== "object" || d.type !== "remixt-radio:state" || typeof d.playing !== "boolean") return null;
   const str = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 120) : "");
-  return { playing: d.playing, title: str(d.now?.title), artist: str(d.now?.artist) };
+  const s: RemixtState = { playing: d.playing, title: str(d.now?.title), artist: str(d.now?.artist) };
+  const next = str(d.next?.title);
+  if (next) s.next = next;
+  if (typeof d.listeners === "number" && Number.isFinite(d.listeners) && d.listeners >= 0) s.listeners = Math.min(Math.floor(d.listeners), 1e6);
+  return s;
 }
 
 export const STATIONS: Station[] = [

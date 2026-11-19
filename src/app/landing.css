@@ -133,3 +133,5 @@
 .lp-view span:not(.lp-view-ic) { opacity: .75; line-height: 1.5; }
 .lp-view i { font-style: normal; font-weight: 700; color: rgb(var(--tone)); margin-top: 4px; }
 @media (max-width: 760px) { .lp-views-row { grid-template-columns: 1fr; } }
+.lp-more { margin: 16px 0 0; text-align: center; }
+.lp-more a { color: #f0c05a; font-weight: 600; }

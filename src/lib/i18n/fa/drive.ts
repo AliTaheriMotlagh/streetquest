@@ -384,6 +384,8 @@ const drive: Record<string, string> = {
   "Tap ▶ on the card below": "روی ▶ کارت پایین بزن",
   "Tap ▶ to start Remixt Radio": "برای پخش رادیو ریمیکست روی ▶ بزن",
   "Remixes — listeners vote": "ریمیکس‌ها — شنونده‌ها رأی می‌دن",
+  "Next: {song}": "بعدی: {song}",
+  "{n} listening": "{n} نفر دارن گوش می‌دن",
 };
 
 export default drive;

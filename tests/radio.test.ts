@@ -75,6 +75,11 @@ describe("Remixt Radio", () => {
     assert.equal(remixtState({ type: "other", playing: true }), null);
     assert.equal(remixtState("remixt-radio:state"), null);
     assert.equal(remixtState(null), null);
+    // The 2026-11 embed also tells the song after and the listener count (cover/station/timing are ignored).
+    const full = { type: "remixt-radio:state", playing: true, station: { slug: "remixt-radio", name: "Remixt Radio" }, now: { title: "A", artist: "B", cover: "https://x/c.jpg", startedAt: 1, endsAt: 2 }, next: { title: " Up   Next ", artist: "C", startsAt: 2 }, listeners: 12.7 };
+    assert.deepEqual(remixtState(full), { playing: true, title: "A", artist: "B", next: "Up Next", listeners: 12 });
+    assert.deepEqual(remixtState({ ...full, next: null, listeners: -3 }), { playing: true, title: "A", artist: "B" });
+    assert.equal(remixtState({ ...full, listeners: "many" })!.listeners, undefined);
     assert.equal(remixtState({ type: "remixt-radio:state", playing: true, now: { title: "x".repeat(500) } })!.title.length, 120);
   });
 });

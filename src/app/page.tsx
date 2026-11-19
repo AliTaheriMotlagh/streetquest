@@ -8,7 +8,7 @@ import { AutoVideo } from "@/components/AutoVideo";
 import { VisitCount } from "@/components/VisitCount";
 import { ArtSprite, ArtUse } from "@/components/art/ArtSprite";
 import { prisma } from "@/lib/db";
-import { ldJson, pageAlternates } from "@/lib/seo";
+import { ALT_NAMES, ldJson, pageAlternates } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 import { fmtNum, msg } from "@/lib/i18n";
 import { getT } from "@/server/i18n";
@@ -70,6 +70,7 @@ export default async function Home() {
       "@context": "https://schema.org",
       "@type": "VideoGame",
       name: SITE.name,
+      alternateName: ALT_NAMES,
       url: SITE.url,
       description: t(SITE.description),
       inLanguage: locale,
@@ -79,8 +80,8 @@ export default async function Home() {
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
     },
     // Who runs the site and its name in search results (sitelinks, the knowledge panel).
-    { "@context": "https://schema.org", "@type": "Organization", name: SITE.name, url: SITE.url, logo: `${SITE.url}/icons/icon-512.png` },
-    { "@context": "https://schema.org", "@type": "WebSite", name: SITE.name, url: SITE.url, inLanguage: locale, description: t(SITE.tagline) },
+    { "@context": "https://schema.org", "@type": "Organization", name: SITE.name, alternateName: ALT_NAMES, url: SITE.url, logo: `${SITE.url}/icons/icon-512.png` },
+    { "@context": "https://schema.org", "@type": "WebSite", name: SITE.name, alternateName: ALT_NAMES, url: SITE.url, inLanguage: locale, description: t(SITE.tagline) },
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
@@ -212,6 +213,10 @@ export default async function Home() {
               </article>
             ))}
           </div>
+          {/* A plain link crawlers follow to every feature page (lib/features.ts). */}
+          <p className="lp-more">
+            <Link href="/features">{t("Every feature, in detail →")}</Link>
+          </p>
         </section>
 
         <section className="lp-section">

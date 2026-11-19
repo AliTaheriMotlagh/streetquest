@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/server/auth";
 import { body, HttpError, route } from "@/server/http";
 import { track } from "@/server/rewards";
+import { pingIndexNow } from "@/server/indexNow";
 import { t } from "@/lib/i18n";
 
 export const GET = route(async () => {
@@ -55,5 +56,6 @@ export const POST = route(async (req) => {
     },
   });
   await track("event_created", { userId: u.id });
+  if (event.isPublic) pingIndexNow([`/e/${event.slug}`, "/events"]);
   return { message: t("Event created — share the link!"), event };
 });

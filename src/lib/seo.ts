@@ -92,3 +92,55 @@ export function shopLd(base: string, s: LdShop, products: LdProduct[]) {
     ...(offers.length ? { makesOffer: offers } : {}),
   };
 }
+
+/**
+ * Other names people search the game by: Persian speakers type the brand in Persian letters, which the Latin name
+ * never matches. Goes into the Organization / WebSite / VideoGame data as `alternateName`.
+ */
+export const ALT_NAMES = ["استریت کوئست", "استریت‌کوئست", "Street Quest"];
+
+/** schema.org BreadcrumbList from [name, path] pairs (absolute URLs; the last item is the page itself). */
+export function breadcrumbLd(base: string, items: [string, string][]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map(([name, path], i) => ({ "@type": "ListItem", position: i + 1, name, item: `${base}${path}` })),
+  };
+}
+
+/** schema.org FAQPage from [question, answer] pairs (already translated). */
+export const faqLd = (qa: [string, string][]) => ({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: qa.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
+});
+
+/**
+ * Search-engine ownership tags from the environment (each optional): Google (besides the public/ file), Bing Webmaster
+ * Tools (`msvalidate.01` — Bing also feeds DuckDuckGo and Yahoo) and Yandex Webmaster. Unset → no tag.
+ */
+export function siteVerification(env: Record<string, string | undefined>) {
+  const v = (k: string) => env[k]?.trim() || undefined;
+  const google = v("NEXT_PUBLIC_GOOGLE_VERIFICATION");
+  const yandex = v("NEXT_PUBLIC_YANDEX_VERIFICATION");
+  const bing = v("NEXT_PUBLIC_BING_VERIFICATION");
+  if (!google && !yandex && !bing) return undefined;
+  return { ...(google ? { google } : {}), ...(yandex ? { yandex } : {}), ...(bing ? { other: { "msvalidate.01": bing } } : {}) };
+}
+
+// ---------------------------------------------------------------- IndexNow
+// Bing, Yandex, Seznam and Naver crawl a new page within minutes when told about it (https://www.indexnow.org); Google
+// ignores IndexNow and reads the sitemap. The key is INDEXNOW_KEY (8–128 of a-z A-Z 0-9 -), served at /indexnow.txt.
+
+/** The key, if it's a valid IndexNow key; else null (IndexNow off). */
+export const indexNowKey = (k: string | undefined | null) => (k && /^[a-zA-Z0-9-]{8,128}$/.test(k.trim()) ? k.trim() : null);
+
+/** The POST body for api.indexnow.org: the site's own pages only, absolute, deduped, at most 10,000. */
+export function indexNowBody(base: string, key: string, paths: string[]) {
+  const host = new URL(base).host;
+  const urlList = [...new Set(paths.filter((p) => p.startsWith("/") && !p.startsWith("//")).map((p) => `${base}${p}`))].slice(0, 10_000);
+  return { host, key, keyLocation: `${base}/indexnow.txt`, urlList };
+}
+
+/** Every language version of a page (IndexNow takes URLs, and each ?lang= page is its own URL). */
+export const allLangPaths = (path: string) => [path, ...LOCALES.map((l) => langPath(path, l))];

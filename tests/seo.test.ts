@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hreflang, langPath, ldJson, metaDescription, pageAlternates, shopLd, sitemapEntry, tomanOffer } from "../src/lib/seo";
+import { allLangPaths, ALT_NAMES, breadcrumbLd, faqLd, hreflang, indexNowBody, indexNowKey, langPath, ldJson, metaDescription, pageAlternates, shopLd, siteVerification, sitemapEntry, tomanOffer } from "../src/lib/seo";
 
 test("langPath adds ?lang= and keeps the rest of the query", () => {
   assert.equal(langPath("/", "fa"), "/?lang=fa");
@@ -64,4 +64,31 @@ test("shopLd: a Store with only its toman products as offers, in rials", () => {
   assert.equal(offers[0].itemOffered.image, "https://sq.example/shop-img/img1");
   assert.equal(offers[1].availability, "https://schema.org/OutOfStock");
   assert.equal(shopLd("https://sq.example", shop, []).makesOffer, undefined);
+});
+
+test("breadcrumbs and FAQ data are well-formed schema.org", () => {
+  const b = breadcrumbLd("https://sq.example", [["StreetQuest", "/?lang=fa"], ["Features", "/features?lang=fa"]]);
+  assert.equal(b["@type"], "BreadcrumbList");
+  assert.deepEqual(b.itemListElement[1], { "@type": "ListItem", position: 2, name: "Features", item: "https://sq.example/features?lang=fa" });
+  const f = faqLd([["Q?", "A."]]);
+  assert.equal(f.mainEntity[0].acceptedAnswer.text, "A.");
+  assert.ok(ALT_NAMES.includes("استریت کوئست"), "the brand in Persian letters, for Persian searches");
+});
+
+test("verification tags come only from set variables", () => {
+  assert.equal(siteVerification({}), undefined);
+  assert.equal(siteVerification({ NEXT_PUBLIC_BING_VERIFICATION: "  " }), undefined);
+  assert.deepEqual(siteVerification({ NEXT_PUBLIC_BING_VERIFICATION: "B1", NEXT_PUBLIC_YANDEX_VERIFICATION: "Y1" }), { yandex: "Y1", other: { "msvalidate.01": "B1" } });
+  assert.deepEqual(siteVerification({ NEXT_PUBLIC_GOOGLE_VERIFICATION: "G" }), { google: "G" });
+});
+
+test("IndexNow: valid keys only, own absolute URLs, every language version", () => {
+  assert.equal(indexNowKey(undefined), null);
+  assert.equal(indexNowKey("short"), null);
+  assert.equal(indexNowKey("has space in it"), null);
+  assert.equal(indexNowKey(" abcd1234-XYZ "), "abcd1234-XYZ");
+  const body = indexNowBody("https://sq.example", "abcd1234", [...allLangPaths("/e/x"), "/e/x", "//evil.example/a", "https://evil.example/b"]);
+  assert.equal(body.host, "sq.example");
+  assert.equal(body.keyLocation, "https://sq.example/indexnow.txt");
+  assert.deepEqual(body.urlList, ["https://sq.example/e/x", "https://sq.example/e/x?lang=en", "https://sq.example/e/x?lang=fa", "https://sq.example/e/x?lang=tr"]);
 });
