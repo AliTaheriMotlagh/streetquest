@@ -19,6 +19,11 @@ try {
 process.env.NEXT_PUBLIC_SITE_URL = process.env.CF_SITE_URL || "https://streetquest.remixt.app";
 
 const action = process.argv[2] || "build";
-const cli = action === "build" ? ["opennextjs-cloudflare", "build"] : ["opennextjs-cloudflare", action];
-const r = spawnSync("npx", cli, { stdio: "inherit", env: process.env });
+// `deploy`, `preview` and `upload` all work from the built output, so build it first
+// (a fresh CI checkout has no .open-next directory).
+if (action !== "build") {
+  const build = spawnSync("npx", ["opennextjs-cloudflare", "build"], { stdio: "inherit", env: process.env });
+  if (build.status) process.exit(build.status ?? 1);
+}
+const r = spawnSync("npx", ["opennextjs-cloudflare", action], { stdio: "inherit", env: process.env });
 process.exit(r.status ?? 1);
