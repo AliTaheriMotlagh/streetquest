@@ -1300,7 +1300,13 @@ snatched and its owner shouts after the thief — the people stop, turn to each 
 
 ## Deploy
 
-### Vercel
+### Cloudflare (production)
+
+StreetQuest runs on Cloudflare Workers at `https://streetquest.remixt.app`. Every push to `main` runs the
+`Deploy to Cloudflare` GitHub Action (tests → build → deploy → smoke test). See `CLOUDFLARE.md` for the
+architecture, required GitHub secrets, manual commands and the realtime server's `APP_URL` step.
+
+### Vercel (legacy)
 1. Push this repo to GitHub, then on vercel.com: **Add New → Project → import the repo**.
 2. In the project: **Storage → Create Database → Neon (Postgres)** and connect it. That sets
    `DATABASE_URL` and `DATABASE_URL_UNPOOLED` automatically.
