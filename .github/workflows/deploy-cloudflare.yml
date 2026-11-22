@@ -39,8 +39,13 @@ jobs:
           printf '%s\n' "$CF_BUILD_ENV" > .env.prod
           printf '%s\n' "$CF_DEV_VARS" > .dev.vars
 
-      - name: Build and deploy to Cloudflare Workers
-        run: npm run cf:deploy
+      - name: Build for Cloudflare Workers
+        run: npx opennextjs-cloudflare build
+
+      - name: Deploy to Cloudflare Workers
+        # Direct wrangler deploy still uploads .dev.vars as Worker secrets; it skips
+        # OpenNext's optional R2 cache prefill, which needs extra token permissions.
+        run: OPEN_NEXT_DEPLOY=true npx wrangler deploy
 
       - name: Smoke test the live site
         run: |
