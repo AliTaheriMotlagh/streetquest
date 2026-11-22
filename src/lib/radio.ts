@@ -19,8 +19,8 @@ export type LiveStation = Station & { url: string; embed?: true };
 // remixt-free.vercel.app's station, played through its documented embed for games: /radio/<slug>/embed?autoplay=1,
 // driven with postMessage({ type: "remixt-radio", action: "play" | "pause" | "volume", value }) and telling back
 // { type: "remixt-radio:state", playing, now: { title, artist, cover } }. Its address is NEXT_PUBLIC_REMIXT_RADIO
-// (the station's page, e.g. https://remixt-free.vercel.app/radio/remixt-radio); empty switches it off.
-export const REMIXT_DEFAULT = "https://remixt-free.vercel.app/radio/remixt-radio";
+// (the station's page, e.g. https://remixt.app/radio/remixt-radio); empty switches it off.
+export const REMIXT_DEFAULT = "https://remixt.app/radio/remixt-radio";
 
 /** The embed address for a Remixt station page (https only, a /radio/<slug> path), or null. */
 export function remixtEmbed(page: string | undefined | null): { url: string; origin: string } | null {

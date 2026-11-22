@@ -691,7 +691,7 @@ mood scales XP; loot funds research; territory funds the army.
   and you land on foot while the helicopter flies itself down under where you jumped and waits there
   (`physics.ts` `stepChute`, `chute3d.ts`). **Car radio** (📻 button beside the camera opens the station list — Persian and international, the playing one
   bouncing — or N steps through them): real music stations,
-  [Remixt Radio](https://remixt-free.vercel.app/radio/remixt-radio) first — songs and remixes its listeners vote for,
+  [Remixt Radio](https://remixt.app/radio/remixt-radio) first — songs and remixes its listeners vote for,
   played through Remixt's own embed for games (a frame made only while it's the station and removed after, driven
   by postMessage; on iOS its card shows once for a tap on ▶; `NEXT_PUBLIC_REMIXT_RADIO` sets the station page, empty
   turns it off) — then Persian (Navahang, Radio Faaz, Radio Simorgh) and international (Capital UK, NRJ Paris, classic rock), picked from

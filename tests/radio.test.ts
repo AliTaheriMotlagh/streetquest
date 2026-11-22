@@ -57,7 +57,7 @@ describe("the stations' stream addresses", () => {
 
 describe("Remixt Radio", () => {
   it("plays through the station's embed for games, https and a /radio/<slug> page only", () => {
-    assert.deepEqual(remixtEmbed("https://remixt-free.vercel.app/radio/remixt-radio"), { url: "https://remixt-free.vercel.app/radio/remixt-radio/embed?autoplay=1", origin: "https://remixt-free.vercel.app" });
+    assert.deepEqual(remixtEmbed("https://remixt.app/radio/remixt-radio"), { url: "https://remixt.app/radio/remixt-radio/embed?autoplay=1", origin: "https://remixt.app" });
     assert.equal(remixtEmbed("http://remixt-free.vercel.app/radio/remixt-radio"), null);
     assert.equal(remixtEmbed("https://evil.example/radio/x/../../steal"), null);
     assert.equal(remixtEmbed("https://a:b@remixt.example/radio/x"), null);
