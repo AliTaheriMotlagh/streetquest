@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "streetquest",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "routes": [{ "pattern": "streetquest.remixt.app", "custom_domain": true }],
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "streetquest" }],
+  "r2_buckets": [
+    // Next.js incremental cache (ISR/prerendered pages).
+    { "binding": "NEXT_INC_CACHE_R2_BUCKET", "bucket_name": "streetquest-cache" },
+    // 3D models uploaded from Admin → Objects (replaces Vercel Blob in production).
+    { "binding": "UPLOADS", "bucket_name": "remixt" }
+  ],
+  "triggers": {
+    // Daily housekeeping, same time as the old vercel.json cron.
+    "crons": ["0 4 * * *"]
+  },
+  "vars": {
+    "NEXT_PUBLIC_SITE_URL": "https://streetquest.remixt.app",
+    "NEXTJS_ENV": "production"
+  }
+}

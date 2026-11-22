@@ -14,6 +14,11 @@ next-env.d.ts
 /.next-ui
 /.next-claude
 .cache/
+# Cloudflare Workers build output, local secrets and generated binding types
+/.open-next/
+/.wrangler/
+.dev.vars
+cloudflare-env.d.ts
 
 # Production settings for scripts run from this machine (npm run city:pack:prod) — never commit
 .env.prod

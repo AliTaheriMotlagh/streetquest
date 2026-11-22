@@ -15,7 +15,9 @@ const config: NextConfig = {
   poweredByHeader: false,
   // Allow opening the dev server from a phone via LAN IP or an https tunnel.
   allowedDevOrigins: ["*.trycloudflare.com", "192.168.*.*", "10.*.*.*"],
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  // OpenNext patches the generated Prisma client for the Workers runtime, so both copies
+  // must stay outside the bundle (see opennext.js.org/cloudflare/howtos/db).
+  serverExternalPackages: ["@prisma/client", ".prisma/client", "bcryptjs"],
   async headers() {
     return [
       {
@@ -42,3 +44,7 @@ const config: NextConfig = {
 };
 
 export default config;
+
+// Makes Cloudflare bindings (R2, service bindings) available during `next dev`.
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+initOpenNextCloudflareForDev();

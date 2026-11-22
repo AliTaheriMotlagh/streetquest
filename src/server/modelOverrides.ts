@@ -10,6 +10,7 @@ import type { ModelOverride } from "@prisma/client";
 import { prisma } from "../lib/db";
 import { t } from "../lib/i18n";
 import { checkModel, slotRule, type Problem } from "../lib/modelCheck";
+import { cfEnv, MODEL_PREFIX } from "./cf";
 import { HttpError } from "./http";
 
 export const slotFile = (slot: string) => slot.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
@@ -18,6 +19,17 @@ export const slotFile = (slot: string) => slot.replace(/[^a-z0-9]+/gi, "-").toLo
 export async function storeModel(slot: string, version: number, bytes: Uint8Array): Promise<string> {
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
   const name = `${slotFile(slot)}/v${version}-${hash}.glb`;
+  // Cloudflare Workers: the R2 binding (wrangler.jsonc). Same bytes, served by /api/models/file.
+  const cf = await cfEnv();
+  if (cf?.UPLOADS) {
+    const key = `${MODEL_PREFIX}${name}`;
+    try {
+      await cf.UPLOADS.put(key, bytes, { httpMetadata: { contentType: "model/gltf-binary", cacheControl: "public, max-age=31536000, immutable" } });
+      return `/api/models/file/${key}`;
+    } catch (e) {
+      throw new HttpError(502, t("The file storage refused the upload ({status})", { status: (e as Error).message.slice(0, 80) }));
+    }
+  }
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (token) {
     const { put } = await import("@vercel/blob");

@@ -1,4 +1,8 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { neonConfig } from "@neondatabase/serverless";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { cache } from "react";
 
 // Accept the env var names Vercel's Postgres/Neon integrations create, not just DATABASE_URL.
 const raw = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
@@ -24,5 +28,65 @@ function withPoolLimit(u: string | undefined) {
 }
 
 const url = withPoolLimit(raw);
+
+/**
+ * Cloudflare Workers have no Node process, native engine or filesystem, so Prisma must go
+ * through a driver adapter there. Neon's serverless driver speaks WebSocket (supported by
+ * Workers) and supports the interactive transactions the game uses. Everywhere else — the
+ * local Docker Postgres, a plain Node server — the normal Prisma engine stays in charge.
+ */
+function makeClient(): PrismaClient {
+  if (url && /neon\.(tech|build)/i.test(url)) {
+    // Workers expose a global WebSocket; Node 22+ does too. Plain queries go over HTTP
+    // (poolQueryViaFetch); interactive transactions still use the WebSocket.
+    if (typeof WebSocket !== "undefined") {
+      neonConfig.webSocketConstructor = WebSocket;
+      neonConfig.poolQueryViaFetch = true;
+    }
+    return new PrismaClient({ adapter: new PrismaNeon({ connectionString: url }) });
+  }
+  return new PrismaClient(url ? { datasourceUrl: url } : undefined);
+}
+
+/**
+ * Workers forbid reusing an I/O object (a DB connection, a socket) across requests. So the
+ * client is per request, not global. The Cloudflare ExecutionContext is unique per request,
+ * which makes it a perfect cache key; server components use React's per-request cache, and
+ * build scripts/prerendering fall back to one client for the process.
+ */
+const perRequest = new WeakMap<object, PrismaClient>();
+const reactClient = cache(() => makeClient());
 const g = globalThis as unknown as { __prisma?: PrismaClient };
-export const prisma = (g.__prisma ??= new PrismaClient(url ? { datasourceUrl: url } : undefined));
+
+function clientForRequest(): PrismaClient {
+  try {
+    const { ctx } = getCloudflareContext();
+    if (ctx && typeof ctx === "object") {
+      let client = perRequest.get(ctx);
+      if (!client) {
+        client = makeClient();
+        perRequest.set(ctx, client);
+      }
+      return client;
+    }
+  } catch {
+    // Not inside a Cloudflare request (next dev without the adapter, next build, scripts).
+  }
+  try {
+    return reactClient();
+  } catch {
+    return (g.__prisma ??= makeClient());
+  }
+}
+
+/**
+ * Same `prisma` API as before, but each request gets its own client behind the scenes.
+ * Property access is forwarded to that client (functions stay bound to it).
+ */
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = clientForRequest();
+    const value = Reflect.get(client as object, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

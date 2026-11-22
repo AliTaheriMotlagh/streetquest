@@ -1,6 +1,7 @@
 // PostgreSQL everywhere: Docker locally (docker compose up -d), Neon/Vercel Postgres in production.
 generator client {
   provider = "prisma-client-js"
+  // Driver adapters are GA in Prisma 6.19; src/lib/db.ts uses the Neon one on Cloudflare Workers.
 }
 
 datasource db {

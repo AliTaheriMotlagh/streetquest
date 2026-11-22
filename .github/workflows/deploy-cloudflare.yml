@@ -1,0 +1,50 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cloudflare-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_BUILD_ENV: ${{ secrets.CF_BUILD_ENV }}
+      CF_DEV_VARS: ${{ secrets.CF_DEV_VARS }}
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test (unit, types, translations)
+        run: npm test
+
+      - name: Restore production env files
+        run: |
+          printf '%s\n' "$CF_BUILD_ENV" > .env.prod
+          printf '%s\n' "$CF_DEV_VARS" > .dev.vars
+
+      - name: Build and deploy to Cloudflare Workers
+        run: npm run cf:deploy
+
+      - name: Smoke test the live site
+        run: |
+          curl --fail --silent --show-error https://streetquest.remixt.app/api/health
+          echo
+          curl --fail --silent --show-error --output /dev/null https://streetquest.remixt.app/
+          echo "homepage OK"

@@ -3,6 +3,7 @@
 // titles — speaks the caller's language. Notifications use the *recipient's* language
 // instead (hub.ts). Server components ask for theirs with getT().
 import { AsyncLocalStorage } from "node:async_hooks";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import {
   DEFAULT_LOCALE,
@@ -23,7 +24,20 @@ registerMessages("fa", fa);
 registerMessages("tr", tr);
 
 const als = new AsyncLocalStorage<Locale>();
-setLocaleResolver(() => als.getStore() ?? DEFAULT_LOCALE);
+// Cloudflare Workers implement AsyncLocalStorage.run() but not enterWith() (used by
+// getT() below to keep the locale for the rest of a server component). React's cache()
+// gives us a per-request slot instead, so t() still speaks the page's language there.
+const pageSlot = cache(() => ({ value: DEFAULT_LOCALE as Locale }));
+const currentLocale = () => {
+  const fromAls = als.getStore();
+  if (fromAls) return fromAls;
+  try {
+    return pageSlot().value;
+  } catch {
+    return DEFAULT_LOCALE; // not inside a React render
+  }
+};
+setLocaleResolver(currentLocale);
 
 /** Run `fn` with t() speaking `locale`. */
 export const withLocale = <T>(locale: Locale, fn: () => T): T => als.run(locale, fn);
@@ -53,6 +67,11 @@ export async function pageLocale(): Promise<Locale> {
  */
 export async function getT() {
   const locale = await pageLocale();
-  als.enterWith(locale);
+  try {
+    als.enterWith(locale);
+  } catch {
+    // Workers: AsyncLocalStorage.enterWith() is not implemented — use the per-request slot.
+    pageSlot().value = locale;
+  }
   return { locale, t: (message: string, vars?: Vars) => translate(locale, message, vars) };
 }

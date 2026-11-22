@@ -13,6 +13,11 @@
     "rt:sim": "tsx realtime/sim.ts",
     "postinstall": "prisma generate",
     "vercel-build": "npm run build",
+    "cf:build": "node scripts/cf-build.mjs",
+    "cf:preview": "node scripts/cf-build.mjs preview",
+    "cf:deploy": "node scripts/cf-build.mjs deploy",
+    "cf:upload": "node scripts/cf-build.mjs upload",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "city:pack": "tsx scripts/city-pack.ts",
@@ -47,12 +52,14 @@
   "dependencies": {
     "@huggingface/inference": "4.13.32",
     "@mapbox/vector-tile": "^3.0.0",
+    "@opennextjs/cloudflare": "^1.20.18",
+    "@prisma/adapter-neon": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "@vercel/blob": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "jose": "^5.10.0",
     "leaflet": "1.9",
-    "next": "^15.5.27",
+    "next": "^15.5.29",
     "pbf": "^4.0.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -79,12 +86,14 @@
     "prisma": "^6.19.3",
     "sharp": "^0.35.5",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.166.0"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,
     "@prisma/engines@6.19.3": true,
     "esbuild@0.28.2": true,
+    "workerd@1.20261119.1": true,
     "prisma@6.19.3": true
   },
   "engines": {

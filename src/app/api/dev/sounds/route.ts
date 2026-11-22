@@ -4,7 +4,6 @@
 //   POST ?slot=&name=       save a take (the page sends WAV: a recording, an upload, an edit)
 //   DELETE ?slot=&name=     remove a source take
 //   POST ?build=1           run `npm run assets:sounds` (ffmpeg: trims, levels, writes public/sounds + the manifest)
-import { spawn } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -60,7 +59,10 @@ export async function DELETE(req: Request) {
 }
 
 /** `npm run assets:sounds`, its output's tail (it needs ffmpeg on this machine). */
-function build(): Promise<{ ok: boolean; log: string }> {
+async function build(): Promise<{ ok: boolean; log: string }> {
+  // Imported lazily: Cloudflare Workers (the deployed server) have no child processes,
+  // and this only ever runs on the developer's own machine (isDevServer() above).
+  const { spawn } = await import("node:child_process");
   return new Promise((resolve) => {
     const p = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", "scripts/sounds.ts"], { cwd: process.cwd(), env: process.env });
     let log = "";
