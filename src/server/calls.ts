@@ -50,7 +50,8 @@ async function hostedTurn(): Promise<RTCIceServer[]> {
     if (cfKey && cfToken) {
       const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(cfKey)}/credentials/generate`, {
         method: "POST",
-        headers: { authorization: `Bearer ${cfToken}`, "content-type": "application/json" },
+        // Cloudflare's TURN API rejects requests without a User-Agent (error 1010).
+        headers: { authorization: `Bearer ${cfToken}`, "content-type": "application/json", "user-agent": "StreetQuest/1.0" },
         body: JSON.stringify({ ttl: TURN_TTL_S }),
         signal: AbortSignal.timeout(5000),
       });
