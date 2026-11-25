@@ -52,6 +52,8 @@ const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
 /** A price in a few characters for tight spots: 1.9M, 850K (toman). */
 const short = (n: number) => (n >= 1e6 ? t("{n}M", { n: fmtNum(Math.round(n / 1e5) / 10) }) : t("{n}K", { n: fmtNum(Math.round(n / 1000)) }));
 const clock = (s: string) => fmtDate(iranTime(s), { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tehran" });
+/** A trip's length; "about …" when it's an estimate (buses: no arrival time on the sites). */
+const tripSpan = (x: { minutes?: number; about?: boolean }) => (x.minutes == null ? "" : x.about ? t("about {time}", { time: span(x.minutes) }) : span(x.minutes));
 const span = (min?: number) => (min == null ? "" : min < 60 ? t("{m} min", { m: fmtNum(min) }) : min % 60 ? t("{h} h {m} min", { h: fmtNum(Math.floor(min / 60)), m: fmtNum(min % 60) }) : t("{h} h", { h: fmtNum(min / 60) }));
 const day = (iso: string) => fmtDate(`${iso}T12:00:00Z`, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 const cityName = (c: City | string | null) => {
@@ -355,9 +357,9 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
 function legLook(l: Leg, pick: LegPick | undefined, answer: Answer | undefined, travellers: number, quota = false) {
   const drive = driveOf(cityByKey(l.from), cityByKey(l.to), travellers, quota);
   if (pick?.way === "car") return { set: true, emoji: WAYS.car.emoji, minutes: drive?.minutes, price: drive?.fuel ?? 0, depart: undefined as string | undefined };
-  if (pick) return { set: true, emoji: WAYS[pick.way].emoji, minutes: pick.trip.minutes, price: pick.trip.price * travellers, depart: pick.trip.depart };
+  if (pick) return { set: true, emoji: WAYS[pick.way].emoji, minutes: pick.trip.minutes, about: pick.trip.about, price: pick.trip.price * travellers, depart: pick.trip.depart };
   const best = cheapestTrip(answer?.data?.trips ?? [], travellers);
-  if (best) return { set: false, emoji: WAYS[best.mode].emoji, minutes: best.minutes, price: best.price * travellers, depart: undefined };
+  if (best) return { set: false, emoji: WAYS[best.mode].emoji, minutes: best.minutes, about: best.about, price: best.price * travellers, depart: undefined };
   return { set: false, emoji: drive ? WAYS.car.emoji : "❔", minutes: drive?.minutes, price: drive?.fuel ?? 0, depart: undefined };
 }
 
@@ -383,7 +385,7 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
       <li key={`seg${l.i}`} className={`tg-seg${x.set ? " set" : ""}`}>
         <button type="button" onClick={() => onLeg(l)} aria-label={`${cityName(l.from)} ${arrow()} ${cityName(l.to)}`}>
           <span className="tg-way" aria-hidden>{x.emoji}</span>
-          <small>{x.minutes ? span(x.minutes) : x.set ? "" : t("Choose")}</small>
+          <small>{x.minutes ? tripSpan(x) : x.set ? "" : t("Choose")}</small>
           {x.price > 0 && <small className="tg-cost">{x.set ? "" : "~"}{short(x.price)}</small>}
         </button>
       </li>
@@ -447,7 +449,7 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
                           <span aria-hidden>{x.emoji}</span>
                           <span className="grow">
                             <b>{cityName(it.leg.from)} {arrow()} {cityName(it.leg.to)}</b>
-                            <small>{x.set ? [x.depart && clock(x.depart), x.minutes && span(x.minutes)].filter(Boolean).join(" · ") : t("Choose how to get there")}</small>
+                            <small>{x.set ? [x.depart && clock(x.depart), x.minutes && tripSpan(x)].filter(Boolean).join(" · ") : t("Choose how to get there")}</small>
                           </span>
                         </button>
                       </li>
@@ -785,7 +787,7 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
             ) : (
               <>
                 <small>{t("from {price}", { price: fmtNum(w.cheapest!.price) })}</small>
-                <small className="muted">{w.fastest?.minutes != null ? `⏱ ${span(w.fastest.minutes)}` : t("{n} options", { n: fmtNum(w.n) })}</small>
+                <small className="muted">{w.fastest?.minutes != null ? `⏱ ${tripSpan(w.fastest)}` : t("{n} options", { n: fmtNum(w.n) })}</small>
               </>
             )}
           </button>
@@ -875,7 +877,7 @@ function TripRow({ trip: x, travellers, chosen, onChoose }: { trip: Trip; travel
           <b>{clock(x.depart)}</b>
           <span className="tv-line" aria-hidden><i>{MODES[x.mode].emoji}</i></span>
           {x.arrive ? <b>{clock(x.arrive)}</b> : <span />}
-          <small className="muted">{span(x.minutes)}</small>
+          <small className="muted">{tripSpan(x)}</small>
         </div>
         <div className="tv-who">
           {/* eslint-disable-next-line @next/next/no-img-element */}

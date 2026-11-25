@@ -209,10 +209,21 @@ mood scales XP; loot funds research; territory funds the army.
 - **A shopkeeper in every open shop** (`drive/shopkeepers.ts`, `storefronts.openNear`): one of the street's people
   stands in the doorway facing the street, idling — closed shops, mosques, schools and hospitals have none (≤10 within
   60 m, ≤4 on lite); their calls (already spoken from the door) are that person's voice.
+- **Places that aren't shops** (`lib/storeKinds.ts` `civicKind`, card `drive/CivicCard.tsx`): mosques, churches,
+  schools, universities, hospitals, clinics, police and fire stations, banks, post offices, libraries, government
+  offices and cemeteries — by the map's class, else the name (Persian, English, Turkish) — get no shopkeeper, no wares
+  on the sign and no 🚪 Enter. Tapped (3D city, Places list, or a bank/library on the 2D map) they open a place card:
+  what it is, the emergency number for police/fire/hospitals (Iran 110/125/115, else 112), the map's opening hours,
+  phones and address (`/api/local` with `cat=civic` skips every store lookup), and for a mosque **today's prayer
+  times** worked out on the device (`lib/prayerTimes.ts`: University of Tehran Institute of Geophysics angles in
+  Iran — dawn 17.7°, maghrib 4.5°, Ja'fari midnight; Muslim World League elsewhere), the next one also on the chip.
 - **Shopkeepers that talk and react** (`drive/shopkeepers.ts`, lines `lib/street/shopTalk.ts`): walk past an open
   store's door on foot and its keeper says the store's own name aloud (and its best dish once the menu's been read:
-  "Welcome to Nayeb! Try our koobideh today."). Shots, a blast or a crash nearby: the keepers shout ("Don't shoot!"),
-  turn and run inside, and the shutter comes down for a while (`storefronts.panic`). Now and then a passer-by by a store
+  "Welcome to Nayeb! Try our koobideh today."). They don't run at every bang: each keeper's fear follows how
+  threatening it is where they stand (`lib/street/threat.ts` — a car bearing down on them, a gun drawn close by, shots,
+  a blast, the wanted level; a crash down the road or a car driving past barely counts; braver than passers-by). Past
+  0.7 they shout ("Don't shoot!"), run inside and the shutter comes down (`storefronts.panic`); below 0.3 again (and
+  a few seconds in) they come back out to the door and the shutter lifts (`storefronts.reopen`). Now and then a passer-by by a store
   remarks on it ("The koobideh at Nayeb is so good — 250,000 toman") — `storeGossip` in `lib/street/npcTalk.ts`.
 - **Store signs that read from across the street** (`drive/storefronts.ts drawSign`, packing `lib/signPack.ts`): a lit
   box sign — dark metal frame, the trade's (or brand's) colour with a glossy top, the logo in a white badge, the name
@@ -222,9 +233,16 @@ mood scales XP; loot funds research; territory funds the army.
 - **Talk to anyone on foot** (`drive/TalkPanel.tsx`; rules `lib/street/npcTalk.ts`): beside a passer-by, 💬 Talk (Y)
   opens a conversation — say hello, ask the way to a real café, restaurant, pharmacy or supermarket nearby (they point:
   "on your left, about 80 m"), ask what's good around here, chat, give money, insult them or ask them to follow you.
-  Each person has a mood (friendly, busy, grumpy) that changes how they answer; insulting a grumpy one twice brings a
-  complaint to the police (a wanted star). They answer out loud and in a subtitle that runs with the voice (word by
+  Each person has a mood (friendly, busy, grumpy) and a persona of their own (`personaOf`: young / middle-aged / old,
+  calm or hot-tempered, brave or not) that change how they answer; what's going on counts too: a gun in your hand
+  (most run, the brave ask you to put it away), shots or a crash a moment ago, the time of day ("Good evening!",
+  "It's late — what do you want?"), having talked before ("You again!"). A hot temper answers an insult back;
+  insulting a grumpy one twice — anyone three times — brings a complaint to the police (a wanted star). They answer out loud and in a subtitle that runs with the voice (word by
   word from the moment it starts — `lib/street/subtitle.ts`, `voices.talk` onSpeak), and walk off when you leave.
+  One voice at a time (`lib/street/talkVoice.ts` TalkChannel): the on-device voice, else a recorded line only if it has
+  exactly those words, else the phone's own speech, else the subtitle alone; a new line stops the last, and passers-by
+  don't talk over an answer. The first tap on the panel wakes the audio and the phone's speech (iOS only allows them
+  inside a tap), so answers that arrive a moment later are heard.
   Ask about **this store** and they name its real dish and price. Someone **following you** keeps the panel open and
   takes orders: wait here, come on, **stay close** (right behind you at a run), **keep back** (~7 m behind),
   **wait at the shop** (walks to the nearest open store's door and waits), **wait by my car**, **keep watch** (waits
@@ -840,7 +858,9 @@ mood scales XP; loot funds research; territory funds the army.
   every answer are kept on the phone (`lib/travel/plan.ts`, pure, `tests/travelPlan.test.ts`). Tickets: each list reads
   [Alibaba](https://www.alibaba.ir) (flights, trains, buses) and [MrBilit](https://mrbilit.com) (flights, and trains
   straight from Raja), and the same flight or train sold by both is **one row with both prices**, the cheaper first,
-  each opening that site's booking page on the right day (Jalali dates for Alibaba). Filters (in their own sheet):
+  each opening that site's booking page on the right day (Jalali dates for Alibaba). Bus sites give no arrival
+  time, so a bus ride shows **about** its length: the site's road km at ~70 km/h, else the cities' distance with
+  winding roads (`busMinutes`, `tests/busDuration.test.ts`). Filters (in their own sheet):
   time of day, price cap, company, refundable, direct; sort by price, departure, duration or seats; only tickets with
   seats for everyone. The plan opens on **the trip at a glance**: the route as a line (each city's dates, nights and
   stay; each leg's way, time and price — solid once chosen, dashed while open), the trip **day by day**
@@ -1306,6 +1326,37 @@ StreetQuest runs on Cloudflare Workers at `https://streetquest.remixt.app`. Ever
 `Deploy to Cloudflare` GitHub Action (tests → build → deploy → smoke test). See `CLOUDFLARE.md` for the
 architecture, required GitHub secrets, manual commands and the realtime server's `APP_URL` step.
 
+Two Cloudflare rules the app follows: a Worker can't `fetch()` a bare IP address (error 1003), so a relay at
+`http://<a.b.c.d>:8790/<key>` is reached as `http://<a-b-c-d>.sslip.io:8790/<key>` (`reachable()` in
+`src/lib/relayUrl.ts` does it on Workers; set the secret in that form anyway); and Cloudflare's addresses are
+abroad, so Iranian sites that refuse foreign servers (Snappfood, Torob 490 "are you a robot?") go through the relay —
+`RELAY_FOR=all` on the Worker. The player's address is `cf-connecting-ip` and the country `cf-ipcountry`
+(`src/lib/clientIp.ts`; a forged `x-forwarded-for` no longer beats them), and the rough IP location for the map comes
+from `request.cf` (`src/server/geoip.ts`).
+
+### Players in Iran without a VPN: the front door
+Iranian mobile and home lines throttle or cut Cloudflare's addresses on and off — then the game only opens with a VPN.
+`front/front.mjs` (no dependencies, any Node 18+) puts the whole site at an address inside Iran,
+`https://<box-ip-with-dashes>.sslip.io:8443` on the relay box, and passes every request to the real site over the
+datacenter's own international link:
+
+- HTTPS + HTTP/2 with the realtime server's sslip.io certificate (re-read when it renews), port 8443;
+- the build files (`/_next/static`, immutable 3D models) are kept on the box's disk (1 GB, oldest-used out first), so
+  after the first player they load from Iran and never cross the border again; pages and `/api` are never kept;
+- the player's address goes to the app as `x-front-ip` with the shared `FRONT_KEY` in `x-front-key` — the app believes
+  it only with that key (`src/lib/clientIp.ts`), else every player would look like one address (guest sign-ups are
+  capped per address); a player can't forge it (the front door drops incoming `x-front-*`, `cf-*`, `x-forwarded-*`);
+- redirects and cookies are rewritten to the front door's address; Cloudflare's `Alt-Svc` (it would send browsers to
+  port 443 on the box — another app's), HSTS and NEL are dropped; every answer is `noindex` (search engines keep the
+  real domain); when the site can't be reached it shows a short Persian/English "try again" page.
+
+Deploy: `npm run rt:deploy` first (the certificate), then `npm run front:deploy` (`scripts/front-deploy.sh` →
+`front/install.sh`: service `streetquest-front`, its own user, 200 MB / half a CPU, low priority; it records the box's
+other ports and what 80/443 answer and rolls back if anything changed). The first run makes `FRONT_KEY` in `.env`; give
+the Worker the same one: `npx wrangler secret put FRONT_KEY --name streetquest`. Check:
+`curl https://<box>.sslip.io:8443/__front/health`. Players sign in separately on each address (cookies are per
+address). Test `tests/front.test.ts`.
+
 ### Vercel (legacy)
 1. Push this repo to GitHub, then on vercel.com: **Add New → Project → import the repo**.
 2. In the project: **Storage → Create Database → Neon (Postgres)** and connect it. That sets
@@ -1346,8 +1397,9 @@ relay with no dependencies (any Node 18+) that runs on a server in Iran; the app
    (`scripts/relay-deploy.sh`: your SSH key, or `RELAY_SSH_PASSWORD` in `.env` typed at the prompts by `expect`).
 3. HTTPS (recommended — the key is part of the URL): put a (sub)domain on **ArvanCloud CDN** with an A record to the
    server, going through the CDN with HTTPS on. The relay marks every answer `no-store`, so the CDN doesn't cache them.
-4. On Vercel: `vercel env add RELAY_URL production` = `https://<domain>/<key>` (or the `http://<ip>/<key>` the script
-   printed), then redeploy. `/api/health?ext=1` should say `snappfood` `200`. (An older `SNAPPFOOD_URL=…/<key>/snappfood`
+4. On the app (Cloudflare: `npx wrangler secret put RELAY_URL --name streetquest`; Vercel: `vercel env add RELAY_URL
+   production`) = `https://<domain>/<key>` or the `http://<a-b-c-d>.sslip.io:<port>/<key>` the script printed (Cloudflare
+   Workers can't reach a bare IP), then redeploy. `/api/health?ext=1` should say `snappfood` `200`. (An older `SNAPPFOOD_URL=…/<key>/snappfood`
    keeps working and wins over `RELAY_URL` for Snappfood.)
 
 Since **relay v2** it is generic, so new features never need it redeployed: `/<key>/https/<host>/<path>` reaches any

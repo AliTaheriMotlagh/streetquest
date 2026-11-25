@@ -3,13 +3,15 @@
 import { headers } from "next/headers";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { clientIp } from "@/lib/clientIp";
 
 export type AuditTarget = "business" | "claim" | "user" | "campaign";
 
 async function ipNow(): Promise<string> {
   try {
     const h = await headers();
-    return (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "").trim().slice(0, 64);
+    const ip = clientIp(h);
+    return ip === "local" ? "" : ip;
   } catch {
     return "";
   }

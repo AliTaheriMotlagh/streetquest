@@ -56,6 +56,7 @@ const travel: Record<string, string> = {
   "{h} h": "{h} sa",
   "{m} min": "{m} dk",
   "{h} h {m} min": "{h} sa {m} dk",
+  "about {time}": "yaklaşık {time}",
   "Night (0–6)": "Gece (0–6)",
   "Morning (6–12)": "Sabah (6–12)",
   "Afternoon (12–18)": "Öğleden sonra (12–18)",

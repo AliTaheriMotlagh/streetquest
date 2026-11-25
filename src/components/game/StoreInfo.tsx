@@ -78,7 +78,7 @@ const money = (n: number, currency?: Menu["currency"]) => (currency === "TRY" ? 
 const orderOn = (menu: Pick<Menu, "source"> | null | undefined) => (menu?.source === "yemeksepeti" ? t("Order on Yemeksepeti") : t("Order on Snappfood"));
 const LINK_ICON = { snappfood: "🍽️", yemeksepeti: "🍽️", getir: "🛵", torob: "🏷️", divar: "📢", website: "🌐", phone: "📞", instagram: "📸", directory: "🗂️" } as const;
 /** "09:30" in the player's digits. */
-const clock = (min: number) => clockOf(min).replace(/\d/g, (d) => fmtNum(Number(d)));
+export const clock = (min: number) => clockOf(min).replace(/\d/g, (d) => fmtNum(Number(d)));
 const spanText = ([a, b]: [number, number]) => `${clock(a)}–${clock(b > 1440 ? b - 1440 : b)}`;
 const telOf = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 
@@ -183,7 +183,7 @@ export function OpenBadge({ week, at }: { week: Week | null | undefined; at: Lat
 }
 
 /** The whole week, Saturday first, today marked. */
-function HoursTable({ week, at }: { week: Week; at: LatLng }) {
+export function HoursTable({ week, at }: { week: Week; at: LatLng }) {
   const today = dayClock(new Date(), zoneOf(at)).day;
   return (
     <table className="hours-table">

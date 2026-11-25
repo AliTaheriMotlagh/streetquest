@@ -5,6 +5,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
+import { countryOf } from "../lib/clientIp";
 import {
   DEFAULT_LOCALE,
   isLocale,
@@ -50,7 +51,7 @@ const cookieValue = (header: string | null, name: string) =>
 
 /** The language an API request asked for: the player's choice, else their browser's. */
 export function localeOfRequest(req: Request): Locale {
-  return resolveLocale(cookieValue(req.headers.get("cookie"), LOCALE_COOKIE), req.headers.get("accept-language"), req.headers.get("x-vercel-ip-country"));
+  return resolveLocale(cookieValue(req.headers.get("cookie"), LOCALE_COOKIE), req.headers.get("accept-language"), countryOf(req.headers));
 }
 
 /** The current page request's language (server components, metadata). */
@@ -58,7 +59,7 @@ export async function pageLocale(): Promise<Locale> {
   const h = await headers();
   const forced = h.get(LOCALE_HEADER); // ?lang= in the URL (middleware)
   if (isLocale(forced)) return forced;
-  return resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value, h.get("accept-language"), h.get("x-vercel-ip-country"));
+  return resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value, h.get("accept-language"), countryOf(h));
 }
 
 /**

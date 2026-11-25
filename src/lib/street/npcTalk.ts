@@ -6,6 +6,10 @@
 // everyone run. The answer is words (an i18n key + params, said aloud by voices.talk) and what they do.
 // Someone following you takes orders: wait here, come on, stay close, keep your distance, wait at the
 // shop, wait by my car, keep watch (shout when the police come), go home.
+// What they say also depends on who they are and what's going on (all optional in TalkCtx): a persona seeded by
+// who they are (young / middle-aged / old, calm or hot-tempered, brave or not — personaOf), a gun in your hand,
+// shots or a crash a moment ago, the time of day, whether you've talked before, and how many times you've
+// insulted them (the third time anyone calls the police). The Claude route (/api/npc/talk) is separate.
 import { hashStr } from "../geo";
 import { msg } from "../i18n";
 import type { StoreKind } from "../storeKinds";
@@ -58,6 +62,14 @@ export type TalkCtx = {
   fmt: (m: number) => string;
   /** Translates the words put inside the answer ("on your right", "a café"); the answer's own key is translated by the caller. */
   tr?: (key: string) => string;
+  /** I'm on foot with a gun drawn. */
+  armed?: boolean;
+  /** Something just happened round here (the last ~20 s). */
+  recent?: "shots" | "blast" | "crash" | null;
+  /** The hour of day (0–23), local. */
+  hour?: number;
+  /** We've talked before (an earlier conversation). */
+  met?: boolean;
 };
 export type Reply = { key: string; params?: Record<string, string | number>; react: React; secs: number; mood: Mood; pace?: Pace };
 
@@ -65,6 +77,13 @@ export type Reply = { key: string; params?: Record<string, string | number>; rea
 export function moodOf(id: number): Mood {
   const h = hashStr(`mood:${id}`) % 100;
   return h < 55 ? "friendly" : h < 82 ? "busy" : "grumpy";
+}
+
+/** Who someone is, the same each time you meet them: their age, their temper, whether they're brave. */
+export type Persona = { age: "young" | "adult" | "old"; temper: "calm" | "hot"; brave: boolean };
+export function personaOf(id: number): Persona {
+  const a = hashStr(`age:${id}`) % 100, h = hashStr(`temper:${id}`) % 100, b = hashStr(`brave:${id}`) % 100;
+  return { age: a < 35 ? "young" : a < 80 ? "adult" : "old", temper: h < 25 ? "hot" : "calm", brave: b < 30 };
 }
 
 /** Which way a place is, in words: ahead, on your right/left, behind you. */
@@ -84,17 +103,42 @@ const CHAT: Record<Mood, string[]> = {
   busy: [msg("Sorry, I've got a bus to catch."), msg("I'm late for work — another time!"), msg("Can't talk, my phone keeps ringing.")],
   grumpy: [msg("Do I know you?"), msg("Not interested in chatting."), msg("This city is too loud.")],
 };
+/** A friendly chat line of their own age. */
+const CHAT_AGE: Record<Persona["age"], string[]> = {
+  young: [msg("Have you seen what phones cost now? Crazy."), msg("I've got exams next week, wish me luck!")],
+  adult: [],
+  old: [msg("In my day this street was all gardens."), msg("My knees aren't what they were, but I still walk every day.")],
+};
 const pickOf = (l: string[], seed: number) => l[seed % l.length];
+const NIGHT = (h: number) => h >= 22 || h < 5;
 
 /** Their answer and what they do. `seed` varies the chat line (the conversation's turn number). */
 export function reply(c: TalkCtx, seed = 0): Reply {
-  const mood = moodOf(c.id), tr = c.tr ?? ((k: string) => k);
+  const mood = moodOf(c.id), tr = c.tr ?? ((k: string) => k), me = personaOf(c.id);
   const r = (key: string, react: React, secs = 6, params?: Record<string, string | number>): Reply => ({ key, react, secs, mood, ...(params ? { params } : {}) });
   // Wanted: nobody stays to talk.
   if (c.stars >= 2) return r(msg("Stay away from me!"), "flee", 5);
+  // A gun in your hand: the brave ask you to put it away, everyone else runs (your own crew stays).
+  if (c.armed && !c.following) {
+    if (!me.brave || c.act === "insult") return r(msg("Don't shoot! I'm going, I'm going!"), "flee", 6);
+    if (c.act !== "bye" && c.act !== "money") return r(msg("Easy — put that gun away, friend."), "stay", 4);
+  }
+  // Shots or a blast a moment ago: most get out of here; the brave stay and wonder.
+  if ((c.recent === "shots" || c.recent === "blast") && !c.following && c.act !== "bye") {
+    if (!me.brave) return r(msg("Did you hear that? I'm getting out of here!"), "flee", 6);
+    if (c.act === "greet" || c.act === "chat") return r(msg("Did you hear that? Something's going on round here."), "stay", 5);
+  }
+  // Three insults (from anyone, whatever their mood): the police.
+  if (c.act === "insult" && c.insults >= 2) return r(msg("That's it, I'm calling the police!"), "flee", 4);
   switch (c.act) {
-    case "greet":
+    case "greet": {
+      const h = c.hour;
+      if (c.met && mood !== "grumpy") return r(msg("You again! Hello, good to see you."), "stay", 5);
+      if (h != null && NIGHT(h)) return mood === "friendly" ? r(msg("Hello — out late, aren't you?"), "stay", 5) : r(msg("It's late — what do you want?"), "stay", 4);
+      if (mood === "friendly" && h != null && h >= 5 && h < 12) return r(msg("Good morning! How are you doing?"), "stay");
+      if (mood === "friendly" && h != null && h >= 18) return r(msg("Good evening! How are you doing?"), "stay");
       return mood === "friendly" ? r(msg("Hello! How are you doing?"), "stay") : mood === "busy" ? r(msg("Hi — sorry, I'm in a bit of a hurry."), "stay", 4) : r(msg("Hm. What do you want?"), "stay", 5);
+    }
     case "way": {
       const w = c.way;
       if (!w?.spot) return r(msg("Sorry, I don't know {kind} around here."), "stay", 5, { kind: tr(WAY_KINDS.find((k) => k.key === w?.kind)?.label ?? "") });
@@ -109,11 +153,14 @@ export function reply(c: TalkCtx, seed = 0): Reply {
       return r(msg("Try {place}, {dist} {side}. I go there myself."), "stay", 6, { place: s.name, dist: c.fmt(s.dist), side: tr(sideOf(s.rel)) });
     }
     case "chat":
-      return r(pickOf(CHAT[mood], seed + c.id), mood === "busy" ? "leave" : "stay", mood === "friendly" ? 7 : 4);
+      if (c.recent === "crash" && mood !== "busy") return r(msg("Did you see that crash? People drive like maniacs."), "stay", 5);
+      return r(pickOf(mood === "friendly" ? [...CHAT.friendly, ...CHAT_AGE[me.age]] : CHAT[mood], seed + c.id), mood === "busy" ? "leave" : "stay", mood === "friendly" ? 7 : 4);
     case "money":
       return mood === "grumpy" ? r(msg("Keep your money, I don't need it."), "leave", 4) : r(msg("Oh, thank you! God bless you."), "stay", 5);
     case "insult":
       if (mood === "grumpy" && c.insults === 0) return r(msg("Say that again and see what happens!"), "angry", 5);
+      // A hot temper answers back instead of walking off.
+      if (me.temper === "hot" && c.insults === 0) return r(msg("Watch your mouth!"), "angry", 5);
       if (mood === "friendly" && c.insults === 0) return r(msg("That wasn't nice. Goodbye."), "leave", 3);
       return r(mood === "grumpy" ? msg("That's it, I'm calling the police!") : msg("What's wrong with you?!"), "flee", 4);
     case "follow":

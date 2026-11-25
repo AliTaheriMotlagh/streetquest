@@ -16,6 +16,8 @@ import { celebrate } from "./Play";
 import { MoveIcon, Sheet, useGame } from "./ui";
 import { RouteButton, StoreExtras } from "./StoreInfo";
 import { DisputeStore } from "./BizClaim";
+import { civicKind } from "@/lib/storeKinds";
+import { CivicSheet } from "../drive/CivicCard";
 
 const catOf = (c: string) => PLACE_CATS[c as PlaceCat] ?? PLACE_CATS.shop;
 
@@ -38,9 +40,15 @@ function GoThere({ to, dist, label, name }: { to: { lat: number; lng: number }; 
 
 /** Any real place on the map (no job there right now): what it is, its menu and contacts. */
 export function SpotCard({ p, onClose }: { p: WorldSpot; onClose: () => void }) {
-  const { pos } = useGame();
+  const { pos, teleport, drive } = useGame();
   const cat = catOf(p.cat);
   const dist = pos ? distanceM(pos, p) : Infinity;
+  // A bank, library, clinic… sells nothing: the place card (prayer times, emergency number, hours).
+  const civic = civicKind(p.cat === "bank" ? "bank" : "", p.name);
+  if (civic) {
+    const s = { id: p.id, name: p.name, cls: p.cat === "bank" ? "bank" : "", lat: p.lat, lng: p.lng, emoji: cat.emoji, color: cat.color, sub: Number.isFinite(dist) ? formatDistance(dist) : "" };
+    return <CivicSheet s={s} kind={civic} onClose={onClose} onGo={() => (teleport ? teleport(p) : drive?.(p), onClose())} />;
+  }
   return (
     <Sheet title={`${cat.emoji} ${p.name}`} onClose={onClose} tall>
       <div className="place-card" style={{ ["--cat" as string]: cat.color }}>

@@ -54,10 +54,11 @@ code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "http://127.0.0.1:$P
 echo "Relay is running. Snappfood answers this server with: $code (200 = good)."
 # The address the app reaches it at (a cloud server's outgoing address can differ: npm run relay:deploy passes it).
 ip=${PUBLIC_HOST:-$(curl -s --max-time 5 https://ifconfig.io 2>/dev/null || hostname -I | cut -d' ' -f1)}
+ip=$(echo "$ip" | tr . -).sslip.io # a name: Cloudflare Workers refuse bare IP addresses (error 1003)
 port=$([ "$PORT" = 80 ] && echo "" || echo ":$PORT")
 echo "Version: $(curl -fsS "http://127.0.0.1:$PORT/health")"
 echo
-echo "Set this on Vercel (production), then redeploy (the old SNAPPFOOD_URL=http://$ip$port/$RELAY_KEY/snappfood keeps working):"
+echo "Set this on the app (Cloudflare: npx wrangler secret put …; Vercel: vercel env add …), then redeploy:"
 echo "  RELAY_URL=http://$ip$port/$RELAY_KEY"
-echo "  RELAY_FOR=snappfood          (or e.g. snappfood,torob,divar — \"all\" for every Iranian site)"
+echo "  RELAY_FOR=all                (every Iranian site — what a host abroad like Cloudflare needs; or e.g. snappfood,torob)"
 echo "With a domain on ArvanCloud CDN pointing here (HTTPS), use https://<that domain>/$RELAY_KEY instead."

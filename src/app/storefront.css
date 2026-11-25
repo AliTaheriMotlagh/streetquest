@@ -25,3 +25,7 @@
   .drive-store.rich, .store-chip-item, .store-sheet { animation: none; }
   .store-slides { scroll-behavior: auto; }
 }
+
+/* A place that is not a shop (drive/CivicCard.tsx): prayer times, hours. */
+.civic-card .civic-block { display: grid; gap: 6px; margin: 10px 0; }
+.civic-card .civic-block .hours-table { width: 100%; }

@@ -103,7 +103,7 @@ import { Rain } from "./graphics/weather";
 import { mixHex, mixRecord, phaseOf, skyFor, sunVector, WEATHER_LOOK, type TimePick, type Weather } from "@/lib/daylight";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
-import { storeKind, type StoreKind } from "@/lib/storeKinds";
+import { isShop, storeKind, type StoreKind } from "@/lib/storeKinds";
 import { callsPolice, GOOD_STORES, LOOKOUT_SHOUTS, reply as npcReply, storeGossip, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
 import { doorGreeting, panicLine } from "@/lib/street/shopTalk";
 import { hornFor } from "@/lib/street/carHorn";
@@ -997,9 +997,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // The street's people built during the loading screen (their first appearance is the usual hitch).
     let peopleReady = false;
     void crowd.prewarm((o) => gfx.gate.whenReady(o)).finally(() => (peopleReady = true));
-    // Gunfire, a blast, a crash: the keepers nearby shout, run in and pull their shutters down.
+    // Gunfire, a blast, a car bearing down: the keepers nearby weigh it (lib/street/threat.ts) — frightened enough,
+    // they shout, run in and pull their shutters down, and come back out once it's calm.
     shopkeepers.onShout = (text, at) => void street.converse(text, "m", () => at, false);
-    crowd.onAlarm = (x, z, r) => shopkeepers.alarm(x, z, Math.min(r, 40), (seed) => t(panicLine(seed)));
+    shopkeepers.shoutLine = (seed) => t(panicLine(seed));
+    crowd.onAlarm = (x, z, r, kind) => shopkeepers.alarm(x, z, r, kind);
     storefronts.blocked = (x, z) => streets().on(x, z, 0.8);
     storefronts.at = start;
     // The police of the country the city is in (their car, its livery, their uniform).
@@ -1804,6 +1806,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const talkTo = (id: number, act: TalkAct, way?: WayKind): TalkAnswer | null => {
       const p = crowd.person(id);
       if (!p || Math.hypot(p.x - st.x, p.z - st.z) > 9) return null;
+      // Talked before, in an earlier conversation ("You again!").
+      const met = convo !== id && (turns.get(id) ?? 0) > 0;
       convo = id;
       const turn = turns.get(id) ?? 0;
       turns.set(id, turn + 1);
@@ -1814,7 +1818,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // "Wait at the shop": the open store nearest (its door); "wait by my car": the car you left, if it's near.
       const shopAt = act === "shop" ? storefronts.nearestOpen(st.x, st.z, 60, () => false) : null;
       const carAt = act === "car" && parked && Math.hypot(parked.x - st.x, parked.z - st.z) < 250 ? parked : null;
-      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, shop: shopAt?.name ? { name: shopAt.name, dist: Math.round(Math.hypot(shopAt.x - st.x, shopAt.z - st.z)), rel: 0 } : null, car: carAt ? { dist: Math.round(Math.hypot(carAt.x - st.x, carAt.z - st.z)) } : null, fmt: formatDistance, tr: (k) => t(k) }, turn);
+      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, shop: shopAt?.name ? { name: shopAt.name, dist: Math.round(Math.hypot(shopAt.x - st.x, shopAt.z - st.z)), rel: 0 } : null, car: carAt ? { dist: Math.round(Math.hypot(carAt.x - st.x, carAt.z - st.z)) } : null, fmt: formatDistance, tr: (k) => t(k), armed: combat.input.aim, recent: shopkeepers.recentNear(p.x, p.z), hour: new Date().getHours(), met }, turn);
       if (act === "insult") insults.set(id, (insults.get(id) ?? 0) + 1);
       const text = t(r.key, r.params);
       // The subtitle runs with the voice: the panel is told when it starts and how long it is.
@@ -2527,7 +2531,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
       crowd.meR = onFoot ? 0.35 : 0;
       crowd.tick(dt, st.x, st.z);
-      shopkeepers.tick(dt, st.x, st.z);
+      shopkeepers.tick(dt, st.x, st.z, { vx: st.vx, vz: st.vz, inCar: !onFoot && !(D.flies && st.alt > 0.5), gunDrawn: onFoot && combat.input.aim, stars: street.stars });
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
       // Shopkeepers: walking or cruising past an open store, its keeper calls you in (once in two minutes per store).
       if (!matchOn && now - lastShopCall > 1500 && !(D.flies && st.alt > 0.5) && Math.hypot(st.vx, st.vz) < 14) {
@@ -2717,7 +2721,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           if (ns) {
             const tr = tradeOf(ns.store.cls);
             const ll = frame.toLatLng(ns.store.x, ns.store.z);
-            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng, enter: combat.onFoot && ns.d < ENTER_M };
+            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng, enter: combat.onFoot && ns.d < ENTER_M && isShop(ns.store.cls, ns.store.name) };
           }
         }
         lastStore = store?.id ?? null;

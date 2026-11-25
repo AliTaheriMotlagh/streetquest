@@ -16,6 +16,7 @@ only the section you need.
 | Iran street kit (post box, cabinets, galvanised dumpster, saqakhaneh, median railings, footbridges, arrow signs, motorway gantries) | placement `src/components/drive/streetKit.ts` (worker, called from tileMesh), look `streetKit3d.ts`; test `tests/streetKit.test.ts` |
 | Street life: crashes, car damage, people reacting, wanted level, police | `src/components/drive/{street,police,streetFx,carDamage,people,peopleModels}.ts`, `StreetHud.tsx`; pure rules `src/lib/street/{damage,wanted}.ts`; people models `scripts/people.ts` → `src/lib/peopleModels.ts` |
 | 3D sound (distance, direction, output modes) / screen shape (FOV, sharpening, full screen) | `src/lib/audio/spatial.ts` (pure rules), `src/components/game/{spatial,sfx,samples}.ts`, `src/components/arena/gunsound.ts` (sounds take a world position `at`) / `src/lib/view.ts`, `src/components/drive/fullscreen.ts` |
+| Cloudflare prod / Iran access | `CLOUDFLARE.md`, `wrangler.jsonc`, `worker.ts`; Iran front door `front/{front.mjs,install.sh}` (`npm run front:deploy`, `FRONT_KEY`); player IP/country `src/lib/clientIp.ts`; Workers can't fetch bare IPs → `reachable()` in `src/lib/relayUrl.ts` |
 | Small-phone HUD sizes | `src/app/compact.css` (loaded last) |
 | Play together (party + games tab in the 3D city) | `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts` (parties, gather, invites), `/api/party` |
 | Who's online / presence | `src/server/presence.ts`, `src/app/api/online/route.ts`, `src/components/game/Online.tsx` |

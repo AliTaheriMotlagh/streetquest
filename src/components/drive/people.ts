@@ -12,6 +12,7 @@
 // The men nearest you are real rigged, animated models (peopleModels.ts: walk, run, idle,
 // fall); everyone else is drawn instanced — one mesh per body part, coloured per person —
 // so a busy street costs a few draw calls.
+import type { Scare } from "@/lib/street/threat";
 import * as THREE from "three";
 import { insidePacked } from "@/lib/city";
 import { rayPlayer, type Ray } from "@/lib/arena/geom";
@@ -358,12 +359,12 @@ export class Crowd {
 
   /** How much room I take (m): on foot a person's, in a car 0 (cars knock people over instead: hitBy). */
   meR = 0.35;
-  /** Told of every alarm too (the shopkeepers: they shout and shut up shop). */
-  onAlarm: ((x: number, z: number, r: number) => void) | null = null;
+  /** Told of every alarm too (the shopkeepers weigh it: lib/street/threat.ts). */
+  onAlarm: ((x: number, z: number, r: number, kind: Scare) => void) | null = null;
 
-  /** Something frightening happened here (a shot, a crash, a blast): everyone within `r` m runs from it. */
-  alarm(x: number, z: number, r: number) {
-    this.onAlarm?.(x, z, r);
+  /** Something frightening happened here (a shot, a crash, a blast, a car swerving past): everyone within `r` m runs from it. */
+  alarm(x: number, z: number, r: number, kind: Scare = "crash") {
+    this.onAlarm?.(x, z, r, kind);
     for (const w of this.walkers) {
       if (w.mode === "down" || w.mode === "flying") continue;
       const d = Math.hypot(w.x - x, w.z - z);

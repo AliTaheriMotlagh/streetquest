@@ -161,7 +161,7 @@ export const GET = route(async (req) => {
     const info = q.id ? (await findPlace(tileKey(tileOf(q).cx, tileOf(q).cy), q.id))?.info : undefined;
     const [data, twins] = await Promise.all([
       storeData({ name: q.name, lat: q.lat, lng: q.lng, cat: q.cat, website: info?.web, phone: info?.phone, instagram: info?.ig, hours: info?.hours, address: info?.addr, photo: info?.img }),
-      directoryTwins(q).catch(() => null),
+      q.cat === "civic" ? null : directoryTwins(q).catch(() => null),
     ]);
     return withTwins(data, twins);
   }

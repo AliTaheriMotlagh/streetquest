@@ -9,13 +9,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtNum, t } from "@/lib/i18n";
 import { dealsNear, sameName, weekFromOsm, type Deal, type StoreData } from "@/lib/localData";
-import { menuHighlights, STORE_LOOK, storeKind } from "@/lib/storeKinds";
+import { civicKind, menuHighlights, STORE_LOOK, storeKind, type CivicKind } from "@/lib/storeKinds";
 import { Button } from "@/components/Button";
 import { OpenBadge, StoreExtras, useLocal } from "../game/StoreInfo";
 import { Sheet } from "../game/ui";
 import type { StorePanel } from "./storefronts";
+import { CivicChip, CivicSheet } from "./CivicCard";
 
 export type StoreTarget = { id: string; name: string; cls?: string; /** Its kind when already known (a search result); else worked out from `cls` and the name. */ cat?: string; lat: number; lng: number; emoji: string; color: string; sub: string };
+
+/** Not a shop (a mosque, school, hospital, bank…): it gets the place card (CivicCard), not a store's. */
+export const civicOf = (s: StoreTarget): CivicKind | null => civicKind(s.cls ?? (s.cat === "bank" ? "bank" : ""), s.name);
 
 /** The /api/local query for a store seen in the city. */
 export const queryOf = (s: StoreTarget) => ({ store: "place", name: s.name, lat: s.lat.toFixed(6), lng: s.lng.toFixed(6), cat: s.cat ?? STORE_LOOK[storeKind(s.cls, s.name)].cat });
@@ -41,7 +45,13 @@ export function panelOf(data: StoreData | null, deals: Deal[]): StorePanel {
   };
 }
 
-export function StoreChip({ s, onOpen, onInfo, onShow }: { s: StoreTarget; onOpen: () => void; onInfo: (id: string, info: StorePanel) => void; onShow: (id: string | null) => void }) {
+type ChipProps = { s: StoreTarget; onOpen: () => void; onInfo: (id: string, info: StorePanel) => void; onShow: (id: string | null) => void };
+export function StoreChip(p: ChipProps) {
+  const civic = civicOf(p.s);
+  return civic ? <CivicChip s={p.s} kind={civic} onOpen={p.onOpen} /> : <ShopChip {...p} />;
+}
+
+function ShopChip({ s, onOpen, onInfo, onShow }: ChipProps) {
   // Only a store you stay by is looked up (not every one driven past).
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -117,7 +127,13 @@ function Carousel({ photos, name }: { photos: string[]; name: string }) {
   );
 }
 
-export function StoreSheet({ s, onClose, onGo }: { s: StoreTarget; onClose: () => void; onGo: () => void }) {
+type SheetProps = { s: StoreTarget; onClose: () => void; onGo: () => void };
+export function StoreSheet(p: SheetProps) {
+  const civic = civicOf(p.s);
+  return civic ? <CivicSheet {...p} kind={civic} /> : <ShopSheet {...p} />;
+}
+
+function ShopSheet({ s, onClose, onGo }: SheetProps) {
   const { data } = useLocal<StoreData>(queryOf(s));
   const deals = useDeals(s);
   const photos = useMemo(() => photosOf(data, deals), [data, deals]);

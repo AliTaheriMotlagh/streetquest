@@ -203,9 +203,62 @@ export function menuSearch(name: string, at?: { lat: number; lng: number } | nul
 }
 
 /**
- * Is this place a shop at all? The city's labels also name mosques, shrines, churches, schools,
- * seminaries, hospitals and offices: no shopkeeper calls from those, no open/closed tag, no wares.
+ * Places that aren't shops: mosques, shrines, churches, schools, universities, hospitals, clinics, police,
+ * fire stations, offices of the state, banks, libraries, post offices, cemeteries. No shopkeeper calls from
+ * those, no wares or menu on the sign, no walking in to buy — their card says what they are instead (a
+ * mosque's prayer times, the emergency number, the map's opening hours). First match wins: a "Post Bank"
+ * is a bank, a "post office" isn't a government office.
  */
-const NOT_SHOP = /^(place_of_worship|muslim|shia|sunni|christian|jewish|zoroastrian|mosque|church|synagogue|shrine|imamzadeh|religious|monastery|school|college|university|kindergarten|seminary|hospital|clinic|doctors|dentist|police|fire_station|townhall|courthouse|government|embassy|library|post_office|community_centre|social_facility|grave_yard|cemetery)$/;
-const NOT_SHOP_NAME = /مسجد|حسینیه|امامزاده|تکیه|کلیسا|کنیسه|آتشکده|مدرسه|حوزه|دبستان|دبیرستان|هنرستان|دانشگاه|بیمارستان|کلانتری|شهرداری|mosque|church|school|hospital/i;
-export const isShop = (cls = "", name = "") => !NOT_SHOP.test(cls.toLowerCase()) && !NOT_SHOP_NAME.test(name);
+export type CivicKind = "mosque" | "worship" | "school" | "university" | "hospital" | "clinic" | "police" | "fire" | "bank" | "post" | "library" | "government" | "cemetery";
+const ZW = "[\\s\\u200c]?";
+const CIVIC_RULES: [CivicKind, RegExp, RegExp][] = [
+  ["mosque", /^(muslim|shia|sunni|mosque|imamzadeh|shrine)$/, new RegExp(`مسجد|حسینیه|امامزاده|تکیه|مصلی|\\bmosque\\b|\\bcamii?\\b|\\bmescidi?\\b`, "i")],
+  ["worship", /^(place_of_worship|christian|jewish|zoroastrian|church|synagogue|religious|monastery|temple)$/, /کلیسا|کنیسه|آتشکده|\bchurch\b|\bkilisesi\b|\bsynagogue\b/i],
+  ["university", /^(university|college)$/, /دانشگاه|دانشکده|\buniversity\b|üniversitesi/i],
+  ["school", /^(school|kindergarten|seminary)$/, new RegExp(`مدرسه|حوزه|دبستان|دبیرستان|هنرستان|مهد${ZW}کودک|پیش${ZW}دبستانی|\\bschool\\b|\\bokulu\\b`, "i")],
+  ["hospital", /^hospital$/, /بیمارستان|\bhospital\b|hastanesi/i],
+  ["clinic", /^(clinic|doctors|dentist)$/, /درمانگاه|مرکز بهداشت|خانه بهداشت/],
+  ["police", /^police$/, /کلانتری|پاسگاه|پلیس\s*\+?\s*۱۰|ستاد انتظامی|\bpolice\b|karakol/i],
+  ["fire", /^fire_station$/, new RegExp(`آتش${ZW}نشانی|\\bfire station\\b|itfaiye`, "i")],
+  ["bank", /^(bank|atm)$/, new RegExp(`بانک${ZW}(ملی|ملت|صادرات|تجارت|سپه|مسکن|کشاورزی|پاسارگاد|سامان|پارسیان|رفاه|اقتصاد|آینده|شهر|سینا|دی|کارآفرین|توسعه|رسالت|مهر|سرمایه|گردشگری|خاورمیانه|ایران${ZW}زمین|قرض|صنعت|ایران|انصار|حکمت|قوامین)(?![\\u0600-\\u06FF])|پست${ZW}بانک|قرض${ZW}الحسنه|^bank\\b`, "i")],
+  ["post", /^post_office$/, new RegExp(`اداره${ZW}پست|دفتر${ZW}پیشخوان|\\bpost office\\b|\\bptt\\b`, "i")],
+  ["library", /^library$/, /کتابخانه|\blibrary\b|kütüphane/i],
+  ["government", /^(townhall|courthouse|government|embassy|public_building|ministry|community_centre|social_facility|military)$/, /شهرداری|اداره|وزارت|سازمان|دادگستری|دادسرا|فرمانداری|استانداری|بخشداری|سفارت|کنسولگری|بهزیستی|سرای محله|\bembassy\b|belediye/i],
+  ["cemetery", /^(grave_yard|cemetery)$/, /آرامستان|قبرستان|گلزار شهدا|\bcemetery\b|mezarlığı/i],
+];
+
+/** What kind of non-shop place this is, by its map class first, then its name — or null: a shop. */
+export function civicKind(cls = "", name = ""): CivicKind | null {
+  const c = cls.toLowerCase();
+  return CIVIC_RULES.find(([, byCls]) => byCls.test(c))?.[0] ?? CIVIC_RULES.find(([, , byName]) => byName.test(name))?.[0] ?? null;
+}
+
+/** Is this place a shop at all? (Not one of the places above.) */
+export const isShop = (cls = "", name = "") => civicKind(cls, name) === null;
+
+/** How a non-shop place looks on its card: emoji and what it is. */
+export const CIVIC_LOOK: Record<CivicKind, { emoji: string; label: string; color: string }> = {
+  mosque: { emoji: "🕌", label: msg("Mosque"), color: "#2bb3a3" },
+  worship: { emoji: "⛪", label: msg("Place of worship"), color: "#8b9cf7" },
+  school: { emoji: "🏫", label: msg("School"), color: "#f4b942" },
+  university: { emoji: "🎓", label: msg("University"), color: "#7c83fd" },
+  hospital: { emoji: "🏥", label: msg("Hospital"), color: "#ef4444" },
+  clinic: { emoji: "🩺", label: msg("Health centre"), color: "#f87171" },
+  police: { emoji: "🚓", label: msg("Police station"), color: "#3b82f6" },
+  fire: { emoji: "🚒", label: msg("Fire station"), color: "#f97316" },
+  bank: { emoji: "🏦", label: msg("Bank"), color: "#facc15" },
+  post: { emoji: "📮", label: msg("Post office"), color: "#60a5fa" },
+  library: { emoji: "📚", label: msg("Library"), color: "#a3a3ff" },
+  government: { emoji: "🏛️", label: msg("Government office"), color: "#94a3b8" },
+  cemetery: { emoji: "🪦", label: msg("Cemetery"), color: "#78716c" },
+};
+
+/** The number to call for this kind of place's emergency, by country (Iran: police 110, fire 125, ambulance 115; Turkey and Europe: 112). */
+export function emergencyNumber(kind: CivicKind, country: string): string | null {
+  const need = kind === "police" ? "police" : kind === "fire" ? "fire" : kind === "hospital" || kind === "clinic" ? "ambulance" : null;
+  if (!need) return null;
+  if (country === "IR") return need === "police" ? "110" : need === "fire" ? "125" : "115";
+  if (country === "US" || country === "CA") return "911";
+  if (country === "GB") return "999";
+  return "112";
+}

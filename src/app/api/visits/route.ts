@@ -5,11 +5,12 @@
 import { route } from "@/server/http";
 import { countVisit, visitorOf, visitTotals } from "@/server/visits";
 import { visitKind } from "@/lib/visits";
+import { clientIp } from "@/lib/clientIp";
 
 export const GET = route(async () => visitTotals());
 
 export const POST = route(async (req) => {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
+  const ip = clientIp(req.headers);
   const path = await req.json().then((b: { path?: unknown }) => b?.path).catch(() => undefined);
   const { setCookie, ...who } = await visitorOf(req);
   const res = Response.json(await countVisit(ip, visitKind(path), who));

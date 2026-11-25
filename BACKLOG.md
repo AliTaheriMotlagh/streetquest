@@ -1,7 +1,7 @@
 # StreetQuest — backlog (the one place for open work)
 
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
-(then delete it next time), add what's new. Last gathered: 2026-11-19 (evening: steps 0–2 worked; resume at step 2 budgets, then 3).
+(then delete it next time), add what's new. Last gathered: 2026-11-26 (Cloudflare/Iran fixed in code + steps 3, 4, 6c done; next: the deploy steps below, then step 2 budgets).
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
@@ -19,6 +19,21 @@ Everything unfinished from every session, in one list. Update it at the end of e
 | Stores per user | **One**; more for verified businesses / paid plans. | Simple; ties into the plans. |
 
 ## Now — run top-down (tools + best practice per step)
+
+00. **Cloudflare + Iran (2026-11-26)** — code done, tests green; deploy steps need the user (auto mode refused prod secrets):
+   - [x] Root cause of empty menus/Torob on prod: Workers can't fetch a bare IP (error 1003); RELAY_URL was
+         `http://37.32.28.215:8790/…`. Fix in code: `reachable()` in lib/relayUrl.ts rewrites to `37-32-28-215.sslip.io`
+         on Workers (probed from the edge: hostname 200 in 173 ms, IP 1003). Torob answers Cloudflare 490 → needs relay.
+   - [x] Player IP `cf-connecting-ip` + front-door key (lib/clientIp.ts; forged x-forwarded-for no longer counts),
+         country `cf-ipcountry` (locale picked Persian only via Accept-Language before), IP location from request.cf.
+   - [x] Iran front door `front/front.mjs` (+ install.sh, `npm run front:deploy`): whole site at
+         `https://37-32-28-215.sslip.io:8443`, disk cache for build files, FRONT_KEY → x-front-ip. Port 8443 open on
+         the box (tested); checked locally against live prod (pages, cache hit 8 ms, guest sign-in).
+   - [ ] USER: `npx wrangler secret put RELAY_URL --name streetquest` = `http://37-32-28-215.sslip.io:8790/<RELAY_KEY>`,
+         `RELAY_FOR=all`, `FRONT_KEY` (same as .env, made by the first `npm run front:deploy`); push to main (CI deploys);
+         `npm run front:deploy`; then `/api/health?ext=1` + a fresh `?menu=` on prod, and open the :8443 address on a phone
+         on Irancell/MCI without VPN. Share the :8443 address with Iranian players.
+   - [ ] Front door never seen on a real Iranian mobile line; box is 1 CPU / 1 GB — watch `systemctl status streetquest-front`.
 
 0. **Leftovers** (2026-11-19)
    - [x] Stores phase 0: kinds + details + coins/toman, seller phone & payment page (Shop `phone`/`payLink`), buyer ↔
@@ -75,20 +90,23 @@ Everything unfinished from every session, in one list. Update it at the end of e
      overlay, Spector.js for draw calls, `npm run test:lag`, Chrome CPU 4× throttle. Practices: instancing, LOD +
      impostors, object pools, a per-frame time-budgeted work queue (≤4 ms), no React state per frame, KTX2/meshopt assets.
      Target: iPad 7th gen steady 30 fps for 15 min without getting hot.
-3. **NPC chat**
-   - [ ] One audio channel "talk": neural reads the reply → else a premade line only if its text matches → else
-         speechSynthesis; a new line stops the old. Never two voices.
-   - [ ] Replies sometimes not spoken: unlock AudioContext + speechSynthesis on the first talk tap (iOS).
-   - [ ] Context-aware replies (`lib/street/npcTalk.ts`): per-NPC persona (seeded name, age, temper), role, mood,
+3. **NPC chat** (2026-11-26: a–d done in code, unit-tested; never heard in a real 3D view / iPhone yet)
+   - [x] One talk channel (lib/street/talkVoice.ts): neural → exact-text premade → speechSynthesis → subtitle; new line stops old.
+   - [x] iOS: `unlockTalk()` on every talk-panel tap.
+   - [x] Shopkeeper threat score with hysteresis (lib/street/threat.ts), keepers return when calm (`storefronts.reopen`).
+   - [x] Context replies: `personaOf(id)`, gun/shots/crash/hour/met-before/insult escalation. Left: place type (no data in Drive).
+   - [~] (was) Context-aware replies (`lib/street/npcTalk.ts`): per-NPC persona (seeded name, age, temper), role, mood,
          wanted level, armed/unarmed, recent events, place type, time; conversation memory (repeat insults escalate).
          Utility-AI scoring for reactions; optional Claude route per the decision table.
-   - [ ] Shopkeepers flee too soon: threat score (car speed toward them, gun drawn, shots, wanted) with hysteresis
+   - [x] (was) Shopkeepers flee too soon: threat score (car speed toward them, gun drawn, shots, wanted) with hysteresis
          (flee > 0.7, calm < 0.3), shopkeepers braver + stay near the shop, return when calm. Unit tests.
 4. **Travel quick fixes**
    - [x] Fuel tiers (settings → Travel planner, `fuelCost`) + "My fuel card still has quota" toggle on the plan.
-   - [ ] Shared z-index scale (`--z-map < --z-hud < --z-sheet < --z-dialog < --z-toast`), dialogs portalled to body.
-   - [ ] RTL checkbox on the redirect page (logical CSS props, `margin-inline-*`).
-   - [ ] Bus duration missing (Tehran → Shiraz): OSRM road km ÷ ~70 km/h bus speed, shown as "about".
+   - [x] (2026-11-26) Shared z-index scale; LeaveGuard dialog portalled. Left: ~60 raw z-indexes in world/globals/filters css
+         and inline zIndex in Game/Empire/LocationUi modals. Not screenshotted at 360 px.
+   - [x] (was) Shared z-index scale (`--z-map < --z-hud < --z-sheet < --z-dialog < --z-toast`), dialogs portalled to body.
+   - [x] RTL checkbox on the redirect page (logical CSS props, `margin-inline-*`).
+   - [x] (uses the bus site's road km, else straight line × 1.3; no OSRM call) Bus duration missing (Tehran → Shiraz): OSRM road km ÷ ~70 km/h bus speed, shown as "about".
 5. **Travel upgrade**
    - [ ] Nearest date with a ticket: ±14-day calendar strip (lowest price/day, grey = none, "next available"),
          days fetched in parallel with `p-limit` 4 and cached 30 min (stale-while-revalidate).
@@ -108,7 +126,10 @@ Everything unfinished from every session, in one list. Update it at the end of e
    - [ ] Hit-able props (bins, dumpsters, cones, chairs, signs, streetKit): extend `lib/street/carPhysics.ts` with
          light prop bodies (mass per kind, impulse from car mass × speed, slide/tip/dent/break, car slows); only props
          within 40 m awake, sleep at rest, instanced matrices. (Rapier WASM only if this proves too weak.)
-   - [ ] Mosque/school/bank/hospital/police/government are NOT shops (extend `isShop` everywhere: cards, signs,
+   - [x] (2026-11-26) `civicKind` + CivicCard (local prayer times lib/prayerTimes.ts, emergency numbers, hours). Left:
+         2D-map clinics/opticians share a category (only "درمانگاه" switches); libraries still "Books & library" in missions;
+         prayer times not compared to an official Tehran timetable; card never seen in a browser.
+   - [x] (was) Mosque/school/bank/hospital/police/government are NOT shops (extend `isShop` everywhere: cards, signs,
          keepers, list/search) → info cards (prayer times computed locally, opening hours).
 7. **Shop interiors** — [ ] door → fade into an interior per store type (counter, shelves, fridges, labels from the
    real menu/catalog, keeper behind the counter); city stops drawing inside. Procedural layout + instancing + baked AO,
@@ -148,7 +169,8 @@ Everything unfinished from every session, in one list. Update it at the end of e
 - [ ] Turkey travel sources; Booking.ir / Flytoday real data (link-only now); Digikala link-only (bot wall).
 - [ ] Activity prices in `lib/travel/activities.ts` are estimates → real figures; real activity booking (link-out now).
 - [ ] Hotel/Bilbooard real photos never seen (alibaba cdn 404, bilbooard 403 from here).
-- [ ] Relay needs HTTPS + a domain before browsers can use it.
+- [ ] Relay needs HTTPS + a domain before browsers can use it. (Workers' fetch to https on :8791 timed out in the probe —
+      keep the server→relay hop on plain HTTP by sslip.io name, or put the relay behind the front door's TLS.)
 
 ## Needs the user (can't be done from this Mac)
 - [ ] Run e2e never run here: realReset, local, arena radius, 11-11 API specs, `e2e/api/gameFiles.spec.ts`

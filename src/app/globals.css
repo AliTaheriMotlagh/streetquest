@@ -14,6 +14,13 @@
    muted signal colours. The old names (--pink, --cyan…) stay as aliases so every
    older rule picks the new palette up. */
 :root {
+  /* Stacking scale — one order for everything that floats: map < HUD < sheet < dialog < toast.
+     Use these (or calc() off them) instead of new raw numbers, so a dialog is never under a panel. */
+  --z-map: 1;
+  --z-hud: 500;
+  --z-sheet: 700;
+  --z-dialog: 5000;
+  --z-toast: 6000;
   /* Surfaces, darkest to lightest */
   --bg: #0b0e14;
   --surface-0: #10141c;
@@ -144,7 +151,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .darken.dawn-tint .leaflet-tile, .darken.dusk-tint .leaflet-tile { filter: invert(1) hue-rotate(160deg) brightness(.85) contrast(1.1) saturate(.9) sepia(.25); }
 
 /* HUD */
-.hud { position: absolute; top: calc(10px + var(--safe-t)); left: 10px; right: 10px; z-index: 500; display: flex; gap: 8px; align-items: flex-start; pointer-events: none; }
+.hud { position: absolute; top: calc(10px + var(--safe-t)); left: 10px; right: 10px; z-index: var(--z-hud); display: flex; gap: 8px; align-items: flex-start; pointer-events: none; }
 .hud > * { pointer-events: auto; }
 .chip {
   background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;
@@ -158,7 +165,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .hud-right { margin-inline-start: auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 .phase { font-size: 12px; }
 
-.fab-col { position: absolute; inset-inline-end: 12px; bottom: calc(100px + var(--safe-b)); z-index: 500; display: flex; flex-direction: column; gap: 10px; }
+.fab-col { position: absolute; inset-inline-end: 12px; bottom: calc(100px + var(--safe-b)); z-index: var(--z-hud); display: flex; flex-direction: column; gap: 10px; }
 .fab { width: 50px; height: 50px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); font-size: 22px; display: grid; place-items: center; cursor: pointer; backdrop-filter: blur(10px); box-shadow: 0 6px 20px rgba(0,0,0,.4); position: relative; }
 .badge { position: absolute; top: -5px; inset-inline-end: -5px; background: var(--pink); color: #fff; font-size: 11px; font-weight: 800; border-radius: 10px; min-width: 19px; height: 19px; display: grid; place-items: center; padding: 0 4px; }
 
@@ -171,7 +178,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 
 /* Sheets / panels */
 .sheet {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 700; max-height: 78vh; display: flex; flex-direction: column;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: var(--z-sheet); max-height: 78vh; display: flex; flex-direction: column;
   background: var(--panel-solid); border-top: 1px solid var(--line); border-radius: 26px 26px 0 0; box-shadow: 0 -20px 50px rgba(0,0,0,.6);
   animation: up .22s cubic-bezier(.2,.9,.3,1.2); max-width: 640px; margin: 0 auto; padding-bottom: var(--safe-b);
 }
@@ -534,7 +541,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .02e
 .ping-menu button { background: var(--panel-solid); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 8px 12px; font-weight: 700; white-space: nowrap; cursor: pointer; text-align: start; }
 
 /* ---------- In-app dialogs (replace window.confirm / prompt) ---------- */
-.dialog-bg { z-index: 5000; }
+/* Fixed, not absolute: on a long scrolled page (travel, lists) it stays on screen. */
+.dialog-bg { position: fixed; z-index: var(--z-dialog); }
 .dialog { text-align: start; max-width: 360px; }
 
 /* ---------- Performance on phones/tablets ----------
@@ -945,7 +953,7 @@ h2, .sheet-head h2 { text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 18px rgba(240,192,
 
 /* Play from home */
 .home-chip { cursor: pointer; color: var(--green); }
-.travel-banner { position: absolute; top: calc(68px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 555; display: flex; gap: 10px; align-items: center; min-width: min(320px, calc(100% - 24px)); max-width: calc(100% - 24px); padding: 8px 8px 10px; padding-inline-start: 8px; border-radius: 12px; background: #11161f; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; overflow: hidden; }
+.travel-banner { position: absolute; top: calc(68px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: calc(var(--z-hud) + 55); display: flex; gap: 10px; align-items: center; min-width: min(320px, calc(100% - 24px)); max-width: calc(100% - 24px); padding: 8px 8px 10px; padding-inline-start: 8px; border-radius: 12px; background: #11161f; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 8px 24px rgba(0,0,0,.45); white-space: nowrap; overflow: hidden; }
 .travel-banner .tb-ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: rgba(91,211,140,.14); color: #5bd38c; flex: none; }
 .travel-banner .tb-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; line-height: 1.2; }
 .travel-banner .tb-txt b { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
@@ -1102,8 +1110,8 @@ input[type=range] { padding: 0; accent-color: var(--yellow); background: none; b
 .ad-sound { position: absolute; right: 50%; transform: translateX(50%); bottom: 18px; background: rgba(0,0,0,.65); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 12px; cursor: pointer; }
 
 /* PWA: offline + update bars */
-.offline-bar { position: fixed; left: 50%; top: calc(4px + var(--safe-t)); transform: translateX(-50%); z-index: 6000; max-width: calc(100% - 20px); background: #3a2a00; border: 2px solid var(--yellow); color: #ffe9a6; padding: 6px 12px; border-radius: 12px; font-size: 12px; box-shadow: 0 8px 20px rgba(0,0,0,.5); animation: pop .3s; }
-.update-bar { position: fixed; left: 10px; right: 10px; bottom: calc(86px + var(--safe-b)); z-index: 6000; max-width: 520px; margin: 0 auto; display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 16px; background: linear-gradient(135deg, #10301f, #12121f); border: 2px solid var(--green); box-shadow: 0 12px 30px rgba(0,0,0,.6); animation: bounceIn .4s cubic-bezier(.2,1.4,.4,1); font-size: 14px; }
+.offline-bar { position: fixed; left: 50%; top: calc(4px + var(--safe-t)); transform: translateX(-50%); z-index: var(--z-toast); max-width: calc(100% - 20px); background: #3a2a00; border: 2px solid var(--yellow); color: #ffe9a6; padding: 6px 12px; border-radius: 12px; font-size: 12px; box-shadow: 0 8px 20px rgba(0,0,0,.5); animation: pop .3s; }
+.update-bar { position: fixed; left: 10px; right: 10px; bottom: calc(86px + var(--safe-b)); z-index: var(--z-toast); max-width: 520px; margin: 0 auto; display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 16px; background: linear-gradient(135deg, #10301f, #12121f); border: 2px solid var(--green); box-shadow: 0 12px 30px rgba(0,0,0,.6); animation: bounceIn .4s cubic-bezier(.2,1.4,.4,1); font-size: 14px; }
 .offline-bar { white-space: nowrap; top: calc(76px + var(--safe-t)); }
 .ad-timer-n { position: relative; z-index: 1; }
 

@@ -189,6 +189,8 @@ export type Trip = {
   depart: string;
   arrive?: string;
   minutes?: number;
+  /** `minutes` is an estimate (buses: the sites give no arrival time) — shown as "about". */
+  about?: boolean;
   /** The cheapest price on any site (toman). */
   price: number;
   /** Its price before a discount. */
@@ -369,6 +371,20 @@ function trainTrip(r: Route, source: TripSource, x: { number: string; depart: st
 }
 
 type AliBus = { proposalId?: string; companyName?: string; departureDateTime?: string; price?: number; beforeDiscountPrice?: number; availableSeats?: number; busType?: string; orginTerminal?: string | null; destinationTerminal?: string | null; isRefundable?: boolean; distance?: number; logoPath?: string; rate?: number };
+/** Intercity buses average about this, stops and terminals included (km/h). */
+export const BUS_KMH = 70;
+/** Roads wind: about this much longer than the straight line (plan.ts ROAD_FACTOR; that file imports this one). */
+const WINDING = 1.3;
+
+/** A bus ride's length in minutes (rounded to 5), from the road distance the site gives, else from the
+ *  cities' positions; undefined when neither is known. The sites list departures only, never arrivals. */
+export function busMinutes(roadKm: number | null | undefined, from?: { lat?: number | null; lng?: number | null } | null, to?: { lat?: number | null; lng?: number | null } | null): number | undefined {
+  let km = roadKm && roadKm > 0 ? roadKm : 0;
+  if (!km && from?.lat != null && from.lng != null && to?.lat != null && to.lng != null) km = (distanceM({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }) / 1000) * WINDING;
+  if (!km) return undefined;
+  return Math.max(5, Math.round(((km / BUS_KMH) * 60) / 5) * 5);
+}
+
 export function fromAlibabaBuses(json: unknown, r: Route): Trip[] {
   const list = (json as { result?: { availableList?: AliBus[] } })?.result?.availableList ?? [];
   return list
@@ -381,6 +397,8 @@ export function fromAlibabaBuses(json: unknown, r: Route): Trip[] {
       fromPlace: tidy(b.orginTerminal) || r.from.fa,
       toPlace: tidy(b.destinationTerminal) || r.to.fa,
       depart: local(b.departureDateTime),
+      minutes: busMinutes(b.distance, r.from, r.to),
+      about: true,
       price: toman(b.price),
       was: b.beforeDiscountPrice && b.beforeDiscountPrice > (b.price ?? 0) ? toman(b.beforeDiscountPrice) : undefined,
       seats: b.availableSeats,

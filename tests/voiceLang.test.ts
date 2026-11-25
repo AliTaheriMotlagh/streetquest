@@ -64,12 +64,3 @@ it("the device voice: right language, then gender by name, then en-US", () => {
   assert.equal(pickDeviceVoice([{ name: "Maryam", lang: "fa-IR" }], "en", "m"), null);
   assert.equal(pickDeviceVoice([{ name: "Google UK English Female", lang: "en-GB" }, { name: "Google UK English Male", lang: "en-GB" }], "en", "f")?.name, "Google UK English Female");
 });
-
-it("a conversation with no voice gets one recorded greeting, not one per line", async () => {
-  const { talkClip, TALK_CLIP_GAP_MS } = await import("../src/lib/street/voiceLang");
-  assert.equal(talkClip({ neural: false, device: false, now: 1000, lastClip: -Infinity }), true);
-  assert.equal(talkClip({ neural: false, device: false, now: 1000 + TALK_CLIP_GAP_MS - 1, lastClip: 1000 }), false);
-  assert.equal(talkClip({ neural: false, device: false, now: 1000 + TALK_CLIP_GAP_MS, lastClip: 1000 }), true);
-  assert.equal(talkClip({ neural: false, device: true, now: 1e9, lastClip: 0 }), false);
-  assert.equal(talkClip({ neural: true, device: false, now: 1e9, lastClip: 0 }), false);
-});

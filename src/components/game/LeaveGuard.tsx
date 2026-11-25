@@ -5,6 +5,7 @@
 // every external link the game draws (target="_blank"), in the map and in the 3D city alike.
 // "Don't ask again for this site" is remembered on this device only.
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { t } from "@/lib/i18n";
 import { leaveInfo, type LeaveInfo } from "@/lib/stores/directory";
 import { Button } from "@/components/Button";
@@ -87,7 +88,8 @@ export function LeaveGuard() {
     open(href);
     setAsk(null);
   };
-  return (
+  // On body, not inside the game: a panel, the 3D view or a transformed parent can't cover it.
+  return createPortal(
     <div className="leave-back" role="presentation" onClick={() => setAsk(null)}>
       <div className="leave-card" role="dialog" aria-modal="true" aria-labelledby="leave-title" onClick={(e) => e.stopPropagation()} style={site ? ({ "--site": site.color } as React.CSSProperties) : undefined}>
         <div className="leave-hero" aria-hidden>
@@ -119,13 +121,15 @@ export function LeaveGuard() {
           <li>{t("StreetQuest doesn't see what you do there; come back any time — the game keeps your place.")}</li>
         </ul>
         <label className="leave-skip small">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> {t("Don't ask again for {site}", { site: name })}
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          <span>{t("Don't ask again for {site}", { site: name })}</span>
         </label>
         <div className="row">
           <Button className="btn ghost grow" onClick={() => setAsk(null)} autoFocus>{t("Stay in the game")}</Button>
           <Button className="btn yellow grow" onClick={go}>{t("Open {site}", { site: name })} ↗</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -871,7 +871,7 @@ export class Storefronts {
   }
 
   /** Open now, per store, worked out once a minute (the Intl clock behind it is costly, and syncs come many times a second). */
-  /** Stores whose keeper pulled the shutter down (gunfire nearby), until this time (performance.now ms). */
+  /** Stores whose keeper pulled the shutter down (gunfire nearby), until this time (performance.now ms) — or until reopen(). */
   private panicUntil = new Map<string, number>();
   /**
    * Shots or a blast by these stores: shutters down, sign dimmed, for `secs`. The next sync
@@ -881,6 +881,11 @@ export class Storefronts {
     const until = performance.now() + secs * 1000;
     for (const id of ids) this.panicUntil.set(id, Math.max(this.panicUntil.get(id) ?? 0, until));
     if (ids.length) this.openMin = -1;
+  }
+
+  /** The keeper is calm again: the shutter lifts now (if the hours say it's open). */
+  reopen(id: string) {
+    if (this.panicUntil.delete(id)) this.openMin = -1;
   }
 
   private isOpen(id: string, kind: StoreKind, week: Week | null | undefined) {

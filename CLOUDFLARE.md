@@ -13,7 +13,8 @@ Production runs on Cloudflare Workers at **https://streetquest.remixt.app**. Ver
 | Database | Neon Postgres through `@prisma/adapter-neon` (pooled URL; per-request Prisma clients) |
 | Daily cleanup | Cloudflare Cron Trigger `0 4 * * *` → `/api/cron/cleanup` with `CRON_SECRET` |
 | Street Arena realtime | Existing VPS server `wss://37-32-28-215.sslip.io:8791` (`RT_URL`, shared `RT_SECRET`) |
-| Iranian sites relay | Existing VPS relay `http://37.32.28.215:8790/<key>` (`RELAY_URL`, `RELAY_FOR`) |
+| Iranian sites relay | Existing VPS relay `http://37-32-28-215.sslip.io:8790/<key>` (`RELAY_URL`, `RELAY_FOR=all`) — a name, never the bare IP: Workers refuse IPs (error 1003) |
+| Iran front door (no VPN) | `https://37-32-28-215.sslip.io:8443` on the same VPS (`front/front.mjs`, `npm run front:deploy`, shared `FRONT_KEY`) |
 
 ## Automatic deploy
 
@@ -50,6 +51,15 @@ The VPS posts results to `APP_URL`. After changing the production domain, redepl
 ```bash
 RT_APP_URL=https://streetquest.remixt.app npm run rt:deploy
 ```
+
+## Players in Iran
+
+- Iranian lines throttle Cloudflare's addresses on and off. The front door on the Iran VPS serves the whole site from
+  inside Iran (README → "Players in Iran without a VPN"): share `https://37-32-28-215.sslip.io:8443` with them.
+- The Worker needs `FRONT_KEY` (same as the VPS's) so players behind the front door keep their own address.
+- Cloudflare's own egress is abroad, so Iranian sites (Snappfood, Torob, Divar, Takhfifan, travel) are read through the
+  relay: `RELAY_FOR=all`. Check with `/api/health?ext=1`.
+- Locale and the rough IP location use `cf-ipcountry` / `request.cf` (Vercel's `x-vercel-ip-*` headers don't exist here).
 
 ## Notes
 

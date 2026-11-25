@@ -61,7 +61,7 @@ a.site-chip.link:hover, a.site-chip.link:focus-visible { background: color-mix(i
 .svc-ico { font-size: 26px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--site) 22%, transparent); }
 
 /* ---- leaving the game */
-.leave-back { position: fixed; inset: 0; z-index: 4000; display: grid; place-items: center; padding: 16px; background: rgba(4, 6, 10, .62); backdrop-filter: blur(4px); animation: leave-fade .18s ease-out; }
+.leave-back { position: fixed; inset: 0; z-index: var(--z-dialog); display: grid; place-items: center; padding: 16px; background: rgba(4, 6, 10, .62); backdrop-filter: blur(4px); animation: leave-fade .18s ease-out; }
 .leave-card { --site: var(--sky); width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px 18px 16px; border-radius: 22px; background: radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--site) 18%, transparent), transparent 70%), var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 24px 70px rgba(0, 0, 0, .6); text-align: center; animation: leave-up .22s cubic-bezier(.2, .8, .2, 1); }
 .leave-ico { width: 64px; height: 64px; display: grid; place-items: center; font-size: 34px; border-radius: 18px; background: color-mix(in srgb, var(--site) 22%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--site) 45%, transparent), 0 10px 26px color-mix(in srgb, var(--site) 30%, transparent); }
 /* Game → site: the two badges and a dotted path that runs from one to the other. */
@@ -85,7 +85,9 @@ a.site-chip.link:hover, a.site-chip.link:focus-visible { background: color-mix(i
 .leave-url { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .leave-url .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .leave-notes { text-align: start; margin: 12px 0; padding-inline-start: 18px; line-height: 1.6; }
-.leave-skip { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 4px 0 12px; cursor: pointer; }
+.leave-skip { display: flex; gap: 8px; align-items: center; justify-content: center; margin-block: 4px 12px; margin-inline: 0; cursor: pointer; text-align: start; }
+/* Native checkboxes carry a physical left/right margin: in Persian it sat on the wrong side of the text. */
+.leave-skip input { margin: 0; margin-inline-end: 2px; flex: none; width: 18px; height: 18px; accent-color: var(--site); }
 .leave-card .row { gap: 8px; }
 @keyframes leave-fade { from { opacity: 0; } }
 @keyframes leave-up { from { opacity: 0; transform: translateY(16px) scale(.98); } }

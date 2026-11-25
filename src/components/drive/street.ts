@@ -318,7 +318,7 @@ export class StreetLife {
       return best;
     },
     shot: (x, z) => {
-      this.h.crowd.alarm(x, z, 45);
+      this.h.crowd.alarm(x, z, 45, "shot");
       this.h.traffic.alarm(x, z, 35);
       // A burst of fire is one report, not one per bullet.
       const now = performance.now();
@@ -533,7 +533,7 @@ export class StreetLife {
     crashSound(k);
     this.h.shake(Math.min(0.8, 0.15 + k));
     navigator.vibrate?.(Math.round(20 + 80 * k));
-    if (c.into > 6) this.h.crowd.alarm(c.x, c.z, 15 + 25 * k);
+    if (c.into > 6) this.h.crowd.alarm(c.x, c.z, 15 + 25 * k, "crash");
   }
 
   private hurtMyCar(dmg: number) {
@@ -565,7 +565,7 @@ export class StreetLife {
         this.h.push(((me.x - x) / (dm || 1)) * b.push, ((me.z - z) / (dm || 1)) * b.push);
       }
     }
-    this.h.crowd.alarm(x, z, 70);
+    this.h.crowd.alarm(x, z, 70, "blast");
     this.h.traffic.alarm(x, z, 60);
     if (byMe) {
       this.crime("explosion", x, z);
@@ -643,7 +643,7 @@ export class StreetLife {
       // A car coming fast: people dive out of its way.
       if (sp > 7 && now - this.dodgeAt > 350) {
         this.dodgeAt = now;
-        crowd.alarm(me.x + f.fx * 7, me.z + f.fz * 7, 4.5);
+        crowd.alarm(me.x + f.fx * 7, me.z + f.fz * 7, 4.5, "dodge");
       }
     }
     for (const m of traffic.movers()) crowd.hitBy(m.x, m.z, m.r, m.vx, m.vz);
@@ -753,7 +753,7 @@ export class StreetLife {
       this.fx.sparks(e.x, 0.5, e.z, k);
       this.fx.debris(e.x, 0.6, e.z, k);
       if (d < 25) this.h.shake(Math.min(0.4, k * 0.5 * (1 - d / 25)));
-      if ((e.into ?? 0) > 6) this.h.crowd.alarm(e.x, e.z, 10 + 20 * k);
+      if ((e.into ?? 0) > 6) this.h.crowd.alarm(e.x, e.z, 10 + 20 * k, "crash");
     } else {
       const when = this.byMe.get(e.ref);
       this.explode(e.x, e.z, when != null && now - when < 90_000, false, e.ref as { yaw?: number; paint?: string });

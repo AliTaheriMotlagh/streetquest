@@ -1052,11 +1052,14 @@ export async function storeData(s: StoreInfo): Promise<StoreData> {
   // hours, Instagram) and searches in the local language — no lookups that can't find anything.
   const iran = inIran(s);
   const turkey = inTurkey(s);
-  const code = owned ?? (iran || turkey ? (await matchVendor(s).catch(() => null))?.code : null) ?? null;
+  // A mosque, school, hospital, bank… (cat "civic", lib/storeKinds.ts civicKind) sells nothing: its card
+  // wants only the map's hours, phones and address — no menu or Torob lookups.
+  const civic = s.cat === "civic";
+  const code = owned ?? (!civic && (iran || turkey) ? (await matchVendor(s).catch(() => null))?.code : null) ?? null;
   const menu = code ? await vendorMenu(code, s).catch(() => null) : null;
   // Torob lists online shops: this store's own shop there (the owner's link, else one with
   // exactly its name) and its catalog; failing that, listings only this store sells.
-  const skipTorob = isFoodCat(s.cat) || !iran;
+  const skipTorob = civic || isFoodCat(s.cat) || !iran;
   const tl = s.torob ? torobLink(s.torob) : null;
   const ownShop = tl ? torobShopId(tl) : null;
   const shop = skipTorob ? null : await (ownShop ? torobShopById(ownShop) : torobShop(s.name)).catch(() => null);

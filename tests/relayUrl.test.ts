@@ -2,7 +2,7 @@
 // generic route when RELAY_URL is set and the site is in RELAY_FOR, else straight.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { siteBase } from "@/lib/relayUrl";
+import { reachable, siteBase } from "@/lib/relayUrl";
 
 describe("siteBase", () => {
   const R = "http://37.0.0.1:8790/key-0123456789abcdef/";
@@ -24,5 +24,21 @@ describe("siteBase", () => {
   it("lets a site's own URL win, and \"off\" turn it off", () => {
     assert.equal(siteBase("snappfood", "http://relay/k/snappfood/", "https://snappfood.ir", { RELAY_URL: R }), "http://relay/k/snappfood");
     assert.equal(siteBase("snappfood", "off", "https://snappfood.ir", { RELAY_URL: R }), null);
+  });
+  it("on Cloudflare Workers turns a bare-IP relay into its sslip.io name (Workers refuse IPs: error 1003)", () => {
+    assert.equal(siteBase("snappfood", undefined, "https://snappfood.ir", { RELAY_URL: R }, true), "http://37-0-0-1.sslip.io:8790/key-0123456789abcdef/https/snappfood.ir");
+    assert.equal(siteBase("snappfood", "http://37.0.0.1:8790/k/snappfood", "https://snappfood.ir", {}, true), "http://37-0-0-1.sslip.io:8790/k/snappfood");
+    assert.equal(siteBase("snappfood", undefined, "https://snappfood.ir", { RELAY_URL: R }, false), "http://37.0.0.1:8790/key-0123456789abcdef/https/snappfood.ir", "Node: as set");
+  });
+});
+
+describe("reachable", () => {
+  it("rewrites only a bare IPv4 host, keeping port, key and path", () => {
+    assert.equal(reachable("http://1.2.3.4:8790/k/x?y=1.2.3.4", true), "http://1-2-3-4.sslip.io:8790/k/x?y=1.2.3.4");
+    assert.equal(reachable("https://1.2.3.4/x", true), "https://1-2-3-4.sslip.io/x");
+    assert.equal(reachable("http://1.2.3.4", true), "http://1-2-3-4.sslip.io");
+    assert.equal(reachable("http://1-2-3-4.sslip.io:8790/k", true), "http://1-2-3-4.sslip.io:8790/k");
+    assert.equal(reachable("https://snappfood.ir/1.2.3.4", true), "https://snappfood.ir/1.2.3.4");
+    assert.equal(reachable("http://1.2.3.4.example.com/", true), "http://1.2.3.4.example.com/");
   });
 });

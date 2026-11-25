@@ -3,7 +3,7 @@
 // foot shows "💬 Talk (Y)"; then a panel at the bottom — phone-first, one thumb — with what you can
 // say: hello, the way to a café / restaurant / pharmacy / supermarket, what's good round here, what
 // about this store, a chat, some money, an insult, "follow me", goodbye. Their answer is spoken
-// (voices.talk: the on-device Persian voice, else the phone's) over their head, and written here as a
+// (voices.talk, one voice at a time: the on-device voice, else a recording of those very words, else the phone's) over their head, and written here as a
 // subtitle that runs with the voice — word by word from the moment it starts, while their face pulses.
 // Someone following you keeps the panel and takes orders (a little crew of your own): wait here, come on,
 // stay close, keep back, wait at the shop, wait by my car, keep watch (they shout when the police come), go home.
@@ -15,6 +15,7 @@ import { fmtNum, msg, t } from "@/lib/i18n";
 import { downloadMb, languageProgress, neuralNow, onNeuralChange, setNeuralPref, warmFor, warmLanguage } from "./tts/neural";
 import { WAY_KINDS, type Mood, type React as Reaction, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
 import { revealWords } from "@/lib/street/subtitle";
+import { unlockTalk } from "./voices";
 
 export type TalkAnswer = {
   text: string;
@@ -101,6 +102,8 @@ export function TalkPanel({ woman, following: following0, onAsk, onClose }: { wo
   const ask = (act: TalkAct, way?: WayKind, words?: string) => {
     if (ending) return;
     setWays(false);
+    // Inside the tap: iOS lets sound and the phone's speech start only here (the answer's voice comes a moment later).
+    unlockTalk();
     const a = onAsk(act, way);
     if (!a) return onClose();
     setMood(a.mood);
