@@ -185,7 +185,7 @@ export type WorldEvent = { id: string; slug: string; title: string; description:
 export type WorldDelivery = { id: string; title: string; description: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; reward: number; status: string; sender?: { username: string }; distanceM?: number };
 export type WorldRide = { id: string; pickupLabel: string; pickupLat: number; pickupLng: number; dropoffLabel: string; dropoffLat: number; dropoffLng: number; seats: number; note: string; fare: number; status: string; createdAt: string; rider?: { username: string; avatar: string }; distanceM?: number };
 export type WorldLottery = { id: string; name: string; lat: number; lng: number; radiusM: number; ticketPrice: number; maxTickets: number; drawAt: number; pot: number; status: "OPEN" | "DRAWN" | "REFUNDED"; official: boolean; host: string; winner: string | null; players: number; totalTickets: number; myTickets: number; mine: boolean; won: boolean };
-export type WorldShop = { id: string; name: string; emoji: string; lat: number; lng: number; mine: boolean; live: boolean; deal: number };
+export type WorldShop = { id: string; name: string; emoji: string; /** lib/shops.ts SHOP_CATEGORIES (older servers: none). */ category?: string; lat: number; lng: number; mine: boolean; live: boolean; deal: number };
 // Player shops: the server's own views (plain JSON — numbers and strings only).
 export type { OrderView as ShopOrder, ProductView as ShopProduct, ShopCard, ShopView };
 export type ShopDeal = ShopCard["showcase"][number] & { shopId: string; shopName: string; shopEmoji: string; distanceM: number | null };

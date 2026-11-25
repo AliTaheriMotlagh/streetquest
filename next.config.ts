@@ -18,6 +18,15 @@ const config: NextConfig = {
   // OpenNext patches the generated Prisma client for the Workers runtime, so both copies
   // must stay outside the bundle (see opennext.js.org/cloudflare/howtos/db).
   serverExternalPackages: ["@prisma/client", ".prisma/client", "bcryptjs"],
+  // The store-scan optimiser (components/game/scan.ts) runs gltf-transform in the browser; its package also carries a
+  // Node file reader (NodeIO, never used there) that imports node:fs / node:path — stubbed out of the browser bundle.
+  webpack(cfg, { isServer, webpack }) {
+    if (!isServer) {
+      cfg.plugins.push(new webpack.NormalModuleReplacementPlugin(/^node:(fs|path|fs\/promises)$/, (r: { request: string }) => void (r.request = r.request.replace(/^node:/, ""))));
+      cfg.resolve.fallback = { ...cfg.resolve.fallback, fs: false, path: false, "fs/promises": false };
+    }
+    return cfg;
+  },
   async headers() {
     return [
       {

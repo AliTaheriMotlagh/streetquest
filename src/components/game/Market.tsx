@@ -20,6 +20,7 @@ import { resizePhoto } from "./photo";
 import { sfx } from "./sfx";
 import { MoveIcon, revealInSheet, Sheet, useGame } from "./ui";
 import { OwnerLinkFields, StoreExtras } from "./StoreInfo";
+import { ScanCard } from "./ScanCard";
 import { ShareButton } from "@/components/ShareButton";
 import { cleanPayLink, cleanPhone, contactOf, detailRows, KINDS, kindLine, priceProblem, PRODUCT_KIND_KEYS, shopRoom, type Currency, type FieldDef, type Pair, type ProductKind } from "@/lib/shopKinds";
 
@@ -617,6 +618,8 @@ function MyShop({ go }: { go: (v: View) => void }) {
         <div className="stat"><b>{fmtNum(data.stats?.sold ?? 0)}</b><span>{t("Sold")}</span></div>
         <div className="stat"><b>{fmtNum(data.stats?.earned ?? 0)}</b><span>{t("Coins earned")}</span></div>
       </div>
+
+      <ScanCard shopId={s.id} />
 
       {!!pending.length && (
         <>

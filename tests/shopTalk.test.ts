@@ -45,3 +45,11 @@ test("the shopkeeper at the door says the store's name (and its best dish when k
   assert.ok(!("item" in (doorGreeting("Nayeb", null, 2).params ?? {})));
   assert.ok(PANIC_LINES.includes(panicLine(7)));
 });
+
+test("a player's shop prices in coins", () => {
+  const c: ShopCtx = { store: "S", sections: [{ title: "x", items: [{ id: "1", title: "Tea", about: "", price: 40, priceNow: 40, photo: "" }] }], week: null, at: new Date(), num: String, coins: true };
+  assert.deepEqual(shopSay("price", { ...c, item: { title: "Tea", price: 40, priceNow: 40 } }), { key: "{item}: {price} coins.", params: { item: "Tea", price: "40" } });
+  assert.equal(shopSay("recommend", c).key, "Everyone orders our {item} — {price} coins.");
+  assert.equal(shopSay("checkout", { ...c, basket: { n: 2, total: 80 } }).key, "That's {n} things — {total} coins altogether.");
+  assert.equal(shopSay("price", { ...c, coins: false, item: { title: "Tea", price: 40, priceNow: 40 } }).key, "{item}: {price} toman.");
+});

@@ -250,9 +250,29 @@ mood scales XP; loot funds research; territory funds the army.
   `Crowd.setPace` / `goTo`). The 💬 button holds on to whoever it offered a little longer (no flicker
   as they pass, 4.5 m), and standing still beside someone makes them stop and look at you; people step aside for each
   other and for you instead of walking through (`Crowd.separate`).
-- **Walk into a store** (`drive/ShopScreen.tsx`; lines `lib/street/shopTalk.ts`): on foot at an open shop's door,
-  🚪 Enter (B) fills the screen with the inside — the shopkeeper greets you and, when asked, recommends dishes, names
-  today's discounts and hours from the real menu (Snappfood), and adds up a basket; the order is finished on Snappfood.
+- **Walk into a store — in 3D** (room `drive/interior3d.ts`, layout `lib/interior.ts`, HUD `drive/ShopScreen.tsx`,
+  lines `lib/street/shopTalk.ts`): on foot at an open shop's door, 🚪 Enter (B) and you're standing in its room, laid
+  out for its trade — a chelow-kababi's tables, blue-tiled dado, food counter and lit menu board; a bakery's bread racks
+  and glowing sangak tanoor; a supermarket's aisles and drinks fridges; a chemist's wall of boxes behind the counter; a
+  phone shop's lit panels; a boutique's rails and mirror. The store's **real menu or catalogue** (Snappfood, Torob, or
+  a player's own products) stands on the shelves, one thing per spot with a price tag (drinks in the fridge, discounts
+  on yellow tags), the rest stocked with plain goods; a big catalogue gets a bigger shop. The keeper (one of the
+  street's people models) stands behind the counter and turns to you. Drag to look round, tap the floor or WASD to
+  walk, tap a thing to see it (photo, price, **＋ Add**), tap the keeper to ask what's good, 📋 Menu for the whole
+  list (a tap there walks you to it on its shelf), walk out of the door to leave. While you're inside only the room
+  is drawn (the city stands still: cooler phone). A real store's order is finished on its site (Snappfood); a
+  **player's shop** — now standing in the 3D city too, enterable like any store — sells its coin products right at
+  the counter (**Pay 🪙**, held until pickup with a code), its toman ones by 📞 Call / 💳 Pay the seller. No WebGL:
+  the same screen as a list.
+- **Your store in 3D — the owner's own scan** (My shop → 🧊 *Your store in 3D*; `game/ScanCard.tsx`, optimiser
+  `game/scan.ts`, checks `lib/glbCheck.ts`, `/api/shops/scan`, file `/shop-scan/<id>?v=`): the owner scans the real
+  store with a free phone app (Polycam, Scaniverse, RealityScan — LiDAR iPhones/iPads give the best rooms), exports
+  .glb and picks it. It's made game-ready **in the browser** (the Workers server can't run mesh tools): welded,
+  simplified to ≤300k triangles (meshoptimizer), textures ≤2048 px re-encoded to WebP (JPEG on Safari), meshopt
+  compressed — a 40–80 MB scan becomes 3–8 MB; the server only checks it (glTF 2, ≤12 MB, ≤600k triangles, ≤16
+  textures, only extensions the game's loader draws) and keeps one per shop (`ShopScan`, cached forever per version).
+  Players walking in then stand in the real store (the generated room shows until it loads); ↻ Turn it so its street
+  side faces the door, replace or take it down.
 - **On-device voices — Persian, English, Turkish** (`drive/tts/`, rules `lib/tts/neural.ts`, voices
   `lib/tts/sherpa.ts`): what the shopkeeper and passers-by say that isn't a recorded line is spoken by sherpa-onnx
   (WebAssembly) in a Web Worker, in the player's language (`voiceLangOf`: the game's language, Turkish in Turkey).

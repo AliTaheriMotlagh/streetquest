@@ -13,9 +13,15 @@ import type { ShopLabel, StorePanel } from "./storefronts";
 
 export type MarkerInfo = { id: string; sel: Selected; emoji: string; color: string; label: string; cls: string; lat: number; lng: number; look: BizLook };
 
+const PLAIN_LOOK: BizLook = { tier: "basic", color: "", tagline: "", logo: null, menu: [], week: null };
+
+/** Businesses, and players' own shops (open ones, and mine) — you can walk into a player's shop and buy off its shelves. */
 export function markersOf(w: World | null): MarkerInfo[] {
   if (!w) return [];
-  return w.businesses.map((b) => ({ id: `bz:${b.id}`, sel: { type: "biz", data: b }, emoji: b.emoji, color: b.look.tier === "featured" ? "#f0c05a" : b.mine ? "#63b3f2" : (b.look.color || "#c9a05a"), label: b.name, cls: b.category, lat: b.lat, lng: b.lng, look: b.look }));
+  const shops: MarkerInfo[] = (w.shops ?? [])
+    .filter((s) => s.live || s.mine)
+    .map((s) => ({ id: `sh:${s.id}`, sel: { type: "shop", data: s }, emoji: s.emoji, color: s.mine ? "#63b3f2" : "#f4a261", label: s.name, cls: s.category ?? "other", lat: s.lat, lng: s.lng, look: PLAIN_LOOK }));
+  return [...shops, ...w.businesses.map((b): MarkerInfo => ({ id: `bz:${b.id}`, sel: { type: "biz", data: b }, emoji: b.emoji, color: b.look.tier === "featured" ? "#f0c05a" : b.mine ? "#63b3f2" : (b.look.color || "#c9a05a"), label: b.name, cls: b.category, lat: b.lat, lng: b.lng, look: b.look }))];
 }
 
 /** What a business's sign and panel show (Storefronts.setInfo). */

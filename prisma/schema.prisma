@@ -1112,6 +1112,7 @@ model Shop {
   products  Product[]
   images    ShopImage[]
   orders    ShopOrder[]
+  scan      ShopScan?
 
   @@index([lat, lng])
   @@index([expiresAt])
@@ -1141,6 +1142,20 @@ model Product {
 
   @@index([shopId, active])
   @@index([kind])
+}
+
+// The owner's 3D scan of the store (a .glb from a phone scanning app, optimised in the browser before upload and
+// checked by lib/glbCheck.ts): shown instead of the generated room when you walk in (components/drive/interior3d.ts).
+// One per shop; a new upload replaces it (a new `version`, so caches never serve the old one).
+model ShopScan {
+  shopId    String   @id
+  data      Bytes
+  version   String
+  turn      Int      @default(0) // quarter turns, so the street side faces the door
+  bytes     Int
+  triangles Int      @default(0)
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
 }
 
 // Shop banners and product photos. Rows never change (a new photo is a new row), so

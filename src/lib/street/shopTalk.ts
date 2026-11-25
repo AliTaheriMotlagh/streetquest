@@ -21,6 +21,18 @@ export type ShopCtx = {
   basket?: { n: number; total: number };
   /** Numbers in words ("120,000"). */
   num: (n: number) => string;
+  /** Prices are in game coins (a player's shop), not toman. */
+  coins?: boolean;
+};
+
+/** The same lines with the price in coins (a player's shop). */
+const IN_COINS: Record<string, string> = {
+  [msg("Everyone orders our {item} — {price} toman.")]: msg("Everyone orders our {item} — {price} coins."),
+  [msg("{item} is {off}% off today — {price} toman. And {n} more on offer.")]: msg("{item} is {off}% off today — {price} coins. And {n} more on offer."),
+  [msg("{item} is {off}% off today — {price} toman.")]: msg("{item} is {off}% off today — {price} coins."),
+  [msg("{item}: {price} toman — it's on offer today.")]: msg("{item}: {price} coins — it's on offer today."),
+  [msg("{item}: {price} toman.")]: msg("{item}: {price} coins."),
+  [msg("That's {n} things — {total} toman altogether.")]: msg("That's {n} things — {total} coins altogether."),
 };
 
 /** Sections that are the store's own "most popular" list (Snappfood's «پرطرفدارها»). */
@@ -49,6 +61,11 @@ export function offers(sections: MenuSection[]): (ShopItem & { off: number })[] 
 
 /** The shopkeeper's line for `act`. */
 export function shopSay(act: ShopAct, c: ShopCtx): ShopLine {
+  const l = line(act, c);
+  return c.coins && IN_COINS[l.key] ? { ...l, key: IN_COINS[l.key] } : l;
+}
+
+function line(act: ShopAct, c: ShopCtx): ShopLine {
   const state = c.week ? openState(c.week, c.at, c.timeZone) : null;
   const price = (i: ShopItem) => c.num(i.priceNow || i.price);
   switch (act) {

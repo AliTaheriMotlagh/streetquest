@@ -1,7 +1,7 @@
 # StreetQuest — backlog (the one place for open work)
 
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
-(then delete it next time), add what's new. Last gathered: 2026-11-26 (Cloudflare/Iran fixed in code + steps 3, 4, 6c done; next: the deploy steps below, then step 2 budgets).
+(then delete it next time), add what's new. Last gathered: 2026-11-26 (Cloudflare/Iran fixed in code + steps 3, 4, 6c done; step 7 shop interiors + owner 3D scans done in code; next: the deploy steps below, then step 2 budgets).
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
@@ -131,10 +131,24 @@ Everything unfinished from every session, in one list. Update it at the end of e
          prayer times not compared to an official Tehran timetable; card never seen in a browser.
    - [x] (was) Mosque/school/bank/hospital/police/government are NOT shops (extend `isShop` everywhere: cards, signs,
          keepers, list/search) → info cards (prayer times computed locally, opening hours).
-7. **Shop interiors** — [ ] door → fade into an interior per store type (counter, shelves, fridges, labels from the
-   real menu/catalog, keeper behind the counter); city stops drawing inside. Procedural layout + instancing + baked AO,
-   one static env map; CC0/CC BY props (Kenney, Poly Haven, Quaternius) via `gltf-transform` (meshopt + KTX2); low tier
-   gets a simpler room.
+7. **Shop interiors** (2026-11-26) — 3D rooms per trade, real menu on shelves with tags, keeper, buy; owner scans.
+   - [x] `lib/interior.ts` (pure, tests/interior.test.ts): 12 trades' rooms, fixtures + spots, drinks → fridge, plain
+         stock fill, walking/collision, stand-in-front. `drive/interior3d.ts` builds it (no shadows, ≤6 point lights,
+         RoomEnvironment off on lite, one tag atlas); Drive draws only the room while inside (city frozen).
+   - [x] ShopScreen = HUD over the room (drag look, tap walk/pick/keeper/door, 📋 list sheet, coin checkout for player
+         shops via /api/shops/orders, toman → call / pay link). Player shops (`sh:`) now 3D markers you can enter.
+   - [x] Owner 3D scan: ScanCard → browser optimiser (gltf-transform + meshoptimizer, WebP) → /api/shops/scan
+         (`ShopScan`, lib/glbCheck.ts, e2e/api/shopScan.spec.ts green) → interior loads it (`loadModel`, meshopt).
+         **Prisma pushed to the LOCAL db only — prod needs a deploy.** next.config: node:fs/path stubbed in the client
+         bundle (gltf-transform's NodeIO).
+   - [ ] Never tried with a real Polycam/Scaniverse export (big textures, KTX2-required exports get refused — tell
+         owners to pick "GLB" not "GLB (KTX2)"); never seen on iPhone/iPad Safari (WebP encode falls back to JPEG).
+   - [ ] Scan mode has no collision (walk box = scan bounds) and no keeper; place products into a scan (owner drags
+         them onto its shelves) — next step.
+   - [ ] Kenney/Quaternius CC0 props (fridges, espresso machine, tills) via gltf-transform to replace the box fixtures
+         on medium+; baked AO lightmap per room; real product photos as box textures (Snappfood CDN lacks CORS →
+         proxy through /api/img first).
+   - [ ] Interior screenshots only headless 1280×720; check 360×740 Persian + iOS sim (sims: ShopScreen HUD sizes).
 8. **Metro** — [ ] tap a station → sheet (lines, exits, interchanges, first/last train, headway) + its line bold on the
    metro map, others dimmed; station-to-station planner with the RAPTOR algorithm, fares; Iranian metros (Tehran,
    Mashhad, Isfahan, Shiraz, Tabriz, Karaj) from Geofabrik OSM `route=subway` relations in the city packs.

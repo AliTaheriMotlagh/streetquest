@@ -18,6 +18,7 @@ only the section you need.
 | 3D sound (distance, direction, output modes) / screen shape (FOV, sharpening, full screen) | `src/lib/audio/spatial.ts` (pure rules), `src/components/game/{spatial,sfx,samples}.ts`, `src/components/arena/gunsound.ts` (sounds take a world position `at`) / `src/lib/view.ts`, `src/components/drive/fullscreen.ts` |
 | Cloudflare prod / Iran access | `CLOUDFLARE.md`, `wrangler.jsonc`, `worker.ts`; Iran front door `front/{front.mjs,install.sh}` (`npm run front:deploy`, `FRONT_KEY`); player IP/country `src/lib/clientIp.ts`; Workers can't fetch bare IPs → `reachable()` in `src/lib/relayUrl.ts` |
 | Small-phone HUD sizes | `src/app/compact.css` (loaded last) |
+| Inside a store in 3D (room per trade, real menu on shelves, keeper, buy) / owner's 3D scan | layout `src/lib/interior.ts` (pure), room `src/components/drive/interior3d.ts`, HUD `src/components/drive/ShopScreen.tsx` (Drive `openRoom`/`closeRoom`); scan: `src/components/game/{ScanCard.tsx,scan.ts}` (browser optimiser), `src/lib/glbCheck.ts`, `/api/shops/scan`, `/shop-scan/[id]`, model `ShopScan` |
 | Play together (party + games tab in the 3D city) | `src/components/drive/PlayTogether.tsx`, `src/server/drive.ts` (parties, gather, invites), `/api/party` |
 | Who's online / presence | `src/server/presence.ts`, `src/app/api/online/route.ts`, `src/components/game/Online.tsx` |
 | Settings & economy defaults | `src/lib/settings.ts` (Admin → Game settings edits them live) |

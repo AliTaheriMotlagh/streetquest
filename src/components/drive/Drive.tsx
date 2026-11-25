@@ -13,7 +13,7 @@
 // street furniture, and the render resolution adapts to keep the frame rate up.
 // Solid things are solid: walls, trees, posts, shelters and other players' cars.
 import { Guard } from "../Guard";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { bearingTo, distanceM, formatDistance, hashStr, type LatLng } from "@/lib/geo";
 import { makeFrame, tileKey, tileOf, villageTile, withDetail, type CityTile } from "@/lib/city";
@@ -132,6 +132,7 @@ import {
   POOLS,
 } from "./world3d";
 import { loadPropModels } from "./propModels";
+import { Interior, type InteriorSpec } from "./interior3d";
 import { PROP_MODELS } from "@/lib/propModels";
 
 type Props = {
@@ -463,6 +464,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     following: (id: number) => boolean;
     /** The shopkeeper says this, right in front of me (ShopScreen). */
     shopkeeper: (text: string) => void;
+    /** Walk into a store's room (interior3d.ts): drawn instead of the city until `closeRoom`; `onLeave` when I walk out of its door. */
+    openRoom: (spec: Omit<InteriorSpec, "lite">, onLeave: () => void) => Interior | null;
+    closeRoom: () => void;
   } | null>(null);
   // Survives a graphics-style switch (which rebuilds the scene).
   const persist = useRef<{ frame: ReturnType<typeof makeFrame>; body: Body; placed: "" | "village" | "real"; placedAt: { x: number; z: number }; cam: CamMode; warpRound: number } | null>(null);
@@ -1734,7 +1738,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const here = frame.toLatLng(st.x, st.z);
       const L = live.current;
       // A business's sign: its own card.
-      if (pick.kind === "store" && pick.id.startsWith("bz:")) return openPick({ kind: "marker", id: pick.id });
+      if (pick.kind === "store" && (pick.id.startsWith("bz:") || pick.id.startsWith("sh:"))) return openPick({ kind: "marker", id: pick.id });
       if (pick.kind === "store") {
         const l = shopById(pick.id);
         if (!l) return setPicked(null);
@@ -1863,6 +1867,27 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       talkEnd: () => {
         if (convo != null) crowd.stopFor(convo, 0.8, st.x, st.z);
         convo = null;
+      },
+      openRoom: (spec, onLeave) => {
+        if (room) (room.dispose(), (room = null));
+        try {
+          room = new Interior({ ...spec, lite }, renderer);
+        } catch {
+          return null;
+        }
+        room.onLeave = onLeave;
+        roomLast = 0;
+        roomExposure = renderer.toneMappingExposure;
+        renderer.toneMappingExposure = 1;
+        gfx.cut();
+        return room;
+      },
+      closeRoom: () => {
+        if (!room) return;
+        room.dispose();
+        room = null;
+        renderer.toneMappingExposure = roomExposure;
+        gfx.cut();
       },
       shopkeeper: (text) => {
         camera.getWorldDirection(camFwd);
@@ -2114,6 +2139,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const paced = !benchOn();
     let lastActive = performance.now(), saver = saverPick(), lowBat = false, camX = 0, camY = 0, camZ = 0;
     let pc: Pace = { fps: 0, draw: true, measure: true };
+    /** The store I'm inside (ShopScreen opened it): drawn instead of the city, which stands still meanwhile. */
+    let room: Interior | null = null, roomLast = 0, roomExposure = 1;
     const poke = () => (lastActive = performance.now());
     const onSaver = () => (saver = saverPick());
     const POKES = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
@@ -2136,10 +2163,22 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           busy: combat.inMatch || !!chute || def().flies,
           covered: cover > 0,
           // The pause menu fills a phone or a portrait tablet (app/hud.css: a side column from 900 px).
-          hidden: cover === 2 || (menuOpen.current && el.clientWidth < 900),
+          hidden: (cover === 2 && !room) || (menuOpen.current && el.clientWidth < 900),
         });
         if (!paced) pc = { fps: 0, draw: pc.draw, measure: true };
         if (!pacer.ready(now, pc.fps)) return;
+      }
+      // -- inside a store: only its room moves and is drawn
+      if (room) {
+        const dt = Math.min(0.05, (now - (roomLast || now)) / 1000);
+        roomLast = now;
+        last = now;
+        room.update(dt, el.clientWidth / Math.max(1, el.clientHeight));
+        if (!room) return; // walked out of the door just now
+        gfx.frame(now, pc.fps, pc.measure);
+        fps = gfx.fps;
+        gfx.render(room.scene, room.camera);
+        return;
       }
       // -- loading screen: count what's drawn round the car a few times a second until it may start
       if (!booted && now - bootCheck > 200) {
@@ -2911,7 +2950,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pace: () => ({ ...pc, booted, idleMs: Math.round(performance.now() - lastActive), cover: coverRef.current, saver, lowBat, menu: menuOpen.current }), pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign } };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pace: () => ({ ...pc, booted, idleMs: Math.round(performance.now() - lastActive), cover: coverRef.current, saver, lowBat, menu: menuOpen.current }), pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign }, room: () => room, enterShop: (s: StoreTarget) => setShopAt(s) };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);
@@ -2985,6 +3024,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       markers.dispose();
       cinemaBoards.dispose();
       storefronts.dispose();
+      room?.dispose();
+      room = null;
       scene.remove(chuteM.group);
       chuteM.dispose();
       skyFx.dispose();
@@ -3040,6 +3081,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // The store's room in 3D (interior3d.ts), for ShopScreen: drawn instead of the city while I'm inside.
+  const roomApi = useMemo(() => ({ open: (spec: Omit<InteriorSpec, "lite">, onLeave: () => void) => api3d.current?.openRoom(spec, onLeave) ?? null, close: () => api3d.current?.closeRoom() }), []);
   // Walk into the store at hand / talk to whoever's beside me (B and Y on a keyboard).
   const enterShop = () => {
     const st = hud?.store;
@@ -3153,7 +3196,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   const cam = hud?.cam ?? "chase";
 
   return (
-    <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""} ${touchPrefs.left ? "lefty" : ""}`} role="application" aria-label={t("3D city")}>
+    <div className={`drive ${canDrive && touch ? "has-pad" : ""} ${onFoot ? "on-foot" : ""} ${fight?.inMatch ? "in-match" : ""} ${touchPrefs.left ? "lefty" : ""} ${shopAt ? "in-shop" : ""}`} role="application" aria-label={t("3D city")}>
       <div className="drive-canvas" ref={mount} />
       <div className="drive-wp" ref={wpRoot} aria-hidden />
 
@@ -3522,7 +3565,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       )}
       {shopAt && (
         <Guard where="shop" onExit={() => setShopAt(null)}>
-          <ShopScreen s={shopAt} onClose={() => setShopAt(null)} say={(text) => api3d.current?.shopkeeper(text)} />
+          <ShopScreen s={shopAt} onClose={() => setShopAt(null)} say={(text) => api3d.current?.shopkeeper(text)} room={roomApi} />
         </Guard>
       )}
       {storeSheet && <StoreSheet s={storeSheet} onClose={() => setStoreSheet(null)} onGo={() => (api3d.current?.setGoal({ lat: storeSheet.lat, lng: storeSheet.lng }), toast({ title: t("🧭 Heading to {place}", { place: storeSheet.name }) }), setStoreSheet(null))} />}

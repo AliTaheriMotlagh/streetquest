@@ -228,13 +228,14 @@ export async function shopsInBox(box: { minLat: number; maxLat: number; minLng: 
   const now = new Date();
   const rows = await prisma.shop.findMany({
     where: { lat: { gte: box.minLat, lte: box.maxLat }, lng: { gte: box.minLng, lte: box.maxLng }, OR: [{ open: true, expiresAt: { gt: now } }, { ownerId: viewerId }] },
-    select: { id: true, ownerId: true, name: true, emoji: true, lat: true, lng: true, open: true, expiresAt: true, products: { where: { active: true, stock: { gt: 0 }, discountPct: { gt: 0 } }, select: { discountPct: true, discountUntil: true } } },
+    select: { id: true, ownerId: true, name: true, emoji: true, category: true, lat: true, lng: true, open: true, expiresAt: true, products: { where: { active: true, stock: { gt: 0 }, discountPct: { gt: 0 } }, select: { discountPct: true, discountUntil: true } } },
     take: 150,
   });
   return rows.map((s) => ({
     id: s.id,
     name: s.name,
     emoji: s.emoji,
+    category: s.category,
     lat: s.lat,
     lng: s.lng,
     mine: s.ownerId === viewerId,

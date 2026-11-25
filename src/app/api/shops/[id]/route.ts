@@ -18,5 +18,7 @@ export const GET = route(async (req, ctx) => {
   });
   if (!s) throw new HttpError(404, t("This shop doesn't exist any more"));
   const { products, ...shop } = s;
-  return { shop: shopView(shop, products, u.id, here) };
+  // Its owner's 3D scan, if there is one (the file itself: /shop-scan/<id>?v=<version>).
+  const scan = await prisma.shopScan.findUnique({ where: { shopId: id }, select: { version: true, turn: true, bytes: true, triangles: true } }).catch(() => null);
+  return { shop: { ...shopView(shop, products, u.id, here), scan } };
 });
