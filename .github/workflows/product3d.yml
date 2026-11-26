@@ -65,8 +65,10 @@ jobs:
         with:
           path: ~/.cache/streetquest-ai
           key: p3d-ai-${{ runner.os }}-${{ hashFiles('scripts/product3d/ai-server.sh') }}
+      # A model that can't be had never stops the run: the worker skips classifying when the LLM doesn't answer.
       - name: Start the LLM
         if: github.event_name == 'schedule' || inputs.classify
+        continue-on-error: true
         run: scripts/product3d/ai-server.sh
       - name: Sweep menus and classify
         env:
@@ -78,7 +80,8 @@ jobs:
 
   reconstruct:
     needs: classify
-    if: vars.PRODUCT3D_APP_URL != ''
+    # Runs whatever happened to classifying (products already known get made either way).
+    if: always() && vars.PRODUCT3D_APP_URL != '' && needs.classify.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
