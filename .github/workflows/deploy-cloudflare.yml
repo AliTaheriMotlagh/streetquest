@@ -39,8 +39,10 @@ jobs:
           printf '%s\n' "$CF_BUILD_ENV" > .env.prod
           printf '%s\n' "$CF_DEV_VARS" > .dev.vars
 
+      # Up to three tries: next/font downloads the Google Fonts stylesheet during the build, and a bad answer from
+      # Google ("Cannot read properties of null (reading '1')" in next/font's loader) failed a deploy on 2026-11-26.
       - name: Build for Cloudflare Workers
-        run: npx opennextjs-cloudflare build
+        run: for i in 1 2 3; do npx opennextjs-cloudflare build && exit 0; echo "::warning::build failed (try $i), retrying"; sleep $((i * 20)); done; exit 1
 
       - name: Deploy to Cloudflare Workers
         # Direct wrangler deploy still uploads .dev.vars as Worker secrets; it skips

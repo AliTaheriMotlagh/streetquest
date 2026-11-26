@@ -14,14 +14,19 @@ Shipped this session (code, unit tests 1026+, fa/tr, README, .env.example):
   "Product models" has the setup.
 - **Walk-in entry** (`lib/walkIn.ts`): walking at a store's door takes you in; re-arms 7 m away.
 - Cherry-picked `fix/cf-schema-sync` (CI deploys run `prisma db push` again — additive only).
+Verified on GitHub (run 45835833553): classify 275/275 (~80 s per 25), 4/4 models made and live, ~30 s each on the
+runner, US runner reaches cdn.snappfood.ir directly, prod serves the .glb from R2 (32 KB). Left then: 11,268 to make,
+4,378 to classify — the full chained run was started 2026-11-26 (4 shards, ~25 runner-hours).
 Check next:
-- [ ] First real runner run: Actions → product3d → step summaries (made/failed, avg seconds). Tune `MC_RES` / `BATCH`
-      from the timings; look at 20 live models in Admin → Product models and move AUTO_LIVE if needed.
-- [ ] Does the US runner reach cdn.snappfood.ir directly? If not, photos go through `/api/product3d/work?u=` → relay.
+- [ ] Look at ~20 live models in Admin → Product models; move AUTO_LIVE (0.72) if bad ones go live. The LLM's kinds are
+      loose sometimes («ice-cream cake» → sohan) — correct in the admin or tighten HINT in classifyPrompt.ts.
+- [ ] Deploys now retry the build 3× (a Google Fonts hiccup in next/font failed one on 2026-11-26).
+- [ ] Optional: GITHUB_DISPATCH_TOKEN + GITHUB_REPO on the server for the admin's "Start runner" button.
 - [ ] Inside a store at 360×740 fa + iPad: product templates with photos, labels, walking in; a live model swapping in.
 - [ ] Ideas not built: carrying a product (pick up / put back with physics), shoplifting → wanted star, checkout at the
       counter by walking to the keeper; the same ProductKit for market stalls / kiosks / other 3D places.
-Older open items from the third session (still open): cones/chairs after the polyline fix, knocking a kit piece, far
+Older open items from the third session (still open): cones/chairs after the polyline fix (a headless count this
+session found nothing — the probe walked the wrong structure, inconclusive), knocking a kit piece, far
 camera over roofs, scan floor, setback respawn, NPC store-kind lines — never seen in a browser.
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
