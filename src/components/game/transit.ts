@@ -12,6 +12,10 @@ import { api } from "./client";
 const METRO: Record<City, () => Promise<Network>> = {
   tehran: () => import("@/data/transit/tehran-metro.json").then((m) => m.default as unknown as Network),
   istanbul: () => import("@/data/transit/istanbul-metro.json").then((m) => m.default as unknown as Network),
+  mashhad: () => import("@/data/transit/mashhad-metro.json").then((m) => m.default as unknown as Network),
+  isfahan: () => import("@/data/transit/isfahan-metro.json").then((m) => m.default as unknown as Network),
+  shiraz: () => import("@/data/transit/shiraz-metro.json").then((m) => m.default as unknown as Network),
+  tabriz: () => import("@/data/transit/tabriz-metro.json").then((m) => m.default as unknown as Network),
 };
 const loaded = new Map<City, Promise<Network>>();
 /** A city's metro (downloaded once per visit). */

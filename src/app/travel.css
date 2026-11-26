@@ -20,6 +20,13 @@
   color: var(--muted); font: 700 13px/1 var(--body); cursor: pointer; white-space: nowrap;
 }
 .tv-days button.on { background: var(--sky); border-color: var(--sky); color: #041321; }
+/* Each day with its cheapest ticket for the way picked (lib/travel/calendar.ts). */
+.tv-days button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 44px; border-radius: 14px; padding: 4px 11px; }
+.tv-days button small { font: 600 11px/1 var(--body); opacity: 0.85; font-variant-numeric: tabular-nums; }
+.tv-days button.none:not(.on) { opacity: 0.5; }
+.tv-days button.cheap:not(.on) small { color: var(--green, #3ecf8e); opacity: 1; }
+.tv-days button.cheap.on small { font-weight: 800; }
+.tv-next-day { margin-top: 6px; }
 .tv-tabs { margin-bottom: 8px; }
 .tv-tabs button.on { background: var(--text, #fff); color: var(--panel-solid, #10131a); border-color: transparent; }
 .tv-tabs button small { opacity: .7; font-weight: 800; margin-inline-start: 2px; }

@@ -43,9 +43,9 @@ export const POST = actionRoute(async (req) => {
   if (d.action === "buy") {
     const p = await prisma.product.findUnique({
       where: { id: d.productId },
-      select: { id: true, title: true, price: true, discountPct: true, discountUntil: true, stock: true, active: true, kind: true, details: true, currency: true, photos: { select: { id: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 1 }, shop: { select: { id: true, name: true, ownerId: true, open: true, expiresAt: true } } },
+      select: { id: true, title: true, price: true, discountPct: true, discountUntil: true, stock: true, active: true, review: true, kind: true, details: true, currency: true, photos: { select: { id: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 1 }, shop: { select: { id: true, name: true, ownerId: true, open: true, expiresAt: true } } },
     });
-    if (!p || !p.active) throw new HttpError(404, t("This product isn't for sale any more"));
+    if (!p || !p.active || p.review !== "ok") throw new HttpError(404, t("This product isn't for sale any more"));
     if (p.shop.ownerId === u.id) throw new HttpError(400, t("That's your own shop"));
     // Toman prices are paid to the seller directly (like a classified ad): the game holds coins only.
     if (currencyOf(p.currency) === "toman") throw new HttpError(400, t("This one is paid to the seller directly — contact them"));

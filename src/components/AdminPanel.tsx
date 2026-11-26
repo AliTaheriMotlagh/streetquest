@@ -12,6 +12,7 @@ const AdminErrors = dynamic(() => import("./AdminErrors"), { ssr: false, loading
 const AdminCars = dynamic(() => import("./AdminCars"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminSiktir = dynamic(() => import("./AdminSiktir"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminClaims = dynamic(() => import("./AdminClaims"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminListings = dynamic(() => import("./AdminListings"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminAudit = dynamic(() => import("./AdminAudit"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminScenarios = dynamic(() => import("./AdminScenarios"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
@@ -41,7 +42,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "errors" | "scenarios" | "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "siktir" | "deliveries" | "claims" | "audit";
+type Tab = "errors" | "scenarios" | "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "listings" | "siktir" | "deliveries" | "claims" | "audit";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -75,6 +76,7 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { id: "users", icon: "👥", label: msg("Players"), desc: msg("Search players, gift coins or gems, make admins, ban cheaters.") },
       { id: "moderation", icon: "🛡️", label: msg("Moderation"), desc: msg("Hide location posts and delete chat messages.") },
+      { id: "listings", icon: "🏷️", label: msg("Listings"), desc: msg("Products waiting for a moderator (a new seller's first listings, flagged text, reported ones) and players' reports on shops. Approve, turn down with a reason the seller reads, or dismiss.") },
       { id: "siktir", icon: "👎", label: msg("Siktir"), desc: msg("The never-again marks players put on places, with their reasons. Hide or delete spam and abuse.") },
       { id: "claims", icon: "🪪", label: msg("Store claims"), desc: msg("Owners proving a store is theirs: licence and bill photos, website codes, visits at the store, and disputes over a store someone else runs. Approve to put the tick on it (a dispute hands the store over) or turn it down with a reason.") },
       { id: "audit", icon: "🧾", label: msg("Audit log"), desc: msg("Who did what: store edits, claims and decisions, missions, coupon redemptions and admin actions, with what changed and from which IP. Filter by kind, player or words.") },
@@ -234,6 +236,7 @@ export function AdminPanel() {
         {tab === "cars" && <AdminCars />}
         {tab === "siktir" && <AdminSiktir onError={setNotice} />}
         {tab === "claims" && <AdminClaims onError={setNotice} />}
+        {tab === "listings" && <AdminListings onError={setNotice} />}
         {tab === "audit" && <AdminAudit onError={setNotice} />}
         {tab === "objects" && <AdminObjects onReplace={(slot) => (setModelSlot(slot), setTab("models"))} />}
         {tab === "models" && <AdminModels slot={modelSlot} />}

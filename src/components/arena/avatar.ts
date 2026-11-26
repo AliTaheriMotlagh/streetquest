@@ -9,6 +9,7 @@
 //  - Far away the animation updates less often; past the fog it isn't drawn at all.
 import * as THREE from "three";
 import { slopePose } from "@/lib/walkSlope";
+import { armDirs, punchCurve, PUNCH_S, type Punch } from "@/lib/street/melee";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { WEAPON_KEYS, type WeaponKey } from "@/lib/arena/weapons";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -184,6 +185,21 @@ const qp = new THREE.Quaternion();
 const axisL = new THREE.Vector3();
 const upL = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
+const dirW = new THREE.Vector3(), boneA = new THREE.Vector3(), boneB = new THREE.Vector3(), qAim = new THREE.Quaternion(), qPar = new THREE.Quaternion();
+/** Turn `bone` so the line from it to `child` points along `dir` (world, unit). */
+function aimBone(bone: THREE.Bone, child: THREE.Object3D, dir: THREE.Vector3) {
+  if (!bone.parent) return;
+  bone.updateWorldMatrix(true, true);
+  bone.getWorldPosition(boneA);
+  child.getWorldPosition(boneB);
+  const cur = boneB.sub(boneA);
+  if (cur.lengthSq() < 1e-8) return;
+  qAim.setFromUnitVectors(cur.normalize(), dir);
+  // A world-space turn, put into the parent's frame: local' = parent⁻¹ · turn · parent · local.
+  bone.parent.getWorldQuaternion(qPar);
+  bone.quaternion.premultiply(qPar.clone().invert().multiply(qAim).multiply(qPar));
+  bone.updateWorldMatrix(false, true);
+}
 /** Hip height (m): hero moves turn the body about it. */
 const HIP_Y = 0.95;
 
@@ -195,6 +211,12 @@ export class Avatar {
   private guns = new Map<WeaponKey, THREE.Object3D>();
   private muzzles = new Map<WeaponKey, THREE.Object3D>();
   private spine: THREE.Bone | null = null;
+  /** Upper arm, forearm and hand per side (+1 right, −1 left): bare hands pose them (lib/street/melee.ts). */
+  private arms = new Map<1 | -1, [THREE.Bone, THREE.Bone, THREE.Bone]>();
+  /** Empty-handed: no gun shown, the arms in a guard. */
+  private bare = false;
+  /** The punch being thrown and when it started (performance.now() ms). */
+  private punchNow: (Punch & { t0: number }) | null = null;
   private weapon: WeaponKey = "rifle";
   private acc = 0;
   private deadPlayed = false;
@@ -208,6 +230,7 @@ export class Avatar {
 
   constructor(t: Template, uniform: string, accent: string, shadows: boolean) {
     const root = cloneSkinned(t.scene);
+    const bones = new Map<string, THREE.Bone>();
     this.hips.position.y = HIP_Y;
     root.position.y -= HIP_Y;
     this.hips.add(root);
@@ -232,12 +255,19 @@ export class Avatar {
       }
       if ((o as THREE.Bone).isBone) {
         if (o.name === "spine") this.spine = o as THREE.Bone;
+        // (GLTFLoader drops the dot: "upperarm.R" arrives as "upperarmR".)
+        const arm = /^(upperarm|forearm|hand)\.?([LR])$/.exec(o.name);
+        if (arm) bones.set(arm[1] + arm[2], o as THREE.Bone);
       }
       const gun = /^gun_(\w+)$/.exec(o.name)?.[1];
       if (gun) this.guns.set(gun as WeaponKey, o);
       const mz = /^muzzle_(\w+)$/.exec(o.name)?.[1];
       if (mz) this.muzzles.set(mz as WeaponKey, o);
     });
+    for (const [side, k] of [[1, "R"], [-1, "L"]] as const) {
+      const u = bones.get("upperarm" + k), f = bones.get("forearm" + k), h = bones.get("hand" + k);
+      if (u && f && h) this.arms.set(side, [u, f, h]);
+    }
     this.setColors(uniform, accent);
     this.mixer = new THREE.AnimationMixer(root);
     for (const c of t.clips) {
@@ -270,7 +300,19 @@ export class Avatar {
 
   setWeapon(w: WeaponKey) {
     this.weapon = w;
-    for (const [k, o] of this.guns) o.visible = k === w;
+    for (const [k, o] of this.guns) o.visible = !this.bare && k === w;
+  }
+
+  /** Empty-handed (fists up) or holding the gun again. */
+  setBare(on: boolean) {
+    this.bare = on;
+    if (!on) this.punchNow = null;
+    this.setWeapon(this.weapon);
+  }
+
+  /** Throw a punch (bare hands): the arm strikes out over the next PUNCH_S. */
+  punch(p: Punch) {
+    if (this.bare) this.punchNow = { ...p, t0: performance.now() };
   }
 
   /** The muzzle of the gun in hand, in world space. */
@@ -337,6 +379,26 @@ export class Avatar {
     // (On a slope the body is tipped into it about the hips — lean — and the spine takes most of that back.)
     qa.setFromAxisAngle(axisL, p.pitch * 0.9 - (p.stunt ? 0 : slopePose(p.slope ?? 0).spine));
     b.quaternion.premultiply(qa);
+    if (this.bare && !p.stunt) this.fists(p.yaw);
+  }
+
+  /**
+   * Bare hands, on top of whatever clip plays (the clips hold a rifle): each arm's bones are turned
+   * so they point where lib/street/melee.ts armDirs says — a guard, or the punch under way. Aiming
+   * each bone at a direction works whatever way the rig's bones were modelled.
+   */
+  private fists(yaw: number) {
+    const pn = this.punchNow;
+    const t = pn ? (performance.now() - pn.t0) / 1000 : -1;
+    if (pn && t >= PUNCH_S) this.punchNow = null;
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    // Body frame (x right, y up, −z forward) → world: turn by the yaw.
+    const toWorld = (v: [number, number, number], out: THREE.Vector3) => out.set(v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c);
+    for (const [side, [upper, fore, hand]] of this.arms) {
+      const d = armDirs(side, pn && pn.side === side ? punchCurve(t) : 0, !!pn?.hook);
+      aimBone(upper, fore, toWorld(d.upper, dirW));
+      aimBone(fore, hand, toWorld(d.fore, dirW));
+    }
   }
 
   /** Hero moves: turn the hips toward `stunt.up` (in the body's own frame), then spin a flip or a roll. */

@@ -3,6 +3,8 @@
 // (released straight away), plus the player's graphics choices kept on the device.
 import { TIME_PICKS, WEATHERS, type TimePick, type Weather } from "@/lib/daylight";
 import { isLite, isTouch } from "../../perf";
+import { benchTier, combineTier, maskedGpu } from "@/lib/perf/tier";
+import { benchScore, forgetBench } from "./bench";
 import { detectTier, QUALITY_PICKS, TIERS, type Caps, type QualityPick, type Tier } from "./quality";
 
 let cached: Caps | null = null;
@@ -110,9 +112,21 @@ export const setWeatherPick = (w: Weather) => set(WEATHER_KEY, w === "clear" ? n
 export const demoted = () => Math.min(3, Math.max(0, Number(get(DEMOTE_KEY)) || 0));
 export const demote = () => set(DEMOTE_KEY, String(demoted() + 1));
 /** "Auto" is reset when the player picks it again, so a one-off bad session isn't forever. */
-export const forgetDemotion = () => set(DEMOTE_KEY, null);
+export const forgetDemotion = () => (set(DEMOTE_KEY, null), forgetBench());
 
-/** The tier "auto" chooses on this device right now. */
-export const autoTier = (): Tier => detectTier(readCaps(), demoted());
+export const undemote = () => set(DEMOTE_KEY, demoted() > 1 ? String(demoted() - 1) : null);
+
+/**
+ * The tier "auto" chooses on this device right now: the GPU's name and limits, capped by what the
+ * startup benchmark measured (lib/perf/tier.ts — iOS calls every chip "Apple GPU"), then the
+ * steps it learned to drop.
+ */
+export const autoTier = (): Tier => {
+  const c = readCaps();
+  const named = detectTier(c);
+  const b = c.lite ? null : benchScore(c.gpu);
+  const t = combineTier(named, b && benchTier(b), maskedGpu(c.gpu));
+  return TIERS[Math.max(0, TIERS.indexOf(t) - demoted())];
+};
 /** The tier in force for a pick. */
 export const tierFor = (q: QualityPick): Tier => (q === "auto" ? autoTier() : TIERS.includes(q) ? q : "medium");

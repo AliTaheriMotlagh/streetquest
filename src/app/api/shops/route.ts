@@ -38,14 +38,14 @@ export const GET = route(async (req) => {
             OR: [
               { name: { contains: q, mode: "insensitive" } },
               { tagline: { contains: q, mode: "insensitive" } },
-              { products: { some: { active: true, title: { contains: q, mode: "insensitive" } } } },
+              { products: { some: { active: true, review: "ok", title: { contains: q, mode: "insensitive" } } } },
             ],
           }
         : box
           ? { lat: { gte: box.minLat, lte: box.maxLat }, lng: { gte: box.minLng, lte: box.maxLng } }
           : {}),
     },
-    select: { ...SHOP_SELECT, products: { where: { active: true }, select: PRODUCT_SELECT, orderBy: { createdAt: "desc" }, take: 80 } },
+    select: { ...SHOP_SELECT, products: { where: { active: true, review: "ok" }, select: PRODUCT_SELECT, orderBy: { createdAt: "desc" }, take: 80 } },
     take: 80,
   });
   const shops = rows

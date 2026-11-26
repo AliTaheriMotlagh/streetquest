@@ -20,7 +20,7 @@ type Props = { params: Promise<{ id: string }> };
 
 const load = async (id: string) => {
   if (!/^[a-z0-9]{10,40}$/.test(id)) return null;
-  const s = await prisma.shop.findUnique({ where: { id }, select: { ...SHOP_SELECT, products: { where: { active: true }, select: PRODUCT_SELECT, orderBy: [{ featured: "desc" }, { createdAt: "desc" }], take: 120 } } }).catch(() => null);
+  const s = await prisma.shop.findUnique({ where: { id }, select: { ...SHOP_SELECT, products: { where: { active: true, review: "ok" }, select: PRODUCT_SELECT, orderBy: [{ featured: "desc" }, { createdAt: "desc" }], take: 120 } } }).catch(() => null);
   if (!s) return null;
   const { products, ...shop } = s;
   return shopView(shop, products, "", null);

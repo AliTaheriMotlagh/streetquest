@@ -93,6 +93,9 @@ const arena: Record<string, string> = {
   Crouch: "Eğil",
   Reload: "Doldur",
   "Switch gun": "Silah değiştir",
+  "Draw a gun": "Silah çek",
+  "Punch": "Yumruk at",
+  "Fists": "Yumruklar",
 
   // ---- on foot
   "Land first to get out": "Çıkmak için önce yere in",
@@ -106,8 +109,8 @@ const arena: Record<string, string> = {
   "You took the {car}": "{car} aracına bindin",
   "Get out and walk": "İn ve yürü",
   "Get out and walk (F)": "İn ve yürü (F)",
-  "Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Z dead-eye · Tab scores · F car":
-    "Fareyle tıklayıp nişan al · WASD hareket · Shift koşu · Space zıplama · C eğilme · R doldur · Q silah değiştir · V kamera · Z odak modu · Tab skorlar · F araba",
+  "Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · X fists · V view · Z dead-eye · Tab scores · F car":
+    "Fareyle tıklayıp nişan al · WASD hareket · Shift koşu · Space zıplama · C eğilme · R doldur · Q silah değiştir · X yumruk · V kamera · Z odak modu · Tab skorlar · F araba",
 
   // ---- from the realtime server
   "Fighting in the open city unlocks at level {n}": "Açık şehirde savaş {n}. seviyede açılır",

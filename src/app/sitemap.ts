@@ -13,7 +13,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [events, shops] = await Promise.all([
     prisma.event.findMany({ where: { isPublic: true, endsAt: { gt: now } }, select: { slug: true, createdAt: true }, take: 5000 }).catch(() => []),
     prisma.shop
-      .findMany({ where: { open: true, expiresAt: { gt: now }, products: { some: { active: true } } }, select: { id: true, updatedAt: true }, orderBy: { sales: "desc" }, take: 5000 })
+      .findMany({ where: { open: true, expiresAt: { gt: now }, products: { some: { active: true, review: "ok" } } }, select: { id: true, updatedAt: true }, orderBy: { sales: "desc" }, take: 5000 })
       .catch(() => []),
   ]);
   const B = SITE.url;

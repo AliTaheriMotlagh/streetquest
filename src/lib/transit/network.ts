@@ -45,7 +45,8 @@ export type BusLine = {
   /** Service hours (minutes after midnight; `to` past 1440 runs after midnight), when the map says. */
   hours?: { from: number; to: number };
 };
-export type City = "tehran" | "istanbul";
+/** Cities with a metro the game knows (built from OSM by scripts/transit-osm.ts). */
+export type City = "tehran" | "istanbul" | "mashhad" | "isfahan" | "shiraz" | "tabriz";
 export type Network = { city: City; built: string; tz: string; lines: Line[]; stations: Station[] };
 export type BusNetwork = { city: City; built: string; stops: BusStop[]; lines: Record<string, BusLine> };
 
@@ -55,6 +56,11 @@ export const CITIES: Record<City, { box: [number, number, number, number]; tz: s
   tehran: { box: [35.45, 50.85, 35.9, 51.75], tz: "Asia/Tehran", headway: 7, from: 330, to: 1350, busHeadway: 15, centre: { lat: 35.6892, lng: 51.389 } },
   // Istanbul's rail: about 06:00–00:00 (weekend nights longer), every 4–10 minutes.
   istanbul: { box: [40.75, 28.4, 41.35, 29.6], tz: "Europe/Istanbul", headway: 6, from: 360, to: 1440, busHeadway: 12, centre: { lat: 41.0082, lng: 28.9784 } },
+  // Iran's other metros: shorter networks, longer gaps (OSM's interval/opening_hours win where mapped).
+  mashhad: { box: [36.18, 59.38, 36.45, 59.75], tz: "Asia/Tehran", headway: 9, from: 360, to: 1320, busHeadway: 15, centre: { lat: 36.2972, lng: 59.6067 } },
+  isfahan: { box: [32.52, 51.55, 32.78, 51.78], tz: "Asia/Tehran", headway: 12, from: 360, to: 1320, busHeadway: 15, centre: { lat: 32.6539, lng: 51.666 } },
+  shiraz: { box: [29.5, 52.38, 29.72, 52.65], tz: "Asia/Tehran", headway: 15, from: 360, to: 1290, busHeadway: 15, centre: { lat: 29.6036, lng: 52.5388 } },
+  tabriz: { box: [37.98, 46.18, 38.15, 46.42], tz: "Asia/Tehran", headway: 15, from: 360, to: 1260, busHeadway: 15, centre: { lat: 38.0792, lng: 46.2887 } },
 };
 
 export const cityAt = (p: { lat: number; lng: number }): City | null => {

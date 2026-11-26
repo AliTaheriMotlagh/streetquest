@@ -8,6 +8,7 @@ import { PARTY_GAMES, type PartyGame } from "@/lib/party";
 import { Button } from "@/components/Button";
 import type { TimePick, Weather } from "@/lib/daylight";
 import type { Fx, QualityPick, Tier } from "./graphics/quality";
+import type { Cut } from "@/lib/perf/features";
 import { saverPick, setSaverPick, watchBattery } from "./graphics/caps";
 import { lowBattery } from "@/lib/perf/pace";
 import type { Style } from "./tileMesh";
@@ -37,7 +38,8 @@ const QUALITY: { key: QualityPick; label: string }[] = [
   { key: "medium", label: msg("Medium") },
   { key: "low", label: msg("Low") },
 ];
-const FX_LABEL: Record<Fx, string> = {
+const FX_LABEL: Record<Fx | Cut, string> = {
+  crowds: msg("busy streets"), streetKit: msg("street furniture"), trailers: msg("cinema trailers"), voices: msg("natural voices"), signs: msg("some shop signs"),
   shadows: msg("shadows"), reflections: msg("reflections"), ao: msg("contact shadows"), film: msg("film look"), haze: msg("haze"), bloom: msg("glow"),
   clouds: msg("clouds"), paint: msg("glossy paint"), lights: msg("night lights"), surfaces: msg("road and wall detail"), wind: msg("swaying trees"), smoothEdges: msg("smooth edges"),
 };
@@ -84,7 +86,7 @@ type Props = {
   /** Inside the drive menu: no window of its own. */
   embedded?: boolean;
   /** Effects off on this device right now (graphics/quality.ts offEffects). */
-  offFx?: Fx[];
+  offFx?: (Fx | Cut)[];
   /** The pause menu splits this in two tabs: the vehicles, and everything about how it looks and handles. */
   section?: "garage" | "settings";
 };

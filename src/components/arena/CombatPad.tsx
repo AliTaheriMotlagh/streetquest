@@ -33,6 +33,8 @@ type Props = {
   inMatch: boolean;
   /** Hero moves on: the hook replaces aim, crouch dives in the air. */
   hero?: boolean;
+  /** Empty-handed (lib/street/melee.ts): the triggers punch. */
+  bare?: boolean;
 };
 
 const TAP_MS = 220;
@@ -41,7 +43,7 @@ const TAP_PX = 12;
 type Look = { x: number; y: number; t: number; x0: number; y0: number; t0: number; moved: boolean; fire: boolean };
 const SLOTS: (FootSlot | "hook")[] = ["reload", "crouch", "jump", "aim", "hook", "car"];
 
-export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap, onJump, onCar, onFocus, nearCar, inMatch, hero = false }: Props) {
+export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap, onJump, onCar, onFocus, nearCar, inMatch, hero = false, bare = false }: Props) {
   const prefs = useTouchPrefs();
   const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
@@ -253,12 +255,12 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
       </div>
       <div className="cpad-look" onPointerDown={(e) => lookDown(e)} onPointerMove={lookMoved} />
       {/* A second trigger under the other thumb: move, look and shoot at once (it doesn't turn the view). */}
-      <button className="cp-fire2" aria-label={t("Fire")} onPointerDown={leftFireDown}>
-        <Icon d="crosshair" />
+      <button className="cp-fire2" aria-label={bare ? t("Punch") : t("Fire")} onPointerDown={leftFireDown}>
+        <Icon d={bare ? "fist" : "crosshair"} />
       </button>
       <div className="cp-arc">
-        <button className="cp-fire" aria-label={t("Fire")} onPointerDown={fireDown} onPointerMove={lookMoved}>
-          <Icon d="crosshair" />
+        <button className="cp-fire" aria-label={bare ? t("Punch") : t("Fire")} onPointerDown={fireDown} onPointerMove={lookMoved}>
+          <Icon d={bare ? "fist" : "crosshair"} />
         </button>
         {!inMatch && (
           <button className="cp-btn focus" aria-label={t("Dead-eye (slow motion while aiming)")} onPointerDown={focusDown}>
@@ -286,6 +288,13 @@ export const CombatPad = memo(function CombatPad({ input, sens, onReload, onSwap
 });
 
 const PATHS: Record<string, React.ReactNode> = {
+  // A closed fist seen from the front: four knuckles over the folded thumb.
+  fist: (
+    <>
+      <path d="M6 9.5a1.8 1.8 0 0 1 3.6 0V8a1.8 1.8 0 0 1 3.6 0v.4a1.8 1.8 0 0 1 3.6 0v1a1.8 1.8 0 0 1 3.2 1.1v3.2c0 3.6-2.6 6.3-6.4 6.3h-1.6C8.6 20 6 17.6 6 14.4z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+      <path d="M9.6 9.5v2.2M13.2 8.4v2.6M16.8 9.4v2.3M6.2 13.2c1.6-.6 4.2-.6 5.6.4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </>
+  ),
   crosshair: (
     <>
       <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />

@@ -11,6 +11,7 @@ import { S } from "../lib/settings";
 import { discountLive, priceNow, SHOP_WARN_MS } from "../lib/shops";
 import { cleanDetails, cleanPayLink, cleanPhone, currencyOf, expired, kindOf } from "../lib/shopKinds";
 import { HttpError } from "./http";
+import type { Review } from "../lib/stores/moderation";
 import { notify } from "./hub";
 
 /** Product fields for views — never the photo bytes (served by /shop-img/<id>). */
@@ -27,6 +28,8 @@ export const PRODUCT_SELECT = {
   stock: true,
   featured: true,
   active: true,
+  review: true,
+  reviewNote: true,
   sold: true,
   createdAt: true,
   photos: { select: { id: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] },
@@ -85,6 +88,9 @@ export function productView(p: ProductRow, now = Date.now()) {
     stock: p.stock,
     featured: p.featured,
     active: p.active,
+    /** Moderation (lib/stores/moderation.ts): only "ok" is ever shown to buyers; the seller sees why it's waiting. */
+    review: (p.review === "pending" || p.review === "rejected" ? p.review : "ok") as Review,
+    reviewNote: p.reviewNote,
     sold: p.sold,
     photos: p.photos.map((x) => x.id),
   };
@@ -93,7 +99,7 @@ export type ProductView = ReturnType<typeof productView>;
 
 export function shopView(s: ShopRow, products: ProductRow[], viewerId: string, here: LatLng | null, now = Date.now()) {
   const mine = s.ownerId === viewerId;
-  const list = products.map((p) => productView(p, now)).filter((p) => mine || p.active);
+  const list = products.map((p) => productView(p, now)).filter((p) => mine || (p.active && p.review === "ok"));
   return {
     id: s.id,
     name: s.name,
@@ -228,7 +234,7 @@ export async function shopsInBox(box: { minLat: number; maxLat: number; minLng: 
   const now = new Date();
   const rows = await prisma.shop.findMany({
     where: { lat: { gte: box.minLat, lte: box.maxLat }, lng: { gte: box.minLng, lte: box.maxLng }, OR: [{ open: true, expiresAt: { gt: now } }, { ownerId: viewerId }] },
-    select: { id: true, ownerId: true, name: true, emoji: true, category: true, lat: true, lng: true, open: true, expiresAt: true, products: { where: { active: true, stock: { gt: 0 }, discountPct: { gt: 0 } }, select: { discountPct: true, discountUntil: true } } },
+    select: { id: true, ownerId: true, name: true, emoji: true, category: true, lat: true, lng: true, open: true, expiresAt: true, products: { where: { active: true, review: "ok", stock: { gt: 0 }, discountPct: { gt: 0 } }, select: { discountPct: true, discountUntil: true } } },
     take: 150,
   });
   return rows.map((s) => ({

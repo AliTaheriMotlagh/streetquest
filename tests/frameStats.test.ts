@@ -57,3 +57,20 @@ test("every scenario has a page, known steps and a table row", () => {
   assert.match(table, /^mode/);
   assert.match(table, /error.*3D never finished loading/);
 });
+
+test("3D runs over their tier's draw budget are never smooth and say why", async () => {
+  const { GFX_BUDGETS, gfxOver } = await import("../src/lib/perf/frameStats");
+  const s = SCENARIOS.find((x) => x.id === "drive")!;
+  const fast = steady(1000 / 60, 1200);
+  const within = { tier: "low", level: 0, dpr: 1, calls: GFX_BUDGETS.low.calls, triangles: GFX_BUDGETS.low.triangles, textures: 10 };
+  assert.deepEqual(gfxOver(within), []);
+  assert.equal(benchResult(s, fast, { longTasks: 0, longTaskMs: 0, gfx: within }).verdict, "smooth");
+  const heavy = { ...within, calls: GFX_BUDGETS.low.calls + 1, triangles: GFX_BUDGETS.low.triangles + 1 };
+  const r = benchResult(s, fast, { longTasks: 0, longTaskMs: 0, gfx: heavy });
+  assert.equal(r.verdict, "ok");
+  assert.deepEqual(r.why, ["Draw calls over budget", "Triangles over budget"]);
+  // Every tier has a budget, and they never shrink going up.
+  const tiers = ["low", "medium", "high", "ultra"] as const;
+  for (let i = 1; i < tiers.length; i++) assert.ok(GFX_BUDGETS[tiers[i]].calls >= GFX_BUDGETS[tiers[i - 1]].calls && GFX_BUDGETS[tiers[i]].triangles >= GFX_BUDGETS[tiers[i - 1]].triangles);
+  assert.deepEqual(gfxOver(undefined), []);
+});

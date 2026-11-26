@@ -1,7 +1,28 @@
 # StreetQuest — backlog (the one place for open work)
 
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
-(then delete it next time), add what's new. Last gathered: 2026-11-26 (Cloudflare/Iran fixed in code + steps 3, 4, 6c done; step 7 shop interiors + owner 3D scans done in code; next: the deploy steps below, then step 2 budgets).
+(then delete it next time), add what's new. Last gathered: 2026-11-26 (step 2 perf done in code; step 6 bare hands in code, unchecked in a browser; user asked: implement everything first, then test everything at the end).
+
+## NEXT SESSION — start here (written 2026-11-26, session ran out of tokens mid-step)
+User's order: **implement everything first, then test everything at the end.** Remove done items as you go.
+1. **Finish moderation i18n** (code is in): `npm run i18n:check` shows ~78 missing fa/tr keys from src/server/moderation.ts,
+   lib/stores/moderation.ts, components/AdminListings.tsx, Market.tsx ReportButton/badge, api/shops/products. Add them to
+   `src/lib/i18n/{fa,tr}/market.ts` (a python heredoc with Persian failed on stdin encoding — write a .py file instead).
+2. **Metro data built** (2026-11-26): Mashhad 3 lines/39 stations, Isfahan 1/20, Shiraz 2/26, Tabriz 1/18 (+ bus stops,
+   cinemas) in src/data/transit/. Left: check the Metro sheet for each city in a browser; README transit section.
+3. **Moderation (2026-11-26, code done, untested)**: lib/stores/moderation.ts (preCheck block/hold/ok, first 3 listings
+   held, reports hide after 3), Product.review/reviewNote + ListingReport (pushed to LOCAL db only), server/moderation.ts,
+   /api/shops/report, /api/admin/listings, Admin → Listings tab (AdminListings.tsx), seller badge + buyer 🚩 report in
+   Market.tsx, buyers only see review "ok" (shops route, /s/[id], sitemap, orders, deals). TODO: tests/moderation.test.ts
+   (block words FA/EN + allowed toy/non-alcoholic, phone/link holds, copies, price outliers, reviewAfter), e2e
+   e2e/api/moderation.spec.ts (create → pending for a new seller; admin approve → visible; 3 reports → hidden), README.
+4. Then the rest of BACKLOG "Now" top-down: step 6 hit-able props, punching players + protocol field for bare hands;
+   step 5 URL-synced filters + shared list engine; Stores & ads plan (AdSlot fallback chain house→Yektanet/Tapsell/
+   AdSense, self-serve ads in coins, seller center); SEO audit (Lighthouse on streetquest.remixt.app pages).
+5. **Test pass at the end** (all unchecked): `npm test`; `graphify update .`; browser checks — punch guard/jab/hook
+   close-ups + first-person fists (headless boot on a cold :3100 timed out at 240 s — warm the server first), travel day
+   strip at 360 px Persian, Admin → Listings, report flow, metro sheets for the new cities, low-tier lite city.
+   Kill any :3100 dev server you start (Postgres hit "too many clients").
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
@@ -20,138 +41,59 @@ Everything unfinished from every session, in one list. Update it at the end of e
 
 ## Now — run top-down (tools + best practice per step)
 
-00. **Cloudflare + Iran (2026-11-26)** — code done, tests green; deploy steps need the user (auto mode refused prod secrets):
-   - [x] Root cause of empty menus/Torob on prod: Workers can't fetch a bare IP (error 1003); RELAY_URL was
-         `http://37.32.28.215:8790/…`. Fix in code: `reachable()` in lib/relayUrl.ts rewrites to `37-32-28-215.sslip.io`
-         on Workers (probed from the edge: hostname 200 in 173 ms, IP 1003). Torob answers Cloudflare 490 → needs relay.
-   - [x] Player IP `cf-connecting-ip` + front-door key (lib/clientIp.ts; forged x-forwarded-for no longer counts),
-         country `cf-ipcountry` (locale picked Persian only via Accept-Language before), IP location from request.cf.
-   - [x] Iran front door `front/front.mjs` (+ install.sh, `npm run front:deploy`): whole site at
-         `https://37-32-28-215.sslip.io:8443`, disk cache for build files, FRONT_KEY → x-front-ip. Port 8443 open on
-         the box (tested); checked locally against live prod (pages, cache hit 8 ms, guest sign-in).
-   - [ ] USER: `npx wrangler secret put RELAY_URL --name streetquest` = `http://37-32-28-215.sslip.io:8790/<RELAY_KEY>`,
-         `RELAY_FOR=all`, `FRONT_KEY` (same as .env, made by the first `npm run front:deploy`); push to main (CI deploys);
-         `npm run front:deploy`; then `/api/health?ext=1` + a fresh `?menu=` on prod, and open the :8443 address on a phone
-         on Irancell/MCI without VPN. Share the :8443 address with Iranian players.
-   - [ ] Front door never seen on a real Iranian mobile line; box is 1 CPU / 1 GB — watch `systemctl status streetquest-front`.
-
-0. **Leftovers** (2026-11-19)
-   - [x] Stores phase 0: kinds + details + coins/toman, seller phone & payment page (Shop `phone`/`payLink`), buyer ↔
-         shop chat (`shop:<shop>:<buyer>` rooms, My shop → Messages from buyers), public shop page `/s/<id>`, Share.
-         Unit + e2e (`e2e/api/shops.spec.ts`) green. **Prisma pushed to the LOCAL db only — prod needs a deploy.**
-   - [x] Fixed: Zod 4 `.partial()` kept defaults, so ⭐/👁️ toggles and "Pause sales" wiped a product's description/
-         stock/discount and a shop's slogan/about/sign/links. `patch()` in `server/http.ts`; other `.partial()` uses: none.
-   - [x] Crowd 0 walkers in home mode: not reproduced (26 walkers + 18 cars at Valiasr once tiles mesh; the old
-         reading was taken before the cold server built any tile).
-   - [x] Mode prompt: waits for the 3D loading scene to lift, and now sits above the 3D city (it was under it).
-   - [x] SEO: hreflang + per-language canonical on every public page, language footer links, sitemap alternates +
-         open shops, escaped JSON-LD (event titles could break out of the script tag), Organization/WebSite/Store
-         data, Search Console file. → After deploy: submit `/sitemap.xml` in Search Console; NEXT_PUBLIC_SITE_URL must
-         be the real domain.
-   - [x] **Remixt Radio** after the Remixt update (2026-11-19): embed protocol unchanged; now also reads `next` +
-         `listeners` (shown under the playing row). Headless Chrome: plays, title + next + listeners show, off → frame
-         gone. Note for Remixt itself: its embed logs CORS errors fetching some R2 stems (bucket lacks CORS for
-         remixt-free.vercel.app) — still plays. Not yet checked: iOS sim tap card, 360 px Persian screenshot.
-   - [x] SEO finished (2026-11-19): README + .env.example for the verification/IndexNow vars, e2e for /features +
-         /indexnow.txt (site.spec 11/11), 360 px Persian shots, RTL logo order fixed (was "QUEST STREET").
-         After deploy: Bing + Yandex Webmaster, set INDEXNOW_KEY, resubmit /sitemap.xml.
-1. **iPad bugs**
-   - [~] Zoom stuck after landscape → portrait: `components/game/zoomGuard.ts` re-sets the viewport meta when zoomed
-         after a rotation — never seen on a real iPad/simulator yet.
-   - [~] iPad Chrome map view: panel missing / can't zoom back → likely a page pinch-zoom (iOS ignores user-scalable=no).
-         Now blocked in the whole game: gesturestart/gesturechange cancelled (zoomGuard.ts) + `.game` touch-action
-         pan-x pan-y. Check on a real iPad.
-   - [~] Settings doesn't fit / won't scroll: NOT reproduced in WebKit at iPad 7 size (810×1080 + landscape, en/fa):
-         2D Profile→Settings and the 3D menu's Settings fit and have their own scrollers. Real-iPad touch check left.
-   - [x] Persian digits in the invite link (Vazirmatn FD): `.mono[dir=ltr]` now a Latin mono font.
-   - [x] Inputs < 16 px zoom on focus: the 16 px rule now also covers `any-pointer: coarse` (iPad with a trackpad).
-   - Tools: iPad simulator (iPad 10th gen + iPad Pro) Safari and Chrome, `xcrun simctl` rotate + screenshot,
-     Playwright WebKit iPad profile for regressions, Safari Web Inspector on the sim.
-2. **No lag on any device + less heat**
-   - [ ] `lib/perf/tier.ts` (pure): tier from a 2 s startup benchmark (frame time of a fixed scene) + `hardwareConcurrency`,
-         `deviceMemory`, screen size; cached per device, re-run after updates.
-   - [ ] `lib/perf/features.ts` (pure): registry {id, cost, minTier} for post-processing, shadows, MSAA, SSR, rain,
-         crowd/traffic/parked counts, street kit, real 3D people (impostors on low), sherpa voices (phone voice on low),
-         HRTF, radio, interiors, hidden 2D map. Settings: "Turned off on this device for smoothness: …" + toggles.
-   - [x] Heat (2026-11-19): `lib/perf/pace.ts` (pure, tests/pace.test.ts) — 30 fps on low/medium, battery saver or under a
-         side menu; 20 fps idle (12 s no input, camera still; 20 not 10 because the sim clamps dt at 50 ms); nothing drawn
-         under a full-screen menu/store; Adaptive.setPace so a cap isn't read as a slow GPU; never paced in ?bench.
-         Settings: Battery saver toggle (auto on ≤20 % battery, not charging) + "Turned off on this device: …"
-         (`offEffects` in quality.ts). Verified headless: idle 21 fps, saver 30, full-screen menu draw:false.
-   - [x] Low tier trees: 20-tri blobs (`makeTemplates(style, lite)`) — trees were ~480k of the low tier's 1.14M triangles.
-   - [ ] Budgets as tests: NOT done. Numbers measured (Tehran 35.7006,51.4013, 1280×800, before the tree change):
-         low 268 calls/1.14M tris, medium 307/1.86M, high 327/1.97M, ultra 322/2.07M. After: low read 54/20k (tiles
-         probably not all loaded — re-measure). Next: GFX_BUDGETS per tier in lib/perf/frameStats.ts, judged in
-         benchResult, printed by test:lag. Medium/high triangles also high: find the next big meshes (instanced
-         unnamed 911-tri ×84 = cars?).
-     Testing note: headless guests hit the 20/h/IP guest limit → send `x-forwarded-for: 10.x.x.x` per context.
-     Chrome Energy Saver caps rAF at 30 fps below 20 % battery — lag numbers on a low Mac battery are meaningless.
-   - Tools: Xcode Instruments (Energy Log + GPU) and Safari Web Inspector Timelines on a cabled iPad, `stats-gl` dev
-     overlay, Spector.js for draw calls, `npm run test:lag`, Chrome CPU 4× throttle. Practices: instancing, LOD +
-     impostors, object pools, a per-frame time-budgeted work queue (≤4 ms), no React state per frame, KTX2/meshopt assets.
-     Target: iPad 7th gen steady 30 fps for 15 min without getting hot.
-3. **NPC chat** (2026-11-26: a–d done in code, unit-tested; never heard in a real 3D view / iPhone yet)
-   - [x] One talk channel (lib/street/talkVoice.ts): neural → exact-text premade → speechSynthesis → subtitle; new line stops old.
-   - [x] iOS: `unlockTalk()` on every talk-panel tap.
-   - [x] Shopkeeper threat score with hysteresis (lib/street/threat.ts), keepers return when calm (`storefronts.reopen`).
-   - [x] Context replies: `personaOf(id)`, gun/shots/crash/hour/met-before/insult escalation. Left: place type (no data in Drive).
-   - [~] (was) Context-aware replies (`lib/street/npcTalk.ts`): per-NPC persona (seeded name, age, temper), role, mood,
-         wanted level, armed/unarmed, recent events, place type, time; conversation memory (repeat insults escalate).
-         Utility-AI scoring for reactions; optional Claude route per the decision table.
-   - [x] (was) Shopkeepers flee too soon: threat score (car speed toward them, gun drawn, shots, wanted) with hysteresis
-         (flee > 0.7, calm < 0.3), shopkeepers braver + stay near the shop, return when calm. Unit tests.
-4. **Travel quick fixes**
-   - [x] Fuel tiers (settings → Travel planner, `fuelCost`) + "My fuel card still has quota" toggle on the plan.
-   - [x] (2026-11-26) Shared z-index scale; LeaveGuard dialog portalled. Left: ~60 raw z-indexes in world/globals/filters css
-         and inline zIndex in Game/Empire/LocationUi modals. Not screenshotted at 360 px.
-   - [x] (was) Shared z-index scale (`--z-map < --z-hud < --z-sheet < --z-dialog < --z-toast`), dialogs portalled to body.
-   - [x] RTL checkbox on the redirect page (logical CSS props, `margin-inline-*`).
-   - [x] (uses the bus site's road km, else straight line × 1.3; no OSRM call) Bus duration missing (Tehran → Shiraz): OSRM road km ÷ ~70 km/h bus speed, shown as "about".
+00. **Cloudflare + Iran deploy — USER** (code done 2026-11-26): `npx wrangler secret put RELAY_URL --name streetquest` =
+    `http://37-32-28-215.sslip.io:8790/<RELAY_KEY>`, `RELAY_FOR=all`, `FRONT_KEY` (same as .env, made by the first
+    `npm run front:deploy`); push to main (CI deploys); `npm run front:deploy`; then `/api/health?ext=1` + a fresh `?menu=`
+    on prod, and open the :8443 address on a phone on Irancell/MCI without VPN. Front door never seen on a real Iranian
+    line; box is 1 CPU / 1 GB — watch `systemctl status streetquest-front`. After deploy: Search Console + Bing + Yandex,
+    `INDEXNOW_KEY`, resubmit `/sitemap.xml`; NEXT_PUBLIC_SITE_URL = real domain. Prisma (Shop phone/payLink, ShopScan)
+    is on the LOCAL db only until that deploy.
+1. **iPad checks** (code done, never seen on a real iPad/sim): zoom stuck after rotation (`zoomGuard.ts`), page pinch-zoom
+   blocked in the game, Settings fit/scroll by touch. Remixt Radio: iOS sim tap + 360 px Persian shot.
+2. **Perf** (2026-11-26: benchmark tier, lite city on low, GFX budgets DONE in code + unit tests)
+   - Done: `lib/perf/tier.ts` + `graphics/bench.ts` (M1 1.85 Mpx/ms Chrome+WebKit, SwiftShader 0.09; iPad-class score
+     0.2 → low verified in headless: 173 calls / 261k tris, 10 walkers, 30 fps pace), `lib/perf/features.ts` (lite city
+     follows the low tier, Settings lists the cuts), `GFX_BUDGETS` in frameStats (judged in benchResult, printed by test:lag),
+     demotion unlearned after 5 min untouched.
+   - [ ] Thresholds for A10–A15 are scaled from FP32 specs, not measured: run the page on the iPad sim/real iPad and read
+         `localStorage.sq_gfx_bench`. Medium budget never re-measured after the lite-city change.
+   - [ ] Real-device fps + heat (Instruments Energy Log), target iPad 7th gen steady 30 fps for 15 min.
+3. **NPC chat** — never heard in a real 3D view / iPhone. Left: place type in replies (no data in Drive).
+4. **Travel leftovers**: ~60 raw z-indexes in world/globals/filters css + inline zIndex in Game/Empire/LocationUi modals;
+   not screenshotted at 360 px.
 5. **Travel upgrade**
-   - [ ] Nearest date with a ticket: ±14-day calendar strip (lowest price/day, grey = none, "next available"),
-         days fetched in parallel with `p-limit` 4 and cached 30 min (stale-while-revalidate).
-   - [ ] One pure facet engine (`lib/facets.ts`) for every result list: price range, departure window, duration,
-         company, class, seats, stops, rating; instant on loaded results; URL-synced.
-   - [ ] Hotels fast: stale-while-revalidate cache, stream each source as it answers (route returns NDJSON),
-         skeleton rows, prefetch when the city is picked.
-   - [ ] Source adapters `{search, deepLink}` normalised to one Offer (toman, source, link, duration, checkedAt),
-         deduped, cheapest first. Probe each endpoint first and note results in memory `travel-sites-endpoints`;
-         link-only when blocked. Tickets: Sepehr360, 3click, Flytoday, Snapptrip, Ghasedak24, Safar724, Raja.
-         Stays: Eghamat24, Snapptrip, Otaghak, Jajiga, Shab. Events: Vadoostan, Emruzkojaberam, Evand, Tiwall.
-   - [ ] Nearby-city suggestions (distance + things to do); day-by-day plan with exact price/source/duration per item,
-         estimates labelled; user-added steps (manual or paste a URL → parse known sites, else og: tags);
-         final list with working reserve links (Jalali dates), total, share/export. Unit tests for every deepLink builder.
+   - [~] (2026-11-26, code + unit tests, not seen in a browser) Day strip with each day's cheapest ticket, cheapest day
+         green, empty greyed, "Next day with tickets" (`lib/travel/calendar.ts`, Travel.tsx `useDayCells`: ±3 days
+         searched ahead 2 at a time through the phone cache). Check at 360 px Persian.
+   - [ ] Filters/sort for trips and stays already exist (filterTrips/filterStays/tripFacets); left: URL-synced state,
+         and a shared engine for store/product lists (Map/UI "scroll + search + filter in every list").
+   - [ ] Hotels fast: stale-while-revalidate cache, stream each source as it answers (NDJSON), skeleton rows, prefetch.
+   - [ ] Source adapters `{search, deepLink}` → one Offer (toman, source, link, duration, checkedAt), deduped, cheapest
+         first. Tickets: Sepehr360, 3click, Flytoday, Snapptrip, Ghasedak24, Safar724, Raja. Stays: Eghamat24,
+         Snapptrip, Otaghak, Jajiga, Shab. Events: Vadoostan, Emruzkojaberam, Evand, Tiwall. Probe first; link-only when blocked.
+   - [ ] Nearby-city suggestions; day-by-day plan with price/source/duration per item; user-added steps (paste a URL);
+         final list with reserve links (Jalali dates), total, share/export. Unit tests per deepLink builder.
 6. **Hero & physics**
-   - [ ] Hero empty-handed by default + punches; draw a gun on demand; NPCs react differently (ties to step 3).
-   - [ ] Hit-able props (bins, dumpsters, cones, chairs, signs, streetKit): extend `lib/street/carPhysics.ts` with
-         light prop bodies (mass per kind, impulse from car mass × speed, slide/tip/dent/break, car slows); only props
-         within 40 m awake, sleep at rest, instanced matrices. (Rapier WASM only if this proves too weak.)
-   - [x] (2026-11-26) `civicKind` + CivicCard (local prayer times lib/prayerTimes.ts, emergency numbers, hours). Left:
-         2D-map clinics/opticians share a category (only "درمانگاه" switches); libraries still "Books & library" in missions;
-         prayer times not compared to an official Tehran timetable; card never seen in a browser.
-   - [x] (was) Mosque/school/bank/hospital/police/government are NOT shops (extend `isShop` everywhere: cards, signs,
-         keepers, list/search) → info cards (prayer times computed locally, opening hours).
-7. **Shop interiors** (2026-11-26) — 3D rooms per trade, real menu on shelves with tags, keeper, buy; owner scans.
-   - [x] `lib/interior.ts` (pure, tests/interior.test.ts): 12 trades' rooms, fixtures + spots, drinks → fridge, plain
-         stock fill, walking/collision, stand-in-front. `drive/interior3d.ts` builds it (no shadows, ≤6 point lights,
-         RoomEnvironment off on lite, one tag atlas); Drive draws only the room while inside (city frozen).
-   - [x] ShopScreen = HUD over the room (drag look, tap walk/pick/keeper/door, 📋 list sheet, coin checkout for player
-         shops via /api/shops/orders, toman → call / pay link). Player shops (`sh:`) now 3D markers you can enter.
-   - [x] Owner 3D scan: ScanCard → browser optimiser (gltf-transform + meshoptimizer, WebP) → /api/shops/scan
-         (`ShopScan`, lib/glbCheck.ts, e2e/api/shopScan.spec.ts green) → interior loads it (`loadModel`, meshopt).
-         **Prisma pushed to the LOCAL db only — prod needs a deploy.** next.config: node:fs/path stubbed in the client
-         bundle (gltf-transform's NodeIO).
-   - [ ] Never tried with a real Polycam/Scaniverse export (big textures, KTX2-required exports get refused — tell
-         owners to pick "GLB" not "GLB (KTX2)"); never seen on iPhone/iPad Safari (WebP encode falls back to JPEG).
-   - [ ] Scan mode has no collision (walk box = scan bounds) and no keeper; place products into a scan (owner drags
-         them onto its shelves) — next step.
-   - [ ] Kenney/Quaternius CC0 props (fridges, espresso machine, tills) via gltf-transform to replace the box fixtures
-         on medium+; baked AO lightmap per room; real product photos as box textures (Snappfood CDN lacks CORS →
-         proxy through /api/img first).
-   - [ ] Interior screenshots only headless 1280×720; check 360×740 Persian + iOS sim (sims: ShopScreen HUD sizes).
-8. **Metro** — [ ] tap a station → sheet (lines, exits, interchanges, first/last train, headway) + its line bold on the
-   metro map, others dimmed; station-to-station planner with the RAPTOR algorithm, fares; Iranian metros (Tehran,
-   Mashhad, Isfahan, Shiraz, Tabriz, Karaj) from Geofabrik OSM `route=subway` relations in the city packs.
+   - [~] (2026-11-26, code + unit tests, NOT yet seen in a browser) Bare hands by default in the open city
+         (`lib/street/melee.ts`): fire punches right/left/right-hook (reach 1.7 m, 12/18/8 dmg, hook ×1.6), bones aimed for
+         a boxer's guard + strike (avatar.ts `fists`/`aimBone`, rig-agnostic), first-person fists (viewmodel.ts), swing/
+         thump sounds (+ `punchSwing`/`punchHit` slots), Q cycles fists → pistol → SMG, X/3 holsters, HUD ✊ button,
+         touch triggers show a fist, punches are "hitPerson" crimes, bystanders back off (`npc.scuffle`), keepers/NPC talk
+         react to `combat.gunOut` instead of aim. Matches always guns.
+         CHECK: headless boot with guest + `/api/loc {sim:true}` timed out at 240 s on :3100 (cold) — retry warm; look at
+         the guard/jab/hook close-ups (wrap `__drive.gfx.render`), first-person fists, a punch on a walker.
+   - [ ] Remote players still see my last gun while I'm bare (foot flags byte is full) — needs a protocol field.
+   - [ ] Punching other players in the open city (only NPCs/officers/cars now).
+   - [ ] Hit-able props (bins, dumpsters, cones, chairs, signs, streetKit): light bodies in `lib/street/carPhysics.ts`
+         (mass per kind, impulse from car mass × speed, slide/tip/break, car slows); only within 40 m awake, instanced.
+   - [ ] Civic places: 2D-map clinics/opticians share a category; libraries still "Books & library" in missions; prayer
+         times vs an official Tehran timetable; CivicCard never seen in a browser.
+7. **Shop interiors** — never tried with a real Polycam/Scaniverse export; never seen on iPhone/iPad Safari; scan mode has no
+   collision/keeper; owner places products onto scan shelves (next); CC0 props + baked AO + real product photos (proxy
+   Snappfood CDN via /api/img); 360×740 Persian + iOS sim shots.
+8. **Metro** — [ ] tap a station → sheet (lines, exits, interchanges, first/last train, headway) + its line bold, others
+   dimmed; station-to-station planner (RAPTOR), fares; Tehran, Mashhad, Isfahan, Shiraz, Tabriz, Karaj from Geofabrik
+   `route=subway` relations in the city packs.
 
 ## Stores & ads plan (after step 0; decisions above)
 1. Player-store flag + filter everywhere (Listing/ProductSource "player", 3D pole signs, public /s/ /p/ pages, API v1).
@@ -205,5 +147,6 @@ shopkeeper run-in, people separation, crowd prewarm, kerb stepping, partner bill
 bridges, Ottoman mosques, billboard trailers, skydive, hero moves, Turkish police livery.
 
 ## Done record
+2026-11-26: travel day strip with prices (code). GPU benchmark tier + lite city on low + per-tier draw budgets (lib/perf/{tier,features}.ts, graphics/bench.ts).
 AAA graphics steps 1–7 (film look, medium tier, SSR, night lights, atmosphere, city detail, car look) — see README
 "Realistic graphics" … "Car finish". Older waves: see `git log`.

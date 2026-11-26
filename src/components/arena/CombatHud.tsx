@@ -108,12 +108,19 @@ export function CombatHud({ combat, touch }: { combat: Combat; touch: boolean })
             <span>✚ {fmtNum(s.hp)}</span>
             <i />
           </div>
-          {/* Tap the gun to switch to the other one (touch and mouse alike). */}
-          <button type="button" className="chud-ammo" onClick={() => combat.swap()} title={t("Switch gun")} aria-label={t("Switch gun")} tabIndex={-1}>
-            <b className={s.ammo === 0 ? "out" : s.ammo <= W.mag * 0.25 ? "low" : ""}>{s.reloading ? t("Reloading…") : fmtNum(s.ammo)}</b>
-            {!s.reloading && <span>/ {fmtNum(s.mag)}</span>}
-            <small>{t(W.name)} ⇄</small>
-          </button>
+          {/* Tap the gun to switch to the next hand (fists → sidearm → SMG in the city; touch and mouse alike). */}
+          {s.bare ? (
+            <button type="button" className="chud-ammo bare" onClick={() => combat.swap()} title={t("Draw a gun")} aria-label={t("Draw a gun")} tabIndex={-1}>
+              <b aria-hidden>✊</b>
+              <small>{t("Fists")} ⇄ 🔫</small>
+            </button>
+          ) : (
+            <button type="button" className="chud-ammo" onClick={() => combat.swap()} title={t("Switch gun")} aria-label={t("Switch gun")} tabIndex={-1}>
+              <b className={s.ammo === 0 ? "out" : s.ammo <= W.mag * 0.25 ? "low" : ""}>{s.reloading ? t("Reloading…") : fmtNum(s.ammo)}</b>
+              {!s.reloading && <span>/ {fmtNum(s.mag)}</span>}
+              <small>{t(W.name)} ⇄</small>
+            </button>
+          )}
         </div>
       )}
 

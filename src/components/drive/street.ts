@@ -328,6 +328,7 @@ export class StreetLife {
       }
       this.talk("flee", x, z, 30);
     },
+    scuffle: (x, z) => this.h.crowd.alarm(x, z, 9, "dodge"),
     blast: (x, z, mine) => this.explode(x, z, mine, true),
     down: () => {
       this.say("down");

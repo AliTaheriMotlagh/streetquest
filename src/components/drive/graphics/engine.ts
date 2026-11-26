@@ -5,7 +5,8 @@
 // dynamic resolution and — on "auto" — by stripping effects, keeps the sun's shadow map
 // stable and aimed where the camera looks, and survives a lost GPU context.
 import * as THREE from "three";
-import { demote, demoted, qualityPick, readCaps, tierFor } from "./caps";
+import { demote, demoted, qualityPick, readCaps, tierFor, undemote } from "./caps";
+import { PROMOTE_AFTER_MS } from "@/lib/perf/tier";
 import { defaultGrade, PostPipeline, type Grade } from "./post";
 import { Adaptive, effective, MAX_LEVEL, withCaps, type Profile, type QualityPick, type Tier } from "./quality";
 import { acesInverse, DISPLAY } from "./shaders";
@@ -44,6 +45,8 @@ export class GraphicsEngine {
   private frameMs = 16.7;
   private worstSince = 0;
   private demotedNow = false;
+  /** Since when "auto" has run with nothing taken away (full resolution, every effect): to unlearn a demotion. */
+  private smoothSince = 0;
   private lost = false;
   private onLost = (e: Event) => {
     e.preventDefault(); // lets the browser restore the context
@@ -258,6 +261,13 @@ export class GraphicsEngine {
       if (!this.worstSince) this.worstSince = now;
       else if (now - this.worstSince > 20_000 && !this.demotedNow && demoted() < 3) (demote(), (this.demotedNow = true));
     } else this.worstSince = 0;
+    // "Auto" started lower than the GPU allows and never had to give anything back for a long
+    // while: next visit starts one step higher again (a hot day or a busy phone isn't forever).
+    const untouched = measure && this.adaptive.level === 0 && this.adaptive.dpr >= this.adaptive.profile.maxDpr - 1e-6;
+    if (this.pick === "auto" && !this.demotedNow && demoted() > 0 && untouched && !ch) {
+      if (!this.smoothSince) this.smoothSince = now;
+      else if (now - this.smoothSince > PROMOTE_AFTER_MS) (undemote(), (this.demotedNow = true));
+    } else if (measure) this.smoothSince = 0; // under a menu the clock just waits
   }
 
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {

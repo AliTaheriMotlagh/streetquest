@@ -49,7 +49,7 @@ async function main() {
     const r = handle ? ((await handle.jsonValue()) as BenchResult) : null;
     const res: BenchResult = r ?? { id: s.id, stats: { frames: 0, seconds: 0, fps: 0, p50: 0, p95: 0, p99: 0, worst: 0, low1: 0, janks: 0, hitches: 0, jankShare: 0 }, verdict: "laggy", why: [], longTasks: 0, longTaskMs: 0, error: "timed out" };
     out.push(res);
-    console.log(res.error ? `error: ${res.error}` : `${res.verdict} (${res.stats.fps} fps, p99 ${res.stats.p99} ms)`);
+    console.log(res.error ? `error: ${res.error}` : `${res.verdict} (${res.stats.fps} fps, p99 ${res.stats.p99} ms${res.gfx ? `, ${res.gfx.tier} ${res.gfx.calls} calls ${Math.round(res.gfx.triangles / 1000)}k tris` : ""})${res.why.length ? ` — ${res.why.join("; ")}` : ""}`);
     await cdp.detach();
   }
   await browser.close();

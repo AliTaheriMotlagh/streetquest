@@ -318,7 +318,8 @@ mood scales XP; loot funds research; territory funds the army.
   nitro), on foot walking/running, shooting, hero Sky Rings, skydive, every camera — measured frame by frame: fps,
   1% low, p50/p95/p99 frame time, stutters (frames over 2× the display's), freezes (> 100 ms), long tasks, the
   renderer's tier, draw calls and triangles, JS heap. Each run gets a verdict against its budget (map 55 fps / p99
-  34 ms; 3D 45 fps / p99 50 ms; laggy under 30 fps, a 1% low under 15 or a freeze every 10 s) and the reasons; earlier
+  34 ms; 3D 45 fps / p99 50 ms; laggy under 30 fps, a 1% low under 15 or a freeze every 10 s; a 3D run over its tier's
+  draw budget — `GFX_BUDGETS`, low 240 calls / 0.5M triangles up to ultra 420 / 2.5M — is never "smooth") and the reasons; earlier
   runs on the device stay for before/after. Run it on the phone you care about. From the terminal:
   `npm run test:lag` (installed Chrome against :3000, CPU slowed 4× like a mid-range phone; `--only drive,foot`,
   `--cpu 1`, `--phone`, `--headed` for real GPU numbers — headless WebGL is software) — exits 1 when a mode is laggy.
@@ -490,9 +491,16 @@ mood scales XP; loot funds research; territory funds the army.
   and colour grading, a drifting cloud layer, and the film look below), **Medium** (a light version of that pipeline:
   no MSAA target, FXAA on the finished frame, bloom from a quarter of the picture, grading and vignette — and shadows;
   a phone without float render targets draws straight to the screen instead) or **Low** (the old lite look, straight
-  to the screen). On **Auto** it keeps the frame rate up by lowering the resolution first, then stripping AO, then the
+  to the screen). Because iOS and Safari call every Apple chip "Apple GPU" (a 2019 iPad and an M4 iPad Pro looked the
+  same and both got High), **Auto** also runs a ~0.25 s GPU benchmark once per device and browser build, behind the
+  loading screen (`graphics/bench.ts`, rules in `lib/perf/tier.ts`: a blended ALU shader into a 512² target, in growing
+  batches; an M1 scores ~1.8 Mpx/ms, SwiftShader 0.09): the score caps the tier the name picked (< 0.3 low, < 0.9 medium,
+  < 2.4 high), and with a masked name may lift it one step, never past High. On **Low** the city is built lite as well
+  (`lib/perf/features.ts`: fewer walkers, cars, signs and beacons, no street kit or cinema trailers, the phone's voice
+  instead of neural voices) and Settings lists those with the effects it turned off. On **Auto** it keeps the frame rate up by lowering the resolution first, then stripping AO, then the
   film look, then bloom and clouds, and only then shadow detail and shadows; if that's still not enough for 20 s, or the GPU context is lost, the next
-  visit starts a tier lower (picking Auto again forgets that). It also spots a browser that caps the frame rate (iOS Low
+  visit starts a tier lower (picking Auto again forgets that and re-runs the benchmark; five minutes with nothing taken
+  away unlearns one step). It also spots a browser that caps the frame rate (iOS Low
   Power Mode: frames sitting tightly on 33 ms) and stops lowering things that won't help; when fewer pixels don't help
   but it isn't a cap (a busy CPU), it gives the sharpness back and strips effects instead. Phones and tablets (iPads
   too, though iPadOS Safari calls itself a Mac) never draw past 1.5× resolution or 2× MSAA unless Ultra is picked —
@@ -873,7 +881,10 @@ mood scales XP; loot funds research; territory funds the army.
   straight line, 80 km/h, 8 L/100 km at the petrol price beyond the quota — 10,000 toman; "My fuel card still has
   quota" prices the first 60 L at 1,500 and the next 50 L at 3,000; all five numbers are in Admin → Game settings →
   Travel planner, `fuelCost` in `lib/travel/plan.ts`), then that way's tickets; any day can be moved (the first leg
-  moves the trip, a later one the nights before it). The **bill** stays at the bottom: total, per person, tickets /
+  moves the trip, a later one the nights before it). The **day strip shows each day's cheapest ticket** for the way
+  picked (`lib/travel/calendar.ts`): the three days either side are searched ahead two at a time through the same
+  searches and phone cache as the list (so tapping one opens at once), the cheapest day is green, a day with nothing
+  is greyed, and an empty day offers **Next day with tickets**. The **bill** stays at the bottom: total, per person, tickets /
   fuel / stays, and what's still to choose — **Cheapest everywhere** fills every open leg and stay. The plan and
   every answer are kept on the phone (`lib/travel/plan.ts`, pure, `tests/travelPlan.test.ts`). Tickets: each list reads
   [Alibaba](https://www.alibaba.ir) (flights, trains, buses) and [MrBilit](https://mrbilit.com) (flights, and trains

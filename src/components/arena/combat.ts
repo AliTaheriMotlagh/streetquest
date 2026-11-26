@@ -30,7 +30,8 @@ import { Avatar, loadCivilian, loadSoldier } from "./avatar";
 import { faceYaw, newFoot, stepFoot, type FootBody, type FootInput } from "./foot";
 import { fovFor } from "@/lib/view";
 import { thudSound } from "./gunsound";
-import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, reloadSound, shotSound, smokeSound, throwSound } from "./gunsound";
+import { beepSound, boomSound, clinkSound, doorSound, emptySound, engineStartSound, lockSound, fireSound, flashSound, hitSound, hurtSound, killSound, punchSound, reloadSound, shotSound, smokeSound, swingSound, throwSound } from "./gunsound";
+import { HIT_AT_S, nextHand, punchDamage, REACH_M, startHand, throwPunch, type Hand, type Punch, type PunchState } from "@/lib/street/melee";
 import { flashSeconds, fullGear, isThrow, smokeBlocks, THROW_GAP_MS, THROW_KEYS, THROWABLES, throwVelocity, type ThrowKey, type Vec3 } from "@/lib/arena/throwables";
 import { Nades } from "./nades";
 import { rumble } from "../drive/gamepad";
@@ -73,6 +74,8 @@ export type CombatHud = {
   inMatch: boolean;
   team: Team;
   weapon: WeaponKey;
+  /** Empty-handed in the open city (lib/street/melee.ts): fire punches, the swap button draws a gun. */
+  bare: boolean;
   loadout: WeaponKey[];
   ammo: number;
   mag: number;
@@ -163,6 +166,8 @@ export type NpcTargets = {
   ray(r: Ray, maxT: number): { t: number; body: boolean; zone: Zone; hit(dmg: number, dx: number, dz: number): boolean } | null;
   /** I fired here. */
   shot(x: number, z: number): void;
+  /** A fist fight here (my punch landed): people close by back off, nobody calls it gunfire. */
+  scuffle?(x: number, z: number): void;
   /** A grenade or C4 went off here (`mine`: I threw it). */
   blast(x: number, z: number, mine: boolean): void;
   /** I'm knocked out (the street's damage took the last of my health). */
@@ -253,6 +258,12 @@ export class Combat {
   // guns (predicted locally; the server keeps the real count)
   private loadout: WeaponKey[] = ["pistol", "smg"];
   private weapon: WeaponKey = "smg";
+  /** Bare hands (the open city's default on foot): no gun out, fire throws punches. */
+  private bare = false;
+  private punches: PunchState = { last: null };
+  /** A punch on its way: it lands (or misses) at `at` (performance.now() ms). */
+  private punchDue: { at: number; p: Punch } | null = null;
+  private punchedAt = 0;
   private ammo = new Map<WeaponKey, number>();
   private reloadUntil = 0;
   private reloadLen = 0;
@@ -417,6 +428,10 @@ export class Combat {
   get onFoot() {
     return !!this.me;
   }
+  /** On foot with a gun in hand (not bare fists): people react to it (lib/street/threat.ts). */
+  get gunOut() {
+    return !!this.me && !this.bare;
+  }
   get inMatch() {
     return this.space !== "world" && !!this.match;
   }
@@ -468,6 +483,7 @@ export class Combat {
       inMatch: this.inMatch,
       team: this.team,
       weapon: this.weapon,
+      bare: this.bare,
       loadout: this.loadout,
       ammo: this.ammo.get(this.weapon) ?? 0,
       mag: W.mag,
@@ -685,6 +701,8 @@ export class Combat {
   private enterFoot(x: number, z: number, yaw: number) {
     this.me = newFoot(x, z, yaw);
     this.face = yaw;
+    // Out of the car in the city: empty-handed; a gun comes out when asked for (lib/street/melee.ts).
+    this.setBare(startHand(this.inMatch, this.weapon) === "fists");
     this.camPos.set(x, 2, z);
     if (!this.avatar)
       // In a match I'm a soldier on a team; in the open city I'm the plain-clothes main character.
@@ -694,6 +712,7 @@ export class Combat {
           this.avatar = new Avatar(tpl, "#7d8a6a", "#f0c05a", this.h.shadows);
           this.myAccent = "";
           this.avatar.setWeapon(this.weapon);
+          this.avatar.setBare(this.bare);
           this.h.scene.add(this.avatar.group);
         })
         .catch(() => this.h.toast(t("Couldn't load your character — check your connection")));
@@ -747,9 +766,30 @@ export class Combat {
     this.publish(true);
   }
 
-  swap(to?: WeaponKey) {
-    const next = to ?? this.loadout[(this.loadout.indexOf(this.weapon) + 1) % this.loadout.length];
-    if (!next || next === this.weapon || !this.loadout.includes(next)) return;
+  /** Gun out or away (bare hands): the 3D view, the first-person hands and the HUD follow. */
+  private setBare(on: boolean) {
+    if (on && this.inMatch) on = false;
+    this.bare = on;
+    this.punchDue = null;
+    this.vm.setBare(on);
+    this.avatar?.setBare(on);
+  }
+
+  /** Put the gun away (open city only). */
+  holster() {
+    if (this.bare || this.inMatch || !this.me) return;
+    this.setBare(true);
+    this.publish(true);
+  }
+
+  /** The next hand (fists → sidearm → SMG in the city), or a given one: a gun named while bare draws it. */
+  swap(to?: Hand) {
+    const cur: Hand = this.bare ? "fists" : this.weapon;
+    const next = to ?? nextHand(cur, this.loadout, this.inMatch);
+    if (next === cur) return;
+    if (next === "fists") return this.holster();
+    if (!this.loadout.includes(next)) return;
+    if (this.bare) this.setBare(false);
     this.weapon = next;
     this.reloadUntil = 0;
     this.nextShot = performance.now() + 350;
@@ -761,7 +801,7 @@ export class Combat {
   reload() {
     const W = WEAPONS[this.weapon];
     const now = performance.now();
-    if (!this.me || this.down || now < this.reloadUntil || (this.ammo.get(this.weapon) ?? 0) >= W.mag) return;
+    if (!this.me || this.bare || this.down || now < this.reloadUntil || (this.ammo.get(this.weapon) ?? 0) >= W.mag) return;
     this.reloadLen = W.reloadS * 1000;
     this.reloadUntil = now + this.reloadLen;
     this.rt.send({ t: "reload" });
@@ -1379,6 +1419,7 @@ export class Combat {
       if (e.repeat) return;
       if (k === "r") this.reload();
       if (k === "q" || k === "1" || k === "2") this.swap(k === "1" ? this.loadout[0] : k === "2" ? this.loadout[1] : undefined);
+      if (k === "x" || k === "3") this.swap("fists"); // put the gun away (open city)
       if (k === "c") this.input.crouch = !this.input.crouch;
       if (k === " ") this.input.jump = true;
       if (k === "t") this.input.grapple = true;
@@ -1500,7 +1541,7 @@ export class Combat {
       const frozen = this.match?.phase === "warmup" || (this.match?.phase === "live" && this.input.act && !!this.snapshot.act);
       const fireHeld = inp.fire || (this.autoFire && H.touch && !!assist?.onTarget);
       // Third person with nothing in the sights: the body turns to where it goes (and may sprint any way).
-      const squared = this.cam === "fps" || inp.aim || fireHeld || this.throwHeld || this.down || now - this.firedAt < 900;
+      const squared = this.cam === "fps" || inp.aim || fireHeld || this.throwHeld || this.down || now - this.firedAt < 900 || now - this.punchedAt < 600;
       const moveIn = this.down || frozen ? { ...inp, mx: 0, mz: 0, jump: false, sprint: false } : fireHeld ? { ...inp, sprint: false } : { ...inp, free: !squared };
       const collideBoth = (x: number, z: number, r: number, y: number, tall: number) => {
         const a = H.collision.collide(x, z, r, y, tall);
@@ -1525,17 +1566,22 @@ export class Combat {
       }
 
       // -- shoot
+      if (this.inMatch && this.bare) this.setBare(false); // matches are fought with guns
       const canFire = !this.down && !reloading && !frozen && !me.sprint && now >= this.nextShot;
       const wants = W.auto ? fireHeld : fireHeld && !this.triggerWas;
       this.triggerWas = fireHeld;
-      if (wants && canFire) {
+      if (this.bare) {
+        // Bare hands: held fire keeps punching, as fast as the combo allows.
+        if (fireHeld && !this.down && !frozen) this.punch(now);
+        if (this.punchDue && now >= this.punchDue.at) this.land(me, this.punchDue.p);
+      } else if (wants && canFire) {
         if ((this.ammo.get(this.weapon) ?? 0) <= 0) {
           emptySound();
           this.reload();
           this.nextShot = now + 300;
         } else this.shoot(me, sNow, now, speed);
       }
-      if (!reloading && (this.ammo.get(this.weapon) ?? 0) === 0 && !this.down && now > this.nextShot) this.reload();
+      if (!this.bare && !reloading && (this.ammo.get(this.weapon) ?? 0) === 0 && !this.down && now > this.nextShot) this.reload();
 
       // -- lining up a throw: the arc it would fly
       if (this.throwHeld && !this.down) {
@@ -1649,6 +1695,62 @@ export class Combat {
     if (tg.dead) return false;
     if (this.inMatch) return this.match?.mode === "ffa" || tg.team !== this.team;
     return !this.passive && !tg.passive;
+  }
+
+  /** Throw a punch if the last one has recovered (lib/street/melee.ts: right, left, right hook). */
+  private punch(now: number) {
+    const p = throwPunch(this.punches, now / 1000);
+    if (!p) return;
+    this.punchedAt = now;
+    this.punchDue = { at: now + HIT_AT_S * 1000, p };
+    this.avatar?.punch(p);
+    this.vm.punch(p);
+    swingSound(p.hook);
+  }
+
+  /**
+   * The fist arrives: the nearest person, officer or car within reach along the crosshair takes it
+   * (a crime like any assault — drive/street.ts), a wall or a car just thuds, thin air is a miss.
+   */
+  private land(me: FootBody, p: Punch) {
+    this.punchDue = null;
+    if (this.down) return;
+    const H = this.h;
+    const eye = eyeHeight(me.crouch);
+    const ox = me.x, oy = me.y + eye, oz = me.z;
+    const target = this.aimPoint(30);
+    let dx = target.x - ox, dy = target.y - oy, dz = target.z - oz;
+    // Punches go roughly level: looking down at the street still hits the man in front.
+    dy = Math.max(-0.35, Math.min(0.35, dy / (Math.hypot(dx, dz) || 1))) * Math.hypot(dx, dz);
+    const l = Math.hypot(dx, dy, dz) || 1;
+    (dx /= l), (dy /= l), (dz /= l);
+    const ray: Ray = { ox, oy, oz, dx, dy, dz };
+    const wall = H.collision.raycast(ray, REACH_M, hitN);
+    const npc = this.inMatch ? null : (H.npc?.ray(ray, Math.min(wall, REACH_M)) ?? null);
+    const at = (t: number) => ({ x: ox + dx * t, y: oy + dy * t, z: oz + dz * t });
+    if (npc && npc.t < wall) {
+      const killed = npc.hit(punchDamage(npc.zone, p.hook), dx, dz);
+      const hitAt = at(npc.t);
+      punchSound(hitAt, npc.body, p.hook);
+      H.npc?.scuffle?.(me.x, me.z);
+      if (npc.body) {
+        this.vfx.impact(hitAt.x, hitAt.y, hitAt.z, "body");
+        hitSound(npc.zone === "head");
+        if (killed) killSound();
+        const el = this.hitEl;
+        if (el) {
+          el.classList.remove("on", "kill", "head");
+          void el.offsetWidth;
+          el.classList.add("on", ...(killed ? ["kill"] : []), ...(npc.zone === "head" ? ["head"] : []));
+        }
+      }
+      this.shake = Math.max(this.shake, p.hook ? 0.22 : 0.12);
+      rumble(p.hook ? 0.7 : 0.45, 0.3, 60);
+    } else if (Number.isFinite(wall)) {
+      punchSound(at(wall), false, p.hook);
+      this.shake = Math.max(this.shake, 0.08);
+      rumble(0.3, 0.2, 40);
+    }
   }
 
   private shoot(me: FootBody, sNow: number, now: number, speed: number) {

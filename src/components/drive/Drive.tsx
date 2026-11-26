@@ -97,6 +97,7 @@ import { GraphicsEngine } from "./graphics/engine";
 import { autoTier, forgetDemotion, qualityPick, saverPick, setQualityPick, setTimePick, setWeatherPick, timePick, watchBattery, weatherPick } from "./graphics/caps";
 import { lowBattery, pace, Pacer, type Pace } from "@/lib/perf/pace";
 import { offEffects } from "./graphics/quality";
+import { liteCity, offCuts } from "@/lib/perf/features";
 import type { QualityPick } from "./graphics/quality";
 import { surfaces } from "./graphics/surfaces";
 import { Rain } from "./graphics/weather";
@@ -480,7 +481,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     const el = mount.current;
     if (!el) return;
     let disposed = false;
-    const lite = isLite();
+    const userLite = isLite();
     if (!persist.current) {
       const frame = makeFrame(start);
       const p = frame.toXZ(start.lat, start.lng);
@@ -494,7 +495,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
 
     // ---- renderer & scene
     // graphics/engine.ts: the quality tier, dynamic resolution, the HDR pipeline (high/ultra).
-    const gfx = new GraphicsEngine(el, { lite, direct: style === "toon" });
+    const gfx = new GraphicsEngine(el, { lite: userLite, direct: style === "toon" });
+    // The city's content follows the tier too (lib/perf/features.ts): a device on "low" gets the lite
+    // crowd, traffic, street kit, signs and voices, not just fewer effects.
+    const lite = liteCity(userLite, gfx.tier);
     gfxNow.current = gfx;
     setAvatarStyle(style); // soldiers, police and players drawn in the city's look
     const renderer = gfx.renderer;
@@ -1822,7 +1826,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       // "Wait at the shop": the open store nearest (its door); "wait by my car": the car you left, if it's near.
       const shopAt = act === "shop" ? storefronts.nearestOpen(st.x, st.z, 60, () => false) : null;
       const carAt = act === "car" && parked && Math.hypot(parked.x - st.x, parked.z - st.z) < 250 ? parked : null;
-      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, shop: shopAt?.name ? { name: shopAt.name, dist: Math.round(Math.hypot(shopAt.x - st.x, shopAt.z - st.z)), rel: 0 } : null, car: carAt ? { dist: Math.round(Math.hypot(carAt.x - st.x, carAt.z - st.z)) } : null, fmt: formatDistance, tr: (k) => t(k), armed: combat.input.aim, recent: shopkeepers.recentNear(p.x, p.z), hour: new Date().getHours(), met }, turn);
+      const r = npcReply({ act, id, stars: street.stars, insults: insults.get(id) ?? 0, way: way ? { kind: way, spot: wayTo ? spotOf(wayTo.sp) : null } : undefined, best: best ? spotOf(best) : null, store: act === "store" ? storeHere() : undefined, following, shop: shopAt?.name ? { name: shopAt.name, dist: Math.round(Math.hypot(shopAt.x - st.x, shopAt.z - st.z)), rel: 0 } : null, car: carAt ? { dist: Math.round(Math.hypot(carAt.x - st.x, carAt.z - st.z)) } : null, fmt: formatDistance, tr: (k) => t(k), armed: combat.gunOut, recent: shopkeepers.recentNear(p.x, p.z), hour: new Date().getHours(), met }, turn);
       if (act === "insult") insults.set(id, (insults.get(id) ?? 0) + 1);
       const text = t(r.key, r.params);
       // The subtitle runs with the voice: the panel is told when it starts and how long it is.
@@ -2570,7 +2574,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       obstacles.add("traffic", traffic.tick(dt, st.x, st.z, flat > 0.2 ? { x: camera.position.x, z: camera.position.z, dx: camFwd.x / flat, dz: camFwd.z / flat } : null));
       crowd.meR = onFoot ? 0.35 : 0;
       crowd.tick(dt, st.x, st.z);
-      shopkeepers.tick(dt, st.x, st.z, { vx: st.vx, vz: st.vz, inCar: !onFoot && !(D.flies && st.alt > 0.5), gunDrawn: onFoot && combat.input.aim, stars: street.stars });
+      shopkeepers.tick(dt, st.x, st.z, { vx: st.vx, vz: st.vz, inCar: !onFoot && !(D.flies && st.alt > 0.5), gunDrawn: onFoot && combat.gunOut, stars: street.stars });
       street.tick(dt, { x: st.x, z: st.z, vx: st.vx, vz: st.vz, yaw: st.yaw, onFoot, inCar: !onFoot && L.canDrive && !D.flies, flying: D.flies && st.alt > 0.5, matchOn, carX: parked?.x ?? st.x, carZ: parked?.z ?? st.z, carYaw: parked?.yaw ?? st.yaw, carR: D.radius });
       // Shopkeepers: walking or cruising past an open store, its keeper calls you in (once in two minutes per store).
       if (!matchOn && now - lastShopCall > 1500 && !(D.flies && st.alt > 0.5) && Math.hypot(st.vx, st.vz) < 14) {
@@ -3483,7 +3487,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             names={names}
             quality={quality}
             autoTier={autoTier()}
-            offFx={gfxNow.current ? offEffects(gfxNow.current.profile) : []}
+            offFx={gfxNow.current ? [...offCuts(isLite(), gfxNow.current.tier), ...offEffects(gfxNow.current.profile)] : []}
             timeOfDay={timeOfDay}
             weather={weather}
             fps={hud?.fps ?? 0}
@@ -3511,7 +3515,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             names={names}
             quality={quality}
             autoTier={autoTier()}
-            offFx={gfxNow.current ? offEffects(gfxNow.current.profile) : []}
+            offFx={gfxNow.current ? [...offCuts(isLite(), gfxNow.current.tier), ...offEffects(gfxNow.current.profile)] : []}
             timeOfDay={timeOfDay}
             weather={weather}
             fps={hud?.fps ?? 0}
@@ -3601,10 +3605,10 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       {canDrive && !fight?.inMatch && <AbilityHud el={abilityEl} />}
       {scenarios && !fight?.inMatch && <ScenarioHud scenarios={scenarios} />}
       {combat && <CombatHud combat={combat} touch={touch} />}
-      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} onCar={() => combat.getIn()} onFocus={onFocus} nearCar={!!fight?.nearCar} inMatch={inMatch} hero={hero} />}
+      {canDrive && touch && combat && onFoot && <CombatPad input={combat.input} sens={combat.lookScale} onReload={() => combat.reload()} onSwap={() => combat.swap()} onJump={combat.jump} onCar={() => combat.getIn()} onFocus={onFocus} nearCar={!!fight?.nearCar} inMatch={inMatch} hero={hero} bare={!!fight?.bare} />}
       {canDrive && touch && !onFoot && <DrivePad input={input} kind={v.flies ? "air" : v.bike ? "moto" : "car"} mode={ctl} onHorn={onHorn} onLand={onLand} />}
       {canDrive && !touch && onFoot && footKeys && (
-        <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Z dead-eye · Tab scores · F car")}</div>
+        <div className="drive-keys small">{t("Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · X fists · V view · Z dead-eye · Tab scores · F car")}</div>
       )}
       {canDrive && !touch && showKeys && !onFoot && (
         <div className="drive-keys small">

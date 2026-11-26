@@ -58,6 +58,8 @@ const FIGHT_SLOTS = {
   bombBeep: { what: "The bomb's beep", search: "bomb timer beep", maxS: 0.4 },
   throw: { what: "A grenade thrown: the swish", search: "grenade throw whoosh", maxS: 0.8 },
   flashbang: { what: "A flashbang going off", search: "flashbang stun grenade", maxS: 3 },
+  punchSwing: { what: "A punch thrown: a short whoosh of an arm", search: "punch whoosh swing", maxS: 0.5 },
+  punchHit: { what: "A punch landing: a meaty thump", search: "punch impact face body hit", maxS: 0.6 },
 } satisfies Record<string, SoundSlot>;
 
 const uiSlots = Object.fromEntries(UI_SFX.map((n) => [`ui_${n}`, { what: `Interface sound «${n}»`, search: `game ui ${n}`, maxS: 3 }])) as Record<`ui_${UiSfx}`, SoundSlot>;

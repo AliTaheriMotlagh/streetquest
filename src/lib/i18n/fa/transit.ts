@@ -57,5 +57,12 @@ const transit: Record<string, string> = {
   "Times: the published timetable ({source}).": "زمان‌ها: جدول زمانی رسمی ({source}).",
   "No timetable for these lines yet — routes and stops are from OpenStreetMap; minutes to each stop are estimates.": "هنوز جدول زمانی این خط‌ها را نداریم — مسیرها و ایستگاه‌ها از OpenStreetMap است و دقیقه‌ها تا هر ایستگاه تخمینی است.",
   "IETT's live feed isn't reachable right now.": "الان به اطلاعات زنده‌ی IETT دسترسی نداریم.",
+  "Mashhad Metro": "مترو مشهد",
+  "Isfahan Metro": "مترو اصفهان",
+  "Shiraz Metro": "مترو شیراز",
+  "Tabriz Metro": "مترو تبریز",
+  "Pay with the city's transit card or a single ticket from the station's machine.": "با کارت بلیت شهر یا یک بلیت تک‌سفره از دستگاه ایستگاه پرداخت کن.",
+  "Most trains keep a carriage or two for women only — the platform shows where.": "بیشتر قطارها یکی دو واگن مخصوص بانوان دارند — روی سکو مشخص است.",
+  "Trains come less often than in Tehran: check the next one before you go down.": "قطارها از تهران کمتر می‌آیند: قبل از پایین رفتن، زمان قطار بعدی را ببین.",
 };
 export default transit;

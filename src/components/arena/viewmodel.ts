@@ -8,6 +8,14 @@ import * as THREE from "three";
 import { GUN_FIT } from "@/lib/arena/gunFit";
 import { WEAPON_KEYS, type WeaponKey } from "@/lib/arena/weapons";
 import { loadWeapons } from "./avatar";
+import { punchCurve, PUNCH_S, type Punch } from "@/lib/street/melee";
+
+/** Bare hands (lib/street/melee.ts): where each fist sits in the guard, and the elbow it hangs from (camera space, m). */
+const GUARD = (s: number) => new THREE.Vector3(0.15 * s, -0.15, -0.36);
+const ELBOW = (s: number) => new THREE.Vector3(0.26 * s, -0.42, -0.1);
+const JAB = (s: number) => new THREE.Vector3(0.035 * s, -0.07, -0.64);
+const HOOK = (s: number) => new THREE.Vector3(-0.06 * s, -0.06, -0.5);
+const fistP = new THREE.Vector3(), elbowP = new THREE.Vector3(), midP = new THREE.Vector3();
 
 /** The guns are life-size; in the hand they're drawn a little smaller, like every shooter does. */
 const SCALE = 0.78;
@@ -35,6 +43,12 @@ export class Viewmodel {
   private reloadK = 0;
   private flashT = 0;
   private gloves: THREE.Mesh[] = [];
+  /** Bare hands: two fists and forearms, drawn instead of the gun. */
+  private fists = new THREE.Group();
+  private fistParts = new Map<1 | -1, { fist: THREE.Mesh; arm: THREE.Mesh }>();
+  private bare = false;
+  private shown = true;
+  private punchNow: (Punch & { t0: number }) | null = null;
 
   constructor(aspect: number, flashTex?: THREE.Texture) {
     this.camera = new THREE.PerspectiveCamera(60, aspect, 0.01, 10);
@@ -56,6 +70,18 @@ export class Viewmodel {
       this.rig.add(hand, arm);
       this.gloves.push(hand, arm);
     }
+    // The fists: bare skin, a dark jacket sleeve (the main character's plain clothes).
+    const skin = new THREE.MeshStandardMaterial({ color: "#b8876a", roughness: 0.7 });
+    const jacket = new THREE.MeshStandardMaterial({ color: "#2e3238", roughness: 0.9 });
+    for (const side of [1, -1] as const) {
+      const fist = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.07, 0.09), skin);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.05, 1, 10), jacket);
+      this.fists.add(fist, arm);
+      this.fistParts.set(side, { fist, arm });
+      this.gloves.push(fist, arm);
+    }
+    this.fists.visible = false;
+    this.scene.add(this.fists);
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex ?? null, color: "#ffd38a", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     this.flash.scale.setScalar(0.12);
     this.flash.visible = false;
@@ -91,6 +117,49 @@ export class Viewmodel {
     for (const [k, g] of this.guns) g.visible = k === w;
   }
 
+  /** Empty-handed (fists up) or holding the gun. */
+  setBare(on: boolean) {
+    this.bare = on;
+    if (!on) this.punchNow = null;
+    this.applyShown();
+  }
+
+  /** Throw a punch with bare hands. */
+  punch(p: Punch) {
+    if (this.bare) this.punchNow = { ...p, t0: performance.now() };
+  }
+
+  private applyShown() {
+    this.rig.visible = this.shown && !this.bare;
+    this.fists.visible = this.shown && this.bare;
+  }
+
+  /** Bare hands: each fist from the guard out to the jab (or round in a hook), its forearm from the elbow to it. */
+  private poseFists(bobX: number, bobY: number) {
+    const pn = this.punchNow;
+    const t = pn ? (performance.now() - pn.t0) / 1000 : -1;
+    if (pn && t >= PUNCH_S) this.punchNow = null;
+    for (const [side, { fist, arm }] of this.fistParts) {
+      const ext = pn && pn.side === side ? punchCurve(t) : 0;
+      fistP.copy(GUARD(side));
+      if (ext > 0) fistP.lerp(pn!.hook ? HOOK(side) : JAB(side), ext);
+      else if (ext < 0) fistP.z -= ext * 0.08; // the pull back before the strike
+      fistP.x += bobX;
+      fistP.y += bobY;
+      fist.position.copy(fistP);
+      fist.rotation.set(ext > 0 ? -0.2 * ext : 0.25, 0, side * (pn?.hook && ext > 0 ? 1.2 * ext : 0.15));
+      elbowP.copy(ELBOW(side));
+      elbowP.x += bobX * 0.5;
+      elbowP.y += bobY * 0.5;
+      if (ext > 0) elbowP.lerp(midP.copy(fistP).add(new THREE.Vector3(0.06 * side, -0.08, 0.3)), ext * 0.6);
+      midP.copy(elbowP).add(fistP).multiplyScalar(0.5);
+      arm.position.copy(midP);
+      arm.scale.set(1, elbowP.distanceTo(fistP), 1);
+      // The cylinder's length is along y: turn y to point from the elbow to the fist.
+      arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), fistP.clone().sub(elbowP).normalize());
+    }
+  }
+
   fire(strength: number) {
     this.kick = Math.min(1.4, this.kick + 0.5 + strength * 2);
     this.flashT = 0.05;
@@ -122,6 +191,7 @@ export class Viewmodel {
       base.z + this.kick * 0.035,
     );
     r.rotation.set(this.kick * 0.06 - this.reloadK * 0.6 + (o.sprint ? -0.25 : 0), this.swayX * 0.4 + (o.sprint ? 0.5 : 0), this.reloadK * 0.4 + Math.sin(this.bobT) * 0.01 * bobK);
+    if (this.bare) this.poseFists(Math.sin(this.bobT) * 0.012 * moving + this.swayX * 0.04, Math.abs(Math.cos(this.bobT)) * 0.01 * moving + this.swayY * 0.03 - (o.sprint ? 0.04 : 0));
     this.camera.fov = 60 - this.adsK * 8;
     this.camera.updateProjectionMatrix();
     this.flashT -= dt;
@@ -136,11 +206,12 @@ export class Viewmodel {
 
   /** Hide it (sniper scope up, dead, driving). */
   set visible(v: boolean) {
-    this.rig.visible = v;
+    this.shown = v;
+    this.applyShown();
   }
 
   render(renderer: THREE.WebGLRenderer) {
-    if (!this.rig.visible) return;
+    if (!this.rig.visible && !this.fists.visible) return;
     const auto = renderer.autoClear;
     renderer.autoClear = false;
     renderer.clearDepth();

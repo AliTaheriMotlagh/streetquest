@@ -57,5 +57,12 @@ const transit: Record<string, string> = {
   "Times: the published timetable ({source}).": "Saatler: yayımlanan sefer çizelgesi ({source}).",
   "No timetable for these lines yet — routes and stops are from OpenStreetMap; minutes to each stop are estimates.": "Bu hatların sefer saatleri henüz yok — güzergâh ve duraklar OpenStreetMap'ten; duraklara dakikalar tahminidir.",
   "IETT's live feed isn't reachable right now.": "İETT'nin canlı verisine şu an ulaşılamıyor.",
+  "Mashhad Metro": "Meşhed Metrosu",
+  "Isfahan Metro": "İsfahan Metrosu",
+  "Shiraz Metro": "Şiraz Metrosu",
+  "Tabriz Metro": "Tebriz Metrosu",
+  "Pay with the city's transit card or a single ticket from the station's machine.": "Şehrin ulaşım kartıyla ya da istasyondaki makineden tek bilet alarak öde.",
+  "Most trains keep a carriage or two for women only — the platform shows where.": "Çoğu trende bir iki vagon yalnızca kadınlara ayrılır — peronda gösterilir.",
+  "Trains come less often than in Tehran: check the next one before you go down.": "Trenler Tahran'dakinden seyrek gelir: aşağı inmeden sonrakini kontrol et.",
 };
 export default transit;

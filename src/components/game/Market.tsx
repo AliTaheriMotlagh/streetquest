@@ -11,7 +11,8 @@ import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { S } from "@/lib/settings";
 import { categoryOf, daysLeft, MAX_DISCOUNT, priceNow, SHOP_CATEGORIES, SHOP_EMOJIS, SHOP_LIMITS, shopFee, SHOP_WARN_MS } from "@/lib/shops";
-import { askConfirm } from "@/components/Dialogs";
+import { askConfirm, askText } from "@/components/Dialogs";
+import { REASON_LABEL, REPORT_REASONS, type ReportReason } from "@/lib/stores/moderation";
 import { Button } from "@/components/Button";
 import { api, fmtTime, type ShopCard, type ShopDeal, type ShopOrder, type ShopProduct, type ShopView } from "./client";
 import { fmtCountdown } from "./Lottery";
@@ -406,6 +407,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
       ) : (
         <div className="empty">{s.mine ? t("Your shelves are empty — add a product in My shop.") : t("Nothing on the shelves right now.")}</div>
       )}
+      {!s.mine && <ReportButton shopId={s.id} />}
     </div>
   );
 }
@@ -543,6 +545,36 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
           <button className="link-btn small" style={{ marginTop: 8 }} onClick={() => openChat(shopRoom(s.id, me.id), `${s.emoji} ${s.name}`)}>💬 {t("Ask the seller a question")}</button>
         </div>
       )}
+      {!s.mine && <ReportButton shopId={s.id} productId={p.id} />}
+    </div>
+  );
+}
+
+/**
+ * Report a product (or the shop): pick a reason, add a word if you like — it goes to a moderator
+ * (Admin → Listings; reports from several players hide a product until someone has looked).
+ */
+function ReportButton({ shopId, productId }: { shopId: string; productId?: string }) {
+  const { act } = useGame();
+  const [open, setOpen] = useState(false);
+  const [sent, setSent] = useState(false);
+  const send = async (reason: ReportReason) => {
+    const note = await askText(t("Anything a moderator should know? (optional)"), "", { body: t("Reports are anonymous: the seller never sees who sent them.") });
+    if (note == null) return;
+    const ok = await act(() => api("/api/shops/report", { body: { shopId, productId: productId ?? null, reason, note } }));
+    if (ok) (setSent(true), setOpen(false));
+  };
+  if (sent) return <p className="small muted report-row">✓ {t("Reported — thanks")}</p>;
+  return (
+    <div className="report-row">
+      <button type="button" className="link-btn small muted" aria-expanded={open} onClick={() => setOpen(!open)}>🚩 {productId ? t("Report this product") : t("Report this shop")}</button>
+      {open && (
+        <div className="row wrap" style={{ gap: 6, marginTop: 6 }} role="group" aria-label={t("Why?")}>
+          {REPORT_REASONS.map((r) => (
+            <button key={r} type="button" className="chip small" onClick={() => void send(r)}>{t(REASON_LABEL[r])}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -661,6 +693,11 @@ function MyShop({ go }: { go: (v: View) => void }) {
               <span className="small muted" style={{ display: "block" }}>
                 {p.stock ? t("{n} in stock", { n: p.stock }) : t("Sold out")} {p.sold > 0 && `· ${t("{n} sold", { n: p.sold })}`}
               </span>
+              {p.review !== "ok" && (
+                <span className={`review-badge ${p.review}`} title={p.reviewNote.split(" · ").map((k) => t(k)).join(" · ")}>
+                  {p.review === "pending" ? `🕓 ${t("Waiting for a moderator")}` : `⛔ ${t("Turned down")}${p.reviewNote ? ` — ${p.reviewNote}` : ""}`}
+                </span>
+              )}
             </span>
           </button>
           <button className={`icon-toggle ${p.featured ? "on" : ""}`} onClick={() => toggle(p, "featured")} disabled={!p.featured && featured >= S.shopMaxFeatured} title={p.featured ? t("Take out of the shop window") : t("Put in the shop window")} aria-pressed={p.featured}>

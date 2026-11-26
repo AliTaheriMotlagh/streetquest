@@ -29,3 +29,14 @@
 /* A place that is not a shop (drive/CivicCard.tsx): prayer times, hours. */
 .civic-card .civic-block { display: grid; gap: 6px; margin: 10px 0; }
 .civic-card .civic-block .hours-table { width: 100%; }
+
+/* Admin → Listings (components/AdminListings.tsx) */
+.adm-listing { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.adm-listing:first-of-type { border-top: 0; }
+.adm-listing-photos { display: flex; gap: 4px; }
+.adm-listing-photos img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; background: var(--panel-solid); }
+.adm-why { color: var(--yellow, #f0c05a); }
+/* A product the seller sees while it waits for a moderator, or after it was turned down. */
+.review-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font: 700 11px/1.4 var(--body); background: color-mix(in srgb, var(--yellow, #f0c05a) 22%, transparent); color: var(--text); }
+.review-badge.rejected { background: color-mix(in srgb, var(--red, #e5484d) 24%, transparent); }
+.report-row { margin-top: 14px; text-align: center; }

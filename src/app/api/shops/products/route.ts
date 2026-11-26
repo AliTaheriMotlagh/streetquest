@@ -13,6 +13,8 @@ import { actionRoute, body, HttpError, patch } from "@/server/http";
 import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { PRODUCT_SELECT, productView } from "@/server/shops";
 import { pingIndexNow } from "@/server/indexNow";
+import { changesText, preCheck, reviewAfter, type Review, type Verdict } from "@/lib/stores/moderation";
+import { audit } from "@/server/audit";
 
 const Fields = z.object({
   title: z.string().trim().min(2, "Give the product a name (at least 2 letters)").max(SHOP_LIMITS.title),
@@ -44,6 +46,25 @@ export const POST = actionRoute(async (req) => {
   const shop = await prisma.shop.findUnique({ where: { ownerId: u.id }, select: { id: true } });
   if (!shop) throw new HttpError(404, t("You don't have a shop yet"));
 
+  /**
+   * The listing as buyers would read it, checked (lib/stores/moderation.ts): refused with the reason, held for a
+   * moderator, or live. The seller's track record and other listings are the context.
+   */
+  const moderate = async (l: { title: string; description: string; price: number; currency: Currency }, except?: string): Promise<Verdict> => {
+    const [others, approved, verifiedBiz] = await Promise.all([
+      prisma.product.findMany({ where: { shopId: shop.id, ...(except ? { id: { not: except } } : {}) }, select: { title: true, description: true, price: true, currency: true }, take: 200, orderBy: { createdAt: "desc" } }),
+      prisma.product.count({ where: { shopId: shop.id, review: "ok", ...(except ? { id: { not: except } } : {}) } }),
+      prisma.business.count({ where: { ownerId: u.id, verified: true } }),
+    ]);
+    const v = preCheck(l, { approved, others: others.map((o) => ({ ...o, currency: o.currency === "toman" ? "toman" : "coins" })), trusted: u.role === "ADMIN" || verifiedBiz > 0 });
+    if (v.verdict === "block") {
+      await audit(u, "listing.blocked", { type: "shop", id: shop.id }, l.title, { cat: v.cat });
+      throw new HttpError(400, t(v.reasons[0]));
+    }
+    return v;
+  };
+  const heldNote = (v: Verdict) => (v.verdict === "hold" ? v.reasons.join(" · ") : "");
+
   const checkPrice = (price: number | undefined, currency: Currency) => {
     const why = price === undefined ? null : priceProblem(currency, price, S.shopMaxPrice);
     if (why) throw new HttpError(400, t(why, { n: S.shopMaxPrice }));
@@ -68,13 +89,15 @@ export const POST = actionRoute(async (req) => {
     checkDiscount(d.discountPct, d.discountUntil);
     if ((await prisma.product.count({ where: { shopId: shop.id } })) >= S.shopMaxProducts) throw new HttpError(400, t("Your shop is full ({n} products) — remove one first", { n: S.shopMaxProducts }));
     if (d.featured) await checkWindow();
+    const v = await moderate(d);
+    const review = reviewAfter(v, null);
     const { action: _a, discountUntil, ...data } = d;
-    const p = await prisma.product.create({ data: { ...data, details: data.details as object, shopId: shop.id, discountUntil: discountUntil ? new Date(discountUntil) : null }, select: PRODUCT_SELECT });
-    pingIndexNow([`/s/${shop.id}`]); // a shop with products is in the sitemap; tell Bing/Yandex now
-    return { message: t("✅ {title} is on your shelves", { title: p.title }), product: productView(p) };
+    const p = await prisma.product.create({ data: { ...data, details: data.details as object, shopId: shop.id, discountUntil: discountUntil ? new Date(discountUntil) : null, review, reviewNote: heldNote(v) }, select: PRODUCT_SELECT });
+    if (review === "ok") pingIndexNow([`/s/${shop.id}`]); // a shop with products is in the sitemap; tell Bing/Yandex now
+    return { message: review === "ok" ? t("✅ {title} is on your shelves", { title: p.title }) : t("🕓 {title} is saved — a moderator checks it before buyers see it (usually within a day)", { title: p.title }), product: productView(p) };
   }
 
-  const product = await prisma.product.findFirst({ where: { id: d.productId, shopId: shop.id }, select: { id: true, title: true, featured: true, discountPct: true, discountUntil: true, kind: true, details: true, currency: true, price: true } });
+  const product = await prisma.product.findFirst({ where: { id: d.productId, shopId: shop.id }, select: { id: true, title: true, description: true, featured: true, discountPct: true, discountUntil: true, kind: true, details: true, currency: true, price: true, review: true } });
   if (!product) throw new HttpError(404, t("That product isn't in your shop"));
 
   if (d.action === "update") {
@@ -84,13 +107,21 @@ export const POST = actionRoute(async (req) => {
     if (d.details !== undefined || d.kind !== undefined) d.details = checkDetails(kind, d.details ?? product.details);
     checkDiscount(d.discountPct ?? product.discountPct, d.discountUntil !== undefined ? d.discountUntil : product.discountUntil?.getTime() ?? null);
     if (d.featured && !product.featured) await checkWindow(product.id);
+    // What buyers read changed (or it was turned down): checked again.
+    let review: Review | undefined, reviewNote: string | undefined;
+    if (changesText(product, d) || product.review === "rejected" || (d.currency !== undefined && d.currency !== product.currency)) {
+      const v = await moderate({ title: d.title ?? product.title, description: d.description ?? product.description, price: d.price ?? product.price, currency }, product.id);
+      // A listing already live stays live through an edit unless the new text itself is flagged.
+      review = product.review === "ok" && v.verdict === "hold" && v.reasons.every((r) => r.startsWith("A new seller")) ? "ok" : reviewAfter(v, product.review as Review);
+      reviewNote = heldNote(v);
+    }
     const { action: _a, productId: _p, discountUntil, ...data } = d;
     const p = await prisma.product.update({
       where: { id: product.id },
-      data: { ...data, ...(data.details !== undefined ? { details: data.details as object } : {}), ...(discountUntil !== undefined ? { discountUntil: discountUntil ? new Date(discountUntil) : null } : {}) },
+      data: { ...data, ...(review ? { review, reviewNote } : {}), ...(data.details !== undefined ? { details: data.details as object } : {}), ...(discountUntil !== undefined ? { discountUntil: discountUntil ? new Date(discountUntil) : null } : {}) },
       select: PRODUCT_SELECT,
     });
-    return { message: t("✅ Saved"), product: productView(p) };
+    return { message: review === "pending" ? t("🕓 Saved — a moderator checks the change before buyers see it") : t("✅ Saved"), product: productView(p) };
   }
 
   if (d.action === "delete") {

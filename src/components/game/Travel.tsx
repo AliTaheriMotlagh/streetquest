@@ -36,6 +36,7 @@ import { LeaveLink } from "./LeaveGuard";
 import { Gallery } from "./Gallery";
 import { createPortal } from "react-dom";
 import { pushBack } from "./backStack";
+import { cellOf, cheapestDay, nextAvailable, shortToman, windowDays, type DayCell } from "@/lib/travel/calendar";
 
 const CityMap = dynamic(() => import("./CityMap"), { ssr: false, loading: () => <div className="tp-map tp-map-wait" /> });
 
@@ -724,6 +725,45 @@ function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { cit
   );
 }
 
+/**
+ * Each day's cheapest ticket per way for the strip (lib/travel/calendar.ts): the chosen day from its answer,
+ * the three days either side searched ahead two at a time through the same searches and phone cache as the
+ * list (so tapping one of them opens at once). Days already kept fresh on the phone aren't asked again.
+ */
+function useDayCells(leg: Leg, dates: string[], travellers: number, answer?: Answer): Record<string, DayCell | undefined> {
+  const [ahead, setAhead] = useState<Record<string, Trip[]>>({});
+  const route = `${leg.from}|${leg.to}`;
+  useEffect(() => setAhead({}), [route]);
+  useEffect(() => {
+    let gone = false;
+    const want = windowDays(leg.date, dates[0], dates[dates.length - 1]).filter((d) => d !== leg.date);
+    const queue = [...want];
+    const one = async (): Promise<void> => {
+      const d = queue.shift();
+      if (!d || gone) return;
+      const key = `trips:${route}|${d}`;
+      const mine = kept<TripAnswer>(key);
+      let trips = mine?.data.trips ?? null;
+      if (!fresh(mine, TRIPS_FRESH_MS)) {
+        const r = await searchTrips(leg.from, leg.to, d, [...MODE_KEYS]).catch(() => null);
+        if (r?.trips.length) keep(key, r);
+        trips = r ? (r.trips.length || !trips ? r.trips : trips) : trips;
+      }
+      if (!gone && trips) setAhead((a) => ({ ...a, [d]: trips! }));
+      return one();
+    };
+    // Two at a time: the sites get a gentle pace, the strip fills from the chosen day outwards.
+    void Promise.all([one(), one()]);
+    return () => void (gone = true);
+  }, [route, leg.date, dates]); // eslint-disable-line react-hooks/exhaustive-deps
+  return useMemo(() => {
+    const out: Record<string, DayCell | undefined> = {};
+    for (const [d, trips] of Object.entries(ahead)) out[d] = cellOf(trips, travellers);
+    if (answer?.data && !answer.loading) out[leg.date] = cellOf(answer.data.trips, travellers);
+    return out;
+  }, [ahead, answer, leg.date, travellers]);
+}
+
 // ---------------------------------------------------------------- one leg: every way, every ticket
 function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, onClose }: { leg: Leg; plan: Plan; answer?: Answer; picked?: LegPick; minDate: string; onDate: (d: string) => void; onPick: (p: LegPick | null) => void; onBack: () => void; onClose: () => void }) {
   const from = cityByKey(leg.from)!, to = cityByKey(leg.to)!;
@@ -750,7 +790,10 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
   const caps = useMemo(() => priceCaps(modeTrips.map((x) => x.price)), [modeTrips]);
   const nFilters = parts.length + companies.length + (max ? 1 : 0) + (refundable ? 1 : 0) + (direct ? 1 : 0);
   const clear = () => (setParts([]), setCompanies([]), setMax(0), setRefundable(false), setDirect(false));
-  const dates = Array.from({ length: 21 }, (_, n) => addDays(minDate, n));
+  const dates = useMemo(() => Array.from({ length: 21 }, (_, n) => addDays(minDate, n)), [minDate]);
+  const cells = useDayCells(leg, dates, plan.travellers, answer);
+  const cheapDay = mode ? cheapestDay(cells, dates, mode) : null;
+  const nextDay = mode && !answer?.loading && !cells[leg.date]?.[mode]?.n ? nextAvailable(cells, dates, mode, leg.date) : null;
   const drive = driveOf(from, to, plan.travellers, !!plan.quota);
   const pickedId = picked && picked.way !== "car" ? picked.trip.id : null;
   // The chosen day's chip in view (it can sit past the screen's edge).
@@ -766,10 +809,23 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
   return (
     <Sheet title={`${cityName(from)} ${arrow()} ${cityName(to)}`} onBack={onBack} onClose={onClose} tall>
       <div className="tv-days" role="tablist" aria-label={t("Day")} ref={daysRef}>
-        {dates.map((d) => (
-          <button key={d} role="tab" aria-selected={d === leg.date} className={d === leg.date ? "on" : ""} onClick={() => d !== leg.date && onDate(d)}>{day(d)}</button>
-        ))}
+        {dates.map((d) => {
+          const c = cells[d], m = mode ? c?.[mode] : undefined, sh = m ? shortToman(m.min) : null;
+          // Known and empty for this way: greyed (still tappable — the sites may have added seats since).
+          const empty = !!mode && !!c && !m?.n;
+          return (
+            <button key={d} role="tab" aria-selected={d === leg.date} className={`${d === leg.date ? "on" : ""}${empty ? " none" : ""}${d === cheapDay ? " cheap" : ""}`} onClick={() => d !== leg.date && onDate(d)}>
+              <span>{day(d)}</span>
+              {mode && <small>{sh ? (sh.unit ? t(sh.unit === "M" ? "{n}M" : "{n}K", { n: fmtNum(sh.n) }) : fmtNum(sh.n)) : empty ? "—" : "·"}</small>}
+            </button>
+          );
+        })}
       </div>
+      {nextDay && (
+        <button type="button" className="btn small ghost tv-next-day" onClick={() => onDate(nextDay)}>
+          {t("Next day with tickets: {day}", { day: day(nextDay) })} →
+        </button>
+      )}
 
       <div className="tp-ways" role="tablist" aria-label={t("How")}>
         {ways.map((w) => (

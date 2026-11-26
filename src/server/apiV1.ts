@@ -92,8 +92,16 @@ async function liveBuses(sp: URLSearchParams): Promise<Out> {
   return envelope(r.buses, sourcesFor("iett"), r.live ? undefined : "IETT's live feed isn't reachable (or the point isn't in Istanbul).");
 }
 async function metro(city: string): Promise<Out | null> {
-  if (city !== "tehran" && city !== "istanbul") return null;
-  const net = await (city === "tehran" ? import("@/data/transit/tehran-metro.json") : import("@/data/transit/istanbul-metro.json")).then((m) => m.default);
+  const load: Record<string, () => Promise<{ default: unknown }>> = {
+    tehran: () => import("@/data/transit/tehran-metro.json"),
+    istanbul: () => import("@/data/transit/istanbul-metro.json"),
+    mashhad: () => import("@/data/transit/mashhad-metro.json"),
+    isfahan: () => import("@/data/transit/isfahan-metro.json"),
+    shiraz: () => import("@/data/transit/shiraz-metro.json"),
+    tabriz: () => import("@/data/transit/tabriz-metro.json"),
+  };
+  if (!Object.hasOwn(load, city)) return null;
+  const net = await load[city]().then((m) => m.default);
   return envelope(net, sourcesFor("osm"));
 }
 

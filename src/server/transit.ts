@@ -22,6 +22,10 @@ const UA = () => `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https
 const DATA: Record<City, () => Promise<BusNetwork>> = {
   tehran: () => import("@/data/transit/tehran-bus.json").then((m) => m.default as unknown as BusNetwork),
   istanbul: () => import("@/data/transit/istanbul-bus.json").then((m) => m.default as unknown as BusNetwork),
+  mashhad: () => import("@/data/transit/mashhad-bus.json").then((m) => m.default as unknown as BusNetwork),
+  isfahan: () => import("@/data/transit/isfahan-bus.json").then((m) => m.default as unknown as BusNetwork),
+  shiraz: () => import("@/data/transit/shiraz-bus.json").then((m) => m.default as unknown as BusNetwork),
+  tabriz: () => import("@/data/transit/tabriz-bus.json").then((m) => m.default as unknown as BusNetwork),
 };
 const nets = new Map<City, Promise<BusNetwork>>();
 const busNet = (c: City) => {

@@ -1134,6 +1134,10 @@ model Product {
   stock         Int         @default(1)
   featured      Boolean     @default(false) // in the shop window
   active        Boolean     @default(true) // hidden from buyers when false
+  // Moderation (lib/stores/moderation.ts): ok = buyers see it; pending = waiting for a moderator (a new seller's
+  // first listings, a flagged text, reports); rejected = turned down (reviewNote says why; an edit re-queues it).
+  review        String      @default("ok")
+  reviewNote    String      @default("")
   sold          Int         @default(0)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -1142,6 +1146,26 @@ model Product {
 
   @@index([shopId, active])
   @@index([kind])
+  @@index([review])
+}
+
+// A player reporting a shop or one of its products (Admin → Listings). One report per player and target;
+// reports from HIDE_AFTER_REPORTS different players put a product back in the queue (lib/stores/moderation.ts).
+model ListingReport {
+  id         String   @id @default(cuid())
+  shopId     String
+  productId  String?
+  // The product's id, or "shop" for the shop itself (so one player reports one thing once).
+  target     String
+  reporterId String
+  reason     String // REPORT_REASONS
+  note       String   @default("")
+  status     String   @default("open") // open | done | dismissed
+  createdAt  DateTime @default(now())
+
+  @@unique([reporterId, shopId, target])
+  @@index([status, createdAt])
+  @@index([shopId])
 }
 
 // The owner's 3D scan of the store (a .glb from a phone scanning app, optimised in the browser before upload and

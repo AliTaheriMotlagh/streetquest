@@ -250,6 +250,13 @@ export function LiveBusCard({ bus, onClose }: { bus: LiveBus; onClose: () => voi
   );
 }
 
+/** Iran's smaller metros: the same habits, fewer trains. */
+const IRAN_GUIDE = [
+  msg("Pay with the city's transit card or a single ticket from the station's machine."),
+  msg("Most trains keep a carriage or two for women only — the platform shows where."),
+  msg("Trains come less often than in Tehran: check the next one before you go down."),
+];
+
 const GUIDE: Record<City, string[]> = {
   tehran: [
     msg("Pay with a Tehran metro card (or a single ticket at the station); the same card works on BRT buses."),
@@ -263,7 +270,13 @@ const GUIDE: Record<City, string[]> = {
     msg("Trams and metro start about 06:00; on Friday and Saturday nights some lines run all night."),
     msg("Ferries (vapur) are part of the same card — the most beautiful way across."),
   ],
+  mashhad: IRAN_GUIDE,
+  isfahan: IRAN_GUIDE,
+  shiraz: IRAN_GUIDE,
+  tabriz: IRAN_GUIDE,
 };
+/** Each city's metro by name (the sheet's title). */
+const METRO_TITLE: Record<City, string> = { tehran: msg("Tehran Metro"), istanbul: msg("Istanbul rail"), mashhad: msg("Mashhad Metro"), isfahan: msg("Isfahan Metro"), shiraz: msg("Shiraz Metro"), tabriz: msg("Tabriz Metro") };
 
 /** The Metro sheet: the lines as strips of stations, a trip planner, a short guide. */
 export function MetroSheet({ city, to, onClose, onStation }: { city: City; to?: Station; onClose: () => void; onStation?: (s: Station) => void }) {
@@ -276,7 +289,7 @@ export function MetroSheet({ city, to, onClose, onStation }: { city: City; to?: 
   const st = useMemo(() => new Map((net?.stations ?? []).map((x) => [x.id, x])), [net]);
   const lines = new Map((net?.lines ?? []).map((l) => [l.id, l]));
   return (
-    <Sheet title={city === "tehran" ? t("Tehran Metro") : t("Istanbul rail")} onClose={onClose} tall>
+    <Sheet title={t(METRO_TITLE[city])} onClose={onClose} tall>
       <Tabs value={tab} onChange={setTab} tabs={[["trip", t("Trip")], ["lines", t("Lines")], ["guide", t("Guide")]]} />
       {!net && <p className="small muted">{t("Loading…")}</p>}
       {net && tab === "trip" && <MetroTrip net={net} city={city} here={pos ?? null} dest={dest} setDest={setDest} onStation={onStation} />}

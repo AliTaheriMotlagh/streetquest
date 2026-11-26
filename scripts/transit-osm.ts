@@ -13,7 +13,7 @@ import { readOsm, readRelations } from "./osm-pbf";
 
 const [city, path] = process.argv.slice(2) as [City, string];
 if (!city || !(city in CITIES) || !path) {
-  console.error("usage: transit-osm <tehran|istanbul> <extract.osm.pbf>");
+  console.error(`usage: transit-osm <${Object.keys(CITIES).join("|")}> <extract.osm.pbf>`);
   process.exit(1);
 }
 const [s, w, n, e] = CITIES[city].box;

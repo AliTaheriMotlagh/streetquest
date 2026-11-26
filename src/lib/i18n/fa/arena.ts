@@ -93,6 +93,9 @@ const arena: Record<string, string> = {
   Crouch: "خم شدن",
   Reload: "خشاب‌گذاری",
   "Switch gun": "عوض کردن اسلحه",
+  "Draw a gun": "اسلحه بکش",
+  "Punch": "مشت بزن",
+  "Fists": "مشت",
 
   // ---- on foot
   "Land first to get out": "اول فرود بیا بعد پیاده شو",
@@ -106,8 +109,8 @@ const arena: Record<string, string> = {
   "You took the {car}": "سوار {car} شدی",
   "Get out and walk": "پیاده شو و راه برو",
   "Get out and walk (F)": "پیاده شو و راه برو (F)",
-  "Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · V view · Z dead-eye · Tab scores · F car":
-    "کلیک کن تا با ماوس نشونه بگیری · WASD حرکت · Shift دویدن · Space پرش · C خم شدن · R خشاب · Q عوض کردن اسلحه · V دوربین · Z حالت تمرکز · Tab امتیازها · F ماشین",
+  "Click to aim with the mouse · WASD move · Shift sprint · Space jump · C crouch · R reload · Q switch gun · X fists · V view · Z dead-eye · Tab scores · F car":
+    "کلیک کن تا با ماوس نشونه بگیری · WASD حرکت · Shift دویدن · Space پرش · C خم شدن · R خشاب · Q عوض کردن اسلحه · X مشت · V دوربین · Z حالت تمرکز · Tab امتیازها · F ماشین",
 
   // ---- from the realtime server
   "Fighting in the open city unlocks at level {n}": "مبارزه توی شهر از سطح {n} باز می‌شه",

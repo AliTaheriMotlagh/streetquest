@@ -137,11 +137,40 @@ export type BenchResult = {
   error?: string;
 };
 
-/** The result of one run, judged against its budget. */
+/**
+ * What one frame of the 3D city may cost per tier: draw calls (CPU and driver time — the iPad 7's
+ * wall) and triangles (vertex work and memory). Measured at Valiasr, Tehran (35.7006, 51.4013) at
+ * 1280×800 in Nov 2026: low 268 calls / 1.14M triangles before the low tier's 20-triangle trees,
+ * medium 307 / 1.86M, high 327 / 1.97M, ultra 322 / 2.07M; after (lite city on low too): low 173 / 0.26M, high
+ * 299 / 1.93M (M1, Chrome, standing still). The budgets sit a little above those so a
+ * run that grows past them (a new prop without instancing, a forgotten LOD) is caught by test:lag.
+ */
+export const GFX_BUDGETS: Record<"low" | "medium" | "high" | "ultra", { calls: number; triangles: number }> = {
+  low: { calls: 240, triangles: 500_000 },
+  medium: { calls: 360, triangles: 2_100_000 },
+  high: { calls: 400, triangles: 2_300_000 },
+  ultra: { calls: 420, triangles: 2_500_000 },
+};
+
+/** Why a frame's renderer numbers are over its tier's budget (keys for t()); empty when within it or unknown. */
+export function gfxOver(g: BenchResult["gfx"]): string[] {
+  const b = g && GFX_BUDGETS[g.tier as keyof typeof GFX_BUDGETS];
+  if (!g || !b) return [];
+  const out: string[] = [];
+  if (g.calls > b.calls) out.push(msg("Draw calls over budget"));
+  if (g.triangles > b.triangles) out.push(msg("Triangles over budget"));
+  return out;
+}
+
+/** The result of one run, judged against its budget (and, in 3D, its tier's draw budget: over it is never "smooth"). */
 export function benchResult(s: Scenario, intervals: number[], extra: Omit<BenchResult, "id" | "stats" | "verdict" | "why"> = { longTasks: 0, longTaskMs: 0 }): BenchResult {
   const stats = frameStats(intervals);
   const b = BUDGETS[s.kind];
-  return { id: s.id, stats, verdict: extra.error ? "laggy" : judge(stats, b), why: extra.error ? [] : whyNotSmooth(stats, b), ...extra };
+  if (extra.error) return { id: s.id, stats, verdict: "laggy", why: [], ...extra };
+  const over = gfxOver(extra.gfx);
+  let verdict = judge(stats, b);
+  if (over.length && verdict === "smooth") verdict = "ok";
+  return { id: s.id, stats, verdict, why: [...whyNotSmooth(stats, b), ...over], ...extra };
 }
 
 /** All runs as one line each, for the terminal and "copy". */

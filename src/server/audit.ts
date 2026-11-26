@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { clientIp } from "@/lib/clientIp";
 
-export type AuditTarget = "business" | "claim" | "user" | "campaign";
+export type AuditTarget = "business" | "claim" | "user" | "campaign" | "shop" | "product";
 
 async function ipNow(): Promise<string> {
   try {

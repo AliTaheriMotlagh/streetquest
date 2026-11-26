@@ -137,7 +137,7 @@ export function openApi(origin: string) {
       "/transit/stops": get("Bus stops near a point", "Tehran and Istanbul: each stop with the lines calling there (OpenStreetMap).", [LAT, LNG, RADIUS(700, 2000), LIMIT]),
       "/transit/stops/{id}": get("When each line's next bus comes to a stop", "Live in Istanbul when IETT answers (minutes estimated from the nearest bus of the line), else each line's usual frequency. Needs the stop's lat/lng.", [{ name: "id", in: "path", required: true, schema: { type: "string" } }, LAT, LNG]),
       "/transit/buses": get("Istanbul's buses live near a point", "IETT's positions (refreshed every 20 s). Empty outside Istanbul or when the feed isn't reachable.", [LAT, LNG, RADIUS(2500, 5000), LIMIT]),
-      "/metro/{city}": get("A city's metro: lines in order, stations, usual frequency and hours", "`city`: tehran or istanbul. From OpenStreetMap; times are estimates (`mapped`: from the map, else the city's usual).", [{ name: "city", in: "path", required: true, schema: { type: "string", enum: ["tehran", "istanbul"] } }]),
+      "/metro/{city}": get("A city's metro: lines in order, stations, usual frequency and hours", "`city`: tehran, mashhad, isfahan, shiraz, tabriz or istanbul. From OpenStreetMap; times are estimates (`mapped`: from the map, else the city's usual).", [{ name: "city", in: "path", required: true, schema: { type: "string", enum: ["tehran", "mashhad", "isfahan", "shiraz", "tabriz", "istanbul"] } }]),
     },
     components: {
       securitySchemes: { ApiKey: { type: "apiKey", in: "header", name: "X-API-Key" }, Bearer: { type: "http", scheme: "bearer" } },

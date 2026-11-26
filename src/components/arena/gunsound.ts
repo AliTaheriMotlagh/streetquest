@@ -161,6 +161,29 @@ export function throwSound() {
   burst(p, 1400, 0.22, 0.08, "bandpass", 0.08, 0.06);
 }
 
+// ---- bare hands (lib/street/melee.ts)
+
+/** A punch thrown (my own arm): a short swish, a little higher for the hook. */
+export function swingSound(hook = false) {
+  if (playSample("punchSwing", { vol: 0.55, rate: hook ? 0.9 : 1.05 + Math.random() * 0.1 })) return;
+  const p = place(null, "small", 0.25);
+  if (p) burst(p, hook ? 900 : 1300, hook ? 0.2 : 0.14, 0.07, "bandpass", 0.05);
+}
+
+/** A punch landing at `at`: a body (a low thump with a slap on top) or something hard (a wall, a car). */
+export function punchSound(at: At, onBody: boolean, hook = false) {
+  if (onBody && playSample("punchHit", { vol: hook ? 0.9 : 0.7, at, rate: hook ? 0.9 : 1 })) return;
+  const p = place(at, "small", 0.3);
+  if (!p) return;
+  if (onBody) {
+    tone(p, hook ? 85 : 110, 0.16, hook ? 0.5 : 0.38, "sine", 0.55);
+    burst(p, 2200, 0.05, 0.18, "bandpass", 0.004);
+  } else {
+    tone(p, 170, 0.09, 0.22, "triangle", 0.7);
+    burst(p, 600, 0.06, 0.12, "lowpass", 0.003);
+  }
+}
+
 /** Metal on stone: a grenade bouncing or landing. */
 export const clinkSound = (at: At) => blip(1700 + Math.random() * 500, 0.07, 0.07, "triangle", 0.8, at);
 
