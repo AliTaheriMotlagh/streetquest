@@ -3,26 +3,27 @@
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
 (then delete it next time), add what's new. Last gathered: 2026-11-26 (step 2 perf done in code; step 6 bare hands in code, unchecked in a browser; user asked: implement everything first, then test everything at the end).
 
-## NEXT SESSION — start here (written 2026-11-26, session ran out of tokens mid-step)
+## NEXT SESSION — start here (written 2026-11-26, second session of the day)
 User's order: **implement everything first, then test everything at the end.** Remove done items as you go.
-1. **Finish moderation i18n** (code is in): `npm run i18n:check` shows ~78 missing fa/tr keys from src/server/moderation.ts,
-   lib/stores/moderation.ts, components/AdminListings.tsx, Market.tsx ReportButton/badge, api/shops/products. Add them to
-   `src/lib/i18n/{fa,tr}/market.ts` (a python heredoc with Persian failed on stdin encoding — write a .py file instead).
-2. **Metro data built** (2026-11-26): Mashhad 3 lines/39 stations, Isfahan 1/20, Shiraz 2/26, Tabriz 1/18 (+ bus stops,
-   cinemas) in src/data/transit/. Left: check the Metro sheet for each city in a browser; README transit section.
-3. **Moderation (2026-11-26, code done, untested)**: lib/stores/moderation.ts (preCheck block/hold/ok, first 3 listings
-   held, reports hide after 3), Product.review/reviewNote + ListingReport (pushed to LOCAL db only), server/moderation.ts,
-   /api/shops/report, /api/admin/listings, Admin → Listings tab (AdminListings.tsx), seller badge + buyer 🚩 report in
-   Market.tsx, buyers only see review "ok" (shops route, /s/[id], sitemap, orders, deals). TODO: tests/moderation.test.ts
-   (block words FA/EN + allowed toy/non-alcoholic, phone/link holds, copies, price outliers, reviewAfter), e2e
-   e2e/api/moderation.spec.ts (create → pending for a new seller; admin approve → visible; 3 reports → hidden), README.
-4. Then the rest of BACKLOG "Now" top-down: step 6 hit-able props, punching players + protocol field for bare hands;
-   step 5 URL-synced filters + shared list engine; Stores & ads plan (AdSlot fallback chain house→Yektanet/Tapsell/
-   AdSense, self-serve ads in coins, seller center); SEO audit (Lighthouse on streetquest.remixt.app pages).
-5. **Test pass at the end** (all unchecked): `npm test`; `graphify update .`; browser checks — punch guard/jab/hook
-   close-ups + first-person fists (headless boot on a cold :3100 timed out at 240 s — warm the server first), travel day
-   strip at 360 px Persian, Admin → Listings, report flow, metro sheets for the new cities, low-tier lite city.
-   Kill any :3100 dev server you start (Postgres hit "too many clients").
+Shipped this session (code + fa/tr + README + tests, all run): moderation i18n + tests/moderation.test.ts +
+e2e/api/moderation.spec.ts (found+fixed: "AK-47" slipped through the weapon words); remote players see bare hands
+(weapon byte 255 = BARE_IDX; also fixed /api/drive clamping weapons 5–8 to 4); punching other players (realtime
+`punch` msg + HTTP `weapon:"fists"`, tests/punchPlayers.test.ts + drive.spec fists); knockable bins/bags/benches/dumpsters
+(lib/street/props.ts, drive/looseProps.ts — seen working headless: car 11→9 m/s into a dumpster, 2 woken); URL-synced
+trip/stay/Market filters (lib/urlState.ts, components/useUrlParam.ts); self-serve house ads in coins + AdSlot with the
+house → Yektanet/Tapsell (IR) / AdSense (known non-IR only) chain (model HouseAd, /api/ads/{slot,go,house}, Admin →
+Listings "Player ads", Market → Advertise; e2e/api/ads.spec.ts). Screenshotted at 360×740 fa: Market ad card, Advertise form.
+The 2026-11-26 00:27 "plan" deploy FAILED on the missing translations — fixed; check the CI run of this push.
+1. Left of the old list (top-down): metro station sheet (line bold/others dimmed), RAPTOR planner + fares; travel
+   source adapters (probe each site first); hotels SWR + NDJSON streaming + skeleton rows; nearby-city suggestions +
+   day-by-day plan; shared list engine for product lists in Market (search/sort inside a shop); ~60 raw z-indexes →
+   tokens; civic-place category fixes; seller center (Shop + Business linked); SEO audit (Lighthouse on prod pages).
+2. Never checked in a browser: punch guard/jab/hook close-ups + first-person fists (headless drive now boots in ~35 s
+   on a warm :3100 — force `__drive.live.current.canDrive = true` in an interval to drive as a GPS guest), a punch on
+   another player in two browsers, a bench/bin tipping, Admin → Listings with player ads, travel day strip at 360 px,
+   metro sheets for Mashhad/Isfahan/Shiraz/Tabriz, low-tier lite city.
+3. Local `next build` fails in next/font (Google Fonts parse, "reading '1'") on this Mac only — CI builds fine.
+   Kill any :3100 dev server you start (it leaks Postgres clients → "too many clients" after many hot reloads).
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
@@ -46,7 +47,7 @@ User's order: **implement everything first, then test everything at the end.** R
     `npm run front:deploy`); push to main (CI deploys); `npm run front:deploy`; then `/api/health?ext=1` + a fresh `?menu=`
     on prod, and open the :8443 address on a phone on Irancell/MCI without VPN. Front door never seen on a real Iranian
     line; box is 1 CPU / 1 GB — watch `systemctl status streetquest-front`. After deploy: Search Console + Bing + Yandex,
-    `INDEXNOW_KEY`, resubmit `/sitemap.xml`; NEXT_PUBLIC_SITE_URL = real domain. Prisma (Shop phone/payLink, ShopScan)
+    `INDEXNOW_KEY`, resubmit `/sitemap.xml`; NEXT_PUBLIC_SITE_URL = real domain. Prisma (Shop phone/payLink, ShopScan, Product.review, ListingReport, HouseAd)
     is on the LOCAL db only until that deploy.
 1. **iPad checks** (code done, never seen on a real iPad/sim): zoom stuck after rotation (`zoomGuard.ts`), page pinch-zoom
    blocked in the game, Settings fit/scroll by touch. Remixt Radio: iOS sim tap + 360 px Persian shot.
@@ -65,8 +66,8 @@ User's order: **implement everything first, then test everything at the end.** R
    - [~] (2026-11-26, code + unit tests, not seen in a browser) Day strip with each day's cheapest ticket, cheapest day
          green, empty greyed, "Next day with tickets" (`lib/travel/calendar.ts`, Travel.tsx `useDayCells`: ±3 days
          searched ahead 2 at a time through the phone cache). Check at 360 px Persian.
-   - [ ] Filters/sort for trips and stays already exist (filterTrips/filterStays/tripFacets); left: URL-synced state,
-         and a shared engine for store/product lists (Map/UI "scroll + search + filter in every list").
+   - [ ] URL-synced trip/stay/Market filters done 2026-11-26; left: a shared engine for product lists inside a shop
+         (Map/UI "scroll + search + filter in every list").
    - [ ] Hotels fast: stale-while-revalidate cache, stream each source as it answers (NDJSON), skeleton rows, prefetch.
    - [ ] Source adapters `{search, deepLink}` → one Offer (toman, source, link, duration, checkedAt), deduped, cheapest
          first. Tickets: Sepehr360, 3click, Flytoday, Snapptrip, Ghasedak24, Safar724, Raja. Stays: Eghamat24,
@@ -82,10 +83,8 @@ User's order: **implement everything first, then test everything at the end.** R
          react to `combat.gunOut` instead of aim. Matches always guns.
          CHECK: headless boot with guest + `/api/loc {sim:true}` timed out at 240 s on :3100 (cold) — retry warm; look at
          the guard/jab/hook close-ups (wrap `__drive.gfx.render`), first-person fists, a punch on a walker.
-   - [ ] Remote players still see my last gun while I'm bare (foot flags byte is full) — needs a protocol field.
-   - [ ] Punching other players in the open city (only NPCs/officers/cars now).
-   - [ ] Hit-able props (bins, dumpsters, cones, chairs, signs, streetKit): light bodies in `lib/street/carPhysics.ts`
-         (mass per kind, impulse from car mass × speed, slide/tip/break, car slows); only within 40 m awake, instanced.
+   - [ ] Hit-able props left: cones, chairs, signs, streetKit (postbox/cabinets/phone) — bins, bags, benches, dumpsters
+         done 2026-11-26 (lib/street/props.ts); a knocked prop isn't hittable again once it rests (collider off).
    - [ ] Civic places: 2D-map clinics/opticians share a category; libraries still "Books & library" in missions; prayer
          times vs an official Tehran timetable; CivicCard never seen in a browser.
 7. **Shop interiors** — never tried with a real Polycam/Scaniverse export; never seen on iPhone/iPad Safari; scan mode has no
@@ -99,7 +98,8 @@ User's order: **implement everything first, then test everything at the end.** R
 1. Player-store flag + filter everywhere (Listing/ProductSource "player", 3D pole signs, public /s/ /p/ pages, API v1).
 2. Source-parity flows: Snappfood menu+options+orders, Divar fields+chat+renew, Torob compare, Takhfifan vouchers,
    cinematicket/Jabama event sessions + QR tickets, travel tickets, bookings.
-3. Ads: `AdSlot` with fallback house → Yektanet/Tapsell (Iran) / AdSense (outside Iran); coins for self-serve.
+3. ~~Ads: AdSlot + self-serve in coins~~ (done 2026-11-26). Left: the networks' real script URLs from the user's
+   publisher panels (YEKTANET_SCRIPT / TAPSELL_SCRIPT / ADSENSE_SLOT), more slot placements (shop pages, events).
 4. Panels: seller center (Shop + Business linked), buyer "my tickets/orders", advertiser, admin moderation queue.
 5. Trust & safety: pre-checks, reports, first-3-listings review, rate limits, audit log.
 
@@ -147,6 +147,7 @@ shopkeeper run-in, people separation, crowd prewarm, kerb stepping, partner bill
 bridges, Ottoman mosques, billboard trailers, skydive, hero moves, Turkish police livery.
 
 ## Done record
+2026-11-26 (2): moderation tests/i18n, bare-hands protocol, punching players, knockable props, URL filters, house ads + AdSlot.
 2026-11-26: travel day strip with prices (code). GPU benchmark tier + lite city on low + per-tier draw budgets (lib/perf/{tier,features}.ts, graphics/bench.ts).
 AAA graphics steps 1–7 (film look, medium tier, SSR, night lights, atmosphere, city detail, car look) — see README
 "Realistic graphics" … "Car finish". Older waves: see `git log`.

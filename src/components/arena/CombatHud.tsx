@@ -16,7 +16,7 @@ const clock = (ms: number) => {
   return `${fmtNum(Math.floor(s / 60))}:${fmtNum(s % 60).padStart(2, fmtNum(0))}`;
 };
 
-const WEAPON_ICON: Record<string, string> = { pistol: "🔫", smg: "🔫", rifle: "🔫", sniper: "🎯", shotgun: "💥", zone: "☠️", bomb: "💣", ...Object.fromEntries(THROW_KEYS.map((k) => [k, THROWABLES[k].emoji])) };
+const WEAPON_ICON: Record<string, string> = { pistol: "🔫", smg: "🔫", rifle: "🔫", sniper: "🎯", shotgun: "💥", zone: "☠️", bomb: "💣", fists: "👊", ...Object.fromEntries(THROW_KEYS.map((k) => [k, THROWABLES[k].emoji])) };
 
 export function useCombat(c: Combat | null): Hud | null {
   return useSyncExternalStore(c?.subscribe ?? noop, c ? c.getSnapshot : nil, nil);

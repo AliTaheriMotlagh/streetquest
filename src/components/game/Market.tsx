@@ -6,7 +6,7 @@
 // carry (lib/shopKinds.ts: an item, food, a ticket, an ad, a deal, a service) with that kind's
 // details; priced in coins (bought here) or toman (paid to the seller directly: call, their
 // payment link, or a message in the game).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { S } from "@/lib/settings";
@@ -14,6 +14,10 @@ import { categoryOf, daysLeft, MAX_DISCOUNT, priceNow, SHOP_CATEGORIES, SHOP_EMO
 import { askConfirm, askText } from "@/components/Dialogs";
 import { REASON_LABEL, REPORT_REASONS, type ReportReason } from "@/lib/stores/moderation";
 import { Button } from "@/components/Button";
+import { AdSlot } from "@/components/AdSlot";
+import { useUrlParam } from "@/components/useUrlParam";
+import { oneOf, text } from "@/lib/urlState";
+import { Advertise } from "./Advertise";
 import { api, fmtTime, type ShopCard, type ShopDeal, type ShopOrder, type ShopProduct, type ShopView } from "./client";
 import { fmtCountdown } from "./Lottery";
 import { Directions } from "./Play";
@@ -215,9 +219,10 @@ function GoToShop({ to }: { to: { lat: number; lng: number } }) {
 // ---------------------------------------------------------------- browse
 function Browse({ onShop, onProduct, onOpenMine }: { onShop: (id: string) => void; onProduct: (shopId: string, productId: string) => void; onOpenMine: () => void }) {
   const { pos, me } = useGame();
-  const [q, setQ] = useState("");
-  const [query, setQuery] = useState("");
-  const [cat, setCat] = useState<string>("");
+  // The search and category live in the address (lib/urlState.ts): shareable, kept on reload.
+  const [q, setQ] = useUrlParam("mq", "", text(60));
+  const [query, setQuery] = useState(q.trim());
+  const [cat, setCat] = useUrlParam<string>("mcat", "", oneOf(["", ...SHOP_CATEGORIES.map((c) => c.key)], ""));
   // Search as you type, but not on every key press.
   useEffect(() => {
     const i = setTimeout(() => setQuery(q.trim()), 350);
@@ -271,8 +276,12 @@ function Browse({ onShop, onProduct, onOpenMine }: { onShop: (id: string) => voi
           <b>{query ? t("Results for “{q}”", { q: query }) : t("Shops around you")}</b>
         </div>
       )}
-      {data?.shops.map((s) => (
-        <ShopTile key={s.id} s={s} onOpen={() => onShop(s.id)} onProduct={(id) => onProduct(s.id, id)} />
+      {data?.shops.map((s, i) => (
+        <Fragment key={s.id}>
+          <ShopTile s={s} onOpen={() => onShop(s.id)} onProduct={(id) => onProduct(s.id, id)} />
+          {/* One ad after the third shop (or the last, in a short list); lazy, never in the 3D city. */}
+          {i === Math.min(2, data.shops.length - 1) && <AdSlot />}
+        </Fragment>
       ))}
       {data && !data.shops.length && (
         <div className="empty">
@@ -607,6 +616,7 @@ function MyShop({ go }: { go: (v: View) => void }) {
           🏪 {t("Open a shop")}
         </Button>
         {!S.shopsEnabled && <p className="small muted">{t("Shops are closed right now")}</p>}
+        <Advertise />
       </div>
     );
 
@@ -724,6 +734,7 @@ function MyShop({ go }: { go: (v: View) => void }) {
         </Button>
       </div>
       {me.shop && <p className="small muted" style={{ marginTop: 10 }}>{t("Market fee: {n}% of each sale, taken when you hand an order over.", { n: S.shopFeePct })}</p>}
+      <Advertise />
     </>
   );
 }

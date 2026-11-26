@@ -28,6 +28,9 @@ import { api } from "./client";
 import { searchTrips, type TripAnswer } from "./travelClient";
 import { fresh, keep, kept } from "./keep";
 import { Sheet } from "./ui";
+import { useUrlParam } from "../useUrlParam";
+import { AdSlot } from "../AdSlot";
+import { bool, listOf, num, oneOf, text } from "@/lib/urlState";
 import { Chip, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, SortMenu } from "./Filters";
 import { ACT_KINDS, activitiesIn, activityUrl, MOOD_KEYS, MOODS, moodOf, type ActKind, type Mood } from "@/lib/travel/activities";
 import type { ActPick } from "@/lib/travel/plan";
@@ -775,13 +778,14 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
   useEffect(() => {
     if (!picked && answer?.data) setWay(firstWay);
   }, [answer?.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [sort, setSort] = useState<TripSort>("cheap");
-  const [parts, setParts] = useState<DayPart[]>([]);
-  const [companies, setCompanies] = useState<string[]>([]);
-  const [max, setMax] = useState(0);
-  const [refundable, setRefundable] = useState(false);
-  const [direct, setDirect] = useState(false);
-  const [words, setWords] = useState("");
+  // Filters live in the address (lib/urlState.ts): a filtered list can be shared, reloaded, gone back to.
+  const [sort, setSort] = useUrlParam<TripSort>("ts", "cheap", oneOf(TRIP_SORT_KEYS, "cheap"));
+  const [parts, setParts] = useUrlParam<DayPart[]>("tp", [], listOf(DAY_PART_KEYS));
+  const [companies, setCompanies] = useUrlParam<string[]>("tc", [], listOf());
+  const [max, setMax] = useUrlParam("tmax", 0, num());
+  const [refundable, setRefundable] = useUrlParam("tref", false, bool);
+  const [direct, setDirect] = useUrlParam("tdir", false, bool);
+  const [words, setWords] = useUrlParam("tq", "", text());
   const [open, setOpen] = useState(false);
   const mode = way === "car" ? null : way;
   const modeTrips = useMemo(() => trips.filter((x) => x.mode === mode), [trips, mode]);
@@ -1121,14 +1125,14 @@ function StayView({ city, nights, travellers, from, stays, picked, onPick, onBac
   /** The search form over the list (Hotels: city, dates, guests). */
   form?: React.ReactNode; title?: string;
 }) {
-  const [kinds, setKinds] = useState<StayKind[]>([]);
-  const [instant, setInstant] = useState(false);
-  const [max, setMax] = useState(0);
-  const [minStars, setMinStars] = useState(0);
-  const [minRating, setMinRating] = useState(0);
-  const [amen, setAmen] = useState<Amenity[]>([]);
-  const [sort, setSort] = useState<StaySort>("cheap");
-  const [words, setWords] = useState("");
+  const [kinds, setKinds] = useUrlParam<StayKind[]>("sk", [], listOf(Object.keys(STAY_KINDS) as StayKind[]));
+  const [instant, setInstant] = useUrlParam("sin", false, bool);
+  const [max, setMax] = useUrlParam("smax", 0, num());
+  const [minStars, setMinStars] = useUrlParam("sst", 0, num(0, 5));
+  const [minRating, setMinRating] = useUrlParam("srt", 0, num(0, 10));
+  const [amen, setAmen] = useUrlParam<Amenity[]>("sa", [], listOf(Object.keys(AMENITIES) as Amenity[]));
+  const [sort, setSort] = useUrlParam<StaySort>("ss", "cheap", oneOf(STAY_SORT_KEYS, "cheap"));
+  const [words, setWords] = useUrlParam("sq", "", text());
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(STAYS_PAGE);
   const filter = { kinds, guests: travellers > 2 ? travellers : 0, instant, max, minStars, minRating, amenities: amen, q: words, sort };
@@ -1200,6 +1204,7 @@ function StayView({ city, nights, travellers, from, stays, picked, onPick, onBac
         ))}
       </div>
       {shown.length > more && <button type="button" className="btn small ghost fx-more" onClick={() => setMore(more + STAYS_PAGE)}>{t("Show more")} ({fmtNum(shown.length - more)})</button>}
+      {shown.length > 0 && <AdSlot />}
       <div className="tv-compare-sites">
         <span className="small muted">{t("More hotels on")}</span>
         {hotelLinks(city).map((l) => (

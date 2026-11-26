@@ -19,7 +19,7 @@ const Schema = z.object({
   here: LatLng.optional(),
   flags: z.number().int().min(0).max(255).optional(),
   pitch: z.number().min(-2).max(2).optional(),
-  weapon: z.number().int().min(0).max(10).optional(),
+  weapon: z.number().int().min(0).max(255).optional(),
 });
 
 export const POST = route(async (req) => {

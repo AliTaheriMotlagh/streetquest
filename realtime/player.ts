@@ -52,6 +52,8 @@ export class Player {
   deathLL: LL | null = null;
   passive = true;
   passiveLockUntil = 0;
+  /** No punch accepted before this (lib/street/melee.ts punchGapMs). */
+  punchReadyAt = 0;
   shieldUntil = 0;
   loadout: WeaponKey[] = ["pistol", "smg"];
   ammo = new Map<WeaponKey, number>();

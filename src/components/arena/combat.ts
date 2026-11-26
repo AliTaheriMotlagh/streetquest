@@ -21,7 +21,7 @@ import { t } from "@/lib/i18n";
 import { aimDir, eyeHeight, rayPlayer, spreadDir, type Normal, type Ray } from "@/lib/arena/geom";
 import { BOMB_REACH_M, bombSide, MODES, SITE_R, TEAM_COLORS, type LobbyView, type MatchView, type Team } from "@/lib/arena/modes";
 import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT, G_PASSIVE, type ArenaGeo, type RosterEntry, type ServerMsg } from "@/lib/arena/protocol";
-import { damageAt, isSecondary, MAX_HP, PRIMARIES, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey, type Zone } from "@/lib/arena/weapons";
+import { BARE_IDX, damageAt, isSecondary, MAX_HP, PRIMARIES, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey, type Zone } from "@/lib/arena/weapons";
 import { VEHICLE_KEYS, type VehicleKey } from "@/lib/vehicles";
 import type { CollisionWorld } from "../drive/physics";
 import type { Others } from "../drive/others";
@@ -938,7 +938,7 @@ export class Combat {
     return {
       flags: F_FOOT | (me.crouch ? F_CROUCH : 0) | (this.input.aim ? F_AIM : 0) | (me.sprint ? F_SPRINT : 0) | (me.air ? F_AIR : 0) | (now < this.reloadUntil ? F_RELOAD : 0) | (now - this.firedAt < HTTP_FIRE_MS ? F_FIRE : 0),
       pitch: me.pitch,
-      weapon: WEAPONS[this.weapon].idx,
+      weapon: this.bare ? BARE_IDX : WEAPONS[this.weapon].idx,
     };
   }
 
@@ -1026,16 +1026,17 @@ export class Combat {
   }
 
   /** My bullet hit someone on the HTTP presence: tell the game server, show what it says. */
-  private httpHit(sid: number, zone: "head" | "body" | "legs", pellets: number) {
+  private httpHit(sid: number, zone: "head" | "body" | "legs", pellets: number, punch?: Punch) {
     const target = this.remotes.info(sid)?.id;
     if (!target) return;
-    void this.arenaPost<{ ok: boolean; kill?: boolean; victim?: string }>({ action: "hit", target, weapon: this.weapon, zone, pellets }).then((r) => {
+    const weapon = punch ? "fists" : this.weapon;
+    void this.arenaPost<{ ok: boolean; kill?: boolean; victim?: string }>({ action: "hit", target, weapon, zone, pellets, hook: !!punch?.hook }).then((r) => {
       if (!r?.ok) return;
       hitSound(zone === "head");
       this.flashHit(!!r.kill, zone === "head");
       if (r.kill) {
         killSound();
-        this.pushFeed(this.h.me()?.username ?? "", r.victim ?? "", this.weapon, zone === "head", true, false);
+        this.pushFeed(this.h.me()?.username ?? "", r.victim ?? "", weapon, zone === "head", true, false);
         this.h.toast(t("You took down {name}", { name: r.victim ?? "" }));
       }
       const el = this.hitEl;
@@ -1647,7 +1648,7 @@ export class Combat {
       if (me)
         this.rt.sendState({
           flags: F_FOOT | (me.crouch ? F_CROUCH : 0) | (inp.aim ? F_AIM : 0) | (me.sprint ? F_SPRINT : 0) | (me.air ? F_AIR : 0) | (performance.now() < this.reloadUntil ? F_RELOAD : 0) | (now - this.firedAt < 150 ? F_FIRE : 0),
-          vehicle: vi, weapon: W.idx, x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch, vx: me.vx, vz: me.vz,
+          vehicle: vi, weapon: this.bare ? BARE_IDX : W.idx, x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch, vx: me.vx, vz: me.vz,
         });
       else this.rt.sendState({ flags: 0, vehicle: vi, weapon: W.idx, x: v.x, y: v.alt, z: v.z, yaw: v.yaw, pitch: 0, vx: v.vx, vz: v.vz });
     }
@@ -1728,7 +1729,23 @@ export class Combat {
     const wall = H.collision.raycast(ray, REACH_M, hitN);
     const npc = this.inMatch ? null : (H.npc?.ray(ray, Math.min(wall, REACH_M)) ?? null);
     const at = (t: number) => ({ x: ox + dx * t, y: oy + dy * t, z: oz + dz * t });
-    if (npc && npc.t < wall) {
+    // Another player within arm's length (open city, both out of passive mode): the referee decides.
+    let who: { sid: number; t: number; zone: Zone } | null = null;
+    if (!this.inMatch)
+      for (const tg of this.remotes.targets()) {
+        if (!tg.foot || !this.hostile(tg)) continue;
+        const h = rayPlayer(ray, tg.x, tg.y, tg.z, tg.crouch);
+        if (h && h.t <= REACH_M && h.t < wall && (!who || h.t < who.t)) who = { sid: tg.sid, t: h.t, zone: h.zone };
+      }
+    if (who && (!npc || who.t < npc.t)) {
+      const hitAt = at(who.t);
+      punchSound(hitAt, true, p.hook);
+      this.vfx.impact(hitAt.x, hitAt.y, hitAt.z, "body");
+      if (who.sid >= HTTP_SID) this.httpHit(who.sid, who.zone, 1, p);
+      else this.rt.send({ t: "punch", at: this.rt.serverNow() - this.remotes.delayOf(who.sid), o: [ox, oy, oz], d: [dx, dy, dz], hook: p.hook });
+      this.shake = Math.max(this.shake, p.hook ? 0.22 : 0.12);
+      rumble(p.hook ? 0.7 : 0.45, 0.3, 60);
+    } else if (npc && npc.t < wall) {
       const killed = npc.hit(punchDamage(npc.zone, p.hook), dx, dz);
       const hitAt = at(npc.t);
       punchSound(hitAt, npc.body, p.hook);

@@ -11,7 +11,7 @@ import type { ThrowKey } from "./throwables";
 import type { WeaponKey, Zone } from "./weapons";
 
 /** What took someone down, for the kill feed. */
-export type KillCause = WeaponKey | ThrowKey | "zone" | "bomb";
+export type KillCause = WeaponKey | ThrowKey | "zone" | "bomb" | "fists";
 type V3 = [number, number, number];
 
 export const PROTOCOL = 1;
@@ -134,6 +134,8 @@ export type ClientMsg =
   | { t: "ping"; c: number; rtt?: number }
   | { t: "look"; color: string }
   | { t: "fire"; w: WeaponKey; at: number; o: [number, number, number]; d: [number, number, number][] }
+  /** A bare-handed punch in the open city (lib/street/melee.ts): checked like a shot, but only arm's length. */
+  | { t: "punch"; at: number; o: [number, number, number]; d: [number, number, number]; hook: boolean }
   | { t: "reload" }
   | { t: "passive"; on: boolean }
   | { t: "respawn"; x: number; y: number; z: number }

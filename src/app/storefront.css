@@ -40,3 +40,16 @@
 .review-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font: 700 11px/1.4 var(--body); background: color-mix(in srgb, var(--yellow, #f0c05a) 22%, transparent); color: var(--text); }
 .review-badge.rejected { background: color-mix(in srgb, var(--red, #e5484d) 24%, transparent); }
 .report-row { margin-top: 14px; text-align: center; }
+
+/* An ad in a list (components/AdSlot.tsx): a quiet card that never shifts the list — house ads are one row,
+   a network's ad takes the height it needs once it has filled. */
+.ad-slot { margin: 10px 0; min-height: 0; contain: layout paint; }
+.ad-house { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--card, rgba(255, 255, 255, 0.06)); border: 1px dashed rgba(255, 255, 255, 0.18); color: inherit; text-decoration: none; min-height: 56px; }
+.ad-house:focus-visible { outline: 2px solid var(--accent, #4cc9f0); outline-offset: 2px; }
+.ad-emoji { font-size: 26px; line-height: 1; flex: none; }
+.ad-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ad-text b, .ad-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ad-tag { flex: none; padding: 2px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); opacity: 0.8; }
+.ad-net:empty { display: none; }
+.advertise { margin-top: 18px; }
+.ad-emoji-in { width: 3.2em; text-align: center; flex: none; }

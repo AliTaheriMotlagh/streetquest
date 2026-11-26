@@ -141,6 +141,19 @@ test.describe("Street Arena without the realtime server", () => {
     expect(expectOk(await b.post<{ hp: number }>("/api/drive/arena", { action: "respawn" })).data.hp).toBe(100);
     // Just fought: going passive waits a little.
     expect((await a.post("/api/drive/arena", { action: "passive", on: true })).status).toBe(409);
+
+    // Bare hands (weapon 255): others see fists, not the last gun; a punch lands only empty-handed and at arm's length.
+    const bare = { ...foot, weapon: 255 };
+    await drive(a, here, bare);
+    expect((await drive(b, offset(here, 10), foot)).data.others.find((o) => o.id === meA.id)).toMatchObject({ weapon: 255 });
+    const punch = () => a.post<{ ok: boolean; hp?: number }>("/api/drive/arena", { action: "hit", target: meB.id, weapon: "fists", zone: "body", pellets: 1, hook: false });
+    expect((await punch()).data.ok).toBe(false); // 10 m away
+    await drive(b, offset(here, 1.5), foot);
+    const jab = expectOk(await punch()).data;
+    expect(jab).toMatchObject({ ok: true, hp: 88 });
+    await sleep(600);
+    await drive(a, here, foot); // a gun in hand again
+    expect((await punch()).data.ok).toBe(false);
     await Promise.all([a.dispose(), b.dispose(), admin.dispose()]);
   });
 });

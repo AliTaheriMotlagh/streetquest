@@ -15,7 +15,8 @@ import { t } from "../lib/i18n";
 import { levelForXp } from "../lib/progression";
 import { FREE_RESPAWN_S, PASSIVE_COOLDOWN_S, ROOKIE_LEVEL } from "../lib/arena/modes";
 import { F_AIM, F_AIR, F_CROUCH, F_FIRE, F_FOOT, F_RELOAD, F_SPRINT } from "../lib/arena/protocol";
-import { damageAt, isWeapon, MAX_HP, shotGap, WEAPONS, type WeaponKey, type Zone } from "../lib/arena/weapons";
+import { BARE_IDX, damageAt, isWeapon, MAX_HP, shotGap, WEAPONS, type WeaponKey, type Zone } from "../lib/arena/weapons";
+import { punchDamage, punchGapMs, REACH_M, REACH_SLACK_HTTP_M } from "../lib/street/melee";
 import { HttpError } from "./http";
 import { areFriends } from "./rooms";
 
@@ -25,7 +26,7 @@ const EVENTS_MS = 10_000;
 /** Positions are a few hundred ms old: allow for running apart in that time. */
 const RANGE_SLACK_M = 12;
 
-export type ArenaEvent = { at: number; kind: "hit"; from: string; name: string; dmg: number; zone: Zone; hp: number; kill: boolean; w: WeaponKey; lat: number; lng: number };
+export type ArenaEvent = { at: number; kind: "hit"; from: string; name: string; dmg: number; zone: Zone; hp: number; kill: boolean; w: WeaponKey | "fists"; lat: number; lng: number };
 
 /** Only the flags a client may set (not "dead"). */
 export const footFlags = (f?: number) => (f ?? 0) & (F_FOOT | F_CROUCH | F_AIM | F_SPRINT | F_AIR | F_RELOAD | F_FIRE);
@@ -59,28 +60,31 @@ export async function respawn(userId: string) {
   return { hp: MAX_HP };
 }
 
-/** One shot (all its pellets) that hit `targetId`, as the shooter's client saw it. */
-export async function hit(u: User, targetId: string, w: string, zone: Zone, pellets: number) {
-  if (!isWeapon(w) || !["head", "body", "legs"].includes(zone)) throw new HttpError(400, "bad shot");
-  const W = WEAPONS[w];
+/** One shot (all its pellets) — or a bare-handed punch (`w` "fists") — that hit `targetId`, as the attacker's client saw it. */
+export async function hit(u: User, targetId: string, w: string, zone: Zone, pellets: number, hook = false) {
+  const fists = w === "fists";
+  if ((!fists && !isWeapon(w)) || !["head", "body", "legs"].includes(zone)) throw new HttpError(400, "bad shot");
+  const W = fists ? null : WEAPONS[w as WeaponKey];
   const now = Date.now();
   const [me, them] = await Promise.all([prisma.driveState.findUnique({ where: { userId: u.id } }), prisma.driveState.findUnique({ where: { userId: targetId } })]);
   const refuse = { ok: false as const };
   if (!fresh(me) || !fresh(them) || !(me.flags & F_FOOT) || isDead(me) || isDead(them)) return refuse;
   if (me.passive || them.passive || levelForXp(u.xp) < ROOKIE_LEVEL || them.level < ROOKIE_LEVEL) return refuse;
-  if (me.shotAt && now - me.shotAt.getTime() < shotGap(W) * 1000 * 0.6) return refuse;
+  if (me.shotAt && now - me.shotAt.getTime() < (W ? shotGap(W) * 1000 * 0.6 : punchGapMs(hook))) return refuse;
+  // Fists: only with empty hands (their last report says so), and only at arm's length (plus the presence's lag).
+  if (fists && me.weapon !== BARE_IDX) return refuse;
   const dist = distanceM(me, them);
-  if (dist > W.range + RANGE_SLACK_M) return refuse;
+  if (dist > (W ? W.range + RANGE_SLACK_M : REACH_M + REACH_SLACK_HTTP_M)) return refuse;
   if (!(await seen(me, them)) || !(await seen(them, me))) return refuse;
 
-  const dmg = damageAt(W, dist, zone) * Math.max(1, Math.min(W.pellets, Math.round(pellets)));
+  const dmg = W ? damageAt(W, dist, zone) * Math.max(1, Math.min(W.pellets, Math.round(pellets))) : punchDamage(zone, hook);
   await prisma.driveState.update({ where: { userId: u.id }, data: { shotAt: new Date(now), fightAt: new Date(now) } });
   // Only a living target loses health (two shots landing together can't kill twice).
   const took = await prisma.driveState.updateMany({ where: { userId: targetId, hp: { gt: 0 } }, data: { hp: { decrement: dmg }, fightAt: new Date(now) } });
   if (!took.count) return refuse;
   const after = await prisma.driveState.findUniqueOrThrow({ where: { userId: targetId } });
   const kill = after.hp <= 0;
-  const event: ArenaEvent = { at: now, kind: "hit", from: u.id, name: u.username, dmg, zone, hp: Math.max(0, after.hp), kill, w, lat: me.lat, lng: me.lng };
+  const event: ArenaEvent = { at: now, kind: "hit", from: u.id, name: u.username, dmg, zone, hp: Math.max(0, after.hp), kill, w: fists ? "fists" : (w as WeaponKey), lat: me.lat, lng: me.lng };
   const events = [...((after.events as ArenaEvent[] | null) ?? []).filter((e) => now - e.at < EVENTS_MS), event].slice(-12);
   await prisma.driveState.update({
     where: { userId: targetId },

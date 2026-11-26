@@ -19,7 +19,8 @@ import { aimDir, rayPlayer, type FootprintIndex, type Ray } from "../src/lib/are
 import type { ClientMsg, KillCause, LL } from "../src/lib/arena/protocol";
 import { localFrame } from "../src/lib/arena/protocol";
 import { blastDamage, BURN_TICK_MS, flashSeconds, fly, isThrow, smokeBlocks, smokeRadius, THROW_GAP_MS, THROW_MAX_M, THROWABLES, type ThrowDef, type Vec3 } from "../src/lib/arena/throwables";
-import { damageAt, isWeapon, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey, type Zone } from "../src/lib/arena/weapons";
+import { BARE_IDX, damageAt, isWeapon, shotGap, WEAPON_BY_IDX, WEAPONS, type WeaponKey, type Zone } from "../src/lib/arena/weapons";
+import { punchDamage, punchGapMs, REACH_M, REACH_SLACK_RT_M } from "../src/lib/street/melee";
 import type { Player } from "./player";
 
 const REWIND_MAX_MS = 350;
@@ -28,6 +29,7 @@ const SHOT_FX_M = 220;
 const MUZZLE_SLACK_M = 3.5;
 
 export type FireMsg = Extract<ClientMsg, { t: "fire" }>;
+export type PunchMsg = Extract<ClientMsg, { t: "punch" }>;
 export type ThrowMsg = Extract<ClientMsg, { t: "throw" }>;
 
 /** A thrown thing, from leaving the hand until its cloud or fire is gone. */
@@ -301,6 +303,43 @@ export abstract class Space {
       }
     }
     for (const [victim, d] of damage) this.hurt(victim, shooter, d.dmg, d.zone, m.w, now);
+  }
+
+  /**
+   * A bare-handed punch (open city only — the hub sends it here for the world): the nearest hostile
+   * player within arm's length along it, where they were when the puncher saw them, takes it.
+   */
+  punch(attacker: Player, m: PunchMsg, now: number) {
+    if (attacker.dead || !attacker.onFoot || attacker.weapon !== BARE_IDX || attacker.passive || now < attacker.punchReadyAt) return;
+    if (!Array.isArray(m.o) || m.o.length !== 3 || !Array.isArray(m.d) || m.d.length !== 3) return;
+    attacker.punchReadyAt = now + punchGapMs(!!m.hook);
+    attacker.passiveLockUntil = now + 12_000;
+    const at = Math.max(now - (attacker.rewindMs || REWIND_MAX_MS), Math.min(now, Number(m.at) || now));
+    const F = attacker.frame;
+    const me = F.toXZ(attacker.lat, attacker.lng);
+    const [ox, oy, oz] = m.o.map(Number);
+    if (![ox, oy, oz].every(Number.isFinite) || Math.hypot(ox - me.x, oz - me.z) > (attacker.slackM || MUZZLE_SLACK_M) || Math.abs(oy - attacker.y - 1.4) > 2.5) return;
+    let [dx, dy, dz] = m.d.map(Number);
+    const l = Math.hypot(dx, dy, dz);
+    if (!Number.isFinite(l) || l < 0.5) return;
+    (dx /= l), (dy /= l), (dz /= l);
+    const ray: Ray = { ox, oy, oz, dx, dy, dz };
+    const reach = REACH_M + REACH_SLACK_RT_M;
+    let best: { p: Player; t: number; zone: Zone } | null = null;
+    for (const p of this.players) {
+      if (p === attacker || p.dead || !p.placed || !p.onFoot || !this.canHurt(attacker, p, now)) continue;
+      const s = p.at(at);
+      const q = F.toXZ(s.lat, s.lng);
+      if (Math.hypot(q.x - ox, q.z - oz) > reach + 1) continue;
+      const hit = rayPlayer(ray, q.x, s.y, q.z, s.crouch, HIT_PAD);
+      if (hit && hit.t <= reach && (!best || hit.t < best.t)) best = { p, t: hit.t, zone: hit.zone };
+    }
+    if (!best) return;
+    if (this.geo) {
+      const ll = F.toLL(ox, oz), g = this.geo.frame.toXZ(ll.lat, ll.lng);
+      if (this.geo.index.ray({ ox: g.x, oy, oz: g.z, dx, dy, dz }, best.t) < best.t) return;
+    }
+    this.hurt(best.p, attacker, punchDamage(best.zone, !!m.hook), best.zone, "fists", now);
   }
 
   /** A server-side shot (bots): damage straight to a target, with a tracer for everyone near. */

@@ -67,6 +67,8 @@ export const WEAPONS: Record<WeaponKey, WeaponDef> = {
 };
 
 export const WEAPON_KEYS = Object.keys(WEAPONS) as WeaponKey[];
+/** The weapon byte for "empty-handed" (fists up in the open city): others see no gun (protocol STATE/SNAP, /api/drive). */
+export const BARE_IDX = 255;
 export const WEAPON_BY_IDX: WeaponKey[] = WEAPON_KEYS.slice().sort((a, b) => WEAPONS[a].idx - WEAPONS[b].idx);
 export const isWeapon = (k: unknown): k is WeaponKey => typeof k === "string" && k in WEAPONS;
 /** Primaries you can pick for a match, and the sidearm that goes with it. */

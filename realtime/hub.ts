@@ -9,7 +9,7 @@
 //    open city's other players come over HTTP instead (server/arena.ts).
 import { isMode, MAX_PLAYERS, RADII, type Difficulty, type Team } from "../src/lib/arena/modes";
 import { encodeSnap, F_FOOT, type ArenaGeo, type ClientMsg, type LL, type RosterEntry, type SnapEntity, type State } from "../src/lib/arena/protocol";
-import { isWeapon, WEAPON_BY_IDX } from "../src/lib/arena/weapons";
+import { BARE_IDX, isWeapon, WEAPON_BY_IDX } from "../src/lib/arena/weapons";
 import { Match, type MatchResult } from "./match";
 import { Player, type Sock } from "./player";
 import { World } from "./world";
@@ -105,7 +105,7 @@ export class Hub {
     p.flags = s.flags;
     p.vehicle = s.vehicle;
     const w = WEAPON_BY_IDX[s.weapon];
-    if (w && p.loadout.includes(w)) p.weapon = s.weapon;
+    if ((w && p.loadout.includes(w)) || s.weapon === BARE_IDX) p.weapon = s.weapon;
     p.yaw = s.yaw;
     p.pitch = Math.max(-1.5, Math.min(1.5, s.pitch));
     p.vx = Math.max(-150, Math.min(150, s.vx));
@@ -129,6 +129,9 @@ export class Hub {
         return;
       case "fire":
         if (!this.hidden.has(p)) space?.fire(p, m, now);
+        return;
+      case "punch":
+        if (space === world && !this.hidden.has(p)) world.punch(p, m, now);
         return;
       case "reload":
         return space?.reload(p, now);

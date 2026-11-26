@@ -55,7 +55,7 @@ export function fold(s: string): string {
  * and the like are let through below (ALLOWED).
  */
 const BLOCK: { cat: string; re: RegExp }[] = [
-  { cat: "weapons", re: /(^|[^a-z])(guns?|pistols?|rifles?|ammunition|grenades?|firearms?|kalashnikov|ak-?47|silencer)([^a-z]|$)|(^|\s)(اسلحه|سلاح گرم|کلت|کلاشنیکف|فشنگ|مهمات|نارنجک|تفنگ جنگی)(\s|$)/ },
+  { cat: "weapons", re: /(^|[^a-z])(guns?|pistols?|rifles?|ammunition|grenades?|firearms?|kalashnikov|ak[- ]?47|silencer)([^a-z]|$)|(^|\s)(اسلحه|سلاح گرم|کلت|کلاشنیکف|فشنگ|مهمات|نارنجک|تفنگ جنگی)(\s|$)/ },
   { cat: "drugs", re: /(^|[^a-z])(cocaine|heroin|meth|crystal meth|opium|hashish|marijuana|cannabis|mdma|ecstasy|lsd|tramadol)([^a-z]|$)|(^|\s)(تریاک|هروئین|کراک|حشیش|گراس|ماری ?جوانا|ترامادول|قرص روانگردان)(\s|$)/ },
   { cat: "alcohol", re: /(^|[^a-z])(vodka|whisky|whiskey|arak|beer|wine|liquor)([^a-z]|$)|(^|\s)(مشروب|عرق سگی|ودکا|ویسکی|شراب|آبجو الکلی)(\s|$)/ },
   { cat: "adult", re: /(^|[^a-z])(porn|xxx|escort|sex ?toy|nude|onlyfans)([^a-z]|$)|(^|\s)(پورن|سکس|همخوابی|صیغه یابی)(\s|$)/ },

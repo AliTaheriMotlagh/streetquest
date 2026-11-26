@@ -10,6 +10,9 @@ export type Hand = "fists" | WeaponKey;
 
 /** Reach of a punch from the eye (m): a step plus an arm. */
 export const REACH_M = 1.7;
+/** What a referee allows past REACH_M for lag: realtime positions (rewound) vs the coarse HTTP presence. */
+export const REACH_SLACK_RT_M = 0.9;
+export const REACH_SLACK_HTTP_M = 8;
 /** Seconds from the press to the fist landing (the strike's moment in punchCurve). */
 export const HIT_AT_S = 0.12;
 /** Seconds a punch takes, guard to guard. */
@@ -35,6 +38,9 @@ export function throwPunch(s: PunchState, now: number): Punch | null {
   s.last = p;
   return p;
 }
+
+/** The soonest a referee accepts the next punch after this one (ms): the client's cooldown with a little give for jitter. */
+export const punchGapMs = (hook: boolean) => (hook ? HOOK_COOLDOWN_S : COOLDOWN_S) * 1000 * 0.8;
 
 /** Damage of a punch landing on a body part (100 HP a life): a head shot staggers, a hook hurts. */
 export function punchDamage(zone: Zone, hook: boolean) {

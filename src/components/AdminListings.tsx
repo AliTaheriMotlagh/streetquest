@@ -10,6 +10,8 @@ import { fmtNum, t } from "@/lib/i18n";
 import { REASON_LABEL, type ReportReason } from "@/lib/stores/moderation";
 
 type Pending = { id: string; title: string; description: string; price: number; currency: string; kind: string; reviewNote: string; updatedAt: number; photos: string[]; shop: { id: string; name: string; owner: { username: string } } };
+type Ad = { id: string; title: string; body: string; url: string; emoji: string; views: number; reviewNote: string; owner: { username: string } };
+type Queue = { pending: Pending[]; reports: Report[]; ads: Ad[] };
 type Report = { shopId: string; shop: string; target: string; title: string | null; review: string | null; n: number; last: number; reasons: Record<string, number>; notes: string[] };
 
 
@@ -23,11 +25,11 @@ const call = async <T,>(path: string, body?: unknown): Promise<T> => {
 const why = (note: string) => note.split(" · ").filter(Boolean).map((k) => t(k)).join(" · ");
 
 export default function AdminListings({ onError }: { onError: (m: string) => void }) {
-  const [q, setQ] = useState<{ pending: Pending[]; reports: Report[] } | null>(null);
-  const load = useCallback(() => call<{ pending: Pending[]; reports: Report[] }>("/api/admin/listings").then(setQ).catch((e: Error) => onError(e.message)), [onError]);
+  const [q, setQ] = useState<Queue | null>(null);
+  const load = useCallback(() => call<Queue>("/api/admin/listings").then(setQ).catch((e: Error) => onError(e.message)), [onError]);
   useEffect(() => void load(), [load]);
 
-  const decide = async (productId: string, approve: boolean) => {
+  const decide = async (productId: string, approve: boolean, ad = false) => {
     let note = "";
     if (!approve) {
       const r = await askText(t("Why not? The seller sees this."), "");
@@ -35,7 +37,7 @@ export default function AdminListings({ onError }: { onError: (m: string) => voi
       note = r;
     }
     try {
-      await call("/api/admin/listings", { action: "decide", productId, approve, note });
+      await call("/api/admin/listings", ad ? { action: "decideAd", id: productId, approve, note } : { action: "decide", productId, approve, note });
       await load();
     } catch (e) {
       onError((e as Error).message);
@@ -76,6 +78,25 @@ export default function AdminListings({ onError }: { onError: (m: string) => voi
           </div>
         ))}
       </div>
+      {!!q.ads.length && (
+        <div className="card">
+          <h3>{t("Player ads")} · {fmtNum(q.ads.length)}</h3>
+          {q.ads.map((a) => (
+            <div key={a.id} className="adm-listing">
+              <div className="grow">
+                <b dir="auto">{a.emoji} {a.title}</b> <span className="small muted">· {t("{n} ad views", { n: fmtNum(a.views) })} · @{a.owner.username}</span>
+                {a.body && <p className="small" dir="auto">{a.body}</p>}
+                {a.url && <p className="tiny muted" dir="ltr">{a.url}</p>}
+                {a.reviewNote && <p className="tiny adm-why">⚠️ {why(a.reviewNote)}</p>}
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                <Button className="btn small green" onClick={() => decide(a.id, true, true)}>{t("Approve")}</Button>
+                <Button className="btn small ghost danger" onClick={() => decide(a.id, false, true)}>{t("Turn down")}</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="card">
         <h3>{t("Reports")} · {fmtNum(q.reports.length)}</h3>
         {!q.reports.length && <p className="muted small">{t("No open reports.")}</p>}

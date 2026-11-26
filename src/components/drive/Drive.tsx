@@ -88,6 +88,8 @@ import { BuildPool, DetailSource, TileSource, VectorSource } from "./tiles";
 import { lineColors, TrafficCars, TrafficFeed } from "./traffic";
 import { Crowd } from "./people";
 import { StreetLife } from "./street";
+import { LooseProps, type CarBox } from "./looseProps";
+import { isLooseRef } from "@/lib/street/props";
 import { StreetHud } from "./StreetHud";
 import { ScenarioHud } from "./ScenarioHud";
 import { Scenarios } from "./scenarios";
@@ -552,6 +554,19 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Street furniture apart from the buildings: it stops the vehicle, but never the
     // camera, a landing flyer or the search for a street to start on.
     const obstacles = new CollisionWorld();
+    // Bins, bags, benches and dumpsters a car knocks about (looseProps.ts).
+    const loose = new LooseProps(
+      (k) => tiles.get(k)?.mesh?.detail ?? null,
+      (dv) => {
+        sfx("hit");
+        navigator.vibrate?.(Math.min(40, 8 + dv * 2));
+      },
+    );
+    /** The car as loose furniture sees it (size from its colliders: the probes along it, the radius across). */
+    const carBox = (D: { radius: number; probes?: number[] }): CarBox => {
+      const reach = Math.max(1.15, ...(D.probes ?? [1.15]).map(Math.abs));
+      return { x: st.x, z: st.z, yaw: st.yaw, vx: st.vx, vz: st.vz, len: (reach + D.radius) * 2, wid: D.radius * 2, hgt: model.height };
+    };
 
     // Fireflies around the car in the storybook city.
     const dustN = style === "toon" ? (lite ? 90 : 220) : 0;
@@ -710,6 +725,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           if (s.mesh) (scene.remove(s.mesh.group), s.mesh.dispose());
           collision.remove(k);
           obstacles.remove(k);
+          loose.forget(k);
           source.forget(k);
           vsource.forget(k);
           details.forget(k);
@@ -759,7 +775,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       if (!slot) return job.mesh.dispose();
       // A village finishing after the real tile is stale.
       if (!job.data.real && slot.mesh?.real) return job.mesh.dispose();
-      if (slot.mesh) (scene.remove(slot.mesh.group), slot.mesh.dispose());
+      if (slot.mesh) (scene.remove(slot.mesh.group), slot.mesh.dispose(), loose.forget(job.key));
       slot.mesh = job.mesh;
       slot.data = job.data;
       job.mesh.detail.visible = slot.dist < prof.detailM;
@@ -2326,6 +2342,14 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         for (const off of offs)
           for (const world of [collision, obstacles, street.solid]) {
             const r = world.collide(nx + nfx * off, nz + nfz * off, D.radius, st.alt, model.height);
+            // Loose furniture is knocked away (the car slows by what it gave), not hit like a wall.
+            if (r.hit && isLooseRef(r.hit.f.ref) && !combat.inMatch && !D.flies) {
+              const cb = carBox(D);
+              if (loose.hit(r.hit.f, r.hit.f.ref, cb, r.hit.nx, r.hit.nz, r.x - r.hit.nx * D.radius, r.z - r.hit.nz * D.radius)) {
+                (st.vx = cb.vx), (st.vz = cb.vz);
+                continue;
+              }
+            }
             if (r.hit) {
               nx = r.x - nfx * off;
               nz = r.z - nfz * off;
@@ -2363,6 +2387,12 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       }
       st.x = nx;
       st.z = nz;
+      // Knocked furniture slides on; the car pushes what it touches (and is slowed by it).
+      if (!onFoot && L.canDrive && !D.flies) {
+        const cb = carBox(D);
+        loose.update(dt, cb, st.x, st.z);
+        (st.x = cb.x), (st.z = cb.z), (st.vx = cb.vx), (st.vz = cb.vz);
+      } else loose.update(dt, null, st.x, st.z);
       st.speed = Math.hypot(st.vx, st.vz);
 
       // -- pose: body roll / lean, squat under throttle, wheels and rotors
@@ -2954,7 +2984,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     };
     let raf = requestAnimationFrame(tick);
     ensureTiles();
-    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pace: () => ({ ...pc, booted, idleMs: Math.round(performance.now() - lastActive), cover: coverRef.current, saver, lowBat, menu: menuOpen.current }), pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign }, room: () => room, enterShop: (s: StoreTarget) => setShopAt(s) };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __drive?: unknown }).__drive = { st, frame, scene, camera, tiles, loose, corners, boards, cinemaBoards, storefronts, shops: () => shops, obstacles, renderer, mats, live, input, collision, others, markers, landmarks, combat, feed, traffic, crowd, street, skyline, applyPhase: (p: Phase) => setTimeOfDay(p === "night" ? "night" : p === "day" ? "day" : "sunset"), setWeather, gfx, fps: () => fps, dpr: () => gfx.dpr, pace: () => ({ ...pc, booted, idleMs: Math.round(performance.now() - lastActive), cover: coverRef.current, saver, lowBat, menu: menuOpen.current }), pickAt, model: () => model, signs: { makeDirectionSign, makeGantry, makeCornerSign }, room: () => room, enterShop: (s: StoreTarget) => setShopAt(s) };
 
     const onResize = () => {
       gfx.resize(el.clientWidth, el.clientHeight);

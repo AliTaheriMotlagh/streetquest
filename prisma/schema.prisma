@@ -134,6 +134,7 @@ model User {
   goalClaims      GoalClaim[]
   purchases       Purchase[]
   adViews         AdView[]
+  houseAds        HouseAd[]
   gpsGames        GpsGame[]
   pushSubs        PushSub[]
   callsOut        Call[]             @relation("caller")
@@ -1801,4 +1802,27 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([action, createdAt])
   @@index([createdAt])
+}
+
+// Self-serve house ads (lib/ads/slot.ts, server/houseAds.ts): a player buys views with coins; the text is
+// pre-checked like a shop listing (lib/stores/moderation.ts) and AdSlot shows approved ones before any network.
+model HouseAd {
+  id         String   @id @default(cuid())
+  ownerId    String
+  title      String
+  body       String   @default("")
+  url        String   @default("")
+  emoji      String   @default("📣")
+  views      Int
+  shown      Int      @default(0)
+  clicks     Int      @default(0)
+  coins      Int
+  review     String   @default("pending") // ok | pending | rejected
+  reviewNote String   @default("")
+  paused     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([review, paused])
+  @@index([ownerId])
 }

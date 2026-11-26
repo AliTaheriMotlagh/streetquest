@@ -3,7 +3,7 @@
 import { expect, test } from "@playwright/test";
 import { adminPlayer, expectOk, fund, Player, randomSpot } from "../helpers";
 
-type Product = { id: string; title: string; description: string; kind: string; details: Record<string, unknown>; currency: string; price: number; stock: number; discountPct: number; featured: boolean; over: boolean };
+type Product = { id: string; title: string; description: string; kind: string; details: Record<string, unknown>; currency: string; price: number; stock: number; discountPct: number; featured: boolean; over: boolean; review?: string };
 type Shop = { id: string; name: string; tagline: string; about: string; phone: string; payLink: string; open: boolean; products: Product[] };
 type Mine = { shop: Shop | null; chats: { room: string; buyer: { username: string }; last: string; fromBuyer: boolean }[] };
 
@@ -26,6 +26,12 @@ async function openShop(baseURL: string) {
   return { admin, seller, buyer, shop };
 }
 const add = (p: Player, fields: Record<string, unknown>) => p.post<{ product: Product }>("/api/shops/products", { action: "create", title: "Thing", price: 10, stock: 5, ...fields });
+/** A new seller's first listings wait for a moderator (lib/stores/moderation.ts): the admin lets this one through. */
+async function live(admin: Player, r: Awaited<ReturnType<typeof add>>) {
+  const res = expectOk(r);
+  if (res.data.product.review === "pending") expectOk(await admin.post("/api/admin/listings", { action: "decide", productId: res.data.product.id, approve: true }));
+  return res;
+}
 
 test.describe("player shops", () => {
   test("kinds and currencies: details cleaned, tickets need a date, toman is paid to the seller", async ({ baseURL }) => {
@@ -33,16 +39,16 @@ test.describe("player shops", () => {
 
     // Coins need a price of at least 1; toman may be 0 ("ask the seller").
     expect((await add(seller, { price: 0 })).status).toBe(400);
-    const ad = expectOk(await add(seller, { title: "Pride 131, 1399", kind: "ad", currency: "toman", price: 0, details: { category: "vehicle", negotiable: true, facts: [{ k: "Km", v: "80,000" }], phone: "0935 000 1111", junk: "x" } })).data.product;
+    const ad = (await live(admin, await add(seller, { title: "Pride 131, 1399", kind: "ad", currency: "toman", price: 0, details: { category: "vehicle", negotiable: true, facts: [{ k: "Km", v: "80,000" }], phone: "0935 000 1111", junk: "x" } }))).data.product;
     expect(ad.kind).toBe("ad");
     expect(ad.currency).toBe("toman");
     expect(ad.details).toEqual({ category: "vehicle", negotiable: true, facts: [{ k: "Km", v: "80,000" }], phone: "09350001111" });
 
     // A ticket without its date is refused; one in the past is listed as over and can't be bought.
     expect((await add(seller, { title: "Concert", kind: "ticket", details: { venue: "Milad" } })).status).toBe(400);
-    const past = expectOk(await add(seller, { title: "Last week's show", kind: "ticket", details: { when: Date.now() - 7 * 86_400_000 } })).data.product;
+    const past = (await live(admin, await add(seller, { title: "Last week's show", kind: "ticket", details: { when: Date.now() - 7 * 86_400_000 } }))).data.product;
     expect(past.over).toBe(true);
-    const item = expectOk(await add(seller, { title: "Scarf", price: 120, details: { brand: "Hand-made", condition: "new" } })).data.product;
+    const item = (await live(admin, await add(seller, { title: "Scarf", price: 120, details: { brand: "Hand-made", condition: "new" } }))).data.product;
 
     const seen = expectOk(await buyer.get<{ shop: Shop }>(`/api/shops/${shop.id}`)).data.shop;
     expect(seen.phone).toBe("09121234567");
@@ -102,8 +108,8 @@ test.describe("player shops", () => {
 test.describe("a shop's public page", () => {
   test("/s/<id>: the shop and its products, Store JSON-LD with toman offers, in the sitemap; unknown ids 404", async ({ baseURL }) => {
     const { admin, seller, buyer, shop } = await openShop(baseURL!);
-    expectOk(await add(seller, { title: "Pride 131 </script><b>x", kind: "ad", currency: "toman", price: 285_000_000 }));
-    expectOk(await add(seller, { title: "Scarf", price: 120 }));
+    await live(admin, await add(seller, { title: "Pride 131 </script><b>x", kind: "ad", currency: "toman", price: 285_000_000 }));
+    await live(admin, await add(seller, { title: "Scarf", price: 120 }));
     const r = await buyer.ctx.get(`/s/${shop.id}?lang=en`);
     expect(r.status()).toBe(200);
     const html = await r.text();

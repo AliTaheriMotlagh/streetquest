@@ -9,7 +9,7 @@ import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { TEAM_COLORS } from "@/lib/arena/modes";
 import { F_AIR, F_CROUCH, F_DEAD, F_FOOT, G_BOT, G_PASSIVE, G_SHIELD, type RosterEntry, type SnapEntity } from "@/lib/arena/protocol";
-import { WEAPON_BY_IDX } from "@/lib/arena/weapons";
+import { BARE_IDX, WEAPON_BY_IDX } from "@/lib/arena/weapons";
 import { VEHICLE_KEYS, type VehicleKey } from "@/lib/vehicles";
 import type { OtherDriver } from "../drive/net";
 import type { Others } from "../drive/others";
@@ -169,7 +169,8 @@ export class Remotes {
         const far = Math.hypot(p.x - cam.x, p.z - cam.z);
         av.group.visible = far < 320;
         av.group.position.set(p.x, p.y, p.z);
-        av.setWeapon(WEAPON_BY_IDX[p.weapon] ?? "rifle");
+        av.setBare(p.weapon === BARE_IDX);
+        if (p.weapon !== BARE_IDX) av.setWeapon(WEAPON_BY_IDX[p.weapon] ?? "rifle");
         const accent = this.inMatch && p.team ? TEAM_COLORS[p.team as 1 | 2] : e.info?.friend ? "#5bd38c" : p.passive ? "#9aa4b2" : "#e5484d";
         const key = `${accent}|${e.info?.name}|${p.team}|${p.dead}`;
         if (key !== e.tagKey && e.info) {

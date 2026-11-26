@@ -143,6 +143,8 @@ const DEFAULTS = {
   adCoins: 50,
   adDailyLimit: 5,
   adCreatives: [] as AdCreative[],
+  houseAdsEnabled: true,
+  houseAdCoinsPer100: 40,
 
   // ---- player shops
   shopsEnabled: true,
@@ -261,6 +263,8 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "adGems", group: msg("Store & ads"), label: msg("Gems per ad"), help: "", min: 0, max: 1000 },
   { key: "adCoins", group: msg("Store & ads"), label: msg("Coins per ad"), help: "", min: 0, max: 100000 },
   { key: "adDailyLimit", group: msg("Store & ads"), label: msg("Ads per player per day"), help: "", min: 0, max: 100 },
+  { key: "houseAdsEnabled", group: msg("Store & ads"), label: msg("Players can buy ads"), help: msg("Players advertise in the game's lists with coins (checked like shop listings). Shown before Yektanet / Tapsell / AdSense.") },
+  { key: "houseAdCoinsPer100", group: msg("Store & ads"), label: msg("Coins per 100 ad views"), help: "", min: 1, max: 100000 },
   { key: "adCreatives", group: msg("Store & ads"), label: msg("Sponsor ads"), help: msg("Ads players watch. With none, the game shows its own invite-a-friend spot.") },
   { key: "shopsEnabled", group: msg("Player shops"), label: msg("Player shops on"), help: msg("Players can open a shop at a real place and sell items for coins.") },
   { key: "shopOpenCost", group: msg("Player shops"), label: msg("Opening cost (coins)"), help: msg("Paid once when a shop opens; covers its first month."), min: 0, max: 1000000 },

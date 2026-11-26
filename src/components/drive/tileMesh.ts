@@ -8,6 +8,7 @@
 // newspaper kiosks on the main roads), building footprints for collisions, small solid footprints for the
 // furniture (a car stops at a tree or a lamp post), and the text to show: street names,
 // corner street-name signs, every shop and house number.
+import type { LooseKind, LooseRef } from "@/lib/street/props";
 import { packAlong } from "@/lib/signPack";
 import * as THREE from "three";
 import { countryAt } from "@/lib/region";
@@ -1624,7 +1625,8 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   pack("dumpster", dumpsters);
   // Rubbish bags left beside about half the containers (the bin men come at night).
   const bags = dumpsters.filter(() => rand() < 0.55).map((d) => ({ x: d.x + Math.cos(d.yaw) * 1.35, z: d.z - Math.sin(d.yaw) * 1.35, yaw: d.yaw + (rand() - 0.5) }));
-  pack("bags", bags.filter((b) => !road.on(b.x, b.z, 0.2) && !blocked(b.x, b.z, 0.1)));
+  const bagSpots = bags.filter((b) => !road.on(b.x, b.z, 0.2) && !blocked(b.x, b.z, 0.1));
+  pack("bags", bagSpots);
   // Iran's street kit: post boxes, cabinets, payphones, saqakhaneh, median railings, footbridges (streetKit.ts).
   const kitRoads: KitRoad[] = roadLines.map((pts, ri) => ({ pts, k: roadKinds[ri], w: roadWidths[ri], n: roadNames[ri], drawn: roadDrawn[ri], ow: roadOw[ri] }));
   const iranKit = realStyle ? placeKit({ roads: kitRoads, road, blocked, rand, lite, iran: region === "me", taken: [...charities, ...kiosks, ...dumpsters, ...buses, ...lamps], box, post }) : null;
@@ -1636,12 +1638,16 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const l of lamps) obstacles.push(post(l.x, l.z, 0.15, 6.6));
   for (const g of signals) obstacles.push(post(g.x, g.z, 0.15, 4.5));
   for (const b of buses) obstacles.push(box(b.x, b.z, 1.6, 0.75, b.yaw, 2.6));
-  for (const b of small.bench) obstacles.push(box(b.x, b.z, 0.85, 0.22, b.yaw, 0.9));
-  for (const p of [...small.bin, ...small.hydrant]) obstacles.push(post(p.x, p.z, 0.22, 0.8));
+  // Bins, bags, benches and dumpsters are loose (lib/street/props.ts): the ref says which instance, so a car knocks it about.
+  const loose = (f: Footprint, kind: LooseKind, i: number) => ((f.ref = { loose: kind, key: tile.key, i } satisfies LooseRef), f);
+  small.bench.forEach((b, i) => obstacles.push(loose(box(b.x, b.z, 0.85, 0.22, b.yaw, 0.9), "bench", i)));
+  small.bin.forEach((p, i) => obstacles.push(loose(post(p.x, p.z, 0.22, 0.8), "bin", i)));
+  bagSpots.forEach((p, i) => obstacles.push(loose(post(p.x, p.z, 0.3, 0.5), "bags", i)));
+  for (const p of small.hydrant) obstacles.push(post(p.x, p.z, 0.22, 0.8));
   for (const f of small.fountain) obstacles.push(box(f.x, f.z, 0.3, 0.25, f.yaw, 1.1));
   for (const c of charities) obstacles.push(post(c.x, c.z, 0.2, 1.4));
   for (const k of kiosks) obstacles.push(box(k.x, k.z, 1.0, 0.75, k.yaw, 2.4));
-  for (const d of dumpsters) obstacles.push(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35));
+  dumpsters.forEach((d, i) => obstacles.push(loose(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35), "dumpster", i)));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
   if (iranKit) obstacles.push(...iranKit.obstacles, ...kitObstacles({ box, post }, iranKit));
 

@@ -27,6 +27,7 @@ import { isMode, MODES } from "../lib/arena/modes";
 import { levelForXp } from "../lib/progression";
 import { ROOKIE_LEVEL } from "../lib/arena/modes";
 import { F_DEAD } from "../lib/arena/protocol";
+import { BARE_IDX, WEAPON_BY_IDX } from "../lib/arena/weapons";
 import { S } from "../lib/settings";
 import { drivenVehicle, isPaint, VEHICLES, type VehicleKey } from "../lib/vehicles";
 import { notify, onlineSince } from "./hub";
@@ -144,7 +145,7 @@ export async function report(u: User, d: DriveReport) {
       alt: Math.max(0, Math.min(VEHICLES[vehicle].ceiling ?? 0, d.alt)), yaw: d.yaw, speed: d.speed, vehicle, color: isPaint(d.color) ? d.color : "#d7263d", virtual: true,
       ...(fresh ? {} : { startLat: here.lat, startLng: here.lng }),
       partyId: party?.id ?? null,
-      flags: footFlags(d.flags), pitch: Math.max(-1.5, Math.min(1.5, d.pitch ?? 0)), weapon: Math.max(0, Math.min(4, Math.round(d.weapon ?? 0))),
+      flags: footFlags(d.flags), pitch: Math.max(-1.5, Math.min(1.5, d.pitch ?? 0)), weapon: d.weapon === BARE_IDX ? BARE_IDX : Math.max(0, Math.min(WEAPON_BY_IDX.length - 1, Math.round(d.weapon ?? 0))),
     };
     await prisma.driveState.upsert({ where: { userId: u.id }, create: { userId: u.id, startLat: here.lat, startLng: here.lng, ...data }, update: data });
     if (party?.status === "LIVE" && !rejected && fresh) party = await playStep(party, u.id, prev, here, vehicle);

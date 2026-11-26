@@ -78,6 +78,15 @@ Three games stacked on one real-world map:
   race) and permanent personal milestones with tiers. Everyone who contributed claims the shared rewards.
 - **Store & sponsor spots** — gem packs via Stripe Checkout, coin offers / instant heal / energy drink / base
   shield paid in gems, and rewarded sponsor spots (timed server-side, daily cap, views and clicks per sponsor).
+- **Ads in lists** (`components/AdSlot.tsx`, `lib/ads/slot.ts`, `server/houseAds.ts`, `/api/ads/{slot,go,house}`): one
+  slot in the Market list and under hotel results, loaded only when it scrolls near, never in the 3D city. It shows a
+  **player's own ad** first: Market → My shop → 📣 Advertise buys views with coins (Admin → Game settings "Coins per 100
+  ad views"), the text is pre-checked like a shop listing (banned goods refused, a new advertiser's first ads wait in
+  Admin → Listings; turned down = coins back), and views/clicks are counted. With none running, the slot tries the
+  networks for the player's country: Yektanet then Tapsell in Iran (`YEKTANET_SCRIPT`, `TAPSELL_SCRIPT`), AdSense only
+  where the player is known to be outside Iran (`ADSENSE_CLIENT` + `ADSENSE_SLOT`); a slot nobody fills disappears.
+- **Filters in the address** (`lib/urlState.ts`, `components/useUrlParam.ts`): trip and hotel filters, and the Market
+  search and category, are kept in the page URL — a filtered list can be shared, reloaded and gone back to.
 - **Live game settings** — Admin → Game settings edits every tunable (reach radius, rewards, multipliers, timers,
   ranges, goals, gem packs, ads…) and Admin → Game data edits unit/building/tower/item/research stats. Changes go
   live within ~15 s, no redeploy.
@@ -161,7 +170,7 @@ mood scales XP; loot funds research; territory funds the army.
   rides, then a timeline — walk in, the line and which way, the next trains, every stop it passes (tap to unfold),
   where to change, where to get off, the walk out.
 - **Metro & buses** (`lib/transit/*`, `game/TransitCard.tsx`, `server/transit.ts`, `/api/transit`): a map layer in
-  Tehran and Istanbul with every metro, tram and funicular station (always on the map, in the line's colour), the bus
+  Tehran, Istanbul, Mashhad (3 lines), Isfahan (1), Shiraz (2) and Tabriz (1) with every metro, tram and funicular station (always on the map, in the line's colour), the bus
   stops round you and, in Istanbul, the buses live. A station's card lists its lines and the next trains each way; a
   bus stop's card lists every line each way it runs past the stop: where it's going and where it came from, its
   operator, how many stops to the end and roughly how long, the next stops with minutes to each (tap for all of them),
@@ -175,7 +184,8 @@ mood scales XP; loot funds research; territory funds the army.
   "Metro map" / "Trip to here") shows each line as a strip of stations with its interchanges, plans a trip from where
   you are (walk, ride, change, walk — Dijkstra over station × line, waits of half a headway, 4 min to change), and has
   a short guide (cards, women's carriages in Tehran, Marmaray…). Lines and stops come from OpenStreetMap's route
-  relations: `npm run transit:build -- tehran <iran.osm.pbf>` / `-- istanbul <turkey.osm.pbf>` (Geofabrik extracts)
+  relations: `npm run transit:build -- tehran <iran.osm.pbf>` (same for `mashhad`, `isfahan`, `shiraz`, `tabriz`) /
+  `-- istanbul <turkey.osm.pbf>` (Geofabrik extracts)
   writes `src/data/transit/*.json`; times are each line's `interval` / `opening_hours` in OSM, else the city's usual,
   and labelled as estimates. In the 3D city, Istanbul's nearest real buses drive where the real ones are
   (`drive/liveBuses.ts`, red IETT buses with their line number, ≤10, ≤4 on lite). `IETT_URL` in `.env.example`
@@ -610,6 +620,15 @@ mood scales XP; loot funds research; territory funds the army.
   footbridges and fall off real edges (`arena/foot.ts` floor). On a slope (a ramp, a sloping street, stairs) the walk
   follows the ground: the body tips into it about the hips so the legs swing in the ground's plane, and the spine takes
   most of it back — leaning into a climb, sitting back a little going down (`lib/walkSlope.ts`, eased, ≤ 20°).
+- **Bare hands & knockable furniture** (`lib/street/melee.ts`, `lib/street/props.ts`, `drive/looseProps.ts`): on foot in
+  the open city you start empty-handed (fire = right, left, right hook; Q draws a gun, X / 3 puts it away). Other
+  players see your fists, not your last gun (weapon byte 255 = bare, in the realtime STATE/SNAP and `/api/drive`), and
+  you can punch them too — both out of passive mode, at arm's length (1.7 m), checked by the realtime server with lag
+  rewind or by `/api/drive/arena` on the HTTP presence (fists only with empty hands, the punch cooldown enforced).
+  Bins, rubbish bags, benches and the galvanised dumpsters are light bodies: a car hands them an impulse by mass and
+  speed (and slows by what it gave), they slide, spin, tip over on a hard hit and break past their limit (a bag bursts,
+  a bin is crushed); a dumpster rolls but stops a Pride. The knocked instance is moved inside its tile's InstancedMesh,
+  only within 40 m and at most 16 at once.
 - **Street life — crashes, crime and the police** (outside matches; `src/components/drive/street.ts`, numbers in
   `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game (each country's own police: Iran's
   green-band Samands, Turkey's white-and-blue «POLİS 155» saloons with navy uniforms — `lib/street/policeLook.ts`):
@@ -972,6 +991,15 @@ mood scales XP; loot funds research; territory funds the army.
   product; the seller sees the chats under My shop → Messages from buyers. Every shop has a public page `/s/<id>`
   (indexed while it's open and stocked, Store + Offer structured data) with Share and "Open in the game"
   (`/play?shop=<id>`).
+- **Listing moderation** (`lib/stores/moderation.ts` pure rules, `server/moderation.ts`, `/api/shops/report`,
+  `/api/admin/listings`, Admin → Listings): every new or edited listing is pre-checked. Things that can't be sold
+  (weapons, drugs, alcohol, adult content, gambling, forged papers — Persian and English, with harmless uses like toy
+  guns or alcohol-free beer let through) are refused with the reason. A listing is **held** (saved, hidden from buyers,
+  marked 🕓 for the seller) when it's one of a new seller's first 3, has a phone number or link/handle in the text,
+  shouts, repeats marks, copies another of the seller's listings, or is priced 10× off the seller's own range; verified
+  businesses and admins skip the first-3 hold. Buyers report a shop or product with 🚩 (anonymous, 15 an hour); 3
+  players reporting a live product hide it until a moderator looks. Admin → Listings approves, turns down with a
+  reason the seller is notified of (an edit puts it back in the queue), or dismisses reports; every decision is audited.
 - **Search engines & sharing** — every public page names its language versions (`?lang=en|fa|tr`, hreflang,
   x-default) with a canonical per language, so the Persian and Turkish pages get indexed too (`lib/seo.ts`); the
   footer links them for crawlers; the sitemap lists pages, events and open shops with their language versions;
