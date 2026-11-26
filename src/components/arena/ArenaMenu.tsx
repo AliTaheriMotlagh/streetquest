@@ -4,7 +4,7 @@
 // fighting in the open city (passive mode).
 import { useEffect, useState } from "react";
 import { formatDistance } from "@/lib/geo";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { JOIN_MARGIN_M, MAX_BOTS, MODES, RADII, TEAM_COLORS, TEAM_NAMES, type Difficulty } from "@/lib/arena/modes";
 import { PRIMARIES, SECONDARIES, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
 import { Button } from "@/components/Button";
@@ -56,7 +56,7 @@ export function ArenaSetup({ value, onChange }: { value: ArenaSettings; onChange
         <div className="arena-chips">
           {RADII.map((r) => (
             <button key={r} className={`chip ${value.radius === r ? "on" : ""}`} onClick={() => onChange({ ...value, radius: r })}>
-              {t(SIZE_LABEL[r])} · {formatDistance(r * 2)}
+              {t(SIZE_LABEL[r])}{dot()}{formatDistance(r * 2)}
             </button>
           ))}
         </div>
@@ -142,8 +142,8 @@ export function NearbyMatches({ combat, s, canDrive, onGo }: { combat: Combat; s
             <span className="ic">{MODES[l.mode].emoji}</span>
             <span className="grow">
               <b>
-                {t(MODES[l.mode].name)} · {l.hostName}
-                {l.party ? ` · 🎉 ${t("your party")}` : ""}
+                {t(MODES[l.mode].name)}{dot()}{l.hostName}
+                {l.party ? `${dot()}🎉 ${t("your party")}` : ""}
               </b>
               <span className="small muted">
                 {t("{n} players · {b} bots", { n: l.players, b: l.bots })} · {l.phase === "lobby" ? t("in the lobby") : t("playing")} · {formatDistance(l.dist)}

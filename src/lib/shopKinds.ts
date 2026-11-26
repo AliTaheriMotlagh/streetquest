@@ -9,7 +9,7 @@
 // One list of fields per kind (KINDS) drives the seller's form, the cleaning of what's sent (cleanDetails) and the
 // buyer's page (detailRows). A product is priced in coins (bought in the game: the coins are held until pickup) or
 // in toman (paid to the seller directly, like a Divar ad — the game never touches that money).
-import { msg } from "./i18n";
+import { msg, dot } from "./i18n";
 
 export type ProductKind = "item" | "food" | "ticket" | "ad" | "deal" | "service";
 export const PRODUCT_KIND_KEYS: ProductKind[] = ["item", "food", "ticket", "ad", "deal", "service"];
@@ -191,7 +191,7 @@ export function detailRows(kind: ProductKind, details: unknown, fmt: { num: (n: 
 export function kindLine(kind: ProductKind, details: unknown, fmt: { date: (ms: number) => string }): string {
   const { details: d } = cleanDetails(kind, details);
   const s = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
-  if (kind === "ticket") return [typeof d.when === "number" ? fmt.date(d.when) : "", s("from") && s("to") ? `${s("from")} → ${s("to")}` : s("venue")].filter(Boolean).join(" · ");
+  if (kind === "ticket") return [typeof d.when === "number" ? fmt.date(d.when) : "", s("from") && s("to") ? `${s("from")} → ${s("to")}` : s("venue")].filter(Boolean).join(dot());
   if (kind === "food") return s("section");
   if (kind === "ad") return s("area");
   if (kind === "deal") return typeof d.until === "number" ? fmt.date(d.until) : "";

@@ -7,6 +7,7 @@
 //  - one stacked right on top of us (or on another player) is nudged aside so both
 //    stay visible and tappable
 // The animation loop only runs while something is actually moving.
+import { dot } from "@/lib/i18n";
 import L from "leaflet";
 import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
@@ -25,7 +26,7 @@ type Entry = { marker: L.Marker; html: string; data: WorldPlayer; near: NearPlay
 
 const htmlOf = (p: WorldPlayer, live: boolean) =>
   [
-    `${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)} · ${p.level}</span>`,
+    `${esc(p.avatar)}<span class="nm">${p.home ? "🛋️ " : ""}${esc(p.username)}${dot()}${p.level}</span>`,
     `player ${p.friend ? "friend" : ""} ${live ? "live" : ""}`,
   ] as const;
 

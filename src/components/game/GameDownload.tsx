@@ -3,7 +3,7 @@
 // "Downloading the game · 4.2 of 17 MB · 1.3 MB/s · 9 s left" with its own thin bar — and a row in
 // Settings to download it all now (for offline, or on a data-saving connection) or see it's there.
 import { useSyncExternalStore } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { etaOf, fmtBytes, IDLE, pctOf, type DownloadState } from "@/lib/gameDownload";
 import { downloadState, onDownload, startGameDownload, stopGameDownload } from "./downloader";
 
@@ -30,7 +30,7 @@ export function DownloadLine() {
       <div className="gdl-bar" aria-hidden>
         <i style={{ transform: `scaleX(${Math.max(0.02, pctOf(s) / 100)})` }} />
       </div>
-      <small>{parts.join(" · ")}</small>
+      <small>{parts.join(dot())}</small>
     </div>
   );
 }

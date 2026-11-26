@@ -5,7 +5,7 @@
 // shows where the claim stands. Below the dashboard, the store's history (the audit log, no IPs).
 import { useState } from "react";
 import { CLAIM_METHOD_KEYS, CLAIM_METHODS, CLAIM_STATUS, VISIT_GAP_H, type ClaimMethod } from "@/lib/claims";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import type { ClaimView } from "@/server/claims";
 import type { AuditRow } from "@/server/audit";
 import { Button } from "@/components/Button";
@@ -155,7 +155,7 @@ export function StoreHistory({ businessId }: { businessId: string }) {
           <div key={r.id} className="row small" style={{ padding: "5px 0", borderTop: "1px solid var(--line)" }}>
             <span aria-hidden>{ICON[r.action.split(".")[0]] ?? "•"}</span>
             <span className="grow" dir="auto">{r.summary || r.action}</span>
-            <span className="muted">@{r.actor || "—"} · {fmtTime(r.createdAt)}</span>
+            <span className="muted">@{r.actor || "—"}{dot()}{fmtTime(r.createdAt)}</span>
           </div>
         ))
       ))}

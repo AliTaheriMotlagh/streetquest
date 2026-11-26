@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { askConfirm, askText } from "@/components/Dialogs";
 import { Button } from "@/components/Button";
 import { CLAIM_METHODS, CLAIM_STATUS, type ClaimMethod, type ClaimStatus } from "@/lib/claims";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 
 type Claim = {
   id: string; method: ClaimMethod; code: string; status: ClaimStatus; dispute: boolean; hasDoc: boolean; note: string; decision: string; createdAt: string; expired: boolean;
@@ -83,10 +83,10 @@ export default function AdminClaims({ onError }: { onError: (m: string) => void 
               <div className="small">
                 {t("By {user} (player for {n} days)", { user: c.user, n: fmtNum(days(c.userSince)) })}
                 {c.dispute && <> · {t("now run by {user}", { user: c.business.owner })}</>}
-                {" · "}{new Date(c.createdAt).toLocaleString()}
+                {dot()}{new Date(c.createdAt).toLocaleString()}
               </div>
               {c.method === "website" && <div className="small">🌐 <a href={c.url || c.business.website} target="_blank" rel="noreferrer noopener">{c.url || c.business.website || "—"}</a> · <code>{c.code}</code></div>}
-              {c.visitsAt.length > 0 && <div className="small">📍 {c.visitsAt.map((v) => t("{when} at {m} m", { when: new Date(v.at).toLocaleString(), m: fmtNum(v.dist) })).join(" · ")}</div>}
+              {c.visitsAt.length > 0 && <div className="small">📍 {c.visitsAt.map((v) => t("{when} at {m} m", { when: new Date(v.at).toLocaleString(), m: fmtNum(v.dist) })).join(dot())}</div>}
               {c.note && <div className="small" dir="auto">“{c.note}”</div>}
               {c.decision && <div className="small muted" dir="auto">{t("Decision")}: {c.decision}</div>}
               <div className="row wrap" style={{ gap: 4, marginTop: 4 }}>
@@ -105,7 +105,7 @@ export default function AdminClaims({ onError }: { onError: (m: string) => void 
         ))
       )}
       {big && (
-        <div role="dialog" aria-label={t("Photo")} onClick={() => setBig(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.85)", display: "grid", placeItems: "center", padding: 16 }}>
+        <div role="dialog" aria-label={t("Photo")} onClick={() => setBig(null)} style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", background: "rgba(0,0,0,.85)", display: "grid", placeItems: "center", padding: 16 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`/api/admin/claims/doc?id=${big}`} alt="" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
         </div>

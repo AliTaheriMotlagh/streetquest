@@ -10,7 +10,7 @@
 // things are paid to the seller directly (call, or their payment page). Without 3D (no WebGL) it's the list alone.
 // Styles: app/drive-talk.css (.shop…).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum, getLocale, msg, t } from "@/lib/i18n";
+import { fmtNum, getLocale, msg, t, dot } from "@/lib/i18n";
 import { snappfoodMenuUrl, weekFromOsm, zoneOf, type MenuItem, type MenuSection, type StoreData } from "@/lib/localData";
 import { shopSay, type ShopAct, type ShopItem } from "@/lib/street/shopTalk";
 import { contactOf, KINDS, kindLine, type ProductKind } from "@/lib/shopKinds";
@@ -210,7 +210,7 @@ export function ShopScreen({ s, onClose, say, room }: { s: StoreTarget; onClose:
           sfx("coin");
           refresh();
           player.reload();
-          return { message: codes.length ? t("Paid! Your pickup code: {code} (also in Market → My purchases)", { code: codes.join(" · ") }) : t("Paid!") };
+          return { message: codes.length ? t("Paid! Your pickup code: {code} (also in Market → My purchases)", { code: codes.join(dot()) }) : t("Paid!") };
         }),
     );
 
@@ -339,7 +339,7 @@ export function ShopScreen({ s, onClose, say, room }: { s: StoreTarget; onClose:
 
       <footer className="shop-foot">
         <div className="grow">
-          <b>{n ? [coinTotal ? `${fmtNum(coinTotal)} 🪙` : "", tomanTotal ? t("{n} toman", { n: fmtNum(tomanTotal) }) : ""].filter(Boolean).join(" · ") : t("Your basket is empty")}</b>
+          <b>{n ? [coinTotal ? `${fmtNum(coinTotal)} 🪙` : "", tomanTotal ? t("{n} toman", { n: fmtNum(tomanTotal) }) : ""].filter(Boolean).join(dot()) : t("Your basket is empty")}</b>
           {n > 0 && <small>{t("{n} things", { n: fmtNum(n) })}</small>}
         </div>
         {n > 0 && !coinTotal && <button type="button" className="btn small ghost" onClick={() => answer("checkout", { basket: { n, total: tomanTotal } }, t("How much is it all?"))}>{t("At the counter")}</button>}

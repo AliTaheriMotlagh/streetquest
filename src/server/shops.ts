@@ -58,6 +58,8 @@ export const SHOP_SELECT = {
   sales: true,
   createdAt: true,
   owner: { select: { username: true, avatar: true } },
+  // The verified real business behind it (Seller center, server/seller.ts).
+  business: { select: { name: true, verified: true } },
 } satisfies Prisma.ShopSelect;
 type ShopRow = Prisma.ShopGetPayload<{ select: typeof SHOP_SELECT }>;
 
@@ -123,6 +125,8 @@ export function shopView(s: ShopRow, products: ProductRow[], viewerId: string, h
     sales: s.sales,
     createdAt: s.createdAt.getTime(),
     owner: s.owner,
+    /** The name of the verified real business behind the shop (null: none, or not verified). */
+    verifiedStore: s.business?.verified ? s.business.name : null,
     mine,
     distanceM: here ? Math.round(distanceM(here, s)) : null,
     deal: Math.max(0, ...list.filter((p) => p.active && p.stock > 0 && !p.over).map((p) => p.deal)),

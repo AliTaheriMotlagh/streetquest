@@ -3,7 +3,7 @@
 // frame), health and ammo, the kill feed, red arrows toward whoever shot you, the match
 // bar (mode, clock, score), bomb status, the death screen, the scoreboard and the results.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { bombSide, GUN_KILLS_PER_STEP, GUN_LADDER, gunFor, MODES, TEAM_COLORS, TEAM_NAMES, type MatchView } from "@/lib/arena/modes";
 import { PRIMARIES, WEAPONS, type WeaponKey } from "@/lib/arena/weapons";
 import { costOf, PRICES } from "@/lib/arena/economy";
@@ -235,7 +235,7 @@ function MatchBar({ m, now, me, team, children }: { m: MatchView; now: number; m
           <>
             <b className="score">{fmtNum(myLine?.kills ?? 0)}</b>
             <span className="mid">
-              <small>{def.emoji} {t(def.name)} · {fmtNum(def.killLimit)}</small>
+              <small>{def.emoji} {t(def.name)}{dot()}{fmtNum(def.killLimit)}</small>
               <b>{m.phase === "lobby" ? "—" : clock(left)}</b>
             </span>
             <b className="score lead" title={leader?.name}>{fmtNum(leader?.kills ?? 0)}</b>

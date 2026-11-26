@@ -3,7 +3,7 @@
 // your online friends first, then players around you, nearest first, with how far they
 // are (strangers' distances are rounded and never their real spot; /api/online).
 import { useEffect, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { Button } from "@/components/Button";
 import { S } from "@/lib/settings";
@@ -43,7 +43,7 @@ function Row({ p, onDone }: { p: OnlinePlayer; onDone: () => void }) {
           <b dir="auto">{p.username}</b>
           <span className="small muted">
             {t("Level {n}", { n: fmtNum(p.level) })}
-            {p.home && ` · 🛋️ ${t("playing from home")}`}
+            {p.home && `${dot()}🛋️ ${t("playing from home")}`}
           </span>
         </span>
         <span className="small muted online-dist">{p.distM == null ? t("far away") : p.friend ? formatDistance(p.distM) : t("about {d}", { d: formatDistance(p.distM) })}</span>

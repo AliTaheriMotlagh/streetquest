@@ -79,14 +79,22 @@ Three games stacked on one real-world map:
 - **Store & sponsor spots** — gem packs via Stripe Checkout, coin offers / instant heal / energy drink / base
   shield paid in gems, and rewarded sponsor spots (timed server-side, daily cap, views and clicks per sponsor).
 - **Ads in lists** (`components/AdSlot.tsx`, `lib/ads/slot.ts`, `server/houseAds.ts`, `/api/ads/{slot,go,house}`): one
-  slot in the Market list and under hotel results, loaded only when it scrolls near, never in the 3D city. It shows a
+  slot in the Market list, under a shop's products (for buyers), in product search results, under hotel results and
+  under the outings to book — after the 3rd row, then every 12th (`adPositions`) — loaded only when it scrolls near,
+  never in the 3D city. It shows a
   **player's own ad** first: Market → My shop → 📣 Advertise buys views with coins (Admin → Game settings "Coins per 100
   ad views"), the text is pre-checked like a shop listing (banned goods refused, a new advertiser's first ads wait in
   Admin → Listings; turned down = coins back), and views/clicks are counted. With none running, the slot tries the
   networks for the player's country: Yektanet then Tapsell in Iran (`YEKTANET_SCRIPT`, `TAPSELL_SCRIPT`), AdSense only
   where the player is known to be outside Iran (`ADSENSE_CLIENT` + `ADSENSE_SLOT`); a slot nobody fills disappears.
 - **Filters in the address** (`lib/urlState.ts`, `components/useUrlParam.ts`): trip and hotel filters, and the Market
-  search and category, are kept in the page URL — a filtered list can be shared, reloaded and gone back to.
+  search and category, and a shop's product search / sort / chips, are kept in the page URL — a filtered list can be
+  shared, reloaded and gone back to.
+- **One list engine** (`lib/listEngine.ts`): a kind of item declares its search text, sorts, filter chips, price and
+  a lead order once (a `ListSpec`); `runList` searches every word in any order (Persian/Arabic letters and digits
+  folded), filters, sorts stably, and `chipCounts` puts on each chip how many it would show. A shop's products use it
+  (`lib/shopList.ts`): a search box from 6 products, newest / cheapest / most expensive / biggest discount / best
+  selling, «On sale» and «In stock» chips, sold out always last.
 - **Live game settings** — Admin → Game settings edits every tunable (reach radius, rewards, multipliers, timers,
   ranges, goals, gem packs, ads…) and Admin → Game data edits unit/building/tower/item/research stats. Changes go
   live within ~15 s, no redeploy.
@@ -168,7 +176,10 @@ mood scales XP; loot funds research; territory funds the army.
 - **Metro trips, step by step** (`TransitCard.tsx MetroTrip`, `lib/transit/plan.ts timeline/rideStops`): from where
   you are or any station to any station (⇅ swaps them): the total, leave/arrive clock times, a coloured bar of walk and
   rides, then a timeline — walk in, the line and which way, the next trains, every stop it passes (tap to unfold),
-  where to change, where to get off, the walk out.
+  where to change, where to get off, the walk out. Planned by **RAPTOR** (`planTrips`, round-based: round k = at most
+  k rides): when a slower trip has fewer changes it's offered too ("Fastest" / "No changes" chips above the plan).
+  The summary shows the **fare** (`lib/transit/fares.ts`): Iran pays once at the gate (changes free), Istanbul each
+  boarding at the İstanbulkart transfer fare — amounts are estimates in Admin → Game settings → *Metro fares*.
 - **Metro & buses** (`lib/transit/*`, `game/TransitCard.tsx`, `server/transit.ts`, `/api/transit`): a map layer in
   Tehran, Istanbul, Mashhad (3 lines), Isfahan (1), Shiraz (2) and Tabriz (1) with every metro, tram and funicular station (always on the map, in the line's colour), the bus
   stops round you and, in Istanbul, the buses live. A station's card lists its lines and the next trains each way; a
@@ -182,7 +193,7 @@ mood scales XP; loot funds research; territory funds the army.
   from disk by `/api/transit?board=`). OpenStreetMap lists many bus routes' stops in no order; the build chains them in
   travel order (`orderStops`). The **Metro** sheet (⋯ menu, or a station's
   "Metro map" / "Trip to here") shows each line as a strip of stations with its interchanges, plans a trip from where
-  you are (walk, ride, change, walk — Dijkstra over station × line, waits of half a headway, 4 min to change), and has
+  you are (walk, ride, change, walk — RAPTOR rounds, waits of half a headway, 4 min to change), and has
   a short guide (cards, women's carriages in Tehran, Marmaray…). Lines and stops come from OpenStreetMap's route
   relations: `npm run transit:build -- tehran <iran.osm.pbf>` (same for `mashhad`, `isfahan`, `shiraz`, `tabriz`) /
   `-- istanbul <turkey.osm.pbf>` (Geofabrik extracts)
@@ -192,6 +203,9 @@ mood scales XP; loot funds research; territory funds the army.
   (IBB answers from Turkey only: a relay there). Without one, the player's own phone asks IETT (`game/iettClient.ts`:
   ASMX's plain GET first, then SOAP) — a phone in Istanbul is in Turkey — for the map, the stop cards and the 3D
   buses; if IBB doesn't let browsers read its answers (CORS), it backs off and the cards keep "about every N min".
+- **Separators in Persian** (`lib/i18n dot()`): the bits of a line are joined with « • » in Persian, « · » elsewhere — a
+  middle dot beside a Persian number reads as a zero («۳۵ · متر» looks like «۳۵۰ متر»). Persian translations never use
+  «·» (tests/separator.test.ts); code joins call `dot()`.
 - **Türkçe** (`lib/i18n/tr/*`, the same split as `fa/`): a third language everywhere, checked by `npm run i18n:check`
   like Persian (`--missing tr` lists what a new string still needs). A browser in Turkey that lists Turkish gets it;
   a saved choice always wins. Numbers the Turkish way (12.345,5; idle numbers in «milyon», «milyar»), fonts with
@@ -282,7 +296,10 @@ mood scales XP; loot funds research; territory funds the army.
   compressed — a 40–80 MB scan becomes 3–8 MB; the server only checks it (glTF 2, ≤12 MB, ≤600k triangles, ≤16
   textures, only extensions the game's loader draws) and keeps one per shop (`ShopScan`, cached forever per version).
   Players walking in then stand in the real store (the generated room shows until it loads); ↻ Turn it so its street
-  side faces the door, replace or take it down.
+  side faces the door, replace or take it down. Inside a scan you walk on its **own floor** (`lib/scanFloor.ts`: the
+  scan's points between knee and head height block a 25 cm cell — shelves, counters, walls — and you slide along
+  them), start at the clear spot nearest the street, and the **keeper** stands at the clear spot deepest inside,
+  facing the door.
 - **On-device voices — Persian, English, Turkish** (`drive/tts/`, rules `lib/tts/neural.ts`, voices
   `lib/tts/sherpa.ts`): what the shopkeeper and passers-by say that isn't a recorded line is spoken by sherpa-onnx
   (WebAssembly) in a Web Worker, in the player's language (`voiceLangOf`: the game's language, Turkish in Turkey).
@@ -424,6 +441,9 @@ mood scales XP; loot funds research; territory funds the army.
   **Settings → Sound** (on the map, and in the 3D city's menu → Settings) also has a mixer: one slider for everything and one each for *effects & menus*, *cars & sirens*,
   *guns & explosions*, *voices*, *city ambience* and the *car radio* (music keeps its own) — heard as you drag, saved on the device
   (`sq_mix`; which sound answers to which slider: `src/lib/audio/mix.ts`).
+- **The following camera never looks at a wall** (`lib/cameraClear.ts`): the chase and far cameras check the whole
+  line from the car's roof to where they want to be; a building in the way lifts the camera to look over the roofs
+  (+6 / 12 / 20 m), and only a tower too tall for that pulls it in to the last clear point (never closer than 3 m).
 - **The film look** (High and Ultra, realistic style) — camera motion blur: each pixel is traced back to where it was
   a frame ago from its depth and the two cameras, and smeared along the way; whatever is nearer than the player's car
   stays sharp (the car never smears), a change of camera never blurs, and behind the wheel there's a third of it.
@@ -627,8 +647,19 @@ mood scales XP; loot funds research; territory funds the army.
   rewind or by `/api/drive/arena` on the HTTP presence (fists only with empty hands, the punch cooldown enforced).
   Bins, rubbish bags, benches and the galvanised dumpsters are light bodies: a car hands them an impulse by mass and
   speed (and slows by what it gave), they slide, spin, tip over on a hard hit and break past their limit (a bag bursts,
-  a bin is crushed); a dumpster rolls but stops a Pride. The knocked instance is moved inside its tile's InstancedMesh,
-  only within 40 m and at most 16 at once.
+  a bin is crushed); a dumpster rolls but stops a Pride. The street kit joins in: traffic cones keeping a parking spot
+  just inside a shop street's kerb and white plastic chairs on its pavement (`streetKit.ts sitOut`) fly at a touch; a
+  post box, a telecom cabinet or a payphone is wrenched off its bolts by a real hit and falls. The knocked instance is
+  moved inside its tile's InstancedMesh, only within 40 m and at most 16 at once; once knocked it stays a body, so you
+  can hit it again where it came to rest.
+- **The police helicopter** (`lib/street/heli.ts` rules, `drive/heli3d.ts` look): at 4 wanted stars one flies in from
+  ~400 m out and circles 45 m over you; while it's within 70 m it counts as the police seeing you (only cover would hide
+  you), and at night a searchlight cone follows you. Below 4 stars it climbs away and is gone. Drawn in code (body,
+  tail, skids, spinning rotor discs, a blinking beacon); no rotor sound yet (no recorded sample).
+- **After an arrest or a knock-out** (`lib/street/setback.ts`): a moment later you're set down outside the nearest
+  police station (arrested) or hospital / clinic (knocked out) within 1.5 km — else where it happened. Admin → Game
+  settings → *Street life* can set an arrest fine per wanted star and a hospital bill in coins (both 0 by default: no
+  money is taken unless the admin turns it on; never more than the player has; `/api/drive/street {setback}`).
 - **Street life — crashes, crime and the police** (outside matches; `src/components/drive/street.ts`, numbers in
   `src/lib/street/{damage,wanted}.ts`) — the open city plays like a crime game (each country's own police: Iran's
   green-band Samands, Turkey's white-and-blue «POLİS 155» saloons with navy uniforms — `lib/street/policeLook.ts`):
@@ -914,12 +945,22 @@ mood scales XP; loot funds research; territory funds the army.
   time of day, price cap, company, refundable, direct; sort by price, departure, duration or seats; only tickets with
   seats for everyone. The plan opens on **the trip at a glance**: the route as a line (each city's dates, nights and
   stay; each leg's way, time and price — solid once chosen, dashed while open), the trip **day by day**
-  (`lib/travel/plan.ts` `itinerary`), the route on a map, and the cost split into tickets / fuel / stays.
+  (`lib/travel/plan.ts` `itinerary` — each line with its time, price and site), the route on a map, and the cost
+  split into tickets / fuel / stays / your steps. **Your own steps** (`lib/travel/steps.ts`): on any day, paste a
+  booking link from any site (a concert, a tour, a restaurant) — the site is told from the host, the title from the
+  link — set the price a person and how many go; it joins the diary and the bill. **To book**
+  (`lib/travel/extras.ts checklist`): everything chosen, in date order with Jalali dates, its price for everyone, the
+  site and a *Reserve ↗* link, then the total — *Share* (the phone's share sheet), *Copy*, or *Save as text*.
+  Under the stops, **Nearby, worth a stop** (`nearbyCities`): up to four cities within 300 km by road of the last
+  stop, with the drive time, added with a tap.
   **Stays**: villas, suites, apartments, eco-lodges, hostels and hotels from [Jabama](https://www.jabama.com) — its
   `city-<key>` list and its separate `hotels-<key>` list (stars, amenities) — with photos, rating, guests and price a
   night and for the whole stay (units enough for everyone; kind, stars, guest rating, amenities, instant booking,
   price; sort by price, rating, stars, distance, size); **Hotels & stays** in the List view searches any city by
-  check-in, nights and guests without a trip, plus Alibaba's and [Booking.ir](https://www.booking.ir)'s
+  check-in, nights and guests without a trip. Stays load fast: a list kept on the phone shows at once while the fresh
+  one comes (stale-while-revalidate, both on the phone and in ExtCache), and the fresh one streams in as each page of
+  each list answers (`/api/travel?stays=<city>&stream=1`, NDJSON — `lib/ndjson.ts`), with placeholder rows until the
+  last part; a stop's stays are fetched as soon as it's added to the plan. Plus Alibaba's and [Booking.ir](https://www.booking.ir)'s
   hotel pages and Alibaba's tours. [Flytoday](https://www.flytoday.ir), [Raja](https://www.raja.ir) and
   [Payaneh](https://payaneh.ir) publish no data the game can read: they are *Compare on* links. Product search knows
   a trip too: "بلیط مشهد", "hotel in Shiraz" offer the planner. **Planes**: live ADS-B positions
@@ -949,6 +990,14 @@ mood scales XP; loot funds research; territory funds the army.
   «Book online in …» to add too. The booking and payment finish on jabama.events/events/<id>, where you pick the
   session (the site has no link that picks one). Elsewhere (Kish, Qeshm…) the outing keeps its search link. Cached an
   hour; `JABAMA_EVENTS_URL` (`off` disables; through the relay with `jabama` in `RELAY_FOR`).
+  **More sites** (`lib/travel/sources.ts`, one adapter per site — `deepLink` to its page for the query and, where it
+  serves its data openly, a `read` parsed into one `SourceOffer` (toman, source, link, checked-at), deduped and cheapest
+  first by `mergeOffers`): tickets on Sepehr360, 3click, Flytoday, Snapptrip, Ghasedak24, Safar724, Raja and Payaneh;
+  stays on Eghamat24, Otaghak, Jajiga, Shab, Snapptrip and Flytoday; events on Evand, Tiwall, Vadoostan and
+  Emruzkojaberam (Tehran). Probed 2026-11-26: only Jajiga puts prices in its page (`__NEXT_DATA__`), so a city's stays
+  also show «On other sites» — Jajiga's first stays with photo, price a night and for your nights
+  (`/api/travel?offers=stay&city=`, cached an hour, `JAJIGA_URL`); the rest render prices from private APIs and are
+  «Compare on» links with each site's own city spelling.
   Every stay has **its own page** (all its photos, amenities, the bill for your nights and rooms). Photos everywhere
   (stays, store directories, products) are a swipeable **gallery** with dots, a counter and full screen
   (`game/Gallery.tsx`); Bilbooard/Irangaah store pages give their whole gallery, not just the listed photo
@@ -982,6 +1031,12 @@ mood scales XP; loot funds research; territory funds the army.
   hours like `09:00-22:00`, `09:00-13:00, 16:00-21:00` or `24`, closed days). Rules: `lib/business.ts`
   (`bizLook`, `bizWeek`); 3D: `drive/markers.ts`, `drive/storefronts.ts`, `drive/bizBillboards.ts`; logo:
   `/api/business/logo`. Every joined store within 1.5 km comes in the world, mission or not.
+- **Seller center** (Market → My shop → 🧑‍💼; `lib/sellerCenter.ts`, `server/seller.ts`, `/api/seller`,
+  `SellerCenter.tsx`): your player shop and your real businesses in one place. A to-do list, urgent first — orders to
+  hand over (late after 2 days), the shop closing or closed, products turned down / waiting for review / sold out, empty
+  shelves, a business to verify or to link, a paid plan about to end — each opening its screen. Shop and Business are
+  **linked, not merged**: a *verified* business of yours can stand behind your shop (`Shop.businessId`, one shop per
+  business, checked in a transaction), and the shop then shows «✅ Verified store: <name>»; unlink any time.
 - **Player shops (Market)** — open a shop where you stand and sell any kind of thing the store sites carry
   (`lib/shopKinds.ts`): a product (brand, model, condition, warranty), food (menu section, what's in it, ready in),
   a ticket (date, venue, from → to, seat — a show that's over can't be bought), a classified ad (category,
@@ -1000,6 +1055,8 @@ mood scales XP; loot funds research; territory funds the army.
   businesses and admins skip the first-3 hold. Buyers report a shop or product with 🚩 (anonymous, 15 an hour); 3
   players reporting a live product hide it until a moderator looks. Admin → Listings approves, turns down with a
   reason the seller is notified of (an edit puts it back in the queue), or dismisses reports; every decision is audited.
+  **Limits** (`lib/limits.ts`, `server/limits.ts`): a player may list 30 new products an hour and buy 10 ads a day
+  (a sliding window of `rl:<key>` Metric rows; 429 with the minutes to wait; admins exempt).
 - **Search engines & sharing** — every public page names its language versions (`?lang=en|fa|tr`, hreflang,
   x-default) with a canonical per language, so the Persian and Turkish pages get indexed too (`lib/seo.ts`); the
   footer links them for crawlers; the sitemap lists pages, events and open shops with their language versions;
@@ -1088,7 +1145,9 @@ mood scales XP; loot funds research; territory funds the army.
   Irangaah, Okala, Netbarg and the map's own places; the same shop on two sites is one row wearing both sites' badges
   (and the best of each site's facts). **Products & prices**: dishes from nearby Snappfood menus (Yemeksepeti's in
   Turkey, prices in lira; idea chips in each country's own words, and Turkish letters folded so «cig kofte» finds «Çiğ
-  Köfte») plus Takhfifan, Torob and Basalam; a dish opens its restaurant on that dish, and ‹ (or the phone's Back) goes
+  Köfte») plus Takhfifan, Torob and Basalam, and **players' shops** round you (source «Player shops»: open shops'
+  approved, in-stock products within ~30 km, toman prices compared, coin prices shown without one — a hit opens the
+  shop in the Market); a dish opens its restaurant on that dish, and ‹ (or the phone's Back) goes
   back to the list with the search kept. The phone's Back closes whatever card is on top everywhere in the game
   (`components/game/backStack.ts`) instead of leaving it (`src/lib/productSearch.ts`) — a price range in toman with one-tap caps, discounted only, by site; sorted by best
   match (each restaurant gets two dishes in before any gets more), cheapest, dearest, nearest, best rated or biggest

@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { useMap, useMapEvents } from "react-leaflet";
-import { fmtNum, getLocale, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { CITIES, HUB_ZOOM, hubGlyphs, type City } from "@/lib/travel";
 import { advance, type Plane } from "@/lib/flights";
 import { cleanPlan, type LegPick } from "@/lib/travel/plan";
@@ -39,7 +39,7 @@ const planeIcon = (p: Plane) =>
 
 function planeCard(p: Plane) {
   const km = (p.speed * 3.6).toFixed(0);
-  return `<div class="tv-pop" dir="auto"><b>${esc(p.call)}</b>${p.airline ? ` · ${esc(p.airline)}` : ""}<br/>${[p.type, p.reg].filter(Boolean).map((x) => esc(x!)).join(" · ")}<br/>${p.from && p.to ? `${p.from} → ${p.to}<br/>` : ""}${esc(t("{m} m high · {k} km/h", { m: fmtNum(Math.round(p.alt)), k: fmtNum(Number(km)) }))}<br/><small>${esc(p.source === "live" ? t("Live position (ADS-B)") : t("Where the timetable puts it"))}</small></div>`;
+  return `<div class="tv-pop" dir="auto"><b>${esc(p.call)}</b>${p.airline ? `{dot()}${esc(p.airline)}` : ""}<br/>${[p.type, p.reg].filter(Boolean).map((x) => esc(x!)).join(dot())}<br/>${p.from && p.to ? `${p.from} → ${p.to}<br/>` : ""}${esc(t("{m} m high · {k} km/h", { m: fmtNum(Math.round(p.alt)), k: fmtNum(Number(km)) }))}<br/><small>${esc(p.source === "live" ? t("Live position (ADS-B)") : t("Where the timetable puts it"))}</small></div>`;
 }
 
 export function TravelLayer({ planes: showPlanes = true }: { planes?: boolean }) {

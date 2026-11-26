@@ -166,6 +166,18 @@ const DEFAULTS = {
   fuelTier2Litres: 50,
   fuelToman: 10000,
 
+  // ---- setbacks in the open city (lib/street/setback.ts): coins taken when arrested (per wanted star) or knocked out.
+  // 0 = none (the default: the game takes no money unless the admin turns this on).
+  bustFinePerStar: 0,
+  hospitalBill: 0,
+
+  // ---- metro fares (lib/transit/fares.ts): estimates, kept current by the admin. Iran pays once at the gate
+  // (changes free); Istanbul pays each boarding, a change at the İstanbulkart transfer fare.
+  metroFareToman: 4000,
+  metroFareOtherToman: 2500,
+  metroFareTry: 35,
+  metroTransferTry: 24,
+
   // ---- game data (stat overrides, edited in the admin "Game data" tab)
   catalog: {} as CatalogOverrides,
 };
@@ -281,6 +293,12 @@ export const SETTING_DEFS: SettingDef[] = [
   { key: "fuelTier2Toman", group: msg("Travel planner"), label: msg("Petrol, second price (toman a litre)"), help: msg("After the quota, up to the second-tier litres."), min: 0, max: 1_000_000 },
   { key: "fuelTier2Litres", group: msg("Travel planner"), label: msg("Second-tier litres a month"), help: "", min: 0, max: 1000 },
   { key: "fuelToman", group: msg("Travel planner"), label: msg("Petrol beyond the quota (toman a litre)"), help: msg("What a trip's fuel costs by default — a trip is extra driving."), min: 0, max: 1_000_000 },
+  { key: "bustFinePerStar", group: msg("Street life"), label: msg("Arrest fine per wanted star (coins)"), help: msg("Taken when the police arrest you; 0 = no fine. Never more than the player has."), min: 0, max: 100_000 },
+  { key: "hospitalBill", group: msg("Street life"), label: msg("Hospital bill when knocked out (coins)"), help: msg("Taken when you come to at the hospital; 0 = free."), min: 0, max: 100_000 },
+  { key: "metroFareToman", group: msg("Metro fares"), label: msg("Tehran metro, one trip (toman)"), help: msg("With a metro card; changing lines inside is free."), min: 0, max: 1_000_000 },
+  { key: "metroFareOtherToman", group: msg("Metro fares"), label: msg("Other Iranian metros, one trip (toman)"), help: msg("Mashhad, Isfahan, Shiraz, Tabriz."), min: 0, max: 1_000_000 },
+  { key: "metroFareTry", group: msg("Metro fares"), label: msg("Istanbul, one boarding (lira)"), help: msg("Full İstanbulkart fare."), min: 0, max: 10_000 },
+  { key: "metroTransferTry", group: msg("Metro fares"), label: msg("Istanbul, each change (lira)"), help: msg("The cheaper transfer fare within two hours."), min: 0, max: 10_000 },
   { key: "gfx", group: msg("Graphics"), label: msg("Graphics overrides"), help: msg("Edited in the Graphics tab.") },
   { key: "catalog", group: msg("Game data"), label: msg("Stat overrides"), help: msg("Edited in the Game data tab.") },
 ];

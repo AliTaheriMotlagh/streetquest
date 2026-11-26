@@ -1,29 +1,37 @@
 # StreetQuest — backlog (the one place for open work)
 
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
-(then delete it next time), add what's new. Last gathered: 2026-11-26 (step 2 perf done in code; step 6 bare hands in code, unchecked in a browser; user asked: implement everything first, then test everything at the end).
+(then delete it next time), add what's new. Last gathered: 2026-11-26, third session (see NEXT SESSION).
 
-## NEXT SESSION — start here (written 2026-11-26, second session of the day)
-User's order: **implement everything first, then test everything at the end.** Remove done items as you go.
-Shipped this session (code + fa/tr + README + tests, all run): moderation i18n + tests/moderation.test.ts +
-e2e/api/moderation.spec.ts (found+fixed: "AK-47" slipped through the weapon words); remote players see bare hands
-(weapon byte 255 = BARE_IDX; also fixed /api/drive clamping weapons 5–8 to 4); punching other players (realtime
-`punch` msg + HTTP `weapon:"fists"`, tests/punchPlayers.test.ts + drive.spec fists); knockable bins/bags/benches/dumpsters
-(lib/street/props.ts, drive/looseProps.ts — seen working headless: car 11→9 m/s into a dumpster, 2 woken); URL-synced
-trip/stay/Market filters (lib/urlState.ts, components/useUrlParam.ts); self-serve house ads in coins + AdSlot with the
-house → Yektanet/Tapsell (IR) / AdSense (known non-IR only) chain (model HouseAd, /api/ads/{slot,go,house}, Admin →
-Listings "Player ads", Market → Advertise; e2e/api/ads.spec.ts). Screenshotted at 360×740 fa: Market ad card, Advertise form.
-The 2026-11-26 00:27 "plan" deploy FAILED on the missing translations — fixed; check the CI run of this push.
-1. Left of the old list (top-down): metro station sheet (line bold/others dimmed), RAPTOR planner + fares; travel
-   source adapters (probe each site first); hotels SWR + NDJSON streaming + skeleton rows; nearby-city suggestions +
-   day-by-day plan; shared list engine for product lists in Market (search/sort inside a shop); ~60 raw z-indexes →
-   tokens; civic-place category fixes; seller center (Shop + Business linked); SEO audit (Lighthouse on prod pages).
-2. Never checked in a browser: punch guard/jab/hook close-ups + first-person fists (headless drive now boots in ~35 s
-   on a warm :3100 — force `__drive.live.current.canDrive = true` in an interval to drive as a GPS guest), a punch on
-   another player in two browsers, a bench/bin tipping, Admin → Listings with player ads, travel day strip at 360 px,
-   metro sheets for Mashhad/Isfahan/Shiraz/Tabriz, low-tier lite city.
-3. Local `next build` fails in next/font (Google Fonts parse, "reading '1'") on this Mac only — CI builds fine.
-   Kill any :3100 dev server you start (it leaks Postgres clients → "too many clients" after many hot reloads).
+## NEXT SESSION — start here (written 2026-11-26, third session)
+User's order: **implement everything first, then test everything at the end** — done for this wave (below).
+Shipped + tested this session (code, unit tests, fa/tr, README; e2e API 29/29 green; 1013 unit tests):
+- Metro: RAPTOR route options (`planTrips`), fares (Admin → Metro fares, estimates), lines drawn on the map (canvas),
+  a tapped station's lines bold / others faded, station exits (OSM rebuilt for 5 Iranian cities: 460 exits). Seen at
+  360 px fa: Teatr-e Shahr card (8 exits, nearest first), trip Tajrish→Teatr-e Shahr 45 min · 1 change · ~4,000 toman.
+- Seen in a browser at 360×740 fa: hotels streamed (NDJSON, skeleton rows, 30 stays) + «On other sites» (Jajiga card,
+  photo loads), 9 compare chips; product search «Player shops» chip; Seller center (to-dos); trip planner nearby
+  chips (Shahreza, Zavareh…), 4 glance tabs in one row, «To book», step-from-link form; police helicopter (circles,
+  searchlight at night, police "see" you).
+- Fixed after testing: Postgres "too many clients" in dev/e2e (lib/db.ts made a client per request under the OpenNext
+  dev shim — now one client unless Neon); product search cached player shops 90 s (a paused shop lingered) — now always
+  fresh; Persian middle dot "·" beside a number read as a zero («۳۵ · متر» → «۳۵۰») — now «•» in fa (`dot()`, 119
+  translations, ~180 code joins; tests/separator.test.ts); trip glance tabs wrapped 2×2; searchlight cone washed the
+  whole screen when the chase camera was inside it; cones/chairs never placed on real (polyline) streets.
+- Also new: z-index tokens (tests/zIndex.test.ts), knockable cones/chairs/post boxes/telecom/payphones, place
+  categories (optician, library), prayer times ±2 min of time.ir, travel source adapters (`lib/travel/sources.ts`),
+  shop list engine (`lib/listEngine.ts`), Seller center + `Shop.businessId` (local db only — pushed with
+  `prisma db push`; prod needs the deploy's schema sync), NPCs name the kind of store, ad positions, player shops in
+  product search, per-player limits (`lib/limits.ts`), camera never looks at a wall (`lib/cameraClear.ts`), walking on a
+  3D scan's own floor + keeper (`lib/scanFloor.ts`), setbacks (hospital / police station; fines 0 by default).
+Not yet seen in a browser: cones/chairs after the polyline fix (unit-tested; the headless city's vector tiles were slow
+— retry `/play?drive=1`), knocking a kit piece, the far camera lifting over roofs, a real scan's floor, setback respawn,
+NPC store-kind lines, the dev server needs `.next-claude` (`NEXT_DIST_DIR=.next-claude next dev -p 3100`).
+The user's :3000 dev server (if running) must be restarted after this session's `prisma generate`.
+LAST STEP INTERRUPTED (tokens ran out): the 3D check `drive.mjs` (cones/chairs in the real city after the polyline fix,
+driving into a kit piece). It failed earlier only because a freshly restarted dev server took ~76 s to compile
+`/api/vt` — warm the server first (`curl localhost:3100/api/vt/14/10529/6432`), then `/play?drive=1`, count
+`userData.prop === "cone"` meshes. Nothing is committed yet: review `git status`, run `npm test`, commit.
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
@@ -59,21 +67,11 @@ The 2026-11-26 00:27 "plan" deploy FAILED on the missing translations — fixed;
    - [ ] Thresholds for A10–A15 are scaled from FP32 specs, not measured: run the page on the iPad sim/real iPad and read
          `localStorage.sq_gfx_bench`. Medium budget never re-measured after the lite-city change.
    - [ ] Real-device fps + heat (Instruments Energy Log), target iPad 7th gen steady 30 fps for 15 min.
-3. **NPC chat** — never heard in a real 3D view / iPhone. Left: place type in replies (no data in Drive).
-4. **Travel leftovers**: ~60 raw z-indexes in world/globals/filters css + inline zIndex in Game/Empire/LocationUi modals;
-   not screenshotted at 360 px.
+3. **NPC chat** — never heard in a real 3D view / iPhone (store kinds now in replies, 2026-11-26).
 5. **Travel upgrade**
    - [~] (2026-11-26, code + unit tests, not seen in a browser) Day strip with each day's cheapest ticket, cheapest day
          green, empty greyed, "Next day with tickets" (`lib/travel/calendar.ts`, Travel.tsx `useDayCells`: ±3 days
          searched ahead 2 at a time through the phone cache). Check at 360 px Persian.
-   - [ ] URL-synced trip/stay/Market filters done 2026-11-26; left: a shared engine for product lists inside a shop
-         (Map/UI "scroll + search + filter in every list").
-   - [ ] Hotels fast: stale-while-revalidate cache, stream each source as it answers (NDJSON), skeleton rows, prefetch.
-   - [ ] Source adapters `{search, deepLink}` → one Offer (toman, source, link, duration, checkedAt), deduped, cheapest
-         first. Tickets: Sepehr360, 3click, Flytoday, Snapptrip, Ghasedak24, Safar724, Raja. Stays: Eghamat24,
-         Snapptrip, Otaghak, Jajiga, Shab. Events: Vadoostan, Emruzkojaberam, Evand, Tiwall. Probe first; link-only when blocked.
-   - [ ] Nearby-city suggestions; day-by-day plan with price/source/duration per item; user-added steps (paste a URL);
-         final list with reserve links (Jalali dates), total, share/export. Unit tests per deepLink builder.
 6. **Hero & physics**
    - [~] (2026-11-26, code + unit tests, NOT yet seen in a browser) Bare hands by default in the open city
          (`lib/street/melee.ts`): fire punches right/left/right-hook (reach 1.7 m, 12/18/8 dmg, hook ×1.6), bones aimed for
@@ -83,40 +81,39 @@ The 2026-11-26 00:27 "plan" deploy FAILED on the missing translations — fixed;
          react to `combat.gunOut` instead of aim. Matches always guns.
          CHECK: headless boot with guest + `/api/loc {sim:true}` timed out at 240 s on :3100 (cold) — retry warm; look at
          the guard/jab/hook close-ups (wrap `__drive.gfx.render`), first-person fists, a punch on a walker.
-   - [ ] Hit-able props left: cones, chairs, signs, streetKit (postbox/cabinets/phone) — bins, bags, benches, dumpsters
-         done 2026-11-26 (lib/street/props.ts); a knocked prop isn't hittable again once it rests (collider off).
-   - [ ] Civic places: 2D-map clinics/opticians share a category; libraries still "Books & library" in missions; prayer
-         times vs an official Tehran timetable; CivicCard never seen in a browser.
-7. **Shop interiors** — never tried with a real Polycam/Scaniverse export; never seen on iPhone/iPad Safari; scan mode has no
-   collision/keeper; owner places products onto scan shelves (next); CC0 props + baked AO + real product photos (proxy
+7. **Shop interiors** — never tried with a real Polycam/Scaniverse export; never seen on iPhone/iPad Safari; scan floor +
+   keeper done 2026-11-26 (`lib/scanFloor.ts`); left: owner places products onto scan shelves (an editor on /shop-scan); CC0 props + baked AO + real product photos (proxy
    Snappfood CDN via /api/img); 360×740 Persian + iOS sim shots.
-8. **Metro** — [ ] tap a station → sheet (lines, exits, interchanges, first/last train, headway) + its line bold, others
-   dimmed; station-to-station planner (RAPTOR), fares; Tehran, Mashhad, Isfahan, Shiraz, Tabriz, Karaj from Geofabrik
-   `route=subway` relations in the city packs.
+8. **Metro** — Karaj has no line of its own in OSM yet (Line 5's Karaj stations are in Tehran's network). Istanbul's
+   exits need the Turkey extract (`npm run transit:build -- istanbul <turkey.osm.pbf>`, ~600 MB).
 
 ## Stores & ads plan (after step 0; decisions above)
-1. Player-store flag + filter everywhere (Listing/ProductSource "player", 3D pole signs, public /s/ /p/ pages, API v1).
+1. Player-store flag + filter: product search done 2026-11-26 (source «Player shops»); left: 3D pole signs, a /p/ product
+   page, API v1.
 2. Source-parity flows: Snappfood menu+options+orders, Divar fields+chat+renew, Torob compare, Takhfifan vouchers,
    cinematicket/Jabama event sessions + QR tickets, travel tickets, bookings.
-3. ~~Ads: AdSlot + self-serve in coins~~ (done 2026-11-26). Left: the networks' real script URLs from the user's
-   publisher panels (YEKTANET_SCRIPT / TAPSELL_SCRIPT / ADSENSE_SLOT), more slot placements (shop pages, events).
-4. Panels: seller center (Shop + Business linked), buyer "my tickets/orders", advertiser, admin moderation queue.
-5. Trust & safety: pre-checks, reports, first-3-listings review, rate limits, audit log.
+3. Ads: placements done (shop pages, product search, outings — `adPositions`). Left: the networks' real script URLs
+   from the user's publisher panels (YEKTANET_SCRIPT / TAPSELL_SCRIPT / ADSENSE_SLOT).
+4. Panels: Seller center done 2026-11-26; buyer orders, advertiser and the moderation queue already existed. Left: a
+   buyer "my tickets" view that shows a ticket's QR (needs source-parity tickets, item 2).
+5. Trust & safety: limits on new listings / ads done 2026-11-26 (reports had their own); audit log exists.
 
 ## Game / 3D city (open)
 - [ ] Women NPC models (no CC BY hijab/chador model exists — needs a custom/commissioned one).
 - [ ] Real rigged soldier for the arena (candidate MadTrollStudio "Low Poly Soldiers Rigged Free", police.py approach).
-- [ ] Gangs, drive-by from the car, police helicopter, hospital/police-station respawns, money penalties.
+- [ ] Gangs, drive-by from the car (helicopter, respawns, fines done 2026-11-26; fines are 0 until the admin sets them).
+- [ ] Helicopter rotor sound needs a recorded sample (sound slot); "cover" (bridges/tunnels) doesn't hide you from it yet.
 - [ ] Hand-built short-range arenas for 5v5 bomb matches; sidearms in the bomb-mode buy strip; traffic-light model.
 - [ ] Real Tehran building footprints (Overture / Microsoft ML; OSM ~1 % in Tehranpars).
-- [ ] Plates on traffic cars (fleet3d plates blank); NPC control beyond wait/come/go home; slope animation.
-- [ ] Far camera can sit against a building wall. Visible tris ~425k — watch mid-range Android.
+- [ ] NPC control beyond wait/come/go home; slope animation. (Traffic plates exist — fleet3d plate atlas; confirm visually.)
+- [ ] Visible tris ~425k — watch mid-range Android. (Far camera vs walls fixed 2026-11-26 — confirm in a real city.)
 - [ ] Perf ideas: Drive re-renders on HUD sig changes, tile-add hitches; alley/service widths need OMT `service`.
 - [ ] Iranian radio stations (IRIB streams not https).
 
 ## Map / UI (open)
 - [ ] 2D map zoom still 100–160 ms worst frame — finish.
-- [ ] Apple-Maps-style minimal map UI; scroll + search + filter in every list (reuse `lib/facets.ts`); product search on iPad.
+- [ ] Apple-Maps-style minimal map UI; more lists on the shared engine (`lib/listEngine.ts` — shop products use it); product search on iPad.
+- [ ] Persian middle dots: fixed in translations and code joins 2026-11-26; admin screens still use «·» (left on purpose).
 - [ ] Feature inventory page (keep/remove), incl. gems/coins — user said "don't touch" money; let them decide.
 - [ ] Worldwide menus beyond OSM need a source (Google Places key unset).
 
@@ -147,6 +144,9 @@ shopkeeper run-in, people separation, crowd prewarm, kerb stepping, partner bill
 bridges, Ottoman mosques, billboard trailers, skydive, hero moves, Turkish police livery.
 
 ## Done record
+2026-11-26 (3): metro RAPTOR/fares/exits/map lines, z-index tokens, kit props, place categories, prayer check, hotels streaming,
+travel sources + extras, list engine, Seller center, limits, NPC kinds, ad positions, player search, camera, scan floor,
+setbacks, helicopter, «•» in Persian, db client leak fix.
 2026-11-26 (2): moderation tests/i18n, bare-hands protocol, punching players, knockable props, URL filters, house ads + AdSlot.
 2026-11-26: travel day strip with prices (code). GPU benchmark tier + lite city on low + per-tier draw budgets (lib/perf/{tier,features}.ts, graphics/bench.ts).
 AAA graphics steps 1–7 (film look, medium tier, SSR, night lights, atmosphere, city detail, car look) — see README

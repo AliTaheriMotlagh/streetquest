@@ -16,7 +16,7 @@ const play: Record<string, string> = {
   "Story missions are switched off right now.": "مأموریت‌های داستانی فعلاً خاموشن.",
   "CHAPTER {n} OF {total}": "فصل {n} از {total}",
   "REPLAY (half rewards)": "تکرار (نصف جایزه)",
-  "{n} steps · about {m} min · walk it, the waypoints appear around you": "{n} مرحله · حدود {m} دقیقه · راه بیفت، نقطه‌ها دور و برت ظاهر می‌شن",
+  "{n} steps · about {m} min · walk it, the waypoints appear around you": "{n} مرحله • حدود {m} دقیقه • راه بیفت، نقطه‌ها دور و برت ظاهر می‌شن",
   "▶ Start chapter": "▶ شروع فصل",
   Chapters: "فصل‌ها",
   "{n} min": "{n} دقیقه",
@@ -29,7 +29,7 @@ const play: Record<string, string> = {
   // ---- live GPS game banner
   "⏰ Time's up!": "⏰ وقت تموم شد!",
   "The GPS game ran out of time — try again from 🎮 Play": "وقت بازی GPS تموم شد — از 🎮 بازی دوباره امتحان کن",
-  "STORY · step {n}/{total}": "داستان · مرحلهٔ {n}/{total}",
+  "STORY · step {n}/{total}": "داستان • مرحلهٔ {n}/{total}",
   "GPS GAME": "بازی GPS",
   "Quit game": "خروج از بازی",
   Quit: "خروج",
@@ -124,7 +124,7 @@ const play: Record<string, string> = {
   // ---- sponsor spot
   "Leave now? You won't get the reward.": "الان می‌ری؟ جایزه‌ای نمی‌گیری.",
   Leave: "رفتن",
-  "Sponsored · {name}": "تبلیغ · {name}",
+  "Sponsored · {name}": "تبلیغ • {name}",
   "Visit {name}": "سر زدن به {name}",
   "🎁 Collect reward": "🎁 گرفتن جایزه",
   "Reward in {s}s": "{s} ثانیه تا جایزه",

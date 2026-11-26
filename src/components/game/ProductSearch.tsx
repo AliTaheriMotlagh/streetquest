@@ -10,8 +10,11 @@
 //  - compare: the same product sold by several stores (a strip over the list: the price spread and
 //    what the cheapest saves), or up to three picked with ⇄, side by side.
 // Typing waits a moment before asking; the list on screen stays until the new one arrives.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum, getLocale, t } from "@/lib/i18n";
+import { adPositions } from "@/lib/ads/slot";
+import { AdSlot } from "@/components/AdSlot";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Ctx } from "./ui";
+import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { msg } from "@/lib/i18n";
 import { snappfoodMenuUrl, type Vendor } from "@/lib/localData";
@@ -100,7 +103,7 @@ export const ideasAt = (at: LatLng | null) => {
 const TYPE_WAIT_MS = 220;
 const PANEL = "product-filters";
 /** Each source wears its site's colour, as in the store list. */
-const SOURCE_COLOR: Record<ProductSource, string> = { food: LISTING_SOURCES.snappfood.color, deal: LISTING_SOURCES.takhfifan.color, torob: LISTING_SOURCES.torob.color, basalam: "#f05a28" };
+const SOURCE_COLOR: Record<ProductSource, string> = { food: LISTING_SOURCES.snappfood.color, deal: LISTING_SOURCES.takhfifan.color, torob: LISTING_SOURCES.torob.color, basalam: "#f05a28", player: "#f5c518" };
 const toman = (n: number) => t("{n} toman", { n: fmtNum(n) });
 /** A hit's price in its own money: lira for a Yemeksepeti dish (Turkey), toman for the rest. */
 const priceOf = (h: ProductHit) => (h.currency === "TRY" ? t("{n} lira", { n: fmtNum(h.price) }) : h.from ? t("from {n} toman", { n: fmtNum(h.price) }) : toman(h.price));
@@ -113,7 +116,8 @@ const numberOf = (s: string) => {
 };
 
 const pageOf = (h: ProductHit): ExtProduct => ({
-  source: h.source === "deal" ? "takhfifan" : h.source === "food" ? (h.currency === "TRY" ? "yemeksepeti" : "snappfood") : h.source,
+  // (Player hits never open this page: openHit sends them to their shop.)
+  source: h.source === "deal" ? "takhfifan" : h.source === "food" ? (h.currency === "TRY" ? "yemeksepeti" : "snappfood") : h.source === "player" ? "torob" : h.source,
   title: h.title,
   photo: h.photo,
   url: h.url ?? (h.code ? snappfoodMenuUrl(h.code) : ""),
@@ -123,6 +127,8 @@ const pageOf = (h: ProductHit): ExtProduct => ({
 });
 
 export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; onClose: () => void; /** Switch to the store list (the Search screen's other half). */ onStores?: () => void }) {
+  // In the game (the Market can open a player's shop); null on pages outside it.
+  const game = useContext(Ctx);
   const [draft, setDraft] = useState("");
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<ProductSource[]>([]);
@@ -251,7 +257,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     const parts = [t("{n} results", { n: fmtNum(data.total) })];
     if (shownSources.includes("food") && data.stores) parts.push(t("{n} menus read", { n: fmtNum(data.stores) }));
     if (data.failed.length) parts.push(t("{sites} didn't answer", { sites: data.failed.map((s) => siteOf(s, at)).join(", ") }));
-    return parts.join(" · ");
+    return parts.join(dot());
   }, [at, data, error, key, shownSources]);
 
   // Where the list was when a restaurant opened (List view: the window scrolls) — Back lands right there.
@@ -260,6 +266,13 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
     if (!vendor && listAt.current) window.scrollTo(0, listAt.current);
   }, [vendor]);
   const openHit = (h: ProductHit) => {
+    // A player's product: its shop in the game's Market (in the game), else the shop's public page.
+    if (h.source === "player") {
+      const shopId = h.url?.split("/s/")[1];
+      if (shopId && game?.openShop) game.openShop(shopId);
+      else if (h.url) location.assign(h.url);
+      return;
+    }
     if (h.source === "food" && h.code && h.lat != null && h.lng != null) (listAt.current = window.scrollY), setVendor({ v: { code: h.code, title: h.store, kind: "food", lat: h.lat, lng: h.lng, rating: (h.rating ?? 0) * 2, logo: "", url: h.url ?? snappfoodMenuUrl(h.code), open: true, about: "" }, dish: h.title });
     else setPage(h);
   };
@@ -370,7 +383,7 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
               ))}
             </div>
           )}
-          <p className={`fx-status${loading || widening ? " busy" : ""}`} aria-live="polite">{note}{widening && !loading ? ` · ${t("still asking some sites…")}` : ""}</p>
+          <p className={`fx-status${loading || widening ? " busy" : ""}`} aria-live="polite">{note}{widening && !loading ? `${dot()}${t("still asking some sites…")}` : ""}</p>
         </div>
         {pageMode && data && data.hits.length > 0 && (
           <ProductInsights
@@ -417,10 +430,11 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
           </div>
         ) : (
           <ul className={`fx-list ps-list ${grid || pageMode?.wide ? "ps-grid" : ""} ${loading && !instant ? "busy" : ""}`}>
-            {(data?.hits ?? []).map((h, i) => {
+            {(data?.hits ?? []).map((h, i, all) => {
               const off = offOf(h);
               return (
-                <li key={h.id} className="ps-li" style={i < 16 ? ({ "--i": i } as React.CSSProperties) : undefined}>
+                <Fragment key={h.id}>
+                <li className="ps-li" style={i < 16 ? ({ "--i": i } as React.CSSProperties) : undefined}>
                   <button type="button" className={`ps-pick${inTray(h) ? " on" : ""}`} aria-pressed={inTray(h)} onClick={() => flipTray(h)} title={t("Compare")} aria-label={t("Compare {name}", { name: h.title })}>⇄</button>
                   <button type="button" className="fx-row" onClick={() => openHit(h)}>
                     {h.photo ? <Pic src={h.photo} className="fx-thumb" /> : <span className="fx-thumb" aria-hidden>{PRODUCT_SOURCES[h.source].emoji}</span>}
@@ -438,6 +452,8 @@ export function ProductSearch({ at, onClose, onStores }: { at: LatLng | null; on
                     </span>
                   </button>
                 </li>
+                {adPositions(all.length, 4, 16).has(i) && <li className="ps-li ps-ad"><AdSlot /></li>}
+                </Fragment>
               );
             })}
           </ul>

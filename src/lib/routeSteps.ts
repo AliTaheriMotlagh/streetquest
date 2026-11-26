@@ -1,6 +1,6 @@
 // Turn-by-turn wording for a route, from OSRM's maneuvers (server/footRoute.ts): the server keeps
 // the maneuver (`turn`) and the road's name, the phone says it in the player's language. Pure.
-import { msg, t } from "./i18n";
+import { msg, t, dot } from "./i18n";
 
 /** What to do at a step: a key into TURN_TEXT. */
 export type Turn =
@@ -70,5 +70,5 @@ export type RouteStep = { turn?: Turn; exit?: number; text: string; name: string
 export function stepText(s: RouteStep): string {
   if (!s.turn) return s.text;
   const what = t(TURN_TEXT[s.turn], { n: s.exit ?? 1 });
-  return s.name && s.turn !== "arrive" ? `${what} · ${s.name}` : what;
+  return s.name && s.turn !== "arrive" ? `${what}${dot()}${s.name}` : what;
 }

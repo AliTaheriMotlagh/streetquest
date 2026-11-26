@@ -168,13 +168,13 @@ export function AdminPanel() {
   return (
     <main className="page">
       {notice && (
-        <div className="announce" role="alert" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--red)", marginBottom: 10 }}>
+        <div className="announce" role="alert" style={{ position: "sticky", top: 8, zIndex: "var(--z-raised)", borderColor: "var(--red)", marginBottom: 10 }}>
           <b className="grow small" style={{ color: "var(--red)" }}>⚠️ {notice}</b>
           <Button className="close" onClick={() => setNotice(null)} aria-label={t("Dismiss")}>✕</Button>
         </div>
       )}
       {saved > 0 && (
-        <div className="announce" role="status" style={{ position: "sticky", top: 8, zIndex: 50, borderColor: "var(--green)", marginBottom: 10 }}>
+        <div className="announce" role="status" style={{ position: "sticky", top: 8, zIndex: "var(--z-raised)", borderColor: "var(--green)", marginBottom: 10 }}>
           <b className="grow small" style={{ color: "var(--green)" }}>{t("✅ Settings saved — live for players within ~15 seconds")}</b>
         </div>
       )}

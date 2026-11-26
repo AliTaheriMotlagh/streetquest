@@ -57,6 +57,44 @@ describe("street kit on the pavement", () => {
     assert.ok(seen >= 8, `${seen} pieces of kit`);
   });
 
+  it("cones keep a parking spot just inside a shop street's kerb; chairs sit on the pavement; both knockable", () => {
+    let cones = 0, chairs = 0;
+    for (let dx = 0; dx < 12; dx++) {
+      const { tile, origin } = tehran(dx);
+      const a = buildTileArrays(tile, origin, "real", false);
+      const cs = spots(a, "cone"), ch = spots(a, "chair");
+      assert.ok(cs.length <= KIT_CAPS.cone && ch.length <= KIT_CAPS.chair);
+      cones += cs.length;
+      chairs += ch.length;
+      for (const s of cs) {
+        const inside = onStreet(a, s.x, s.z);
+        assert.ok(inside > 0 && inside < 1.2, `cone ${inside.toFixed(2)} m inside the asphalt`);
+      }
+      for (const s of ch) assert.ok(onStreet(a, s.x, s.z) < -0.2, "chair off the asphalt");
+      for (const [kind, list] of [["cone", cs], ["chair", ch], ["postbox", spots(a, "postbox")], ["telecom", spots(a, "telecom")], ["phone", spots(a, "phone")]] as const)
+        list.forEach((s, i) => {
+          const o = a.obstacles.find((f) => (f.ref as { loose?: string; i?: number } | undefined)?.loose === kind && (f.ref as { i: number }).i === i);
+          assert.ok(o && s.x >= o.minX && s.x <= o.maxX && s.z >= o.minZ && s.z <= o.maxZ, `${kind} ${i} is a loose obstacle where it stands`);
+        });
+    }
+    assert.ok(cones >= 2, `${cones} cones`);
+    assert.ok(chairs >= 1, `${chairs} chairs`);
+  });
+
+  it("cones and chairs on real streets too, drawn as many short pieces (not one long line)", () => {
+    let cones = 0, chairs = 0;
+    for (let dx = 0; dx < 12; dx++) {
+      // The named minor street as 18 m pieces (vector tiles cut streets at every bend and node).
+      const line: number[] = [];
+      for (let y = 100; y <= 9900; y += 180) line.push(5000, y);
+      const { tile, origin } = tehran(dx, [{ l: line, w: 9, k: "minor", n: "خیابان حافظ\nHafez St" }]);
+      const a = buildTileArrays(tile, origin, "real", false);
+      cones += spots(a, "cone").length;
+      chairs += spots(a, "chair").length;
+    }
+    assert.ok(cones >= 2 && chairs >= 1, `${cones} cones, ${chairs} chairs`);
+  });
+
   it("rubbish bags lie beside some of the containers", () => {
     let bags = 0, bins = 0;
     for (let dx = 0; dx < 4; dx++) {

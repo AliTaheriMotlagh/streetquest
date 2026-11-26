@@ -2,7 +2,7 @@
 // like a shop listing (lib/stores/moderation.ts: refused, held for Admin → Listings, or live), and the
 // slot serves approved ads weighted by the views they have left, counting each view and click.
 import { prisma } from "../lib/db";
-import { t } from "../lib/i18n";
+import { t, dot } from "../lib/i18n";
 import { S } from "../lib/settings";
 import { adChain, adPrice, cleanAdUrl, pickHouse, type AdNetworks } from "../lib/ads/slot";
 import { preCheck, reviewAfter } from "../lib/stores/moderation";
@@ -40,7 +40,7 @@ export async function buyAd(u: Who, d: { title: string; body: string; url: strin
   const coins = adPrice(d.views, S.houseAdCoinsPer100);
   await spendCoins(u.id, coins);
   const review = reviewAfter(v, null);
-  const ad = await prisma.houseAd.create({ data: { ownerId: u.id, title: d.title, body: d.body, url, emoji: d.emoji || "📣", views: d.views, coins, review, reviewNote: v.verdict === "hold" ? v.reasons.join(" · ") : "" } });
+  const ad = await prisma.houseAd.create({ data: { ownerId: u.id, title: d.title, body: d.body, url, emoji: d.emoji || "📣", views: d.views, coins, review, reviewNote: v.verdict === "hold" ? v.reasons.join(dot()) : "" } });
   return {
     message: review === "ok" ? t("📣 Your ad is live — {n} views", { n: d.views }) : t("🕓 Your ad is saved — a moderator checks it before players see it"),
     ad: { id: ad.id, review },

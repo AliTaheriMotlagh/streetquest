@@ -3,7 +3,7 @@
 // Leaflet can't load on the server, so this lives apart from the panel and the hook in Vasatyab.tsx).
 import { Marker, Polyline } from "react-leaflet";
 import { formatDistance } from "@/lib/geo";
-import { t } from "@/lib/i18n";
+import { t, dot } from "@/lib/i18n";
 import type { MidView } from "@/server/midpoint";
 import { esc, icon } from "./mapIcons";
 
@@ -20,7 +20,7 @@ export function VasatyabLayer({ view }: { view: MidView }) {
         )}
       {view.members.map((m) =>
         m.lat == null || m.lng == null || m.me ? null : (
-          <Marker key={`m${m.userId}`} position={[m.lat, m.lng]} zIndexOffset={900} interactive={false} icon={icon(`<span class="ring" style="color:#f0c05a"></span>${esc(m.avatar)}<span class="nm">${esc(m.name)}${m.distM != null ? ` · ${esc(formatDistance(m.distM))}` : ""}</span>`, "place vasa-member", 36)} />
+          <Marker key={`m${m.userId}`} position={[m.lat, m.lng]} zIndexOffset={900} interactive={false} icon={icon(`<span class="ring" style="color:#f0c05a"></span>${esc(m.avatar)}<span class="nm">${esc(m.name)}${m.distM != null ? `{dot()}${esc(formatDistance(m.distM))}` : ""}</span>`, "place vasa-member", 36)} />
         ),
       )}
       {mid && (

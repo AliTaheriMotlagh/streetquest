@@ -3,13 +3,15 @@
 // (carPhysics.ts `resolve`, so momentum is kept — the car slows by what it gave), then it slides on
 // its own friction, spins from where it was struck, tips over when the hit is hard enough for its
 // shape, and breaks past its limit (a bag bursts, a plastic bin is crushed, a bench snaps).
-// A dumpster rolls on its wheels and is heavy enough to stop a Pride.
+// A dumpster rolls on its wheels and is heavy enough to stop a Pride. The street kit joins in: a traffic cone
+// and a plastic chair fly, a post box or a telecom cabinet is wrenched off its bolts and falls, a payphone
+// hood topples on its post.
 // drive/looseProps.ts runs it: only bodies within AWAKE_M of the player move, at most MAX_AWAKE.
 
 import { resolve, sane, type Contact, type Rigid } from "./carPhysics";
 
-export type LooseKind = "bin" | "bags" | "bench" | "dumpster";
-export const LOOSE_KINDS: LooseKind[] = ["bin", "bags", "bench", "dumpster"];
+export type LooseKind = "bin" | "bags" | "bench" | "dumpster" | "cone" | "chair" | "postbox" | "telecom" | "phone";
+export const LOOSE_KINDS: LooseKind[] = ["bin", "bags", "bench", "dumpster", "cone", "chair", "postbox", "telecom", "phone"];
 
 export type LooseSpec = {
   /** kg */ mass: number;
@@ -25,6 +27,13 @@ export const LOOSE: Record<LooseKind, LooseSpec> = {
   bags: { mass: 8, len: 0.7, wid: 0.6, hgt: 0.5, drag: 7, tipAt: 0.6, breakAt: 7 },
   bench: { mass: 70, len: 1.7, wid: 0.5, hgt: 0.9, drag: 7, tipAt: 2.5, breakAt: 20 },
   dumpster: { mass: 380, len: 1.8, wid: 1.2, hgt: 1.35, drag: 2.2, tipAt: 7, breakAt: Infinity },
+  // Light plastic: any touch knocks it over, it skids far, it's never "broken" (a cone squashes back).
+  cone: { mass: 3, len: 0.36, wid: 0.36, hgt: 0.7, drag: 6, tipAt: 0.3, breakAt: Infinity },
+  chair: { mass: 2.5, len: 0.5, wid: 0.5, hgt: 0.85, drag: 6, tipAt: 0.4, breakAt: 14 },
+  // Bolted down: the bolts take the first of the hit (a high tip), then it falls and slides on its side.
+  postbox: { mass: 75, len: 0.54, wid: 0.46, hgt: 1.6, drag: 9, tipAt: 3.5, breakAt: Infinity },
+  telecom: { mass: 90, len: 0.96, wid: 0.52, hgt: 1.35, drag: 9, tipAt: 4, breakAt: 22 },
+  phone: { mass: 55, len: 0.64, wid: 0.64, hgt: 2.1, drag: 9, tipAt: 3, breakAt: 18 },
 };
 
 /** Bodies further from the player than this stop moving (and nothing new wakes there). */

@@ -3,7 +3,7 @@
 // verified; an approved dispute hands the store to the one who proved it. Everything is audited.
 import { prisma } from "@/lib/db";
 import { distanceM, type LatLng } from "@/lib/geo";
-import { t } from "@/lib/i18n";
+import { t, dot } from "@/lib/i18n";
 import { S } from "@/lib/settings";
 import { addVisit, claimCode, claimRisk, CLAIM_DAYS, CLAIMS_PER_WEEK, codeOnPage, sameSite, settle, type ClaimMethod, type ClaimStatus, type Visit } from "@/lib/claims";
 import { HttpError } from "./http";
@@ -67,7 +67,7 @@ export async function startClaim(u: Who, businessId: string, method: ClaimMethod
   const r = await riskFor(u, dispute);
   if (r.recent >= CLAIMS_PER_WEEK && u.role !== "ADMIN") throw new HttpError(429, t("Too many claims this week — try again in a few days"));
   const c = await prisma.bizClaim.create({ data: { businessId, userId: u.id, method, code: claimCode(), dispute, risk: r.score, note: note.slice(0, 500), evidence: { flags: r.flags } }, select: SELECT });
-  await audit(u, dispute ? "claim.dispute" : "claim.start", { type: "claim", id: c.id }, `${b.name} · ${method}`, { businessId, risk: r.score, flags: r.flags });
+  await audit(u, dispute ? "claim.dispute" : "claim.start", { type: "claim", id: c.id }, `${b.name}${dot()}${method}`, { businessId, risk: r.score, flags: r.flags });
   return view(c);
 }
 
@@ -83,7 +83,7 @@ async function finish(u: Who, c: { id: string; method: string; risk: number; dis
   const status = settle(c.method as ClaimMethod, c.risk, c.dispute);
   await prisma.bizClaim.update({ where: { id: c.id }, data: { status, evidence: evidence as object, ...(status === "approved" ? { decidedAt: new Date() } : {}) } });
   if (status === "approved") await markVerified(c.business.id, c.method);
-  await audit(u, status === "approved" ? "claim.approve" : "claim.review", { type: "claim", id: c.id }, `${c.business.name} · ${c.method}${status === "approved" ? " · automatic" : ""}`);
+  await audit(u, status === "approved" ? "claim.approve" : "claim.review", { type: "claim", id: c.id }, `${c.business.name}${dot()}${c.method}${status === "approved" ? "${dot()}automatic" : ""}`);
   return status;
 }
 
@@ -103,7 +103,7 @@ export async function checkWebsite(u: Who, claimId: string, url?: string) {
     throw new HttpError(502, t("We couldn't open your website — check the address and try again"));
   }
   if (!codeOnPage(html, c.code)) {
-    await audit(u, "claim.check", { type: "claim", id: c.id }, `${c.business.name} · code not found`, { url: page });
+    await audit(u, "claim.check", { type: "claim", id: c.id }, `${c.business.name}${dot()}code not found`, { url: page });
     return { status: "pending" as ClaimStatus, found: false };
   }
   return { status: await finish(u, c, { ...(c.evidence as object), url: page, at: Date.now() }), found: true };
@@ -119,7 +119,7 @@ export async function claimVisit(u: Who, claimId: string, here: LatLng) {
   const evidence = { ...ev, visits: r.visits };
   if (!r.done) {
     await prisma.bizClaim.update({ where: { id: c.id }, data: { evidence } });
-    await audit(u, "claim.visit", { type: "claim", id: c.id }, `${c.business.name} · visit 1`);
+    await audit(u, "claim.visit", { type: "claim", id: c.id }, `${c.business.name}${dot()}visit 1`);
     return { status: "pending" as ClaimStatus, visits: r.visits.length };
   }
   return { status: await finish(u, c, evidence), visits: r.visits.length };
@@ -131,7 +131,7 @@ export async function claimDocument(u: Who, claimId: string, dataUrl: string, no
   if (c.method !== "document") throw new HttpError(400, t("This claim isn't by document"));
   const photo = decodePhoto(dataUrl);
   await prisma.bizClaim.update({ where: { id: c.id }, data: { doc: new Uint8Array(photo.bytes), docType: photo.type, status: "review", ...(note ? { note: note.slice(0, 500) } : {}) } });
-  await audit(u, "claim.document", { type: "claim", id: c.id }, `${c.business.name} · photo sent`);
+  await audit(u, "claim.document", { type: "claim", id: c.id }, `${c.business.name}${dot()}photo sent`);
   return { status: "review" as ClaimStatus };
 }
 

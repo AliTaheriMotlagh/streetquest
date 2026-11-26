@@ -6,7 +6,7 @@
 //  - the Iran Post box (yellow, red pyramid roof, red pedestal), the electricity cabinet (cream, a
 //    yellow warning plate), the telecom cabinet (کافو, grey), the payphone hood, the saqakhaneh;
 //  - a median railing panel (green frame, yellow zigzag, on a kerb), a footbridge deck piece and
-//    a stair tower;
+//    a stair tower; a traffic cone, a white monobloc chair;
 //  - the white arrow sign (a plate per side, black chevron end) and the motorway's green gantry.
 // +z of a cabinet faces the street; a railing / deck piece runs along local x.
 import * as THREE from "three";
@@ -166,7 +166,26 @@ export function makeKitTemplates() {
     ...[-1.28, 1.28].map((x) => B(0.05, 0.05, 2.6, x, top + 1.05, 0, green)),
     B(2.6, 0.05, 0.05, 0, top + 1.05, -1.28, green),
   ]);
-  return { dumpster, bags, postbox, power, telecom, phone, saqa, rail, bridgeDeck, bridgeStair };
+  // Traffic cone: a black square foot, the orange cone with two white reflective bands.
+  const coneBand = (y0: number, y1: number, c: string) => tint(new THREE.CylinderGeometry(0.155 - y1 * 0.19, 0.155 - y0 * 0.19, y1 - y0, 12, 1, true).translate(0, (y0 + y1) / 2 + 0.03, 0), c);
+  const cone = merge([
+    B(0.36, 0.03, 0.36, 0, 0.015, 0, "#1b1b1b"),
+    coneBand(0, 0.24, "#ff5a14"),
+    coneBand(0.24, 0.33, "#f4f4f0"),
+    coneBand(0.33, 0.43, "#ff5a14"),
+    coneBand(0.43, 0.5, "#f4f4f0"),
+    coneBand(0.5, 0.66, "#ff5a14"),
+    tint(new THREE.CircleGeometry(0.03, 10).rotateX(-Math.PI / 2).translate(0, 0.69, 0), "#ff5a14"),
+  ]);
+  // Monobloc plastic chair: white, splayed legs, the seat and a slatted back (its back away from the street, -z).
+  const white = "#ecebe6";
+  const chair = merge([
+    B(0.44, 0.04, 0.42, 0, 0.44, 0, white),
+    B(0.42, 0.4, 0.035, 0, 0.66, -0.2, white, 0, -0.12),
+    ...[-0.2, 0.2].flatMap((x) => [-0.18, 0.18].map((z) => B(0.04, 0.45, 0.04, x * 1.05, 0.22, z * 1.05, white, x * -0.12, z * 0.12))),
+    ...[-0.21, 0.21].map((x) => B(0.035, 0.035, 0.36, x, 0.6, -0.02, white)),
+  ]);
+  return { dumpster, bags, postbox, power, telecom, phone, saqa, rail, bridgeDeck, bridgeStair, cone, chair };
 }
 
 // ---------------------------------------------------------------- signs at the crossings

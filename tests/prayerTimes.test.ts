@@ -22,6 +22,13 @@ describe("prayerTimes", () => {
     near(tehranMin(t.find((p) => p.name === "sunset")!.at), 19 * 60 + 24, 3, "sunset");
   });
 
+  it("agrees with a published Tehran timetable to within 2 minutes (time.ir, 5 Azar 1405 = 26 Nov 2026)", () => {
+    // Printed: dawn 05:21, sunrise 06:51, noon 11:52, sunset 16:52, maghrib 17:11, midnight 23:07.
+    const t = prayerTimes({ y: 2026, m: 11, d: 26 }, TEHRAN.lat, TEHRAN.lng, "tehran");
+    const want: Record<string, number> = { fajr: 5 * 60 + 21, sunrise: 6 * 60 + 51, dhuhr: 11 * 60 + 52, sunset: 16 * 60 + 52, maghrib: 17 * 60 + 11, midnight: 23 * 60 + 7 };
+    for (const p of t) near(tehranMin(p.at), want[p.name], 2, p.name);
+  });
+
   it("lists Iran's times in order, each at its sun angle", () => {
     const t = prayerTimes({ y: 2026, m: 11, d: 26 }, TEHRAN.lat, TEHRAN.lng, "tehran");
     assert.deepEqual(t.map((p) => p.name), ["fajr", "sunrise", "dhuhr", "sunset", "maghrib", "midnight"]);

@@ -1,6 +1,6 @@
 // What kind of place a storefront is, from its OpenStreetMap class: the icon, sign colours
 // and name shown on its board, its pin over the rooftops and in the Places list.
-import { msg } from "@/lib/i18n";
+import { msg, dot } from "@/lib/i18n";
 
 export type Trade = { key: string; emoji: string; bg: [string, string]; fg: string; label: string };
 
@@ -12,7 +12,7 @@ const TRADES: [RegExp, Trade][] = [
   [/^(clothes|clothing_store|shoes|boutique|jewelry|bag|fabric|tailor|fashion|watches)$/, { key: "fashion", emoji: "👗", bg: ["#a83279", "#6e1d4f"], fg: "#fff", label: msg("Clothes & shoes") }],
   [/^(mobile_phone|electronics|computer|telecommunication|hifi|appliance|tech)$/, { key: "tech", emoji: "📱", bg: ["#2c3e50", "#151f29"], fg: "#7fd6ff", label: msg("Phones & electronics") }],
   [/^(hairdresser|beauty|cosmetics|perfumery|massage)$/, { key: "beauty", emoji: "💇", bg: ["#7d3c98", "#4e2560"], fg: "#fff", label: msg("Beauty") }],
-  [/^(school|university|college|kindergarten|educational_institution|library|books|stationery)$/, { key: "edu", emoji: "📚", bg: ["#d4a017", "#946f0d"], fg: "#1b1300", label: msg("Books & library") }],
+  [/^(school|university|college|kindergarten|educational_institution|library|books|stationery)$/, { key: "edu", emoji: "📚", bg: ["#d4a017", "#946f0d"], fg: "#1b1300", label: msg("Books & schools") }],
   [/^(place_of_worship|muslim|mosque|christian|church)$/, { key: "worship", emoji: "🕌", bg: ["#17806d", "#0d5248"], fg: "#fff", label: msg("Place of worship") }],
   [/^(hotel|lodging|hostel|guest_house|motel)$/, { key: "hotel", emoji: "🏨", bg: ["#5b2c6f", "#381a45"], fg: "#ffd98a", label: msg("Hotel") }],
   [/^(fuel|car|car_repair|car_parts|tyres|car_wash)$/, { key: "car", emoji: "🚗", bg: ["#e67e22", "#a8560f"], fg: "#fff", label: msg("Cars & fuel") }],
@@ -32,4 +32,4 @@ export const tradeOf = (cls = ""): Trade => TRADES.find(([re]) => re.test(cls))?
 /** A name with an optional second line ("both" street-name mode: mine, then local). */
 export const nameLines = (text: string) => text.split("\n", 2) as [string] | [string, string];
 /** The same name on one line, for the HUD and lists. */
-export const oneLine = (text: string) => text.replace("\n", " · ");
+export const oneLine = (text: string) => text.replace("\n", dot());

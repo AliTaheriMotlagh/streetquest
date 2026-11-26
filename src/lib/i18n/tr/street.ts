@@ -72,6 +72,17 @@ const street: Record<string, string> = {
   "Fast food": "Fast food",
   "Sweets & nuts": "Tatlı ve kuruyemiş",
   "Waking up the street…": "Sokak uyanıyor…",
+  "Try {place} — the {kind} {dist} {side}. I go there myself.": "{place} dene — {side} {dist} ötedeki {kind}. Ben de gidiyorum.",
+  "{place}? It's a {kind}. I've never been in, to be honest.": "{place} mı? Bir {kind}. Açıkçası hiç girmedim.",
+  "Released outside the police station": "Karakolun önünde serbest bırakıldın",
+  "You came to at the hospital": "Hastanede kendine geldin",
+  "Fined {n} coins": "{n} jeton ceza",
+  "Hospital bill: {n} coins": "Hastane faturası: {n} jeton",
+  "Street life": "Sokak hayatı",
+  "Arrest fine per wanted star (coins)": "Aranma yıldızı başına tutuklama cezası (jeton)",
+  "Taken when the police arrest you; 0 = no fine. Never more than the player has.": "Polis seni tutukladığında alınır; 0 = ceza yok. Oyuncunun sahip olduğundan fazla asla.",
+  "Hospital bill when knocked out (coins)": "Bayıldığında hastane faturası (jeton)",
+  "Taken when you come to at the hospital; 0 = free.": "Hastanede kendine geldiğinde alınır; 0 = ücretsiz.",
 };
 
 export default street;

@@ -3,7 +3,7 @@
 // bank card once you reach the minimum. The server takes the amount out of the wallet
 // when you ask and an admin pays it (or puts it back).
 import { useCallback, useEffect, useState } from "react";
-import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
+import { fmtNum, msg, t, toAsciiDigits, dot } from "@/lib/i18n";
 import { S } from "@/lib/settings";
 import { tiersOwned, tomanFor } from "@/lib/money";
 import { Button } from "@/components/Button";
@@ -155,7 +155,7 @@ export function WalletPanel({ onClose, peek }: { onClose: () => void; peek: bool
               <div className="grow">
                 <b>{t("{n} toman", { n: r.amount })}</b>
                 <div className="small muted">
-                  <span style={{ color: STATUS[r.status].color }}>{t(STATUS[r.status].label)}</span> · {r.account} · {fmtTime(r.createdAt)}
+                  <span style={{ color: STATUS[r.status].color }}>{t(STATUS[r.status].label)}</span>{dot()}{r.account}{dot()}{fmtTime(r.createdAt)}
                 </div>
                 {r.note && <div className="small muted">{r.note}</div>}
               </div>

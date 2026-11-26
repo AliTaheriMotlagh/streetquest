@@ -4,11 +4,12 @@
 // comes — live in Istanbul when IETT answers, else "about every N min"), a live bus, and the
 // Metro sheet: every line as a strip of stations, a planner from here to any station, a guide.
 import { useEffect, useMemo, useState } from "react";
-import { fmtNum, getLocale, msg, t } from "@/lib/i18n";
+import { fmtNum, getLocale, msg, t, dot } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import type { LiveBus } from "@/lib/transit/iett";
-import type { BusStop, City, Line, Network, Station } from "@/lib/transit/network";
-import { clockOf, departures, localMinutes, nearStations, planTrip, rideStops, timeline, type Trip } from "@/lib/transit/plan";
+import type { BusStop, City, Exit, Line, Network, Station } from "@/lib/transit/network";
+import { clockOf, departures, localMinutes, nearStations, planTrips, rideStops, timeline, type Trip } from "@/lib/transit/plan";
+import { fareRule, tripFare, type FareRule } from "@/lib/transit/fares";
 import { Button } from "@/components/Button";
 import { api } from "./client";
 import { metroOf } from "./transit";
@@ -68,7 +69,7 @@ export function StationCard({ pick, onClose }: { pick: StationPick; onClose: () 
   if (metro) return <MetroSheet city={pick.city} to={metro.to} onClose={onClose} />;
   return (
     <Sheet title={`🚇 ${nameOf(s)}`} onClose={onClose}>
-      <p className="small muted">{[lines.length > 1 ? t("Interchange · {n} lines", { n: fmtNum(lines.length) }) : t("Metro station"), dist != null ? formatDistance(dist) : ""].filter(Boolean).join(" · ")}</p>
+      <p className="small muted">{[lines.length > 1 ? t("Interchange · {n} lines", { n: fmtNum(lines.length) }) : t("Metro station"), dist != null ? formatDistance(dist) : ""].filter(Boolean).join(dot())}</p>
       {lines.map((l) => {
         const d = departures(l, nowMin);
         const ends = [l.stations[l.stations.length - 1], l.stations[0]].map((id) => st.get(id)).filter((x): x is Station => !!x && x.id !== s.id);
@@ -82,22 +83,55 @@ export function StationCard({ pick, onClose }: { pick: StationPick; onClose: () 
               ends.map((e) => (
                 <div key={e.id} className="small tr-dep">
                   <span className="grow" dir="auto">{t("Towards {station}", { station: nameOf(e) })}</span>
-                  <b>{d.next.map((m) => (m ? t("{n} min", { n: fmtNum(m) }) : t("now"))).join(" · ")}</b>
+                  <b>{d.next.map((m) => (m ? t("{n} min", { n: fmtNum(m) }) : t("now"))).join(dot())}</b>
                 </div>
               ))
             ) : (
               <div className="small muted">{t("Closed now — first train {time}", { time: clock(d.first) })}</div>
             )}
-            <div className="small muted">{t("{from}–{to} · about every {n} min", { from: clock(l.from), to: clock(l.to % 1440), n: fmtNum(l.headway) })}{l.mapped ? "" : ` · ${t("typical times")}`}</div>
+            <div className="small muted">{t("{from}–{to} · about every {n} min", { from: clock(l.from), to: clock(l.to % 1440), n: fmtNum(l.headway) })}{l.mapped ? "" : `${dot()}${t("typical times")}`}</div>
           </div>
         );
       })}
+      <Exits exits={(net?.stations.find((x) => x.id === s.id) ?? s).exits} from={pos ?? null} />
       <div className="row">
         <Button className="btn cyan grow" onClick={() => onMetro(s)}>🧭 {t("Trip to here")}</Button>
         <Button className="btn ghost grow" onClick={() => onMetro()}>🗺️ {t("Metro map")}</Button>
       </div>
       <p className="small muted ext-source">{t("Times are estimates from each line's usual frequency, not a live board. Stations from OpenStreetMap.")}</p>
     </Sheet>
+  );
+}
+
+/** " · about 4,000 toman" for a trip under a fare rule (nothing when the fare isn't set). */
+function fareText(trip: Trip, rule: FareRule): string {
+  const n = tripFare(trip, rule);
+  if (!n) return "";
+  return `${dot()}${rule.currency === "TRY" ? t("about {n} lira", { n: fmtNum(n) }) : t("about {n} toman", { n: fmtNum(n) })}`;
+}
+
+/** A station's exits, the one nearest you first (when your position is known), with lift / step-free marks. */
+function Exits({ exits, from }: { exits?: Exit[]; from: LatLng | null }) {
+  const [all, setAll] = useState(false);
+  if (!exits?.length) return null;
+  const list = from ? [...exits].sort((a, b) => distanceM(from, a) - distanceM(from, b)) : exits;
+  const shown = all ? list : list.slice(0, 4);
+  return (
+    <div className="card tr-exits">
+      <b className="small">{t("Exits · {n}", { n: fmtNum(exits.length) })}</b>
+      <ul>
+        {shown.map((e, i) => (
+          <li key={`${e.lat},${e.lng}`} className="row small">
+            <span className="tr-exit-ref">{e.ref || "↗"}</span>
+            <span className="grow" dir="auto">{e.name || t("Exit")}</span>
+            {e.lift && <span title={t("Lift")}>🛗</span>}
+            {e.stepFree && <span title={t("Step-free")}>♿</span>}
+            {from && <span className="muted">{i === 0 && !all ? t("nearest · {d}", { d: formatDistance(distanceM(from, e)) }) : formatDistance(distanceM(from, e))}</span>}
+          </li>
+        ))}
+      </ul>
+      {list.length > 4 && <button type="button" className="link-btn small" onClick={() => setAll(!all)}>{all ? t("Fewer") : t("All {n} exits", { n: fmtNum(list.length) })}</button>}
+    </div>
   );
 }
 
@@ -147,7 +181,7 @@ function LineRow({ l }: { l: LineHere }) {
         <span className="tr-chip bus">{l.line}</span>
         <span className="grow tr-way-to" dir="auto">
           <b>{l.towards ? t("→ {station}", { station: l.towards }) : l.name}</b>
-          {extra.length > 0 && <span className="tiny muted">{extra.join(" · ")}</span>}
+          {extra.length > 0 && <span className="tiny muted">{extra.join(dot())}</span>}
         </span>
         <span className="tr-when">
           {w.big && <b>{w.big}{l.source === "live" && <span className="tr-live" title={t("Live")}> ●</span>}</b>}
@@ -165,8 +199,8 @@ function LineRow({ l }: { l: LineHere }) {
       {l.left > 0 && (
         <div className="tiny muted tr-left">
           {t("{n} stops to the end", { n: fmtNum(l.left) })}
-          {l.toEnd ? ` · ${t("about {n} min", { n: fmtNum(l.toEnd) })}` : ""}
-          {!open && l.ahead.length > 0 && ` · ${t("next: {stops}", { stops: l.ahead.slice(0, 2).map((a) => a.name).join(", ") })}`}
+          {l.toEnd ? `${dot()}${t("about {n} min", { n: fmtNum(l.toEnd) })}` : ""}
+          {!open && l.ahead.length > 0 && `${dot()}${t("next: {stops}", { stops: l.ahead.slice(0, 2).map((a) => a.name).join(", ") })}`}
         </div>
       )}
       {open && l.ahead.length > 0 && (
@@ -213,7 +247,7 @@ export function BusStopCard({ city, stop, onClose }: { city: City; stop: BusStop
   const known = (data?.lines ?? []).some((l) => l.source !== "none");
   return (
     <Sheet title={`🚏 ${stop.name || t("Bus stop")}`} onClose={onClose} tall>
-      <p className="small muted">{[t("Bus stop"), t("{n} lines", { n: fmtNum(stop.lines.length) }), dist != null ? formatDistance(dist) : ""].filter(Boolean).join(" · ")}</p>
+      <p className="small muted">{[t("Bus stop"), t("{n} lines", { n: fmtNum(stop.lines.length) }), dist != null ? formatDistance(dist) : ""].filter(Boolean).join(dot())}</p>
       {error && <p className="small warn-text">{error}</p>}
       {refs.length > 3 && (
         <div className="fx-chips tr-filter" aria-label={t("Lines")}>
@@ -244,7 +278,7 @@ export function LiveBusCard({ bus, onClose }: { bus: LiveBus; onClose: () => voi
   const age = bus.at ? Math.max(0, Math.round((Date.now() - bus.at) / 1000)) : null;
   return (
     <Sheet title={`🚌 ${bus.line ? t("Bus {line}", { line: bus.line }) : t("City bus")}`} onClose={onClose}>
-      <p className="small muted">{[bus.id, bus.towards && t("Towards {station}", { station: bus.towards }), bus.kmh != null && t("{n} km/h", { n: fmtNum(Math.round(bus.kmh)) }), age != null && t("{n} s ago", { n: fmtNum(age) })].filter(Boolean).join(" · ")}</p>
+      <p className="small muted">{[bus.id, bus.towards && t("Towards {station}", { station: bus.towards }), bus.kmh != null && t("{n} km/h", { n: fmtNum(Math.round(bus.kmh)) }), age != null && t("{n} s ago", { n: fmtNum(age) })].filter(Boolean).join(dot())}</p>
       <p className="small muted ext-source">{t("Live position from IETT (Istanbul).")}</p>
     </Sheet>
   );
@@ -386,7 +420,13 @@ function MetroTrip({ net, city, here, dest, setDest, onStation }: { net: Network
   const st = useMemo(() => new Map(net.stations.map((x) => [x.id, x])), [net]);
   const lines = useMemo(() => new Map(net.lines.map((l) => [l.id, l])), [net]);
   const start: LatLng | null = from === "here" ? here : from;
-  const trip: Trip | null = useMemo(() => (start && dest ? planTrip(net, start, dest) : null), [net, start?.lat, start?.lng, dest]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Every trip worth taking (RAPTOR's Pareto set: fewest changes first); the fastest is picked unless you choose.
+  const trips: Trip[] = useMemo(() => (start && dest ? planTrips(net, start, dest) : []), [net, start?.lat, start?.lng, dest]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [pick, setPick] = useState<number | null>(null);
+  useEffect(() => setPick(null), [trips]);
+  const fastest = trips.reduce((b, x, i) => (x.minutes < trips[b].minutes ? i : b), 0);
+  const trip: Trip | null = trips[pick ?? fastest] ?? null;
+  const rule = fareRule(city);
   const near = from === "here" && here ? nearStations(net, here, 1, 1e7)[0] : null;
   const now = localMinutes(new Date(), net.tz);
   const steps = trip ? timeline(trip, now) : [];
@@ -405,6 +445,16 @@ function MetroTrip({ net, city, here, dest, setDest, onStation }: { net: Network
       </div>
       {from === "here" && <p className="small muted">{near ? t("From you — nearest station {station}, {d} away", { station: nameOf(near.station), d: formatDistance(near.m) }) : t("Waiting for your position…")}</p>}
       {dest && start && !trip && <p className="small muted">{t("Walking there is quicker than the metro.")}</p>}
+      {trips.length > 1 && (
+        <div className="mt-opts" role="group" aria-label={t("Ways to go")}>
+          {trips.map((x, i) => (
+            <button key={i} type="button" className="mt-opt small" aria-pressed={x === trip} onClick={() => setPick(i)}>
+              <b>{t("{n} min", { n: fmtNum(x.minutes) })}</b>
+              <span className="muted">{i === fastest ? t("Fastest") : x.changes ? t("{n} changes", { n: fmtNum(x.changes) }) : t("No changes")}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {trip && (
         <section className="mt-plan" aria-label={t("Your trip")}>
           <header className="mt-sum">
@@ -412,7 +462,7 @@ function MetroTrip({ net, city, here, dest, setDest, onStation }: { net: Network
             <span className="small">
               {t("Leave {a} · arrive about {b}", { a: clockOf(now), b: clockOf(now + trip.minutes) })}
               <br />
-              <span className="muted">{trip.changes ? t("{n} changes", { n: fmtNum(trip.changes) }) : t("no changes")} · {t("{n} stops", { n: fmtNum(trip.legs.reduce((k, g) => k + (g.kind === "ride" ? g.stops : 0), 0)) })}</span>
+              <span className="muted">{trip.changes ? t("{n} changes", { n: fmtNum(trip.changes) }) : t("no changes")} · {t("{n} stops", { n: fmtNum(trip.legs.reduce((k, g) => k + (g.kind === "ride" ? g.stops : 0), 0)) })}{fareText(trip, rule)}</span>
             </span>
             <span className="mt-bar" aria-hidden>
               {trip.legs.map((g, i) => (

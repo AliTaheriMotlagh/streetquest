@@ -11,7 +11,7 @@
 // app/api/shops/products runs it on create and on edits that change what buyers read; buyers only ever
 // see `review: "ok"` (server/shops.ts, /s/<id>, sitemap, orders).
 
-import { msg } from "../i18n";
+import { msg, dot } from "../i18n";
 
 /** A listing's moderation state. */
 export type Review = "ok" | "pending" | "rejected";
@@ -25,7 +25,7 @@ export const HIDE_AFTER_REPORTS = 3;
 /** Why a player reports a listing (Admin → Listings shows the reason). */
 export const REPORT_REASONS = ["scam", "prohibited", "offensive", "wrongPrice", "spam", "other"] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
-/** Why a listing waits (stored in reviewNote, " · "-joined; translated where shown). */
+/** Why a listing waits (stored in reviewNote, dot()-joined; translated where shown). */
 export const HELD_BY_REPORTS = msg("Reported by several players");
 export const REASON_LABEL: Record<ReportReason, string> = {
   scam: msg("Scam or fraud"),

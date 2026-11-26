@@ -12,6 +12,8 @@
 // at most one finished tile is added per frame (nearest first), far tiles drop their
 // street furniture, and the render resolution adapts to keep the frame rate up.
 // Solid things are solid: walls, trees, posts, shelters and other players' cars.
+import { outside, setbackPlace } from "@/lib/street/setback";
+import { clearCamera } from "@/lib/cameraClear";
 import { Guard } from "../Guard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -21,7 +23,7 @@ import { CUSTOMER_DOOR, PLACE_CATS } from "@/lib/places";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M } from "@/lib/business";
 import { S } from "@/lib/settings";
-import { fmtNum, getLocale, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { allowedVehicle, drivableOf, drivenVehicle, isPaint, LAND_ALT_M, lowEnough, PAINTS, startVehicle, STARTER_CAR, VEHICLES, type VehicleKey } from "@/lib/vehicles";
 import { CHECKPOINT_M, type PartyGame, type PartyView } from "@/lib/party";
 import { Button } from "@/components/Button";
@@ -106,7 +108,7 @@ import { Rain } from "./graphics/weather";
 import { mixHex, mixRecord, phaseOf, skyFor, sunVector, WEATHER_LOOK, type TimePick, type Weather } from "@/lib/daylight";
 import type { Label, Style } from "./tileMesh";
 import { oneLine, tradeOf } from "./trades";
-import { isShop, storeKind, type StoreKind } from "@/lib/storeKinds";
+import { civicKind, isShop, KIND_LABEL, storeKind, type StoreKind } from "@/lib/storeKinds";
 import { callsPolice, GOOD_STORES, LOOKOUT_SHOUTS, reply as npcReply, storeGossip, WAY_STORES, type Spot as NpcSpot, type TalkAct, type WayKind } from "@/lib/street/npcTalk";
 import { doorGreeting, panicLine } from "@/lib/street/shopTalk";
 import { hornFor } from "@/lib/street/carHorn";
@@ -212,6 +214,8 @@ const DROP_M = 1150; // and drop them past this
 const LOOT_PICKUP_M = 16;
 const CAMS: CamMode[] = ["cockpit", "chase", "far", "top"];
 const CAM_KEY = "sq_drive_cam";
+/** After an arrest / knock-out, this long before you're set down outside the police station / hospital (the banner reads first). */
+const SETBACK_DELAY_MS = 2500;
 const CTL_KEY = "sq_drive_ctl";
 const NAMES_KEY = "sq_drive_names";
 const FLY_HINT_KEY = "sq_fly_hint_off";
@@ -554,7 +558,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     // Street furniture apart from the buildings: it stops the vehicle, but never the
     // camera, a landing flyer or the search for a street to start on.
     const obstacles = new CollisionWorld();
-    // Bins, bags, benches and dumpsters a car knocks about (looseProps.ts).
+    // Bins, bags, benches, dumpsters, cones, chairs, post boxes, telecom cabinets and payphones a car knocks about (looseProps.ts).
     const loose = new LooseProps(
       (k) => tiles.get(k)?.mesh?.detail ?? null,
       (dv) => {
@@ -911,8 +915,28 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         st.vz += vz;
       },
       shake: (k) => (shakeK = Math.max(shakeK, k)),
+      night: () => night,
     });
     setStreet(street);
+    // Arrested / knocked out (lib/street/setback.ts): a moment later, set down outside the nearest police station /
+    // hospital in reach (else where it happened); the fine is the admin's (none by default).
+    street.onSetback = (kind, stars) => {
+      if (combat.inMatch) return;
+      setTimeout(() => {
+        if (disposed || combat.inMatch) return;
+        const places = shops.map((sp) => ({ x: sp.x, z: sp.z, kind: civicKind(sp.cls, sp.name) }));
+        const at = setbackPlace(kind, places, { x: st.x, z: st.z });
+        if (at) {
+          const o = outside(at, { x: st.x, z: st.z });
+          api3d.current?.teleport({ ...frame.toLatLng(o.x, o.z), yaw: o.yaw });
+          live.current.toast({ kind: "info", title: kind === "busted" ? t("Released outside the police station") : t("You came to at the hospital") });
+        }
+        if (live.current.sim) return;
+        api<{ fine: number }>("/api/drive/street", { body: { setback: kind, stars } })
+          .then(({ fine }) => fine > 0 && (live.current.toast({ kind: "info", title: kind === "busted" ? t("Fined {n} coins", { n: fmtNum(fine) }) : t("Hospital bill: {n} coins", { n: fmtNum(fine) }) }), live.current.refresh()))
+          .catch(() => {});
+      }, SETBACK_DELAY_MS);
+    };
     // A street job done (a thief stopped, the police shaken off): the server pays it, within its limits.
     street.onJob = (job, stars) => {
       if (live.current.sim) return;
@@ -1002,7 +1026,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           const d = Math.hypot(l.x - x, l.z - z);
           if (d > 40) return;
           const n = norm(oneLine(l.text));
-          if (want && (n.includes(want) || want.includes(n.split(" · ")[0])) && (!same || d < same.d)) same = { id: `${s.key}:${i}`, l, d };
+          if (want && (n.includes(want) || want.includes(n.split(dot())[0])) && (!same || d < same.d)) same = { id: `${s.key}:${i}`, l, d };
           if (d <= 12 && (!near || d < near.d)) near = { id: `${s.key}:${i}`, l, d };
         });
       }
@@ -1062,7 +1086,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const secs = `${Math.floor(sc.secs / 60)}:${String(Math.floor(sc.secs % 60)).padStart(2, "0")}`;
       live.current.toast({
         title: how === "done" ? t("🏁 Sky Rings done in {t}", { t: secs }) : t("⏱ Time's up"),
-        body: [t("{n} of {m} rings", { n: fmtNum(sc.rings), m: fmtNum(c.rings.length) }), sc.stars ? "★".repeat(sc.stars) : ""].filter(Boolean).join(" · "),
+        body: [t("{n} of {m} rings", { n: fmtNum(sc.rings), m: fmtNum(c.rings.length) }), sc.stars ? "★".repeat(sc.stars) : ""].filter(Boolean).join(dot()),
       });
       sfx(sc.stars >= 4 ? "win" : "tap");
       if (sc.stars) void api<{ reward: { xp: number; coins: number } }>("/api/drive/street", { body: { job: "swing", stars: sc.stars } }).then((r) => r.reward.coins && live.current.toast({ title: t("+{n} 🪙 for the course", { n: fmtNum(r.reward.coins) }) })).catch((e) => live.current.toast({ title: (e as Error).message }));
@@ -1074,7 +1098,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const hurt = landingHurt(l);
       const what = l === "perfect" ? t("Perfect landing!") : l === "good" ? t("Good landing") : l === "hard" ? t("Hard landing — flare (brake) just before the ground") : t("You hit the ground without a canopy");
       const parts = [h.course ? t("{n} of {m} rings", { n: fmtNum(sc.rings), m: fmtNum(h.course.rings.length) }) : "", sc.dist != null ? t("{d} from the target", { d: formatDistance(sc.dist) }) : "", sc.stars ? "★".repeat(sc.stars) : ""].filter(Boolean);
-      live.current.toast({ title: `🪂 ${what}`, body: parts.join(" · ") || null });
+      live.current.toast({ title: `🪂 ${what}`, body: parts.join(dot()) || null });
       sfx(l === "perfect" ? "win" : l === "crash" ? "down" : "tap");
       if (hurt) setTimeout(() => combat.streetHurt(hurt), 50);
       if (h.course && sc.stars) void api<{ reward: { xp: number; coins: number } }>("/api/drive/street", { body: { job: "skydive", stars: sc.stars } }).then((r) => r.reward.coins && live.current.toast({ title: t("+{n} 🪙 for the jump", { n: fmtNum(r.reward.coins) }) })).catch(() => {});
@@ -1105,7 +1129,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const cat = PLACE_CATS[p.place.cat] ?? PLACE_CATS.shop;
         out.push({
           id: p.id, kind: p.kind === "deliver" ? "pickup" : "visit", lat: p.place.lat, lng: p.place.lng, emoji: p.emoji, color: p.kind === "deliver" ? MARKER_COLORS.job : MARKER_COLORS.visit,
-          label: `${t(p.title)} · ${p.place.name}`, verb: p.kind === "deliver" ? t("Pick up") : t("Check in"), where: p.place.name, icon: p.kind === "deliver" ? "box" : "check", reach: INTERACT_RADIUS_M,
+          label: `${t(p.title)}${dot()}${p.place.name}`, verb: p.kind === "deliver" ? t("Pick up") : t("Check in"), where: p.place.name, icon: p.kind === "deliver" ? "box" : "check", reach: INTERACT_RADIUS_M,
           sel: { type: "place", data: p },
           run: () => live.current.act(() => api("/api/places", { body: { id: p.id } })).then((ok) => {
             if (ok) celebrate({ title: p.kind === "deliver" ? t("ORDER PICKED UP!") : t("CHECKED IN!"), body: p.kind === "deliver" ? t("Deliver to {dest}", { dest: p.dest?.name ?? t(CUSTOMER_DOOR) }) : p.place.name, emoji: cat.emoji });
@@ -1117,7 +1141,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         for (const c of b.campaigns) {
           if (c.visited || b.mine) continue;
           out.push({
-            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: MARKER_COLORS.biz, label: `${c.title} · ${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
+            id: `biz:${c.id}`, kind: "biz", lat: b.lat, lng: b.lng, emoji: b.emoji, color: MARKER_COLORS.biz, label: `${c.title}${dot()}${b.name}`, verb: t("Check in"), where: b.name, icon: "check", reach: BIZ_CHECKIN_M,
             sel: { type: "biz", data: b },
             run: () => live.current.act(() => api<{ message: string; code: string | null }>("/api/business", { body: { action: "checkin", campaignId: c.id } }).then((r) => {
               celebrate({ title: t("CHECKED IN!"), body: r.code ? t("Coupon code: {code}", { code: r.code }) : b.name, emoji: b.emoji });
@@ -1323,7 +1347,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       for (const { x: _x, z: _z, ...row } of oncePerStore(mapRows)) rows.push(row);
       const w = live.current.world;
       for (const sh of w?.shops ?? [])
-        if ((sh.live || sh.mine) && match(sh.name, t("Player shop"))) rows.push({ id: `sh:${sh.id}`, emoji: sh.emoji, name: sh.name, sub: sh.deal ? `${t("Player shop")} · −${fmtNum(sh.deal)}%` : t("Player shop"), dist: distanceM(here, sh), lat: sh.lat, lng: sh.lng, sel: { type: "shop", data: sh } });
+        if ((sh.live || sh.mine) && match(sh.name, t("Player shop"))) rows.push({ id: `sh:${sh.id}`, emoji: sh.emoji, name: sh.name, sub: sh.deal ? `${t("Player shop")}${dot()}−${fmtNum(sh.deal)}%` : t("Player shop"), dist: distanceM(here, sh), lat: sh.lat, lng: sh.lng, sel: { type: "shop", data: sh } });
       for (const b of w?.businesses ?? [])
         if (match(b.name, t("Business"))) rows.push({ id: `bz:${b.id}`, emoji: b.emoji, name: b.name, sub: t("Business"), dist: distanceM(here, b), lat: b.lat, lng: b.lng, sel: { type: "biz", data: b } });
       rows.sort((a, b) => a.dist - b.dist);
@@ -1764,7 +1788,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         if (!l) return setPicked(null);
         const tr = tradeOf(l.cls), at = frame.toLatLng(l.x, l.z);
         setPicked(null);
-        setStoreSheet({ id: pick.id, name: oneLine(l.text), cls: l.cls, lat: at.lat, lng: at.lng, emoji: tr.emoji, color: tr.bg[0], sub: `${t(tr.label)} · ${formatDistance(distanceM(here, at))}` });
+        setStoreSheet({ id: pick.id, name: oneLine(l.text), cls: l.cls, lat: at.lat, lng: at.lng, emoji: tr.emoji, color: tr.bg[0], sub: `${t(tr.label)}${dot()}${formatDistance(distanceM(here, at))}` });
       } else if (pick.kind === "job") {
         const j = beacons.get(pick.id)?.job;
         if (j) setPicked({ emoji: j.emoji, title: j.label, sub: formatDistance(distanceM(here, j)), lat: j.lat, lng: j.lng, sel: j.sel });
@@ -1782,7 +1806,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const o = others.driver(pick.id);
         const w = L.world?.players.find((x) => x.id === pick.id);
         const data: WorldPlayer | null = w ?? (o ? { id: o.id, username: o.name, avatar: o.avatar, level: o.level, friend: o.friend, home: true, lat: o.lat, lng: o.lng } : null);
-        if (data) setPicked({ emoji: data.avatar, title: `${data.username} · ${data.level}`, sub: o ? `${VEHICLES[o.vehicle].emoji} ${t(VEHICLES[o.vehicle].name)} · ${formatDistance(distanceM(here, o))}` : formatDistance(distanceM(here, data)), lat: data.lat, lng: data.lng, sel: { type: "player", data } });
+        if (data) setPicked({ emoji: data.avatar, title: `${data.username}${dot()}${data.level}`, sub: o ? `${VEHICLES[o.vehicle].emoji} ${t(VEHICLES[o.vehicle].name)}${dot()}${formatDistance(distanceM(here, o))}` : formatDistance(distanceM(here, data)), lat: data.lat, lng: data.lng, sel: { type: "player", data } });
       }
     };
     el.addEventListener("pointerdown", pDown);
@@ -1811,7 +1835,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       const fl = Math.hypot(camFwd.x, camFwd.z) || 1, fx = camFwd.x / fl, fz = camFwd.z / fl;
       const dx = sp.x - st.x, dz = sp.z - st.z;
       const rel = (Math.atan2(-fz * dx + fx * dz, fx * dx + fz * dz) * 180) / Math.PI;
-      return { name: sp.name, dist: Math.round(Math.hypot(dx, dz)), rel, rating: storefronts.ratingOf(sp.id) ?? undefined };
+      const kind = storeKind(sp.cls, sp.name);
+      return { name: sp.name, dist: Math.round(Math.hypot(dx, dz)), rel, rating: storefronts.ratingOf(sp.id) ?? undefined, ...(kind !== "general" ? { kind: KIND_LABEL[kind] } : {}) };
     };
     const nearestOf = (kinds: StoreKind[], within: number) =>
       shops
@@ -2507,19 +2532,16 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         const dist = freeCam ? 9 : chute && camMode !== "top" ? 11 : camMode === "chase" ? (flying ? 15 : 9 + speedK * 4) * (D.cam ?? 1) : camMode === "far" ? 24 : 4;
         const height = freeCam ? 7 : chute && camMode !== "top" ? 3.2 : camMode === "chase" ? (flying ? 6 : 3.8 + speedK * 1.2) : camMode === "far" ? 15 : 60;
         const want = camMode === "top" ? new THREE.Vector3(st.x + nfx * 6, st.alt + height, st.z + nfz * 6 + 0.01) : new THREE.Vector3(st.x - nfx * dist, st.alt + height, st.z - nfz * dist);
-        camPos.lerp(want, 1 - Math.exp(-rdt * (camMode === "top" ? 6 : 4.5)));
-        // Don't let the camera end up inside a building: pull it in toward the vehicle.
-        // (Pushing it out sideways can strand it behind the building: walk out from the
-        // vehicle instead and stop at the last clear spot on the way.)
-        if (camMode !== "top" && collision.collide(camPos.x, camPos.z, 1, camPos.y - 1, 2).hit) {
-          let k = 0;
-          for (let s = 1; s <= 12; s++) {
-            const f = s / 12;
-            if (collision.collide(st.x + (camPos.x - st.x) * f, st.z + (camPos.z - st.z) * f, 1, camPos.y - 1, 2).hit) break;
-            k = f;
-          }
-          camPos.set(st.x + (camPos.x - st.x) * k, camPos.y, st.z + (camPos.z - st.z) * k);
+        // No wall between the camera and the vehicle (lib/cameraClear.ts): the wanted spot is lifted over the roofs, else
+        // walked in from the vehicle to the last clear point — then the camera glides there (judging the glide itself
+        // each frame would make it bob up and down).
+        if (camMode !== "top") {
+          const clear = clearCamera({ x: st.x, y: st.alt + 1.6, z: st.z }, want, (x, z, y) => !!collision.collide(x, z, 0.8, y - 1, 2).hit);
+          if (clear.how !== "clear") want.set(clear.x, clear.y, clear.z);
         }
+        camPos.lerp(want, 1 - Math.exp(-rdt * (camMode === "top" ? 6 : 4.5)));
+        // Still inside something mid-glide (a corner cut): straight to the cleared spot.
+        if (camMode !== "top" && collision.collide(camPos.x, camPos.z, 0.8, camPos.y - 1, 2).hit) camPos.copy(want);
         camera.position.copy(camPos);
         if (camMode === "top") camera.up.set(nfx, 0, nfz);
         else camera.up.set(0, 1, 0);
@@ -2794,7 +2816,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
           if (ns) {
             const tr = tradeOf(ns.store.cls);
             const ll = frame.toLatLng(ns.store.x, ns.store.z);
-            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)} · ${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng, enter: combat.onFoot && ns.d < ENTER_M && isShop(ns.store.cls, ns.store.name) };
+            store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)}${dot()}${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng, enter: combat.onFoot && ns.d < ENTER_M && isShop(ns.store.cls, ns.store.name) };
           }
         }
         lastStore = store?.id ?? null;
@@ -3190,7 +3212,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   // The Places tab (memoised: these stay the same from render to render).
   const onPlaceQuery = useCallback((q: string) => void (placeQuery.current = q), []);
   const placeHere = useCallback(() => api3d.current?.here() ?? null, []);
-  const onPlaceOpen = useCallback((p: PlaceRow) => setStoreSheet({ id: p.id, name: p.name, cls: p.cls, cat: p.cat, lat: p.lat, lng: p.lng, emoji: p.emoji, color: p.color ?? "#63b3f2", sub: `${p.sub} · ${formatDistance(p.dist)}` }), []);
+  const onPlaceOpen = useCallback((p: PlaceRow) => setStoreSheet({ id: p.id, name: p.name, cls: p.cls, cat: p.cat, lat: p.lat, lng: p.lng, emoji: p.emoji, color: p.color ?? "#63b3f2", sub: `${p.sub}${dot()}${formatDistance(p.dist)}` }), []);
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const onPlaceGo = useCallback((p: PlaceRow) => goToRef.current(p, p.name), []);
@@ -3342,11 +3364,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                     return (
                       <button key={st.id} type="button" role="menuitemradio" aria-checked={on} className={`radio-row ${on ? "on" : ""}`} onClick={() => radioRef.current?.pick(on ? null : st.id)}>
                         <span className="radio-name">{st.name}</span>
-                        <span className="radio-genre" dir="auto">{on && radio.now?.title ? `♪ ${radio.now.title}${radio.now.artist ? ` · ${radio.now.artist}` : ""}` : t(st.genre)}</span>
+                        <span className="radio-genre" dir="auto">{on && radio.now?.title ? `♪ ${radio.now.title}${radio.now.artist ? `{dot()}${radio.now.artist}` : ""}` : t(st.genre)}</span>
                         {on && (radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <span className="radio-genre">{radio.status === "tuning" ? t("Tuning…") : radio.status === "tap" ? t("Tap ▶ on the card below") : t("No signal")}</span>)}
                         {on && radio.status === "on" && (radio.now?.next || radio.now?.listeners) ? (
                           <span className="radio-next" dir="auto">
-                            {[radio.now.next ? t("Next: {song}", { song: radio.now.next }) : "", radio.now.listeners ? t("{n} listening", { n: fmtNum(radio.now.listeners) }) : ""].filter(Boolean).join(" · ")}
+                            {[radio.now.next ? t("Next: {song}", { song: radio.now.next }) : "", radio.now.listeners ? t("{n} listening", { n: fmtNum(radio.now.listeners) }) : ""].filter(Boolean).join(dot())}
                           </span>
                         ) : null}
                       </button>
@@ -3411,7 +3433,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
                 onClick={() => setRadioOpen((o) => !o)}
                 aria-expanded={radioOpen}
                 aria-label={radio.station ? t("Radio: {name} — tap for the next station", { name: radio.station.name }) : t("Car radio")}
-                data-tip={radio.station ? `${radio.station.name} · ${t(radio.station.genre)}` : t("Car radio (N)")}
+                data-tip={radio.station ? `${radio.station.name}${dot()}${t(radio.station.genre)}` : t("Car radio (N)")}
               >
                 <Icon name="radio" size={22} />
                 {radio.status === "on" ? <span className="radio-eq" aria-hidden><i /><i /><i /></span> : <small>{radio.status === "off" ? t("Off") : radio.status === "tuning" ? "…" : "!"}</small>}

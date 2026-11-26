@@ -21,6 +21,14 @@ export function adChain(country: string | null, nets: AdNetworks): AdProvider[] 
   return out;
 }
 
+/** Where ads go in a list of `n` rows: after the `first`th row (or the last, in a short list), then every `every`. */
+export function adPositions(n: number, first = 3, every = 12, max = 4): Set<number> {
+  const out = new Set<number>();
+  if (n <= 0) return out;
+  for (let i = Math.min(first, n) - 1; i < n && out.size < max; i += every) out.add(i);
+  return out;
+}
+
 /** Views per purchase step, and the bounds of one purchase. */
 export const AD_VIEWS_STEP = 100, AD_VIEWS_MIN = 100, AD_VIEWS_MAX = 20_000;
 

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ASKS_CHANGED } from "@/lib/asks";
 import { formatDistance, type LatLng } from "@/lib/geo";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { GATHER_M, PARTY_GAMES, type PartyGame, type PartyView } from "@/lib/party";
 import { MODE_KEYS, MODES, type ModeKey } from "@/lib/arena/modes";
 import { VEHICLES, isVehicle } from "@/lib/vehicles";
@@ -239,9 +239,9 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
                 <span className="ic">{m.avatar}</span>
                 <span className="grow">
                   {m.name}
-                  {m.userId === party.hostId ? ` · ${t("host")}` : ""}
-                  {m.vehicle && isVehicle(m.vehicle) ? ` · ${VEHICLES[m.vehicle].emoji}` : ""}
-                  {m.userId !== meId && m.dist != null && m.dist > 30 && <span className="dist"> · {formatDistance(m.dist)}</span>}
+                  {m.userId === party.hostId ? `${dot()}${t("host")}` : ""}
+                  {m.vehicle && isVehicle(m.vehicle) ? `${dot()}${VEHICLES[m.vehicle].emoji}` : ""}
+                  {m.userId !== meId && m.dist != null && m.dist > 30 && <span className="dist">{dot()}{formatDistance(m.dist)}</span>}
                 </span>
                 {party.status === "ENDED" && m.reward ? <span className="small">{m.reward}</span> : <span className={`dot ${m.online ? "on" : ""}`} aria-label={m.online ? t("online") : t("offline")} />}
               </div>
@@ -259,8 +259,8 @@ export function PlayTogether({ party: live, meId, canDrive, sim, combat, course,
               <div key={f.id} className="drive-job">
                 <span className="ic">{f.avatar}</span>
                 <span className="grow">
-                  {f.name} · {fmtNum(f.level)}
-                  {f.sub && <span className="small muted"> · {f.sub}</span>}
+                  {f.name}{dot()}{fmtNum(f.level)}
+                  {f.sub && <span className="small muted">{dot()}{f.sub}</span>}
                 </span>
                 <span className={`dot ${f.online ? "on" : ""}`} />
                 <Button

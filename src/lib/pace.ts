@@ -46,6 +46,7 @@ export const PACE_RULES: { site: string; host: RegExp; rule: PaceRule }[] = [
   // Travel (server/travel.ts): ticket searches are cached per route and day, so these stay quiet.
   { site: "alibaba", host: /alibaba\.ir/i, rule: { gapMs: 300, perMin: 30, coolOn: [403, 429], strikes: 2, coolMs: 15 * MIN } },
   { site: "mrbilit", host: /atighgasht\.com|mrbilit\.(com|ir)/i, rule: { gapMs: 300, perMin: 30, coolOn: [403, 429], strikes: 2, coolMs: 15 * MIN } },
+  { site: "jajiga", host: /jajiga\.com/i, rule: { gapMs: 1000, perMin: 12, coolOn: [403, 429], strikes: 2, coolMs: 30 * MIN } },
   { site: "jabama", host: /jabama\.com/i, rule: { gapMs: 300, perMin: 30, coolOn: [403, 429], strikes: 2, coolMs: 15 * MIN } },
   // Live planes (ADS-B): adsb.lol asks for gentle use; each area is cached 10 s.
   { site: "adsb", host: /adsb\.lol/i, rule: { gapMs: 350, perMin: 30, coolOn: [429], strikes: 2, coolMs: 5 * MIN } },

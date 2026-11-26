@@ -123,4 +123,23 @@ test.describe("a shop's public page", () => {
     expect((await buyer.ctx.get("/s/nope")).status()).toBe(404);
     for (const p of [admin, seller, buyer]) await p.dispose();
   });
+
+  test("a player's approved product shows in product search near the shop (source: player)", async ({ baseURL }) => {
+    const { admin, seller, buyer, shop } = await openShop(baseURL!);
+    const word = `Zz${Date.now().toString(36)}`;
+    const p = (await live(admin, await add(seller, { title: `${word} lantern`, currency: "toman", price: 90_000 }))).data.product;
+    const at = shop as unknown as { lat: number; lng: number }; // the shop stands where its seller was
+    type Hits = { hits: { id: string; source: string; store: string; price: number }[] };
+    const r = expectOk(await buyer.get<Hits>(`/api/local?products=${encodeURIComponent(word)}&src=player&lat=${at.lat}&lng=${at.lng}`)).data;
+    const hit = r.hits.find((h) => h.id === `player:${p.id}`);
+    expect(hit?.source).toBe("player");
+    expect(hit?.store).toBe(shop.name);
+    expect(hit?.price).toBe(90_000);
+    // Paused shop: gone from search.
+    expectOk(await seller.post("/api/shops", { action: "update", open: false }));
+    const after = expectOk(await buyer.get<Hits>(`/api/local?products=${encodeURIComponent(word)}&src=player&lat=${at.lat}&lng=${at.lng}`)).data;
+    expect(after.hits.some((h) => h.id === `player:${p.id}`)).toBe(false);
+    await Promise.all([admin.dispose(), seller.dispose(), buyer.dispose()]);
+  });
 });
+

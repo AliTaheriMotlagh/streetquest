@@ -58,7 +58,13 @@ const perRequest = new WeakMap<object, PrismaClient>();
 const reactClient = cache(() => makeClient());
 const g = globalThis as unknown as { __prisma?: PrismaClient };
 
+/** Only the Neon driver (Workers) needs a client per request; the Node engine (local Docker Postgres) shares one. */
+const perRequestNeeded = !!url && /neon\.(tech|build)/i.test(url);
+
 function clientForRequest(): PrismaClient {
+  // `next dev` with the OpenNext dev shim has a Cloudflare context on every request: a client (and its pool) each
+  // time would leak connections until Postgres refuses more ("too many clients"). One client for the process.
+  if (!perRequestNeeded) return (g.__prisma ??= makeClient());
   try {
     const { ctx } = getCloudflareContext();
     if (ctx && typeof ctx === "object") {

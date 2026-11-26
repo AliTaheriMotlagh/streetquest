@@ -1114,9 +1114,14 @@ model Shop {
   images    ShopImage[]
   orders    ShopOrder[]
   scan      ShopScan?
+  // The verified real business behind it (Seller center links them; lib/sellerCenter.ts). One shop per business,
+  // kept by server/seller.ts in a transaction (a plain index: adding it never touches existing rows).
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
 
   @@index([lat, lng])
   @@index([expiresAt])
+  @@index([businessId])
 }
 
 model Product {
@@ -1367,6 +1372,7 @@ model Business {
   campaigns   BizCampaign[]
   landmarks   Landmark[]
   claims      BizClaim[]
+  shops       Shop[]
 
   @@index([lat, lng])
   @@index([ownerId])

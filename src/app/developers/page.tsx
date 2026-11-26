@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { dot } from "@/lib/i18n";
 import "./developers.css";
 import { DeveloperKeys } from "@/components/DeveloperKeys";
 import { openApi, SOURCES } from "@/lib/apiV1";
@@ -29,7 +30,7 @@ export default async function Developers() {
           <h1>🔑 {t("StreetQuest data API")}</h1>
           <p>{t("A read-only data API for other apps: the stores, deals, cinemas, ads and products StreetQuest knows. It answers from our cache, with each source credited.")}</p>
           <div className="facts">
-            <span>GET · JSON</span>
+            <span>GET{dot()}JSON</span>
             <span>{t("{n} endpoints", { n: paths.length })}</span>
             <span>{t("60 requests a minute per key")}</span>
             <span>CORS *</span>

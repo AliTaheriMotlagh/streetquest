@@ -14,7 +14,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { pushBack } from "./backStack";
 import { usePage } from "./pageMode";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { LISTING_SOURCES, type ListingSource } from "@/lib/stores/listing";
 
 export function SearchField({ value, onChange, placeholder, label, onSubmit, max = 60 }: { value: string; onChange: (v: string) => void; placeholder: string; label?: string; onSubmit?: () => void; max?: number }) {
@@ -150,7 +150,7 @@ export function FilterGroup({ title, children, wrap = true }: { title: string; c
   );
 }
 
-/** Parts joined by " · ", each one isolated so mixed scripts and numbers keep their order. */
+/** Parts joined by dot(), each one isolated so mixed scripts and numbers keep their order. */
 export function Meta({ parts, className = "fx-meta" }: { parts: (ReactNode | false | null | undefined | "")[]; className?: string }) {
   const shown = parts.filter((p) => p !== false && p != null && p !== "");
   return (

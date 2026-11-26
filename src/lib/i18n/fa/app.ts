@@ -17,7 +17,7 @@ const app: Record<string, string> = {
   Earlier: "قبل‌تر",
   "All caught up": "همه‌چی رو دیدی",
   "Tap to open": "بزن تا باز بشه",
-  "Day {n} · +{coins} 🪙": "روز {n} · +{coins} 🪙",
+  "Day {n} · +{coins} 🪙": "روز {n} • +{coins} 🪙",
   "Day {n} reward": "جایزهٔ روز {n}",
   "{n, plural, one {# quest to claim} other {# quests to claim}}": "{n} مأموریت آمادهٔ دریافت",
   "{n, plural, one {# goal reward} other {# goal rewards}}": "{n} جایزهٔ هدف",

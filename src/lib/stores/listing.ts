@@ -68,7 +68,7 @@ export type Listing = {
 const SPOT_TYPES: Partial<Record<PlaceCat, StoreType>> = {
   burger: "food", pizza: "food", restaurant: "food", cafe: "cafe", bakery: "bakery", icecream: "sweets", bar: "cafe",
   grocery: "grocery", pharmacy: "pharmacy", fuel: "auto", gym: "sport", fashion: "clothing", tech: "digital", books: "gifts", cinema: "sport", bank: "finance", park: "other",
-  tobacco: "tobacco", beauty: "beauty", home: "home", auto: "auto", gifts: "gifts", pets: "pets", health: "health", shop: "other",
+  tobacco: "tobacco", beauty: "beauty", home: "home", auto: "auto", gifts: "gifts", pets: "pets", health: "health", optician: "health", library: "other", shop: "other",
 };
 const VENDOR_TYPES: Record<VendorKind, StoreType> = { food: "food", cafe: "cafe", sweets: "sweets", market: "grocery" };
 const r5 = (n: number, outOf = 5) => (n > 0 ? Math.round(Math.min(5, (n * 5) / outOf) * 10) / 10 : 0);

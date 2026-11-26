@@ -31,7 +31,7 @@ const game: Record<string, string> = {
   Jump: "پرش",
   Failed: "شکست",
   Finish: "تمومش کن",
-  "{d} · {n} min": "{d} · {n} دقیقه",
+  "{d} · {n} min": "{d} • {n} دقیقه",
   "ends in {time}": "{time} تا پایان",
 
   // ---- floating buttons
@@ -55,8 +55,8 @@ const game: Record<string, string> = {
   "Turn on": "روشن کن",
 
   // ---- map card: common
-  "Go here · {d}": "برو اینجا · {d}",
-  "Get closer · {d}": "نزدیک‌تر شو · {d}",
+  "Go here · {d}": "برو اینجا • {d}",
+  "Get closer · {d}": "نزدیک‌تر شو • {d}",
 
   // ---- map card: spawns & missions
   "+{n} XP": "+{n} تجربه",
@@ -66,14 +66,14 @@ const game: Record<string, string> = {
   "💬 Post at this spot": "💬 پستی که اینجا گذاشتن",
 
   // ---- map card: events, jobs, shops
-  "{start} – {end} · {n}/{max} going · {d}": "{start} تا {end} · {n}/{max} نفر میان · {d}",
+  "{start} – {end} · {n}/{max} going · {d}": "{start} تا {end} • {n}/{max} نفر میان • {d}",
   "All events": "همهٔ رویدادها",
-  "Posted by {name} · reward {n} 🪙": "ثبت‌شده توسط {name} · دستمزد {n} 🪙",
+  "Posted by {name} · reward {n} 🪙": "ثبت‌شده توسط {name} • دستمزد {n} 🪙",
   "({d} trip)": "(مسیر {d})",
   "Accept job": "قبول کار",
   "🚕 {name} needs a ride": "🚕 {name} ماشین می‌خواد",
   Rider: "مسافر",
-  "{n, plural, one {# seat} other {# seats}} · pickup {d} from you · fare": "{n} صندلی · مبدأ {d} با تو فاصله داره · کرایه",
+  "{n, plural, one {# seat} other {# seats}} · pickup {d} from you · fare": "{n} صندلی • مبدأ {d} با تو فاصله داره • کرایه",
   "Accept ride": "قبول سفر",
   "All jobs": "همهٔ کارها",
   "Up to {n}% off": "تا {n}٪ تخفیف",

@@ -8,7 +8,7 @@ const pages: Record<string, string> = {
   "Live & upcoming real-world events": "رویدادهای زنده و در پیش در دنیای واقعی",
   "Join StreetQuest group quests near you. Meet up, check in with GPS and earn squad XP bonuses.": "توی مأموریت‌های گروهی StreetQuest نزدیک خودت شرکت کن. دورهم جمع شو، با GPS ثبت حضور کن و پاداش تجربهٔ جوخه بگیر.",
   "No public events right now — create one in the game!": "الان رویداد عمومی‌ای نیست — توی بازی یکی بساز!",
-  "{n}/{max} going · by {name}": "{n}/{max} شرکت‌کننده · میزبان: {name}",
+  "{n}/{max} going · by {name}": "{n}/{max} شرکت‌کننده • میزبان: {name}",
   Official: "رسمی",
 
   // ---- one event (public page)

@@ -3,7 +3,7 @@
 // (from inside the store), post missions that bring players through the door, redeem
 // their coupon codes at the till, watch the numbers, and pick a plan.
 import { useCallback, useEffect, useState } from "react";
-import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
+import { fmtNum, t, toAsciiDigits, dot } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { PLACE_CAT_KEYS, PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { BIZ_LIMITS, BIZ_MENU_MAX, bizWeek, brandTier, CAMPAIGN_MAX_DAYS, inkOn, PLAN_BY_KEY, shade, type BizMenuItem, type PlanDef, type PlanKey } from "@/lib/business";
@@ -93,7 +93,7 @@ function Pitch({ data, onStart, onPlans }: { data: Data; onStart: () => void; on
         <div><span>📈</span><b>{t("Numbers that matter")}</b><p className="small muted">{t("Visits, redemptions, new and repeat customers — month by month.")}</p></div>
       </div>
       <Button className="btn yellow block big-btn" onClick={onStart}>🏪 {t("Claim my store — free")}</Button>
-      <Button className="btn ghost block" onClick={onPlans}>{t("See plans")}{data.trialDays ? ` · ${t("{n}-day free trial", { n: data.trialDays })}` : ""}</Button>
+      <Button className="btn ghost block" onClick={onPlans}>{t("See plans")}{data.trialDays ? `${dot()}${t("{n}-day free trial", { n: data.trialDays })}` : ""}</Button>
     </>
   );
 }
@@ -111,7 +111,7 @@ function Setup({ data, onDone }: { data: Data; onDone: () => void }) {
           return (
             <button key={p.id} className="drive-job" onClick={() => setPicked(p)}>
               <span className="ic">{c.emoji}</span>
-              <span className="grow"><b>{p.name}</b><span className="small muted"> · {t(c.label)}</span></span>
+              <span className="grow"><b>{p.name}</b><span className="small muted">{dot()}{t(c.label)}</span></span>
               <span className="small muted">{formatDistance(p.distanceM)}</span>
             </button>
           );
@@ -188,7 +188,7 @@ function Dashboard({ b, data, reload, onCampaign, onEdit, onLook, onPlans, onAdd
           <div className="icon-tile">{b.emoji}</div>
           <div className="grow">
             <b>{b.name}</b> {b.verified && <span className="tag verified">✔ {t("Verified")}</span>}
-            <div className="small muted">{t(PLACE_CATS[b.category as PlaceCat]?.label ?? PLACE_CATS.shop.label)}{b.osmId ? ` · 📍 ${t("Real place")}` : ""}</div>
+            <div className="small muted">{t(PLACE_CATS[b.category as PlaceCat]?.label ?? PLACE_CATS.shop.label)}{b.osmId ? `${dot()}📍 ${t("Real place")}` : ""}</div>
           </div>
           <button className="chip small plan-chip" onClick={onPlans}>{plan.emoji} {t(plan.name)}</button>
         </div>
@@ -250,7 +250,7 @@ function Dashboard({ b, data, reload, onCampaign, onEdit, onLook, onPlans, onAdd
           {b.recent.map((v) => (
             <div key={v.id} className="card list-item">
               <span className="avatar-sm">{v.avatar}</span>
-              <div className="grow"><b className="small">{v.username}</b><div className="tiny muted">{v.campaign} · {fmtTime(v.at)}</div></div>
+              <div className="grow"><b className="small">{v.username}</b><div className="tiny muted">{v.campaign}{dot()}{fmtTime(v.at)}</div></div>
               {v.redeemed && <span className="tag live">🎟️ {t("Used")}</span>}
             </div>
           ))}

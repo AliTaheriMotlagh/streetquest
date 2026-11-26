@@ -210,6 +210,12 @@ export function translate(locale: Locale, message: string, vars?: Vars): string 
 /** Translate into the current locale (the request's on the server, the page's in the browser). */
 export const t = (message: string, vars?: Vars) => translate(getLocale(), message, vars);
 
+/**
+ * The separator between the bits of a line (" · "), except in Persian: there a middle dot beside a number reads as a
+ * zero («۳۵ · متر» looks like «۳۵۰»), so it's a bullet (" • ").
+ */
+export const dot = (locale: Locale = getLocale()) => (locale === "fa" ? " • " : " · ");
+
 /** Is there a real translation (not the English fallback)? */
 export const hasTranslation = (locale: Locale, message: string) => locale === DEFAULT_LOCALE || !!catalogs[locale]?.[message];
 

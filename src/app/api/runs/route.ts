@@ -7,7 +7,7 @@ import { requireUser } from "@/server/auth";
 import { body, HttpError, actionRoute } from "@/server/http";
 import { checkClaimAchievements, grant, lastKnownLocation } from "@/server/rewards";
 import { questEvent } from "@/server/quests";
-import { t } from "@/lib/i18n";
+import { t, dot } from "@/lib/i18n";
 import { finishPlaceRun } from "@/server/places";
 
 const Schema = z.object({ runId: z.string(), action: z.enum(["complete", "abandon"]) });
@@ -40,5 +40,5 @@ export const POST = actionRoute(async (req) => {
   await checkClaimAchievements(u.id, "day");
   // A delivery from a real place: the toman, what you carried, and a post in the feed.
   const paid = run.spawnId.startsWith("p:") ? await finishPlaceRun(u, run) : null;
-  return { message: [t("{title} — delivered!", { title: t(run.title) }), coins ? t("+{n} 🪙", { n: coins }) : "", paid ?? ""].filter(Boolean).join(" · "), xp };
+  return { message: [t("{title} — delivered!", { title: t(run.title) }), coins ? t("+{n} 🪙", { n: coins }) : "", paid ?? ""].filter(Boolean).join(dot()), xp };
 });

@@ -3,7 +3,7 @@
 // at a time per player (actionRoute), so a double tap can't buy twice.
 import type { Empire, User } from "@prisma/client";
 import { prisma } from "../lib/db";
-import { t } from "../lib/i18n";
+import { t, dot } from "../lib/i18n";
 import {
   BIZ_BY_KEY,
   BOOST_MAX_H,
@@ -208,7 +208,7 @@ export async function act(u: User, a: EmpireAction): Promise<{ message?: string 
       await save(u.id, s, { rankClaimed: rank });
       await grant(u.id, sum);
       await trackStat(u.id, "empire_rank", rank - row.rankClaimed, u.faction);
-      return { message: [t("🏆 Empire rank {n}!", { n: rank }), t("+{n} 🪙", { n: sum.coins }), sum.gems ? t("+{n} 💎", { n: sum.gems }) : ""].filter(Boolean).join(" · ") };
+      return { message: [t("🏆 Empire rank {n}!", { n: rank }), t("+{n} 🪙", { n: sum.coins }), sum.gems ? t("+{n} 💎", { n: sum.gems }) : ""].filter(Boolean).join(dot()) };
     }
   }
 }

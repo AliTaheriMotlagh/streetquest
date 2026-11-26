@@ -1,7 +1,7 @@
 // Siktir (سیکتیر): "this place, never again" — a player marks a spot they didn't like and says why.
 // Pure — client and server. The server keeps one row per (player, place); everything players see is
 // an aggregate (how many, which reasons) and never who.
-import { msg, t } from "./i18n";
+import { msg, t, dot } from "./i18n";
 import type { LatLng } from "./geo";
 
 export const SIKTIR_REASONS = ["dirty", "rude", "expensive", "unsafe", "scam", "noisy", "quality", "other"] as const;
@@ -87,7 +87,7 @@ export function topReasons(reasons: Partial<Record<SiktirReason, number>>, n = 3
 /** "3 people said Siktir". */
 export const siktirCountLabel = (n: number) => t("{n, plural, one {# person said Siktir} other {# people said Siktir}}", { n });
 /** "Dirty · Overpriced". */
-export const siktirReasonsLabel = (top: SiktirReason[]) => top.map((k) => t(REASON_INFO[k].label)).join(" · ");
+export const siktirReasonsLabel = (top: SiktirReason[]) => top.map((k) => t(REASON_INFO[k].label)).join(dot());
 
 /** A map cell for grouping spots far out: rounded to `deg`. */
 export const siktirCell = (p: LatLng, deg: number) => `${Math.floor(p.lat / deg)}_${Math.floor(p.lng / deg)}`;

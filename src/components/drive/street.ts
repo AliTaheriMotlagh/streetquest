@@ -13,6 +13,9 @@
 //  - bullets: arena/combat.ts asks `npc` what its shot met (people, cars, officers) — my
 //    client is the referee for these, nobody else sees them (they're local, like traffic).
 // The HUD (StreetHud.tsx) reads a tiny store: stars, the car's health, the big banners.
+import { HELI_STARS, heliIn, heliSees, heliStep, type Heli } from "@/lib/street/heli";
+import { PoliceHeli } from "./heli3d";
+import type { Setback } from "@/lib/street/setback";
 import * as THREE from "three";
 import { CAR_RESTITUTION, felt, massOf } from "@/lib/street/carPhysics";
 import { blastOnCar, blastOnPerson, bulletDamage, burnCar, crashDamage, dentDepth, hurtCar } from "@/lib/street/damage";
@@ -63,6 +66,8 @@ export type StreetHost = {
   push: (vx: number, vz: number) => void;
   /** Shake the camera (0–1). */
   shake: (k: number) => void;
+  /** 0 by day … 1 at night (the helicopter's searchlight). */
+  night?: () => number;
 };
 
 /** Me, this frame. `car*`: where my car is (parked while I'm on foot). */
@@ -124,6 +129,8 @@ export class StreetLife {
   private refleeAt = 0;
   /** A street job done: Drive claims its reward (POST /api/drive/street). */
   onJob: ((kind: StreetJobKind, stars: number) => void) | null = null;
+  /** Arrested, or knocked out (lib/street/setback.ts): Drive sets you down outside the police station / hospital. */
+  onSetback: ((kind: Setback, stars: number) => void) | null = null;
   /** Running totals a scenario reads (scenarios.ts): officers I have killed, times I've been arrested. */
   kills = 0;
   busts = 0;
@@ -139,6 +146,8 @@ export class StreetLife {
   /** A street car, as the voices see it (who's driving, where it is now). */
   private static carOf = (ref: unknown) => (ref && typeof ref === "object" && "id" in ref && "parked" in ref ? (ref as { id: number; parked: boolean; x: number; z: number }) : null);
 
+  /** The police helicopter at HELI_STARS (lib/street/heli.ts, heli3d.ts), while it's in the air. */
+  private heli: { s: Heli; look: PoliceHeli } | null = null;
   /** The city around you (a recorded loop, when there is one: lib/soundSlots.ts). */
   private city = new SampleLoop("city", 0.35);
 
@@ -332,6 +341,7 @@ export class StreetLife {
     blast: (x, z, mine) => this.explode(x, z, mine, true),
     down: () => {
       this.say("down");
+      this.onSetback?.("down", this.wanted.stars);
       this.wanted = calm();
       this.police.standDown();
     },
@@ -664,8 +674,17 @@ export class StreetLife {
     traffic.blockers = this.police.units.map((u) => ({ x: u.body.x, z: u.body.z }));
 
     // The wanted level's clocks: seen, searching, lost; arrested.
+    // The helicopter: called in at HELI_STARS, sent home below it (heli.ts).
+    if (this.wanted.stars >= HELI_STARS && !me.matchOn && (!this.heli || this.heli.s.leaving)) {
+      if (!this.heli) this.heli = { s: heliIn(me, Math.floor(now)), look: new PoliceHeli(this.h.scene) };
+      this.heli.s.leaving = false;
+    } else if (this.heli && this.wanted.stars < HELI_STARS) this.heli.s.leaving = true;
+    if (this.heli) {
+      if (heliStep(this.heli.s, me, dt)) this.heli.look.draw(this.heli.s, me, dt, this.h.night?.() ?? 0);
+      else (this.heli.look.dispose(), (this.heli = null));
+    }
     if (this.wanted.stars) {
-      this.seen = this.police.sees(me.x, me.z);
+      this.seen = this.police.sees(me.x, me.z) || heliSees(this.heli?.s ?? null, me, false);
       // Right after a crime they know where you are (the patrol cars are still on their way).
       const known = this.seen || now - this.crimeAt < 12_000;
       const speed = Math.hypot(me.vx, me.vz);
@@ -676,7 +695,7 @@ export class StreetLife {
       if (out === "lost") this.say("lost");
       // A real chase shaken off: a getaway, paid by how big it was.
       if (out === "lost" && was >= GETAWAY_MIN_STARS) this.onJob?.("getaway", was);
-      if (out === "busted") (this.busts++, this.say("busted"), this.voices.say("copBusted", "cop", () => ({ x: me.x, y: 2, z: me.z }), me));
+      if (out === "busted") (this.busts++, this.say("busted"), this.voices.say("copBusted", "cop", () => ({ x: me.x, y: 2, z: me.z }), me), this.onSetback?.("busted", was));
       if (out) this.police.standDown();
     } else {
       this.seen = false;
@@ -816,6 +835,7 @@ export class StreetLife {
     this.siren.stop();
     this.city.stop();
     this.police.dispose();
+    this.heli?.look.dispose();
     this.fx.dispose();
     this.voices.dispose();
     this.h.traffic.extra = null;

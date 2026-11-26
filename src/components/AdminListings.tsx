@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { askText } from "@/components/Dialogs";
 import { Button } from "@/components/Button";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { REASON_LABEL, type ReportReason } from "@/lib/stores/moderation";
 
 type Pending = { id: string; title: string; description: string; price: number; currency: string; kind: string; reviewNote: string; updatedAt: number; photos: string[]; shop: { id: string; name: string; owner: { username: string } } };
@@ -21,8 +21,8 @@ const call = async <T,>(path: string, body?: unknown): Promise<T> => {
   if (!r.ok) throw new Error(j.error ?? "?");
   return j as T;
 };
-/** A held listing's reasons (" · "-joined keys from preCheck), each translated. */
-const why = (note: string) => note.split(" · ").filter(Boolean).map((k) => t(k)).join(" · ");
+/** A held listing's reasons (dot()-joined keys from preCheck), each translated. */
+const why = (note: string) => note.split(dot()).filter(Boolean).map((k) => t(k)).join(dot());
 
 export default function AdminListings({ onError }: { onError: (m: string) => void }) {
   const [q, setQ] = useState<Queue | null>(null);
@@ -104,7 +104,7 @@ export default function AdminListings({ onError }: { onError: (m: string) => voi
           <div key={`${r.shopId}:${r.target}`} className="adm-listing">
             <div className="grow">
               <b>{r.title ?? `🏪 ${r.shop}`}</b> {r.title && <span className="small muted">· {r.shop}</span>} <span className="chip small">{t("{n} reports", { n: fmtNum(r.n) })}</span>
-              <p className="tiny muted">{Object.entries(r.reasons).map(([k, n]) => `${t(REASON_LABEL[k as ReportReason] ?? k)} ×${fmtNum(n)}`).join(" · ")}</p>
+              <p className="tiny muted">{Object.entries(r.reasons).map(([k, n]) => `${t(REASON_LABEL[k as ReportReason] ?? k)} ×${fmtNum(n)}`).join(dot())}</p>
               {r.notes.map((n, i) => <p key={i} className="tiny">“{n}”</p>)}
             </div>
             <div className="row wrap" style={{ gap: 6 }}>

@@ -37,7 +37,7 @@ export type React = "stay" | "leave" | "flee" | "follow" | "angry" | "wait" | "g
 /** How a follower keeps up: right behind you, a few metres back (normal), well back. */
 export type Pace = "close" | "normal" | "far";
 /** A place they could point to: its name, how far (m) and its bearing from you relative to where you face (degrees, + = right). */
-export type Spot = { name: string; dist: number; rel: number; rating?: number };
+export type Spot = { name: string; dist: number; rel: number; rating?: number; /** What kind of place it is, already in words ("a bakery" — lib/storeKinds.ts KIND_LABEL). */ kind?: string };
 
 export type TalkCtx = {
   act: TalkAct;
@@ -150,6 +150,7 @@ export function reply(c: TalkCtx, seed = 0): Reply {
       const s = c.best;
       if (!s) return r(msg("I don't really know, I'm not from around here."), "stay", 5);
       if (s.rating) return r(msg("Try {place}, {dist} {side} — people give it {rating} stars."), "stay", 6, { place: s.name, dist: c.fmt(s.dist), side: tr(sideOf(s.rel)), rating: s.rating });
+      if (s.kind) return r(msg("Try {place} — the {kind} {dist} {side}. I go there myself."), "stay", 6, { place: s.name, kind: tr(s.kind), dist: c.fmt(s.dist), side: tr(sideOf(s.rel)) });
       return r(msg("Try {place}, {dist} {side}. I go there myself."), "stay", 6, { place: s.name, dist: c.fmt(s.dist), side: tr(sideOf(s.rel)) });
     }
     case "chat":
@@ -172,6 +173,7 @@ export function reply(c: TalkCtx, seed = 0): Reply {
       if (!s) return r(msg("There's no shop right here I'd know."), "stay", 4);
       if (s.item && s.price) return r(pickOf([msg("{place}? Their {item} is the best — about {price} toman."), msg("Get the {item} at {place}, {price} toman. You won't regret it.")], seed + c.id), "stay", 6, { place: s.name, item: s.item, price: s.price });
       if (s.rating) return r(s.rating >= 4 ? msg("{place} is good — people give it {rating} stars.") : msg("{place}? Only {rating} stars… I'd go somewhere else."), "stay", 6, { place: s.name, rating: s.rating });
+      if (s.kind) return r(msg("{place}? It's a {kind}. I've never been in, to be honest."), "stay", 5, { place: s.name, kind: tr(s.kind) });
       return r(msg("{place}, {dist} {side}. I've never been in, to be honest."), "stay", 5, { place: s.name, dist: c.fmt(s.dist), side: tr(sideOf(s.rel)) });
     }
     case "wait":

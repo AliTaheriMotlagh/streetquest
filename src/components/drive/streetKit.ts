@@ -4,6 +4,8 @@
 //    pavement, the odd payphone hood and, in Iran, a saqakhaneh (سقاخانه) — a tiled water shrine;
 //  - green-and-yellow railings down the middle of two-way main roads, gaps at every junction;
 //  - a pedestrian bridge (پل عابر پیاده) over a wide main road, a stair tower on each pavement;
+//  - traffic cones holding a parking spot at the kerb outside shops (a pair or three, as shopkeepers do),
+//    and a plastic chair or two on the pavement where someone sits out;
 //  - at the crossings: white arrow signs naming the cross street (left / right) before the junction
 //    of a main road, and a green overhead sign on a motorway (straight on, and the exit).
 // Runs in the tile worker: no three.js, positions only (local x/z metres, yaw about +y; +z of a
@@ -28,12 +30,16 @@ export type KitCtx = {
   box: (x: number, z: number, hw: number, hd: number, yaw: number, h: number) => Footprint;
   post: (x: number, z: number, r: number, h: number) => Footprint;
 };
-export type KitKind = "postbox" | "power" | "telecom" | "phone" | "saqa" | "rail" | "bridgeDeck" | "bridgeStair";
+export type KitKind = "postbox" | "power" | "telecom" | "phone" | "saqa" | "rail" | "bridgeDeck" | "bridgeStair" | "cone" | "chair";
 export type Kit = Record<KitKind, Spot[]> & { obstacles: Footprint[] };
-export const KIT_KINDS: KitKind[] = ["postbox", "power", "telecom", "phone", "saqa", "rail", "bridgeDeck", "bridgeStair"];
+export const KIT_KINDS: KitKind[] = ["postbox", "power", "telecom", "phone", "saqa", "rail", "bridgeDeck", "bridgeStair", "cone", "chair"];
 
 /** How many of each at most on one tile (lite phones: none of the small kit). */
-export const KIT_CAPS = { postbox: 3, power: 4, telecom: 5, phone: 2, saqa: 1, rail: 220, bridge: 1 } as const;
+export const KIT_CAPS = { postbox: 3, power: 4, telecom: 5, phone: 2, saqa: 1, rail: 220, bridge: 1, cone: 9, chair: 4 } as const;
+/** Cones stand this far inside the asphalt's edge, this far apart along it. */
+export const CONE_IN = 0.45, CONE_GAP = 2.4;
+/** The shortest piece of a shop street that gets cones or chairs (m). */
+export const SIT_OUT_MIN_M = 14;
 /** A railing panel's length (m): the instanced piece in streetKit3d.ts. */
 export const RAIL_M = 2.4;
 /** One piece of a bridge's deck (m) and how high its walkway is. */
@@ -43,7 +49,7 @@ const near = (list: { x: number; z: number }[], x: number, z: number, m: number)
 
 /** Street furniture of the kit along a tile's streets. */
 export function placeKit(c: KitCtx): Kit {
-  const kit: Kit = { postbox: [], power: [], telecom: [], phone: [], saqa: [], rail: [], bridgeDeck: [], bridgeStair: [], obstacles: [] };
+  const kit: Kit = { postbox: [], power: [], telecom: [], phone: [], saqa: [], rail: [], bridgeDeck: [], bridgeStair: [], cone: [], chair: [], obstacles: [] };
   if (c.lite) return kit;
   const { road, rand } = c;
   const used = [...c.taken];
@@ -106,9 +112,44 @@ export function placeKit(c: KitCtx): Kit {
         endRun();
       }
       if (c.iran && r.k === "major" && r.w >= 14 && len >= 90 && kit.bridgeDeck.length === 0) bridge(c, kit, r, x0, z0, ux, uz, len, used);
+      // Real streets are polylines of short pieces: any piece long enough for a row of cones will do.
+      if (r.k === "minor" && r.n && len >= SIT_OUT_MIN_M) sitOut(c, kit, pts, x0, z0, ux, uz, len, r.w, used);
     }
   }
   return kit;
+}
+
+/**
+ * A shop street's own furniture, now and then along a stretch: two or three cones in a row just inside
+ * the kerb (a parking spot kept for someone), and a plastic chair or two at the back of the pavement.
+ */
+function sitOut(c: KitCtx, kit: Kit, pts: Float32Array, x0: number, z0: number, ux: number, uz: number, len: number, w: number, used: { x: number; z: number }[]) {
+  const nx = -uz, nz = ux;
+  if (kit.cone.length < KIT_CAPS.cone && c.rand() < 0.35) {
+    const side = c.rand() < 0.5 ? 1 : -1, n = c.rand() < 0.6 || len < 20 ? 2 : 3;
+    const s0 = 4 + c.rand() * Math.max(0, len - 8 - n * CONE_GAP);
+    const off = w / 2 - CONE_IN;
+    const row: Spot[] = [];
+    for (let i = 0; i < n; i++) {
+      const s = s0 + i * CONE_GAP, x = x0 + ux * s + nx * off * side, z = z0 + uz * s + nz * off * side;
+      // On this street's asphalt, off any other street (not in a junction), clear of the rest.
+      if (c.road.onOther(x, z, 3, pts) || c.blocked(x, z, 0.2) || near(used, x, z, 1.2)) return;
+      row.push({ x, z, yaw: c.rand() * Math.PI * 2 });
+    }
+    if (kit.cone.length + row.length <= KIT_CAPS.cone) (kit.cone.push(...row), used.push(...row));
+  }
+  if (kit.chair.length < KIT_CAPS.chair && c.rand() < 0.25) {
+    const side = c.rand() < 0.5 ? 1 : -1, s = 4 + c.rand() * Math.max(0, len - 8);
+    const back = w / 2 + 1.7;
+    for (let i = 0; i < (c.rand() < 0.5 ? 1 : 2) && kit.chair.length < KIT_CAPS.chair; i++) {
+      const x = x0 + ux * (s + i * 0.7) + nx * back * side, z = z0 + uz * (s + i * 0.7) + nz * back * side;
+      if (c.blocked(x, z, 0.3) || c.road.on(x, z, 0.3) || c.road.onOther(x, z, 3, pts) || near(used, x, z, 0.6)) break;
+      // Facing the street, turned a little each.
+      const p = { x, z, yaw: Math.atan2(-nx * side, -nz * side) + (c.rand() - 0.5) * 0.8 };
+      kit.chair.push(p);
+      used.push(p);
+    }
+  }
 }
 
 /** A footbridge across the middle of this stretch, if both stair towers find room on the pavement. */
@@ -155,12 +196,16 @@ function bridge(c: KitCtx, kit: Kit, r: KitRoad, x0: number, z0: number, ux: num
 }
 
 /** Small kit that a car hits. */
-export function kitObstacles(c: Pick<KitCtx, "box" | "post">, kit: Kit): Footprint[] {
+/** Tags a footprint as loose furniture (lib/street/props.ts): instance `i` of `kind`. Identity when the caller doesn't. */
+export type LooseTag = (f: Footprint, kind: "postbox" | "telecom" | "phone" | "cone" | "chair", i: number) => Footprint;
+export function kitObstacles(c: Pick<KitCtx, "box" | "post">, kit: Kit, loose: LooseTag = (f) => f): Footprint[] {
   const out: Footprint[] = [];
-  for (const p of kit.postbox) out.push(c.post(p.x, p.z, 0.3, 1.6));
+  kit.postbox.forEach((p, i) => out.push(loose(c.post(p.x, p.z, 0.3, 1.6), "postbox", i)));
   for (const p of kit.power) out.push(c.box(p.x, p.z, 0.68, 0.32, p.yaw, 1.7));
-  for (const p of kit.telecom) out.push(c.box(p.x, p.z, 0.48, 0.26, p.yaw, 1.35));
-  for (const p of kit.phone) out.push(c.post(p.x, p.z, 0.32, 2.1));
+  kit.telecom.forEach((p, i) => out.push(loose(c.box(p.x, p.z, 0.48, 0.26, p.yaw, 1.35), "telecom", i)));
+  kit.phone.forEach((p, i) => out.push(loose(c.post(p.x, p.z, 0.32, 2.1), "phone", i)));
+  kit.cone.forEach((p, i) => out.push(loose(c.post(p.x, p.z, 0.18, 0.7), "cone", i)));
+  kit.chair.forEach((p, i) => out.push(loose(c.post(p.x, p.z, 0.26, 0.85), "chair", i)));
   for (const p of kit.saqa) out.push(c.box(p.x, p.z, 0.65, 0.38, p.yaw, 2.3));
   return out;
 }

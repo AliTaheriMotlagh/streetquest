@@ -77,7 +77,7 @@ const drive: Record<string, string> = {
   "Stick: left and right to turn, up and down to climb and descend": "دسته: چپ و راست برای چرخیدن، بالا و پایین برای اوج گرفتن و پایین اومدن",
   "Stick: up to fly forward, down to back off": "دسته: بالا برای رفتن به جلو، پایین برای عقب رفتن",
   PITCH: "جلو / عقب",
-  "TURN · CLIMB": "چرخش · ارتفاع",
+  "TURN · CLIMB": "چرخش • ارتفاع",
   Handbrake: "ترمز دستی",
   Land: "فرود",
   GAS: "گاز",
@@ -89,7 +89,7 @@ const drive: Record<string, string> = {
   // ---- driving & flying
   "Fly low (under {m} m) to pick things up and check in": "برای برداشتن چیزها و چک‌این، پایین پرواز کن (زیر {m} متر)",
   LAND: "فرود",
-  "W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera": "W/↑ جلو · S/↓ عقب · A D/← → چرخش · R/E بالا · F/Q پایین · L فرود · H بوق · C دوربین",
+  "W/↑ forward · S/↓ back · A D/← → turn · R/E climb · F/Q descend · L land · H horn · C camera": "W/↑ جلو • S/↓ عقب • A D/← → چرخش • R/E بالا • F/Q پایین • L فرود • H بوق • C دوربین",
   "Switch to Play from home to drive the 3D city": "برای رانندگی توی شهر سه‌بعدی، «بازی از خونه» رو روشن کن",
 
   // ---- party games
@@ -132,7 +132,7 @@ const drive: Record<string, string> = {
   "Party code": "کد پارتی",
   "You joined the party": "به پارتی پیوستی",
   Invites: "دعوت‌ها",
-  "{name}'s party · {n} players": "پارتی {name} · {n} بازیکن",
+  "{name}'s party · {n} players": "پارتی {name} • {n} بازیکن",
   "Join my party in StreetQuest's 3D city — code {code}": "بیا به پارتی من توی شهر سه‌بعدی استریت‌کوئست — کد {code}",
   "Code copied": "کد کپی شد",
   host: "میزبان",
@@ -237,8 +237,8 @@ const drive: Record<string, string> = {
   "Wanted level {n} of 5": "سطح تعقیب {n} از ۵",
   "Car health {n}%": "سلامت ماشین {n}٪",
   // ---- controllers, slow motion and touch controls (lib/input, lib/abilities, components/drive/gamepad.ts)
-  "🎮 {name} controller connected — {jump} jump · {car} car": "🎮 دسته {name} وصل شد — {jump} پرش · {car} ماشین",
-  "🎮 Controller connected — {jump} jump · {car} car": "🎮 دسته بازی وصل شد — {jump} پرش · {car} ماشین",
+  "🎮 {name} controller connected — {jump} jump · {car} car": "🎮 دسته {name} وصل شد — {jump} پرش • {car} ماشین",
+  "🎮 Controller connected — {jump} jump · {car} car": "🎮 دسته بازی وصل شد — {jump} پرش • {car} ماشین",
   "🎮 Controller disconnected": "🎮 دسته بازی قطع شد",
   FOCUS: "تمرکز",
   NITRO: "نیترو",
@@ -271,7 +271,7 @@ const drive: Record<string, string> = {
   "Bigger map": "نقشهٔ بزرگ‌تر",
   "Bigger map (M)": "نقشهٔ بزرگ‌تر (M)",
   "Open the full map": "باز کردن نقشهٔ کامل",
-  "Menu not online · usually here:": "منو آنلاین نیست · معمولاً این‌جا:",
+  "Menu not online · usually here:": "منو آنلاین نیست • معمولاً این‌جا:",
   "Looking it up… usually here:": "در حال جست‌وجو… معمولاً این‌جا:",
   "Their menu isn't online yet. Usually here:": "منوی این‌جا هنوز آنلاین نیست. معمولاً دارن:",
   "Search for the menu": "جست‌وجوی منو",

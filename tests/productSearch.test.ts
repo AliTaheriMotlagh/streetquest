@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { offset } from "@/lib/geo";
 import type { Deal, Menu } from "@/lib/localData";
-import { basalamHits, dealHits, filterProducts, menuHits, menusToRead, offOf, onceTitle, priceSteps, productRank, spreadStores, torobHits, type ProductHit } from "@/lib/productSearch";
+import { basalamHits, dealHits, filterProducts, playerHits, productSourcesAt, LOCAL_SOURCES, menuHits, menusToRead, offOf, onceTitle, priceSteps, productRank, spreadStores, torobHits, type ProductHit } from "@/lib/productSearch";
 
 const here = { lat: 35.7355, lng: 51.531 };
 const menu = (code: string, title: string, m: number, rating: number, items: [string, number, number?, string?][]): Menu => ({
@@ -106,4 +106,21 @@ it("a search's gathered hits are remembered by words, sources and spot (~11 m)",
   assert.equal(gatherKey(at, "  Pizza  Pepperoni ", ["torob", "food"]), gatherKey({ lat: 35.74484, lng: 51.37529 }, "pizza pepperoni", ["food", "torob"]));
   assert.notEqual(gatherKey(at, "pizza", ["food"]), gatherKey({ lat: 35.7458, lng: 51.3753 }, "pizza", ["food"]));
   assert.notEqual(gatherKey(at, "pizza", ["food"]), gatherKey(at, "pizza", ["food", "deal"]));
+});
+
+it("players' shops: a source everywhere (also without words); toman prices only, the shop's page, distance", () => {
+  assert.ok(productSourcesAt({ lat: 52.5, lng: 13.4 }).includes("player"), "player shops answer anywhere");
+  assert.ok(LOCAL_SOURCES.includes("player"));
+  const shop = { id: "sh1", name: "Sara's Corner", lat: 35.7, lng: 51.4 };
+  const [toman, coins] = playerHits(
+    [
+      { id: "p1", title: "Scarf", description: "Hand-made", price: 200_000, priceNow: 150_000, currency: "toman", photoId: "ph1", shop },
+      { id: "p2", title: "Badge", description: "", price: 120, priceNow: 120, currency: "coins", photoId: null, shop },
+    ],
+    { lat: 35.701, lng: 51.4 },
+  );
+  assert.deepEqual([toman.id, toman.source, toman.price, toman.was, toman.photo, toman.url, toman.store, toman.about], ["player:p1", "player", 150_000, 200_000, "/shop-img/ph1", "/s/sh1", "Sara's Corner", "Hand-made"]);
+  assert.ok(toman.dist! > 100 && toman.dist! < 120);
+  assert.deepEqual([coins.price, coins.was, coins.photo], [0, undefined, ""], "coin prices aren't comparable with toman");
+  assert.equal(playerHits([{ id: "p3", title: "x", description: "", price: 1, priceNow: 1, currency: "toman", photoId: null, shop }], null)[0].dist, undefined);
 });

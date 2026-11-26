@@ -6,7 +6,7 @@ import { DialogHost } from "@/components/Dialogs";
 import { I18nProvider } from "@/components/I18nProvider";
 import { ClientLog } from "@/components/ClientLog";
 import { Pwa } from "@/components/Pwa";
-import { dirOf, LOCALE_META } from "@/lib/i18n";
+import { dirOf, LOCALE_META, dot } from "@/lib/i18n";
 import { SITE, siteText } from "@/lib/site";
 import { ALT_NAMES, siteVerification } from "@/lib/seo";
 import { getT, pageLocale } from "@/server/i18n";
@@ -47,7 +47,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(SITE.url),
     // Persian titles carry the brand in Persian letters too: «استریت کوئست» is what Persian speakers type.
-    title: locale === "fa" ? { default: `${ALT_NAMES[0]} (${SITE.name}) — ${s.tagline}`, template: `%s · ${ALT_NAMES[0]}` } : { default: `${SITE.name} — ${s.tagline}`, template: `%s · ${SITE.name}` },
+    title: locale === "fa" ? { default: `${ALT_NAMES[0]} (${SITE.name}) — ${s.tagline}`, template: `%s${dot(locale)}${ALT_NAMES[0]}` } : { default: `${SITE.name} — ${s.tagline}`, template: `%s${dot(locale)}${SITE.name}` },
     description: s.description,
     keywords: s.keywords,
     applicationName: SITE.name,

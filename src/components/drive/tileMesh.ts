@@ -1649,7 +1649,7 @@ export function buildTileArrays(tile: CityTile, origin: LatLng, style: Style, li
   for (const k of kiosks) obstacles.push(box(k.x, k.z, 1.0, 0.75, k.yaw, 2.4));
   dumpsters.forEach((d, i) => obstacles.push(loose(box(d.x, d.z, 0.9, 0.6, d.yaw, 1.35), "dumpster", i)));
   for (const g of goalPosts) obstacles.push(post(g.x, g.z, 0.08, g.h));
-  if (iranKit) obstacles.push(...iranKit.obstacles, ...kitObstacles({ box, post }, iranKit));
+  if (iranKit) obstacles.push(...iranKit.obstacles, ...kitObstacles({ box, post }, iranKit, loose));
 
   // Bridges: parapets, deck edges and piers on every bridge road; towers and cables over the long ones.
   drawBridges(tile, frame, unpacked, trim, walls, lite);

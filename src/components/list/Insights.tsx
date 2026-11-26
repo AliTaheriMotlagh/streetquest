@@ -7,7 +7,7 @@
 //    histogram of prices — a tap on a bar caps the price there (again: lifts the cap).
 // Styles: app/list.css (.ins-*). Still when the device asks for less motion.
 import type { CSSProperties, ReactNode } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { REST, type Bands, type ProductGlance, type Share, type StoreGlance } from "@/lib/insights";
 
@@ -45,7 +45,7 @@ export function ShareBar<K extends string>({ title, segs, onPick }: { title: str
     <div className="ins-share" role="group" aria-label={title}>
       <div className="ins-share-bar">
         {segs.map((s) => (
-          <button key={s.key} type="button" className={s.on ? "on" : ""} style={{ flexGrow: s.pct, background: s.color }} title={`${s.label} · ${fmtNum(s.n)}`} aria-label={`${s.label} ${fmtNum(s.n)}`} disabled={s.key === REST} onClick={() => pick(s.key)} />
+          <button key={s.key} type="button" className={s.on ? "on" : ""} style={{ flexGrow: s.pct, background: s.color }} title={`${s.label}${dot()}${fmtNum(s.n)}`} aria-label={`${s.label} ${fmtNum(s.n)}`} disabled={s.key === REST} onClick={() => pick(s.key)} />
         ))}
       </div>
       <div className="ins-legend">

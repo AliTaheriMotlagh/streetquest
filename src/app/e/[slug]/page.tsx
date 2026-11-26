@@ -1,4 +1,5 @@
 // Public, indexable event page — the shareable link for marketing & invites.
+import { dot } from "@/lib/i18n";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: e.title,
     description,
     alternates: pageAlternates(`/e/${e.slug}`, locale),
-    openGraph: { title: `${e.title} · ${SITE.name}`, description, type: "website", url: `/e/${e.slug}` },
+    openGraph: { title: `${e.title}${dot()}${SITE.name}`, description, type: "website", url: `/e/${e.slug}` },
     robots: { index: e.isPublic, follow: true },
   };
 }

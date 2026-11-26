@@ -12,19 +12,20 @@ import { normName, type Deal, type Menu, type TorobItem, type Vendor } from "./l
 import type { Product as BasalamProduct } from "./stores/directory";
 import { alternatives, nearWord } from "./search/query";
 
-export type ProductSource = "food" | "torob" | "basalam" | "deal";
+export type ProductSource = "food" | "torob" | "basalam" | "deal" | "player";
 export const PRODUCT_SOURCES: Record<ProductSource, { emoji: string; label: string; site: string }> = {
   food: { emoji: "🍽️", label: msg("Food near you"), site: msg("Snappfood") },
   deal: { emoji: "🎟️", label: msg("Deals near you"), site: msg("Takhfifan") },
   torob: { emoji: "🏷️", label: msg("Shops' prices"), site: msg("Torob") },
   basalam: { emoji: "🧺", label: msg("Home-made & local"), site: msg("Basalam") },
+  player: { emoji: "🏪", label: msg("Players' shops near you"), site: msg("Player shops") },
 };
 export const PRODUCT_SOURCE_KEYS = Object.keys(PRODUCT_SOURCES) as [ProductSource, ...ProductSource[]];
 /** The sources that know where their stores are (they answer without any words typed: "anything under…"). */
-export const LOCAL_SOURCES: ProductSource[] = ["food", "deal"];
+export const LOCAL_SOURCES: ProductSource[] = ["food", "deal", "player"];
 /** The sources that answer at a point: food is Snappfood in Iran and Yemeksepeti in Turkey; the rest are Iran's. */
 export const productSourcesAt = (at: LatLng | null | undefined): ProductSource[] =>
-  PRODUCT_SOURCE_KEYS.filter((s) => (s === "food" ? !!deliveryAt(at) : sourceAt(s === "deal" ? "takhfifan" : s, at)));
+  PRODUCT_SOURCE_KEYS.filter((s) => (s === "player" ? true : s === "food" ? !!deliveryAt(at) : sourceAt(s === "deal" ? "takhfifan" : s, at)));
 
 export type ProductHit = {
   /** Unique in a result: `<source>:<its id>`. */
@@ -306,4 +307,27 @@ export function sameProducts(hits: ProductHit[], alike = 0.6, max = 8): SameProd
     out.push({ title: group[0].title, hits: group, min: lo, max: hi, stores, save: hi > 0 ? Math.round((1 - lo / hi) * 100) : 0 });
   }
   return out.sort((x, y) => y.save - x.save || y.stores - x.stores).slice(0, max);
+}
+
+/** A player's product in a shop that's open (server/productSearch.ts reads them; prices in toman or coins). */
+export type PlayerRow = { id: string; title: string; description: string; price: number; priceNow: number; currency: string; photoId: string | null; shop: { id: string; name: string; lat: number; lng: number } };
+/** Players' shop products as hits: only toman-priced ones carry a price (coins aren't comparable), the shop's page as the link. */
+export function playerHits(rows: PlayerRow[], here: LatLng | null): ProductHit[] {
+  return rows.map((r) => {
+    const toman = r.currency === "toman";
+    return {
+      id: `player:${r.id}`,
+      source: "player" as const,
+      title: r.title,
+      ...(r.description ? { about: r.description.slice(0, 140) } : {}),
+      price: toman ? r.priceNow : 0,
+      ...(toman && r.price > r.priceNow ? { was: r.price } : {}),
+      photo: r.photoId ? `/shop-img/${r.photoId}` : "",
+      store: r.shop.name,
+      lat: r.shop.lat,
+      lng: r.shop.lng,
+      ...(here ? { dist: Math.round(distanceM(here, r.shop)) } : {}),
+      url: `/s/${r.shop.id}`,
+    };
+  });
 }

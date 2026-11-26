@@ -1,7 +1,7 @@
 // Ad slots (lib/ads/slot.ts): the fallback chain per country, prices, links, weighted picks.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { adChain, adPrice, cleanAdUrl, pickHouse } from "@/lib/ads/slot";
+import { adChain, adPositions, adPrice, cleanAdUrl, pickHouse } from "@/lib/ads/slot";
 
 const all = { yektanet: "https://cdn.example/y.js", tapsell: "https://cdn.example/t.js", adsense: { client: "ca-pub-1234567890", slot: "12345" } };
 
@@ -26,5 +26,16 @@ describe("ad slots", () => {
     assert.equal(pickHouse(ads, () => 0)?.id, "b");
     assert.equal(pickHouse(ads, () => 0.99)?.id, "c");
     assert.equal(pickHouse([{ views: 10, shown: 10 }]), null);
+  });
+});
+
+describe("ad positions in a list", () => {
+  it("after the third row (the last in a short list), then every 12th, at most 4", () => {
+    assert.deepEqual([...adPositions(0)], []);
+    assert.deepEqual([...adPositions(2)], [1]);
+    assert.deepEqual([...adPositions(10)], [2]);
+    assert.deepEqual([...adPositions(30)], [2, 14, 26]);
+    assert.deepEqual([...adPositions(200)].length, 4);
+    assert.deepEqual([...adPositions(40, 4, 16)], [3, 19, 35]);
   });
 });

@@ -111,7 +111,7 @@ a { color: var(--sky); }
 .hud-status .home-chip { color: var(--leaf); }
 
 /* Ready tray: one line under the profile card for everything waiting on you. */
-.ready-tray, .ready-wrap { position: absolute; top: calc(66px + var(--safe-t)); inset-inline-start: calc(10px + var(--safe-s)); z-index: 640; }
+.ready-tray, .ready-wrap { position: absolute; top: calc(66px + var(--safe-t)); inset-inline-start: calc(10px + var(--safe-s)); z-index: var(--z-tray); }
 .ready-wrap .ready-tray { position: relative; top: 0; inset-inline-start: 0; }
 .ready-tray {
   display: flex; align-items: center; gap: 9px; max-width: min(300px, 62vw); min-height: 42px; padding: 5px 10px 5px 5px; padding-inline: 5px 10px;
@@ -277,7 +277,7 @@ a { color: var(--sky); }
 .modal h2 { font-family: var(--title); font-size: 22px; letter-spacing: 0.03em; }
 
 /* ---------- Rewards: particles, counters, the reward card ---------- */
-.fx-layer { position: fixed; inset: 0; z-index: 4100; pointer-events: none; overflow: hidden; }
+.fx-layer { position: fixed; inset: 0; z-index: calc(var(--z-popup) + 100); pointer-events: none; overflow: hidden; }
 .fx-p { position: absolute; left: 0; top: 0; width: 28px; height: 28px; margin: -14px 0 0 -14px; will-change: transform, opacity; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); }
 .fx-p.fx-gem { width: 24px; height: 24px; margin: -12px 0 0 -12px; }
 .fx-p.fx-xp { width: 20px; height: 20px; margin: -10px 0 0 -10px; filter: drop-shadow(0 0 6px rgba(164, 139, 250, 0.8)); }
@@ -288,7 +288,7 @@ a { color: var(--sky); }
 @keyframes xpBump { 40% { transform: scaleY(2); box-shadow: 0 0 10px rgba(164, 139, 250, 0.8); } }
 
 .cel {
-  position: fixed; inset: 0; z-index: 3900; display: grid; place-items: center; padding: 16px; cursor: pointer;
+  position: fixed; inset: 0; z-index: var(--z-celebrate); display: grid; place-items: center; padding: 16px; cursor: pointer;
   background: radial-gradient(ellipse at 50% 42%, rgba(240, 192, 90, 0.16), rgba(6, 8, 13, 0.88) 62%);
   animation: fadein 0.2s ease-out;
 }
@@ -391,7 +391,7 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
 .more-menu .mm-sub { font-weight: 500; color: var(--faint); font-size: 11.5px; }
 
 /* ---------- requests waiting on an answer (game/Asks.tsx): over the map and the 3D city ---------- */
-.asks { position: fixed; left: 0; right: 0; bottom: calc(84px + var(--safe-b, 0px)); z-index: 3200; display: flex; flex-direction: column; gap: 8px; padding: 0 10px; pointer-events: none; }
+.asks { position: fixed; left: 0; right: 0; bottom: calc(84px + var(--safe-b, 0px)); z-index: var(--z-asks); display: flex; flex-direction: column; gap: 8px; padding: 0 10px; pointer-events: none; }
 .ask { pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: 520px; margin: 0 auto; width: 100%; padding: 10px 12px; border-radius: 14px; background: var(--panel, #1b1b2a); color: var(--text, #fff); box-shadow: 0 6px 24px rgb(0 0 0 / 0.35); animation: ask-in 0.25s ease-out; }
 .ask-av { font-size: 26px; line-height: 1; }
 .ask-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -406,6 +406,13 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
 .tr-line { display: grid; gap: 6px; padding: 10px 12px; }
 .tr-line-head { gap: 8px; align-items: center; width: 100%; background: none; border: 0; color: inherit; font: inherit; text-align: start; padding: 0; }
 .tr-dep { display: flex; gap: 8px; align-items: baseline; }
+.tr-exits { display: grid; gap: 6px; padding: 10px 12px; }
+.tr-exits ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tr-exits li { gap: 8px; align-items: center; }
+.tr-exit-ref { min-width: 1.8em; text-align: center; font-weight: 700; border-radius: 6px; padding: 1px 6px; background: #ffd400; color: #111; }
+.mt-opts { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.mt-opt { flex: 0 0 auto; display: grid; gap: 1px; text-align: start; padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: inherit; font: inherit; }
+.mt-opt[aria-pressed="true"] { border-color: var(--sky, #4cb8ff); background: rgba(76,184,255,.16); }
 .tr-arrivals, .tr-found, .tr-legs, .tr-guide { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
 .tr-arrivals li { gap: 8px; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--line-soft, rgba(127, 127, 127, .18)); }
 /* The bus stop card: one row per line and way — where it goes, when, today's times, the stops ahead. */
@@ -437,7 +444,7 @@ html.lite .cel-glow, html.lite .cel-ring { animation: none; }
 .tr-strip li::before { content: ""; position: absolute; inset-inline-start: -8px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--bg, #fff); border: 3px solid var(--line, #888); box-sizing: border-box; }
 
 /* ---------- a film's trailer (game/Trailer.tsx): over everything, the video as wide as the phone ---------- */
-.trailer-overlay { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .78); }
+.trailer-overlay { position: fixed; inset: 0; z-index: calc(var(--z-screen) + 100); display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .78); }
 .trailer-box { display: grid; gap: 10px; width: min(640px, 100%); padding: 12px; border-radius: 14px; background: var(--panel, #15161c); color: var(--text, #fff); }
 .trailer-box video { width: 100%; max-height: 70vh; border-radius: 10px; background: #000; }
 .film-trailer { justify-self: start; margin: 2px 0 4px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 999px; background: none; color: inherit; font: inherit; font-size: 12px; opacity: .85; }

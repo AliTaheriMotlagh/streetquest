@@ -3,7 +3,7 @@
 // are up to — posts, photos, check-ins at real places, deliveries and store visits —
 // plus profiles, follows, likes and comments. Crew chat lives one tap away.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { PLACE_CATS, type PlaceCat } from "@/lib/places";
 import { askConfirm } from "@/components/Dialogs";
@@ -171,7 +171,7 @@ function PromotedCard({ p }: { p: Promoted }) {
         <div className="icon-tile">{p.emoji}</div>
         <div className="grow">
           <b>{p.name}</b>
-          <div className="small">🎯 {p.campaign.title}{p.campaign.offer ? ` · 🎟️ ${p.campaign.offer}` : ""}</div>
+          <div className="small">🎯 {p.campaign.title}{p.campaign.offer ? `${dot()}🎟️ ${p.campaign.offer}` : ""}</div>
         </div>
         <span className="tag" style={{ color: "var(--yellow)" }}>+{fmtNum(p.campaign.rewardCoins)} 🪙</span>
       </div>
@@ -219,8 +219,8 @@ export function PostCard({ p, onOpen, onGone }: { p: PostView; onOpen: (id: stri
           <button className="link" onClick={() => onOpen(p.author.id)}><b>{p.author.username}</b></button> <span className="lvl-pill">{fmtNum(p.author.level)}</span>
           <div className="small muted">
             {fmtTime(p.createdAt)}
-            {p.place && <> · <span className="place-chip">{catEmoji(p.place.cat)} {p.place.name}</span></>}
-            {p.distanceM != null && !p.place && <> · {formatDistance(p.distanceM)}</>}
+            {p.place && <>{dot()}<span className="place-chip">{catEmoji(p.place.cat)} {p.place.name}</span></>}
+            {p.distanceM != null && !p.place && <>{dot()}{formatDistance(p.distanceM)}</>}
           </div>
         </div>
         <button className="close" onClick={menu} aria-label={p.mine ? t("Delete") : t("Report")} title={p.mine ? t("Delete") : t("Report")}>⋯</button>

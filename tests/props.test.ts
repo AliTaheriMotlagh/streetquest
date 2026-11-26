@@ -41,8 +41,26 @@ describe("knockable props", () => {
     assert.equal(b.tip, 1);
     assert.ok(b.z < -5);
   });
+  it("a cone or a chair flies and falls at a touch; a bolted post box only falls to a real hit", () => {
+    assert.equal(hit("cone", 2).k.tipped, true);
+    assert.equal(hit("chair", 2).k.tipped, true);
+    assert.ok(-hit("cone", 8).b.vz > 8, "a cone flies off faster than the car");
+    assert.equal(hit("postbox", 0.6).k.tipped, false);
+    assert.equal(hit("postbox", 8).k.tipped, true);
+    assert.equal(hit("cone", 40).k.broke, false, "cones never break");
+    assert.equal(hit("telecom", 25).k.broke, true);
+  });
+  it("a body at rest can be hit again (it stays a body after it stops)", () => {
+    const { b } = hit("bin", 6);
+    while (stepBody(b, 1 / 60));
+    const x = b.x, z = b.z;
+    const car = carRigid(x, z + 2.5, 0, 0, -6, PRIDE, 3.9, 1.6);
+    knock(b, car, { nx: 0, nz: -1, depth: 0.05, px: x, pz: z + 0.3 });
+    assert.ok(b.vz < -1, "moving again");
+  });
   it("recognises a loose obstacle's ref", () => {
     assert.ok(isLooseRef({ loose: "bin", key: "1_2", i: 0 }));
+    assert.ok(isLooseRef({ loose: "cone", key: "1_2", i: 3 }));
     assert.ok(!isLooseRef({ loose: "tree", key: "1_2", i: 0 }));
     assert.ok(!isLooseRef(undefined));
   });

@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { decodePhoto, MAX_PHOTO_DATA_URL } from "@/server/photos";
 import { PLACE_CAT_KEYS, PLACE_CATS } from "@/lib/places";
 import { S } from "@/lib/settings";
-import { t } from "@/lib/i18n";
+import { t, dot } from "@/lib/i18n";
 import { requireUser } from "@/server/auth";
 import { actionRoute, body, HttpError, route } from "@/server/http";
 import { lastKnownLocation } from "@/server/rewards";
@@ -229,7 +229,7 @@ export const POST = actionRoute(async (req) => {
   if (u.role !== "ADMIN") throw new HttpError(403, t("Admins only"));
   if (d.plan) {
     await extendPlan(d.businessId, d.plan, d.days ?? 30);
-    await audit(u, "admin.plan", { type: "business", id: d.businessId }, `${d.plan} · ${d.days ?? 30} days`);
+    await audit(u, "admin.plan", { type: "business", id: d.businessId }, `${d.plan}${dot()}${d.days ?? 30} days`);
   }
   if (d.verified !== undefined) {
     await prisma.business.update({ where: { id: d.businessId }, data: { verified: d.verified, verifiedAt: d.verified ? new Date() : null, verifiedHow: d.verified ? "admin" : "" } });

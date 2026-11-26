@@ -4,7 +4,7 @@ import L from "leaflet";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { PLACE_CATS } from "@/lib/places";
-import { fmtNum, getLocale, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { distanceM } from "@/lib/geo";
 import { EXPLORE_ZOOM } from "@/lib/explore";
@@ -13,6 +13,7 @@ import { VENDOR_KINDS, type Deal, type DivarArea, type TorobPlace, type Vendor, 
 import type { Cinema } from "@/lib/cinema";
 import type { LiveBus } from "@/lib/transit/iett";
 import type { BusStop, City, Station } from "@/lib/transit/network";
+import type { MetroPath } from "@/lib/transit/draw";
 import type { LiveRoute } from "@/server/traffic";
 import { api, type GpsView, type LatLng, type Me, type Selected, type World, type WorldPlayer, type WorldSpot } from "./client";
 import { esc, icon } from "./mapIcons";
@@ -200,6 +201,9 @@ function GameMap({ world, me, follow, picking, onUnfollow, onFollow, onMapClick,
         {travel && <TravelLayer />}
         {rail && <RailLayer />}
         {routes && <TripRoutes />}
+        {transit?.paths.map((p) => (
+          <Polyline key={p.id} positions={p.points} interactive={false} pathOptions={{ color: p.colour, weight: p.weight, opacity: p.opacity, lineCap: "round", lineJoin: "round" }} />
+        ))}
         {onLongPress && !picking && <LongPress onLongPress={onLongPress} />}
         {siktir && <SiktirLayer spots={siktir} onSelect={onSelect} />}
         {vasatyab && <VasatyabLayer view={vasatyab} />}
@@ -412,7 +416,8 @@ const VENDOR_TYPE: Record<VendorKind, StoreType> = { food: "food", cafe: "cafe",
 const AREA_COLOR = { divar: "#c0392b", sheypoor: "#7a3cff" };
 
 /** Every place-like thing as a pin: Snappfood vendors, real places, Torob walk-ins, directory stores, cinemas, deals. Colour = what kind of place. */
-export type TransitPins = { city: City; stations: { s: Station; colour: string }[]; stops: BusStop[]; buses: LiveBus[] };
+/** `paths`: the metro lines (lib/transit/draw.ts), bold/faded around the tapped station. */
+export type TransitPins = { city: City; stations: { s: Station; colour: string }[]; stops: BusStop[]; buses: LiveBus[]; paths: MetroPath[] };
 
 function placeItems({ vendors, spots, torob, dir, cinemas, deals, transit }: Pick<Props, "vendors" | "spots" | "torob" | "dir" | "cinemas" | "deals" | "transit">): { cinemas: Item[]; places: Item[] } {
   const places: Item[] = [];

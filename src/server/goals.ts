@@ -6,7 +6,7 @@ import { prisma } from "../lib/db";
 import { pulse } from "./pulse";
 import { GOAL_METRICS, S, type GoalDef, type GoalReward, type MilestoneDef } from "../lib/settings";
 import { HttpError } from "./http";
-import { isLocale, translate, t, type Vars } from "../lib/i18n";
+import { isLocale, translate, t, type Vars, dot } from "../lib/i18n";
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
@@ -71,7 +71,7 @@ async function announce(title: string, body: string, vars: Vars) {
   await pulse(active.map((a) => a.id));
 }
 
-const fmtReward = (r: GoalReward, mult = 1) => [r.xp && t("{n} XP", { n: r.xp * mult }), r.coins && `${r.coins * mult} 🪙`, r.gems && `${r.gems * mult} 💎`].filter(Boolean).join(" · ");
+const fmtReward = (r: GoalReward, mult = 1) => [r.xp && t("{n} XP", { n: r.xp * mult }), r.coins && `${r.coins * mult} 🪙`, r.gems && `${r.gems * mult} 💎`].filter(Boolean).join(dot());
 
 export async function goalsView(u: Pick<User, "id" | "faction">) {
   const wk = weekKey();
@@ -150,7 +150,7 @@ export async function claimGoal(u: Pick<User, "id" | "faction">, key: string): P
     if (!p || !p.tiers[i]) throw new HttpError(404, t("Goal not found"));
     if (!p.tiers[i].done) throw new HttpError(400, t("Not reached yet"));
     reward = { xp: (p.reward.xp ?? 0) * (i + 1), coins: (p.reward.coins ?? 0) * (i + 1), gems: (p.reward.gems ?? 0) * (i + 1) };
-    title = `${p.title} · tier ${i + 1}`;
+    title = `${p.title}${dot()}tier ${i + 1}`;
   }
   if (!reward) throw new HttpError(404, t("Goal not found"));
   try {

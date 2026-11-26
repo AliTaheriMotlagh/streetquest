@@ -7,7 +7,7 @@
 // The logic is lib/transit/network.ts; this only reads the file and writes the result.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildBuses, buildNetwork, CITIES, modeOf, type City, type RawNode } from "../src/lib/transit/network";
+import { attachExits, buildBuses, buildNetwork, CITIES, isEntrance, modeOf, type City, type RawNode } from "../src/lib/transit/network";
 import { parseOsmCinema } from "../src/lib/cinemaTr";
 import { readOsm, readRelations } from "./osm-pbf";
 
@@ -21,14 +21,15 @@ const inside = (lat: number, lon: number) => lat >= s && lat <= n && lon >= w &&
 const t0 = Date.now();
 const { relations, nodes } = readRelations(path, {
   rel: (t) => (t.type === "route" && (!!modeOf(t) || t.route === "bus" || t.route === "trolleybus")) || (t.type === "route_master" && /^(subway|light_rail|monorail|tram|funicular|train|bus|trolleybus)$/.test(t.route ?? "")),
-  node: () => false,
+  node: (t) => isEntrance(t),
   inside,
 });
 // Only stops inside the city count (a country's file has every city's routes).
 const local = new Map<number, RawNode>();
 for (const [id, nd] of nodes) if (inside(nd.lat, nd.lon)) local.set(id, { id, lat: nd.lat, lon: nd.lon, tags: nd.tags });
 const built = new Date().toISOString().slice(0, 10);
-const metro = buildNetwork(city, relations, local, built);
+// Entrances come in as tagged nodes of their own (not route members).
+const metro = attachExits(buildNetwork(city, relations, local, built), [...local.values()].filter((nd) => isEntrance(nd.tags)));
 const bus = buildBuses(city, relations, local, built);
 const dir = join(process.cwd(), "src/data/transit");
 mkdirSync(dir, { recursive: true });
@@ -44,5 +45,5 @@ const cin = readOsm(path, { inside, node: (t) => t.amenity === "cinema", way: (t
   .filter((c) => !!c);
 writeFileSync(join(dir, `${city}-cinemas.json`), JSON.stringify(cin));
 console.log(
-  `${city}: ${relations.length} relations read in ${((Date.now() - t0) / 1000).toFixed(0)} s → ${metro.lines.length} rail lines (${metro.lines.map((l) => l.ref).join(" ")}), ${metro.stations.length} stations, ${bus.stops.length} bus stops, ${Object.keys(bus.lines).length} bus lines, ${cin.length} cinemas`,
+  `${city}: ${relations.length} relations read in ${((Date.now() - t0) / 1000).toFixed(0)} s → ${metro.lines.length} rail lines (${metro.lines.map((l) => l.ref).join(" ")}), ${metro.stations.length} stations (${metro.stations.reduce((k, x) => k + (x.exits?.length ?? 0), 0)} exits), ${bus.stops.length} bus stops, ${Object.keys(bus.lines).length} bus lines, ${cin.length} cinemas`,
 );

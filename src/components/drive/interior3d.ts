@@ -7,6 +7,7 @@
 // thing to look at it (the HUD shows it and offers to put it in the basket), tap the keeper to talk, walk out of the
 // door (or tap it) to leave. One scene with its own camera: Drive draws it instead of the city while you're in here.
 // Cheap: ~150 draw calls for a full supermarket, no shadows, a few point lights, one room environment map (not on lite).
+import { floorGrid, keeperSpot, startSpot, step as scanStep, type FloorGrid } from "@/lib/scanFloor";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -118,6 +119,28 @@ function wallTex(kind: StoreKind, color: string) {
   }, true);
 }
 
+/** Every vertex of a loaded model, in world space (x, y, z triples) — at most ~200k, evenly skipped beyond that. */
+function scanPoints(g: THREE.Object3D): Float32Array {
+  const meshes: THREE.Mesh[] = [];
+  let total = 0;
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry?.attributes.position) (meshes.push(m), (total += m.geometry.attributes.position.count));
+  });
+  const every = Math.max(1, Math.ceil(total / 200_000));
+  const out = new Float32Array(Math.ceil(total / every) * 3 + 3);
+  const v = new THREE.Vector3();
+  let n = 0;
+  for (const m of meshes) {
+    const pos = m.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i += every) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+      out[n++] = v.x, out[n++] = v.y, out[n++] = v.z;
+    }
+  }
+  return out.subarray(0, n);
+}
+
 export class Interior {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(64, 1, 0.05, 80);
@@ -127,6 +150,10 @@ export class Interior {
   /** The store's scan: its model, and the floor area you can walk on. */
   private scan: THREE.Group | null = null;
   private scanBox: { x0: number; x1: number; z0: number; z1: number; floor: number } | null = null;
+  /** The scan's walkable floor (lib/scanFloor.ts): its shelves and walls block. */
+  private scanFloor: FloorGrid | null = null;
+  /** The keeper and their stand live here (not in `root`), so they stay when the scan replaces the room. */
+  private keeperRoot = new THREE.Group();
   /** Walked out of the door. */
   onLeave: (() => void) | null = null;
   private x: number;
@@ -208,14 +235,23 @@ export class Interior {
         const sx = (b.max.x - b.min.x) / 2, sz = (b.max.z - b.min.z) / 2;
         this.scanBox = { x0: -sx + 0.3, x1: sx - 0.3, z0: -sz + 0.3, z1: sz - 0.3, floor: 0 };
         this.scene.add(g);
+        g.updateMatrixWorld(true);
+        this.scanFloor = floorGrid(scanPoints(g), { x0: -sx, x1: sx, z0: -sz, z1: sz });
         this.scan = g;
         this.root.visible = false;
         this.scene.add(new THREE.HemisphereLight("#ffffff", "#8a8070", 1.6));
-        this.x = 0;
-        this.z = Math.max(this.scanBox.z0, this.scanBox.z1 - 0.8);
+        const start = startSpot(this.scanFloor);
+        this.x = start?.x ?? 0;
+        this.z = start?.z ?? Math.max(this.scanBox.z0, this.scanBox.z1 - 0.8);
         this.yaw = 0;
         this.goal = null;
         this.pickables.push(g);
+        // The keeper moves to the back of the scanned room, facing the door.
+        const kp = keeperSpot(this.scanFloor);
+        if (kp) {
+          this.keeperRoot.position.set(kp.x - this.keeperAt.x, 0, kp.z - this.keeperAt.z);
+          this.keeperAt.set(kp.x, 0, kp.z);
+        } else this.keeperRoot.visible = false;
       })
       .catch(() => {});
   }
@@ -820,7 +856,8 @@ export class Interior {
     head.scale.setScalar(0.22);
     stand.userData.keeper = true;
     stand.traverse((c) => (c.userData.keeper = true));
-    this.root.add(stand);
+    if (!this.keeperRoot.parent) this.scene.add(this.keeperRoot);
+    this.keeperRoot.add(stand);
     this.pickables.push(stand);
     loadPeople()
       .then((tpls) => {
@@ -829,7 +866,7 @@ export class Interior {
         const p = new PersonModel(tpls[h % tpls.length], (h >> 3) % TINT_COUNT);
         p.group.position.set(x, 0, z);
         p.group.traverse((c) => (c.userData.keeper = true));
-        this.root.add(p.group);
+        this.keeperRoot.add(p.group);
         this.pickables.push(p.group);
         this.keeper = p;
         stand.removeFromParent();
@@ -921,8 +958,11 @@ export class Interior {
     }
     if (this.scanBox && (nx !== this.x || nz !== this.z)) {
       const b = this.scanBox;
-      this.x = Math.max(b.x0, Math.min(b.x1, nx));
-      this.z = Math.max(b.z0, Math.min(b.z1, nz));
+      // On the scan's own floor (shelves and walls block, sliding along them); a bare box while it isn't known.
+      const p = this.scanFloor ? scanStep(this.scanFloor, this.x, this.z, nx, nz) : { x: Math.max(b.x0, Math.min(b.x1, nx)), z: Math.max(b.z0, Math.min(b.z1, nz)) };
+      if (this.goal && p.x === this.x && p.z === this.z) this.goal = null; // stuck: stop
+      this.x = p.x;
+      this.z = p.z;
       if (this.goal && Math.hypot(this.goal.x - this.x, this.goal.z - this.z) < 0.03 && this.goal.yaw == null) this.goal = null;
     } else if (nx !== this.x || nz !== this.z) {
       // Out through the door.

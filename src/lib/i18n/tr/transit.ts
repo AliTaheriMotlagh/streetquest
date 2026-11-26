@@ -64,5 +64,17 @@ const transit: Record<string, string> = {
   "Pay with the city's transit card or a single ticket from the station's machine.": "Şehrin ulaşım kartıyla ya da istasyondaki makineden tek bilet alarak öde.",
   "Most trains keep a carriage or two for women only — the platform shows where.": "Çoğu trende bir iki vagon yalnızca kadınlara ayrılır — peronda gösterilir.",
   "Trains come less often than in Tehran: check the next one before you go down.": "Trenler Tahran'dakinden seyrek gelir: aşağı inmeden sonrakini kontrol et.",
+  "about {n} lira": "yaklaşık {n} lira",
+  "about {n} toman": "yaklaşık {n} tümen",
+  "Exits · {n}": "Çıkışlar · {n}",
+  "Exit": "Çıkış",
+  "Step-free": "Basamaksız",
+  "nearest · {d}": "en yakın · {d}",
+  "All {n} exits": "{n} çıkışın hepsi",
+  "Ways to go": "Gidiş yolları",
+  "Fastest": "En hızlı",
+  "No changes": "Aktarmasız",
+  "Lift": "Asansör",
+  "Fewer": "Daha az",
 };
 export default transit;

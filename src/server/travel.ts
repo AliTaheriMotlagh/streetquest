@@ -3,7 +3,7 @@
 // same trip share one request, and each site keeps its own gentle pace (lib/pace.ts). Each site can
 // go through the Iran relay or be switched off (lib/relayUrl.ts):
 //
-//   ALIBABA_URL / MRBILIT_FLIGHT_URL / MRBILIT_TRAIN_URL / JABAMA_URL / JABAMA_EVENTS_URL / ADSB_URL = "off" | <base>
+//   ALIBABA_URL / MRBILIT_FLIGHT_URL / MRBILIT_TRAIN_URL / JABAMA_URL / JABAMA_EVENTS_URL / ADSB_URL / JAJIGA_URL = "off" | <base>
 //
 // A site that fails is named in `failed`; the others still answer.
 import { siteBase } from "@/lib/relayUrl";
@@ -12,7 +12,9 @@ import {
   CITIES, cityByKey, cityHas, fromAlibabaBuses, fromAlibabaFlights, fromAlibabaTrains, fromJabama, fromMrbilitFlights, fromMrbilitTrains, mergeTrips, type City, type Mode, type Route, type Stay, type Trip,
 } from "@/lib/travel";
 import { fromAdsb, iranTime, mergePlanes, scheduledPlane, type Plane, type Scheduled } from "@/lib/flights";
-import { cached, getJson } from "./localData";
+import { cached, getJson, getText } from "./localData";
+import { ndjsonStream } from "@/lib/ndjson";
+import { compareLinks, mergeOffers, readable, type SourceOffer, type SourceQuery, type SourceSite } from "@/lib/travel/sources";
 import { fromJabamaEvents, jabamaCity, type Experience } from "@/lib/travel/experiences";
 
 const MIN = 60_000;
@@ -32,7 +34,11 @@ const base = {
   jabama: () => siteBase("jabama", process.env.JABAMA_URL, "https://gw.jabama.com/api"),
   jabamaEvents: () => siteBase("jabama", process.env.JABAMA_EVENTS_URL, "https://api.jabama.events"),
   adsb: () => siteBase("adsb", process.env.ADSB_URL, "https://api.adsb.lol/v2"),
+  jajiga: () => siteBase("jajiga", process.env.JAJIGA_URL, "https://www.jajiga.com"),
 };
+/** Where each readable source site is fetched from (its own origin, or the relay / off). */
+const SOURCE_BASE: Partial<Record<SourceSite, { origin: string; base: () => string | null }>> = { jajiga: { origin: "https://www.jajiga.com", base: base.jajiga } };
+const OFFERS_TTL = 60 * MIN;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -113,21 +119,49 @@ export async function tripsBetween(fromKey: string, toKey: string, date: string,
   return { trips: mergeTrips(lists), failed, none };
 }
 
-/** Places to stay in a city (Jabama's list, its own order), nearest to `here` measured when given. */
-export async function staysIn(cityKey: string, here?: LatLng | null): Promise<{ stays: Stay[]; failed: boolean }> {
+/**
+ * Each page of a city's places to stay, as its own promise (Jabama's villas, suites and flats are its
+ * `city-<key>` list; its hotels a separate `hotels-<key>` list (Alibaba's) the first never contains — a
+ * few pages each, 40 a page), nearest to `here` when given. Null: the city or the site is unknown.
+ */
+function stayPages(cityKey: string, here?: LatLng | null): Promise<Stay[] | null>[] | null {
   const c = cityByKey(cityKey), root = base.jabama();
-  if (!c || !root) return { stays: [], failed: !root };
-  // Villas, suites and flats are Jabama's `city-<key>` list; its hotels are a separate `hotels-<key>`
-  // list (Alibaba's) that the first one never contains — both, a few pages each (30 a page).
+  if (!c || !root) return null;
   const lists = [
     ...[1, 2, 3].map((page) => ({ key: `jb:city:${c.key}:${page}`, url: `${root}/v4/keyword/city-${c.key}?allowEmptyCity=true&hasUnitRoom=true&platform=desktop`, page })),
     ...[1, 2].map((page) => ({ key: `jb:hotels:${c.key}:${page}`, url: `${root}/v4/keyword/hotels-${c.key}?allowEmptyCity=true&platform=desktop`, page })),
   ];
-  const pages = await Promise.all(lists.map((l) => cached<unknown>(l.key, STAYS_TTL, () => getJson(l.url, { "page-number": l.page, "page-size": 40 })).catch(() => null)));
-  const seen = new Set<string>();
   const near = here ?? (c.lat != null ? { lat: c.lat, lng: c.lng! } : null);
-  const stays = pages.flatMap((p) => (p ? fromJabama(p, near, c.key) : [])).filter((s) => !seen.has(s.id) && !!seen.add(s.id));
-  return { stays, failed: pages.every((p) => !p) };
+  return lists.map((l) =>
+    cached<unknown>(l.key, STAYS_TTL, () => getJson(l.url, { "page-number": l.page, "page-size": 40 }))
+      .catch(() => null)
+      .then((p) => (p ? fromJabama(p, near, c.key) : null)),
+  );
+}
+
+/** Places to stay in a city (Jabama's list, its own order), nearest to `here` measured when given. */
+export async function staysIn(cityKey: string, here?: LatLng | null): Promise<{ stays: Stay[]; failed: boolean }> {
+  const pages = stayPages(cityKey, here);
+  if (!pages) return { stays: [], failed: !base.jabama() };
+  const got = await Promise.all(pages);
+  return { stays: uniqueStays(got.flatMap((p) => p ?? [])), failed: got.every((p) => !p) };
+}
+
+/** One place once (a hotel can be on two pages), first seen first. */
+export const uniqueStays = (list: Stay[], seen = new Set<string>()) => list.filter((s) => !seen.has(s.id) && !!seen.add(s.id));
+
+/**
+ * The same as staysIn, streamed (lib/ndjson.ts): a `{ stays }` line as each page answers — only places
+ * not sent yet — then `{ done: true, failed }`. The phone fills the list as the pages come.
+ */
+export function streamStays(cityKey: string, here?: LatLng | null): ReadableStream<Uint8Array> {
+  const pages = stayPages(cityKey, here) ?? [];
+  const seen = new Set<string>();
+  let any = false;
+  return ndjsonStream(
+    pages.map((p) => p.then((list) => ((any ||= !!list), { stays: uniqueStays(list ?? [], seen) }))),
+    () => ({ done: true, failed: !any }),
+  );
 }
 
 /**
@@ -145,6 +179,32 @@ export async function experiencesIn(cityKey: string): Promise<{ experiences: Exp
   const seen = new Set<string>();
   const experiences = [first, second].flatMap((p) => fromJabamaEvents(p)).filter((e) => !seen.has(e.id) && !!seen.add(e.id));
   return { experiences, covered: true, failed: !first };
+}
+
+/**
+ * Offers from the other sites that serve their data openly (lib/travel/sources.ts — today Jajiga's stays),
+ * merged cheapest first, and every site's page for the query to compare on. Each site's page is cached an
+ * hour; one that fails is named in `failed`.
+ */
+export async function offersFor(q: SourceQuery): Promise<{ offers: SourceOffer[]; links: ReturnType<typeof compareLinks>; failed: SourceSite[] }> {
+  const failed: SourceSite[] = [];
+  const key = q.vertical === "ticket" ? `${q.mode}:${q.route.from.key}:${q.route.to.key}:${q.route.date}` : q.city.key;
+  const lists = await Promise.all(
+    readable(q).map(async (a) => {
+      const src = SOURCE_BASE[a.site], url = a.read!.url(q)!;
+      const root = src ? src.base() : null;
+      if (src && !root) return [];
+      const at = src && root ? root + url.slice(src.origin.length) : url;
+      const got = await cached<SourceOffer[]>(`src:${a.site}:${q.vertical}:${key}`, OFFERS_TTL, async () => {
+        const body = await getText(at);
+        const list = body ? a.read!.parse(body, q, Date.now()) : null;
+        return list?.length ? list : null;
+      }).catch(() => null);
+      if (!got) failed.push(a.site);
+      return got ?? [];
+    }),
+  );
+  return { offers: mergeOffers(lists), links: compareLinks(q), failed };
 }
 
 // ---------------------------------------------------------------- planes

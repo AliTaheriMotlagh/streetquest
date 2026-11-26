@@ -1,6 +1,6 @@
 // Getting about by metro (pure; tests/transit.test.ts): the stations near a point and the walk
 // to them, when the next trains leave, and a trip from here to there — walk, ride, change
-// lines, walk — in minutes. Times come from each line's headway and hours (lib/transit/network.ts):
+// lines, walk — in minutes (RAPTOR: the fastest trip and the ones with fewer changes). Times come from each line's headway and hours (lib/transit/network.ts):
 // estimates, not a live board.
 import { metres, type Line, type Mode, type Network, type Station } from "./network";
 
@@ -66,90 +66,110 @@ export type Leg =
   | { kind: "ride"; line: string; from: string; to: string; stops: number; minutes: number; wait: number; towards: string };
 export type Trip = { minutes: number; legs: Leg[]; changes: number };
 
+/** At most this many rides in one trip (3 changes). */
+const MAX_RIDES = 4;
+
+/** A ride found by a RAPTOR round: on `line` from `from` (boarded at `board` minutes) to here, set in round `round`. */
+type Label = { line: string; from: string; board: number; round: number };
+
 /**
- * The quickest trip from `a` to `b`: walk to one of the stations near `a`, ride, change lines
- * where they meet, walk from a station near `b` (Dijkstra over station × line). Null when
- * no station is in reach of either end, or walking is quicker.
+ * Trips from `a` to `b` by RAPTOR (round-based, Delling et al. 2012) over each line's headway:
+ * round k finds the earliest arrival at every station with at most k rides, scanning only the
+ * lines through a station that improved in round k−1. Boarding waits half a headway; a change
+ * costs the corridor walk. The answer is the Pareto set — the fastest trip, and each trip with
+ * fewer changes that's still slower — fewest changes first. Empty when no station is in reach
+ * of either end or walking all the way is quicker than every trip.
  */
-export function planTrip(net: Network, a: { lat: number; lng: number }, b: { lat: number; lng: number }): Trip | null {
+export function planTrips(net: Network, a: { lat: number; lng: number }, b: { lat: number; lng: number }): Trip[] {
   const starts = nearStations(net, a, 4), ends = nearStations(net, b, 4);
-  if (!starts.length || !ends.length) return null;
+  if (!starts.length || !ends.length) return [];
   const lines = new Map(net.lines.map((l) => [l.id, l]));
   const st = new Map(net.stations.map((s) => [s.id, s]));
-  type Node = string; // `${station}|${line}` riding, or `${station}|` on foot in the station
-  const best = new Map<Node, number>();
-  const prev = new Map<Node, { from: Node; leg: Leg | null }>();
-  const queue: [number, Node][] = [];
-  const push = (n: Node, t: number, from: Node, leg: Leg | null) => {
-    if ((best.get(n) ?? Infinity) <= t) return;
-    best.set(n, t);
-    prev.set(n, { from, leg });
-    queue.push([t, n]);
-  };
-  for (const s of starts) push(`${s.station.id}|`, s.walk, "start", { kind: "walk", minutes: s.walk, m: s.m, to: s.station.id });
-  const endWalk = new Map(ends.map((e) => [e.station.id, e]));
-  let done: { t: number; node: Node; walk: Near } | null = null;
-  while (queue.length) {
-    queue.sort((x, y) => x[0] - y[0]);
-    const [t, node] = queue.shift()!;
-    if (t > (best.get(node) ?? Infinity)) continue;
-    if (done && t >= done.t) break;
-    const [sid, lid] = node.split("|");
-    if (!lid) {
-      const e = endWalk.get(sid);
-      if (e && (!done || t + e.walk < done.t)) done = { t: t + e.walk, node, walk: e };
-      // Board any line here: wait half a headway (plus the corridors if we came off another line).
-      for (const l of st.get(sid)?.lines ?? []) {
-        const line = lines.get(l)!;
-        push(`${sid}|${l}`, t + line.headway / 2, node, null);
-      }
-      continue;
-    }
-    const line = lines.get(lid)!;
-    const i = line.stations.indexOf(sid);
-    for (const j of [i - 1, i + 1]) {
-      const nid = line.stations[j];
-      if (!nid) continue;
-      push(`${nid}|${lid}`, t + rideMin(line, st.get(sid)!, st.get(nid)!), node, null);
-    }
-    // Off at the end: a minute up to the street, then the walk.
-    const e = endWalk.get(sid);
-    if (e && (!done || t + EXIT_MIN + e.walk < done.t)) done = { t: t + EXIT_MIN + e.walk, node, walk: e };
-    // Get off here to change (the walk to the other platform).
-    push(`${sid}|`, t + CHANGE_WALK_MIN, node, null);
-  }
-  if (!done) return null;
-  // Walking all the way may beat it.
+  const access = new Map(starts.map((s) => [s.station.id, s]));
+  const egress = new Map(ends.map((e) => [e.station.id, e]));
+  // tau[k]: earliest time off a train (or, k = 0, walked in) at each station with ≤ k rides.
+  const tau: Map<string, number>[] = [new Map(starts.map((s) => [s.station.id, s.walk]))];
+  const labels: Map<string, Label>[] = [new Map()];
+  const best = new Map(tau[0]);
+  let marked = new Set(tau[0].keys());
   const straight = walkMin(metres(a, b));
-  if (straight <= done.t) return null;
-  // Rebuild the path: runs of the same line become one ride.
-  const path: Node[] = [];
-  for (let n: Node = done.node; n !== "start"; n = prev.get(n)!.from) path.unshift(n);
-  const legs: Leg[] = [prev.get(path[0])!.leg!];
-  let i = 0;
-  while (i < path.length) {
-    const [, lid] = path[i].split("|");
-    if (!lid) {
-      i++;
-      continue;
+  let bound = straight;
+  const found: { k: number; t: number; at: string }[] = [];
+  for (let k = 1; k <= MAX_RIDES && marked.size; k++) {
+    const prev = tau[k - 1];
+    const cur = new Map(prev), lab = new Map(labels[k - 1]);
+    tau.push(cur);
+    labels.push(lab);
+    // Each line through a marked station, scanned both ways from its first marked station.
+    const scan = new Set<string>();
+    for (const sid of marked) for (const l of st.get(sid)?.lines ?? []) scan.add(l);
+    const next = new Set<string>();
+    for (const lid of scan) {
+      const line = lines.get(lid);
+      if (!line) continue;
+      for (const order of [line.stations, [...line.stations].reverse()]) {
+        let on: { t: number; from: string; board: number } | null = null;
+        for (let i = 0; i < order.length; i++) {
+          const sid = order[i];
+          if (on && i > 0) {
+            on.t += rideMin(line, st.get(order[i - 1])!, st.get(sid)!);
+            // Off here: better than anything with ≤ k rides so far, and can still beat the best trip.
+            if (on.t < (best.get(sid) ?? Infinity) && on.t < bound) {
+              cur.set(sid, on.t);
+              best.set(sid, on.t);
+              lab.set(sid, { line: lid, from: on.from, board: on.board, round: k });
+              next.add(sid);
+            }
+          }
+          // Board here if waiting for this line beats the train we're on.
+          const ready = prev.get(sid);
+          if (ready == null) continue;
+          const board = ready + (k > 1 && labels[k - 1].get(sid) ? CHANGE_WALK_MIN : 0) + line.headway / 2;
+          if (!on || board < on.t) on = { t: board, from: sid, board };
+        }
+      }
     }
-    const line = lines.get(lid)!;
-    const from = path[i - 1]?.split("|")[0] ?? path[i].split("|")[0];
-    let j = i;
-    while (j + 1 < path.length && path[j + 1].split("|")[1] === lid) j++;
-    const to = path[j].split("|")[0];
-    const fromIdx = line.stations.indexOf(from), toIdx = line.stations.indexOf(to);
-    const stops = Math.abs(toIdx - fromIdx);
-    if (stops > 0) {
-      const t0 = best.get(`${from}|${lid}`) ?? 0, t1 = best.get(path[j]) ?? t0;
-      legs.push({ kind: "ride", line: lid, from, to, stops, minutes: Math.round(t1 - t0), wait: Math.round(line.headway / 2), towards: line.stations[toIdx > fromIdx ? line.stations.length - 1 : 0] });
+    marked = next;
+    // The best trip with ≤ k rides: off at a station near `b`, up to the street, walk.
+    let top: { t: number; at: string } | null = null;
+    for (const [sid, e] of egress) {
+      const t = cur.get(sid);
+      if (t == null || !lab.get(sid)) continue;
+      const total = t + EXIT_MIN + e.walk;
+      if (!top || total < top.t) top = { t: total, at: sid };
     }
-    i = j + 1;
+    if (top && top.t < bound) {
+      found.push({ k, ...top });
+      bound = top.t;
+    }
   }
-  legs.push({ kind: "walk", minutes: done.walk.walk, m: done.walk.m, to: "" });
-  const rides = legs.filter((l) => l.kind === "ride").length;
-  if (!rides) return null;
-  return { minutes: Math.round(done.t), legs, changes: rides - 1 };
+  return found.map(({ k, t, at }) => tripOf(k, t, at)).filter((x): x is Trip => !!x);
+
+  function tripOf(k: number, total: number, at: string): Trip | null {
+    const rides: Leg[] = [];
+    let sid = at, round = k, first = at;
+    while (round > 0) {
+      const l = labels[round].get(sid);
+      if (!l) break;
+      const line = lines.get(l.line)!;
+      const off = tau[l.round].get(sid)!;
+      const fromIdx = line.stations.indexOf(l.from), toIdx = line.stations.indexOf(sid);
+      const wait = Math.round(line.headway / 2);
+      rides.unshift({ kind: "ride", line: l.line, from: l.from, to: sid, stops: Math.abs(toIdx - fromIdx), minutes: Math.round(off - l.board), wait, towards: line.stations[toIdx > fromIdx ? line.stations.length - 1 : 0] });
+      first = l.from;
+      sid = l.from;
+      round = l.round - 1;
+    }
+    const w = access.get(first), e = egress.get(at)!;
+    if (!w || !rides.length) return null;
+    return { minutes: Math.round(total), legs: [{ kind: "walk", minutes: w.walk, m: w.m, to: first }, ...rides, { kind: "walk", minutes: e.walk, m: e.m, to: "" }], changes: rides.length - 1 };
+  }
+}
+
+/** The quickest trip from `a` to `b` (see planTrips), or null. */
+export function planTrip(net: Network, a: { lat: number; lng: number }, b: { lat: number; lng: number }): Trip | null {
+  const all = planTrips(net, a, b);
+  return all.length ? all.reduce((x, y) => (y.minutes < x.minutes ? y : x)) : null;
 }
 
 /** The stations a ride passes, boarding and alighting included, in the order you pass them. */

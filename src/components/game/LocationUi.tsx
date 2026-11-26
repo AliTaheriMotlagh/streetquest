@@ -74,7 +74,7 @@ export function LocationGate({ error, onRetry, onSimulate, onHome, onExplore }: 
   }
 
   return (
-    <div className="modal-bg" style={{ zIndex: 900 }}>
+    <div className="modal-bg" style={{ zIndex: "var(--z-loading)" }}>
       <div className="modal" role="dialog" aria-labelledby="gate-title">
         <div style={{ fontSize: 50 }} aria-hidden>{error || b.inApp ? "⚠️" : "📡"}</div>
         <h2 id="gate-title">{b.inApp ? (b.os === "ios" ? t("Open in Safari") : t("Open in your browser")) : error ? (b.desktop && (error === "unavailable" || error === "timeout") ? t("Can't find this computer") : t(TITLE[error])) : t("Finding you…")}</h2>
@@ -149,7 +149,7 @@ export function GpsChip({ geo }: { geo: GeoState }) {
 function PreciseHelp({ onClose, onRetry }: { onClose: () => void; onRetry: () => void }) {
   const b = useMemo(() => browserInfo(), []);
   return (
-    <div className="modal-bg" style={{ zIndex: 900 }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-bg" style={{ zIndex: "var(--z-loading)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-labelledby="precise-title">
         <div style={{ fontSize: 50 }} aria-hidden>🎯</div>
         <h2 id="precise-title">{t("Your location is only approximate")}</h2>
@@ -263,7 +263,7 @@ export function ModePrompt({ name, home, onPick, onClose }: { name: string; home
   }); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     // Above the 3D city too (.drive is fixed at 2900; Game holds this back until its loading scene lifts), under calls (3500).
-    <div className="modal-bg" style={{ zIndex: 3100, position: "fixed" }} onClick={(e) => e.target === e.currentTarget && pick(home)}>
+    <div className="modal-bg" style={{ zIndex: "calc(var(--z-drive) + 200)", position: "fixed" }} onClick={(e) => e.target === e.currentTarget && pick(home)}>
       <div className="modal mode-prompt" role="dialog" aria-modal="true" aria-labelledby="mode-title" aria-describedby="mode-sub">
         <button className="close mode-x" onClick={() => pick(home)} aria-label={t("Keep the current mode")} title={t("Keep the current mode")}>✕</button>
         <div className="mode-wave" aria-hidden>👋</div>

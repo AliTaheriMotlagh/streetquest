@@ -119,8 +119,8 @@ const money: Record<string, string> = {
   "Win a GPS game": "یه بازی GPS رو ببر",
   "Campaign complete — daily orders keep coming.": "کمپین تموم شد — دستورهای روزانه همچنان میان.",
   "📜 {title}: +{coins} 🪙 +{gems} 💎": "📜 {title}: +{coins} 🪙 +{gems} 💎",
-  "Reward: {xp} XP · {coins} 🪙 · {gems} 💎": "جایزه: {xp} تجربه · {coins} 🪙 · {gems} 💎",
-  "📜 Campaign · chapter {n}": "📜 کمپین · فصل {n}",
+  "Reward: {xp} XP · {coins} 🪙 · {gems} 💎": "جایزه: {xp} تجربه • {coins} 🪙 • {gems} 💎",
+  "📜 Campaign · chapter {n}": "📜 کمپین • فصل {n}",
   "🗓️ Daily orders (reset at your midnight)": "🗓️ دستورهای روزانه (نیمه‌شب خودت ریست می‌شن)",
   "GPS games won": "بازی‌های GPS برده‌شده",
   "+{n} 🪙": "+{n} 🪙",
@@ -145,7 +145,7 @@ const money: Record<string, string> = {
   "Rewards, cash-outs and crew news show up here.": "جایزه‌ها، برداشت‌ها و خبرهای اکیپ اینجا میان.",
   "We'll tell you about money drops, cash-outs and your crew.": "از پول‌های تازه، برداشت‌ها و اکیپت خبرت می‌کنیم.",
   "You'll hear about money drops, cash-outs and your crew here.": "خبر پول‌های تازه، برداشت‌ها و اکیپت رو اینجا می‌شنوی.",
-  "gems · rush timers, buy coins": "جم · تموم کردن فوری زمان‌ها، خرید سکه",
+  "gems · rush timers, buy coins": "جم • تموم کردن فوری زمان‌ها، خرید سکه",
   "The money and store missions closest to you. The map only shows the nearest few — pick some up and more appear.":
     "نزدیک‌ترین پول‌ها و مأموریت‌های فروشگاهی. نقشه فقط چند تا از نزدیک‌ترین‌ها رو نشون می‌ده — چند تا رو بردار تا بقیه پیدا بشن.",
   "Get inside the dashed circle around you to pick money up — walk there, or travel there if you play from home.":
@@ -247,8 +247,8 @@ const money: Record<string, string> = {
   "Money drops": "پول‌ریزی",
   "Drop money on a spot or along a street to bring players there — for sponsors, store openings or a street you want to trend. Each player can pick up each drop once.":
     "روی یه نقطه یا در طول یه خیابون پول بریز تا بازیکن‌ها برن اونجا — برای حامی‌ها، افتتاحیهٔ فروشگاه‌ها یا خیابونی که می‌خوای پرطرفدار بشه. هر بازیکن هر پول رو فقط یه بار می‌تونه برداره.",
-  "Toman earned · 24h": "تومان درآمد · ۲۴ ساعت",
-  "Pickups · 24h": "پول‌های برداشته · ۲۴ ساعت",
+  "Toman earned · 24h": "تومان درآمد • ۲۴ ساعت",
+  "Pickups · 24h": "پول‌های برداشته • ۲۴ ساعت",
   "In players' wallets": "تو کیف پول بازیکن‌ها",
   "Waiting to be paid ({n})": "در انتظار واریز ({n})",
   "Paid out": "واریزشده",
@@ -282,7 +282,7 @@ const money: Record<string, string> = {
   "Cash-outs": "برداشت‌ها",
   "Players asking to be paid their toman. Pay it to the account shown, then mark it paid with the bank reference — or decline it to put the toman back in their wallet.":
     "بازیکن‌هایی که درخواست واریز تومان‌شون رو دادن. به حساب نشون‌داده‌شده واریز کن و با کد پیگیری بانک «واریز شد» بزن — یا ردش کن تا تومان به کیف پولشون برگرده.",
-  "Name · phone": "نام · تلفن",
+  "Name · phone": "نام • تلفن",
   "Card / Sheba": "کارت / شبا",
   Asked: "تاریخ درخواست",
   "joined {when}": "عضویت: {when}",

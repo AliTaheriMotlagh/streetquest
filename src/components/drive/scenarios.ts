@@ -11,7 +11,7 @@
 //    the subtitle. Nothing runs while an arena match is on.
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
-import { getLocale, t } from "@/lib/i18n";
+import { getLocale, t, dot } from "@/lib/i18n";
 import { barkById } from "@/lib/street/barks";
 import { resolveScenario, type Probe } from "@/lib/scenarios/anchors";
 import { abandon, hud as machineHud, newRun, retry as retryRun, start as startRun, tick as tickRun, type Effect, type FailReason, type Run, type Signals } from "@/lib/scenarios/machine";
@@ -229,7 +229,7 @@ export class Scenarios {
       let p = resolveScenario({ ...s, steps: [] }, me, this.probe(), seeded(`${s.id}:${cell}`)).giver;
       for (let k = 1; !fixed && k < 5 && Math.hypot(p.x - me.x, p.z - me.z) < GIVER_CLEAR_M; k++)
         p = resolveScenario({ ...s, steps: [] }, me, this.probe(), seeded(`${s.id}:${cell}:${k}`)).giver;
-      const beacon = makeBeacon("flag", "#ffb020", `${say(s.title, getLocale())} · ${say(s.giver.name, getLocale())}`);
+      const beacon = makeBeacon("flag", "#ffb020", `${say(s.title, getLocale())}${dot()}${say(s.giver.name, getLocale())}`);
       beacon.group.position.set(p.x, 0, p.z);
       this.h.scene.add(beacon.group);
       this.givers.set(s.id, { at: p, key: cell, beacon });

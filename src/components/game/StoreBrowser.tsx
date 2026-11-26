@@ -5,7 +5,7 @@
 // open now / rating / deals / with prices, and an order. A tap opens the store's own card.
 // The same pieces (Filters.tsx) are used by product search and the 3D city's Places panel.
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { STORE_TYPE_KEYS, STORE_TYPES, type StoreType } from "@/lib/stores/directory";
 import {
@@ -115,7 +115,7 @@ export function StoreBrowser({ listings, at, loading, onPick, onClose, onService
           </FilterPanel>
           <p className={`fx-status${loading ? " busy" : ""}`} aria-live="polite">
             {t("{n} stores", { n: fmtNum(res.rows.length) })}
-            {loading ? ` · ${t("still asking some sites…")}` : ""}
+            {loading ? `${dot()}${t("still asking some sites…")}` : ""}
           </p>
         </div>
         {page && glance && (

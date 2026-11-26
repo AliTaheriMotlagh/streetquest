@@ -79,6 +79,17 @@ const street: Record<string, string> = {
   "Fast food": "فست‌فود",
   "Sweets & nuts": "شیرینی و آجیل",
   "Waking up the street…": "خیابون داره بیدار می‌شه…",
+  "Try {place} — the {kind} {dist} {side}. I go there myself.": "برو {place} — همان {kind}، {dist} {side}. خودم هم می‌روم آنجا.",
+  "{place}? It's a {kind}. I've never been in, to be honest.": "{place}؟ یک {kind} است. راستش تا حالا نرفته‌ام تو.",
+  "Released outside the police station": "جلوی کلانتری آزادت کردند",
+  "You came to at the hospital": "در بیمارستان به هوش آمدی",
+  "Fined {n} coins": "{n} سکه جریمه شدی",
+  "Hospital bill: {n} coins": "صورت‌حساب بیمارستان: {n} سکه",
+  "Street life": "زندگی خیابانی",
+  "Arrest fine per wanted star (coins)": "جریمه‌ی بازداشت برای هر ستاره‌ی تحت تعقیب (سکه)",
+  "Taken when the police arrest you; 0 = no fine. Never more than the player has.": "وقتی پلیس بازداشتت می‌کند گرفته می‌شود؛ ۰ = بدون جریمه. هرگز بیشتر از دارایی بازیکن نیست.",
+  "Hospital bill when knocked out (coins)": "صورت‌حساب بیمارستان وقتی از هوش می‌روی (سکه)",
+  "Taken when you come to at the hospital; 0 = free.": "وقتی در بیمارستان به هوش می‌آیی گرفته می‌شود؛ ۰ = رایگان.",
 };
 
 export default street;

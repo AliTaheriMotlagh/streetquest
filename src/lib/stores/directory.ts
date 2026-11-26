@@ -11,7 +11,7 @@
 //
 // Every store gets one of the game's store types (`typeOf` reads each site's own category words),
 // which the map filter and the store list filter by, next to the site it came from.
-import { msg } from "../i18n";
+import { msg, dot } from "../i18n";
 import { distanceM } from "../geo";
 import { latinDigits, nameScore, phonesFrom, type StorePhone, type Week } from "../localData";
 import type { PlaceCat } from "../places";
@@ -193,7 +193,7 @@ export function fromIrangaah(rows: unknown, box: Bbox, max = 600): DirStore[] {
     if (typeof name !== "string" || typeof path !== "string" || !okPos(lat, lng) || !inBbox(box, lat, lng) || IG_SKIP.test(path)) continue;
     const parts = path.split("/").filter(Boolean);
     const doctor = parts[0] === "dr";
-    const cat = doctor ? `پزشک · ${parts[1] ?? ""}` : IG_CATS[parts[1] ?? ""] ?? parts[1] ?? "";
+    const cat = doctor ? `پزشک${dot("fa")}${parts[1] ?? ""}` : IG_CATS[parts[1] ?? ""] ?? parts[1] ?? "";
     const type = doctor ? "doctor" : typeOf(parts[1], name, cat);
     out.push({ id: `irangaah:${parts.join("~")}`, site: "irangaah", name: clean(name), lat, lng, type, cat, rating: 0, phone: phonesFrom("irangaah", phone)[0]?.number, url: `https://irangaah.ir${path}` });
     if (out.length >= max) break;

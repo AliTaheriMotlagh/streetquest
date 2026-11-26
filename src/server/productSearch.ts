@@ -5,17 +5,21 @@
 //    likeliest first — so a search never hammers Snappfood, each one widens what the next
 //    finds, and `more` says there are menus left to read (the list offers "look in more");
 //  - deals: Takhfifan's deals near the player;
-//  - torob / basalam: their own product searches (cached, Torob's spaced out as ever).
+//  - torob / basalam: their own product searches (cached, Torob's spaced out as ever);
+//  - player: products in players' open shops round the player (approved, in stock), from our own database.
 // A source that fails is left out and named in `failed`; the others still answer.
 import { distanceM, type LatLng } from "@/lib/geo";
 import { nameScore, normName, type Menu, type Vendor } from "@/lib/localData";
-import { basalamHits, dealHits, filterProducts, LOCAL_SOURCES, menuHits, productSourcesAt, menusToRead, torobHits, type ProductFilter, type ProductHit, type ProductSource } from "@/lib/productSearch";
+import { basalamHits, dealHits, playerHits, filterProducts, LOCAL_SOURCES, menuHits, productSourcesAt, menusToRead, torobHits, type ProductFilter, type ProductHit, type ProductSource } from "@/lib/productSearch";
 import { cachedMany, dealsAround, menuCacheKey, snappProducts, torobSearch, vendorMenu, vendorsAround } from "./localData";
 import { basalamSearch } from "./storeSites";
 import { sourceAt } from "@/lib/region";
 import { shopQuery } from "@/lib/search/query";
 import { Lru, singleFlight } from "@/lib/lru";
-import { gatherKey } from "@/lib/productSearch";
+import { gatherKey, type PlayerRow } from "@/lib/productSearch";
+import { prisma } from "@/lib/db";
+import { matches, words } from "@/lib/listEngine";
+import { priceNow } from "@/lib/shops";
 
 /**
  * What the sites answered (every hit, before the price, rating, distance and order are applied), in
@@ -92,11 +96,17 @@ export async function searchProducts(here: LatLng, f: ProductFilter & { city?: s
   // Only the sources that answer here (Iran's in Iran; in Turkey, Yemeksepeti's menus).
   const here_ = productSourcesAt(here);
   const want = (f.sources?.length ? f.sources : here_).filter((s) => here_.includes(s) && (q.length >= 2 || LOCAL_SOURCES.includes(s)));
-  const key = gatherKey(here, q, want, f.city);
+  // Players' shops come from our own database: always asked fresh (a paused shop goes at once), never remembered.
+  const sites = want.filter((s) => s !== "player");
+  const key = gatherKey(here, q, sites, f.city);
   const had = gathered.get(key);
   // Remembered, unless this search may read menus the remembered one left unread.
-  const g = had && !(f.read && had.more) ? had : await together(`${key}|${f.read ? 1 : 0}`, () => gather(here, q, want, f));
-  return { ...filterProducts(g.hits, { ...f, q, sources: want }), stores: g.stores, more: g.more, failed: g.failed };
+  const [g, mine] = await Promise.all([
+    !sites.length ? { hits: [], want: sites, stores: 0, more: false, failed: [] } : had && !(f.read && had.more) ? had : together(`${key}|${f.read ? 1 : 0}`, () => gather(here, q, sites, f)),
+    want.includes("player") ? playerProducts(here, q).then((rows) => playerHits(rows, here), () => null) : Promise.resolve([] as ProductHit[]),
+  ]);
+  const failed = mine ? g.failed : [...g.failed, "player" as const];
+  return { ...filterProducts([...g.hits, ...(mine ?? [])], { ...f, q, sources: want }), stores: g.stores, more: g.more, failed };
 }
 
 /** Everything the sources say about `q` round `here` (unfiltered), remembered when none failed. */
@@ -123,4 +133,33 @@ async function gather(here: LatLng, q: string, want: ProductSource[], f: { city?
   // (Not with a failed source: the next question tries that site again.)
   if (!failed.length) gathered.set(gatherKey(here, q, want, f.city), g);
   return g;
+}
+
+/** Players' shops searched this far round the player (degrees of latitude ≈ 30 km). */
+const PLAYER_BOX_DEG = 0.27;
+/** At most this many player products a search (the closest shops first). */
+const PLAYER_MAX = 60;
+
+/** Products in players' open shops round `here` matching every word of `q` (all of them when `q` is empty). */
+async function playerProducts(here: LatLng, q: string): Promise<PlayerRow[]> {
+  const now = new Date();
+  const lngDeg = PLAYER_BOX_DEG / Math.max(0.2, Math.cos((here.lat * Math.PI) / 180));
+  const ws = words(q);
+  const rows = await prisma.product.findMany({
+    where: {
+      active: true,
+      review: { notIn: ["pending", "rejected"] },
+      stock: { gt: 0 },
+      shop: { open: true, expiresAt: { gt: now }, lat: { gte: here.lat - PLAYER_BOX_DEG, lte: here.lat + PLAYER_BOX_DEG }, lng: { gte: here.lng - lngDeg, lte: here.lng + lngDeg } },
+      // The database narrows by the longest word; folding (ی/ي, digits) is checked below.
+      ...(ws.length ? { OR: [{ title: { contains: [...ws].sort((a, b) => b.length - a.length)[0], mode: "insensitive" as const } }, { description: { contains: [...ws].sort((a, b) => b.length - a.length)[0], mode: "insensitive" as const } }] } : {}),
+    },
+    select: { id: true, title: true, description: true, price: true, discountPct: true, discountUntil: true, currency: true, photos: { select: { id: true }, orderBy: { position: "asc" }, take: 1 }, shop: { select: { id: true, name: true, lat: true, lng: true } } },
+    take: 300,
+  });
+  return rows
+    .filter((r) => matches(`${r.title} ${r.description}`, ws))
+    .map((r) => ({ id: r.id, title: r.title, description: r.description, price: r.price, priceNow: priceNow(r, now.getTime()), currency: r.currency, photoId: r.photos[0]?.id ?? null, shop: r.shop }))
+    .sort((a, b) => distanceM(here, a.shop) - distanceM(here, b.shop))
+    .slice(0, PLAYER_MAX);
 }

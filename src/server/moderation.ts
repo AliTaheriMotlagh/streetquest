@@ -3,7 +3,7 @@
 // open reports — in Admin → Listings (/api/admin/listings). Every decision is in the audit log and the
 // seller is told.
 import { prisma } from "../lib/db";
-import { t } from "../lib/i18n";
+import { t, dot } from "../lib/i18n";
 import { HELD_BY_REPORTS, HIDE_AFTER_REPORTS, type ReportReason } from "../lib/stores/moderation";
 import { audit } from "./audit";
 import { HttpError } from "./http";
@@ -34,7 +34,7 @@ export async function reportListing(u: Who, r: { shopId: string; productId?: str
     const n = await prisma.listingReport.count({ where: { shopId: shop.id, target: product.id, status: "open" } });
     if (n >= HIDE_AFTER_REPORTS) {
       await prisma.product.update({ where: { id: product.id }, data: { review: "pending", reviewNote: HELD_BY_REPORTS } });
-      await audit(null, "listing.hidden", { type: "product", id: product.id }, `${product.title} · ${n} reports`);
+      await audit(null, "listing.hidden", { type: "product", id: product.id }, `${product.title}${dot()}${n} reports`);
     }
   }
   return { message: t("Thanks — a moderator will look at it") };

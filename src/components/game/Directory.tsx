@@ -10,7 +10,7 @@
 // Every link out goes through the leave page (LeaveGuard).
 import { Gallery } from "./Gallery";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
 import {
   MAP_SITES, placeCatOf, SERVICES, serviceUrl, SITES, STORE_TYPE_KEYS, STORE_TYPES, siteLayer,
@@ -101,7 +101,7 @@ function ProductList({ items }: { items: Product[] }) {
           {p.img ? <img src={p.img} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🧺</span>}
           <div className="grow">
             <b dir="auto" className="clamp2">{p.name}</b>
-            <p className="small muted" dir="auto">{[p.seller, p.city, p.rating ? `${stars(p.rating)} (${fmtNum(p.votes)})` : ""].filter(Boolean).join(" · ")}</p>
+            <p className="small muted" dir="auto">{[p.seller, p.city, p.rating ? `${stars(p.rating)} (${fmtNum(p.votes)})` : ""].filter(Boolean).join(dot())}</p>
           </div>
           <span className="price-tag"><b>{toman(p.price)}</b></span>
         </a>
@@ -140,7 +140,7 @@ export function DirStoreCard({ s, onClose }: { s: DirStore; onClose: () => void 
   const d = data?.detail ?? null;
   const type = STORE_TYPES[s.type];
   const site = SITES[s.site];
-  const sub = [t(type.label), s.cat && s.cat !== t(type.label) ? s.cat : "", Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
+  const sub = [t(type.label), s.cat && s.cat !== t(type.label) ? s.cat : "", Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(dot());
   const photos = d?.photos.length ? d.photos : s.img ? [s.img] : [];
   const store = { name: s.name, lat: s.lat, lng: s.lng };
   const phones = d?.phones.length ? d.phones : s.phone ? [{ number: s.phone, source: s.site === "irangaah" ? ("irangaah" as const) : ("map" as const) }] : undefined;
@@ -215,7 +215,7 @@ export function AdAreaCard({ area, onClose }: { area: AdArea; onClose: () => voi
             {a.img ? <img src={a.img} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">📣</span>}
             <div className="grow">
               <b dir="auto">{a.title}</b>
-              <p className="small muted" dir="auto">{[a.cat, a.ago].filter(Boolean).join(" · ")}</p>
+              <p className="small muted" dir="auto">{[a.cat, a.ago].filter(Boolean).join(dot())}</p>
             </div>
             {a.price && <span className="price-tag" dir="auto"><b>{a.price}</b></span>}
           </a>

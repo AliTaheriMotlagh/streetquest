@@ -48,8 +48,9 @@ describe("one-country sources", () => {
     assert.equal(deliveryAt({ lat: 0, lng: 0 }), "snappfood");
   });
   it("finds products only from the sources that answer here", () => {
-    assert.deepEqual(productSourcesAt(tehran), ["food", "deal", "torob", "basalam"]);
-    assert.deepEqual(productSourcesAt(istanbul), ["food"]);
-    assert.deepEqual(productSourcesAt(berlin), []);
+    // Players' own shops answer everywhere; the store sites only in their countries.
+    assert.deepEqual(productSourcesAt(tehran), ["food", "deal", "torob", "basalam", "player"]);
+    assert.deepEqual(productSourcesAt(istanbul), ["food", "player"]);
+    assert.deepEqual(productSourcesAt(berlin), ["player"]);
   });
 });

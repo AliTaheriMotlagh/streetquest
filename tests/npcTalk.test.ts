@@ -70,6 +70,11 @@ test("asked about the store right here, they name a real dish and its price", ()
   assert.deepEqual(r.params, { place: "Nayeb", item: "Koobideh", price: "250,000" });
   assert.match(reply(ctx({ act: "store", store: { name: "X", dist: 12, rel: 0, rating: 3.1 } })).key, /Only \{rating\}/);
   assert.equal(reply(ctx({ act: "store", store: null })).key, "There's no shop right here I'd know.");
+  // No dish, no rating: they at least say what kind of place it is.
+  const k = reply(ctx({ act: "store", store: { name: "Nan-e Sahar", dist: 12, rel: 0, kind: "Bakery" } }));
+  assert.equal(k.key, "{place}? It's a {kind}. I've never been in, to be honest.");
+  assert.equal(k.params?.kind, "Bakery");
+  assert.match(reply(ctx({ act: "recommend", best: { name: "Cafe Naderi", dist: 90, rel: 10, kind: "Café" } })).key, /the \{kind\}/);
 });
 
 test("street gossip about a store is the same line for the same seed and names the place", async () => {

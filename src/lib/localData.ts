@@ -1,7 +1,7 @@
 // What other sites know about a real store (pure — client and server): its Snappfood menu
 // or catalog, its Torob listings, its Divar ad. The fetching and caching is in
 // server/localData.ts; this file has the shapes, the link parsing and the name matching.
-import { msg } from "./i18n";
+import { msg, dot } from "./i18n";
 import { mapSearch, wordsAt } from "./region";
 import { distanceM } from "./geo";
 import type { PlaceCat } from "./places";
@@ -435,7 +435,7 @@ export function dealInfoOf(vendor: RawVendor | null | undefined, products?: RawP
     id, name: str(a.name), logo: bigPic(str(a.image), 160), photos: [...new Set(gallery.filter(Boolean))].slice(0, 12),
     address: str(a.address), city: str(a.city), district: str(a.district) || str(a.area), lat: numOf(a.latitude), lng: numOf(a.longitude),
     phones: phonesFrom("takhfifan", str(a.phone_v2)), week: weekFromTakhfifan(str(a.business_timing)),
-    hours: [str(a.business_days)].filter((x) => x && x !== "-,").join(" · "),
+    hours: [str(a.business_days)].filter((x) => x && x !== "-,").join(dot()),
     rating: Math.round(numOf(vendor?.rating?.rate) * 10) / 10, reviews: vendor?.rating?.rate_count ?? 0, sold: numOf(a.sale_count),
     off: Math.round(Math.max(numOf(a.max_discount_percentage), numOf(a.offline_max_discount_percentage), ...items.map((i) => i.off))),
     cashback: Math.round(numOf(a.offline_max_cashback_percent) * 10) / 10, payDiscount: Math.round(numOf(a.takhfifan_pay_discount_percentage) * 10) / 10, banks,

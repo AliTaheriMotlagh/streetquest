@@ -2,7 +2,7 @@
 import { Guard } from "../Guard";
 import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
+import { fmtNum, msg, t, toAsciiDigits, dot } from "@/lib/i18n";
 import { useT } from "@/components/I18nProvider";
 import { applyConfig } from "@/lib/config";
 import { S } from "@/lib/settings";
@@ -58,6 +58,7 @@ import { CinemaCard, DealCard, DivarCard, StoreExtras, TorobPlaceCard, VendorCar
 import type { Cinema } from "@/lib/cinema";
 import { cityAt as transitCityAt } from "@/lib/transit/network";
 import { useTransit } from "./transit";
+import { focusOf, metroPaths, onFocus } from "@/lib/transit/draw";
 // Recorded interface sounds replace the synthesized ones (samples.ts registers with sfx.ts).
 import "./samples";
 import { BusStopCard, LiveBusCard, MetroSheet, StationCard } from "./TransitCard";
@@ -461,11 +462,20 @@ export default function Game() {
   // Metro stations, bus stops and (Istanbul) live buses: game/transit.ts.
   const transitOn = layers.includes("transit");
   const transit = useTransit(look, transitOn);
+  const stationSel = selected?.type === "station" ? selected.data : null;
   const transitPins = useMemo<TransitPins | undefined>(() => {
     if (!transitOn || !transit.city) return undefined;
     const colour = new Map(transit.metro?.lines.map((l) => [l.id, l.colour]) ?? []);
-    return { city: transit.city, stations: (transit.metro?.stations ?? []).map((s) => ({ s, colour: colour.get(s.lines[0]) ?? "#555" })), stops: transit.stops, buses: transit.buses };
-  }, [transitOn, transit]);
+    // A tapped station: its lines bold, the rest (and their stations) faded.
+    const focus = focusOf(stationSel?.station);
+    return {
+      city: transit.city,
+      stations: (transit.metro?.stations ?? []).map((s) => ({ s, colour: onFocus(s, focus) ? colour.get(s.lines.find((l) => !focus || focus.has(l)) ?? s.lines[0]) ?? "#555" : "#8a8f98" })),
+      stops: transit.stops,
+      buses: transit.buses,
+      paths: transit.metro ? metroPaths(transit.metro, focus) : [],
+    };
+  }, [transitOn, transit, stationSel]);
   const [metroOpen, setMetroOpen] = useState(false);
   const siktirOn = layers.includes("siktir");
   const siktirSpots = useSiktirSpots(siktirOn, look ?? null);
@@ -814,7 +824,7 @@ export default function Game() {
     if (!route || !pos) return;
     if (distanceM(pos, route.to) <= ARRIVED_M) {
       setRoute(null);
-      toast({ kind: "reward", title: t("🏁 You've arrived{name}", { name: route.name ? ` · ${route.name}` : "" }) });
+      toast({ kind: "reward", title: t("🏁 You've arrived{name}", { name: route.name ? `${dot()}${route.name}` : "" }) });
       return;
     }
     if (offRouteM(pos, route.line) > OFF_ROUTE_M || Date.now() - route.at > ROUTE_REFRESH_MS) void findRoute({ ...route.to, name: route.name }, true);
@@ -1857,7 +1867,7 @@ export default function Game() {
         {adOpen && <AdModal offer={adOpen} onClose={() => (setAdOpen(null), loadMe())} />}
         <CelebrationLayer />
         {askPush && (
-          <div className="modal-bg" style={{ zIndex: 2500 }}>
+          <div className="modal-bg" style={{ zIndex: "var(--z-prompt)" }}>
             <div className="modal">
               <div style={{ fontSize: 56 }}>🔔</div>
               {askPush === "call" ? (
@@ -1943,7 +1953,7 @@ function RouteChip({ route, pos, onClear }: { route: LiveRoute & { to: LatLng; n
       <div className="grow">
         <b dir="auto">🧭 {route.name ?? t("Route")}</b>
         <div className="small">{t("{n} min · {d}", { n: fmtNum(mins), d: formatDistance(left) })}</div>
-        {next && <div className="small muted" dir="auto">{next.turn ? TURN_ICON[next.turn] : "↪"} {stepText(next)}{pos && next.turn !== "arrive" ? ` · ${formatDistance(distanceM(pos, { lat: next.at[0], lng: next.at[1] }))}` : ""}</div>}
+        {next && <div className="small muted" dir="auto">{next.turn ? TURN_ICON[next.turn] : "↪"} {stepText(next)}{pos && next.turn !== "arrive" ? `${dot()}${formatDistance(distanceM(pos, { lat: next.at[0], lng: next.at[1] }))}` : ""}</div>}
       </div>
       <Button className="btn small ghost" onClick={onClear} aria-label={t("Stop navigation")}>✕</Button>
     </div>

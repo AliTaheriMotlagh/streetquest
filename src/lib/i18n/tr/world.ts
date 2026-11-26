@@ -18,7 +18,7 @@ const world: Record<string, string> = {
   "Gym & sports": "Spor salonu ve spor",
   Park: "Park",
   "Phones & electronics": "Telefon ve elektronik",
-  "Books & library": "Kitap ve kütüphane",
+  "Books & stationery": "Kitap ve kırtasiye",
   Bank: "Banka",
 
   // ---- missions at real places
@@ -444,7 +444,7 @@ const world: Record<string, string> = {
   "Tobacco & hookah": "Tütün ve nargile",
   "Beauty & hair": "Güzellik ve kuaför",
   "Gifts, toys & flowers": "Hediye, oyuncak ve çiçek",
-  "Clinics & opticians": "Klinik ve optik",
+  "Clinics & doctors": "Klinik ve doktor",
   "Corner kiosk": "Köşe büfe",
   "Swing by {place} — the owner knows everything happening on this street.": "{place} uğra — sahibi bu sokakta olan her şeyi bilir.",
   "Fresh cut": "Yeni tıraş",
@@ -603,6 +603,14 @@ const world: Record<string, string> = {
   "That's {n} things — {total} toman altogether.": "{n} ürün — toplam {total} toman.",
   "Your basket's empty — take your time.": "Sepetin boş — acele etme.",
   "Thank you, come again!": "Teşekkürler, yine bekleriz!",
+  "Books & schools": "Kitap ve okul",
+  "Opticians & hearing": "Optik ve işitme",
+  "School books": "Ders kitapları",
+  "A student at {dest} needs their textbooks from {place} before class.": "{dest} adresindeki bir öğrencinin dersten önce {place} yerinden ders kitaplarına ihtiyacı var.",
+  "Browse the shelves": "Raflara göz at",
+  "New titles are in at {place}. Have a look.": "{place} yerine yeni kitaplar geldi. Bir bak.",
+  "New glasses": "Yeni gözlük",
+  "A pair of glasses is ready at {place}. Its owner at {dest} can't see a thing without them.": "{place} yerinde bir gözlük hazır. {dest} adresindeki sahibi onsuz hiçbir şey göremiyor.",
 };
 
 export default world;

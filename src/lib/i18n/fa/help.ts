@@ -39,9 +39,9 @@ const help: Record<string, string> = {
   // ---- map labels
   refunded: "پول برگشت",
   "GO HERE": "برو اینجا",
-  "GO HERE · {n}/{total}": "برو اینجا · {n}/{total}",
-  "SEARCH HERE · {n}/{total}": "اینجا رو بگرد · {n}/{total}",
-  "HOLD HERE · {n}/{total}": "اینجا بمون · {n}/{total}",
+  "GO HERE · {n}/{total}": "برو اینجا • {n}/{total}",
+  "SEARCH HERE · {n}/{total}": "اینجا رو بگرد • {n}/{total}",
+  "HOLD HERE · {n}/{total}": "اینجا بمون • {n}/{total}",
 
   // ---- outposts: "Outpost Bravo-3" (radio call-signs, as Persian speakers say them)
   Hotel: "هتل",

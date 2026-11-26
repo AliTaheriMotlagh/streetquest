@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ShareButton } from "@/components/ShareButton";
 import { prisma } from "@/lib/db";
-import { fmtNum, LOCALE_META, type Locale } from "@/lib/i18n";
+import { fmtNum, LOCALE_META, type Locale, dot } from "@/lib/i18n";
 import { ldJson, metaDescription, pageAlternates, shopLd } from "@/lib/seo";
 import { categoryOf } from "@/lib/shops";
 import { contactOf, KINDS, kindLine } from "@/lib/shopKinds";
@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: s.name,
     description,
     alternates: pageAlternates(`/s/${s.id}`, locale),
-    openGraph: { title: `${s.emoji} ${s.name} · ${SITE.name}`, description, type: "website", url: `/s/${s.id}`, images: [image] },
+    openGraph: { title: `${s.emoji} ${s.name}${dot()}${SITE.name}`, description, type: "website", url: `/s/${s.id}`, images: [image] },
     twitter: { card: "summary_large_image", title: s.name, description, images: [image] },
     // A closed or empty shop stays reachable by its link but out of search results.
     robots: { index: s.live && s.inStock > 0, follow: true },
@@ -62,8 +62,8 @@ export default async function ShopPage({ params }: Props) {
         <h1 dir="auto"><span aria-hidden>{s.emoji}</span> {s.name}</h1>
         {s.tagline && <p className="muted" dir="auto">{s.tagline}</p>}
         <p className="small muted">
-          <span className={`tag ${s.live ? "tag-open" : "tag-closed"}`}>{s.live ? t("Open") : t("Closed")}</span> {cat.emoji} {t(cat.label)} · {t("Run by {name}", { name: s.owner.username })}
-          {s.sales > 0 && ` · ${t("{n} sold", { n: s.sales })}`}
+          <span className={`tag ${s.live ? "tag-open" : "tag-closed"}`}>{s.live ? t("Open") : t("Closed")}</span> {cat.emoji} {t(cat.label)}{dot()}{t("Run by {name}", { name: s.owner.username })}
+          {s.sales > 0 && `${dot()}${t("{n} sold", { n: s.sales })}`}
         </p>
         {s.address && <p dir="auto">🏠 {s.address}</p>}
         {s.about && <p className="sf-about" dir="auto">{s.about}</p>}

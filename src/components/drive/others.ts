@@ -6,6 +6,7 @@
 //    smooth whatever the network does. Past the newest sample it coasts along its
 //    heading for up to a second, then stops.
 //  - Everyone else on the map (walking, or privacy-fuzzed) as a figure on the pavement.
+import { dot } from "@/lib/i18n";
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { VEHICLES, type VehicleKey } from "@/lib/vehicles";
@@ -59,7 +60,7 @@ export class Others {
       }
       if (!d) {
         const model = makeVehicle(o.vehicle as VehicleKey, o.color, this.style, { shadows: !this.lite });
-        const tag = makeSign(o.avatar, `${o.name} · ${o.level}`, tagColor(o));
+        const tag = makeSign(o.avatar, `${o.name}${dot()}${o.level}`, tagColor(o));
         tag.sprite.scale.multiplyScalar(0.8);
         model.group.add(tag.sprite);
         this.scene.add(model.group);
@@ -71,7 +72,7 @@ export class Others {
       if (key !== d.tagKey) {
         d.model.group.remove(d.tag.sprite);
         d.tag.dispose();
-        d.tag = makeSign(o.avatar, `${o.name} · ${o.level}`, tagColor(o));
+        d.tag = makeSign(o.avatar, `${o.name}${dot()}${o.level}`, tagColor(o));
         d.tag.sprite.scale.multiplyScalar(0.8);
         d.model.group.add(d.tag.sprite);
         d.tagKey = key;
@@ -98,7 +99,7 @@ export class Others {
         const icon = makeIcon(p.avatar);
         icon.sprite.scale.setScalar(2.4);
         icon.sprite.position.y = 1.3;
-        const tag = makeSign(p.home ? "🛋️" : "", `${p.username} · ${p.level}`, tagColor({ friend: p.friend }));
+        const tag = makeSign(p.home ? "🛋️" : "", `${p.username}${dot()}${p.level}`, tagColor({ friend: p.friend }));
         tag.sprite.scale.multiplyScalar(0.7);
         tag.sprite.position.y = 3.3;
         group.add(icon.sprite, tag.sprite);

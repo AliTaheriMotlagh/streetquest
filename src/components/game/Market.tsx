@@ -6,8 +6,12 @@
 // carry (lib/shopKinds.ts: an item, food, a ticket, an ad, a deal, a service) with that kind's
 // details; priced in coins (bought here) or toman (paid to the seller directly: call, their
 // payment link, or a message in the game).
+import { adPositions } from "@/lib/ads/slot";
+import { SellerCenter } from "./SellerCenter";
+import { chipCounts, runList } from "@/lib/listEngine";
+import { PRODUCT_CHIP_KEYS, PRODUCT_CHIPS, PRODUCT_LIST, PRODUCT_SORT_KEYS, PRODUCT_SORTS, SEARCH_FROM, type ProductChip, type ProductSort } from "@/lib/shopList";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
+import { fmtNum, t, toAsciiDigits, dot } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { S } from "@/lib/settings";
 import { categoryOf, daysLeft, MAX_DISCOUNT, priceNow, SHOP_CATEGORIES, SHOP_EMOJIS, SHOP_LIMITS, shopFee, SHOP_WARN_MS } from "@/lib/shops";
@@ -16,7 +20,8 @@ import { REASON_LABEL, REPORT_REASONS, type ReportReason } from "@/lib/stores/mo
 import { Button } from "@/components/Button";
 import { AdSlot } from "@/components/AdSlot";
 import { useUrlParam } from "@/components/useUrlParam";
-import { oneOf, text } from "@/lib/urlState";
+import { listOf, oneOf, text } from "@/lib/urlState";
+import { Chip, SortMenu } from "./Filters";
 import { Advertise } from "./Advertise";
 import { api, fmtTime, type ShopCard, type ShopDeal, type ShopOrder, type ShopProduct, type ShopView } from "./client";
 import { fmtCountdown } from "./Lottery";
@@ -40,9 +45,10 @@ type View =
   | { v: "mine" }
   | { v: "setup" }
   | { v: "edit"; productId: string | null }
-  | { v: "orders"; side?: "buying" | "selling"; highlight?: string };
+  | { v: "orders"; side?: "buying" | "selling"; highlight?: string }
+  | { v: "seller" };
 type Root = "browse" | "mine" | "orders";
-const rootOf = (v: View): Root => (v.v === "mine" || v.v === "setup" || v.v === "edit" ? "mine" : v.v === "orders" ? "orders" : "browse");
+const rootOf = (v: View): Root => (v.v === "mine" || v.v === "setup" || v.v === "edit" || v.v === "seller" ? "mine" : v.v === "orders" ? "orders" : "browse");
 
 /** Loads `path` (null = don't), with a reload and a local setter for optimistic edits. */
 function useApi<T>(path: string | null) {
@@ -94,7 +100,7 @@ export function MarketPanel({ onClose, peek, focus, onFocused }: { onClose: () =
   const pending = me.shop?.pending ?? 0;
   const closing = !!me.shop && me.shop.expiresAt - Date.now() < SHOP_WARN_MS;
   const title =
-    view.v === "browse" ? t("Market") : view.v === "mine" ? t("My shop") : view.v === "setup" ? (me.shop ? t("Shop details") : t("Open your shop")) : view.v === "edit" ? (view.productId ? t("Edit product") : t("New product")) : view.v === "orders" ? t("Orders") : view.v === "shop" ? t("Shop") : t("Product");
+    view.v === "browse" ? t("Market") : view.v === "mine" ? t("My shop") : view.v === "setup" ? (me.shop ? t("Shop details") : t("Open your shop")) : view.v === "edit" ? (view.productId ? t("Edit product") : t("New product")) : view.v === "orders" ? t("Orders") : view.v === "seller" ? t("Seller center") : view.v === "shop" ? t("Shop") : t("Product");
 
   return (
     <Sheet
@@ -134,7 +140,24 @@ export function MarketPanel({ onClose, peek, focus, onFocused }: { onClose: () =
           onEdit={() => setStack([{ v: "mine" }, { v: "edit", productId: view.productId }])}
         />
       )}
+      {view.v === "mine" && (
+        <button type="button" className="biz-banner seller-entry" onClick={() => go({ v: "seller" })}>
+          <span className="ic">🧑‍💼</span>
+          <span className="grow"><b>{t("Seller center")}</b><span className="small">{t("Your shop and your real store in one place — what needs doing first.")}</span></span>
+          <span aria-hidden>›</span>
+        </button>
+      )}
       {view.v === "mine" && <MyShop go={go} />}
+      {view.v === "seller" && (
+        <SellerCenter
+          onAction={(a) =>
+            a === "orders" ? setStack([{ v: "orders", side: "selling" }])
+            : a === "verify" || a === "plan" ? setPanel("biz")
+            : a === "start" ? setStack([{ v: "mine" }, { v: "setup" }])
+            : setStack([{ v: "mine" }])
+          }
+        />
+      )}
       {view.v === "setup" && <ShopForm onDone={back} />}
       {view.v === "edit" && <ProductForm productId={view.productId} onDone={back} />}
       {view.v === "orders" && <Orders initialSide={view.side ?? (pending > 0 ? "selling" : "buying")} highlight={view.highlight} onShop={(id) => go({ v: "shop", id })} />}
@@ -276,11 +299,11 @@ function Browse({ onShop, onProduct, onOpenMine }: { onShop: (id: string) => voi
           <b>{query ? t("Results for “{q}”", { q: query }) : t("Shops around you")}</b>
         </div>
       )}
-      {data?.shops.map((s, i) => (
+      {data?.shops.map((s, i, all) => (
         <Fragment key={s.id}>
           <ShopTile s={s} onOpen={() => onShop(s.id)} onProduct={(id) => onProduct(s.id, id)} />
-          {/* One ad after the third shop (or the last, in a short list); lazy, never in the 3D city. */}
-          {i === Math.min(2, data.shops.length - 1) && <AdSlot />}
+          {/* Ads after the third shop (or the last, in a short list), then every 12th (lib/ads/slot.ts); lazy, never in the 3D city. */}
+          {adPositions(all.length).has(i) && <AdSlot />}
         </Fragment>
       ))}
       {data && !data.shops.length && (
@@ -308,9 +331,9 @@ function ShopTile({ s, onOpen, onProduct }: { s: ShopCard; onOpen: () => void; o
           <b className="ellipsis" dir="auto">{s.name}</b>
           {s.tagline && <span className="small muted ellipsis" dir="auto">{s.tagline}</span>}
           <span className="small muted">
-            {s.distanceM != null && `📍 ${formatDistance(s.distanceM)} · `}
+            {s.distanceM != null && `📍 ${formatDistance(s.distanceM)}${dot()}`}
             {t("{n, plural, one {# product} other {# products}}", { n: s.inStock })}
-            {s.sales > 0 && ` · ${t("{n} sold", { n: s.sales })}`}
+            {s.sales > 0 && `${dot()}${t("{n} sold", { n: s.sales })}`}
           </span>
         </span>
       </button>
@@ -332,8 +355,10 @@ function ShopTile({ s, onOpen, onProduct }: { s: ShopCard; onOpen: () => void; o
 // ---------------------------------------------------------------- one shop
 function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (productId: string) => void; onManage: () => void }) {
   const { pos } = useGame();
-  const [onSale, setOnSale] = useState(false);
-  const [sort, setSort] = useState<"new" | "cheap" | "deal">("new");
+  // The product list's search, sort and chips live in the address (shareable, survive a reload): lib/shopList.ts.
+  const [q, setQ] = useUrlParam("pq", "", text());
+  const [sort, setSort] = useUrlParam<ProductSort>("ps", "new", oneOf(PRODUCT_SORT_KEYS, "new"));
+  const [chips, setChips] = useUrlParam<ProductChip[]>("pf", [], listOf(PRODUCT_CHIP_KEYS));
   const at = pos ? `?lat=${pos.lat.toFixed(4)}&lng=${pos.lng.toFixed(4)}` : "";
   const { data, error } = useApi<{ shop: ShopView }>(`/api/shops/${id}${at}`);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -341,8 +366,11 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
   if (!data) return <div className="empty">{t("Loading…")}</div>;
   const s = data.shop;
   const window = s.products.filter((p) => p.featured && p.active && !p.over);
-  let shelf = s.products.filter((p) => (s.mine || p.active) && (!onSale || p.deal > 0));
-  shelf = [...shelf].sort((a, b) => (sort === "cheap" ? a.priceNow - b.priceNow : sort === "deal" ? b.deal - a.deal : 0) || Number(b.stock > 0) - Number(a.stock > 0));
+  const all = s.products.filter((p) => s.mine || p.active);
+  const query = { q, sort, on: chips };
+  const shelf = runList(all, PRODUCT_LIST, query);
+  const counts = chipCounts(all, PRODUCT_LIST, query);
+  const flipChip = (c: ProductChip) => setChips(chips.includes(c) ? chips.filter((x) => x !== c) : [...chips, c]);
   const cat = categoryOf(s.category);
 
   return (
@@ -360,6 +388,7 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
         <div className="row small muted" style={{ marginTop: 4 }}>
           <span>{s.owner.avatar} {t("Run by {name}", { name: s.owner.username })}</span>
         </div>
+        {s.verifiedStore && <p className="small shop-verified" title={t("A real store checked by the game")}>✅ {t("Verified store: {name}", { name: s.verifiedStore })}</p>}
         {s.address && <p className="small" dir="auto" style={{ margin: "8px 0 0" }}>🏠 {s.address}</p>}
         {s.about && (
           <p className={`small shop-about ${aboutOpen ? "open" : ""}`} dir="auto" onClick={() => setAboutOpen(!aboutOpen)}>
@@ -395,27 +424,34 @@ function ShopPage({ id, onProduct, onManage }: { id: string; onProduct: (product
       <div className="sec-head">
         <b>🛒 {t("All products")}</b>
         <span className="grow" />
-        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="mini-select" aria-label={t("Sort")}>
-          <option value="new">{t("Newest")}</option>
-          <option value="cheap">{t("Cheapest")}</option>
-          <option value="deal">{t("Biggest discount")}</option>
-        </select>
+        <SortMenu value={sort} onChange={setSort} options={PRODUCT_SORT_KEYS.map((k) => ({ key: k, label: t(PRODUCT_SORTS[k]) }))} />
       </div>
-      {s.products.some((p) => p.deal > 0) && (
-        <div className="tabs">
-          <button className={!onSale ? "on" : ""} onClick={() => setOnSale(false)}>{t("Everything")}</button>
-          <button className={onSale ? "on" : ""} onClick={() => setOnSale(true)}>🔥 {t("On sale")}</button>
+      {all.length >= SEARCH_FROM && (
+        <input className="input shop-search" type="search" dir="auto" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search {n} products", { n: fmtNum(all.length) })} aria-label={t("Search products")} />
+      )}
+      {all.length > 1 && (
+        <div className="row wrap shop-chips">
+          {PRODUCT_CHIP_KEYS.filter((c) => counts[c] > 0 || chips.includes(c)).map((c) => (
+            <Chip key={c} on={chips.includes(c)} onClick={() => flipChip(c)} label={t(PRODUCT_CHIPS[c].label)} emoji={PRODUCT_CHIPS[c].emoji} n={counts[c]} />
+          ))}
         </div>
       )}
+      {(q || chips.length > 0) && <p className="tiny muted" aria-live="polite">{t("{n} of {total} products", { n: fmtNum(shelf.length), total: fmtNum(all.length) })}</p>}
       {shelf.length ? (
         <div className="prod-grid">
           {shelf.map((p) => (
             <ProductTile key={p.id} p={p} emoji={s.emoji} onOpen={() => onProduct(p.id)} />
           ))}
         </div>
+      ) : all.length ? (
+        <div className="empty">
+          {t("Nothing matches — loosen a filter")}
+          <button type="button" className="btn small ghost" onClick={() => (setQ(""), setChips([]))}>{t("Clear all")}</button>
+        </div>
       ) : (
         <div className="empty">{s.mine ? t("Your shelves are empty — add a product in My shop.") : t("Nothing on the shelves right now.")}</div>
       )}
+      {!s.mine && shelf.length > 0 && <AdSlot />}
       {!s.mine && <ReportButton shopId={s.id} />}
     </div>
   );
@@ -493,7 +529,7 @@ function ProductPage({ shopId, productId, onShop, onBought, onEdit }: { shopId: 
       {dealOn && p.dealEnds && <p className="small deal-ends">⏳ {t("Discount ends in {time}", { time: fmtCountdown(p.dealEnds - now) })}</p>}
       <p className="small muted" style={{ margin: "6px 0" }}>
         {p.over ? t("That's already over") : p.stock === 0 ? t("Sold out") : p.kind === "item" ? (p.stock <= 3 ? t("Only {n} left!", { n: p.stock }) : t("{n} in stock", { n: p.stock })) : `${t(kind.stock)}: ${fmtNum(p.stock)}`}
-        {p.sold > 0 && ` · ${t("{n} sold", { n: p.sold })}`}
+        {p.sold > 0 && `${dot()}${t("{n} sold", { n: p.sold })}`}
       </p>
       {!!rows.length && (
         <dl className="detail-rows">
@@ -704,7 +740,7 @@ function MyShop({ go }: { go: (v: View) => void }) {
                 {p.stock ? t("{n} in stock", { n: p.stock }) : t("Sold out")} {p.sold > 0 && `· ${t("{n} sold", { n: p.sold })}`}
               </span>
               {p.review !== "ok" && (
-                <span className={`review-badge ${p.review}`} title={p.reviewNote.split(" · ").map((k) => t(k)).join(" · ")}>
+                <span className={`review-badge ${p.review}`} title={p.reviewNote.split(dot()).map((k) => t(k)).join(dot())}>
                   {p.review === "pending" ? `🕓 ${t("Waiting for a moderator")}` : `⛔ ${t("Turned down")}${p.reviewNote ? ` — ${p.reviewNote}` : ""}`}
                 </span>
               )}
@@ -1145,7 +1181,7 @@ function ProductForm({ productId, onDone }: { productId: string | null; onDone: 
           {price > 0 && (
             <p className="small" style={{ color: "var(--green)" }}>
               {coins ? t("Buyers pay {now} 🪙 instead of {was} 🪙", { now: salePrice, was: price }) : t("Buyers pay {now} instead of {was}", { now: money(salePrice, "toman"), was: money(price, "toman") })}
-              {f.discountUntil ? ` · ${t("until {when}", { when: fmtTime(f.discountUntil) })}` : ""}
+              {f.discountUntil ? `${dot()}${t("until {when}", { when: fmtTime(f.discountUntil) })}` : ""}
             </p>
           )}
         </>
@@ -1217,7 +1253,7 @@ function OrderHead({ o }: { o: ShopOrder }) {
       <Photo id={o.photo} alt={o.title} fallback={o.shop.emoji} className="thumb" />
       <div className="grow" style={{ minWidth: 0 }}>
         <b className="ellipsis" style={{ display: "block" }}>{t("{qty}× {title}", { qty: o.qty, title: o.title })}</b>
-        <span className="small muted">{fmtNum(o.total)} 🪙 · {fmtTime(o.createdAt)}</span>
+        <span className="small muted">{fmtNum(o.total)} 🪙{dot()}{fmtTime(o.createdAt)}</span>
         <span className={`tag order-${o.status.toLowerCase()}`} style={{ display: "table", marginTop: 4 }}>{statusLabel(o)}</span>
       </div>
     </div>
@@ -1241,7 +1277,7 @@ function BuyerOrder({ o, fresh, onChanged, onShop }: { o: ShopOrder; fresh?: boo
           </div>
           <p className="small muted" style={{ margin: "6px 0" }}>
             🏪 <a href="#" onClick={(e) => (e.preventDefault(), onShop())}>{o.shop.emoji} {o.shop.name}</a>
-            {o.shop.address && ` · ${o.shop.address}`}
+            {o.shop.address && `${dot()}${o.shop.address}`}
             <br />⏰ {t("Pick it up by {when} or it's refunded automatically", { when: fmtTime(o.refundAt) })}
           </p>
           <div className="row wrap">

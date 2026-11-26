@@ -8,7 +8,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ModelOverride } from "@prisma/client";
 import { prisma } from "../lib/db";
-import { t } from "../lib/i18n";
+import { t, dot } from "../lib/i18n";
 import { checkModel, slotRule, type Problem } from "../lib/modelCheck";
 import { cfEnv, MODEL_PREFIX } from "./cf";
 import { HttpError } from "./http";
@@ -61,7 +61,7 @@ const say = (p: Problem) => t(p.msg, p.params as Record<string, string | number>
 export async function uploadDraft(slot: string, bytes: Uint8Array, note: string, by: string) {
   if (!slotRule(slot)) throw new HttpError(404, t("Unknown model slot"));
   const check = checkModel(slot, bytes);
-  if (check.errors.length || !check.info) throw new HttpError(422, check.errors.map(say).join(" · "));
+  if (check.errors.length || !check.info) throw new HttpError(422, check.errors.map(say).join(dot()));
   const last = await prisma.modelOverride.findFirst({ where: { slot }, orderBy: { version: "desc" }, select: { version: true } });
   const version = (last?.version ?? 0) + 1;
   const url = await storeModel(slot, version, bytes);

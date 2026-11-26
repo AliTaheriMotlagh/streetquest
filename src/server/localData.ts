@@ -128,6 +128,13 @@ let running = 0;
 const queue: (() => void)[] = [];
 /** `none`: what a 404 means (Balad answers "nothing found" that way); without it a 404 is a failure like any other. */
 export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Record<string, string>, none?: T): Promise<T | null> {
+  return paced(url, post, { accept: "application/json", ...extraHeaders }, none, (res) => res.json().catch(() => null) as Promise<T | null>);
+}
+
+/** A page as text (a site that puts its data in the HTML), at the same pace and with the same retries as getJson. */
+export const getText = (url: string, extraHeaders?: Record<string, string>) => paced<string>(url, undefined, { accept: "text/html", ...extraHeaders }, undefined, (res) => res.text().catch(() => null));
+
+async function paced<T>(url: string, post: unknown, extraHeaders: Record<string, string>, none: T | undefined, read: (res: Response) => Promise<T | null>): Promise<T | null> {
   const tr = torobBase(), torob = !!tr && url.startsWith(tr);
   if (torob) {
     if (torobCooling()) return null;
@@ -144,7 +151,7 @@ export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Rec
   if (running >= MAX_PARALLEL) await new Promise<void>((r) => queue.push(r));
   running++;
   const ua = `StreetQuest/1.0 (+${process.env.NEXT_PUBLIC_SITE_URL ?? "https://streetquest.app"})`;
-  const headers: Record<string, string> = { "user-agent": ua, accept: "application/json", ...extraHeaders };
+  const headers: Record<string, string> = { "user-agent": ua, ...extraHeaders };
   const init: RequestInit = post === undefined ? { headers } : { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(post) };
   try {
     // The relay in Iran drops out for a few seconds now and then (international links):
@@ -159,7 +166,7 @@ export async function getJson<T>(url: string, post?: unknown, extraHeaders?: Rec
         if (torob && (res.status === 490 || res.status === 429)) torobCoolUntil = Date.now() + TOROB_COOL_MS;
         if (!torob && attempt < RETRIES && [502, 503, 504].includes(res.status)) continue;
         if (res.status === 404 && none !== undefined) return none;
-        return res.ok ? ((await res.json().catch(() => null)) as T | null) : null;
+        return res.ok ? await read(res) : null;
       } catch {
         if (torob || attempt >= RETRIES) return null;
       } finally {

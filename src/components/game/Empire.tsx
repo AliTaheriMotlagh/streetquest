@@ -4,7 +4,7 @@
 // production bars and the "+cash" pops move smoothly, and applies taps instantly
 // (the server's answer then replaces the guess).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fmtNum, getLocale, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import {
   BIZ_BY_KEY,
   bigNum,
@@ -235,7 +235,7 @@ export function EmpireTab() {
           )}
           {boost > 1 && (
             <span className="pill hot">
-              <Art k="bolt" anim="pulse" /> ×2 · {clock((s.boostUntil - now) / 1000)}
+              <Art k="bolt" anim="pulse" /> ×2{dot()}{clock((s.boostUntil - now) / 1000)}
             </span>
           )}
           <span className="pill" title={t("Managers keep earning while you're away, up to this long")}>
@@ -386,7 +386,7 @@ export function EmpireTab() {
       </div>
 
       {welcome && (
-        <div className="modal-bg" style={{ zIndex: 2600 }} onClick={() => setWelcome(null)}>
+        <div className="modal-bg" style={{ zIndex: "var(--z-ad)" }} onClick={() => setWelcome(null)}>
           <div className="modal emp-welcome">
             <Art k="coinStack" size={110} anim="pop" />
             <h2>{t("Welcome back, boss!")}</h2>

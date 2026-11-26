@@ -3,7 +3,7 @@
 // (its menu, contacts and how to get there), and a business with its campaigns (check in
 // on the spot; coupon campaigns show the code for the till).
 import { useEffect, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { distanceM, formatDistance } from "@/lib/geo";
 import { INTERACT_RADIUS_M } from "@/lib/reach";
 import { BIZ_CHECKIN_M, inkOn, priceAt, shade } from "@/lib/business";
@@ -56,7 +56,7 @@ export function SpotCard({ p, onClose }: { p: WorldSpot; onClose: () => void }) 
           <div className="icon-tile place-ic">{cat.emoji}</div>
           <div className="grow">
             <b dir="auto">{p.name}</b>
-            <div className="small muted">{t(cat.label)}{Number.isFinite(dist) ? ` · ${formatDistance(dist)}` : ""}</div>
+            <div className="small muted">{t(cat.label)}{Number.isFinite(dist) ? `${dot()}${formatDistance(dist)}` : ""}</div>
             <span className="tag real-tag">📍 {t("Real place")}</span>
           </div>
         </div>
@@ -89,7 +89,7 @@ export function PlaceCard({ m, onClose }: { m: WorldPlace; onClose: () => void }
           <div className="icon-tile place-ic">{cat.emoji}</div>
           <div className="grow">
             <b>{m.place.name}</b>
-            <div className="small muted">{t(cat.label)}{m.place.brand ? ` · ${m.place.brand}` : ""} · {formatDistance(dist)}</div>
+            <div className="small muted">{t(cat.label)}{m.place.brand ? `${dot()}${m.place.brand}` : ""}{dot()}{formatDistance(dist)}</div>
             <span className="tag real-tag">📍 {t("Real place")}</span>
           </div>
         </div>
@@ -102,8 +102,8 @@ export function PlaceCard({ m, onClose }: { m: WorldPlace; onClose: () => void }
           </div>
         )}
         <div className="small muted" style={{ marginTop: 6 }}>
-          <b className="money-amount">💵 {t("{n} toman", { n: m.toman })}</b> · {t("+{n} XP", { n: m.rewardXp })}{item ? ` · ${item.emoji} ${t(item.name)}` : ""}
-          {m.kind === "deliver" ? ` · ⏱️ ${t("{n} min", { n: Math.round(m.timeLimitS / 60) })}` : ""} · {t("new jobs in {n} min", { n: left })}
+          <b className="money-amount">💵 {t("{n} toman", { n: m.toman })}</b>{dot()}{t("+{n} XP", { n: m.rewardXp })}{item ? `${dot()}${item.emoji} ${t(item.name)}` : ""}
+          {m.kind === "deliver" ? `${dot()}⏱️ ${t("{n} min", { n: Math.round(m.timeLimitS / 60) })}` : ""}{dot()}{t("new jobs in {n} min", { n: left })}
         </div>
       </div>
       {m.done ? (
@@ -158,7 +158,7 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
           <div className="icon-tile place-ic">{b.look.logo ? <img src={b.look.logo} alt="" className="biz-logo-sm" /> : b.emoji}</div>
           <div className="grow">
             <b>{b.name}</b> {b.verified && <span className="tag verified" title={t("Verified business")}>✔ {t("Verified")}</span>}
-            <div className="small muted">{t(cat.label)} · {formatDistance(dist)}{b.address ? ` · ${b.address}` : ""}</div>
+            <div className="small muted">{t(cat.label)}{dot()}{formatDistance(dist)}{b.address ? `${dot()}${b.address}` : ""}</div>
             {b.featured && <span className="tag featured-tag">⭐ {t("Featured")}</span>}
           </div>
         </div>
@@ -185,7 +185,7 @@ export function BizCard({ b, onClose }: { b: WorldBusiness; onClose: () => void 
               <span className="tag" style={{ color: "var(--yellow)" }}>+{fmtNum(c.rewardCoins)} 🪙</span>
             </div>
             {c.description && <p className="small" style={{ margin: "4px 0" }}>{c.description}</p>}
-            {c.kind === "coupon" && c.offer && <div className="small coupon-line">🎟️ {t("Coupon: {offer}", { offer: c.offer })}{c.bonusCoins ? ` · ${t("+{n} 🪙 when used", { n: c.bonusCoins })}` : ""}</div>}
+            {c.kind === "coupon" && c.offer && <div className="small coupon-line">🎟️ {t("Coupon: {offer}", { offer: c.offer })}{c.bonusCoins ? `${dot()}${t("+{n} 🪙 when used", { n: c.bonusCoins })}` : ""}</div>}
             <div className="small muted">{t("{n} spots left", { n: c.left })}</div>
             {b.mine ? (
               <Button className="btn ghost block" onClick={() => (onClose(), setPanel("biz"))}>🛠️ {t("Manage in Business center")}</Button>

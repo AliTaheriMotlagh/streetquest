@@ -2,7 +2,7 @@
 // The HUD of story scenarios (drive/scenarios.ts): the briefing card, the objective with its clock
 // and distance, the subtitles, the photo flash, and the pass / fail card with retry. Small on phones.
 import { useSyncExternalStore } from "react";
-import { fmtNum, getLocale, t } from "@/lib/i18n";
+import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { formatDistance } from "@/lib/geo";
 import { FAIL_TEXT } from "@/lib/scenarios/text";
 import { say } from "@/lib/scenarios/validate";
@@ -19,7 +19,7 @@ export function ScenarioHud({ scenarios }: { scenarios: Scenarios }) {
       {s.hud && (
         <div className="scn-obj" role="status">
           <span className="scn-k">
-            {s.hud.title} · {fmtNum(s.hud.index + 1)}/{fmtNum(s.hud.total)}
+            {s.hud.title}{dot()}{fmtNum(s.hud.index + 1)}/{fmtNum(s.hud.total)}
           </span>
           <b>{s.hud.objective}</b>
           <span className="scn-v">

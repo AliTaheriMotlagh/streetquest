@@ -56,7 +56,7 @@ const directory: Record<string, string> = {
   "Types of store": "نوع مغازه",
   "List all stores": "فهرست همه مغازه‌ها",
   "Services & shops": "خدمات و خرید",
-  "Sheypoor · {area}": "شیپور · {area}",
+  "Sheypoor · {area}": "شیپور • {area}",
   "On {site}": "در {site}",
 
   // ---- the map filter: presets and groups (MapFilter.tsx), bubbles (GameMap.tsx)
@@ -86,7 +86,7 @@ const directory: Record<string, string> = {
   // ---- Sheypoor
   "The newest ads people posted in {area}.": "تازه‌ترین آگهی‌هایی که مردم تو {area} گذاشتن.",
   "More on Sheypoor": "آگهی‌های بیشتر در شیپور",
-  "From Sheypoor · updated every 15 minutes": "از شیپور · هر ۱۵ دقیقه به‌روز می‌شه",
+  "From Sheypoor · updated every 15 minutes": "از شیپور • هر ۱۵ دقیقه به‌روز می‌شه",
 
   // ---- the store list
   "Sites": "سایت‌ها",

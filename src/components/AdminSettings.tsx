@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { askConfirm } from "@/components/Dialogs";
 import { Button } from "./Button";
-import { t, msg } from "@/lib/i18n";
+import { t, msg, dot } from "@/lib/i18n";
 
 type Def = { key: string; group: string; label: string; help: string; min?: number; max?: number; step?: number; type: "number" | "bool" | "text" | "json"; def: unknown };
 type CatalogEntry = { key: string; name: string; emoji: string; values: Record<string, number | null> };
@@ -217,7 +217,7 @@ export function SettingsTab({ config, post }: { config: AdminConfig; post: Post 
                   <b>{GROUP_ICON[g]} {t(g)}</b>
                   {GROUP_DESC[g] && <span className="small muted">{t(GROUP_DESC[g])}</span>}
                 </div>
-                {g === "Goals" && <p className="small muted">{t("Things a goal can count:")} {Object.values(config.metrics).map((m) => t(m)).join(" · ")}</p>}
+                {g === "Goals" && <p className="small muted">{t("Things a goal can count:")} {Object.values(config.metrics).map((m) => t(m)).join(dot())}</p>}
                 {list.map((d) => (
                   <div key={d.key} className={`setting ${d.type === "json" ? "wide" : ""} ${overridden(d) ? "changed" : ""}`}>
                     <div className="grow">

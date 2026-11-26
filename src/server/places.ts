@@ -7,7 +7,7 @@ import { tileOf } from "../lib/city";
 import { CUSTOMER_DOOR, parsePlaceMissionId, placeBucket, placeMissions, placeToman, PLACE_CATS, type Place, type PlaceCat, type PlaceMission } from "../lib/places";
 import { INTERACT_RADIUS_M } from "../lib/reach";
 import { S } from "../lib/settings";
-import { msg, t } from "../lib/i18n";
+import { msg, t, dot } from "../lib/i18n";
 import { placesAround, placesIn } from "./city";
 import { HttpError } from "./http";
 import { checkClaimAchievements, grant, itemLabel, track } from "./rewards";
@@ -104,7 +104,7 @@ export async function startPlaceMission(u: { id: string; remotePlay: boolean; lo
   await checkClaimAchievements(userId, "day");
   await track("place_mission", { userId, campaign: m.place.cat });
   await autoPost(userId, "mission", { t: msg("{emoji} Checked in at {place}"), v: { emoji: PLACE_CATS[m.place.cat].emoji, place: m.place.name } }, { name: m.place.name, cat: m.place.cat, lat: m.place.lat, lng: m.place.lng });
-  return { message: [t("{emoji} {title} at {place}", { emoji: m.emoji, title: t(m.title), place: m.place.name }), m.item ? itemLabel(m.item) : "", toman ? t("💵 +{n} toman", { n: toman }) : t(TEST_MODE_NOTE)].filter(Boolean).join(" · "), toman };
+  return { message: [t("{emoji} {title} at {place}", { emoji: m.emoji, title: t(m.title), place: m.place.name }), m.item ? itemLabel(m.item) : "", toman ? t("💵 +{n} toman", { n: toman }) : t(TEST_MODE_NOTE)].filter(Boolean).join(dot()), toman };
 }
 
 /** A finished delivery run from a real place: the toman, the item and the feed post. */
@@ -120,5 +120,5 @@ export async function finishPlaceRun(u: { id: string; remotePlay: boolean; locSi
   await questEvent(userId, "place");
   if (m.item) await grant(userId, { items: { [m.item]: 1 } }, { raw: true });
   await autoPost(userId, "mission", { t: msg("{emoji} Delivered from {place} to {dest}"), v: { emoji: m.emoji, place: m.place.name, dest: m.dest?.name ?? "" } }, { name: m.place.name, cat: m.place.cat, lat: m.place.lat, lng: m.place.lng });
-  return [toman ? t("💵 +{n} toman", { n: toman }) : "", m.item ? itemLabel(m.item) : ""].filter(Boolean).join(" · ");
+  return [toman ? t("💵 +{n} toman", { n: toman }) : "", m.item ? itemLabel(m.item) : ""].filter(Boolean).join(dot());
 }

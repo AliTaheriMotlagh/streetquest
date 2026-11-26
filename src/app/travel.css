@@ -73,6 +73,7 @@
   background: color-mix(in srgb, var(--site) 12%, transparent);
 }
 .tv-offer.best { background: var(--site); color: #0b0d12; border-color: var(--site); }
+.tv-more-loading { display: grid; gap: 6px; margin-top: 8px; }
 .tv-skel { height: 104px; background: linear-gradient(90deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .09), rgba(255, 255, 255, .04)); background-size: 200% 100%; animation: tv-shimmer 1.2s linear infinite; }
 @keyframes tv-shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .tv-skel { animation: none; } }
@@ -272,7 +273,8 @@ article.tv-stay .fx-meta { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
 
 /* ---- the trip at a glance (Travel.tsx TripGlance): route line, day by day, map, cost split */
 .tg { display: grid; gap: 10px; margin: 4px 0 14px; padding: 12px; border-radius: 18px; border: 1px solid var(--line); background: linear-gradient(160deg, color-mix(in srgb, var(--sky) 9%, var(--surface-1)), var(--surface-1)); }
-.tg-tabs { grid-template-columns: repeat(3, 1fr); }
+.tg-tabs { grid-template-columns: repeat(4, 1fr); }
+.tg-tabs button { padding: 0 4px; font-size: 12.5px; white-space: nowrap; }
 .tg-line { list-style: none; margin: 0; padding: 6px 2px 2px; display: flex; align-items: flex-start; overflow-x: auto; scrollbar-width: thin; scroll-snap-type: x proximity; }
 .tg-city { flex: 0 0 auto; display: grid; justify-items: center; gap: 3px; min-width: 76px; max-width: 110px; text-align: center; scroll-snap-align: center; }
 .tg-city b { font: 800 14px/1.25 var(--body); overflow-wrap: anywhere; }
@@ -336,7 +338,7 @@ article.tv-stay .fx-meta { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
 .th-from { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .45); background: rgba(0, 0, 0, .2); color: #fff; font: 800 13.5px/1 var(--body); cursor: pointer; }
 .th-map { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); }
 .th-map > :first-child { height: 220px; }
-.th-map-hint { position: absolute; z-index: 500; inset-inline-start: 10px; bottom: 10px; padding: 4px 10px; border-radius: 999px; background: rgba(8, 10, 16, .78); color: #fff; font: 700 11.5px/1.3 var(--body); pointer-events: none; }
+.th-map-hint { position: absolute; z-index: var(--z-hud); inset-inline-start: 10px; bottom: 10px; padding: 4px 10px; border-radius: 999px; background: rgba(8, 10, 16, .78); color: #fff; font: 700 11.5px/1.3 var(--body); pointer-events: none; }
 .th-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .th-card { --tint: #5aa9ff; position: relative; display: grid; gap: 3px; align-content: start; min-height: 128px; padding: 12px; border-radius: 18px; border: 1px solid color-mix(in srgb, var(--tint) 40%, var(--line)); text-align: start; color: var(--text); cursor: pointer; overflow: hidden;
   background: linear-gradient(160deg, color-mix(in srgb, var(--tint) 30%, var(--panel-solid, #151924)), var(--panel-solid, #151924) 70%); transition: transform .15s, box-shadow .15s; }
@@ -379,3 +381,32 @@ article.tv-stay .fx-meta { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
 .sp-amen li { font: 600 13.5px/1.4 var(--body); }
 .sp-foot { display: flex; gap: 8px; align-items: center; }
 .sp-foot .pp-go { justify-content: center; }
+
+/* ---- stays on other sites (Travel.tsx OtherSites): a strip of small cards */
+.tv-other { margin-top: 12px; display: grid; gap: 6px; }
+.tv-other h3 { margin: 0; }
+.tv-other-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+.tv-other-card { flex: 0 0 152px; scroll-snap-align: start; display: grid; gap: 3px; padding: 6px; border-radius: 12px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); color: inherit; text-decoration: none; }
+.tv-other-card img, .tv-other-ph { width: 100%; height: 84px; object-fit: cover; border-radius: 8px; background: rgba(255, 255, 255, .06); display: grid; place-items: center; font-size: 28px; }
+.tv-other-card b { font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-other-card small { font-size: 11px; color: var(--muted, #9aa3b2); }
+
+/* ---- the trip's extras: your own steps, the list to book, nearby cities (Travel.tsx) */
+.tg-item.step { display: flex; align-items: center; gap: 6px; }
+.tg-step-link { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0; color: inherit; text-decoration: none; padding: 6px 0; }
+.tg-step-link small, .tg-step-link b { display: block; }
+.tg-step-x { min-width: 36px; min-height: 36px; border: 0; background: none; color: var(--muted, #9aa3b2); font: inherit; cursor: pointer; }
+.tg-add-step { margin: 4px 0 2px; }
+.tg-step-form { display: grid; gap: 8px; padding: 10px; margin-top: 6px; }
+.tg-step-form label { display: grid; gap: 4px; }
+.tg-book ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tg-book-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: rgba(255, 255, 255, .04); }
+.tg-book-item small { display: block; color: var(--muted, #9aa3b2); }
+.tg-book-item b { display: block; font-size: 13px; }
+.tg-book-date { min-width: 44px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; border-radius: 8px; padding: 4px; background: rgba(255, 255, 255, .07); }
+.tg-book-total { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 2px 6px; font-size: 15px; }
+.tg-book-actions { gap: 6px; flex-wrap: wrap; }
+.tp-near { display: grid; gap: 4px; min-width: 0; }
+.tp-near-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.tp-near-row .chip small { opacity: .7; margin-inline-start: 4px; }
+.tg-steps { --c: #4dd0a8; }

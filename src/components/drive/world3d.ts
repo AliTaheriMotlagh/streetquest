@@ -1219,6 +1219,7 @@ export function tileMeshes(a: TileArrays, mats: Materials, tpl: Templates, opts:
   const byKind: Record<PropKind, THREE.BufferGeometry> = {
     tree: tpl.tree, lamp: tpl.lamp, signal: tpl.signal, bus: tpl.bus, bench: tpl.bench, bin: tpl.bin, hydrant: tpl.hydrant, fountain: tpl.fountain, charity: tpl.charity, kiosk: tpl.kiosk, dumpster: tpl.dumpster,
     bags: tpl.bags, postbox: tpl.postbox, power: tpl.power, telecom: tpl.telecom, phone: tpl.phone, saqa: tpl.saqa, rail: tpl.rail, bridgeDeck: tpl.bridgeDeck, bridgeStair: tpl.bridgeStair,
+    cone: tpl.cone, chair: tpl.chair,
   };
   for (const p of a.props) {
     if (p.kind === "tree" && tpl.variants.length) {

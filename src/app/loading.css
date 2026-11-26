@@ -1,6 +1,6 @@
 /* The loading scene (components/LoadingScene.tsx): dusk over Tehran, windows lighting up as it loads,
    a car on a scrolling road, the title with a light sweeping across. Lifts like a curtain when done. */
-.ls { position: fixed; inset: 0; z-index: 900; overflow: hidden; display: grid; place-items: start center; padding: calc(12vh + env(safe-area-inset-top, 0px)) 16px 0; color: #fff; pointer-events: auto; background: #0b1020; }
+.ls { position: fixed; inset: 0; z-index: var(--z-loading); overflow: hidden; display: grid; place-items: start center; padding: calc(12vh + env(safe-area-inset-top, 0px)) 16px 0; color: #fff; pointer-events: auto; background: #0b1020; }
 .ls.out { animation: lsOut .85s cubic-bezier(.7, 0, .3, 1) forwards; pointer-events: none; }
 @keyframes lsOut { to { clip-path: inset(0 0 100% 0); opacity: .6; } }
 .ls-sky { position: absolute; inset: 0; background: linear-gradient(180deg, #16234d 0%, #3b3f7a 38%, #b45c6e 66%, #f2a65a 82%, #ffd38a 100%); background-size: 100% 160%; animation: lsSky 14s ease-in-out infinite alternate; }

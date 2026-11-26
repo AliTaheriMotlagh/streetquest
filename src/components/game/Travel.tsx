@@ -13,11 +13,11 @@
 // phone (keep.ts) so a plan opens instantly and offline.
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmtDate, fmtNum, getLocale, t } from "@/lib/i18n";
+import { fmtDate, fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { formatDistance, type LatLng } from "@/lib/geo";
 import { S } from "@/lib/settings";
 import {
-  bookUrl, CITIES, cityByKey, cityHas, COMPARE, POPULAR, DAY_PART_KEYS, DAY_PARTS, filterStays, filterTrips, findCities, hotelLinks, isoDay, AMENITIES, MODE_KEYS, MODES, nearestCity, STAY_KINDS, STAY_SORT_KEYS, STAY_SORTS,
+  CITIES, cityByKey, cityHas, POPULAR, DAY_PART_KEYS, DAY_PARTS, filterStays, filterTrips, findCities, hotelLinks, isoDay, AMENITIES, MODE_KEYS, MODES, nearestCity, STAY_KINDS, STAY_SORT_KEYS, STAY_SORTS,
   tourLink, TRAVEL_SITES, TRIP_SORT_KEYS, TRIP_SORTS, tripFacets, type City, type DayPart, type Mode, type Amenity, type Stay, type StayKind, type StaySort, type Trip, type TripSort,
 } from "@/lib/travel";
 import {
@@ -25,6 +25,10 @@ import {
 } from "@/lib/travel/plan";
 import { iranTime } from "@/lib/flights";
 import { api } from "./client";
+import { NDJSON_TYPE, readNdjson } from "@/lib/ndjson";
+import { adapterOf, compareLinks, type SourceOffer } from "@/lib/travel/sources";
+import { checklist, nearbyCities, type ToBook } from "@/lib/travel/extras";
+import { MAX_STEPS, stepFromUrl, type Step } from "@/lib/travel/steps";
 import { searchTrips, type TripAnswer } from "./travelClient";
 import { fresh, keep, kept } from "./keep";
 import { Sheet } from "./ui";
@@ -47,6 +51,8 @@ const STORE = "sq-trip";
 const DAYS_AHEAD = 30;
 const TRIPS_FRESH_MS = 15 * 60_000;
 const STAYS_FRESH_MS = 6 * 3600_000;
+/** A streamed list of stays gives up after this long (a dead connection mustn't hang the screen). */
+const STREAM_TIMEOUT_MS = 30_000;
 /** Kept stays' key (v2: hotels joined the list — older copies have none). */
 const STAYS_KEPT = "stays2:";
 const STAYS_PAGE = 30;
@@ -109,6 +115,8 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
   // ---- every leg's tickets and every city's stays, fetched as the plan takes shape (kept on the phone)
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [stays, setStays] = useState<Record<string, Stay[] | null>>({});
+  /** Cities whose stays are still streaming in (a kept list may be shown meanwhile). */
+  const [staysLoading, setStaysLoading] = useState<Record<string, boolean>>({});
   const asked = useRef(new Set<string>());
   useEffect(() => {
     for (const l of legs) {
@@ -134,7 +142,8 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
       const mine = kept<Stay[]>(`${STAYS_KEPT}${s.city}`);
       setStays((v) => ({ ...v, [s.city]: mine?.data ?? null }));
       if (fresh(mine, STAYS_FRESH_MS)) continue;
-      void loadStays(s.city).then((r) => setStays((v) => ({ ...v, [s.city]: r })));
+      setStaysLoading((v) => ({ ...v, [s.city]: true }));
+      void loadStays(s.city, (part) => setStays((v) => ({ ...v, [s.city]: part }))).then((r) => (setStays((v) => ({ ...v, [s.city]: r })), setStaysLoading((v) => ({ ...v, [s.city]: false }))));
     }
   }, [plan.stops]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -232,7 +241,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
   }
   if (view.kind === "stay" && plan.stops[view.i]) {
     const i = view.i, s = plan.stops[i];
-    return <StayView city={cityByKey(s.city)!} nights={s.nights} travellers={plan.travellers} from={days[i].arrive} stays={stays[s.city] ?? null} picked={stayPicks[i]?.stay} onPick={(st) => (pickStay(i, st ? { stay: st } : null), setView({ kind: "plan" }))} onBack={() => setView({ kind: "plan" })} onClose={onClose} />;
+    return <StayView city={cityByKey(s.city)!} nights={s.nights} travellers={plan.travellers} from={days[i].arrive} stays={stays[s.city] ?? null} loading={!!staysLoading[s.city]} picked={stayPicks[i]?.stay} onPick={(st) => (pickStay(i, st ? { stay: st } : null), setView({ kind: "plan" }))} onBack={() => setView({ kind: "plan" })} onClose={onClose} />;
   }
 
   // ---- the plan
@@ -266,7 +275,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
         </div>
 
         {legs.length > 0 && (
-          <TripGlance plan={plan} legs={legs} days={days} answers={answers} legPicks={legPicks} stayPicks={stayPicks} bill={bill} onLeg={(l) => setView({ kind: "leg", key: legKey(l) })} onStay={(i) => setView({ kind: "stay", i })} />
+          <TripGlance plan={plan} legs={legs} days={days} answers={answers} legPicks={legPicks} stayPicks={stayPicks} bill={bill} onLeg={(l) => setView({ kind: "leg", key: legKey(l) })} onStay={(i) => setView({ kind: "stay", i })} onSteps={(steps) => setPlan((p) => ({ ...p, steps }))} />
         )}
 
         <ol className="tp-line">
@@ -301,6 +310,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
               />
             );
           })}
+          {plan.stops.length > 0 && plan.stops.length < MAX_STOPS && <NearbyChips plan={plan} onAdd={(key) => setPlan((p) => ({ ...p, stops: [...p.stops, { city: key, nights: 1 }] }))} />}
           {plan.stops.length < MAX_STOPS && (
             <li className="tp-node add">
               <span className="tp-dot" aria-hidden>＋</span>
@@ -338,7 +348,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
           <div className="grow">
             <b>{bill.total ? toman(bill.total) : t("Nothing chosen yet")}</b>
             <small>
-              {bill.total > 0 && plan.travellers > 1 ? `${t("{n} per person", { n: toman(bill.perPerson) })} · ` : ""}
+              {bill.total > 0 && plan.travellers > 1 ? `${t("{n} per person", { n: toman(bill.perPerson) })}${dot()}` : ""}
               {open ? t("{n} still to choose", { n: fmtNum(open) }) : t("Everything chosen")}
             </small>
             {bill.total > 0 && (
@@ -372,16 +382,18 @@ function legLook(l: Leg, pick: LegPick | undefined, answer: Answer | undefined, 
  * leg with how, how long and how much — solid once chosen, dashed while open), the cost split into
  * tickets / fuel / stays, then the trip day by day or on the map. Every piece opens its own screen.
  */
-function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLeg, onStay }: {
+function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLeg, onStay, onSteps }: {
   plan: Plan; legs: Leg[]; days: { arrive: string; leave: string }[]; answers: Record<string, Answer>; legPicks: Record<number, LegPick | undefined>; stayPicks: Record<number, StayPick | undefined>;
-  bill: ReturnType<typeof billOf>; onLeg: (l: Leg) => void; onStay: (i: number) => void;
+  bill: ReturnType<typeof billOf>; onLeg: (l: Leg) => void; onStay: (i: number) => void; onSteps: (steps: Step[]) => void;
 }) {
-  const [tab, setTab] = useState<"line" | "days" | "map">("line");
+  const [tab, setTab] = useState<"line" | "days" | "map" | "book">("line");
+  const [adding, setAdding] = useState<string | null>(null);
   const diary = useMemo(() => itinerary(plan, legPicks, stayPicks), [plan, legPicks, stayPicks]);
   const parts = [
     { k: "tickets", n: bill.tickets, label: t("Tickets"), emoji: "🎫" },
     { k: "fuel", n: bill.fuel, label: t("Fuel"), emoji: "⛽" },
     { k: "stays", n: bill.stays, label: t("Stays"), emoji: "🏨" },
+    { k: "steps", n: bill.steps, label: t("Your steps"), emoji: "🔗" },
   ].filter((x) => x.n > 0);
   const seg = (l: Leg) => {
     const x = legLook(l, legPicks[l.i], answers[legKey(l)], plan.travellers, !!plan.quota);
@@ -406,7 +418,7 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
   return (
     <section className="tg" aria-label={t("Your trip at a glance")}>
       <div className="fx-seg tg-tabs" role="tablist" aria-label={t("Your trip at a glance")}>
-        {([["line", t("Route")], ["days", t("Day by day")], ["map", t("Map")]] as const).map(([k, label]) => (
+        {([["line", t("Route")], ["days", t("Day by day")], ["map", t("Map")], ["book", t("To book")]] as const).map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
@@ -453,7 +465,7 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
                           <span aria-hidden>{x.emoji}</span>
                           <span className="grow">
                             <b>{cityName(it.leg.from)} {arrow()} {cityName(it.leg.to)}</b>
-                            <small>{x.set ? [x.depart && clock(x.depart), x.minutes && tripSpan(x)].filter(Boolean).join(" · ") : t("Choose how to get there")}</small>
+                            <small>{x.set ? [x.depart && clock(x.depart), x.minutes && tripSpan(x), x.price > 0 && toman(x.price), it.pick && it.pick.way !== "car" && it.pick.trip.offers[0] && t(TRAVEL_SITES[it.pick.trip.offers[0].source].name)].filter(Boolean).join(dot()) : t("Choose how to get there")}</small>
                           </span>
                         </button>
                       </li>
@@ -466,9 +478,22 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
                           <span aria-hidden>🌙</span>
                           <span className="grow">
                             <b dir="auto">{it.pick ? it.pick.stay.name : t("Choose a place to stay")}</b>
-                            <small>{t("Night {n} of {of} in {city}", { n: fmtNum(it.night), of: fmtNum(it.of), city: cityName(it.city) })}</small>
+                            <small>{[t("Night {n} of {of} in {city}", { n: fmtNum(it.night), of: fmtNum(it.of), city: cityName(it.city) }), it.pick && it.pick.stay.price > 0 && t("{price} a night", { price: toman(it.pick.stay.price * roomsFor(it.pick.stay, plan.travellers)) }), it.pick && t(TRAVEL_SITES[it.pick.stay.source].name)].filter(Boolean).join(dot())}</small>
                           </span>
                         </button>
+                      </li>
+                    );
+                  if (it.kind === "step")
+                    return (
+                      <li key={k} className="tg-item step set">
+                        <LeaveLink className="tg-step-link" href={it.step.url} site={it.step.site}>
+                          <span aria-hidden>🔗</span>
+                          <span className="grow">
+                            <b dir="auto">{it.step.title}</b>
+                            <small>{[t(it.step.site), it.step.price > 0 && toman(it.step.price * it.step.people)].filter(Boolean).join(dot())}</small>
+                          </span>
+                        </LeaveLink>
+                        <button type="button" className="tg-step-x" aria-label={t("Remove")} onClick={() => onSteps((plan.steps ?? []).filter((x) => x.id !== it.step.id))}>✕</button>
                       </li>
                     );
                   return (
@@ -479,10 +504,17 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
                   );
                 })}
               </ul>
+              {adding === d.date ? (
+                <StepForm date={d.date} travellers={plan.travellers} onCancel={() => setAdding(null)} onAdd={(st) => (onSteps([...(plan.steps ?? []), st].slice(0, MAX_STEPS)), setAdding(null))} />
+              ) : (
+                (plan.steps ?? []).length < MAX_STEPS && <button type="button" className="link-btn small tg-add-step" onClick={() => setAdding(d.date)}>＋ {t("Add a step from a link")}</button>
+              )}
             </li>
           ))}
         </ol>
       )}
+
+      {tab === "book" && <ToBookList plan={plan} legPicks={legPicks} stayPicks={stayPicks} />}
 
       {tab === "map" && <CityMap route={[plan.home, ...plan.stops.map((s) => s.city), ...(plan.back ? [plan.home] : [])]} here={plan.home} onPick={() => {}} />}
 
@@ -499,6 +531,133 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
         </div>
       )}
     </section>
+  );
+}
+
+/** Your own step: paste a booking link (any site), the title and price fill in what they can, you set the rest. */
+function StepForm({ date, travellers, onAdd, onCancel }: { date: string; travellers: number; onAdd: (s: Step) => void; onCancel: () => void }) {
+  const [link, setLink] = useState("");
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState(0);
+  const [people, setPeople] = useState(travellers);
+  const got = stepFromUrl(link);
+  const add = () => got && onAdd({ id: `s${Date.now().toString(36)}`, date, title: title.trim() || got.title, url: got.url, site: got.site, price, people });
+  return (
+    <div className="tg-step-form card">
+      <label className="small">
+        {t("Link")}
+        <input className="input" dir="ltr" inputMode="url" value={link} placeholder="https://" onChange={(e) => setLink(e.target.value)} onPaste={(e) => {
+          const v = e.clipboardData.getData("text");
+          const g = stepFromUrl(v);
+          if (g && !title) setTitle(g.title);
+        }} />
+      </label>
+      {link && !got && <span className="tiny tv-err">{t("That doesn't look like a link")}</span>}
+      {got && <span className="tiny muted">{t("On {site}", { site: t(got.site) })}</span>}
+      <label className="small">
+        {t("What is it?")}
+        <input className="input" dir="auto" value={title} placeholder={got?.title ?? ""} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      <label className="small">
+        {t("Price a person (toman)")}
+        <input className="input" inputMode="numeric" value={price ? fmtNum(price) : ""} placeholder="0" onChange={(e) => setPrice(Number(e.target.value.replace(/[^\d۰-۹]/g, "").replace(/[۰-۹]/g, (x) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(x)))) || 0)} />
+      </label>
+      <div className="ta-people">
+        <span>{t("People")}</span>
+        <Stepper value={people} min={1} max={MAX_TRAVELLERS} onChange={setPeople} label={t("People")} />
+      </div>
+      <div className="row">
+        <button type="button" className="btn small" disabled={!got} onClick={add}>{t("Add to the day")}</button>
+        <button type="button" className="btn small ghost" onClick={onCancel}>{t("Cancel")}</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Everything to reserve, in date order (Jalali dates): each with its price for everyone and a link to book
+ * it, then the total — to share (the phone's share sheet), copy, or keep as a text file.
+ */
+function ToBookList({ plan, legPicks, stayPicks }: { plan: Plan; legPicks: Record<number, LegPick | undefined>; stayPicks: Record<number, StayPick | undefined> }) {
+  const list = useMemo(() => checklist(plan, legPicks, stayPicks), [plan, legPicks, stayPicks]);
+  const [note, setNote] = useState("");
+  const what = (x: ToBook) =>
+    x.kind === "ticket" || x.kind === "car"
+      ? `${cityName(x.from!)} ${arrow()} ${cityName(x.to!)}${x.kind === "car" ? `{dot()}${t("Own car")}` : x.title ? `{dot()}${x.title}` : ""}`
+      : x.kind === "stay"
+        ? `${x.title}${dot()}${t("{n} nights", { n: fmtNum(x.n ?? 0) })}${dot()}${cityName(x.city!)}`
+        : x.title;
+  const icon: Record<ToBook["kind"], string> = { ticket: "🎫", car: "🚗", stay: "🏨", act: "🎟️", step: "🔗" };
+  const siteName = (s?: string) => (s ? t((TRAVEL_SITES as Record<string, { name: string }>)[s]?.name ?? s) : "");
+  const text = () =>
+    [
+      t("Trip from {city}", { city: cityName(plan.home) }),
+      ...list.items.map((x) => [x.jalali, `${icon[x.kind]} ${what(x)}`, x.price > 0 ? t("{n} toman", { n: fmtNum(x.price) }) : "", siteName(x.site), x.url ?? ""].filter(Boolean).join(dot())),
+      t("Total: {n} toman", { n: fmtNum(list.total) }),
+    ].join("\n");
+  const share = async () => {
+    const body = text();
+    try {
+      if (navigator.share) await navigator.share({ title: t("My trip"), text: body });
+      else (await navigator.clipboard.writeText(body), setNote(t("Copied")));
+    } catch {
+      /* closed the share sheet */
+    }
+  };
+  const copy = () => navigator.clipboard.writeText(text()).then(() => setNote(t("Copied")), () => setNote(t("Couldn't copy")));
+  const save = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text()], { type: "text/plain;charset=utf-8" }));
+    a.download = `trip-${plan.start}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  if (!list.items.length) return <p className="small muted tg-empty">{t("Choose tickets and stays first — they'll be listed here to book.")}</p>;
+  return (
+    <div className="tg-book">
+      {list.open > 0 && <p className="tiny muted">{t("{n} still to choose", { n: fmtNum(list.open) })}</p>}
+      <ol>
+        {list.items.map((x, i) => (
+          <li key={i} className="tg-book-item">
+            <span className="tg-book-date">{fmtNum(Number(x.jalali.slice(5, 7)))}/{fmtNum(Number(x.jalali.slice(8)))}</span>
+            <span className="grow">
+              <b dir="auto">{icon[x.kind]} {what(x)}</b>
+              <small>{[x.price > 0 ? toman(x.price) : t("Price on the site"), siteName(x.site)].filter(Boolean).join(dot())}</small>
+            </span>
+            {x.url && <LeaveLink className="btn small" href={x.url} site={siteName(x.site)}>{t("Reserve ↗")}</LeaveLink>}
+          </li>
+        ))}
+      </ol>
+      <div className="tg-book-total"><span>{t("Total")}</span><b>{toman(list.total)}</b></div>
+      <div className="row tg-book-actions">
+        <button type="button" className="btn small" onClick={share}>📤 {t("Share")}</button>
+        <button type="button" className="btn small ghost" onClick={copy}>📋 {t("Copy")}</button>
+        <button type="button" className="btn small ghost" onClick={save}>⬇️ {t("Save as text")}</button>
+      </div>
+      {note && <p className="tiny muted" aria-live="polite">{note}</p>}
+    </div>
+  );
+}
+
+/** Cities a few hours' drive from the trip's last stop, to add with a tap. */
+function NearbyChips({ plan, onAdd }: { plan: Plan; onAdd: (key: string) => void }) {
+  const last = plan.stops.at(-1)?.city;
+  const near = useMemo(() => (last ? nearbyCities(last, [plan.home, ...plan.stops.map((s) => s.city)], 4) : []), [last, plan.home, plan.stops]);
+  if (!near.length) return null;
+  return (
+    <li className="tp-node near">
+      <span className="tp-dot" aria-hidden>🧭</span>
+      <div className="tp-near">
+        <small className="muted">{t("Nearby, worth a stop")}</small>
+        <div className="tp-near-row">
+          {near.map((n) => (
+            <button key={n.city.key} type="button" className="chip small" onClick={() => onAdd(n.city.key)}>
+              ＋ {cityName(n.city.key)} <small>{span(n.minutes)}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -520,7 +679,7 @@ function LegRow({ leg, answer, pick, travellers, quota, onOpen }: { leg: Leg; an
   const drive = driveOf(from, to, travellers, !!quota);
   let body;
   if (pick?.way === "car" && drive) body = (<><b>{WAYS.car.emoji} {t("Own car")}</b><small>{t("{km} km · {time} · fuel {fuel}", { km: fmtNum(drive.km), time: span(drive.minutes), fuel: toman(drive.fuel) })}</small></>);
-  else if (pick && pick.way !== "car") body = (<><b>{WAYS[pick.way].emoji} {clock(pick.trip.depart)}{pick.trip.arrive ? ` → ${clock(pick.trip.arrive)}` : ""} · <bdi>{pick.trip.company}</bdi></b><small>{toman(pick.trip.price * travellers)}{travellers > 1 ? ` · ${t("{n} each", { n: fmtNum(pick.trip.price) })}` : ""}</small></>);
+  else if (pick && pick.way !== "car") body = (<><b>{WAYS[pick.way].emoji} {clock(pick.trip.depart)}{pick.trip.arrive ? ` → ${clock(pick.trip.arrive)}` : ""}{dot()}<bdi>{pick.trip.company}</bdi></b><small>{toman(pick.trip.price * travellers)}{travellers > 1 ? `${dot()}${t("{n} each", { n: fmtNum(pick.trip.price) })}` : ""}</small></>);
   else body = (<><b className="tp-choose">{t("Choose how to get there")}</b><small>{answer?.loading ? t("Looking for tickets…") : best ? t("from {price} · {way}", { price: toman(best.price), way: t(WAYS[best.mode].label) }) : drive ? t("No tickets that day — drive {km} km", { km: fmtNum(drive.km) }) : t("No tickets that day")}</small></>);
   return (
     <li className={`tp-leg${pick ? " set" : ""}`}>
@@ -579,7 +738,7 @@ function StopBlock({ leg, answer, pick, travellers, quota, stop, when, stay, sta
             <button type="button" className={`tp-stay tp-acts${acts.length ? " set" : ""}`} onClick={onActs}>
               <span className="tp-stay-ic" aria-hidden>{acts[0]?.emoji || "🎟️"}</span>
               <span className="grow">
-                <b>{acts.length ? acts.map((a) => a.title).join(" · ") : t("Things to do")}</b>
+                <b>{acts.length ? acts.map((a) => a.title).join(dot()) : t("Things to do")}</b>
                 <small>{acts.length ? t("{n} outings · {price}", { n: fmtNum(acts.length), price: toman(actsSum) }) : t("{n} ideas — diving, tours, tickets…", { n: fmtNum(ideas) })}</small>
               </span>
               <span className="tp-go" aria-hidden>›</span>
@@ -650,8 +809,8 @@ function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { cit
                   <b dir="auto">{t(a.title)}</b>
                   <small>
                     {m
-                      ? [m.price ? t("{price} a person", { price: toman(m.price) }) : t("Free"), nextOf(m), m.rating ? `★ ${fmtNum(m.rating)}` : null].filter(Boolean).join(" · ")
-                      : [a.price ? t("about {price} a person", { price: toman(a.price) }) : t("Free"), t("{n} h", { n: fmtNum(a.hours) }), t(ACT_KINDS[a.kind].label)].join(" · ")}
+                      ? [m.price ? t("{price} a person", { price: toman(m.price) }) : t("Free"), nextOf(m), m.rating ? `★ ${fmtNum(m.rating)}` : null].filter(Boolean).join(dot())
+                      : [a.price ? t("about {price} a person", { price: toman(a.price) }) : t("Free"), t("{n} h", { n: fmtNum(a.hours) }), t(ACT_KINDS[a.kind].label)].join(dot())}
                   </small>
                   {m && <span className="ta-bookable">🎟️ {t("Bookable online")}</span>}
                 </span>
@@ -693,7 +852,7 @@ function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { cit
                     {e.image ? <img className="ta-emoji ta-img" src={`${e.image}?x-img=v1/resize,w_160/optimize,q_70`} alt="" loading="lazy" /> : <span className="ta-emoji" aria-hidden>🎟️</span>}
                     <span className="grow">
                       <b dir="auto">{e.title}</b>
-                      <small>{[e.price ? t("{price} a person", { price: toman(e.price) }) : t("Free"), e.duration || null, nextOf(e), e.rating ? `★ ${fmtNum(e.rating)} (${fmtNum(e.reviews)})` : null].filter(Boolean).join(" · ")}</small>
+                      <small>{[e.price ? t("{price} a person", { price: toman(e.price) }) : t("Free"), e.duration || null, nextOf(e), e.rating ? `★ ${fmtNum(e.rating)} (${fmtNum(e.reviews)})` : null].filter(Boolean).join(dot())}</small>
                     </span>
                     <span className="ta-check" aria-hidden>{p ? "✓" : "＋"}</span>
                   </button>
@@ -712,9 +871,20 @@ function ActsView({ city, travellers, picked, onChange, onBack, onClose }: { cit
           </ul>
           {!moreEx && extra.length > 6 && <button type="button" className="link-btn small" onClick={() => setMoreEx(true)}>{t("Show {n} more", { n: fmtNum(extra.length - 6) })}</button>}
           <p className="tiny muted">{t("Booked and paid on Jabama Events, where you pick the date — prices are a person, in toman.")}</p>
+          <AdSlot />
         </>
       )}
       <p className="tiny muted">{t("Prices are rough estimates to plan with — change them to what you're quoted.")}</p>
+      {(() => {
+        const c = cityByKey(city);
+        const links = c ? compareLinks({ vertical: "event", city: c }) : [];
+        return links.length ? (
+          <div className="tv-compare-sites">
+            <span className="small muted">{t("Events and shows on")}</span>
+            {links.map((l) => <a key={l.site} className="chip small" href={l.url} target="_blank" rel="noreferrer noopener" style={{ ["--site" as string]: l.color }}>{t(l.name)} ↗</a>)}
+          </div>
+        ) : null;
+      })()}
       {picked.length > 0 && (
         <div className="tp-bill" role="status">
           <div className="grow">
@@ -905,8 +1075,8 @@ function LegView({ leg, plan, answer, picked, minDate, onDate, onPick, onBack, o
           </div>
           <div className="tv-compare-sites">
             <span className="small muted">{t("Compare on")}</span>
-            {COMPARE[mode!].map((s) => (
-              <a key={s} className="chip small" href={bookUrl(s, mode!, { from, to, date: leg.date })} target="_blank" rel="noreferrer noopener" style={{ ["--site" as string]: TRAVEL_SITES[s].color }}>{t(TRAVEL_SITES[s].name)} ↗</a>
+            {compareLinks({ vertical: "ticket", mode: mode!, route: { from, to, date: leg.date } }).map((l) => (
+              <a key={l.site} className="chip small" href={l.url} target="_blank" rel="noreferrer noopener" style={{ ["--site" as string]: l.color }}>{t(l.name)} ↗</a>
             ))}
             <a className="chip small" href={tourLink(to)} target="_blank" rel="noreferrer noopener">🧳 {t("Tours to {city}", { city: cityName(to) })} ↗</a>
           </div>
@@ -931,7 +1101,7 @@ function priceCaps(prices: number[]) {
 function TripRow({ trip: x, travellers, chosen, onChoose }: { trip: Trip; travellers: number; chosen: boolean; onChoose: () => void }) {
   const [more, setMore] = useState(false);
   return (
-    <article className={`tv-trip${chosen ? " chosen" : ""}`} data-leave-title={`${MODES[x.mode].emoji} ${x.company} · ${clock(x.depart)}`} data-leave-photo={x.logo || undefined} data-leave-price={toman(x.price)}>
+    <article className={`tv-trip${chosen ? " chosen" : ""}`} data-leave-title={`${MODES[x.mode].emoji} ${x.company}${dot()}${clock(x.depart)}`} data-leave-photo={x.logo || undefined} data-leave-price={toman(x.price)}>
       <button className="tv-trip-main" onClick={() => setMore(!more)} aria-expanded={more}>
         <div className="tv-times">
           <b>{clock(x.depart)}</b>
@@ -969,7 +1139,7 @@ function TripRow({ trip: x, travellers, chosen, onChoose }: { trip: Trip; travel
         </button>
         {x.offers.map((o, i) => (
           <a key={o.source} className={`tv-offer ${i === 0 ? "best" : ""}`} href={o.url} target="_blank" rel="noreferrer noopener" style={{ ["--site" as string]: TRAVEL_SITES[o.source].color }}>
-            {t(TRAVEL_SITES[o.source].name)} · {fmtNum(o.price)} ↗
+            {t(TRAVEL_SITES[o.source].name)}{dot()}{fmtNum(o.price)} ↗
           </a>
         ))}
       </div>
@@ -977,26 +1147,94 @@ function TripRow({ trip: x, travellers, chosen, onChoose }: { trip: Trip; travel
   );
 }
 
-function TripSkeleton() {
+function TripSkeleton({ rows = 4 }: { rows?: number }) {
   return (
     <div className="tv-list" aria-hidden>
-      {[0, 1, 2, 3].map((i) => <div key={i} className="tv-trip tv-skel" />)}
+      {Array.from({ length: rows }, (_, i) => <div key={i} className="tv-trip tv-skel" />)}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- a city's stays
-/** A city's places to stay, kept on the phone for a few hours (Jabama's villas and suites and its hotels). */
-export async function loadStays(city: string): Promise<Stay[]> {
+/**
+ * A city's places to stay, kept on the phone for a few hours (Jabama's villas and suites and its hotels).
+ * Stale-while-revalidate: a kept list is answered at once (`onPart`), then the server's answer streams in
+ * (NDJSON, a part per page); with nothing kept, each part is handed on as it comes so the list fills in.
+ */
+export async function loadStays(city: string, onPart?: (sofar: Stay[]) => void): Promise<Stay[]> {
   const mine = kept<Stay[]>(`${STAYS_KEPT}${city}`);
   if (fresh(mine, STAYS_FRESH_MS)) return mine!.data;
+  if (mine?.data.length) onPart?.(mine.data);
   try {
-    const r = await api<{ stays: Stay[] }>(`/api/travel?stays=${encodeURIComponent(city)}`);
-    if (r.stays.length) keep(`${STAYS_KEPT}${city}`, r.stays);
-    return r.stays.length || !mine?.data.length ? r.stays : mine.data;
+    const got = await streamStaysOf(city, mine?.data.length ? undefined : onPart);
+    if (got.length) keep(`${STAYS_KEPT}${city}`, got);
+    return got.length || !mine?.data.length ? got : mine.data;
   } catch {
     return mine?.data ?? [];
   }
+}
+
+/** The stream itself (falls back to the plain JSON answer when the stream can't be read). */
+async function streamStaysOf(city: string, onPart?: (sofar: Stay[]) => void): Promise<Stay[]> {
+  const url = `/api/travel?stays=${encodeURIComponent(city)}`;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), STREAM_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${url}&stream=1`, { signal: ctl.signal });
+    if (!res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes(NDJSON_TYPE)) return (await api<{ stays: Stay[] }>(url)).stays;
+    let all: Stay[] = [];
+    await readNdjson<{ stays?: Stay[]; done?: boolean }>(res.body, (part) => {
+      if (!part.stays?.length) return;
+      all = [...all, ...part.stays];
+      onPart?.(all);
+    });
+    return all;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Offers kept on the phone this long (the server keeps each site's page an hour). */
+const OFFERS_FRESH_MS = 3600_000;
+
+/**
+ * Stays on the other sites that serve them openly (lib/travel/sources.ts — Jajiga today): a short strip of
+ * cards, cheapest first, each opening on its site. Kept on the phone for an hour; nothing shown when none came.
+ */
+function OtherSites({ city, nights }: { city: City; nights: number }) {
+  const [offers, setOffers] = useState<SourceOffer[] | null>(() => kept<SourceOffer[]>(`offers:stay:${city.key}`)?.data ?? null);
+  useEffect(() => {
+    const mine = kept<SourceOffer[]>(`offers:stay:${city.key}`);
+    setOffers(mine?.data ?? null);
+    if (fresh(mine, OFFERS_FRESH_MS)) return;
+    let live = true;
+    api<{ offers: SourceOffer[] }>(`/api/travel?offers=stay&city=${encodeURIComponent(city.key)}`)
+      .then((r) => {
+        if (r.offers.length) keep(`offers:stay:${city.key}`, r.offers);
+        if (live) setOffers(r.offers.length ? r.offers : mine?.data ?? []);
+      })
+      .catch(() => live && setOffers(mine?.data ?? []));
+    return () => void (live = false);
+  }, [city.key]);
+  if (!offers?.length) return null;
+  return (
+    <section className="tv-other" aria-label={t("On other sites")}>
+      <h3 className="small">{t("On other sites")}</h3>
+      <div className="tv-other-row">
+        {offers.slice(0, 8).map((o) => (
+          <LeaveLink key={o.key} className="tv-other-card" href={o.url} site={t(adapterOf(o.source).name)}>
+            {o.photo ? <img src={o.photo} alt="" loading="lazy" /> : <span className="tv-other-ph" aria-hidden>🏠</span>}
+            <b dir="auto">{o.title}</b>
+            <small>
+              {o.price > 0 ? t("{price} a night", { price: toman(o.price) }) : t("Price on the site")}
+              {nights > 1 && o.price > 0 ? `${dot()}${t("{price} for {n} nights", { price: toman(o.price * nights), n: fmtNum(nights) })}` : ""}
+            </small>
+            <span className="chip tiny" style={{ ["--site" as string]: adapterOf(o.source).color }}>{t(adapterOf(o.source).name)}{o.rating ? `${dot()}★ ${fmtNum(o.rating)}` : ""}</span>
+          </LeaveLink>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 const flip = <T,>(l: T[], x: T) => (l.includes(x) ? l.filter((y) => y !== x) : [...l, x]);
@@ -1107,7 +1345,7 @@ function StayCard({ s, nights, travellers, chosen, onPick }: { s: Stay; nights: 
         <div className="tv-price">
           {s.was ? <s className="tiny muted">{fmtNum(s.was)}</s> : null}
           <span><b>{toman(s.price)}</b> <small className="muted">{t("a night")}</small></span>
-          <small className="muted">{t("{n} for your stay", { n: toman(s.price * nights * rooms) })}{rooms > 1 ? ` · ${t("{n} units", { n: fmtNum(rooms) })}` : ""}</small>
+          <small className="muted">{t("{n} for your stay", { n: toman(s.price * nights * rooms) })}{rooms > 1 ? `${dot()}${t("{n} units", { n: fmtNum(rooms) })}` : ""}</small>
         </div>
         <div className="row tv-stay-act">
           {onPick && <button type="button" className={`btn small grow${chosen ? " green" : ""}`} onClick={onPick}>{chosen ? t("Chosen ✓") : t("Choose")}</button>}
@@ -1118,8 +1356,10 @@ function StayCard({ s, nights, travellers, chosen, onPick }: { s: Stay; nights: 
   );
 }
 
-function StayView({ city, nights, travellers, from, stays, picked, onPick, onBack, onClose, form, title }: {
+function StayView({ city, nights, travellers, from, stays, loading, picked, onPick, onBack, onClose, form, title }: {
   city: City; nights: number; travellers: number; from: string; stays: Stay[] | null; picked?: Stay;
+  /** More places are still coming (placeholder rows under the list). */
+  loading?: boolean;
   /** Choosing one for the trip (the planner); without it the cards only link to the site (Hotels). */
   onPick?: (s: Stay | null) => void; onBack?: () => void; onClose: () => void;
   /** The search form over the list (Hotels: city, dates, guests). */
@@ -1203,12 +1443,17 @@ function StayView({ city, nights, travellers, from, stays, picked, onPick, onBac
           <StayCard key={s.id} s={s} nights={nights} travellers={travellers} chosen={picked?.id === s.id} onPick={onPick && (() => onPick(picked?.id === s.id ? null : s))} />
         ))}
       </div>
+      {stays && loading && <div className="tv-more-loading" aria-live="polite"><span className="small muted">{t("Finding more places…")}</span><TripSkeleton rows={2} /></div>}
       {shown.length > more && <button type="button" className="btn small ghost fx-more" onClick={() => setMore(more + STAYS_PAGE)}>{t("Show more")} ({fmtNum(shown.length - more)})</button>}
       {shown.length > 0 && <AdSlot />}
+      <OtherSites city={city} nights={nights} />
       <div className="tv-compare-sites">
         <span className="small muted">{t("More hotels on")}</span>
         {hotelLinks(city).map((l) => (
           <a key={l.site} className="chip small" href={l.url} target="_blank" rel="noreferrer noopener" style={{ ["--site" as string]: TRAVEL_SITES[l.site].color }}>{t(TRAVEL_SITES[l.site].name)} ↗</a>
+        ))}
+        {compareLinks({ vertical: "stay", city }).map((l) => (
+          <a key={l.site} className="chip small" href={l.url} target="_blank" rel="noreferrer noopener" style={{ ["--site" as string]: l.color }}>{t(l.name)} ↗</a>
         ))}
       </div>
     </Sheet>
@@ -1225,10 +1470,12 @@ export function HotelFinder({ at }: { at: LatLng | null }) {
   const [guests, setGuests] = useState(2);
   const [picking, setPicking] = useState(false);
   const [stays, setStays] = useState<Stay[] | null>(null);
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     let live = true;
     setStays(null);
-    loadStays(city).then((r) => live && setStays(r));
+    setLoading(true);
+    loadStays(city, (part) => live && setStays(part)).then((r) => live && (setStays(r), setLoading(false)));
     return () => void (live = false);
   }, [city]);
   const c = cityByKey(city);
@@ -1257,7 +1504,7 @@ export function HotelFinder({ at }: { at: LatLng | null }) {
       <p className="hf-out small muted">{t("Check-out {day}", { day: day(addDays(from, nights)) })}</p>
     </div>
   );
-  return <StayView title={t("Hotels & stays in {city}", { city: cityName(c) })} city={c} nights={nights} travellers={guests} from={from} stays={stays} form={form} onClose={() => {}} />;
+  return <StayView title={t("Hotels & stays in {city}", { city: cityName(c) })} city={c} nights={nights} travellers={guests} from={from} stays={stays} loading={loading} form={form} onClose={() => {}} />;
 }
 
 // ---------------------------------------------------------------- picking a city: by name or on the map

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildBuses, buildNetwork, cityAt, cleanLine, cleanStation, hoursOf, minutesOf, modeOf, orderStops, type RawNode, type RawRel } from "@/lib/transit/network";
-import { clockOf, departures, localMinutes, nearStations, planTrip, rideStops, timeline } from "@/lib/transit/plan";
+import { attachExits, buildBuses, buildNetwork, cityAt, cleanLine, cleanStation, hoursOf, minutesOf, modeOf, orderStops, type Network, type RawNode, type RawRel } from "@/lib/transit/network";
+import { clockOf, departures, localMinutes, nearStations, planTrip, planTrips, rideStops, timeline } from "@/lib/transit/plan";
+import { fareRule, tripFare } from "@/lib/transit/fares";
+import { focusOf, metroPaths, onFocus } from "@/lib/transit/draw";
 import { arrivalsAt, asmxJson, busesNear, busOf, etaMin, soapBody, soapJson } from "@/lib/transit/iett";
 import { csvRow, csvTable, departuresAt, gtfsMinutes, TimetableBuilder, weekBits } from "@/lib/transit/gtfs";
 
@@ -132,6 +134,82 @@ describe("transit: getting about", () => {
   it("no trip when walking is quicker, or nothing is in reach", () => {
     assert.equal(planTrip(net, { lat: LAT, lng: LNG }, { lat: LAT + 0.001, lng: LNG }), null);
     assert.equal(planTrip(net, { lat: 30, lng: 50 }, { lat: LAT, lng: LNG }), null);
+  });
+});
+
+// A slow tram straight from X to Y, and two fast metro lines X→M, M→Y meeting at M.
+const X = { id: "x", name: "X", en: "X", lat: 35.7, lng: 51.3, lines: ["tram:T", "subway:A"] };
+const Y = { id: "y", name: "Y", en: "Y", lat: 35.7, lng: 51.366, lines: ["tram:T", "subway:B"] };
+const M = { id: "m", name: "M", en: "M", lat: 35.695, lng: 51.333, lines: ["subway:A", "subway:B"] };
+const T = [1, 2, 3, 4].map((i) => ({ id: `t${i}`, name: `T${i}`, en: "", lat: 35.705, lng: 51.3 + i * 0.0132, lines: ["tram:T"] }));
+const lineOf = (id: string, mode: "tram" | "subway", stations: string[], headway: number) => ({ id, ref: id.split(":")[1], name: id, en: id, mode, colour: "#123456", stations, headway, from: 300, to: 1400, mapped: false });
+const two: Network = {
+  city: "tehran", built: "x", tz: "Asia/Tehran",
+  stations: [X, ...T, M, Y],
+  lines: [lineOf("tram:T", "tram", ["x", "t1", "t2", "t3", "t4", "y"], 6), lineOf("subway:A", "subway", ["x", "m"], 4), lineOf("subway:B", "subway", ["m", "y"], 4)],
+};
+
+describe("transit: RAPTOR trips, fares, the map, exits", () => {
+  it("the Pareto set: the direct (slower) ride and the faster one with a change", () => {
+    const trips = planTrips(two, X, Y);
+    assert.equal(trips.length, 2);
+    assert.deepEqual(trips.map((x) => x.changes), [0, 1]);
+    assert.ok(trips[1].minutes < trips[0].minutes, `${trips[1].minutes} < ${trips[0].minutes}`);
+    const rides = trips[1].legs.filter((l) => l.kind === "ride");
+    assert.deepEqual(rides.map((r) => r.kind === "ride" && [r.line, r.from, r.to, r.towards]), [["subway:A", "x", "m", "m"], ["subway:B", "m", "y", "y"]]);
+    // planTrip is the fastest of them.
+    assert.equal(planTrip(two, X, Y)!.minutes, trips[1].minutes);
+  });
+  it("the timeline adds up to the trip (less the corridor and exit minutes)", () => {
+    const fast = planTrips(two, X, Y)[1];
+    const steps = timeline(fast, 600);
+    assert.ok(steps[steps.length - 1].end - 600 <= fast.minutes);
+    assert.ok(fast.minutes - (steps[steps.length - 1].end - 600) <= 6);
+  });
+  it("a direct ride slower than walking all the way isn't offered", () => {
+    // A tram every 200 min (a 100-min wait) loses to the ~94-min walk: only the change trip remains.
+    const slow: Network = { ...two, lines: [{ ...two.lines[0], headway: 200 }, two.lines[1], two.lines[2]] };
+    const trips = planTrips(slow, X, Y);
+    assert.equal(trips.length, 1);
+    assert.equal(trips[0].changes, 1);
+  });
+  it("fares: Iran pays once at the gate, Istanbul each boarding at the transfer fare", () => {
+    const s = { metroFareToman: 4000, metroFareOtherToman: 2500, metroFareTry: 35, metroTransferTry: 24 };
+    assert.equal(tripFare({ changes: 2 }, fareRule("tehran", s)), 4000);
+    assert.equal(tripFare({ changes: 0 }, fareRule("mashhad", s)), 2500);
+    assert.deepEqual(fareRule("istanbul", s).currency, "TRY");
+    assert.equal(tripFare({ changes: 1 }, fareRule("istanbul", s)), 59);
+    assert.equal(tripFare({ changes: 0 }, fareRule("tehran", { ...s, metroFareToman: 0 })), 0);
+  });
+  it("the map: every line drawn; a tapped station's lines bold and on top, the rest faded", () => {
+    const all = metroPaths(two);
+    assert.equal(all.length, 3);
+    assert.ok(all.every((p) => !p.focus && p.points.length >= 2));
+    const f = focusOf(M)!;
+    const focused = metroPaths(two, f);
+    assert.deepEqual(focused.slice(-2).map((p) => p.id).sort(), ["subway:A", "subway:B"]);
+    const tram = focused.find((p) => p.id === "tram:T")!;
+    const sub = focused.find((p) => p.id === "subway:A")!;
+    assert.ok(sub.weight > tram.weight && sub.opacity > tram.opacity);
+    assert.equal(onFocus(T[0], f), false);
+    assert.equal(onFocus(X, f), true);
+    assert.equal(focusOf(null), null);
+  });
+  it("exits hang on the nearest station (its name wins), sorted by sign, duplicates dropped", () => {
+    const e = (id: number, lat: number, lon: number, tags: Record<string, string>): RawNode => ({ id, lat, lon, tags: { railway: "subway_entrance", ...tags } });
+    const out = attachExits(two, [
+      e(1, 35.7005, 51.3, { ref: "2", name: "Azadi St", wheelchair: "yes" }),
+      e(2, 35.6995, 51.3, { ref: "1", elevator: "yes" }),
+      e(3, 35.69951, 51.30001, { ref: "1" }), // the same entrance again
+      e(4, 35.6952, 51.333, { ref: "A", "railway:station": "M" }),
+      e(5, 36.5, 52, { ref: "9" }), // nowhere near
+      { id: 6, lat: 35.7, lon: 51.3, tags: { highway: "bus_stop" } }, // not an entrance
+    ]);
+    const x = out.stations.find((s) => s.id === "x")!;
+    assert.deepEqual(x.exits!.map((ex) => [ex.ref, ex.name, !!ex.lift, !!ex.stepFree]), [["1", "", true, false], ["2", "Azadi St", false, true]]);
+    assert.deepEqual(out.stations.find((s) => s.id === "m")!.exits!.map((ex) => ex.ref), ["A"]);
+    assert.equal(out.stations.find((s) => s.id === "y")!.exits, undefined);
+    assert.equal(two.stations[0].exits, undefined, "the input isn't changed");
   });
 });
 

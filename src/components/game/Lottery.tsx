@@ -2,7 +2,7 @@
 // Lotteries at real places: buy tickets on the spot, one random ticket takes the pot at the draw.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { distanceM, formatDistance } from "@/lib/geo";
-import { fmtNum, t, toAsciiDigits } from "@/lib/i18n";
+import { fmtNum, t, toAsciiDigits, dot } from "@/lib/i18n";
 import { LOTTERY_MAX_TICKETS, LOTTERY_MIN_PRICE, LOTTERY_RADIUS_M, winChance } from "@/lib/lottery";
 import { askConfirm } from "@/components/Dialogs";
 import { Button } from "@/components/Button";
@@ -80,7 +80,7 @@ export function LotteryCard({ l, onChanged }: { l: WorldLottery; onChanged?: () 
         <div className="stat"><b className={open && left < 60_000 ? "blink" : ""}>{open ? fmtCountdown(left) : l.status === "OPEN" ? "…" : t("done")}</b><span>{open ? t("until draw") : t("draw")}</span></div>
       </div>
       <p className="small muted" style={{ margin: "8px 0" }}>
-        {t("Draw {when}", { when: fmtTime(l.drawAt) })} · {l.mine ? t("hosted by you") : t("hosted by {name}", { name: l.host })}{l.official ? ` · ${t("⭐ official")}` : ""} · {t("{d} away", { d: formatDistance(dist === Infinity ? 0 : dist) })}
+        {t("Draw {when}", { when: fmtTime(l.drawAt) })}{dot()}{l.mine ? t("hosted by you") : t("hosted by {name}", { name: l.host })}{l.official ? `${dot()}${t("⭐ official")}` : ""}{dot()}{t("{d} away", { d: formatDistance(dist === Infinity ? 0 : dist) })}
       </p>
 
       {l.myTickets > 0 && (
@@ -194,7 +194,7 @@ export function LotteryTab() {
                 <span className="tag">{l.status === "OPEN" ? fmtTime(l.drawAt) : l.status === "DRAWN" ? (l.won ? t("🎉 won") : `🏆 ${l.winner}`) : t("refunded")}</span>
               </div>
               <div className="muted">
-                {t("Pot {n} 🪙", { n: l.pot })} · {t("{n, plural, one {# player} other {# players}}", { n: l.players })}{l.myTickets ? ` · ${t("your tickets: {mine}/{total}", { mine: l.myTickets, total: l.totalTickets })}` : ""} · <GoTo lat={l.lat} lng={l.lng} />
+                {t("Pot {n} 🪙", { n: l.pot })}{dot()}{t("{n, plural, one {# player} other {# players}}", { n: l.players })}{l.myTickets ? `${dot()}${t("your tickets: {mine}/{total}", { mine: l.myTickets, total: l.totalTickets })}` : ""}{dot()}<GoTo lat={l.lat} lng={l.lng} />
               </div>
             </div>
           ))}

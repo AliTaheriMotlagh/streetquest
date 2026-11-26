@@ -10,7 +10,7 @@
 //  - each row books on its own site (Jalali dates for Alibaba).
 // Every price here is TOMAN (the sites send rials).
 import { distanceM, type LatLng } from "../geo";
-import { msg } from "../i18n";
+import { msg, dot } from "../i18n";
 import HUBS from "./hubs.generated.json";
 
 export type Mode = "flight" | "train" | "bus";
@@ -27,9 +27,6 @@ export const TRAVEL_SITES = {
   alibaba: { name: msg("Alibaba"), color: "#fdb713", reads: true },
   mrbilit: { name: msg("MrBilit"), color: "#0f6dd6", reads: true },
   jabama: { name: msg("Jabama"), color: "#ff7a00", reads: true },
-  flytoday: { name: msg("Flytoday"), color: "#1b5bd8", reads: false },
-  raja: { name: msg("Raja (railways)"), color: "#0a7a3d", reads: false },
-  payaneh: { name: msg("Payaneh"), color: "#e3262f", reads: false },
   bookingir: { name: msg("Booking.ir"), color: "#2a62a8", reads: false },
 } as const;
 export type TravelSite = keyof typeof TRAVEL_SITES;
@@ -231,13 +228,9 @@ export function bookUrl(site: TravelSite, mode: Mode, r: Route): string {
     return `https://www.alibaba.ir/bus/${r.from.bus}-${r.to.bus}?departing=${j}`;
   }
   if (site === "mrbilit") return mode === "flight" ? `https://mrbilit.com/flights/${r.from.iata}-${r.to.iata}?departureDate=${r.date}&adultCount=1` : mode === "train" ? `https://mrbilit.com/trains/${r.from.key}-${r.to.key}?departureDate=${r.date}&adultCount=1` : "https://mrbilit.com/bus";
-  if (site === "flytoday") return `https://www.flytoday.ir/flight/search?departure=${r.from.iata},1&arrival=${r.to.iata},1&departureDate=${r.date}&adt=1&chd=0&inf=0&cabin=1&isDomestic=true`;
-  if (site === "raja") return "https://www.raja.ir/";
-  if (site === "payaneh") return "https://payaneh.ir/";
   return "https://www.alibaba.ir/";
 }
-/** The sites to compare a mode on that the game doesn't read itself. */
-export const COMPARE: Record<Mode, TravelSite[]> = { flight: ["flytoday"], train: ["raja"], bus: ["payaneh"] };
+// The sites to compare on that the game doesn't read itself: lib/travel/sources.ts (compareLinks).
 
 type AliFlight = { airlineCode?: string; flightNumber?: string; leaveDateTime?: string; arrivalDateTime?: string; aircraft?: string; priceAdult?: number; originalPrice?: number | null; seat?: number; classTypeName?: string; isCharter?: boolean; isRefundable?: boolean; maxAllowedBaggage?: number; terminal?: string; origin?: string; destination?: string };
 type AliFlightRes = { result?: { departing?: AliFlight[] } };
@@ -250,7 +243,7 @@ export function fromAlibabaFlights(json: unknown, r: Route): Trip[] {
       mode: "flight" as const,
       from: r.from.key,
       to: r.to.key,
-      fromPlace: f.terminal ? `${r.from.airport ?? r.from.fa} · T${f.terminal}` : r.from.airport,
+      fromPlace: f.terminal ? `${r.from.airport ?? r.from.fa}${dot("fa")}T${f.terminal}` : r.from.airport,
       toPlace: r.to.airport,
       depart: local(f.leaveDateTime),
       arrive: local(f.arrivalDateTime),
@@ -295,7 +288,7 @@ export function fromMrbilitFlights(json: unknown, r: Route): Trip[] {
         mode: "flight",
         from: r.from.key,
         to: r.to.key,
-        fromPlace: a.DepartureTerminal ? `${a.OriginAirport ?? r.from.fa} · T${a.DepartureTerminal}` : a.OriginAirport,
+        fromPlace: a.DepartureTerminal ? `${a.OriginAirport ?? r.from.fa}${dot("fa")}T${a.DepartureTerminal}` : a.OriginAirport,
         toPlace: z.DestinationAirport,
         depart: local(a.DepartureTime),
         arrive: local(z.ArrivalTime),

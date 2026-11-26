@@ -282,4 +282,14 @@ test.describe("street jobs", () => {
     expect((await p.post("/api/drive/street", { job: "getaway", stars: 9 })).status).toBe(400);
     await p.dispose();
   });
+
+  test("setbacks: an arrest or a knock-out takes no coins by default (Admin can set a fine)", async ({ baseURL }) => {
+    const p = await Player.create(baseURL!);
+    const before = (await p.me()).coins;
+    for (const setback of ["busted", "down"]) expect(expectOk(await p.post<{ fine: number }>("/api/drive/street", { setback, stars: 3 })).data.fine).toBe(0);
+    expect((await p.post("/api/drive/street", { setback: "jail" })).status).toBe(400);
+    expect((await p.me()).coins).toBe(before);
+    await p.dispose();
+  });
 });
+

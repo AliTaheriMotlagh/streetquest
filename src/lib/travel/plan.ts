@@ -6,6 +6,7 @@
 //   plan  = { home, stops: [{ city, nights }…], back, travellers, start }
 //   legs  = home → stop 1 → stop 2 … (→ home): each leg's day follows from the nights before it
 //   picks = per leg: a ticket (a Trip from lib/travel) or "car"; per stop: a stay
+import { cleanSteps, stepsCost, type Step } from "./steps";
 import { distanceM } from "../geo";
 import { msg } from "../i18n";
 import { S } from "../settings";
@@ -35,6 +36,8 @@ export type Plan = {
   acts?: ActPick[];
   /** "My fuel card still has quota": the car's petrol at the cheaper tiers first (fuelCost). */
   quota?: boolean;
+  /** Your own steps, from pasted links (lib/travel/steps.ts). */
+  steps?: Step[];
 };
 /** An outing added to the trip: the price a person (toman, editable — the list's is an estimate) and how many of you go. */
 export type ActPick = { id: string; city: string; title: string; emoji: string; price: number; people: number };
@@ -121,6 +124,8 @@ export type Bill = {
   stays: number;
   /** Outings (activities). */
   acts: number;
+  /** Your own steps (pasted links). */
+  steps: number;
   total: number;
   perPerson: number;
   /** Legs and stops with nothing chosen yet. */
@@ -146,15 +151,17 @@ export function billOf(p: Plan, legPicks: Record<number, LegPick | undefined>, s
   // Outings only count in cities the trip still goes to.
   const where = new Set(p.stops.map((s) => s.city));
   const acts = (p.acts ?? []).reduce((sum, a) => sum + (where.has(a.city) ? Math.max(0, a.price) * Math.max(0, a.people) : 0), 0);
-  const total = tickets + fuel + stays + acts;
-  return { tickets, fuel, stays, acts, total, perPerson: Math.round(total / Math.max(1, p.travellers)), open: { legs: openLegs, stays: openStays } };
+  const steps = stepsCost(p.steps);
+  const total = tickets + fuel + stays + acts + steps;
+  return { tickets, fuel, stays, acts, steps, total, perPerson: Math.round(total / Math.max(1, p.travellers)), open: { legs: openLegs, stays: openStays } };
 }
 
 /** One thing on a day of the trip: travelling a leg, a night in a city, or home again. */
 export type DayItem =
   | { kind: "go"; leg: Leg; pick?: LegPick }
   | { kind: "night"; stop: number; city: string; night: number; of: number; pick?: StayPick }
-  | { kind: "home"; city: string };
+  | { kind: "home"; city: string }
+  | { kind: "step"; step: Step };
 /** The trip day by day (day 1 = the first leg's day), each day's things in the order they happen. */
 export type TripDay = { date: string; n: number; items: DayItem[] };
 
@@ -173,6 +180,7 @@ export function itinerary(p: Plan, legPicks: Record<number, LegPick | undefined>
     add(legs[li].date, { kind: "go", leg: legs[li], pick: legPicks[legs[li].i] });
     if (legs[li].to === p.home) add(legs[li].date, { kind: "home", city: p.home });
   }
+  for (const st of p.steps ?? []) add(st.date, { kind: "step", step: st });
   const dayN = (d: string) => Math.round((Date.parse(`${d}T12:00:00Z`) - Date.parse(`${p.start}T12:00:00Z`)) / 86_400_000) + 1;
   return [...out].sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => ({ date, n: dayN(date), items }));
 }
@@ -216,5 +224,6 @@ export function cleanPlan(v: unknown, now = Date.now()): Plan | null {
     .filter((a): a is ActPick => !!a && typeof a.id === "string" && typeof a.city === "string" && typeof a.title === "string")
     .slice(0, 40)
     .map((a) => ({ id: a.id, city: a.city, title: a.title.slice(0, 120), emoji: typeof a.emoji === "string" ? a.emoji.slice(0, 8) : "", price: Math.max(0, Math.min(1e10, Math.round(Number(a.price) || 0))), people: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(a.people) || 1))) }));
-  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}), ...(o.quota === true ? { quota: true } : {}) };
+  const steps = cleanSteps(o.steps);
+  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}), ...(o.quota === true ? { quota: true } : {}), ...(steps.length ? { steps } : {}) };
 }

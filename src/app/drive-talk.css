@@ -7,7 +7,7 @@
   background: rgba(12, 16, 24, .9); border: 1px solid rgba(255, 255, 255, .18); color: #fff; font: 800 15px/1 var(--body);
   box-shadow: 0 8px 22px rgba(0, 0, 0, .45); cursor: pointer; animation: talkPop .25s ease-out; pointer-events: auto;
 }
-.drive-talk-btn { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(168px + var(--safe-b, 0px)); z-index: 60; }
+.drive-talk-btn { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(168px + var(--safe-b, 0px)); z-index: var(--z-float); }
 .drive-enter { border-color: var(--trade, var(--gold)); }
 .drive-talk-btn kbd, .drive-enter kbd { padding: 2px 6px; border-radius: 6px; background: rgba(255, 255, 255, .14); font: 700 11px/1.2 var(--body); }
 @media (pointer: coarse) { .drive-talk-btn kbd, .drive-enter kbd { display: none; } }
@@ -17,7 +17,7 @@
 
 /* ---- the conversation */
 .talk {
-  position: fixed; left: 50%; bottom: calc(10px + var(--safe-b, 0px)); transform: translateX(-50%); z-index: 70;
+  position: fixed; left: 50%; bottom: calc(10px + var(--safe-b, 0px)); transform: translateX(-50%); z-index: calc(var(--z-float) + 10);
   width: min(520px, calc(100vw - 16px)); max-height: min(70vh, 520px); display: flex; flex-direction: column; gap: 8px; padding: 10px;
   border-radius: 20px; background: rgba(10, 13, 20, .94); border: 1px solid rgba(255, 255, 255, .14); color: #fff;
   box-shadow: 0 18px 48px rgba(0, 0, 0, .55); backdrop-filter: blur(8px); pointer-events: auto; animation: talkUp .25s ease-out;
@@ -52,7 +52,7 @@ p.talk-voice { cursor: default; border-color: rgba(255, 255, 255, .12); backgrou
 
 /* ---- inside a store: the whole screen */
 .shop {
-  position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column; background: var(--bg, #0b0e14); color: var(--text, #eef1f7);
+  position: fixed; inset: 0; z-index: var(--z-screen); display: flex; flex-direction: column; background: var(--bg, #0b0e14); color: var(--text, #eef1f7);
   animation: shopIn .3s ease-out; overflow: hidden;
 }
 @keyframes shopIn { from { opacity: 0; transform: scale(1.03); } }

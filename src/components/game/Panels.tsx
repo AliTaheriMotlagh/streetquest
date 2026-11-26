@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASKS_CHANGED } from "@/lib/asks";
-import { fmtNum, msg, t, toAsciiDigits } from "@/lib/i18n";
+import { fmtNum, msg, t, toAsciiDigits, dot } from "@/lib/i18n";
 import { NEURAL_PREFS, type NeuralPref, type NeuralWhy } from "@/lib/tts/neural";
 import { downloadMb, extrasOf, languageProgress, neuralNow, neuralPref, onNeuralChange, pickOf, previewVoice, setExtra, setNeuralPref, setPick, speakers, ttsLang, voiceState, warmLanguage } from "../drive/tts/neural";
 import { ROLES, type Role, type TtsLang, type VoiceFamily } from "@/lib/tts/sherpa";
@@ -73,13 +73,13 @@ export function NearbyPanel({ onClose, peek }: { onClose: () => void; peek: bool
       <Tabs value={tab} onChange={setTab} tabs={[["money", t("💵 Money ({n})", { n: money.length })], ["stores", t("🏪 Stores ({n})", { n: stores.length })], ["notes", t("Posts ({n})", { n: world?.notes.length ?? 0 })]]} />
       {tab === "money" &&
         (money.length ? (
-          money.map((m) => row(m.id, "💵", m.drop ? `✨ ${m.drop.label}` : t("{n} toman", { n: m.amount }), `${m.drop ? `${t("{n} toman", { n: m.amount })} · ` : ""}${formatDistance(d(m))}`, m, !!m.drop))
+          money.map((m) => row(m.id, "💵", m.drop ? `✨ ${m.drop.label}` : t("{n} toman", { n: m.amount }), `${m.drop ? `${t("{n} toman", { n: m.amount })}{dot()}` : ""}${formatDistance(d(m))}`, m, !!m.drop))
         ) : (
           <div className="empty">{t("No money left nearby. Walk a few blocks — new money appears every 20 minutes.")}</div>
         ))}
       {tab === "stores" &&
         (stores.length ? (
-          stores.map((m) => row(m.id, m.emoji, `${t(m.title)} · ${m.place.name}`, `${t("{n} toman", { n: m.toman })} · ${formatDistance(d(m.place))}`, m.place))
+          stores.map((m) => row(m.id, m.emoji, `${t(m.title)}${dot()}${m.place.name}`, `${t("{n} toman", { n: m.toman })}${dot()}${formatDistance(d(m.place))}`, m.place))
         ) : (
           <div className="empty">{t("No store missions around here right now.")}</div>
         ))}
@@ -514,7 +514,7 @@ function RidesTab() {
                 <b>{r.driver.username}</b>
                 <div className="small muted">
                   {r.status === "ACCEPTED" ? t("is {d} from the pickup", { d: away(r.driver.pos, pickupOf(r)) }) : t("heading to {place}", { place: r.dropoffLabel })}
-                  {!r.driver.pos && ` · ${t("location hidden (offline)")}`}
+                  {!r.driver.pos && `${dot()}${t("location hidden (offline)")}`}
                 </div>
               </div>
             </div>
@@ -555,7 +555,7 @@ function RidesTab() {
               <b>{dr.rider.username}</b>
               <div className="small muted">
                 {dr.status === "ACCEPTED" ? t("Pickup is {d} from you", { d: away(pos, pickupOf(dr)) }) : t("Drop-off is {d} away", { d: away(pos, dropoffOf(dr)) })}
-                {dr.status === "ACCEPTED" && dr.rider.pos && ` · ${t("rider {d} from it", { d: away(dr.rider.pos, pickupOf(dr)) })}`}
+                {dr.status === "ACCEPTED" && dr.rider.pos && `${dot()}${t("rider {d} from it", { d: away(dr.rider.pos, pickupOf(dr)) })}`}
               </div>
             </div>
           </div>
@@ -1382,7 +1382,7 @@ function VoicePicker() {
   const lang = ttsLang(), all = speakers(lang), extra = extrasOf(lang);
   const [note, setNote] = useState<string | null>(null);
   const label = (s: (typeof all)[number]) =>
-    [s.name, t("{mb} MB", { mb: fmtNum(s.mb) }), t(speedOf(s.rtf)), voiceState(s.family) === "ready" ? "✓" : s.got != null && s.got < 1 ? `${fmtNum(Math.round(s.got * 100))}%` : ""].filter(Boolean).join(" · ");
+    [s.name, t("{mb} MB", { mb: fmtNum(s.mb) }), t(speedOf(s.rtf)), voiceState(s.family) === "ready" ? "✓" : s.got != null && s.got < 1 ? `${fmtNum(Math.round(s.got * 100))}%` : ""].filter(Boolean).join(dot());
   const play = async (role: Role) => {
     const f = pickOf(role, lang);
     if (!f) return;

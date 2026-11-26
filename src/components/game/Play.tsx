@@ -3,7 +3,7 @@
 // rewarded sponsor spots, the live GPS-game banner on the map, turn-by-turn
 // directions hand-off, and the reward celebrations.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fmtNum, getLocale, LOCALE_META, msg, t } from "@/lib/i18n";
+import { fmtNum, getLocale, LOCALE_META, msg, t, dot } from "@/lib/i18n";
 import { bearingTo, distanceM, formatDistance } from "@/lib/geo";
 import { RARITY_LABEL } from "@/lib/catalog";
 import { askConfirm } from "@/components/Dialogs";
@@ -127,7 +127,7 @@ export function GpsBanner({ g, now, onQuit, onReroute }: { g: GpsView; now: numb
           <div className="small">{t("{n} / {goal} m on foot", { n: g.progress ?? 0, goal: g.goal ?? 0 })} <span className="muted">{t("(driving doesn't count)")}</span></div>
         </>
       )}
-      {g.kind === "rally" && g.points && <div className="small">{t("Checkpoint")} <b>{fmtNum((g.next ?? 0) + 1)}/{fmtNum(g.points.length)}</b>{dist != null && ` · ${formatDistance(dist)}`}</div>}
+      {g.kind === "rally" && g.points && <div className="small">{t("Checkpoint")} <b>{fmtNum((g.next ?? 0) + 1)}/{fmtNum(g.points.length)}</b>{dist != null && `${dot()}${formatDistance(dist)}`}</div>}
       {g.hold && (
         <div className="small">
           {g.hold.inside ? <span style={{ color: "var(--green)" }}>{t("✅ In the zone — hold {s}s", { s: holdLeft ?? 0 })}</span> : <span style={{ color: "var(--red)" }}>{t("⚠️ Get back inside the circle")}</span>}
@@ -204,7 +204,7 @@ export function PlayPanel({ onClose, peek, onStarted, initialTab }: { onClose: (
           {d.story.enabled && (
             <>
               <div className="story-head">
-                <div className="small muted">{t("CHAPTER {n} OF {total}", { n: d.story.chapter + 1, total: d.story.total })}{d.story.replay ? ` · ${t("REPLAY (half rewards)")}` : ""}</div>
+                <div className="small muted">{t("CHAPTER {n} OF {total}", { n: d.story.chapter + 1, total: d.story.total })}{d.story.replay ? `${dot()}${t("REPLAY (half rewards)")}` : ""}</div>
                 <div className="meter"><i style={{ width: `${(d.story.completed / d.story.total) * 100}%` }} /></div>
               </div>
               {(() => {
@@ -248,7 +248,7 @@ export function PlayPanel({ onClose, peek, onStarted, initialTab }: { onClose: (
               <div className="grow">
                 <b>{g.name}</b>
                 <div className="small muted">{g.blurb}</div>
-                <div className="small">⏱ {t("{n} min", { n: g.minutes })} · {g.detail} · <span style={{ color: "var(--yellow)" }}>{t("+{n} XP", { n: g.reward.xp })} · +{fmtNum(g.reward.coins)} 🪙{g.gems ? ` · +${fmtNum(g.gems)} 💎` : ""}</span></div>
+                <div className="small">⏱ {t("{n} min", { n: g.minutes })}{dot()}{g.detail}{dot()}<span style={{ color: "var(--yellow)" }}>{t("+{n} XP", { n: g.reward.xp })}{dot()}+{fmtNum(g.reward.coins)} 🪙{g.gems ? `${dot()}+${fmtNum(g.gems)} 💎` : ""}</span></div>
               </div>
               <Button className="btn yellow" disabled={!!d.active || (g.kind === "sprint" && me.remotePlay)} title={g.kind === "sprint" && me.remotePlay ? t("Sprints need real walking") : undefined} onClick={() => start(g.kind, g.blurb)}>{t("Play")}</Button>
             </div>
@@ -296,7 +296,7 @@ export function PlayPanel({ onClose, peek, onStarted, initialTab }: { onClose: (
                         <span className="pips">{p.tiers.map((tier, i) => <i key={i} className={tier.claimed ? "c" : tier.done ? "d" : ""} />)}</span>
                       </div>
                       <div className="meter"><i style={{ width: `${next ? Math.min(100, ((p.value - prev) / (next.target - prev)) * 100) : 100}%` }} /></div>
-                      <div className="small muted">{fmtMetric(p.metric, p.value)}{next ? ` / ${fmtMetric(p.metric, next.target)} · ${t("next: {reward}", { reward: next.reward })}` : ` · ${t("all tiers reached!")}`}</div>
+                      <div className="small muted">{fmtMetric(p.metric, p.value)}{next ? ` / ${fmtMetric(p.metric, next.target)}${dot()}${t("next: {reward}", { reward: next.reward })}` : `${dot()}${t("all tiers reached!")}`}</div>
                     </div>
                     {ready.length > 0 && <Button className="btn yellow small" onClick={() => claim(`p:${p.key}:${ready[0].i}`)}>{t("Claim")}</Button>}
                   </div>
@@ -390,7 +390,7 @@ export function StorePanel({ onClose, peek, onWatch }: { onClose: () => void; pe
               <div className="gt-icon">📺</div>
               <div className="grow">
                 <b>{t("Free gems")}</b>
-                <div className="small muted">{d.ads.network ? t("Watch a short video: +{gems} 💎", { gems: d.ads.gems }) : t("Watch a {s}s sponsor spot: +{gems} 💎", { s: d.ads.seconds, gems: d.ads.gems })}{d.ads.coins ? ` +${fmtNum(d.ads.coins)} 🪙` : ""} · {t("{n} left today", { n: d.ads.left })}</div>
+                <div className="small muted">{d.ads.network ? t("Watch a short video: +{gems} 💎", { gems: d.ads.gems }) : t("Watch a {s}s sponsor spot: +{gems} 💎", { s: d.ads.seconds, gems: d.ads.gems })}{d.ads.coins ? ` +${fmtNum(d.ads.coins)} 🪙` : ""}{dot()}{t("{n} left today", { n: d.ads.left })}</div>
               </div>
               <Button className="btn green" disabled={d.ads.left <= 0} onClick={() => onWatch(d.ads)}>{t("▶ Watch")}</Button>
             </div>

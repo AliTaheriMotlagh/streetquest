@@ -27,7 +27,7 @@ const arena: Record<string, string> = {
   "Connecting to the live city…": "در حال وصل شدن به شهر زنده…",
   "Your gun": "اسلحه‌ات",
   "Join {team}": "برو تیم {team}",
-  "Bots: {n} · {d}": "ربات: {n} · {d}",
+  "Bots: {n} · {d}": "ربات: {n} • {d}",
   "Start match": "شروع مسابقه",
   "Waiting for the host to start…": "منتظر میزبان که شروع کنه…",
   "Switch to Play from home to fight in Street Arena": "برای مبارزه توی میدان خیابانی، بازی از خونه رو روشن کن",
@@ -48,7 +48,7 @@ const arena: Record<string, string> = {
   Hard: "سخت",
   "Matches nearby": "مسابقه‌های این اطراف",
   "No matches around here yet — start one and invite your friends.": "هنوز این دور و بر مسابقه‌ای نیست — یکی راه بنداز و دوستات رو دعوت کن.",
-  "{n} players · {b} bots": "{n} بازیکن · {b} ربات",
+  "{n} players · {b} bots": "{n} بازیکن • {b} ربات",
   "in the lobby": "توی لابی",
   playing: "در حال بازی",
 
@@ -126,7 +126,7 @@ const arena: Record<string, string> = {
   "Buy in the freeze time before the round": "فقط توی زمان آماده‌باش قبل از راند می‌شه خرید کرد",
   "Not enough money — {n} needed": "پول کافی نداری — {n} لازمه",
   "The lobby closed — nobody started it": "لابی بسته شد — کسی شروعش نکرد",
-  "+{xp} XP · +{coins} coins": "+{xp} تجربه · +{coins} سکه",
+  "+{xp} XP · +{coins} coins": "+{xp} تجربه • +{coins} سکه",
   "Daily match rewards used up — play again tomorrow for more": "جایزه‌های امروزِ مسابقه تموم شد — فردا دوباره بازی کن",
 
   // ---- without the realtime server (server/arena.ts, the in-browser hub)
@@ -145,8 +145,8 @@ const arena: Record<string, string> = {
   // ---- medals (lib/arena/medals.ts) and the kill run in the HUD
   "RAMPAGE!": "قتل‌عام!",
   "TRIPLE KILL!": "سه کشتهٔ پشت سر هم!",
-  "UNSTOPPABLE · {n} in a row": "توقف‌ناپذیر · {n} تا پشت سر هم",
-  "KILLING SPREE · 5 in a row": "شکار پیاپی · ۵ تا پشت سر هم",
+  "UNSTOPPABLE · {n} in a row": "توقف‌ناپذیر • {n} تا پشت سر هم",
+  "KILLING SPREE · 5 in a row": "شکار پیاپی • ۵ تا پشت سر هم",
   "DOUBLE KILL!": "دو کشتهٔ پشت سر هم!",
   "FIRST BLOOD": "اولین خون",
   HEADSHOT: "تیر به سر",
@@ -176,7 +176,7 @@ const arena: Record<string, string> = {
   "Wait for the round to start": "صبر کن راند شروع شود",
   "You're standing in fire — move!": "وسط آتش ایستاده‌ای — برو کنار!",
   "G: set off the C4": "G: منفجر کردن سی‌فور",
-  "Hold G to throw · 4 to switch": "G را نگه دار تا پرتاب کنی · ۴ برای عوض کردن",
+  "Hold G to throw · 4 to switch": "G را نگه دار تا پرتاب کنی • ۴ برای عوض کردن",
   "Set off the C4": "منفجر کردن سی‌فور",
   "Hold to aim, let go to throw: {name}": "نگه دار تا نشانه بگیری، رها کن تا پرتاب شود: {name}",
   "Switch grenade": "عوض کردن نارنجک",

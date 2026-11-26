@@ -3,7 +3,7 @@
 // shown in the game's lists before any ad network; the player picks how many views and sees the price.
 // Below, their ads with views, clicks and status (waiting for a moderator, live, turned down), paused/resumed.
 import { useCallback, useEffect, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { AD_VIEWS_MAX, AD_VIEWS_MIN, AD_VIEWS_STEP, adPrice } from "@/lib/ads/slot";
 import { Button } from "@/components/Button";
 import { api } from "./client";
@@ -64,7 +64,7 @@ export function Advertise() {
           <span className="grow" style={{ minWidth: 0 }}>
             <b className="ellipsis" dir="auto" style={{ display: "block" }}>{a.title}</b>
             <span className="small muted">
-              {a.review === "pending" ? `🕓 ${t("Waiting for a moderator")}` : a.review === "rejected" ? `⛔ ${t("Turned down")}` : `👁 ${fmtNum(a.shown)}/${fmtNum(a.views)} · 👆 ${fmtNum(a.clicks)}`}
+              {a.review === "pending" ? `🕓 ${t("Waiting for a moderator")}` : a.review === "rejected" ? `⛔ ${t("Turned down")}` : `👁 ${fmtNum(a.shown)}/${fmtNum(a.views)}${dot()}👆 ${fmtNum(a.clicks)}`}
             </span>
           </span>
           {a.review === "ok" && a.shown < a.views && (

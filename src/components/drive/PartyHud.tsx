@@ -2,7 +2,7 @@
 // A party round in the 3D city: the strip at the top during the round and the podium
 // after it. (Starting a party, inviting and picking the game: PlayTogether.tsx.)
 import { useEffect, useState } from "react";
-import { fmtNum, t } from "@/lib/i18n";
+import { fmtNum, t, dot } from "@/lib/i18n";
 import { PARTY_GAMES, standings, type PartyView } from "@/lib/party";
 import { sfx } from "../game/sfx";
 
@@ -54,7 +54,7 @@ export function PartyHud({ party, meId, serverNow }: { party: PartyView; meId: s
     <div className={`party-hud ${s.game === "tag" && s.it === meId ? "is-it" : ""}`}>
       <b>{d.emoji} {status}</b>
       <span className="small">
-        {myRow ? `${MEDAL[myRow.place - 1] ?? `#${fmtNum(myRow.place)}`} · ` : ""}⏱ {fmtNum(Math.floor(left / 60))}:{left % 60 < 10 ? fmtNum(0) : ""}{fmtNum(left % 60)}
+        {myRow ? `${MEDAL[myRow.place - 1] ?? `#${fmtNum(myRow.place)}`}${dot()}` : ""}⏱ {fmtNum(Math.floor(left / 60))}:{left % 60 < 10 ? fmtNum(0) : ""}{fmtNum(left % 60)}
       </span>
     </div>
   );

@@ -14,7 +14,7 @@ import { TrailerButton } from "./Trailer";
 import { menuSearch, storeKind, usuallyAt } from "@/lib/storeKinds";
 import { createPortal } from "react-dom";
 import { isYsCode } from "@/lib/yemeksepeti";
-import { fmtNum, msg, t } from "@/lib/i18n";
+import { fmtNum, msg, t, dot } from "@/lib/i18n";
 import { distanceM, formatDistance, type LatLng } from "@/lib/geo";
 import {
   clockOf, dayClock, DIVAR_CAT_KEYS, DIVAR_CATS, LINK_CHECKS, normName, openState, phoneKey, phoneSearchLinks, snappfoodMenuUrl, VENDOR_KINDS, WEEK_DAYS, weekFromOsm, zoneOf,
@@ -148,7 +148,7 @@ function PhoneRows({ store, phones: known }: { store: StoreRef | null; phones?: 
     <div className="info-row">
       📞 <span className="muted">{t("No phone number listed.")}</span>{" "}
       <a href={l.web} target="_blank" rel="noopener noreferrer">{t("Search Google")}</a>
-      {" · "}
+      {dot()}
       <a href={l.map} target="_blank" rel="noopener noreferrer">{l.mapSite === "balad" ? t("Search Balad") : t("Search Google Maps")}</a>
     </div>
   );
@@ -220,7 +220,7 @@ export function InfoView({ at, store = null, week, hours, address, area, phones,
       )}
       {address && (
         <div className="info-row">
-          🏠 <span dir="auto">{[address, area, city].filter(Boolean).join(" · ")}</span>
+          🏠 <span dir="auto">{[address, area, city].filter(Boolean).join(dot())}</span>
         </div>
       )}
       <PhoneRows store={store} phones={phones} />
@@ -622,7 +622,7 @@ function StockList({ items }: { items: TorobStock[] }) {
           {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
           <div className="grow">
             <b dir="auto">{i.title}</b>
-            {(i.note || i.when) && <p className="small muted" dir="auto">{[i.note, i.when && t("price changed {when}", { when: i.when })].filter(Boolean).join(" · ")}</p>}
+            {(i.note || i.when) && <p className="small muted" dir="auto">{[i.note, i.when && t("price changed {when}", { when: i.when })].filter(Boolean).join(dot())}</p>}
           </div>
           {i.price > 0 ? <span className="price-tag"><b>{toman(i.price)}</b></span> : <span className="small muted">{t("Ask in the store")}</span>}
         </ProductRow>
@@ -792,7 +792,7 @@ export function VendorCard({ v, onClose, onBack, focus }: { v: Vendor; onClose: 
   const dist = pos ? distanceM(pos, v) : Infinity;
   const { data, error, retry } = useLocal<{ menu: Menu }>({ menu: v.code, lat: v.lat.toFixed(5), lng: v.lng.toFixed(5) });
   const menu = data?.menu;
-  const sub = [t(kind.label), Number.isFinite(dist) ? formatDistance(dist) : "", menu?.area ?? ""].filter(Boolean).join(" · ");
+  const sub = [t(kind.label), Number.isFinite(dist) ? formatDistance(dist) : "", menu?.area ?? ""].filter(Boolean).join(dot());
   return (
     <Sheet title={`${kind.emoji} ${v.title}`} onClose={onClose} onBack={onBack} tall>
       <StoreHead logo={v.logo} emoji={kind.emoji} name={v.title} sub={sub} rating={v.rating} reviews={menu?.reviews} week={menu?.week} at={v} />
@@ -831,7 +831,7 @@ export function TorobPlaceCard({ p, onClose }: { p: TorobPlace; onClose: () => v
   const { data, error } = useLocal<{ info: TorobPlaceInfo | null; items: TorobItem[]; stock: TorobStock[] }>({ torobPlace: p.id, lat: p.lat.toFixed(6), lng: p.lng.toFixed(6) });
   const info = data?.info;
   const shop = useMemo<TorobShop>(() => ({ id: p.id, name: p.name, logo: info?.logo ?? "", url: info?.url ?? `https://torob.com/shop/${p.id}/`, count: 0 }), [p, info]);
-  const sub = [p.sells.join(" "), p.city, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
+  const sub = [p.sells.join(" "), p.city, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(dot());
   const photo = info?.photos[0] || p.photo;
   const stock = data?.stock ?? [];
   return (
@@ -886,7 +886,7 @@ function DivarList({ posts }: { posts: DivarPost[] }) {
           {p.photo ? <img src={p.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">📢</span>}
           <div className="grow">
             <b dir="auto">{p.title}</b>
-            <p className="small muted" dir="auto">{[p.note, p.when].filter(Boolean).join(" · ")}</p>
+            <p className="small muted" dir="auto">{[p.note, p.when].filter(Boolean).join(dot())}</p>
           </div>
           {p.price && <span className="price-tag" dir="auto"><b>{p.price}</b></span>}
         </ProductRow>
@@ -1023,7 +1023,7 @@ function DealItems({ items, total, store, url }: { items: DealProduct[]; total: 
             {i.photo ? <img src={i.photo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="ext-ph">🏷️</span>}
             <div className="grow">
               <b dir="auto">{i.name}</b>
-              {(i.ends || i.sold > 0) && <p className="small muted">{[ends(i.ends), i.sold > 0 ? t("{n} sold", { n: fmtNum(i.sold) }) : ""].filter(Boolean).join(" · ")}</p>}
+              {(i.ends || i.sold > 0) && <p className="small muted">{[ends(i.ends), i.sold > 0 ? t("{n} sold", { n: fmtNum(i.sold) }) : ""].filter(Boolean).join(dot())}</p>}
             </div>
             <span className="price-tag deal-price">
               {i.off > 0 && <em>−{fmtNum(i.off)}%</em>}
@@ -1091,7 +1091,7 @@ export function DealCard({ d, onClose }: { d: Deal; onClose: () => void }) {
   const photos = info?.photos.length ? info.photos : d.photos;
   const rating = info?.rating || d.rating, reviews = info?.reviews || d.reviews;
   const off = Math.max(d.off, info?.off ?? 0), cashback = Math.max(d.cashback, info?.cashback ?? 0);
-  const sub = [d.category || info?.categories[0], info?.district || d.district, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(" · ");
+  const sub = [d.category || info?.categories[0], info?.district || d.district, Number.isFinite(dist) ? formatDistance(dist) : ""].filter(Boolean).join(dot());
   const items = info?.items.length ? info.items : (d.items as DealProduct[]);
   return (
     <Sheet title={d.name} onClose={onClose} tall>
@@ -1162,7 +1162,7 @@ export function CinemaCard({ c, onClose }: { c: Cinema; onClose: () => void }) {
     };
   }, [c.id, tries]);
   const today = tehranDay(), tomorrow = tehranDay(new Date(Date.now() + 86_400_000));
-  const sub = [t("Cinema"), Number.isFinite(dist) ? formatDistance(dist) : "", c.rates ? `⭐ ${fmtNum(c.rate)}` : ""].filter(Boolean).join(" · ");
+  const sub = [t("Cinema"), Number.isFinite(dist) ? formatDistance(dist) : "", c.rates ? `⭐ ${fmtNum(c.rate)}` : ""].filter(Boolean).join(dot());
   const dayTab = (day: string) => () => <FilmList films={state.data?.films ?? []} day={day} />;
   return (
     <Sheet title={`🎬 ${c.name}`} onClose={onClose} tall>

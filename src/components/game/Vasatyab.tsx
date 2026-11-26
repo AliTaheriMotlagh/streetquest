@@ -8,7 +8,7 @@
 // The maths is lib/midpoint.ts; the server side server/midpoint.ts (/api/party/midpoint).
 import { useCallback, useEffect, useState } from "react";
 import { formatDistance, type LatLng } from "@/lib/geo";
-import { msg, t } from "@/lib/i18n";
+import { msg, t, dot } from "@/lib/i18n";
 import type { MidMethod } from "@/lib/midpoint";
 import { siktirCountLabel } from "@/lib/siktir";
 import type { MidView } from "@/server/midpoint";
@@ -156,7 +156,7 @@ export function VasatyabPanel({ view, method, setMethod, reload, onTeleport, onG
               <span className="ic">{m.avatar}</span>
               <span className="grow">
                 {m.name}
-                {m.me ? ` · ${t("you")}` : ""}
+                {m.me ? `${dot()}${t("you")}` : ""}
                 {m.stale && <span className="small muted"> · {t("last seen a while ago")}</span>}
               </span>
               <span className="small">{m.distM != null ? formatDistance(m.distM) : t("no position")}</span>
@@ -175,7 +175,7 @@ export function VasatyabPanel({ view, method, setMethod, reload, onTeleport, onG
               <span className="grow">
                 <span dir="auto">{p.name}</span>
                 <span className="small muted"> · {t("{d} from the middle", { d: formatDistance(p.fromM) })}</span>
-                {p.siktir > 0 && <span className="small siktir-warn"> · {siktirCountLabel(p.siktir)}</span>}
+                {p.siktir > 0 && <span className="small siktir-warn">{dot()}{siktirCountLabel(p.siktir)}</span>}
               </span>
               <Button className="btn small" disabled={busy} onClick={() => run({ action: "set", lat: p.lat, lng: p.lng, name: p.name }, t("Gather point set"))}>{t("Meet here")}</Button>
             </div>

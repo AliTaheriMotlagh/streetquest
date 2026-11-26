@@ -5,7 +5,7 @@
 // size, triangles, licence and where it's used. Models turn on a lazy turntable (drive/turntable.ts).
 // "Replace model" opens the update flow (AdminModels.tsx) on that object's slot.
 import { useEffect, useMemo, useState } from "react";
-import { msg, t } from "@/lib/i18n";
+import { msg, t, dot } from "@/lib/i18n";
 import { OBJECT_KINDS, type CatalogObject, type ObjectKind, type SlotInfo } from "@/lib/objectCatalog";
 import type { OverrideView } from "@/server/modelOverrides";
 import { Button } from "./Button";
@@ -114,7 +114,7 @@ export default function AdminObjects({ onReplace }: { onReplace: (slot: string) 
                 <span className="muted">{t("Triangles")}</span><span>{o.tris == null ? "—" : o.tris.toLocaleString()}{o.note && o.kind === "car" ? ` (${o.note})` : ""}</span>
                 <span className="muted">{t("Licence")}</span>
                 <span>{o.credits.length ? o.credits.map((c, i) => <span key={i}>{i ? ", " : ""}{c.url ? <a href={c.url} target="_blank" rel="noreferrer">{c.license}</a> : c.license}</span>) : "—"}</span>
-                <span className="muted">{t("Used in")}</span><span>{o.usedIn.map((u) => t(u)).join(" · ")}</span>
+                <span className="muted">{t("Used in")}</span><span>{o.usedIn.map((u) => t(u)).join(dot())}</span>
               </div>
               {o.slot && (
                 <div className="row" style={{ gap: 6, marginTop: 2 }}>

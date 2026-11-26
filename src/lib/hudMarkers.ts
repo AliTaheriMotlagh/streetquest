@@ -100,6 +100,7 @@ const EMOJI_ICON: [RegExp, IconName][] = [
   [/[💊🩹]/u, "pill"],
   [/[🩺]/u, "doctor"],
   [/[🏥⚕]/u, "medical"],
+  [/[👓🕶🦻]/u, "glasses"],
   [/[💇💅💄✂]/u, "scissors"],
   [/[👗👕👟👠👔]/u, "shirt"],
   [/[👜🎒🛍]/u, "bag"],

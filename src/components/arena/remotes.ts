@@ -5,6 +5,7 @@
 // second), and as far behind as their samples arrive late in matches relayed through the
 // game server (relay.ts Mixer, each player's own delay). Players on foot are soldiers (avatar.ts); players driving on the realtime link
 // are handed to the city's vehicle renderer (drive/others.ts), which interpolates the same way.
+import { dot } from "@/lib/i18n";
 import * as THREE from "three";
 import type { Frame } from "@/lib/city";
 import { TEAM_COLORS } from "@/lib/arena/modes";
@@ -179,7 +180,7 @@ export class Remotes {
           if (e.tag) (e.tag.sprite.removeFromParent(), e.tag.dispose());
           const enemy = this.inMatch && (!p.team || p.team !== this.myTeam);
           // Bots carry 🤖 in their name already.
-          e.tag = makeSign(e.info.bot ? "" : e.info.avatar, e.info.bot ? e.info.name : `${e.info.name} · ${e.info.level}`, enemy ? "#ff8a8a" : e.info.friend ? "#5bd38c" : "#ffffff");
+          e.tag = makeSign(e.info.bot ? "" : e.info.avatar, e.info.bot ? e.info.name : `${e.info.name}${dot()}${e.info.level}`, enemy ? "#ff8a8a" : e.info.friend ? "#5bd38c" : "#ffffff");
           e.tag.sprite.scale.multiplyScalar(0.55);
           e.tag.sprite.position.y = 2.35;
           av.group.add(e.tag.sprite);

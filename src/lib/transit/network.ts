@@ -10,7 +10,9 @@
 export type Mode = "subway" | "light_rail" | "monorail" | "tram" | "funicular" | "train";
 export const MODES: Mode[] = ["subway", "light_rail", "monorail", "tram", "funicular", "train"];
 
-export type Station = { id: string; name: string; en: string; lat: number; lng: number; lines: string[] };
+/** A way in/out of a station (OSM `railway=subway_entrance`): its sign ("1", "A"), the street it opens onto, lift/step-free. */
+export type Exit = { ref: string; name: string; lat: number; lng: number; lift?: boolean; stepFree?: boolean };
+export type Station = { id: string; name: string; en: string; lat: number; lng: number; lines: string[]; exits?: Exit[] };
 export type Line = {
   id: string;
   /** What's on the signs: "1", "M2", "T1", "F1", "Marmaray". */
@@ -253,6 +255,42 @@ export function orderStops<T extends { lat: number; lng: number; name?: string }
   if (given <= pathM(best) * 1.35) return stops;
   // Keep the direction the map meant: start nearer its first listed stop... unless `from` says otherwise.
   return named || dist(best[0], stops[0]) <= dist(best[best.length - 1], stops[0]) ? best : [...best].reverse();
+}
+
+/** An entrance belongs to the nearest station within this far. */
+const EXIT_M = 350;
+/** Is this node a station entrance? */
+export const isEntrance = (t: Tags | null | undefined) => !!t && (t.railway === "subway_entrance" || t.railway === "train_station_entrance" || (t.public_transport === "entrance" && !!t.railway));
+
+/**
+ * Hangs each entrance on its station (the nearest within EXIT_M; one whose name matches wins over
+ * a nearer one of another station), sorted by sign. Returns a new network.
+ */
+export function attachExits(net: Network, entrances: RawNode[]): Network {
+  const by = new Map<string, Exit[]>();
+  for (const n of entrances) {
+    if (!isEntrance(n.tags)) continue;
+    const p = { lat: n.lat, lng: n.lon };
+    const near = net.stations.map((s) => ({ s, m: dist(s, p) })).filter((x) => x.m <= EXIT_M).sort((a, b) => a.m - b.m);
+    if (!near.length) continue;
+    const said = norm(n.tags?.["railway:station"] ?? n.tags?.station ?? "");
+    const pick = (said && near.find((x) => norm(x.s.name) === said || norm(x.s.en) === said)) || near[0];
+    const t = n.tags!;
+    const ex: Exit = {
+      ref: (t.ref || t["entrance:ref"] || "").trim(),
+      name: (t.name || t["addr:street"] || t.description || "").trim(),
+      lat: Math.round(n.lat * 1e5) / 1e5,
+      lng: Math.round(n.lon * 1e5) / 1e5,
+      ...(t.elevator === "yes" || t.highway === "elevator" || t.entrance === "elevator" ? { lift: true } : {}),
+      ...(t.wheelchair === "yes" ? { stepFree: true } : {}),
+    };
+    const list = by.get(pick.s.id) ?? [];
+    // The same entrance mapped twice (a node per side of the stairs): keep one.
+    if (!list.some((e) => dist(e, ex) < 8)) list.push(ex);
+    by.set(pick.s.id, list);
+  }
+  const bySign = (a: Exit, b: Exit) => (a.ref && b.ref ? a.ref.localeCompare(b.ref, "en", { numeric: true }) : a.ref ? -1 : b.ref ? 1 : 0);
+  return { ...net, stations: net.stations.map((s) => (by.has(s.id) ? { ...s, exits: by.get(s.id)!.sort(bySign) } : s)) };
 }
 
 /** A city's bus stops (each with the lines that call there) and its bus lines, from route=bus relations. */

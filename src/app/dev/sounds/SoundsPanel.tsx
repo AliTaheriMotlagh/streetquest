@@ -326,7 +326,7 @@ function Editor({ e, set, onSave }: { e: Edit; set: (e: Edit | null) => void; on
     </label>
   );
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", display: "grid", placeItems: "center", zIndex: 50 }} onClick={() => set(null)}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", display: "grid", placeItems: "center", zIndex: "var(--z-raised)" }} onClick={() => set(null)}>
       <div className="card" style={{ width: "min(720px, 94vw)", display: "grid", gap: 10 }} onClick={(x) => x.stopPropagation()}>
         <b>
           ✎ {e.slot} / {e.name}

@@ -2,9 +2,10 @@
 // deal, a service) with its details, priced in coins or toman — and their photos. Photos go up
 // one per request (each is already resized on the phone), so a slow connection
 // uploads them one by one instead of failing one giant request.
+import { enforce } from "@/server/limits";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { t } from "@/lib/i18n";
+import { t, dot } from "@/lib/i18n";
 import { S } from "@/lib/settings";
 import { MAX_DISCOUNT, SHOP_LIMITS } from "@/lib/shops";
 import { cleanDetails, CURRENCIES, PRODUCT_KIND_KEYS, priceProblem, type Currency, type ProductKind } from "@/lib/shopKinds";
@@ -63,7 +64,7 @@ export const POST = actionRoute(async (req) => {
     }
     return v;
   };
-  const heldNote = (v: Verdict) => (v.verdict === "hold" ? v.reasons.join(" · ") : "");
+  const heldNote = (v: Verdict) => (v.verdict === "hold" ? v.reasons.join(dot()) : "");
 
   const checkPrice = (price: number | undefined, currency: Currency) => {
     const why = price === undefined ? null : priceProblem(currency, price, S.shopMaxPrice);
@@ -84,6 +85,7 @@ export const POST = actionRoute(async (req) => {
   };
 
   if (d.action === "create") {
+    await enforce("listing", u);
     checkPrice(d.price, d.currency);
     d.details = checkDetails(d.kind, d.details);
     checkDiscount(d.discountPct, d.discountUntil);

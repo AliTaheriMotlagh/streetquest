@@ -1,5 +1,6 @@
 // A player's own ads (server/houseAds.ts): GET lists them with views and clicks; POST buys one with coins,
 // or pauses / resumes one.
+import { enforce } from "@/server/limits";
 import { z } from "zod";
 import { requireUser } from "@/server/auth";
 import { actionRoute, body, route } from "@/server/http";
@@ -23,5 +24,6 @@ const Schema = z.discriminatedUnion("action", [
 export const POST = actionRoute(async (req) => {
   const u = await requireUser();
   const d = await body(req, Schema);
+  if (d.action === "buy") await enforce("ad", u);
   return d.action === "buy" ? buyAd(u, d) : pauseAd(u.id, d.id, d.paused);
 });
