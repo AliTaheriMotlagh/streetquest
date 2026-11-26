@@ -42,6 +42,10 @@ The 2026-11-26 00:27 "plan" deploy FAILED on the missing translations — fixed;
 
 ## Now — run top-down (tools + best practice per step)
 
+0. **Prod DB schema — USER decides (found 2026-11-26)**: Cloudflare builds had no DATABASE_URL, so `db-sync.mjs`
+   skipped `prisma db push` on every deploy — prod has no HouseAd table (`/api/ads/slot` answers 503; the slot and
+   Advertise just hide), and likely misses ListingReport / ShopScan / Product.review too. Fix on branch
+   `fix/cf-schema-sync` (CI reads the Worker's .dev.vars): merge it and the next deploy syncs (additive only).
 00. **Cloudflare + Iran deploy — USER** (code done 2026-11-26): `npx wrangler secret put RELAY_URL --name streetquest` =
     `http://37-32-28-215.sslip.io:8790/<RELAY_KEY>`, `RELAY_FOR=all`, `FRONT_KEY` (same as .env, made by the first
     `npm run front:deploy`); push to main (CI deploys); `npm run front:deploy`; then `/api/health?ext=1` + a fresh `?menu=`
