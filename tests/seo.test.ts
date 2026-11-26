@@ -11,8 +11,8 @@ test("langPath adds ?lang= and keeps the rest of the query", () => {
 test("each language version is its own canonical page; the plain URL is x-default", () => {
   const a = pageAlternates("/events", "fa");
   assert.equal(a.canonical, "/events?lang=fa");
-  assert.deepEqual(a.languages, { en: "/events?lang=en", "fa-IR": "/events?lang=fa", "tr-TR": "/events?lang=tr", "x-default": "/events" });
-  assert.equal(pageAlternates("/", "en").canonical, "/?lang=en");
+  assert.deepEqual(a.languages, { en: "/events", "fa-IR": "/events?lang=fa", "tr-TR": "/events?lang=tr", "x-default": "/events" });
+  assert.equal(pageAlternates("/", "en").canonical, "/");
   assert.equal(pageAlternates("/", "tr", "https://sq.example").canonical, "https://sq.example/?lang=tr");
   assert.equal(pageAlternates("/", "tr", "https://sq.example").languages["x-default"], "https://sq.example/");
   assert.equal(hreflang("fa"), "fa-IR");

@@ -16,13 +16,27 @@ export function langPath(path: string, l: Locale): string {
 }
 
 /**
+ * The address search engines get for a page in one language. English is what a crawler is served at the plain URL
+ * anyway, so English's address is the plain URL: a separate ?lang=en twin was the same page twice, and Google kept
+ * only one of them ("Duplicate, Google chose different canonical than user").
+ */
+export function seoPath(path: string, l: Locale): string {
+  if (l !== "en") return langPath(path, l);
+  const [p, q = ""] = path.split("?");
+  const qs = new URLSearchParams(q);
+  qs.delete("lang");
+  const rest = qs.toString();
+  return rest ? `${p}?${rest}` : p;
+}
+
+/**
  * Next.js `alternates` for a page shown in `locale`: canonical + every language + x-default. `base`: absolute URLs
  * (the home page needs them — Next.js resolves a relative "/?lang=fa" to the bare origin, dropping the language).
  */
 export function pageAlternates(path: string, locale: Locale, base = "") {
-  const languages: Record<string, string> = Object.fromEntries(LOCALES.map((l) => [hreflang(l), base + langPath(path, l)]));
-  languages["x-default"] = base + path;
-  return { canonical: base + langPath(path, locale), languages };
+  const languages: Record<string, string> = Object.fromEntries(LOCALES.map((l) => [hreflang(l), base + seoPath(path, l)]));
+  languages["x-default"] = base + seoPath(path, "en");
+  return { canonical: base + seoPath(path, locale), languages };
 }
 
 /** hreflang codes: Persian pages are for Iran, Turkish for Türkiye, English for everyone. */
@@ -33,7 +47,7 @@ export function sitemapEntry(base: string, path: string, o: { lastModified?: Dat
   return {
     url: `${base}${path}`,
     ...o,
-    alternates: { languages: Object.fromEntries([...LOCALES.map((l) => [hreflang(l), `${base}${langPath(path, l)}`]), ["x-default", `${base}${path}`]]) },
+    alternates: { languages: Object.fromEntries([...LOCALES.map((l) => [hreflang(l), `${base}${seoPath(path, l)}`]), ["x-default", `${base}${path}`]]) },
   };
 }
 
