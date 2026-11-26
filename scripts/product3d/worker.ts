@@ -219,15 +219,23 @@ async function findPhoto(j: Job): Promise<{ image: string; from: string } | null
 
 let io: NodeIO | null = null;
 /** Raw TripoSR mesh → welded, simplified to the triangle budget, quantised, meshopt-compressed (the game's loader reads it). */
-async function optimise(raw: Uint8Array): Promise<Uint8Array> {
+export async function optimise(raw: Uint8Array): Promise<Uint8Array> {
   await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready, MeshoptSimplifier.ready]);
   io ??= new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": MeshoptDecoder });
   const doc = await io.readBinary(raw);
   await doc.transform(F.dedup(), F.prune(), F.weld());
-  let tris = 0;
-  for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) tris += Math.floor((p.getIndices()?.getCount() ?? 0) / 3);
+  // A product is a few centimetres on screen: 2 % of its size is invisible error. Still over budget (noisy meshes),
+  // a second pass may go to 6 %.
   const target = MODEL_LIMITS.triangles * 0.75;
-  if (tris > target) await doc.transform(F.simplify({ simplifier: MeshoptSimplifier, ratio: target / tris, error: 0.004, lockBorder: false }));
+  const count = () => doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => k + Math.floor((p.getIndices()?.getCount() ?? 0) / 3), 0), 0);
+  for (const error of [0.02, 0.06]) {
+    const now = count();
+    if (now <= target) break;
+    await doc.transform(F.simplify({ simplifier: MeshoptSimplifier, ratio: target / now, error, lockBorder: false }));
+  }
+  // TripoSR's colours are baked lighting on a matte object: no metal (glTF's default metalness is 1 — black without
+  // an environment), fairly rough, white base so the vertex colours show as they are.
+  for (const m of doc.getRoot().listMaterials()) m.setMetallicFactor(0).setRoughnessFactor(0.75).setBaseColorFactor([1, 1, 1, 1]);
   doc.createExtension(KHRMeshQuantization).setRequired(true);
   doc.createExtension(EXTMeshoptCompression).setRequired(true);
   await doc.transform(F.prune(), F.meshopt({ encoder: MeshoptEncoder, level: "medium" }));
@@ -322,7 +330,9 @@ async function main() {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `left=${progress > 0 ? p.jobs + p.classify : 0}\n`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Run as a script (not when a test imports optimise).
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]))
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

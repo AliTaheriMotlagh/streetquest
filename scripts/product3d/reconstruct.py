@@ -62,15 +62,15 @@ def cut(path):
 
 
 def keep_main(mesh):
-    """Drop floating specks: keep pieces with at least 5 % of the biggest piece's faces."""
+    """Drop floating specks: keep pieces with at least 5 % of the biggest piece's faces. Returns the mesh and how many pieces are left."""
     labels = trimesh.graph.connected_component_labels(mesh.face_adjacency, node_count=len(mesh.faces))
     sizes = np.bincount(labels)
     keep = np.where(sizes >= max(8, 0.05 * sizes.max()))[0]
     mask = np.isin(labels, keep)
     if mask.all():
-        return mesh, len(sizes)
+        return mesh, len(keep)
     m = mesh.submesh([np.where(mask)[0]], append=True)
-    return m, len(sizes)
+    return m, len(keep)
 
 
 def make(job):

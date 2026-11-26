@@ -42,9 +42,9 @@ retry curl -fsSL -o config.yaml "https://huggingface.co/stabilityai/TripoSR/reso
 [ -x venv/bin/python ] || uv venv --python "$PY" venv
 idx=()
 [ "$(uname -s)" = Linux ] && idx=(--index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple)
-retry uv pip install --python venv/bin/python -q "${idx[@]}" \
+retry uv pip install --python venv/bin/python -q ${idx[@]+"${idx[@]}"} \
   torch==2.5.1 numpy==1.26.4 omegaconf==2.3.0 Pillow==10.4.0 einops==0.7.0 transformers==4.35.0 \
-  huggingface-hub==0.24.7 trimesh==4.0.5 PyMCubes==0.1.6 rembg==2.0.59 onnxruntime==1.19.2
+  huggingface-hub==0.17.3 trimesh==4.0.5 PyMCubes==0.1.6 rembg==2.0.59 onnxruntime==1.19.2
 # rembg's u2net model, fetched once into the cache (it would otherwise download on the first cutout).
 U2NET_HOME="$P3D_DIR/u2net" venv/bin/python -c "from rembg import new_session; new_session('u2net')" >/dev/null
 echo "product3d tools ready in $P3D_DIR"
