@@ -2083,3 +2083,21 @@ html.game-on, html.game-on body { height: 100%; overflow: hidden; overscroll-beh
 .sf-body h3 { margin: 0; font-size: 16px; }
 .sf-body p { margin: 0; }
 .sf-price b { color: var(--yellow); font-size: 17px; }
+
+/* Admin → Product models (components/AdminProduct3D.tsx) */
+.p3d-stats, .p3d-bar, .p3d-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.p3d-bar input[type="search"] { flex: 1 1 160px; min-width: 0; }
+.p3d-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.p3d-row { border: 1px solid var(--line, #8883); border-radius: 10px; overflow: hidden; }
+.p3d-row.live { border-color: #2e7d32; }
+.p3d-row.review { border-color: #f9a825; }
+.p3d-row.failed, .p3d-row.rejected { border-color: #c62828; }
+.p3d-head { display: flex; gap: 10px; align-items: center; width: 100%; padding: 6px; background: none; border: 0; text-align: start; color: inherit; cursor: pointer; }
+.p3d-head img, .p3d-ph { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: none; background: #8882; display: grid; place-items: center; }
+.p3d-title { display: grid; min-width: 0; }
+.p3d-title b, .p3d-title small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p3d-detail { padding: 8px; display: grid; gap: 8px; }
+.p3d-detail dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 0.9em; }
+.p3d-detail dd { margin: 0; overflow-wrap: anywhere; }
+.p3d-log { font-size: 0.8em; opacity: 0.8; margin: 0; padding-inline-start: 18px; max-height: 140px; overflow: auto; }
+.drive-enter.hint { opacity: 0.85; font-weight: 500; }

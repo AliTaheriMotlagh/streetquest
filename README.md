@@ -275,7 +275,9 @@ mood scales XP; loot funds research; territory funds the army.
   as they pass, 4.5 m), and standing still beside someone makes them stop and look at you; people step aside for each
   other and for you instead of walking through (`Crowd.separate`).
 - **Walk into a store — in 3D** (room `drive/interior3d.ts`, layout `lib/interior.ts`, HUD `drive/ShopScreen.tsx`,
-  lines `lib/street/shopTalk.ts`): on foot at an open shop's door, 🚪 Enter (B) and you're standing in its room, laid
+  lines `lib/street/shopTalk.ts`): on foot, **walk at an open shop's door and you're in** — no button (`lib/walkIn.ts`:
+  close, moving, heading at the door; after you come out it re-arms once you step 7 m away; B still works on a
+  keyboard) — standing in its room, laid
   out for its trade — a chelow-kababi's tables, blue-tiled dado, food counter and lit menu board; a bakery's bread racks
   and glowing sangak tanoor; a supermarket's aisles and drinks fridges; a chemist's wall of boxes behind the counter; a
   phone shop's lit panels; a boutique's rails and mirror. The store's **real menu or catalogue** (Snappfood, Torob, or
@@ -288,6 +290,33 @@ mood scales XP; loot funds research; territory funds the army.
   **player's shop** — now standing in the 3D city too, enterable like any store — sells its coin products right at
   the counter (**Pay 🪙**, held until pickup with a code), its toman ones by 📞 Call / 💳 Pay the seller. No WebGL:
   the same screen as a list.
+- **Every product as a real 3D thing — made from its photo** (`lib/product3d/{kinds,pipeline,classifyPrompt}.ts` pure,
+  `drive/product3d.ts`, `server/product3d.ts`, runner `scripts/product3d/`, workflow `.github/workflows/product3d.yml`,
+  Admin → 🥤 Product models). Each listed thing on a shelf is built at its **real size** from one of ~60 kinds — a can,
+  a PET bottle sized by its litres, doogh, a carton, an estekan of tea on its saucer with a sugar cube, a coffee cup,
+  a clear shake cup with a straw, a plate with the dish's own photo on it, a pizza on its board sized by its
+  centimetres, a stone dizi pot, a sohan tin, a cake slice, a pastry box, sangak, a rice sack, a jar of saffron, a
+  pile of fruit, a pot plant (its photo cut out), a phone… — with **its own photo** mapped on (laid on the food,
+  projected on the front cropped to the product, or a cut-out standee; Snappfood's CDN allows it). Shelf labels show
+  the name, the price, and on a discount a red ٪ badge and the old price struck through. The kind comes from rules
+  (Persian/English/Turkish words; the head noun wins: «ساندویچ … با پنیر پیتزا» is a sandwich; the container wins: «نوشابه
+  قوطی» is a can; fresh-produce words only count at a greengrocer; 98 % of the 3,456 cached items are placed
+  confidently) and, for the rest, a small LLM on the runner.
+  **The pipeline** (a public repo's free GitHub runners, no GPU, nothing committed): every Snappfood menu the game reads
+  feeds the queue (one row per distinct photo, shared by every store that sells it — 20k products locally); every 6 h
+  (or *Start runner* in the admin) the workflow sweeps the cached menus, asks **Qwen3.5-4B** (llama.cpp, pinned +
+  SHA-256-checked, 25 products a request under a JSON schema whose kinds are the list itself) for unsure kinds and an
+  English name, then 4 parallel shards each **claim** jobs (leased 30 min, `FOR UPDATE SKIP LOCKED`), fetch the photo
+  (direct, else through the server and the Iran relay; no photo → Torob's product shots or Wikimedia Commons by the
+  English name), cut the background (rembg), reconstruct with **TripoSR** (MIT, weights pinned + checked; ~1–3 min a
+  product), drop floating specks, simplify to ≤6k triangles and meshopt-compress (≤400 KB), and report back. The
+  server checks and **scores** each model (proportions against the kind, cut-out, pieces, colour, size): ≥0.72 goes
+  live in the game, 0.45–0.72 waits for review, lower keeps the template. Failures back off (10 min ×4, ≤1 day, 4
+  tries; "no object in the photo" goes straight to the template); a new `PIPE_V` redoes every model; a run that made
+  progress starts the next while work is left. Plates, pizzas, bowls and bread stay templates by default (TripoSR is
+  poor at top-down food photos); the admin can switch any product either way, change its kind or picture, approve,
+  reject, make it again or upload their own .glb (locked: the pipeline never touches it again). Setup: README →
+  Deploy → "Product models".
 - **Your store in 3D — the owner's own scan** (My shop → 🧊 *Your store in 3D*; `game/ScanCard.tsx`, optimiser
   `game/scan.ts`, checks `lib/glbCheck.ts`, `/api/shops/scan`, file `/shop-scan/<id>?v=`): the owner scans the real
   store with a free phone app (Polycam, Scaniverse, RealityScan — LiDAR iPhones/iPads give the best rooms), exports
@@ -1551,6 +1580,18 @@ Needs in `.env`: `RT_SECRET` (`openssl rand -hex 32`) and `RELAY_SSH`. Then on
 Vercel (production): `RT_URL=wss://<box-ip-with-dashes>.sslip.io:8791` and the same `RT_SECRET`, and redeploy. A browser
 that can't open the socket twice in a row (8 s each) plays on through the database relay, as without `RT_URL`.
 Live since 2026-11-15: `RT_URL=wss://37-32-28-215.sslip.io:8791`. Check: `curl https://37-32-28-215.sslip.io:8791/health`; remove: `systemctl disable --now streetquest-rt streetquest-rt-renew.timer`.
+
+### Product models (photo → 3D on GitHub Actions)
+
+1. Make a token: `openssl rand -hex 24`. Put it on the server as `PRODUCT3D_TOKEN` (`npx wrangler secret put
+   PRODUCT3D_TOKEN --name streetquest`) and on GitHub as the secret `PRODUCT3D_TOKEN` (`gh secret set PRODUCT3D_TOKEN`).
+2. GitHub variable `PRODUCT3D_APP_URL` = the game's https address (`gh variable set PRODUCT3D_APP_URL`); optional
+   `P3D_CONTACT` (a URL or e-mail for Wikimedia's User-Agent rule).
+3. Optional, to start it from Admin → Product models: `GITHUB_DISPATCH_TOKEN` (a fine-grained token with Actions:
+   write on this repo) and `GITHUB_REPO` (`owner/name`) on the server.
+4. Actions → product3d → Run workflow (or wait for the schedule). The step summary of each shard lists what it made.
+   On a Mac: `npm run product3d:setup` once (~2.5 GB in `~/.cache/streetquest-3d`), then `APP_URL=… PRODUCT3D_TOKEN=…
+   npm run product3d`.
 
 ## Production checklist
 

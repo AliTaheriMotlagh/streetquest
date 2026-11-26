@@ -15,6 +15,9 @@ import { atDoor, footprint, hashText, layoutRoom, standFor, walk, wrap, yawTo, t
 import type { StoreKind } from "@/lib/storeKinds";
 import { loadPeople, PersonModel, TINT_COUNT } from "./peopleModels";
 import { disposeModel, loadModel } from "./gltf";
+import { ProductKit } from "./product3d";
+import { classify, KINDS, isKind, type ProductKind } from "@/lib/product3d/kinds";
+import { productKey } from "@/lib/product3d/pipeline";
 
 const FONT = `Vazirmatn, "Vazir", Tahoma, system-ui, -apple-system, "Segoe UI", sans-serif`;
 const EYE = 1.62;
@@ -22,7 +25,13 @@ const WALK_SPEED = 2.2;
 /** Most price tags drawn (one atlas); the lite tier fewer. */
 const TAGS_MAX = 128, TAGS_LITE = 48;
 
-export type InteriorItem = RoomItem & { id: string; price: number; priceNow: number };
+export type InteriorItem = RoomItem & { id: string; price: number; priceNow: number; about?: string; /** Its photo (the menu's thumbnail): mapped onto its 3D product. */ photo?: string };
+
+/** How much room a thing has on each kind of fixture (m: width, height, depth) — products are fitted into it. */
+const ROOM_ON: Partial<Record<string, [number, number, number]>> = {
+  shelf: [0.32, 0.36, 0.3], gondola: [0.32, 0.36, 0.28], fridge: [0.2, 0.34, 0.3], case: [0.3, 0.2, 0.3], counter: [0.32, 0.36, 0.34],
+  table: [0.34, 0.4, 0.34], island: [0.34, 0.42, 0.34], crates: [0.3, 0.22, 0.3], breadRack: [0.6, 0.12, 0.3], panel: [0.12, 0.2, 0.05],
+};
 export type InteriorSpec = {
   id: string;
   kind: StoreKind;
@@ -169,6 +178,10 @@ export class Interior {
   private keeper: PersonModel | null = null;
   private keeperAt = new THREE.Vector3();
   private trash: { dispose(): void }[] = [];
+  /** Store products in 3D (product3d.ts): templates with the real photos, reconstructed models when live. */
+  private kit: ProductKit;
+  /** Each listed slot's product object, to swap when the server knows better (a live model, the LLM's kind). */
+  private productAt = new Map<Slot, THREE.Object3D>();
   private mats = new Map<string, THREE.MeshStandardMaterial>();
   private geo: Record<string, THREE.BufferGeometry> = {};
   private env: THREE.WebGLRenderTarget | null = null;
@@ -186,6 +199,7 @@ export class Interior {
 
   constructor(readonly spec: InteriorSpec, renderer: THREE.WebGLRenderer) {
     this.room = layoutRoom(spec.kind, spec.items, hashText(spec.id));
+    this.kit = new ProductKit(spec.lite);
     this.x = this.room.spawn.x;
     this.z = this.room.spawn.z;
     this.yaw = this.room.spawn.yaw;
@@ -208,6 +222,7 @@ export class Interior {
     this.buildLights();
     this.buildKeeper();
     if (spec.scan) this.loadScan(spec.scan.url, spec.scan.turn);
+    this.lookupProducts();
     addEventListener("keydown", this.onKey);
     addEventListener("keyup", this.onKey);
     addEventListener("blur", this.onBlur);
@@ -653,6 +668,23 @@ export class Interior {
             g.fillStyle = off ? "#c1121f" : "#0b6e4f";
             g.font = `900 30px ${FONT}`;
             g.fillText(this.spec.price(it), x + cw / 2, y + 72);
+            if (off) {
+              // The discount as a red corner badge, and the old price struck through above the new one.
+              const pct = Math.round((1 - it.priceNow / it.price) * 100);
+              g.fillStyle = "#e63946";
+              g.beginPath();
+              g.arc(fa ? x + 24 : x + cw - 24, y + 30, 20, 0, Math.PI * 2);
+              g.fill();
+              g.fillStyle = "#fff";
+              g.font = `900 17px ${FONT}`;
+              g.fillText(fa ? `٪${pct.toLocaleString("fa-IR")}` : `-${pct}%`, fa ? x + 24 : x + cw - 24, y + 31);
+              g.fillStyle = "#777";
+              g.font = `600 15px ${FONT}`;
+              const was = this.spec.price({ ...it, priceNow: it.price });
+              const ww = g.measureText(was).width, wx = fa ? x + 50 + ww / 2 : x + cw - 50 - ww / 2;
+              g.fillText(was, wx, y + 54);
+              g.fillRect(wx - ww / 2, y + 54, ww, 2);
+            }
           });
         })
       : null;
@@ -689,6 +721,7 @@ export class Interior {
         continue;
       }
       this.root.add(o);
+      this.productAt.set(s, o);
       o.userData.item = s.item;
       o.traverse((c) => (c.userData.item = s.item));
       this.pickables.push(o);
@@ -748,7 +781,9 @@ export class Interior {
   }
 
   /** One thing on a shelf, by its shape. */
-  private goodsFor(s: Slot): THREE.Object3D {
+  private goodsFor(s: Slot, look?: { kind?: ProductKind; model?: string }): THREE.Object3D {
+    const prod = s.item >= 0 ? this.productFor(s, look) : null;
+    if (prod) return prod;
     const g = this.geo, c = s.color;
     const grp = new THREE.Group();
     const add = (geo: THREE.BufferGeometry, m: THREE.Material, y = 0) => this.mesh(geo, m, 0, y, 0, grp);
@@ -804,6 +839,51 @@ export class Interior {
       grp.add(twin);
     }
     return grp;
+  }
+
+  /** A listed thing as its real product (lib/product3d kinds, its photo); null = keep the fixture's own look (clothes
+   *  on a rail, meat on hooks). */
+  private productFor(s: Slot, look?: { kind?: ProductKind; model?: string }): THREE.Object3D | null {
+    if (s.fix === "rail" || s.fix === "hooks") return null;
+    const it = this.spec.items[s.item];
+    if (!it) return null;
+    const kind = look?.kind ?? classify({ title: it.title, section: it.section, about: it.about }, this.spec.kind).kind;
+    if (KINDS[kind].body === "shirt") return null;
+    const [w, h, d] = ROOM_ON[s.fix] ?? [0.3, 0.3, 0.3];
+    const o = this.kit.build({ kind, title: it.title, photo: it.photo || undefined, model: look?.model ?? null }, w, h, d);
+    return o;
+  }
+
+  /** Ask the server which products have a live model or a better kind, and swap those in (never holds the room up). */
+  private lookupProducts() {
+    const keyOf = new Map<string, Slot[]>();
+    for (const s of this.productAt.keys()) {
+      const it = this.spec.items[s.item];
+      const k = productKey({ title: it.title, photo: it.photo });
+      keyOf.set(k, [...(keyOf.get(k) ?? []), s]);
+    }
+    if (!keyOf.size) return;
+    fetch(`/api/product3d?keys=${[...keyOf.keys()].slice(0, 300).join(",")}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { products?: Record<string, { kind?: string; model?: string }> } | null) => {
+        if (this.disposed || !j?.products) return;
+        for (const [k, v] of Object.entries(j.products))
+          for (const s of keyOf.get(k) ?? []) {
+            const old = this.productAt.get(s);
+            if (!old?.parent) continue;
+            const o = this.goodsFor(s, { kind: isKind(v.kind) ? v.kind : undefined, model: v.model });
+            o.position.copy(old.position);
+            o.rotation.copy(old.rotation);
+            o.userData.item = s.item;
+            o.traverse((c) => (c.userData.item = s.item));
+            old.parent.add(o);
+            old.removeFromParent();
+            this.pickables = this.pickables.map((p) => (p === old ? o : p));
+            this.itemObj.set(s.item, o);
+            this.productAt.set(s, o);
+          }
+      })
+      .catch(() => {});
   }
 
   private buildLights() {
@@ -1002,6 +1082,7 @@ export class Interior {
     removeEventListener("keyup", this.onKey);
     removeEventListener("blur", this.onBlur);
     this.keeper?.dispose();
+    this.kit.dispose();
     if (this.scan) disposeModel(this.scan);
     for (const m of this.mats.values()) (m.map && m.map.dispose(), m.dispose());
     for (const t of this.trash) t.dispose();

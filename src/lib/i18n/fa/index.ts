@@ -41,6 +41,7 @@ import directory from "./directory";
 import seo from "./seo";
 import social from "./social";
 import adminobjects from "./adminobjects";
+import product3d from "./product3d";
 import scenarios from "./scenarios";
 import travel from "./travel";
 import street from "./street";
@@ -49,6 +50,7 @@ import trips from "./trips";
 const fa: Messages = {
   ...arena,
   ...adminobjects,
+  ...product3d,
   ...common,
   ...game,
   ...market,

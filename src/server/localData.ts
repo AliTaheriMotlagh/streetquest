@@ -19,6 +19,7 @@
 //    waits longer, and with none anywhere the card links a web search for the number;
 //  - SNAPPFOOD_URL / TOROB_URL / DIVAR_URL / TAKHFIFAN_URL / BALAD_URL / BALAD_POI_URL point at the sites ("off" disables them — the
 //    e2e tests point them at a local stub instead).
+import { queueMenu } from "./product3d";
 import { cacheAction } from "@/lib/cachePolicy";
 import { countryAt } from "@/lib/region";
 import { getirSearch, isYsCode, menuOfYs, reviewsOfYs, vendorOfYs, ysRaw, type RawYsReview, type RawYsVendor } from "@/lib/yemeksepeti";
@@ -413,6 +414,11 @@ export function snappProducts(q: string, at: LatLng) {
 /** A vendor's menu (restaurants) or catalog (supermarkets, bakeries…), prices in toman. */
 export function vendorMenu(code: string, near?: LatLng): Promise<Menu | null> {
   if (isYsCode(code)) return ysMenu(ysRaw(code), near);
+  // Its products go into the 3D model queue (server/product3d.ts; throttled per vendor, never waits).
+  return snappMenu(code, near).then((m) => (queueMenu(m), m));
+}
+
+function snappMenu(code: string, near?: LatLng): Promise<Menu | null> {
   // "menu3": menus cached before prices were read as toman (Snappfood's own unit, not rial)
   // and before the menu link was fixed are fetched afresh.
   // "menu6": Snappfood's call-centre number is dropped (the restaurant's own is added per request, phoneFor).

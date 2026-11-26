@@ -38,6 +38,8 @@
     "test:e2e:api": "playwright test --project=api",
     "test:e2e:ui": "playwright test --project=mobile",
     "assets:people": "tsx scripts/people.ts",
+    "product3d": "tsx --env-file-if-exists=.env scripts/product3d/worker.ts",
+    "product3d:setup": "scripts/product3d/setup.sh",
     "assets:sounds": "tsx scripts/sounds.ts",
     "assets:voices": "tsx scripts/voices.ts",
     "transit:build": "tsx scripts/transit-osm.ts",

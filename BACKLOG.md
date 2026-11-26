@@ -3,35 +3,26 @@
 Everything unfinished from every session, in one list. Update it at the end of each session: tick what shipped
 (then delete it next time), add what's new. Last gathered: 2026-11-26, third session (see NEXT SESSION).
 
-## NEXT SESSION — start here (written 2026-11-26, third session)
-User's order: **implement everything first, then test everything at the end** — done for this wave (below).
-Shipped + tested this session (code, unit tests, fa/tr, README; e2e API 29/29 green; 1013 unit tests):
-- Metro: RAPTOR route options (`planTrips`), fares (Admin → Metro fares, estimates), lines drawn on the map (canvas),
-  a tapped station's lines bold / others faded, station exits (OSM rebuilt for 5 Iranian cities: 460 exits). Seen at
-  360 px fa: Teatr-e Shahr card (8 exits, nearest first), trip Tajrish→Teatr-e Shahr 45 min · 1 change · ~4,000 toman.
-- Seen in a browser at 360×740 fa: hotels streamed (NDJSON, skeleton rows, 30 stays) + «On other sites» (Jajiga card,
-  photo loads), 9 compare chips; product search «Player shops» chip; Seller center (to-dos); trip planner nearby
-  chips (Shahreza, Zavareh…), 4 glance tabs in one row, «To book», step-from-link form; police helicopter (circles,
-  searchlight at night, police "see" you).
-- Fixed after testing: Postgres "too many clients" in dev/e2e (lib/db.ts made a client per request under the OpenNext
-  dev shim — now one client unless Neon); product search cached player shops 90 s (a paused shop lingered) — now always
-  fresh; Persian middle dot "·" beside a number read as a zero («۳۵ · متر» → «۳۵۰») — now «•» in fa (`dot()`, 119
-  translations, ~180 code joins; tests/separator.test.ts); trip glance tabs wrapped 2×2; searchlight cone washed the
-  whole screen when the chase camera was inside it; cones/chairs never placed on real (polyline) streets.
-- Also new: z-index tokens (tests/zIndex.test.ts), knockable cones/chairs/post boxes/telecom/payphones, place
-  categories (optician, library), prayer times ±2 min of time.ir, travel source adapters (`lib/travel/sources.ts`),
-  shop list engine (`lib/listEngine.ts`), Seller center + `Shop.businessId` (local db only — pushed with
-  `prisma db push`; prod needs the deploy's schema sync), NPCs name the kind of store, ad positions, player shops in
-  product search, per-player limits (`lib/limits.ts`), camera never looks at a wall (`lib/cameraClear.ts`), walking on a
-  3D scan's own floor + keeper (`lib/scanFloor.ts`), setbacks (hospital / police station; fines 0 by default).
-Not yet seen in a browser: cones/chairs after the polyline fix (unit-tested; the headless city's vector tiles were slow
-— retry `/play?drive=1`), knocking a kit piece, the far camera lifting over roofs, a real scan's floor, setback respawn,
-NPC store-kind lines, the dev server needs `.next-claude` (`NEXT_DIST_DIR=.next-claude next dev -p 3100`).
-The user's :3000 dev server (if running) must be restarted after this session's `prisma generate`.
-LAST STEP INTERRUPTED (tokens ran out): the 3D check `drive.mjs` (cones/chairs in the real city after the polyline fix,
-driving into a kit piece). It failed earlier only because a freshly restarted dev server took ~76 s to compile
-`/api/vt` — warm the server first (`curl localhost:3100/api/vt/14/10529/6432`), then `/play?drive=1`, count
-`userData.prop === "cone"` meshes. Nothing is committed yet: review `git status`, run `npm test`, commit.
+## NEXT SESSION — start here (written 2026-11-26, fourth session)
+Shipped this session (code, unit tests 1026+, fa/tr, README, .env.example):
+- **Store products in 3D from their photos** — `lib/product3d/*` (≈60 kinds, rules: 98 % of cached items confident),
+  `drive/product3d.ts` (templates at real size + the real photo, cut-outs, live GLB swap-in), interior3d uses it for
+  every listed thing; shelf labels with ٪ badge + struck old price. Queue/API `server/product3d.ts` (Product3D table:
+  20,558 products locally after a sweep), `/api/product3d` (game), `/api/product3d/work` (runner, Bearer token),
+  Admin → 🥤 Product models. Runner `scripts/product3d/` (TripoSR on CPU + rembg + Qwen3.5-4B via llama.cpp, pins +
+  SHA-256), workflow `.github/workflows/product3d.yml` (every 6 h, 4 shards, chains itself). README → Deploy →
+  "Product models" has the setup.
+- **Walk-in entry** (`lib/walkIn.ts`): walking at a store's door takes you in; re-arms 7 m away.
+- Cherry-picked `fix/cf-schema-sync` (CI deploys run `prisma db push` again — additive only).
+Check next:
+- [ ] First real runner run: Actions → product3d → step summaries (made/failed, avg seconds). Tune `MC_RES` / `BATCH`
+      from the timings; look at 20 live models in Admin → Product models and move AUTO_LIVE if needed.
+- [ ] Does the US runner reach cdn.snappfood.ir directly? If not, photos go through `/api/product3d/work?u=` → relay.
+- [ ] Inside a store at 360×740 fa + iPad: product templates with photos, labels, walking in; a live model swapping in.
+- [ ] Ideas not built: carrying a product (pick up / put back with physics), shoplifting → wanted star, checkout at the
+      counter by walking to the keeper; the same ProductKit for market stalls / kiosks / other 3D places.
+Older open items from the third session (still open): cones/chairs after the polyline fix, knocking a kit piece, far
+camera over roofs, scan floor, setback respawn, NPC store-kind lines — never seen in a browser.
 
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 

@@ -6,6 +6,13 @@ import { execSync } from "node:child_process";
 try {
   process.loadEnvFile(".env"); // local builds; on Vercel/Render the platform provides env vars
 } catch {}
+// Cloudflare CI (.github/workflows/deploy-cloudflare.yml): the database URLs are Worker secrets, written to
+// .dev.vars just before the build — without this the schema was never synced on a Cloudflare deploy.
+// CI only, so a local build never reaches for the production database.
+if (process.env.CI && !process.env.DATABASE_URL)
+  try {
+    process.loadEnvFile(".dev.vars");
+  } catch {}
 const env = { ...process.env };
 // Vercel's Neon / Postgres integrations use different names depending on setup.
 const url = env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL;

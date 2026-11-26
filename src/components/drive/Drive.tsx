@@ -12,6 +12,7 @@
 // at most one finished tile is added per frame (nearest first), far tiles drop their
 // street furniture, and the render resolution adapts to keep the frame rate up.
 // Solid things are solid: walls, trees, posts, shelters and other players' cars.
+import { walksIn, type WalkInState } from "@/lib/walkIn";
 import { outside, setbackPlace } from "@/lib/street/setback";
 import { clearCamera } from "@/lib/cameraClear";
 import { Guard } from "../Guard";
@@ -381,6 +382,9 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
   // Talking to someone on the street (their id) and the store I walked into.
   const [talkWith, setTalkWith] = useState<number | null>(null);
   const [shopAt, setShopAt] = useState<StoreTarget | null>(null);
+  /** Walking at a store's door takes you in (lib/walkIn.ts): the loop calls this; `walkInState.left` blocks a bounce. */
+  const walkInRef = useRef<((id: string) => void) | null>(null);
+  const walkInState = useRef<WalkInState>({ left: null });
   /** Product search open, round where I was when I opened it. */
   const [productsAt, setProductsAt] = useState<LatLng | null>(null);
   // The travel planner over the 3D city (Search → Travel, or an airport / station: openTravel).
@@ -2817,6 +2821,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
             const tr = tradeOf(ns.store.cls);
             const ll = frame.toLatLng(ns.store.x, ns.store.z);
             store = { kind: ns.store.id.startsWith("bz:") ? "marker" : "store", id: ns.store.id, emoji: ns.store.emoji ?? tr.emoji, name: ns.store.name, sub: `${t(tr.label)}${dot()}${formatDistance(ns.d)}`, color: tr.bg[0], cls: ns.store.cls, lat: ll.lat, lng: ll.lng, enter: combat.onFoot && ns.d < ENTER_M && isShop(ns.store.cls, ns.store.name) };
+            // No button: walking at its door takes you in.
+            if (store.enter && store.kind === "store" && walksIn({ x: st.x, z: st.z, vx: st.vx, vz: st.vz }, { id: ns.store.id, x: ns.store.x, z: ns.store.z }, walkInState.current)) {
+              const target = store;
+              queueMicrotask(() => walkInRef.current?.(target.id));
+            }
           }
         }
         lastStore = store?.id ?? null;
@@ -3146,6 +3155,11 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
     setTalkWith(null);
     setShopAt({ id: st.id, name: st.name, cls: st.cls, lat: st.lat, lng: st.lng, emoji: st.emoji, color: st.color, sub: st.sub });
   };
+  walkInRef.current = (id) => {
+    if (hud?.store?.id !== id || shopAt) return;
+    sfx("whoosh");
+    enterShop();
+  };
   const keysRef = useRef({ enterShop, talk: () => hud?.talk && !shopAt && setTalkWith(hud.talk.id) });
   keysRef.current = { enterShop, talk: () => hud?.talk && !shopAt && setTalkWith(hud.talk.id) };
   useEffect(() => {
@@ -3278,8 +3292,8 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
         <div className="drive-mid">
           {hud?.street && <div className="drive-street" key={banner?.at ?? 0}>{hud.street}</div>}
           {hud?.store?.kind === "store" && hud.store.enter && hud.store.lat != null && !shopAt && (
-            <button type="button" className="drive-enter" onClick={() => enterShop()}>
-              🚪 {t("Enter")} <kbd>B</kbd>
+            <button type="button" className="drive-enter hint" onClick={() => enterShop()} aria-label={t("Enter")}>
+              🚪 {t("Walk to the door to go in")}
             </button>
           )}
           {hud?.store?.kind === "store" && hud.store.lat != null && hud.store.lng != null && (
@@ -3621,7 +3635,7 @@ export default function Drive({ start, goal, canDrive, sim, follow, onMove, onCo
       )}
       {shopAt && (
         <Guard where="shop" onExit={() => setShopAt(null)}>
-          <ShopScreen s={shopAt} onClose={() => setShopAt(null)} say={(text) => api3d.current?.shopkeeper(text)} room={roomApi} />
+          <ShopScreen s={shopAt} onClose={() => ((walkInState.current.left = shopAt.id), setShopAt(null))} say={(text) => api3d.current?.shopkeeper(text)} room={roomApi} />
         </Guard>
       )}
       {storeSheet && <StoreSheet s={storeSheet} onClose={() => setStoreSheet(null)} onGo={() => (api3d.current?.setGoal({ lat: storeSheet.lat, lng: storeSheet.lng }), toast({ title: t("🧭 Heading to {place}", { place: storeSheet.name }) }), setStoreSheet(null))} />}

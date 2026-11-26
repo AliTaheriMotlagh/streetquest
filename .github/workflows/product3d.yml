@@ -1,0 +1,122 @@
+# Store products → 3D models (scripts/product3d/, README "Product models"). Free on this public repo's standard runners
+# (4 vCPU, 16 GB, no GPU): TripoSR reconstructs a product photo on the CPU in ~1–3 min. Nothing is committed — the
+# runner reports every model to the game's server (/api/product3d/work), which scores and stores it, so the repo never
+# grows and no deploy is triggered.
+#
+#   classify      the cached menus are swept into the queue, then products the rules weren't sure of go to a small
+#                 LLM (llama.cpp + Qwen3.5-4B, pinned + SHA-256-checked, cached) for their kind and an English name
+#   reconstruct   N shards in parallel, each claims jobs a few at a time (the server leases them: two shards never get
+#                 the same product; a shard that dies gives its jobs back when the lease runs out)
+#   chain         while work is left and this run made progress, the next run is started (no endless loop on jobs
+#                 that can't be done)
+#
+# Needs: secret PRODUCT3D_TOKEN (the same value as the server's), variable PRODUCT3D_APP_URL (the game's https address).
+# Optional variable P3D_CONTACT (a URL or e-mail put in the User-Agent for Wikimedia/Torob). Admin → Product models can
+# start it (GITHUB_DISPATCH_TOKEN + GITHUB_REPO on the server).
+name: product3d
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "products to make per shard at most (a shard also stops itself before its time limit)"
+        default: "300"
+      shards:
+        description: "parallel runners (1–8)"
+        default: "4"
+      classify:
+        description: "run the LLM classifier first"
+        type: boolean
+        default: true
+      chain:
+        description: "start the next run by itself while work is left"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: product3d
+  cancel-in-progress: false
+
+env:
+  APP_URL: ${{ vars.PRODUCT3D_APP_URL }}
+  PRODUCT3D_TOKEN: ${{ secrets.PRODUCT3D_TOKEN }}
+  P3D_CONTACT: ${{ vars.P3D_CONTACT }}
+
+jobs:
+  classify:
+    if: vars.PRODUCT3D_APP_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: for i in 1 2 3; do npm ci --no-audit --no-fund && exit 0; sleep $((i * 15)); done; exit 1
+      - uses: actions/cache@v4
+        if: github.event_name == 'schedule' || inputs.classify
+        with:
+          path: ~/.cache/streetquest-ai
+          key: p3d-ai-${{ runner.os }}-${{ hashFiles('scripts/product3d/ai-server.sh') }}
+      - name: Start the LLM
+        if: github.event_name == 'schedule' || inputs.classify
+        run: scripts/product3d/ai-server.sh
+      - name: Sweep menus and classify
+        env:
+          BACKFILL: "1"
+          CLASSIFY_ONLY: "1"
+          BUDGET_MIN: "60"
+          LLM_URL: ${{ (github.event_name == 'schedule' || inputs.classify) && 'http://127.0.0.1:8080' || '' }}
+        run: npx tsx scripts/product3d/worker.ts
+
+  reconstruct:
+    needs: classify
+    if: vars.PRODUCT3D_APP_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1–8 shards (a schedule run has no inputs: 4).
+        shard: ${{ fromJSON(inputs.shards == '1' && '[1]' || inputs.shards == '2' && '[1,2]' || inputs.shards == '3' && '[1,2,3]' || inputs.shards == '5' && '[1,2,3,4,5]' || inputs.shards == '6' && '[1,2,3,4,5,6]' || inputs.shards == '7' && '[1,2,3,4,5,6,7]' || inputs.shards == '8' && '[1,2,3,4,5,6,7,8]' || '[1,2,3,4]') }}
+    outputs:
+      left: ${{ steps.work.outputs.left }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: for i in 1 2 3; do npm ci --no-audit --no-fund && exit 0; sleep $((i * 15)); done; exit 1
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/streetquest-3d
+          key: p3d-tools-${{ runner.os }}-${{ hashFiles('scripts/product3d/setup.sh') }}
+      - name: Install TripoSR (pinned, checked)
+        run: scripts/product3d/setup.sh
+      - name: Make models
+        id: work
+        env:
+          SKIP_CLASSIFY: "1"
+          LIMIT: ${{ inputs.limit || '300' }}
+          BUDGET_MIN: "320"
+          WORKER: gh-${{ github.run_id }}-${{ github.run_attempt }}-s${{ matrix.shard }}
+          PYTHONUNBUFFERED: "1"
+        run: npx tsx scripts/product3d/worker.ts
+
+  chain:
+    needs: reconstruct
+    if: always() && needs.reconstruct.result != 'skipped' && (github.event_name == 'schedule' || inputs.chain) && needs.reconstruct.outputs.left != '' && needs.reconstruct.outputs.left != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run product3d.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f limit="${{ inputs.limit || '300' }}" -f shards="${{ inputs.shards || '4' }}" -f classify=false -f chain=true

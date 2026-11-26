@@ -17,6 +17,7 @@ const AdminAudit = dynamic(() => import("./AdminAudit"), { ssr: false, loading: 
 const AdminScenarios = dynamic(() => import("./AdminScenarios"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminLandmarks = dynamic(() => import("./AdminLandmarks"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminObjects = dynamic(() => import("./AdminObjects"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
+const AdminProduct3D = dynamic(() => import("./AdminProduct3D"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminModels = dynamic(() => import("./AdminModels"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminGraphics = dynamic(() => import("./AdminGraphics"), { ssr: false, loading: () => <p>{t("Loading…")}</p> });
 const AdminDropMap = dynamic(() => import("./AdminDropMap"), { ssr: false, loading: () => <div className="admin-map" /> });
@@ -42,7 +43,7 @@ type Data = {
   money: MoneyData;
 };
 
-type Tab = "errors" | "scenarios" | "objects" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "listings" | "siktir" | "deliveries" | "claims" | "audit";
+type Tab = "errors" | "scenarios" | "objects" | "products3d" | "models" | "graphics" | "stores3d" | "visits" | "cars" | "money" | "cashouts" | "dash" | "settings" | "data" | "revenue" | "users" | "missions" | "marketing" | "moderation" | "listings" | "siktir" | "deliveries" | "claims" | "audit";
 type NavItem = { id: Tab; icon: string; label: string; desc: string };
 // Grouped by what you're trying to do, each page says what it's for.
 const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
@@ -58,6 +59,7 @@ const ADMIN_NAV: { group: string; items: NavItem[] }[] = [
       { id: "scenarios", icon: "🎬", label: msg("Scenarios"), desc: msg("Story missions in the 3D city: givers on the street, steps like steal a car, chase, lose the police or take a photo, with dialogue and a reward. Create, edit, switch on and off, and test each one.") },
       { id: "data", icon: "📊", label: msg("Game data"), desc: msg("Stats of every item. Change a number to override it; clear it to go back to the original.") },
       { id: "objects", icon: "🧩", label: msg("Objects"), desc: msg("Every object in the game: cars, people, police, guns, street props, loot, markers, store kinds and 3D stores — with file, size, triangles, licence and where it is used. Search, filter and turn any model round.") },
+      { id: "products3d", icon: "🥤", label: msg("Product models"), desc: msg("Every store product as a 3D model for the inside of stores: made from its photo on GitHub Actions (open-source TripoSR, no GPU), its kind sorted by rules and a small LLM. Review, approve, reject, change the kind or picture, upload your own .glb, start the runner.") },
       { id: "models", icon: "🔄", label: msg("Model update"), desc: msg("Replace a built-in 3D model without a deploy: upload a .glb, see it next to the current one, publish, and roll back to any earlier version.") },
       { id: "graphics", icon: "🎨", label: msg("Graphics"), desc: msg("Every graphics setting of the 3D city for each quality tier — resolution, shadows, lights, post-processing, film look and haze — as server defaults. Players keep their own quality choice.") },
       { id: "cars", icon: "🚗", label: msg("Car lab"), desc: msg("Every vehicle exactly as players see it: turn it round, try paint, dirt, rain and night, check it for problems and save a screenshot.") },
@@ -239,6 +241,7 @@ export function AdminPanel() {
         {tab === "listings" && <AdminListings onError={setNotice} />}
         {tab === "audit" && <AdminAudit onError={setNotice} />}
         {tab === "objects" && <AdminObjects onReplace={(slot) => (setModelSlot(slot), setTab("models"))} />}
+        {tab === "products3d" && <AdminProduct3D onError={setNotice} />}
         {tab === "models" && <AdminModels slot={modelSlot} />}
         {tab === "graphics" && <AdminGraphics key={JSON.stringify(data.config.values.gfx ?? {})} config={data.config} post={post} />}
         {tab === "scenarios" && <AdminScenarios onError={setNotice} />}

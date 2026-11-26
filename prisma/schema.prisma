@@ -1084,40 +1084,40 @@ model ActionLock {
 // purchase holds the buyer's coins in escrow until the seller hands the goods over
 // and enters the buyer's pickup code.
 model Shop {
-  id        String      @id @default(cuid())
-  ownerId   String      @unique
-  name      String
-  tagline   String      @default("")
-  about     String      @default("")
-  emoji     String      @default("🏪")
-  category  String      @default("other")
-  address   String      @default("") // how to find it, in the owner's words
+  id         String      @id @default(cuid())
+  ownerId    String      @unique
+  name       String
+  tagline    String      @default("")
+  about      String      @default("")
+  emoji      String      @default("🏪")
+  category   String      @default("other")
+  address    String      @default("") // how to find it, in the owner's words
   // The real store's pages elsewhere (Snappfood menu, Torob shop, Divar ad), shown on the shop.
-  snappfood String      @default("")
-  torob     String      @default("")
-  divar     String      @default("")
+  snappfood  String      @default("")
+  torob      String      @default("")
+  divar      String      @default("")
   // For products priced in toman (paid to the seller directly): a phone buyers can call and the seller's own
   // payment page (their Zarinpal / IDPay link). The game never touches that money (lib/shopKinds.ts).
-  phone     String      @default("")
-  payLink   String      @default("")
-  lat       Float
-  lng       Float
-  coverId   String? // ShopImage shown as the banner
-  open      Boolean     @default(true) // the owner can pause sales
-  expiresAt DateTime
-  warnedAt  DateTime? // "about to close" reminder sent for the current month
-  sales     Int         @default(0)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  owner     User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  products  Product[]
-  images    ShopImage[]
-  orders    ShopOrder[]
-  scan      ShopScan?
+  phone      String      @default("")
+  payLink    String      @default("")
+  lat        Float
+  lng        Float
+  coverId    String? // ShopImage shown as the banner
+  open       Boolean     @default(true) // the owner can pause sales
+  expiresAt  DateTime
+  warnedAt   DateTime? // "about to close" reminder sent for the current month
+  sales      Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  owner      User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  products   Product[]
+  images     ShopImage[]
+  orders     ShopOrder[]
+  scan       ShopScan?
   // The verified real business behind it (Seller center links them; lib/sellerCenter.ts). One shop per business,
   // kept by server/seller.ts in a transaction (a plain index: adding it never touches existing rows).
   businessId String?
-  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  business   Business?   @relation(fields: [businessId], references: [id], onDelete: SetNull)
 
   @@index([lat, lng])
   @@index([expiresAt])
@@ -1831,4 +1831,46 @@ model HouseAd {
 
   @@index([review, paused])
   @@index([ownerId])
+}
+
+// A store product's 3D look (lib/product3d/*, server/product3d.ts): one row per distinct product — the same Snappfood
+// photo in any number of menus is one row (key "p…"), a product without a photo one row per name ("t…"). The
+// reconstruction runner on GitHub Actions (scripts/product3d/, .github/workflows/product3d.yml) claims rows, makes a
+// model from the photo and reports it back; the game draws `live` models and a template with the photo for the rest.
+model Product3D {
+  key        String    @id
+  title      String
+  section    String    @default("")
+  about      String    @default("")
+  storeKind  String    @default("")
+  photo      String    @default("") // the menu's own picture (full size)
+  image      String    @default("") // the picture the model is made from: the menu's, a found one, or the admin's
+  imageFrom  String    @default("") // menu | same-name | search:<source> | admin | ""
+  kind       String    @default("") // lib/product3d/kinds.ts ProductKind
+  kindBy     String    @default("rules") // rules | store | llm | admin
+  conf       Float     @default(0)
+  en         String    @default("") // English name (the LLM's), for image search and the admin
+  strategy   String    @default("") // "" = the kind's own | ai | template
+  status     String    @default("queued") // lib/product3d/pipeline.ts Status
+  attempts   Int       @default(0)
+  error      String    @default("")
+  leaseUntil DateTime?
+  worker     String    @default("")
+  nextTry    DateTime  @default(now())
+  v          Int       @default(0) // PIPE_V the model was made with
+  url        String    @default("") // the .glb
+  bytes      Int       @default(0)
+  tris       Int       @default(0)
+  score      Float     @default(0)
+  stats      Json?
+  locked     Boolean   @default(false) // an admin's decision: the pipeline leaves it alone
+  stores     Int       @default(1) // how many menus list it (work order)
+  log        Json      @default("[]") // the last events: [{at, what, by, note}]
+  seenAt     DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status, nextTry])
+  @@index([kind])
+  @@index([seenAt])
 }
