@@ -39,7 +39,10 @@ retry curl -fsSL -o config.yaml "https://huggingface.co/stabilityai/TripoSR/reso
 
 # Python: CPU wheels only (no CUDA, ~10× smaller). torchmcubes (needs a C++ build) is replaced by PyMCubes's wheel —
 # reconstruct.py puts a shim in its place.
-[ -x venv/bin/python ] || uv venv --python "$PY" venv
+# uv's Python lives inside $P3D_DIR so a restored CI cache has it too (venv/bin/python is a symlink to it); a venv whose
+# Python is gone (cache from before this) is rebuilt with --clear instead of failing "venv already exists".
+export UV_PYTHON_INSTALL_DIR="$P3D_DIR/python"
+[ -x venv/bin/python ] || uv venv --clear --python "$PY" venv
 idx=()
 [ "$(uname -s)" = Linux ] && idx=(--index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple)
 retry uv pip install --python venv/bin/python -q ${idx[@]+"${idx[@]}"} \

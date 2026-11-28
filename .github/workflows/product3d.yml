@@ -11,6 +11,8 @@
 #                 that can't be done)
 #
 # Needs: secret PRODUCT3D_TOKEN (the same value as the server's), variable PRODUCT3D_APP_URL (the game's https address).
+# The server in Iran drops HTTPS from abroad, so with secrets SERVER_SSH + SERVER_SSH_KEY (the deploy's own) each job
+# reaches it through an SSH tunnel (scripts/product3d/tunnel.sh); without them APP_URL is called directly.
 # Optional variable P3D_CONTACT (a URL or e-mail put in the User-Agent for Wikimedia/Torob). Admin → Product models can
 # start it (GITHUB_DISPATCH_TOKEN + GITHUB_REPO on the server).
 name: product3d
@@ -47,6 +49,8 @@ env:
   APP_URL: ${{ vars.PRODUCT3D_APP_URL }}
   PRODUCT3D_TOKEN: ${{ secrets.PRODUCT3D_TOKEN }}
   P3D_CONTACT: ${{ vars.P3D_CONTACT }}
+  SERVER_SSH: ${{ secrets.SERVER_SSH }}
+  SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
 
 jobs:
   classify:
@@ -70,6 +74,8 @@ jobs:
         if: github.event_name == 'schedule' || inputs.classify
         continue-on-error: true
         run: scripts/product3d/ai-server.sh
+      - name: Reach the server (SSH tunnel)
+        run: scripts/product3d/tunnel.sh
       - name: Sweep menus and classify
         env:
           BACKFILL: "1"
@@ -104,6 +110,8 @@ jobs:
           key: p3d-tools-${{ runner.os }}-${{ hashFiles('scripts/product3d/setup.sh') }}
       - name: Install TripoSR (pinned, checked)
         run: scripts/product3d/setup.sh
+      - name: Reach the server (SSH tunnel)
+        run: scripts/product3d/tunnel.sh
       - name: Make models
         id: work
         env:

@@ -1019,6 +1019,16 @@ mood scales XP; loot funds research; territory funds the army.
   «Book online in …» to add too. The booking and payment finish on jabama.events/events/<id>, where you pick the
   session (the site has no link that picks one). Elsewhere (Kish, Qeshm…) the outing keeps its search link. Cached an
   hour; `JABAMA_EVENTS_URL` (`off` disables; through the relay with `jabama` in `RELAY_FOR`).
+  **Destination guides** (`lib/travel/guide.ts`, `Travel.tsx` GuideView, `game/GuideMap.tsx`): a stop with a guide
+  (Kish: 57 places) gets «🗺️ Kish guide» — beaches (the men's and women's ones marked), sights (Greek ship, Kariz,
+  Harireh…), fun (water park, snow park, dolphins, cable car, cruise), malls, parks, the airport and sea terminals and
+  hospitals, on a map and in a list by kind, at their OpenStreetMap spots. A place has directions (the phone's map
+  apps), «Add to the trip» where it's an outing, and «Stores & food around it», which opens the game map in explore
+  mode there — Snappfood, Torob, Divar and every mapped shop load around it. Add a city: one `guide(...)` in guide.ts.
+  **Before you go** (`lib/travel/prep.ts`, under *To book*): a checklist built from the plan — papers, money, packing,
+  what to do before leaving and there — with items for a flight, your own car, the sea, the south's hot months
+  (May–October), diving (no flying within 24 h) and the destination (Kish: free-zone entry, separate beaches,
+  duty-free allowance, getting around, the car ferry). Ticks are kept in the plan on the phone (`Plan.prep`).
   **More sites** (`lib/travel/sources.ts`, one adapter per site — `deepLink` to its page for the query and, where it
   serves its data openly, a `read` parsed into one `SourceOffer` (toman, source, link, checked-at), deduped and cheapest
   first by `mergeOffers`): tickets on Sepehr360, 3click, Flytoday, Snapptrip, Ghasedak24, Safar724, Raja and Payaneh;
@@ -1256,6 +1266,8 @@ mood scales XP; loot funds research; territory funds the army.
   ramsar rasht gorgan`). In small towns Snappfood's vendors deliver only a short way, so the map reads the cells around
   you too and reaches 5 km; Divar's small towns (no neighbourhoods) show the nearest three together, even when Divar
   puts a town's centre kilometres off.
+- **Kish Island** — a city pack for the whole island (`npm run city:pack -- kish`) and a quick jump in explore mode
+  (by the Pardis malls); the trip planner has its guide and checklist (above).
 - **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a driving route (OSRM on OpenStreetMap,
   no key — `OSRM_CAR_URL` for your own server) to it: a blue line, the minutes and distance left and the next turn
   with its arrow and how far to it, worded on the phone in the player's language (`lib/routeSteps.ts`); it re-routes
@@ -1626,6 +1638,10 @@ Live since 2026-11-15: `RT_URL=wss://37-32-28-215.sslip.io:8791`. Check: `curl h
    PRODUCT3D_TOKEN --name streetquest`) and on GitHub as the secret `PRODUCT3D_TOKEN` (`gh secret set PRODUCT3D_TOKEN`).
 2. GitHub variable `PRODUCT3D_APP_URL` = the game's https address (`gh variable set PRODUCT3D_APP_URL`); optional
    `P3D_CONTACT` (a URL or e-mail for Wikimedia's User-Agent rule).
+   **Server in Iran (the one-server setup on Arvan):** Iran drops HTTPS from abroad, so the runner reaches the server
+   through an SSH tunnel (`scripts/product3d/tunnel.sh`) with the deploy's own secrets `SERVER_SSH` + `SERVER_SSH_KEY`
+   — nothing else to set; the app, the database and the finished models all stay on the server (`uploads` volume,
+   served by Caddy), GitHub only lends the CPU (the server's 2 GB can't run the LLM and TripoSR).
 3. Optional, to start it from Admin → Product models: `GITHUB_DISPATCH_TOKEN` (a fine-grained token with Actions:
    write on this repo) and `GITHUB_REPO` (`owner/name`) on the server.
 4. Actions → product3d → Run workflow (or wait for the schedule). The step summary of each shard lists what it made.

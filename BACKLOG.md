@@ -29,6 +29,19 @@ Older open items from the third session (still open): cones/chairs after the pol
 session found nothing — the probe walked the wrong structure, inconclusive), knocking a kit piece, far
 camera over roofs, scan floor, setback respawn, NPC store-kind lines — never seen in a browser.
 
+## Kish trip (2026-11-28) — shipped in code, unit tests (travelGuide.test.ts), fa/tr, README
+- Trip planner: «🗺️ Kish guide» on a Kish stop (`lib/travel/guide.ts`, 57 OSM places: beaches, sights, fun, malls,
+  parks, ferries/airport, hospitals; directions, add-to-trip, «Stores & food around it» → explore mode there, where
+  Snappfood/Torob/Divar load); «Before you go» checklist under *To book* (`lib/travel/prep.ts`, ticks in `Plan.prep`);
+  8 more Kish outings; Kish explore jump; Kish city pack def.
+- [ ] Never seen in a browser (local Docker/Postgres was down): GuideView + PrepList at 360×740 fa, the guide map,
+      «Stores & food around it» landing in explore mode on Kish with the store layers.
+- [ ] Build the pack: `npm run city:pack -- kish` (local, needs the db) and on prod.
+- [ ] Check prod reaches Snappfood/Torob/Divar for Kish positions (relay) — e.g. `/api/local?…` at 26.5376,54.0186.
+- [ ] Outing prices for the new Kish activities are rough 1405 estimates — adjust when real quotes are known.
+- [ ] Ideas: guides for Qeshm, Shiraz, Isfahan, Mashhad (one `guide(...)` each); show guide places as a map layer
+      when a player is on the island; Kish buses/cinemas via `transit:build` if OSM has the routes.
+
 ## Decisions (answered 2026-11-17 — follow these, don't re-ask)
 
 | Question | Decision | Why |
@@ -56,7 +69,13 @@ camera over roofs, scan floor, setback respawn, NPC store-kind lines — never s
      "Deploy to Cloudflare" is manual only now. Consequences to handle:
      - [ ] Players outside Iran can't reach the site (unverified from a real foreign browser; GitHub/LE time out).
      - [ ] Optional: TURN relay for video calls (/api/health: no CLOUDFLARE_TURN_KEY_ID).
-     - [ ] product3d runner (GitHub, abroad) can't reach /api/product3d/work on the server — run it in Iran or proxy.
+     - [ ] product3d runner (GitHub, abroad) → server (Iran): every run 2026-11-26…28 failed (classify: HTTP 500 = Neon
+           402; reconstruct: setup.sh "venv already exists"). Fixed 2026-11-28: setup.sh keeps uv's Python in the cache;
+           each job opens an SSH tunnel (scripts/product3d/tunnel.sh, secrets SERVER_SSH + SERVER_SSH_KEY) to the
+           server's :443 — tested from the Mac (health 200, real cert). Decision (user, 2026-11-28): compute stays on
+           GitHub (server has 2 GB), everything stored/served on Arvan. Check the first GitHub run end to end.
+     - [ ] NPC Claude chat (`/api/npc/talk`) was decided but never built (no Anthropic code in src). From the Iran box
+           api.anthropic.com is unreachable → it needs a hop abroad (Cloudflare Worker / AI Gateway).
      - [ ] Empty DB: copy Neon's data once its quota resets (README → "One server").
      - [ ] Local `server:deploy` from the Mac: Docker Hub 403s (Node/Caddy now from mirrors), Mac disk was 100 % full
            and Docker Desktop hit I/O errors (24 GB build cache) — free space + restart Docker Desktop.
