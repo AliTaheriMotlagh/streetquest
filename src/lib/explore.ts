@@ -6,7 +6,7 @@ import { distanceM, type LatLng } from "./geo";
 import { normName } from "./localData";
 import type { Place, PlaceCat } from "./places";
 
-/** Quick jumps: big cities and the north (shomal), where many players holiday — each at its busiest streets. */
+/** Quick jumps: big cities, the north (shomal) and Kish, where many players holiday — each at its busiest streets. */
 export const EXPLORE_PLACES: { id: string; name: string; lat: number; lng: number }[] = [
   { id: "tehran", name: msg("Tehran"), lat: 35.6997, lng: 51.338 },
   { id: "karaj", name: msg("Karaj"), lat: 35.8327, lng: 50.9915 },
@@ -25,6 +25,8 @@ export const EXPLORE_PLACES: { id: string; name: string; lat: number; lng: numbe
   { id: "isfahan", name: msg("Isfahan"), lat: 32.6539, lng: 51.666 },
   { id: "shiraz", name: msg("Shiraz"), lat: 29.6104, lng: 52.5311 },
   { id: "tabriz", name: msg("Tabriz"), lat: 38.08, lng: 46.2919 },
+  // Kish Island: by the Pardis and Kish malls, a short walk from the beaches.
+  { id: "kish", name: msg("Kish"), lat: 26.5376, lng: 54.0186 },
 ];
 
 /** The map's zoom after a quick jump: a whole neighbourhood, streets and shops readable. */

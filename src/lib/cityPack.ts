@@ -37,6 +37,8 @@ export const CITIES: CityDef[] = [
   { slug: "ramsar", name: "Ramsar & Tonekabon", south: 36.78, west: 50.6, north: 36.95, east: 50.94, extract: "asia/iran" },
   { slug: "rasht", name: "Rasht & Anzali", south: 37.22, west: 49.4, north: 37.5, east: 49.68, extract: "asia/iran" },
   { slug: "gorgan", name: "Gorgan", south: 36.8, west: 54.38, north: 36.88, east: 54.5, extract: "asia/iran" },
+  // The south: Kish Island (the whole island).
+  { slug: "kish", name: "Kish Island", south: 26.48, west: 53.88, north: 26.59, east: 54.07, extract: "asia/iran" },
 ];
 
 /** A city's cells, as the range [cx0, cx1) × [cy0, cy1). */

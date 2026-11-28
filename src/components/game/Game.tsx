@@ -1726,7 +1726,7 @@ export default function Game() {
                 />
               ),
               products: () => <ProductSearch at={look ?? null} onClose={() => setView("map")} />,
-              travel: () => <Travel at={look ?? pos ?? null} onClose={() => setView("map")} />,
+              travel: () => <Travel at={look ?? pos ?? null} onClose={() => setView("map")} onExplore={(at) => startExplore(at)} />,
               hotels: () => <HotelFinder at={look ?? pos ?? null} />,
             }}
           />
@@ -1743,7 +1743,7 @@ export default function Game() {
             onProducts={() => (setDirOpen(false), setProductsOpen(true))}
           />
         )}
-        {tripPlan && !panel && <Travel at={look ?? pos ?? null} initialTo={tripPlan.to} onClose={() => setTripPlan(null)} />}
+        {tripPlan && !panel && <Travel at={look ?? pos ?? null} initialTo={tripPlan.to} onClose={() => setTripPlan(null)} onExplore={(at) => startExplore(at)} />}
         {productsOpen && !panel && <ProductSearch at={look ?? null} onClose={() => setProductsOpen(false)} onStores={() => (setProductsOpen(false), setDirOpen(true))} />}
         {servicesOpen && !panel && <ServicesSheet at={look ?? null} onClose={() => setServicesOpen(false)} />}
 

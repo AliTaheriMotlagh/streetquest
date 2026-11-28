@@ -46,6 +46,7 @@ import scenarios from "./scenarios";
 import travel from "./travel";
 import street from "./street";
 import trips from "./trips";
+import guide from "./guide";
 
 const fa: Messages = {
   ...arena,
@@ -82,6 +83,7 @@ const fa: Messages = {
   ...travel,
   ...street,
   ...trips,
+  ...guide,
 };
 
 export default fa;

@@ -115,6 +115,16 @@ const TOROB_GAP_MS = Number(process.env.TOROB_GAP_MS ?? 450);
 const TOROB_COOL_MS = 30 * 60_000;
 let torobNext = 0, torobCoolUntil = 0;
 const torobCooling = () => Date.now() < torobCoolUntil;
+/**
+ * Wait for a Torob job, but no longer than `ms` — and stop at once when Torob starts refusing (490/429): the
+ * map layer then answers with what's cached instead of hanging for the whole wait (seen on the Arvan server, 2026-11-28).
+ */
+function waitTorob(job: Promise<unknown>, ms: number) {
+  if (torobCooling()) return Promise.resolve();
+  let tick: ReturnType<typeof setInterval> | undefined;
+  const cooled = new Promise<void>((r) => (tick = setInterval(() => torobCooling() && r(), 250)));
+  return Promise.race([job, cooled, new Promise((r) => setTimeout(r, ms))]).finally(() => clearInterval(tick));
+}
 
 /** Keep work going after the response on serverless hosts (outside a request it just runs). */
 function keepAlive(p: Promise<unknown>) {
@@ -793,13 +803,14 @@ async function freshTorobMap() {
   const meta = await prisma.extCache.findUnique({ where: { key: TOROB_META } });
   const ok = (meta?.data as { ok?: boolean } | undefined)?.ok;
   if (meta && Date.now() - meta.fetchedAt.getTime() < (ok ? TOROB_MAP_TTL : HOUR)) return;
+  if (torobCooling()) return;
   if (!torobBuild) {
     torobBuild = buildTorobMap()
       .catch(() => {})
       .finally(() => (torobBuild = null));
     keepAlive(torobBuild);
   }
-  if (!meta) await Promise.race([torobBuild, new Promise((r) => setTimeout(r, 25_000))]);
+  if (!meta) await waitTorob(torobBuild ?? Promise.resolve(), 25_000);
 }
 
 const exploring = new Map<string, Promise<void>>();
@@ -829,7 +840,7 @@ async function areaPlaces(here: LatLng): Promise<{ places: TorobPlace[]; pending
       keepAlive(job);
     }
     if (!row) {
-      await Promise.race([job, new Promise((r) => setTimeout(r, AREA_WAIT_MS))]);
+      await waitTorob(job, AREA_WAIT_MS);
       row = await read();
     }
   }

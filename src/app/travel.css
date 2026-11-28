@@ -410,3 +410,23 @@ article.tv-stay .fx-meta { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
 .tp-near-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .tp-near-row .chip small { opacity: .7; margin-inline-start: 4px; }
 .tg-steps { --c: #4dd0a8; }
+/* A destination's guide (Travel.tsx GuideView, GuideMap.tsx) and the "before you go" list (PrepList). */
+.tp-guide { border-color: color-mix(in srgb, #2bb3c0 45%, var(--line)); }
+.gd-map { height: min(40dvh, 340px); }
+.gd-card { display: grid; gap: 8px; padding: 10px 12px; margin-bottom: 8px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .05); }
+.gd-card-head { display: flex; gap: 10px; align-items: flex-start; }
+.gd-card-head > span:first-child { font-size: 22px; line-height: 1; }
+.gd-card-head b, .gd-card-head small { display: block; }
+.gd-card-actions { gap: 6px; flex-wrap: wrap; }
+.gd-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.gd-list button { width: 100%; min-height: 44px; display: flex; gap: 10px; align-items: center; padding: 6px 10px; border: 1px solid transparent; border-radius: 12px; background: rgba(255, 255, 255, .03); color: inherit; text-align: start; cursor: pointer; }
+.gd-list button.on { border-color: var(--line-strong); background: rgba(255, 255, 255, .08); }
+.gd-list i { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+.gd-list b { display: block; font-size: 13px; }
+.gd-list small { display: block; font-size: 11.5px; }
+.tg-prep { margin-top: 14px; display: grid; gap: 8px; }
+.tg-prep-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tg-prep-group ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.tg-prep-group label { min-height: 44px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 12px; background: rgba(255, 255, 255, .04); font-size: 13px; cursor: pointer; }
+.tg-prep-group label.done .grow { text-decoration: line-through; opacity: .6; }
+.tg-prep-group input { width: 20px; height: 20px; flex: none; accent-color: var(--gold, #f0c05a); }

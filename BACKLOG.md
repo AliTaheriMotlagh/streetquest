@@ -37,7 +37,13 @@ camera over roofs, scan floor, setback respawn, NPC store-kind lines — never s
 - [ ] Never seen in a browser (local Docker/Postgres was down): GuideView + PrepList at 360×740 fa, the guide map,
       «Stores & food around it» landing in explore mode on Kish with the store layers.
 - [ ] Build the pack: `npm run city:pack -- kish` (local, needs the db) and on prod.
-- [ ] Check prod reaches Snappfood/Torob/Divar for Kish positions (relay) — e.g. `/api/local?…` at 26.5376,54.0186.
+- Checked on prod 2026-11-28 at Kish (26.5376,54.0186): Snappfood 58 vendors (first load ~26 s), Divar, Takhfifan deals,
+  Tehran→Kish flights (Alibaba + MrBilit), 118 Jabama stays — all OK. Site opens from abroad (check-host.net: 37/39
+  nodes 200 incl. US, UK, DE, TR; ch/is probes failed) and from 5 Iranian nodes.
+- [ ] **Torob refuses the Arvan server's IP** (490 in 0.07 s; 200 from a home line in Iran; no CORS, so phones can't
+      read it either) → walk-in stores and Torob prices are empty on prod. Options: a partnership/API key with Torob, or
+      the relay on a non-datacenter Iranian line. Never spoof a browser. The layer no longer hangs on it (waitTorob).
+- [ ] **Bilbooard answers 403 everywhere** (server and the Mac) — its API changed or closed; re-probe the endpoint.
 - [ ] Outing prices for the new Kish activities are rough 1405 estimates — adjust when real quotes are known.
 - [ ] Ideas: guides for Qeshm, Shiraz, Isfahan, Mashhad (one `guide(...)` each); show guide places as a map layer
       when a player is on the island; Kish buses/cinemas via `transit:build` if OSM has the routes.

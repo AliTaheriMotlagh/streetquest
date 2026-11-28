@@ -36,7 +36,10 @@ import { useUrlParam } from "../useUrlParam";
 import { AdSlot } from "../AdSlot";
 import { bool, listOf, num, oneOf, text } from "@/lib/urlState";
 import { Chip, FilterBar, FilterGroup, FilterPanel, Meta, SearchField, SortMenu } from "./Filters";
-import { ACT_KINDS, activitiesIn, activityUrl, MOOD_KEYS, MOODS, moodOf, type ActKind, type Mood } from "@/lib/travel/activities";
+import { ACT_KINDS, ACTIVITIES, activitiesIn, activityUrl, MOOD_KEYS, MOODS, moodOf, type ActKind, type Mood } from "@/lib/travel/activities";
+import { GUIDE_KINDS, guideCounts, guideName, guideOf, guidePlaces, hasGuide, type GuideKind } from "@/lib/travel/guide";
+import { PREP_GROUP_KEYS, PREP_GROUPS, prepDone, prepFor } from "@/lib/travel/prep";
+import { Directions } from "./NavigateWith";
 import type { ActPick } from "@/lib/travel/plan";
 import { cityExperiencesUrl, experienceUrl, jabamaCity, matchExperience, type Experience } from "@/lib/travel/experiences";
 import { LeaveLink } from "./LeaveGuard";
@@ -46,6 +49,7 @@ import { pushBack } from "./backStack";
 import { cellOf, cheapestDay, nextAvailable, shortToman, windowDays, type DayCell } from "@/lib/travel/calendar";
 
 const CityMap = dynamic(() => import("./CityMap"), { ssr: false, loading: () => <div className="tp-map tp-map-wait" /> });
+const GuideMap = dynamic(() => import("./GuideMap"), { ssr: false, loading: () => <div className="tp-map gd-map tp-map-wait" /> });
 
 const STORE = "sq-trip";
 const DAYS_AHEAD = 30;
@@ -78,7 +82,7 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 type Saved = { plan: Plan; legs: Record<string, LegPick>; stays: Record<string, StayPick> };
-type View = { kind: "plan" } | { kind: "leg"; key: string } | { kind: "stay"; i: number } | { kind: "acts"; i: number } | { kind: "city"; for: "home" | "add" | number };
+type View = { kind: "plan" } | { kind: "leg"; key: string } | { kind: "stay"; i: number } | { kind: "acts"; i: number } | { kind: "guide"; i: number } | { kind: "city"; for: "home" | "add" | number };
 type Answer = { data: TripAnswer | null; loading: boolean; savedAt: number; err?: string };
 
 function load(): Saved | null {
@@ -91,7 +95,8 @@ function load(): Saved | null {
   }
 }
 
-export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose: () => void; initialTo?: string }) {
+/** `onExplore`: open the game's map in explore mode at a spot (a guide place) — its stores and food load around it. */
+export function Travel({ at, onClose, initialTo, onExplore }: { at: LatLng | null; onClose: () => void; initialTo?: string; onExplore?: (at: LatLng) => void }) {
   const here = useMemo(() => nearestCity(at), [at]);
   const [saved, setSaved] = useState<Saved>(() => {
     const s = typeof window === "undefined" ? null : load();
@@ -226,6 +231,24 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
         />
       );
   }
+  if (view.kind === "guide" && plan.stops[view.i] && hasGuide(plan.stops[view.i].city)) {
+    const s = plan.stops[view.i];
+    const mine = (plan.acts ?? []).filter((a) => a.city === s.city);
+    return (
+      <GuideView
+        city={s.city}
+        added={new Set(mine.map((a) => a.id))}
+        onAct={(id) => {
+          const a = ACTIVITIES.find((x) => x.id === id);
+          if (!a) return;
+          setPlan((p) => ({ ...p, acts: (p.acts ?? []).some((x) => x.id === id) ? (p.acts ?? []).filter((x) => x.id !== id) : [...(p.acts ?? []), { id: a.id, city: a.city, title: t(a.title), emoji: a.emoji, price: a.price, people: p.travellers }] }));
+        }}
+        onExplore={onExplore ? (p) => (onExplore(p), onClose()) : undefined}
+        onBack={() => setView({ kind: "plan" })}
+        onClose={onClose}
+      />
+    );
+  }
   if (view.kind === "acts" && plan.stops[view.i]) {
     const s = plan.stops[view.i];
     return (
@@ -275,7 +298,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
         </div>
 
         {legs.length > 0 && (
-          <TripGlance plan={plan} legs={legs} days={days} answers={answers} legPicks={legPicks} stayPicks={stayPicks} bill={bill} onLeg={(l) => setView({ kind: "leg", key: legKey(l) })} onStay={(i) => setView({ kind: "stay", i })} onSteps={(steps) => setPlan((p) => ({ ...p, steps }))} />
+          <TripGlance plan={plan} legs={legs} days={days} answers={answers} legPicks={legPicks} stayPicks={stayPicks} bill={bill} onLeg={(l) => setView({ kind: "leg", key: legKey(l) })} onStay={(i) => setView({ kind: "stay", i })} onSteps={(steps) => setPlan((p) => ({ ...p, steps }))} onPrep={(prep) => setPlan((p) => ({ ...p, prep }))} />
         )}
 
         <ol className="tp-line">
@@ -304,6 +327,7 @@ export function Travel({ at, onClose, initialTo }: { at: LatLng | null; onClose:
                 onStay={() => setView({ kind: "stay", i })}
                 acts={(plan.acts ?? []).filter((a) => a.city === s.city)}
                 onActs={() => setView({ kind: "acts", i })}
+                onGuide={() => setView({ kind: "guide", i })}
                 onCity={() => setView({ kind: "city", for: i })}
                 onNights={(n) => setPlan((p) => ({ ...p, stops: p.stops.map((x, k) => (k === i ? { ...x, nights: n } : x)) }))}
                 onRemove={() => setPlan((p) => ({ ...p, stops: p.stops.filter((_, k) => k !== i) }))}
@@ -382,9 +406,9 @@ function legLook(l: Leg, pick: LegPick | undefined, answer: Answer | undefined, 
  * leg with how, how long and how much — solid once chosen, dashed while open), the cost split into
  * tickets / fuel / stays, then the trip day by day or on the map. Every piece opens its own screen.
  */
-function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLeg, onStay, onSteps }: {
+function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLeg, onStay, onSteps, onPrep }: {
   plan: Plan; legs: Leg[]; days: { arrive: string; leave: string }[]; answers: Record<string, Answer>; legPicks: Record<number, LegPick | undefined>; stayPicks: Record<number, StayPick | undefined>;
-  bill: ReturnType<typeof billOf>; onLeg: (l: Leg) => void; onStay: (i: number) => void; onSteps: (steps: Step[]) => void;
+  bill: ReturnType<typeof billOf>; onLeg: (l: Leg) => void; onStay: (i: number) => void; onSteps: (steps: Step[]) => void; onPrep: (ids: string[]) => void;
 }) {
   const [tab, setTab] = useState<"line" | "days" | "map" | "book">("line");
   const [adding, setAdding] = useState<string | null>(null);
@@ -514,7 +538,12 @@ function TripGlance({ plan, legs, days, answers, legPicks, stayPicks, bill, onLe
         </ol>
       )}
 
-      {tab === "book" && <ToBookList plan={plan} legPicks={legPicks} stayPicks={stayPicks} />}
+      {tab === "book" && (
+        <>
+          <ToBookList plan={plan} legPicks={legPicks} stayPicks={stayPicks} />
+          <PrepList plan={plan} legPicks={legPicks} onChange={onPrep} />
+        </>
+      )}
 
       {tab === "map" && <CityMap route={[plan.home, ...plan.stops.map((s) => s.city), ...(plan.back ? [plan.home] : [])]} here={plan.home} onPick={() => {}} />}
 
@@ -692,11 +721,12 @@ function LegRow({ leg, answer, pick, travellers, quota, onOpen }: { leg: Leg; an
   );
 }
 
-function StopBlock({ leg, answer, pick, travellers, quota, stop, when, stay, stays, acts, onLeg, onStay, onActs, onCity, onNights, onRemove }: {
+function StopBlock({ leg, answer, pick, travellers, quota, stop, when, stay, stays, acts, onLeg, onStay, onActs, onGuide, onCity, onNights, onRemove }: {
   leg?: Leg; answer?: Answer; pick?: LegPick; travellers: number; quota?: boolean; stop: { city: string; nights: number }; when: { arrive: string; leave: string }; stay?: Stay; stays?: Stay[] | null; acts: ActPick[];
-  onLeg: () => void; onStay: () => void; onActs: () => void; onCity: () => void; onNights: (n: number) => void; onRemove: () => void;
+  onLeg: () => void; onStay: () => void; onActs: () => void; onGuide: () => void; onCity: () => void; onNights: (n: number) => void; onRemove: () => void;
 }) {
   const ideas = activitiesIn(stop.city).length;
+  const guide = guideOf(stop.city);
   const actsSum = acts.reduce((n, a) => n + a.price * a.people, 0);
   const cheapest = (stays ?? []).reduce<number>((m, s) => (s.price > 0 && (!m || s.price < m) ? s.price : m), 0);
   return (
@@ -744,9 +774,112 @@ function StopBlock({ leg, answer, pick, travellers, quota, stop, when, stay, sta
               <span className="tp-go" aria-hidden>›</span>
             </button>
           )}
+          {guide && (
+            <button type="button" className="tp-stay tp-guide" onClick={onGuide}>
+              <span className="tp-stay-ic" aria-hidden>🗺️</span>
+              <span className="grow">
+                <b>{t("{city} guide", { city: cityName(stop.city) })}</b>
+                <small>{t("{n} places — beaches, sights, malls, fun", { n: fmtNum(guide.places.length) })}</small>
+              </span>
+              <span className="tp-go" aria-hidden>›</span>
+            </button>
+          )}
         </div>
       </li>
     </>
+  );
+}
+
+// ---------------------------------------------------------------- before you go
+/** The trip's "before you go" list (lib/travel/prep.ts), by group, each ticked off on the phone (kept in the plan). */
+function PrepList({ plan, legPicks, onChange }: { plan: Plan; legPicks: Record<number, LegPick | undefined>; onChange: (ids: string[]) => void }) {
+  const items = useMemo(() => prepFor(plan, legPicks), [plan, legPicks]);
+  const done = plan.prep ?? [];
+  const flip = (id: string) => onChange(done.includes(id) ? done.filter((x) => x !== id) : [...done, id]);
+  if (!plan.stops.length) return null;
+  return (
+    <section className="tg-prep" aria-label={t("Before you go")}>
+      <div className="tg-prep-head">
+        <b>✅ {t("Before you go")}</b>
+        <small className="muted">{t("{n} of {of} ready", { n: fmtNum(prepDone(items, done)), of: fmtNum(items.length) })}</small>
+      </div>
+      {PREP_GROUP_KEYS.map((g) => {
+        const list = items.filter((x) => x.group === g);
+        if (!list.length) return null;
+        return (
+          <div key={g} className="tg-prep-group">
+            <small className="muted">{PREP_GROUPS[g].emoji} {t(PREP_GROUPS[g].label)}</small>
+            <ul>
+              {list.map((x) => (
+                <li key={x.id}>
+                  <label className={done.includes(x.id) ? "done" : ""}>
+                    <input type="checkbox" checked={done.includes(x.id)} onChange={() => flip(x.id)} />
+                    <span aria-hidden>{x.emoji}</span>
+                    <span className="grow">{t(x.text)}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- a destination's guide
+/**
+ * A city's guide (lib/travel/guide.ts): its beaches, sights, fun, malls, parks, ferries and hospitals on a map and in
+ * a list, by kind. A place: directions (the phone's map apps), "add to the trip" where it's an outing, and "stores &
+ * food around it" — the game's map in explore mode there (Snappfood, Torob, Divar and every mapped shop load around it).
+ */
+function GuideView({ city, added, onAct, onExplore, onBack, onClose }: { city: string; added: Set<string>; onAct: (id: string) => void; onExplore?: (at: LatLng) => void; onBack: () => void; onClose: () => void }) {
+  const guide = guideOf(city)!;
+  const locale = getLocale();
+  const [kind, setKind] = useState<GuideKind | "all">("all");
+  const [picked, setPicked] = useState<string | null>(null);
+  const places = useMemo(() => guidePlaces(city, kind), [city, kind]);
+  const on = guide.places.find((p) => p.id === picked) ?? null;
+  return (
+    <Sheet title={t("{city} guide", { city: cityName(city) })} onBack={onBack} onClose={onClose} tall>
+      <div className="fx-chips">
+        <Chip label={t("All")} on={kind === "all"} onClick={() => setKind("all")} />
+        {guideCounts(city).map(({ kind: k, n }) => <Chip key={k} emoji={GUIDE_KINDS[k].emoji} label={t(GUIDE_KINDS[k].label)} n={n} on={kind === k} onClick={() => setKind(kind === k ? "all" : k)} />)}
+      </div>
+      <GuideMap guide={guide} places={places} picked={picked} onPick={setPicked} />
+      {on && (
+        <div className="gd-card" aria-live="polite">
+          <div className="gd-card-head">
+            <span aria-hidden>{GUIDE_KINDS[on.kind].emoji}</span>
+            <span className="grow">
+              <b dir="auto">{guideName(on, locale)}</b>
+              <small className="muted">{[t(GUIDE_KINDS[on.kind].label), on.note && t(on.note)].filter(Boolean).join(dot())}</small>
+            </span>
+            <button type="button" className="tp-x" aria-label={t("Close")} onClick={() => setPicked(null)}>✕</button>
+          </div>
+          <div className="row gd-card-actions">
+            <Directions to={on} name={guideName(on, locale)} className="btn small cyan" />
+            {onExplore && <button type="button" className="btn small" onClick={() => onExplore(on)}>🛒 {t("Stores & food around it")}</button>}
+            {on.act && <button type="button" className={`btn small ${added.has(on.act) ? "green" : "ghost"}`} onClick={() => onAct(on.act!)}>{added.has(on.act) ? `✓ ${t("In the trip")}` : `＋ ${t("Add to the trip")}`}</button>}
+          </div>
+        </div>
+      )}
+      <ul className="gd-list">
+        {places.map((p) => (
+          <li key={p.id}>
+            <button type="button" className={p.id === picked ? "on" : ""} onClick={() => setPicked(p.id)}>
+              <i style={{ background: GUIDE_KINDS[p.kind].color }} aria-hidden />
+              <span className="grow">
+                <b dir="auto">{guideName(p, locale)}</b>
+                {p.note && <small className="muted">{t(p.note)}</small>}
+              </span>
+              {p.act && added.has(p.act) && <span aria-label={t("In the trip")}>✓</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="tiny muted">{t("Places from OpenStreetMap. Tap one for directions, or to see the stores and food around it on the map.")}</p>
+    </Sheet>
   );
 }
 

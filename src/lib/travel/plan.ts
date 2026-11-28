@@ -38,6 +38,8 @@ export type Plan = {
   quota?: boolean;
   /** Your own steps, from pasted links (lib/travel/steps.ts). */
   steps?: Step[];
+  /** The "before you go" items ticked off (lib/travel/prep.ts ids). */
+  prep?: string[];
 };
 /** An outing added to the trip: the price a person (toman, editable — the list's is an estimate) and how many of you go. */
 export type ActPick = { id: string; city: string; title: string; emoji: string; price: number; people: number };
@@ -225,5 +227,7 @@ export function cleanPlan(v: unknown, now = Date.now()): Plan | null {
     .slice(0, 40)
     .map((a) => ({ id: a.id, city: a.city, title: a.title.slice(0, 120), emoji: typeof a.emoji === "string" ? a.emoji.slice(0, 8) : "", price: Math.max(0, Math.min(1e10, Math.round(Number(a.price) || 0))), people: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(a.people) || 1))) }));
   const steps = cleanSteps(o.steps);
-  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}), ...(o.quota === true ? { quota: true } : {}), ...(steps.length ? { steps } : {}) };
+  // Known-looking ids only, no repeats.
+  const prep = [...new Set((Array.isArray(o.prep) ? o.prep : []).filter((x): x is string => typeof x === "string" && /^[a-z0-9-]{1,40}$/.test(x)))].slice(0, 80);
+  return { home: o.home, stops, back: o.back !== false, travellers: Math.max(1, Math.min(MAX_TRAVELLERS, Math.round(Number(o.travellers) || 1))), start, ...(acts.length ? { acts } : {}), ...(o.quota === true ? { quota: true } : {}), ...(steps.length ? { steps } : {}), ...(prep.length ? { prep } : {}) };
 }

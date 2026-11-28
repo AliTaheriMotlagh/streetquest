@@ -42,6 +42,7 @@ import scenarios from "./scenarios";
 import travel from "./travel";
 import street from "./street";
 import trips from "./trips";
+import guide from "./guide";
 
 const tr: Messages = {
   ...arena,
@@ -78,6 +79,7 @@ const tr: Messages = {
   ...travel,
   ...street,
   ...trips,
+  ...guide,
 };
 
 export default tr;
