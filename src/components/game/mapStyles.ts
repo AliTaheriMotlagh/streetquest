@@ -5,8 +5,10 @@
 // cached for 30 days), so its looks are now filters over the default tiles. Esri is
 // geo-blocked in Iran on and off: its looks fall back to a keyless provider (`fallback`).
 // NEXT_PUBLIC_TILE_URL replaces only the default tiles. tests/mapStyles.test.ts keeps
-// keyed and watermarking hosts out.
+// keyed and watermarking hosts out. The keyless providers are reached through our own server
+// (lib/tileProxy.ts, a disk cache on the box): `viaHost` below; NEXT_PUBLIC_TILE_PROXY="off" goes direct.
 import { msg } from "@/lib/i18n";
+import { viaHost } from "@/lib/tileProxy";
 
 export type Tiles = { url: string; attribution: string; subdomains?: string; maxNativeZoom?: number };
 
@@ -33,6 +35,7 @@ const esri = (service: string, maxNativeZoom = 19): Tiles => ({ url: `https://se
 
 const OPEN_TOPO: Tiles = { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", attribution: `${OSM}, SRTM | Style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)`, subdomains: "abc", maxNativeZoom: 17 };
 
+/** The default street tiles at their provider (SERVED_DEFAULT_TILES is how the phone asks for them). */
 export const DEFAULT_TILES: Tiles = {
   url: process.env.NEXT_PUBLIC_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   attribution: process.env.NEXT_PUBLIC_TILE_ATTRIBUTION || OSM,
@@ -40,7 +43,7 @@ export const DEFAULT_TILES: Tiles = {
 // The night-ops filter is for the light OSM tiles; a custom provider is assumed to be dark already.
 const DARKEN = !process.env.NEXT_PUBLIC_TILE_URL || process.env.NEXT_PUBLIC_TILE_DARKEN === "1";
 
-export const MAP_STYLES: MapStyle[] = [
+const PROVIDER_STYLES: MapStyle[] = [
   { id: "fantasy", emoji: "🗺️", name: msg("Fantasy"), css: "fantasy", fx: true },
   { id: "classic", emoji: "🧭", name: msg("Street") },
   { id: "dark", emoji: "🌃", name: msg("Night ops"), css: DARKEN ? "darken" : undefined },
@@ -85,12 +88,21 @@ export const MAP_STYLES: MapStyle[] = [
   { id: "neon", emoji: "🌆", name: msg("Neon"), css: "neon" },
 ];
 
+const PROXY = process.env.NEXT_PUBLIC_TILE_PROXY !== "off";
+/** A provider's tiles as the phone asks for them: through our server when we pass that provider through. */
+export const served = (t: Tiles): Tiles => ({ ...t, url: viaHost(t.url, PROXY) });
+const servedOpt = (t?: Tiles) => (t ? served(t) : undefined);
+/** Every look, with each provider's tiles as the phone fetches them. */
+export const MAP_STYLES: MapStyle[] = PROVIDER_STYLES.map((s) => ({ ...s, tiles: servedOpt(s.tiles), labels: servedOpt(s.labels), fallback: servedOpt(s.fallback) }));
+/** The default street tiles as the phone fetches them. */
+export const SERVED_DEFAULT_TILES = served(DEFAULT_TILES);
+
 export const DEFAULT_STYLE = MAP_STYLES[0];
 export const mapStyle = (id: string | null | undefined) => MAP_STYLES.find((s) => s.id === id) ?? DEFAULT_STYLE;
 
 /** Hosts of every tile provider, so the service worker keeps what you've seen for offline. */
 export function tileHosts(): string[] {
-  const urls = [DEFAULT_TILES, ...MAP_STYLES.flatMap((s) => [s.tiles, s.labels, s.fallback])].filter((t): t is Tiles => !!t).map((t) => t.url);
+  const urls = [DEFAULT_TILES, ...PROVIDER_STYLES.flatMap((s) => [s.tiles, s.labels, s.fallback])].filter((t): t is Tiles => !!t).map((t) => t.url);
   // "{s}.host" covers a., b., c.… (the worker matches subdomains); other placeholders just need a value.
   return [...new Set(urls.map((u) => new URL(u.replace(/^(https?:\/\/)\{s\}\./, "$1").replace(/\{[^}]+\}/g, "0")).hostname))];
 }

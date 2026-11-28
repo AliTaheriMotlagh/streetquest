@@ -28,7 +28,7 @@ import { LongPress, SiktirLayer } from "./SiktirLayer";
 import { VasatyabLayer } from "./VasatyabLayer";
 import type { SiktirSpot } from "@/lib/siktir";
 import type { MidView } from "@/server/midpoint";
-import { DEFAULT_STYLE, DEFAULT_TILES, type MapStyle } from "./mapStyles";
+import { DEFAULT_STYLE, SERVED_DEFAULT_TILES as DEFAULT_TILES, type MapStyle } from "./mapStyles";
 import { STORE_TYPES, typeOf, type AdArea, type DirStore, type StoreType } from "@/lib/stores/directory";
 import { clusterFace, countText, PIN_BOX, PIN_DOT_R, PIN_PX, pinClass, pinHtml, type PinSpec } from "@/lib/mapPins";
 import { glyphFor } from "@/lib/hudMarkers";

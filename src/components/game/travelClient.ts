@@ -8,14 +8,16 @@
 //    and adsb.lol refuse other sites' pages                   → asked by our server (through the relay
 //    where RELAY_FOR names them, server/travel.ts).
 // A phone call that fails (offline, the site changed its rules) falls back to the server for that mode.
-// NEXT_PUBLIC_TRAVEL_DIRECT="off" sends everything through the server.
+// Since the one server (2026-11-28) every search goes through it by default — one cache for every player, popular
+// routes loaded ahead every hour (server/travelWarm.ts), and nothing the phone has to reach abroad;
+// NEXT_PUBLIC_TRAVEL_DIRECT="on" lets the phone ask Alibaba's bus search itself again.
 import { logClient } from "../ClientLog";
 import { cityByKey, fromAlibabaBuses, mergeTrips, type Mode, type Route, type Trip } from "@/lib/travel";
 import { api } from "./client";
 
 export type TripAnswer = { trips: Trip[]; failed: string[]; none: Mode[] };
 
-const DIRECT_ON = process.env.NEXT_PUBLIC_TRAVEL_DIRECT !== "off";
+const DIRECT_ON = process.env.NEXT_PUBLIC_TRAVEL_DIRECT === "on";
 const TIMEOUT_MS = 15_000;
 const CACHE_MS = 10 * 60_000;
 const cache = new Map<string, { at: number; trips: Trip[] }>();

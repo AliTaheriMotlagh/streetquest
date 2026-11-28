@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip } from "react-leaflet";
 import { getLocale } from "@/lib/i18n";
 import { CITIES, POPULAR, type City } from "@/lib/travel";
-import { DEFAULT_TILES } from "./mapStyles";
+import { SERVED_DEFAULT_TILES as DEFAULT_TILES } from "./mapStyles";
 
 const name = (c: City) => (getLocale() === "fa" ? c.fa : c.en);
 const IRAN: [number, number] = [32.4, 53.7];

@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
 import { getLocale } from "@/lib/i18n";
 import { GUIDE_KINDS, guideName, type Guide, type GuidePlace } from "@/lib/travel/guide";
-import { DEFAULT_TILES } from "./mapStyles";
+import { SERVED_DEFAULT_TILES as DEFAULT_TILES } from "./mapStyles";
 
 function FlyTo({ to }: { to: GuidePlace | null }) {
   const map = useMap();

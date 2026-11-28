@@ -29,6 +29,26 @@ Older open items from the third session (still open): cones/chairs after the pol
 session found nothing — the probe walked the wrong structure, inconclusive), knocking a kit piece, far
 camera over roofs, scan floor, setback respawn, NPC store-kind lines — never seen in a browser.
 
+## Travel fixes, everything from the Arvan box, city fun (2026-11-28, later session) — code, tests, fa/tr, README
+- Found on prod: every upstream answered from the box (Alibaba, MrBilit, Jabama, Jabama Events, Jajiga, adsb), but
+  (1) Alibaba searches "failed" when our own pace limit (30/min; one search = 2–4 requests, the day strip asks ±3
+  days) ran out → alibaba 120/min, mrbilit 90, jabama 60; (2) the same flight was two rows (Alibaba IATA codes
+  AT/MH/VR vs MrBilit ICAO ATS/MEH/V1; «بیزینس» vs C) → `flightId`/`cabinCode`; (3) Alibaba results waited a fixed
+  2.5 s though ready in 0.1–0.7 s → polls from 300 ms until complete; (4) airline logos were all broken
+  (static.mrbilit.com no longer resolves) and Alibaba-only flights showed «MH» as the airline → Alibaba's
+  airlineName/airlineLogo, MrBilit codes mapped onto cdn.alibaba.ir.
+- Hourly warm-up (`/api/cron/warm`, docker/cron.mjs; `lib/travel/warm.ts`): 32 busy routes × 3 days + popular
+  cities' stays/experiences, one search per 15 s. Phone no longer asks Alibaba's bus search itself (all via server).
+- Map tiles through the box: `/api/tile/<src>/z/x/y.png` + disk cache (`tiles` volume, 30 days); Esri stays direct
+  (the box can't reach it). SW keeps /api/tile/ tiles for offline.
+- City guides with fun for Tehran, Mashhad, Isfahan, Shiraz, Tabriz, Yazd, Qeshm (OSM positions) + 25 new outings.
+- [ ] After deploy: check `docker compose logs cron app | grep warm` shows the first run (~3 min after start, ~30 min
+      long), `/api/tile/osm/15/21075/12940.png` answers `x-tile-cache: hit` on the second ask, Tehran→Mashhad flights
+      merged (few one-site rows), logos showing. Guides at 360×740 fa never seen in a browser.
+- [ ] Prices of the 25 new outings are rough 1405 estimates.
+- [ ] Images in store cards (cdn.snappfood.ir, Jabama, Divar) still load from those Iranian CDNs directly — fast for
+      players in Iran; proxy them too only if players abroad report them missing.
+
 ## Kish trip (2026-11-28) — shipped in code, unit tests (travelGuide.test.ts), fa/tr, README
 - Trip planner: «🗺️ Kish guide» on a Kish stop (`lib/travel/guide.ts`, 57 OSM places: beaches, sights, fun, malls,
   parks, ferries/airport, hospitals; directions, add-to-trip, «Stores & food around it» → explore mode there, where

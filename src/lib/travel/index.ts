@@ -232,14 +232,29 @@ export function bookUrl(site: TravelSite, mode: Mode, r: Route): string {
 }
 // The sites to compare on that the game doesn't read itself: lib/travel/sources.ts (compareLinks).
 
-type AliFlight = { airlineCode?: string; flightNumber?: string; leaveDateTime?: string; arrivalDateTime?: string; aircraft?: string; priceAdult?: number; originalPrice?: number | null; seat?: number; classTypeName?: string; isCharter?: boolean; isRefundable?: boolean; maxAllowedBaggage?: number; terminal?: string; origin?: string; destination?: string };
+/**
+ * One flight's row id on every site: its flight number's digits, the minute it leaves and its cabin. Alibaba names
+ * the airline by its IATA code (AT, MH, VR) and MrBilit by its ICAO one (ATS, MEH, V1), so the airline code can't be
+ * part of it; two airlines never leave the same route at the same minute with the same number.
+ */
+export const flightId = (number: string | undefined, depart: string, cabin: string) => `flight:${(number ?? "").replace(/\D/g, "").replace(/^0+/, "")}:${depart}:${cabin}`;
+/** A cabin as a fare code (Y economy, W premium economy, C business, F first), from either site's name for it. */
+export function cabinCode(name: string | undefined): string {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n || /اکونومی|economy/.test(n)) return /پریمیوم|premium/.test(n) ? "W" : "Y";
+  if (/بیزینس|بیزنس|business/.test(n)) return "C";
+  if (/فرست|first/.test(n)) return "F";
+  return tidy(name);
+}
+
+type AliFlight = { airlineCode?: string; airlineName?: string; airlineLogo?: string; flightNumber?: string; leaveDateTime?: string; arrivalDateTime?: string; aircraft?: string; priceAdult?: number; originalPrice?: number | null; seat?: number; classTypeName?: string; isCharter?: boolean; isRefundable?: boolean; maxAllowedBaggage?: number; terminal?: string; origin?: string; destination?: string };
 type AliFlightRes = { result?: { departing?: AliFlight[] } };
 export function fromAlibabaFlights(json: unknown, r: Route): Trip[] {
   const list = (json as AliFlightRes)?.result?.departing ?? [];
   return list
     .filter((f) => f.leaveDateTime && f.priceAdult)
     .map((f) => ({
-      id: `flight:${f.airlineCode}${f.flightNumber}:${local(f.leaveDateTime)}:${f.classTypeName === "اکونومی" ? "Y" : tidy(f.classTypeName)}`,
+      id: flightId(f.flightNumber, local(f.leaveDateTime), cabinCode(f.classTypeName)),
       mode: "flight" as const,
       from: r.from.key,
       to: r.to.key,
@@ -251,8 +266,8 @@ export function fromAlibabaFlights(json: unknown, r: Route): Trip[] {
       price: toman(f.priceAdult),
       was: f.originalPrice && f.originalPrice > (f.priceAdult ?? 0) ? toman(f.originalPrice) : undefined,
       seats: f.seat,
-      company: AIRLINES[f.airlineCode ?? ""] ?? f.airlineCode ?? "",
-      logo: f.airlineCode ? `https://static.mrbilit.com/img/AirlineLogos/svg/${f.airlineCode}.svg` : undefined,
+      company: tidy(f.airlineName) || AIRLINES[f.airlineCode ?? ""] || f.airlineCode || "",
+      logo: f.airlineLogo || airlineLogo(f.airlineCode),
       number: `${f.airlineCode ?? ""}${f.flightNumber ?? ""}`,
       klass: tidy(f.classTypeName),
       vehicle: f.aircraft,
@@ -269,6 +284,13 @@ export const AIRLINES: Record<string, string> = {
   IR: "ایران‌ایر", W5: "ماهان", EP: "آسمان", B9: "ایران‌ایرتور", ZV: "زاگرس", QB: "قشم‌ایر", I3: "آتا", HH: "تابان", JI: "معراج", NV: "کارون", Y9: "کیش‌ایر", IV: "کاسپین", VR: "وارش", PA: "پارس‌ایر", SR: "سپهران", PY: "پویا", FP: "فلای پرشیا", RV: "آوا", RZ: "یزد ایرویز",
 };
 
+/**
+ * An airline's logo on Alibaba's CDN (in Iran, fast for players; MrBilit's static.mrbilit.com stopped resolving in
+ * 2026-11). MrBilit names some airlines by their ICAO code; these are Alibaba's codes for them.
+ */
+const ALIBABA_AIRLINE: Record<string, string> = { ATS: "AT", MEH: "MH", V1: "VR", NSN: "NA", CPN: "IV", J1: "JI", ISP: "JS", TKN: "FK", IS: "SR", AXV: "AA", RAI: "RA", A7: "SJ", KIS: "Y9", IRC: "EP", IZG: "ZV", QSM: "QB", TBZ: "HH", IRA: "IR", IRM: "W5", PRS: "PA" };
+export const airlineLogo = (code?: string) => (code ? `https://cdn.alibaba.ir/static/img/airlines/Domestic/${ALIBABA_AIRLINE[code] ?? code}.png` : undefined);
+
 type MbLeg = { FlightNumber?: string; OriginAirport?: string; DestinationAirport?: string; AirlineCode?: string; Airline?: { PersianTitle?: string; Logo?: string }; AirCraft?: { PersianTitle?: string }; DepartureTime?: string; ArrivalTime?: string; DepartureTerminal?: string; Stops?: number };
 type MbFlight = { Id?: string; Segments?: { Legs?: MbLeg[] }[]; Prices?: { Capacity?: number; CabinClass?: string; CabinClassDisplayName?: string; Baggage?: number; FareRules?: string; PassengerFares?: { PaxType?: string; TotalFare?: number; Discount?: number }[] }[]; IsCharter?: boolean; Refundable?: boolean };
 type MbFlightRes = { Flights?: MbFlight[] };
@@ -284,7 +306,7 @@ export function fromMrbilitFlights(json: unknown, r: Route): Trip[] {
       if (!adult?.TotalFare) continue;
       const code = a.AirlineCode ?? "";
       out.push({
-        id: `flight:${code}${a.FlightNumber}:${local(a.DepartureTime)}:${CABIN[p.CabinClass ?? ""] ?? tidy(p.CabinClassDisplayName)}`,
+        id: flightId(a.FlightNumber, local(a.DepartureTime), CABIN[p.CabinClass ?? ""] ?? cabinCode(p.CabinClassDisplayName)),
         mode: "flight",
         from: r.from.key,
         to: r.to.key,
@@ -297,7 +319,7 @@ export function fromMrbilitFlights(json: unknown, r: Route): Trip[] {
         was: adult.Discount ? toman(adult.TotalFare + adult.Discount) : undefined,
         seats: p.Capacity,
         company: a.Airline?.PersianTitle || AIRLINES[code] || code,
-        logo: a.Airline?.Logo,
+        logo: airlineLogo(code),
         number: `${code}${a.FlightNumber ?? ""}`,
         klass: tidy(p.CabinClassDisplayName),
         vehicle: a.AirCraft?.PersianTitle,
@@ -427,6 +449,7 @@ export function mergeTrips(lists: Trip[][]): Trip[] {
     had.arrive ||= t.arrive;
     had.minutes ??= t.minutes;
     had.logo ||= t.logo;
+    if (/^[A-Z0-9]{2,3}$/.test(had.company) && t.company && !/^[A-Z0-9]{2,3}$/.test(t.company)) had.company = t.company;
     had.vehicle ||= t.vehicle;
     had.refundable ??= t.refundable;
     had.features = [...new Set([...(had.features ?? []), ...(t.features ?? [])])];

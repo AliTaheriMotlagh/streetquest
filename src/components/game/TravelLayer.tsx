@@ -6,6 +6,7 @@
 // smoothly between updates, each turned to its heading. A tap on a plane says who, what, how high.
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
+import { viaHost } from "@/lib/tileProxy";
 import { useMap, useMapEvents } from "react-leaflet";
 import { fmtNum, getLocale, t, dot } from "@/lib/i18n";
 import { CITIES, HUB_ZOOM, hubGlyphs, type City } from "@/lib/travel";
@@ -160,7 +161,7 @@ function hubPopup(c: City, name: string) {
 export function RailLayer() {
   const map = useMap();
   useEffect(() => {
-    const layer = L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", {
+    const layer = L.tileLayer(viaHost("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", process.env.NEXT_PUBLIC_TILE_PROXY !== "off"), {
       subdomains: "abc",
       minZoom: 4,
       maxZoom: 14,

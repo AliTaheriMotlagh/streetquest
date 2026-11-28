@@ -4,9 +4,10 @@
 import L from "leaflet";
 import { useEffect } from "react";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { SERVED_DEFAULT_TILES } from "./game/mapStyles";
 
 type P = { lat: number; lng: number };
-const TILE_URL = process.env.NEXT_PUBLIC_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_URL = SERVED_DEFAULT_TILES.url;
 
 function Clicks({ onPick }: { onPick: (p: P) => void }) {
   useMapEvents({ click: (e) => onPick({ lat: e.latlng.lat, lng: e.latlng.lng }) });

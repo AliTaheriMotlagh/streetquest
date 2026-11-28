@@ -67,7 +67,7 @@ self.addEventListener("activate", (e) => {
     const tiles = await caches.open(TILES);
     for (const r of await tiles.keys()) {
       const h = new URL(r.url).hostname;
-      if (!TILE_HOSTS.some((t) => h === t || h.endsWith("." + t))) await tiles.delete(r);
+      if (h !== self.location.hostname && !TILE_HOSTS.some((t) => h === t || h.endsWith("." + t))) await tiles.delete(r);
     }
     // The 3D decoder used to share the store models' cache, where trimming could drop it.
     const models = await caches.open(MODELS);
@@ -175,6 +175,8 @@ self.addEventListener("fetch", (event) => {
     // The 3D city's street maps (fetched by its worker, which this worker also serves).
     // Street detail (city packs) a day, since a city's pack can be rebuilt.
     if (url.pathname.startsWith("/api/vt/")) return event.respondWith(cityFirst(req, event, 7 * DAY_MS));
+    // 2D map tiles through our own server (lib/tileProxy.ts): kept like any provider's, for offline.
+    if (url.pathname.startsWith("/api/tile/")) return event.respondWith(staleWhileRevalidate(req, TILES, event));
     if (url.pathname === "/api/city/detail") return event.respondWith(cityFirst(req, event, DAY_MS));
     if (url.pathname === "/sw.js") return;
     if (url.pathname.startsWith("/api/")) {

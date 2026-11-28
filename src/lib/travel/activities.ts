@@ -92,6 +92,33 @@ export const ACTIVITIES: Activity[] = [
   A("chabahar", "mars", "🪐", msg("The Martian mountains"), "nature", 800_000, 4, "کوه های مریخی چابهار"),
   A("chabahar", "beach", "🏖️", msg("Darak beach at sunset"), "sea", 0, 2, "ساحل درک چابهار"),
   A("ardabil", "sarein", "♨️", msg("Sarein hot springs"), "nature", 300_000, 3, "آبگرم سرعین"),
+  // Fun in the big cities (2026-11-28): theme and water parks, cable cars, sleds, bowling — each on its city's
+  // guide map (lib/travel/guide.ts). Rough 1405 prices a person.
+  A("tehran", "tabiat", "🌉", msg("Evening on Tabiat bridge"), "city", 0, 2, "پل طبیعت"),
+  A("tehran", "sled", "🛷", msg("Mountain sled ride"), "adventure", 400_000, 1, "سورتمه توچال"),
+  A("tehran", "waterpark", "🌊", msg("Water park"), "adventure", 900_000, 4, "پارک آبی تهران"),
+  A("tehran", "wonderland", "🎢", msg("Indoor theme park"), "city", 700_000, 3, "سرزمین عجایب تهران"),
+  A("tehran", "bowling", "🎳", msg("Bowling"), "city", 350_000, 1.5, "بولینگ برج میلاد"),
+  A("tehran", "chitgar", "🚲", msg("Bike round Chitgar lake"), "nature", 200_000, 2, "دریاچه چیتگر دوچرخه"),
+  A("mashhad", "waterpark", "🌊", msg("Water park"), "adventure", 700_000, 4, "پارک آبی مشهد"),
+  A("mashhad", "quantum", "🎢", msg("Indoor theme park"), "city", 600_000, 3, "تم پارک کوانتوم مشهد"),
+  A("mashhad", "zoo", "🦁", msg("The zoo"), "nature", 150_000, 2, "باغ وحش وکیل آباد"),
+  A("mashhad", "koohsangi", "🪨", msg("Evening in Kooh Sangi park"), "nature", 0, 2, "پارک کوهسنگی"),
+  A("isfahan", "soffeh", "🚡", msg("Cable car and zip-line on Soffeh"), "adventure", 500_000, 3, "تله کابین صفه"),
+  A("isfahan", "nazhvan", "🐠", msg("Nazhvan: aquarium, birds and rides"), "nature", 300_000, 3, "ناژوان اصفهان"),
+  A("isfahan", "zurkhaneh", "💪", msg("Watch a zurkhaneh session"), "history", 200_000, 1, "زورخانه اصفهان"),
+  A("shiraz", "qavam", "🍊", msg("Naranjestan-e Qavam"), "history", 150_000, 1, "نارنجستان قوام"),
+  A("shiraz", "afif", "🌳", msg("Afifabad garden"), "history", 150_000, 1.5, "باغ عفیف آباد"),
+  A("shiraz", "waterpark", "🌊", msg("Water park"), "adventure", 600_000, 4, "پارک آبی علی بابا شیراز"),
+  A("shiraz", "derak", "🥾", msg("Hike up Derak"), "nature", 0, 3, "کوه دراک شیراز"),
+  A("tabriz", "museum", "🏺", msg("Azerbaijan museum"), "history", 100_000, 1.5, "موزه آذربایجان تبریز"),
+  A("tabriz", "sled", "🛷", msg("Mountain sled ride"), "adventure", 300_000, 1, "سورتمه ائل گلی"),
+  A("yazd", "silence", "🌄", msg("Towers of Silence at sunset"), "history", 100_000, 1.5, "دخمه زرتشتیان یزد"),
+  A("yazd", "paraglide", "🪂", msg("Tandem paragliding"), "adventure", 2_500_000, 1, "پاراگلایدر یزد"),
+  A("yazd", "escape", "🔐", msg("Escape room"), "city", 400_000, 1.5, "اتاق فرار یزد"),
+  A("qeshm", "namakdan", "🧂", msg("Namakdan salt cave"), "nature", 200_000, 2, "غار نمکدان قشم"),
+  A("qeshm", "kharbas", "🕳️", msg("Kharbas caves"), "history", 100_000, 1, "غار خربس قشم"),
+  A("qeshm", "portuguese", "🏰", msg("The Portuguese castle"), "history", 100_000, 1, "قلعه پرتغالی ها قشم"),
 ];
 
 /** What there is to do in a city (a city with none: an empty list). */

@@ -22,7 +22,7 @@ describe("map styles", () => {
   it("give every provider an attribution and a well-formed template", () => {
     for (const t of providers()) {
       assert.ok(t.attribution.length > 10, t.url);
-      assert.match(t.url, /^https:\/\//);
+      assert.match(t.url, /^(https:\/\/|\/api\/tile\/[a-z]+\/\{z\}\/\{x\}\/\{y\}\.png$)/, "the provider, or our own server passing it through");
       assert.match(t.url, /\{z\}/);
       if (t.url.includes("{s}")) assert.ok(t.subdomains ?? "abc", t.url);
     }
@@ -35,10 +35,17 @@ describe("map styles", () => {
 
   it("let the service worker keep every provider's tiles, stand-ins included", () => {
     const hosts = tileHosts();
-    for (const t of providers()) {
+    for (const t of providers().filter((p) => !p.url.startsWith("/"))) {
       const host = new URL(t.url.replace(/^(https?:\/\/)\{s\}\./, "$1").replace(/\{[^}]+\}/g, "0")).hostname;
       assert.ok(hosts.includes(host), host);
     }
+  });
+
+  it("reach the keyless providers through our own server, Esri (blocked from Iran's servers) directly", () => {
+    const urls = providers().map((p) => p.url);
+    assert.ok(urls.includes("/api/tile/osmde/{z}/{x}/{y}.png"));
+    assert.ok(urls.includes("/api/tile/topo/{z}/{x}/{y}.png"));
+    assert.ok(urls.filter((u) => u.startsWith("https://")).every((u) => u.includes("arcgisonline.com")), "only Esri goes direct");
   });
 
   it("start on the default look, and an unknown id falls back to it", () => {

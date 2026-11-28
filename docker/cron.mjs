@@ -1,5 +1,8 @@
-// The daily cleanup on the one-server setup (docker/compose.yml) — what Cloudflare's Cron Trigger and the old
-// vercel.json cron do: GET /api/cron/cleanup with CRON_SECRET at 04:00 UTC. Plain Node, no packages.
+// The timed jobs on the one-server setup (docker/compose.yml), plain Node, no packages:
+//  - the daily cleanup — what Cloudflare's Cron Trigger and the old vercel.json cron do: GET /api/cron/cleanup
+//    with CRON_SECRET at 04:00 UTC;
+//  - the travel warm-up every hour (first 3 min after start): GET /api/cron/warm loads the busiest routes, stays
+//    and experiences ahead so players' first look is instant (server/travel.ts warmTravel).
 
 /** The next time (ms) at `hour`:00 UTC strictly after `now`. Pure. */
 export function nextRun(now, hour = 4) {
@@ -8,12 +11,14 @@ export function nextRun(now, hour = 4) {
   return t > now ? t : t + 86_400_000;
 }
 
-async function cleanup(app, secret) {
+export const WARM_EVERY_MS = 60 * 60_000;
+
+async function call(app, secret, job) {
   try {
-    const res = await fetch(`${app}/api/cron/cleanup`, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(120_000) });
-    console.log(`[cron] cleanup ${res.status}`);
+    const res = await fetch(`${app}/api/cron/${job}`, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(120_000) });
+    console.log(`[cron] ${job} ${res.status}`);
   } catch (e) {
-    console.error(`[cron] cleanup failed: ${e.message}`);
+    console.error(`[cron] ${job} failed: ${e.message}`);
   }
 }
 
@@ -27,8 +32,12 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     const loop = () => {
       const wait = nextRun(Date.now()) - Date.now();
       console.log(`[cron] next cleanup in ${Math.round(wait / 60000)} min`);
-      setTimeout(() => cleanup(app, secret).finally(loop), wait);
+      setTimeout(() => call(app, secret, "cleanup").finally(loop), wait);
     };
     loop();
+    setTimeout(() => {
+      call(app, secret, "warm");
+      setInterval(() => call(app, secret, "warm"), WARM_EVERY_MS);
+    }, 3 * 60_000);
   }
 }

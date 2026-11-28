@@ -9,13 +9,14 @@
 import { siteBase } from "@/lib/relayUrl";
 import { distanceM, type LatLng } from "@/lib/geo";
 import {
-  CITIES, cityByKey, cityHas, fromAlibabaBuses, fromAlibabaFlights, fromAlibabaTrains, fromJabama, fromMrbilitFlights, fromMrbilitTrains, mergeTrips, type City, type Mode, type Route, type Stay, type Trip,
+  CITIES, cityByKey, cityHas, MODE_KEYS, fromAlibabaBuses, fromAlibabaFlights, fromAlibabaTrains, fromJabama, fromMrbilitFlights, fromMrbilitTrains, mergeTrips, type City, type Mode, type Route, type Stay, type Trip,
 } from "@/lib/travel";
 import { fromAdsb, iranTime, mergePlanes, scheduledPlane, type Plane, type Scheduled } from "@/lib/flights";
 import { cached, getJson, getText } from "./localData";
 import { ndjsonStream } from "@/lib/ndjson";
 import { compareLinks, mergeOffers, readable, type SourceOffer, type SourceQuery, type SourceSite } from "@/lib/travel/sources";
 import { fromJabamaEvents, jabamaCity, type Experience } from "@/lib/travel/experiences";
+import { warmCities, warmSearches } from "@/lib/travel/warm";
 
 const MIN = 60_000;
 const TICKETS_TTL = 20 * MIN;
@@ -24,8 +25,12 @@ const STAYS_TTL = 3 * 60 * MIN;
 const EXPERIENCES_TTL = 60 * MIN;
 const PLANES_TTL = 10_000;
 const SCHEDULE_TTL = 30 * MIN;
-/** Alibaba answers a search with an id; its results are read this long after (ms) and once more if empty. */
-const ALIBABA_POLL_MS = Number(process.env.ALIBABA_POLL_MS ?? 2500);
+/**
+ * Alibaba answers a search with an id; its results are read this long after (ms), then a little later each time
+ * (×1.6) until it says the search is complete — usually within a second (measured 0.1–0.7 s from the server).
+ */
+const ALIBABA_POLL_MS = Number(process.env.ALIBABA_POLL_MS ?? 300);
+const ALIBABA_POLLS = 6;
 
 const base = {
   alibaba: () => siteBase("alibaba", process.env.ALIBABA_URL, "https://ws.alibaba.ir/api"),
@@ -47,12 +52,14 @@ async function alibabaTwoStep(start: () => Promise<{ result?: { requestId?: stri
   const s = await start();
   const id = s?.result?.requestId;
   if (!id) return null;
-  for (let i = 0; i < 2; i++) {
-    await sleep(ALIBABA_POLL_MS);
+  let last: unknown | null = null;
+  for (let i = 0, wait = ALIBABA_POLL_MS; i < ALIBABA_POLLS; i++, wait *= 1.6) {
+    await sleep(wait);
     const r = await getJson<{ result?: { departing?: unknown[]; isCompleted?: boolean } }>(read(id));
-    if (r && (r.result?.departing?.length || r.result?.isCompleted !== false || i === 1)) return r;
+    if (r) last = r;
+    if (r && r.result?.isCompleted !== false) return r;
   }
-  return null;
+  return last; // still searching after ~10 s: what it found so far
 }
 
 type Source = { site: string; run: () => Promise<Trip[] | null> };
@@ -96,7 +103,7 @@ function sources(mode: Mode, r: Route): Source[] {
 export type TripAnswer = { trips: Trip[]; failed: string[]; /** Modes that don't connect these two cities. */ none: Mode[] };
 
 /** Every flight, train and bus between two cities on a day, each trip once with every site's price. */
-export async function tripsBetween(fromKey: string, toKey: string, date: string, modes: Mode[]): Promise<TripAnswer> {
+export async function tripsBetween(fromKey: string, toKey: string, date: string, modes: Mode[], opts: { /** Wait for a fresh copy instead of serving a stale one (the warm-up). */ fresh?: boolean } = {}): Promise<TripAnswer> {
   const from = cityByKey(fromKey), to = cityByKey(toKey);
   if (!from || !to || from.key === to.key) return { trips: [], failed: [], none: modes };
   const r: Route = { from, to, date };
@@ -108,7 +115,7 @@ export async function tripsBetween(fromKey: string, toKey: string, date: string,
       if (!src.length) return none.push(m), [];
       const got = await Promise.all(
         src.map((s) =>
-          cached<Trip[]>(`tr:${m}:${s.site}:${from.key}:${to.key}:${date}`, TICKETS_TTL, s.run)
+          cached<Trip[]>(`tr:${m}:${s.site}:${from.key}:${to.key}:${date}`, TICKETS_TTL, s.run, opts.fresh ? { staleTtls: 0 } : {})
             .catch(() => null)
             .then((x) => (x ?? (failed.push(`${s.site}:${m}`), []))),
         ),
@@ -205,6 +212,40 @@ export async function offersFor(q: SourceQuery): Promise<{ offers: SourceOffer[]
     }),
   );
   return { offers: mergeOffers(lists), links: compareLinks(q), failed };
+}
+
+// ---------------------------------------------------------------- warm-up
+/** The gap between two warm-up searches (ms): ~100 route-days an hour stay a gentle trickle. TRAVEL_WARM_GAP_MS. */
+const WARM_GAP_MS = Number(process.env.TRAVEL_WARM_GAP_MS ?? 15_000);
+let warming: Promise<WarmReport> | null = null;
+export type WarmReport = { searches: number; trips: number; failed: number; cities: number; ms: number };
+
+/**
+ * Loads ahead what players ask most (lib/travel/warm.ts) so their first look is instant: each busy route's tickets
+ * for today and the next two days (waiting for a fresh copy, one search at a time, WARM_GAP_MS apart), then the
+ * popular cities' stays and experiences. One run at a time; a second call joins the running one. docker/cron.mjs
+ * calls it hourly through /api/cron/warm. TRAVEL_WARM="off" turns it off.
+ */
+export function warmTravel(now = Date.now(), gapMs = WARM_GAP_MS): Promise<WarmReport> {
+  return (warming ??= (async () => {
+    const t0 = Date.now();
+    const r: WarmReport = { searches: 0, trips: 0, failed: 0, cities: 0, ms: 0 };
+    for (const c of warmCities()) {
+      await Promise.all([staysIn(c), experiencesIn(c)]).catch(() => null);
+      r.cities++;
+      await sleep(gapMs / 5);
+    }
+    for (const s of warmSearches(now)) {
+      const a = await tripsBetween(s.from, s.to, s.date, [...MODE_KEYS], { fresh: true }).catch(() => null);
+      r.searches++;
+      r.trips += a?.trips.length ?? 0;
+      r.failed += a ? a.failed.length : 1;
+      await sleep(gapMs);
+    }
+    r.ms = Date.now() - t0;
+    console.log(`[travel] warmed ${r.searches} routes (${r.trips} trips, ${r.failed} site misses) and ${r.cities} cities in ${Math.round(r.ms / 1000)} s`);
+    return r;
+  })().finally(() => (warming = null)));
 }
 
 // ---------------------------------------------------------------- planes

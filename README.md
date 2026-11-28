@@ -1004,10 +1004,14 @@ mood scales XP; loot funds research; territory funds the army.
   (`/api/travel`, `/api/flights`; tickets cached 20 min per route and day, stays 3 h, planes 10 s);
   `drive/planes3d.ts`, `game/TravelLayer.tsx`, `game/Travel.tsx`, `game/CityMap.tsx`. Each site: `ALIBABA_URL` / `MRBILIT_FLIGHT_URL` /
   `MRBILIT_TRAIN_URL` / `JABAMA_URL` / `ADSB_URL` (`off` disables; through the relay add `alibaba,mrbilit,jabama` to
-  `RELAY_FOR`). **Searches run on the player's phone where the site allows it** (`game/travelClient.ts`): Alibaba's
-  bus search answers any site, so the phone (on its own Iranian connection) asks it; Alibaba's flights/trains,
-  MrBilit (only its own origins), Jabama and adsb.lol refuse other sites' pages, so the server asks them — through
-  the Iran relay. A phone search that fails falls back to the server.
+  `RELAY_FOR`). **Every search goes through the server** (`game/travelClient.ts`; `NEXT_PUBLIC_TRAVEL_DIRECT="on"` lets
+  the phone ask Alibaba's bus search itself again): one shared cache for every player, and the same flight on Alibaba
+  and MrBilit is one row (`flightId`: the number's digits, the minute, the cabin — Alibaba names airlines by IATA code,
+  MrBilit by ICAO). Alibaba's results are read as soon as its search is complete (~0.1–0.7 s, `ALIBABA_POLL_MS`), airline
+  logos come from Alibaba's CDN. **Warm-up:** every hour `docker/cron.mjs` calls `/api/cron/warm` (`server/travel.ts`
+  `warmTravel`, plan in `lib/travel/warm.ts`): tickets on the busiest routes (Tehran both ways to 11 cities + 5 more
+  routes) for today and the next two days, one search every `TRAVEL_WARM_GAP_MS` (15 s), then the popular cities'
+  stays and experiences — so a player's first look is instant. `TRAVEL_WARM="off"` turns it off.
 - **Travel, the rest of the trip** — the planner opens on a destination home (*Where to next?*: from-city, search,
   the map of every city, trips by mood — sea & islands, history, the green north, desert, pilgrimage — and destination
   cards). Each city has **things to do** (`lib/travel/activities.ts`: diving off Qeshm, the Greek ship on Kish,
@@ -1020,7 +1024,9 @@ mood scales XP; loot funds research; territory funds the army.
   session (the site has no link that picks one). Elsewhere (Kish, Qeshm…) the outing keeps its search link. Cached an
   hour; `JABAMA_EVENTS_URL` (`off` disables; through the relay with `jabama` in `RELAY_FOR`).
   **Destination guides** (`lib/travel/guide.ts`, `Travel.tsx` GuideView, `game/GuideMap.tsx`): a stop with a guide
-  (Kish: 57 places) gets «🗺️ Kish guide» — beaches (the men's and women's ones marked), sights (Greek ship, Kariz,
+  (Kish: 57 places; since 2026-11-28 also Tehran, Mashhad, Isfahan, Shiraz, Tabriz, Yazd and Qeshm — 15–37 places
+  each with their fun: theme and water parks, cable cars and zip-lines, sleds, bowling, escape rooms, zoos, rooftop
+  views, each linked to an outing) gets «🗺️ <city> guide» — beaches (the men's and women's ones marked), sights (Greek ship, Kariz,
   Harireh…), fun (water park, snow park, dolphins, cable car, cruise), malls, parks, the airport and sea terminals and
   hospitals, on a map and in a list by kind, at their OpenStreetMap spots. A place has directions (the phone's map
   apps), «Add to the trip» where it's an outing, and «Stores & food around it», which opens the game map in explore
@@ -1504,7 +1510,7 @@ players in Iran reach it without a VPN.
 |---|---|
 | `app` | the Next.js standalone server (`Dockerfile`); syncs the schema at start (`docker/start.sh`) |
 | `rt` | Street Arena realtime (`realtime/`, bundled), at `wss://<domain>/rt` |
-| `cron` | the daily `/api/cron/cleanup` at 04:00 UTC (`docker/cron.mjs`) |
+| `cron` | the daily `/api/cron/cleanup` at 04:00 UTC and the hourly travel warm-up `/api/cron/warm` (`docker/cron.mjs`) |
 | `db` + `backup` | Postgres 16; a gzipped dump every night in `~/streetquest/backups` on the server, the last 7 kept |
 | `caddy` | HTTPS with a free Let's Encrypt certificate, files uploaded from Admin (`/uploads/*`), ports 80/443 only |
 
@@ -1714,7 +1720,12 @@ Live since 2026-11-15: `RT_URL=wss://37-32-28-215.sslip.io:8791`. Check: `curl h
   Check `/api/local?near=1&lat=35.7&lng=51.4` and `/api/local?divar=1&lat=35.7&lng=51.4` from the production server
   after deploying. Re-run the city packs (`npm run city:pack:prod -- iran`)
   so production places carry their contacts.
-- Map tiles: the default public OSM tile server is for light use only. Set
+- Map tiles go through our own server (`/api/tile/<source>/<z>/<x>/<y>.png`, `lib/tileProxy.ts`): it fetches each
+  keyless provider's tile once (OSM, OSM Germany/France, HOT, CyclOSM, OpenTopoMap, OpenRailwayMap) and keeps it 30
+  days on disk (`TILE_CACHE_DIR`, the `tiles` volume in `docker/compose.yml`), so players only talk to the game's
+  domain and a street anyone looked at loads from the box. Esri (satellite) stays direct — it refuses Iranian servers
+  — and falls back to a keyless look when blocked. `NEXT_PUBLIC_TILE_PROXY="off"` goes direct.
+  The default public OSM tile server is for light use only. Set
   `NEXT_PUBLIC_TILE_URL` (+ `NEXT_PUBLIC_TILE_ATTRIBUTION`) to a provider like MapTiler or Stadia. It replaces the
   default street tiles (fantasy, street, night ops and the filtered looks); the satellite, terrain and CARTO styles
   use the free public servers of Esri, OpenTopoMap, CARTO and OSM France — fine for light use, check their terms

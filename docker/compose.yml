@@ -15,8 +15,10 @@ services:
   app:
     <<: *app
     depends_on: [db]
-    volumes: [uploads:/app/public/uploads]
+    # tiles: the 2D map's tiles kept on disk (lib/tileProxy.ts), so a street anyone looked at loads from here.
+    volumes: [uploads:/app/public/uploads, tiles:/app/cache/tiles]
     environment:
+      TILE_CACHE_DIR: /app/cache/tiles
       DATABASE_URL: postgresql://streetquest:${POSTGRES_PASSWORD}@db:5432/streetquest
       DATABASE_URL_UNPOOLED: postgresql://streetquest:${POSTGRES_PASSWORD}@db:5432/streetquest
       NODE_OPTIONS: --max-old-space-size=${APP_MEMORY_MB:-1024}
@@ -87,3 +89,4 @@ volumes:
   pgdata:
   uploads:
   caddy:
+  tiles:

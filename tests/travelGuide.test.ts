@@ -9,6 +9,9 @@ import { cleanPlan, type LegPick, type Plan } from "@/lib/travel/plan";
 import { cityByKey } from "@/lib/travel";
 import { EXPLORE_PLACES } from "@/lib/explore";
 import { CITIES as PACKS } from "@/lib/cityPack";
+import { distanceM } from "@/lib/geo";
+
+const acts = new Set(ACTIVITIES.map((a) => a.id));
 
 const plan = (over: Partial<Plan> = {}): Plan => ({ home: "tehran", stops: [{ city: "kish", nights: 3 }], back: true, travellers: 2, start: "2026-12-10", ...over });
 const ids = (p: Plan, picks: Record<number, LegPick | undefined> = {}) => prepFor(p, picks).map((x) => x.id);
@@ -24,13 +27,25 @@ describe("destination guide", () => {
         assert.ok(p.id.startsWith(`${city}:`) && p.city === city);
         assert.ok(GUIDE_KIND_KEYS.includes(p.kind));
         assert.ok(p.fa && p.en);
-        assert.ok(Math.abs(p.lat - g.centre.lat) < 0.1 && Math.abs(p.lng - g.centre.lng) < 0.12, `${p.id} is far from ${city}`);
+        assert.ok(distanceM(g.centre, p) < g.reachKm * 1000, `${p.id} is far from ${city}`);
+        if (p.act) assert.ok(acts.has(p.act) && p.act.startsWith(`${city}:`), `${p.id} → ${p.act}`);
       }
     }
   });
+  it("the big cities have guides with fun in them, each linked to outings", () => {
+    for (const city of ["tehran", "mashhad", "isfahan", "shiraz", "tabriz", "yazd", "qeshm"]) {
+      const g = guideOf(city)!;
+      assert.ok(g && g.places.length >= 15, city);
+      assert.ok(g.places.filter((p) => p.kind === "fun" || p.kind === "beach").length >= 3, `${city}: fun`);
+      assert.ok(g.places.some((p) => p.kind === "go"), `${city}: how to get there`);
+      assert.ok(g.places.filter((p) => p.act).length >= 3, `${city}: outings`);
+    }
+    // At Isfahan's Si-o-se-pol, the bridge itself comes first.
+    assert.equal(guidePlaces("isfahan", "all", { lat: 32.6446, lng: 51.6675 })[0].id, "isfahan:si-o-se");
+  });
   it("Kish: beaches, sights, fun, malls, parks, the airport and a hospital — each place's outing exists", () => {
     const g = guideOf("kish")!;
-    assert.ok(hasGuide("kish") && !hasGuide("tehran") && guideOf("tehran") === null);
+    assert.ok(hasGuide("kish") && !hasGuide("rasht") && guideOf("rasht") === null);
     for (const k of GUIDE_KIND_KEYS) assert.ok(g.places.some((p) => p.kind === k), `no ${k}`);
     assert.ok(g.places.length >= 50);
     const acts = new Set(ACTIVITIES.map((a) => a.id));

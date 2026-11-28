@@ -42,7 +42,7 @@ COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/prisma/schema.prisma ./prisma/schema.prisma
 COPY --from=build /out/rt.mjs ./rt/server.mjs
 COPY docker/start.sh docker/cron.mjs ./docker/
-RUN mkdir -p public/uploads && chown -R node:node public/uploads
+RUN mkdir -p public/uploads cache/tiles && chown -R node:node public/uploads cache
 USER node
 EXPOSE 3000 8787
 CMD ["sh", "docker/start.sh"]

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   bookUrl, CITIES, cityByKey, cityHas, dayPartOf, filterStays, filterTrips, findCities, fromAlibabaBuses, fromAlibabaFlights, fromAlibabaTrains, fromJabama, fromMrbilitFlights, fromMrbilitTrains,
-  jalaliIso, mergeTrips, nearestCity, normFa, toJalali, tripFacets, type Route,
+  airlineLogo, cabinCode, flightId, jalaliIso, mergeTrips, nearestCity, normFa, toJalali, tripFacets, type Route,
 } from "../src/lib/travel";
 
 const route = (): Route => ({ from: cityByKey("tehran")!, to: cityByKey("mashhad")!, date: "2026-11-20" });
@@ -62,7 +62,7 @@ test("flights from two sites are one row each, cheapest site first", () => {
   assert.equal(m.length, 2, "economy and business are two trips");
   const all = mergeTrips([a, m]);
   assert.equal(all.length, 3);
-  const b9 = all.find((x) => x.id.startsWith("flight:B9960:") && x.klass === "اکونومی")!;
+  const b9 = all.find((x) => x.id.startsWith("flight:960:") && x.klass === "اکونومی")!;
   assert.deepEqual(b9.offers.map((o) => o.source), ["mrbilit", "alibaba"]);
   assert.equal(b9.price, 5800000);
   assert.equal(b9.seats, 9, "the larger seat count");
@@ -76,6 +76,32 @@ test("flights from two sites are one row each, cheapest site first", () => {
   assert.equal(dayPartOf("2026-11-20T05:59:00"), "night");
   const f = tripFacets(all);
   assert.equal(f.cheapest.flight, 5200000);
+});
+
+test("the same flight on Alibaba (IATA code) and MrBilit (ICAO code) is one row, business class too", () => {
+  const r = route();
+  const ali = { result: { departing: [
+    { airlineCode: "AT", flightNumber: "6100", leaveDateTime: "2026-11-20T06:00:00", priceAdult: 100000000, seat: 4, classTypeName: "اکونومی" },
+    { airlineCode: "JS", flightNumber: "1838.", leaveDateTime: "2026-11-20T15:00:00", priceAdult: 150000000, classTypeName: "اکونومی" },
+    { airlineCode: "W5", flightNumber: "1037", leaveDateTime: "2026-11-20T20:30:00", priceAdult: 270000000, classTypeName: "بیزینس" },
+  ] } };
+  const leg = (code: string, n: string, at: string) => ({ Segments: [{ Legs: [{ FlightNumber: n, AirlineCode: code, DepartureTime: at }] }] });
+  const fare = (cabin: string, total: number) => ({ CabinClass: cabin, PassengerFares: [{ PaxType: "ADL", TotalFare: total }] });
+  const mb = { Flights: [
+    { ...leg("ATS", "6100", "2026-11-20T06:00:00+03:30"), Prices: [fare("Economy", 101471000)] },
+    { ...leg("ISP", "1838", "2026-11-20T15:00:00+03:30"), Prices: [fare("Economy", 148291000)] },
+    { ...leg("W5", "1037", "2026-11-20T20:30:00+03:30"), Prices: [fare("Business", 269973000)] },
+  ] };
+  const all = mergeTrips([fromAlibabaFlights(ali, r), fromMrbilitFlights(mb, r)]);
+  assert.equal(all.length, 3, all.map((x) => x.id).join(" "));
+  assert.ok(all.every((x) => x.offers.length === 2));
+  assert.equal(all.find((x) => x.id.includes(":1838:"))!.price, 14829100, "the cheaper site's price");
+  assert.deepEqual([cabinCode("بیزینس"), cabinCode("Business"), cabinCode("اکونومی"), cabinCode("پریمیوم اکونومی"), cabinCode("فرست")], ["C", "C", "Y", "W", "F"]);
+  assert.equal(flightId("IR0403", "2026-11-20T21:00:00", "Y"), "flight:403:2026-11-20T21:00:00:Y");
+  // Logos from Alibaba's CDN (MrBilit's host is gone), MrBilit's ICAO codes mapped to Alibaba's.
+  assert.ok(all.every((x) => x.logo?.startsWith("https://cdn.alibaba.ir/")));
+  assert.equal(airlineLogo("ATS"), "https://cdn.alibaba.ir/static/img/airlines/Domestic/AT.png");
+  assert.equal(airlineLogo(undefined), undefined);
 });
 
 test("trains (MrBilit's classes, Alibaba's wagons) and buses", () => {
