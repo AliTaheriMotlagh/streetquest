@@ -50,7 +50,8 @@
     "load:clean": "tsx --env-file-if-exists=.env scripts/load/seed.ts --clean",
     "load:test": "k6 run --quiet --log-output=none scripts/load/scenarios.js",
     "rt:deploy": "bash scripts/rt-deploy.sh",
-    "front:deploy": "bash scripts/front-deploy.sh"
+    "front:deploy": "bash scripts/front-deploy.sh",
+    "server:deploy": "bash scripts/server-deploy.sh"
   },
   "dependencies": {
     "@huggingface/inference": "4.13.32",

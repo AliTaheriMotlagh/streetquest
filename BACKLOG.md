@@ -46,6 +46,20 @@ camera over roofs, scan floor, setback respawn, NPC store-kind lines — never s
 
 ## Now — run top-down (tools + best practice per step)
 
+0000. **One server on Arvan — in progress** (2026-11-28): box `root@37.152.178.0` (Ubuntu 26.04, 2 vCPU, 2 GB, 28 GB;
+     ports 22/80/443 open), URL https://37-152-178-0.sslip.io. Key `~/.ssh/arvan-streetquest.pem` (`SERVER_SSH_KEY_FILE`
+     in .env); `.env.server` made (fresh secrets + VAPID/Neshan/PRODUCT3D_TOKEN). GitHub secrets `SERVER_SSH`,
+     `SERVER_SSH_KEY`, `SERVER_ENV` set → every push to main deploys (`deploy-server.yml`). Local `server:deploy` from the
+     Mac: Docker Hub 403s from Iran (Node base now from a mirror via `NODE_IMAGE`), and the Mac disk was full (Docker
+     build cache 24 GB) — use CI. Still: copy Neon's data once its quota resets, add other prod keys to .env.server
+     (then `gh secret set SERVER_ENV < .env.server`), point players to the new URL, decide on Cloudflare/Neon/relay.
+
+000. **Prod down 2026-11-27 — USER**: Neon answers HTTP 402 "exceeded the quota" (`/api/health`), so every DB page
+     fails; not the SEO commit. Upgrade Neon or wait for the monthly reset; check what burns compute (product3d runs every
+     6 h). Same day the Iran box 37.32.28.215 timed out on every port (22/8443/8790/8791) from the Mac and from Cloudflare
+     — check it in the Arvan panel. CI now redeploys the front door after each Cloudflare deploy once GitHub secrets
+     `RELAY_SSH`, `FRONT_KEY` (+ `RELAY_SSH_PASSWORD`) are set (`gh secret set NAME`); never run from CI yet.
+
 00. **Cloudflare + Iran deploy — USER** (code done 2026-11-26): `npx wrangler secret put RELAY_URL --name streetquest` =
     `http://37-32-28-215.sslip.io:8790/<RELAY_KEY>`, `RELAY_FOR=all`, `FRONT_KEY` (same as .env, made by the first
     `npm run front:deploy`); push to main (CI deploys); `npm run front:deploy`; then `/api/health?ext=1` + a fresh `?menu=`

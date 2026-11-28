@@ -13,6 +13,9 @@ const config: NextConfig = {
   // Bus timetables imported from GTFS (scripts/transit-gtfs.ts) are read from disk by /api/transit.
   outputFileTracingIncludes: { "/api/transit": ["./src/data/transit/*-times.json"] },
   poweredByHeader: false,
+  // The Docker image (Dockerfile, one server) runs Next's own small standalone server. CI type-checks with
+  // `npm test`, so the image build skips it (also keeps the build's memory down).
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const, typescript: { ignoreBuildErrors: true } } : {}),
   // Allow opening the dev server from a phone via LAN IP or an https tunnel.
   allowedDevOrigins: ["*.trycloudflare.com", "192.168.*.*", "10.*.*.*"],
   // OpenNext patches the generated Prisma client for the Workers runtime, so both copies

@@ -15,6 +15,10 @@ RELAY_SSH=${RELAY_SSH:-$(env_of RELAY_SSH)}
 export RELAY_SSH_PASSWORD=${RELAY_SSH_PASSWORD:-$(env_of RELAY_SSH_PASSWORD)}
 : "${RELAY_SSH:?Set RELAY_SSH=user@host in .env}"
 FRONT_KEY=${FRONT_KEY:-$(env_of FRONT_KEY)}
+if [ -z "$FRONT_KEY" ] && [ -n "${CI:-}" ]; then
+  # A new key here would not match the Worker's, and every player through the front door would count as one address.
+  echo "FRONT_KEY is missing (GitHub secret FRONT_KEY = the Worker's FRONT_KEY)."; exit 1
+fi
 if [ -z "$FRONT_KEY" ]; then
   FRONT_KEY=$(openssl rand -hex 24)
   printf '\nFRONT_KEY=%s\n' "$FRONT_KEY" >> .env

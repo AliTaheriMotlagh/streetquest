@@ -1481,6 +1481,36 @@ abroad, so Iranian sites that refuse foreign servers (Snappfood, Torob 490 "are 
 (`src/lib/clientIp.ts`; a forged `x-forwarded-for` no longer beats them), and the rough IP location for the map comes
 from `request.cf` (`src/server/geoip.ts`).
 
+### One server (Docker) — everything in one place, e.g. a cheap Arvan cloud server
+
+The cheapest way to run all of it: one Linux server, one Docker stack (`docker/compose.yml`). No Cloudflare, Neon,
+relay or front door needed — on a server inside Iran the Iranian sites answer directly (leave `RELAY_URL` unset) and
+players in Iran reach it without a VPN.
+
+| Container | What |
+|---|---|
+| `app` | the Next.js standalone server (`Dockerfile`); syncs the schema at start (`docker/start.sh`) |
+| `rt` | Street Arena realtime (`realtime/`, bundled), at `wss://<domain>/rt` |
+| `cron` | the daily `/api/cron/cleanup` at 04:00 UTC (`docker/cron.mjs`) |
+| `db` + `backup` | Postgres 16; a gzipped dump every night in `~/streetquest/backups` on the server, the last 7 kept |
+| `caddy` | HTTPS with a free Let's Encrypt certificate, files uploaded from Admin (`/uploads/*`), ports 80/443 only |
+
+1. Arvan panel → Cloud Server → the smallest plan with **2 GB RAM** (1–2 vCPU, 25 GB disk, Ubuntu 24.04), a
+   public IP; in its firewall/security group open **22, 80, 443**. (1 GB works for a few players; the installer adds 2 GB swap
+   under 3 GB of RAM.) The image is built on your Mac or in GitHub Actions, never on the server.
+2. Your `.env`: `SERVER_SSH=root@<ip>` + `SERVER_SSH_KEY_FILE=<path to the .pem Arvan gave you>` (or `SERVER_SSH_PASSWORD` if it only takes a password; needs `expect`).
+3. `npm run server:deploy` — the first run makes `.env.server` (gitignored) with fresh secrets and the address
+   `https://<ip-with-dashes>.sslip.io` (or set `SERVER_DOMAIN`, pointing its DNS A record at the server first). Add your
+   other production keys to `.env.server` (Stripe, map tiles, VAPID, AI…, see `.env.example`) and run it again after
+   any change. It builds the image for linux/amd64, copies it over SSH (Docker Hub and GHCR refuse Iran, so nothing is
+   pulled there), installs Docker from the Ubuntu mirror on the first run and starts the stack.
+4. Automatic: GitHub secrets `SERVER_SSH`, `SERVER_ENV` (= `.env.server`) and `SERVER_SSH_KEY` or `SERVER_SSH_PASSWORD`
+   — then every push to `main` runs `Deploy to the server` (`.github/workflows/deploy-server.yml`).
+
+Moving the data from Neon: `pg_dump "<neon direct url>" | gzip > neon.sql.gz`, copy it over, then
+`gunzip -c neon.sql.gz | docker compose exec -T db psql -U streetquest streetquest` in `~/streetquest`. Logs:
+`docker compose logs -f app`. Without Cloudflare the country comes from the server (`SITE_COUNTRY`, default `IR`).
+
 ### Players in Iran without a VPN: the front door
 Iranian mobile and home lines throttle or cut Cloudflare's addresses on and off — then the game only opens with a VPN.
 `front/front.mjs` (no dependencies, any Node 18+) puts the whole site at an address inside Iran,

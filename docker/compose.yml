@@ -1,0 +1,86 @@
+# Everything on one server (README → "One server"): app + Street Arena realtime + daily cleanup + Postgres
+# (with nightly backups) + Caddy for HTTPS. The settings are in .env next to this file (made by
+# scripts/server-deploy.sh from .env.server). Ports 80 and 443 only.
+#
+#   docker compose up -d        docker compose logs -f app        docker compose ps
+name: streetquest
+
+x-app: &app
+  image: streetquest:latest
+  env_file: .env
+  restart: unless-stopped
+  logging: { driver: json-file, options: { max-size: 10m, max-file: "3" } }
+
+services:
+  app:
+    <<: *app
+    depends_on: [db]
+    volumes: [uploads:/app/public/uploads]
+    environment:
+      DATABASE_URL: postgresql://streetquest:${POSTGRES_PASSWORD}@db:5432/streetquest
+      DATABASE_URL_UNPOOLED: postgresql://streetquest:${POSTGRES_PASSWORD}@db:5432/streetquest
+      NODE_OPTIONS: --max-old-space-size=${APP_MEMORY_MB:-1024}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/robots.txt').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+
+  rt:
+    <<: *app
+    command: ["node", "rt/server.mjs"]
+    environment:
+      PORT: "8787"
+      APP_URL: http://app:3000
+
+  cron:
+    <<: *app
+    command: ["node", "docker/cron.mjs"]
+    environment:
+      APP_URL: http://app:3000
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: streetquest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: streetquest
+    volumes: [pgdata:/var/lib/postgresql/data]
+    logging: { driver: json-file, options: { max-size: 10m, max-file: "3" } }
+
+  # A gzipped dump every night into ./backups on the host, the last 7 kept.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [./backups:/backups]
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep $$(( (86400 + 3*3600 - $$(date -u +%s) % 86400) % 86400 + 1 ))
+          pg_dump -h db -U streetquest streetquest | gzip > /backups/streetquest-$$(date -u +%F).sql.gz && echo "[backup] done"
+          ls -1t /backups/*.sql.gz | tail -n +8 | xargs -r rm --
+        done
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app, rt]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      SITE_COUNTRY: ${SITE_COUNTRY:-IR}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - uploads:/srv/uploads:ro
+      - caddy:/data
+    logging: { driver: json-file, options: { max-size: 10m, max-file: "3" } }
+
+volumes:
+  pgdata:
+  uploads:
+  caddy:

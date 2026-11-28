@@ -55,3 +55,35 @@ jobs:
           echo
           curl --fail --silent --show-error --output /dev/null https://streetquest.remixt.app/
           echo "homepage OK"
+
+  # The Iran front door (front/, https://37-32-28-215.sslip.io:8443) is updated after every Cloudflare deploy.
+  # Its own job: if the Iran box can't be reached, this goes red but the Cloudflare deploy above stays live.
+  # Secrets: RELAY_SSH (root@37.32.28.215), RELAY_SSH_PASSWORD (only if the box takes passwords), FRONT_KEY (the Worker's).
+  iran-front:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELAY_SSH: ${{ secrets.RELAY_SSH }}
+      RELAY_SSH_PASSWORD: ${{ secrets.RELAY_SSH_PASSWORD }}
+      FRONT_KEY: ${{ secrets.FRONT_KEY }}
+    steps:
+      - name: Check out the app
+        if: env.RELAY_SSH != ''
+        uses: actions/checkout@v4
+
+      - name: Skip when the secrets aren't set
+        if: env.RELAY_SSH == ''
+        run: echo "::warning::RELAY_SSH secret not set — the Iran front door was not updated."
+
+      - name: Install expect (password logins)
+        if: env.RELAY_SSH != '' && env.RELAY_SSH_PASSWORD != ''
+        run: sudo apt-get install -y -qq expect >/dev/null
+
+      - name: Deploy the Iran front door
+        if: env.RELAY_SSH != ''
+        run: bash scripts/front-deploy.sh
+
+      - name: Smoke test the Iran front door
+        if: env.RELAY_SSH != ''
+        run: curl --fail --silent --show-error --max-time 30 -k "https://$(echo "${RELAY_SSH#*@}" | tr . -).sslip.io:8443/__front/health"

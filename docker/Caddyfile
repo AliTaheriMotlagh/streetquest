@@ -1,0 +1,27 @@
+# HTTPS for the one server: Caddy gets and renews a Let's Encrypt certificate for SITE_DOMAIN by itself
+# (default <server-ip>.sslip.io — no domain needed). Also serves files uploaded at run time and the arena socket.
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# Street Arena realtime server (WebSocket): wss://<domain>/rt
+	handle_path /rt* {
+		reverse_proxy rt:8787
+	}
+
+	# 3D models uploaded from Admin → Objects / product3d land in the shared volume after the build,
+	# which Next's standalone server doesn't serve — Caddy does. Names carry their hash, so cache for good.
+	handle /uploads/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		reverse_proxy app:3000 {
+			# A player could send this themselves; only Cloudflare may set it (src/lib/clientIp.ts).
+			header_up -Cf-Connecting-Ip
+			# Behind no CDN the server's own country stands in (Iran on Arvan), as with the front door.
+			header_up Cf-Ipcountry {$SITE_COUNTRY:IR}
+		}
+	}
+}

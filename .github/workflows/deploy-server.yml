@@ -1,0 +1,65 @@
+# The whole game on one server (docker/, scripts/server-deploy.sh, README → "One server"). Runs on every push to
+# main and by hand, but only does anything once the GitHub secrets are set:
+#   SERVER_SSH           root@<server-ip>
+#   SERVER_SSH_PASSWORD  only if the server takes passwords instead of a key (then SERVER_SSH_KEY is not needed)
+#   SERVER_SSH_KEY       private key allowed on the server (if it takes keys; the .pem Arvan gave you)
+#   SERVER_ENV           contents of .env.server
+name: Deploy to the server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SERVER_SSH: ${{ secrets.SERVER_SSH }}
+      SERVER_SSH_PASSWORD: ${{ secrets.SERVER_SSH_PASSWORD }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_ENV: ${{ secrets.SERVER_ENV }}
+    steps:
+      - name: Skip when the secrets aren't set
+        if: env.SERVER_SSH == '' || env.SERVER_ENV == ''
+        run: echo "::warning::SERVER_SSH / SERVER_ENV secrets not set — the one server was not updated."
+
+      - uses: actions/checkout@v4
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+
+      - uses: actions/setup-node@v4
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+        with: { node-version: 22, cache: npm }
+
+      - name: Test
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+        run: npm ci --no-audit --no-fund && npm test
+
+      - uses: docker/setup-buildx-action@v3
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+
+      - name: Server settings and SSH
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+        run: |
+          umask 077
+          printf '%s\n' "$SERVER_ENV" > .env.server
+          # Any key type (Arvan hands out RSA .pem files): the deploy script passes it with -i.
+          if [ -n "$SERVER_SSH_KEY" ]; then mkdir -p ~/.ssh && printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/server_key && echo "SERVER_SSH_KEY_FILE=$HOME/.ssh/server_key" >> "$GITHUB_ENV"; fi
+          if [ -n "$SERVER_SSH_PASSWORD" ]; then sudo apt-get install -y -qq expect >/dev/null; fi
+
+      - name: Build, copy and start
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+        run: bash scripts/server-deploy.sh
+
+      - name: Smoke test
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
+        run: |
+          url=$(grep -E '^NEXT_PUBLIC_SITE_URL=' .env.server | cut -d= -f2- | tr -d '"')
+          url=${url:-https://$(echo "${SERVER_SSH#*@}" | tr . -).sslip.io}
+          for i in 1 2 3 4 5; do curl --fail --silent --show-error --max-time 30 -o /dev/null "$url/" && { echo "homepage OK"; exit 0; }; sleep 10; done
+          exit 1

@@ -45,3 +45,4 @@ __pycache__/
 # Load tests (npm run load:*): a production build on :3300 and the seeded players/summary
 /.next-load
 /.load/
+.env.server

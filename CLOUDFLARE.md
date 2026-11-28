@@ -57,6 +57,9 @@ RT_APP_URL=https://streetquest.remixt.app npm run rt:deploy
 - Iranian lines throttle Cloudflare's addresses on and off. The front door on the Iran VPS serves the whole site from
   inside Iran (README → "Players in Iran without a VPN"): share `https://37-32-28-215.sslip.io:8443` with them.
 - The Worker needs `FRONT_KEY` (same as the VPS's) so players behind the front door keep their own address.
+- Every deploy to Cloudflare also redeploys the front door (job `iran-front` in `.github/workflows/deploy-cloudflare.yml`)
+  when the GitHub secrets `RELAY_SSH`, `FRONT_KEY` (and `RELAY_SSH_PASSWORD` if the box takes passwords) are set.
+  Without them the job only warns. If the Iran box can't be reached the job fails, but the Cloudflare deploy stays live.
 - Cloudflare's own egress is abroad, so Iranian sites (Snappfood, Torob, Divar, Takhfifan, travel) are read through the
   relay: `RELAY_FOR=all`. Check with `/api/health?ext=1`.
 - Locale and the rough IP location use `cf-ipcountry` / `request.cf` (Vercel's `x-vercel-ip-*` headers don't exist here).
