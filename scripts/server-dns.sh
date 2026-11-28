@@ -35,8 +35,11 @@ done
 # A Worker's custom domain owns its DNS record: detach it, or it can't be changed.
 if w=$(cf GET "/accounts/$acct/workers/domains?hostname=$DOMAIN" 2>/dev/null); then
   for id in $(jq -r --arg d "$DOMAIN" '.result[] | select(.hostname == $d) | .id' <<<"$w"); do
-    echo "▸ Detaching $DOMAIN from Worker $(jq -r --arg i "$id" '.result[] | select(.id == $i) | .service' <<<"$w")"
-    cf DELETE "/accounts/$acct/workers/domains/$id" >/dev/null
+    svc=$(jq -r --arg i "$id" '.result[] | select(.id == $i) | .service' <<<"$w")
+    echo "▸ Detaching $DOMAIN from Worker $svc"
+    cf DELETE "/accounts/$acct/workers/domains/$id" >/dev/null || {
+      echo "✘ This token may not detach it. Cloudflare → Workers & Pages → $svc → Settings → Domains & Routes → remove $DOMAIN, then run again."
+      exit 1; }
   done
 fi
 
