@@ -46,13 +46,19 @@ camera over roofs, scan floor, setback respawn, NPC store-kind lines — never s
 
 ## Now — run top-down (tools + best practice per step)
 
-0000. **One server on Arvan — in progress** (2026-11-28): box `root@37.152.178.0` (Ubuntu 26.04, 2 vCPU, 2 GB, 28 GB;
-     ports 22/80/443 open), URL https://37-152-178-0.sslip.io. Key `~/.ssh/arvan-streetquest.pem` (`SERVER_SSH_KEY_FILE`
-     in .env); `.env.server` made (fresh secrets + VAPID/Neshan/PRODUCT3D_TOKEN). GitHub secrets `SERVER_SSH`,
-     `SERVER_SSH_KEY`, `SERVER_ENV` set → every push to main deploys (`deploy-server.yml`). Local `server:deploy` from the
-     Mac: Docker Hub 403s from Iran (Node base now from a mirror via `NODE_IMAGE`), and the Mac disk was full (Docker
-     build cache 24 GB) — use CI. Still: copy Neon's data once its quota resets, add other prod keys to .env.server
-     (then `gh secret set SERVER_ENV < .env.server`), point players to the new URL, decide on Cloudflare/Neon/relay.
+0000. **One server on Arvan — streetquest.remixt.app moved there** (2026-11-28): box `root@37.152.178.0` (Ubuntu 26.04,
+     2 vCPU, 2 GB, 28 GB; 22/80/443 open). Key `~/.ssh/arvan-streetquest.pem` (`SERVER_SSH_KEY_FILE` in .env).
+     GitHub secrets `SERVER_SSH`, `SERVER_SSH_KEY`, `SERVER_ENV` (= .env.server: fresh secrets + VAPID/Neshan/
+     PRODUCT3D_TOKEN, CADDY_TLS=cloudflare) → every push to main deploys; CI points the DNS (scripts/server-dns.sh,
+     detaches the Worker custom domain) and Caddy gets the certificate by DNS-01 with `CF_DNS_API_TOKEN` (falls back
+     to CLOUDFLARE_API_TOKEN — that broad token then sits on the server: make a DNS-only one, `gh secret set
+     CF_DNS_API_TOKEN`). Why: from abroad Iran drops HTTP(S) to the box (Let's Encrypt and GitHub time out; SSH works).
+     "Deploy to Cloudflare" is manual only now. Consequences to handle:
+     - [ ] Players outside Iran can't reach the site.
+     - [ ] product3d runner (GitHub, abroad) can't reach /api/product3d/work on the server — run it in Iran or proxy.
+     - [ ] Empty DB: copy Neon's data once its quota resets (README → "One server").
+     - [ ] Local `server:deploy` from the Mac: Docker Hub 403s (Node/Caddy now from mirrors), Mac disk was 100 % full
+           and Docker Desktop hit I/O errors (24 GB build cache) — free space + restart Docker Desktop.
 
 000. **Prod down 2026-11-27 — USER**: Neon answers HTTP 402 "exceeded the quota" (`/api/health`), so every DB page
      fails; not the SEO commit. Upgrade Neon or wait for the monthly reset; check what burns compute (product3d runs every

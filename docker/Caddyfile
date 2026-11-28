@@ -1,6 +1,18 @@
 # HTTPS for the one server: Caddy gets and renews a Let's Encrypt certificate for SITE_DOMAIN by itself
 # (default <server-ip>.sslip.io — no domain needed). Also serves files uploaded at run time and the arena socket.
+# CADDY_TLS=cloudflare: prove the domain with a DNS record through Cloudflare's API (CF_DNS_API_TOKEN) instead of
+# Let's Encrypt calling the server — the only way from Iran, where traffic from abroad is dropped.
+(tls-auto) {
+}
+(tls-cloudflare) {
+	tls {
+		dns cloudflare {env.CF_DNS_API_TOKEN}
+		resolvers 1.1.1.1 8.8.8.8
+	}
+}
+
 {$SITE_DOMAIN} {
+	import tls-{$CADDY_TLS:auto}
 	encode zstd gzip
 
 	# Street Arena realtime server (WebSocket): wss://<domain>/rt

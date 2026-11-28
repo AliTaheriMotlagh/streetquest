@@ -67,13 +67,16 @@ services:
         done
 
   caddy:
-    image: caddy:2-alpine
+    # docker/caddy.Dockerfile (Caddy + the Cloudflare DNS plugin), tagged by that file's hash.
+    image: streetquest-caddy:${CADDY_TAG:-latest}
     restart: unless-stopped
     depends_on: [app, rt]
     ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN}
       SITE_COUNTRY: ${SITE_COUNTRY:-IR}
+      CADDY_TLS: ${CADDY_TLS:-auto}
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - uploads:/srv/uploads:ro

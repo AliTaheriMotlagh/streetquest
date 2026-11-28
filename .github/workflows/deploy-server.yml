@@ -4,6 +4,9 @@
 #   SERVER_SSH_PASSWORD  only if the server takes passwords instead of a key (then SERVER_SSH_KEY is not needed)
 #   SERVER_SSH_KEY       private key allowed on the server (if it takes keys; the .pem Arvan gave you)
 #   SERVER_ENV           contents of .env.server
+#   CF_DNS_API_TOKEN     Cloudflare token (Zone → DNS → Edit) for a domain on Cloudflare: points SITE_DOMAIN at the server
+#                        (scripts/server-dns.sh) and gets the certificate through DNS (Iran drops Let's Encrypt's
+#                        calls). Falls back to CLOUDFLARE_API_TOKEN. Not used for an sslip.io address.
 name: Deploy to the server
 
 on:
@@ -24,6 +27,7 @@ jobs:
       SERVER_SSH_PASSWORD: ${{ secrets.SERVER_SSH_PASSWORD }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SERVER_ENV: ${{ secrets.SERVER_ENV }}
+      CF_DNS_API_TOKEN: ${{ secrets.CF_DNS_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - name: Skip when the secrets aren't set
         if: env.SERVER_SSH == '' || env.SERVER_ENV == ''
@@ -48,18 +52,19 @@ jobs:
         run: |
           umask 077
           printf '%s\n' "$SERVER_ENV" > .env.server
+          # A real domain on Cloudflare: the certificate goes through DNS (CADDY_TLS=cloudflare) with this token.
+          if [ -n "$CF_DNS_API_TOKEN" ] && ! grep -q '^SITE_DOMAIN=.*sslip\.io' .env.server; then
+            grep -q '^CF_DNS_API_TOKEN=' .env.server || echo "CF_DNS_API_TOKEN=$CF_DNS_API_TOKEN" >> .env.server
+            grep -q '^CADDY_TLS=' .env.server || echo "CADDY_TLS=cloudflare" >> .env.server
+          fi
           # Any key type (Arvan hands out RSA .pem files): the deploy script passes it with -i.
           if [ -n "$SERVER_SSH_KEY" ]; then mkdir -p ~/.ssh && printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/server_key && echo "SERVER_SSH_KEY_FILE=$HOME/.ssh/server_key" >> "$GITHUB_ENV"; fi
           if [ -n "$SERVER_SSH_PASSWORD" ]; then sudo apt-get install -y -qq expect >/dev/null; fi
 
+      - name: Point the domain at the server
+        if: env.SERVER_SSH != '' && env.SERVER_ENV != '' && env.CF_DNS_API_TOKEN != ''
+        run: bash scripts/server-dns.sh
+
       - name: Build, copy and start
         if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
         run: bash scripts/server-deploy.sh
-
-      - name: Smoke test
-        if: env.SERVER_SSH != '' && env.SERVER_ENV != ''
-        run: |
-          url=$(grep -E '^NEXT_PUBLIC_SITE_URL=' .env.server | cut -d= -f2- | tr -d '"')
-          url=${url:-https://$(echo "${SERVER_SSH#*@}" | tr . -).sslip.io}
-          for i in 1 2 3 4 5; do curl --fail --silent --show-error --max-time 30 -o /dev/null "$url/" && { echo "homepage OK"; exit 0; }; sleep 10; done
-          exit 1

@@ -61,8 +61,8 @@ docker buildx build --platform linux/amd64 --load -t streetquest:latest \
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 images=(streetquest:latest)
-# Postgres and Caddy only on the first deploy (or a new version): the server can't pull from Docker Hub.
-for img in postgres:16-alpine caddy:2-alpine; do
+# Postgres only on the first deploy (or a new version): the server can't pull from Docker Hub.
+for img in postgres:16-alpine; do
   if ! run ssh "${OPTS[@]}" "$SERVER_SSH" "docker image inspect $img >/dev/null 2>&1"; then
     # Docker Hub times out from Iran: fall back to the same official images on AWS's and Arvan's mirrors.
     for src in "$img" "public.ecr.aws/docker/library/$img" "docker.arvancloud.ir/$img"; do
@@ -71,13 +71,33 @@ for img in postgres:16-alpine caddy:2-alpine; do
     [[ " ${images[*]} " == *" $img "* ]] || { echo "Couldn't download $img from any mirror."; exit 1; }
   fi
 done
+# Caddy with the Cloudflare DNS plugin, rebuilt only when docker/caddy.Dockerfile changes.
+CADDY_TAG=$(git hash-object docker/caddy.Dockerfile | cut -c1-12)
+if ! run ssh "${OPTS[@]}" "$SERVER_SSH" "docker image inspect streetquest-caddy:$CADDY_TAG >/dev/null 2>&1"; then
+  echo "▸ Building Caddy with the Cloudflare DNS plugin"
+  CB=caddy:2-builder; CA=caddy:2-alpine
+  docker buildx imagetools inspect "$CB" >/dev/null 2>&1 || { CB=public.ecr.aws/docker/library/$CB; CA=public.ecr.aws/docker/library/$CA; }
+  docker buildx build --platform linux/amd64 --load -t "streetquest-caddy:$CADDY_TAG" \
+    --build-arg CADDY_BUILDER="$CB" --build-arg CADDY_BASE="$CA" -f docker/caddy.Dockerfile docker
+  images+=("streetquest-caddy:$CADDY_TAG")
+fi
 echo "▸ Packing ${images[*]}"
 docker save "${images[@]}" | gzip -1 > "$out/images.tar.gz"
 cp docker/compose.yml docker/Caddyfile docker/install.sh "$out/"
-(umask 077; cp $ENVF "$out/.env"; grep -q '^SITE_DOMAIN=' "$out/.env" || echo "SITE_DOMAIN=$DOMAIN" >> "$out/.env")
+(umask 077; cp $ENVF "$out/.env"; grep -q '^SITE_DOMAIN=' "$out/.env" || echo "SITE_DOMAIN=$DOMAIN" >> "$out/.env"; echo "CADDY_TAG=$CADDY_TAG" >> "$out/.env")
 
 echo "▸ Copying to $HOST ($(du -h "$out/images.tar.gz" | cut -f1))"
 run ssh "${OPTS[@]}" "$SERVER_SSH" "mkdir -p $DIR && chmod 700 $DIR"
 run scp "${OPTS[@]}" -q "$out/images.tar.gz" "$out/compose.yml" "$out/Caddyfile" "$out/install.sh" "$out/.env" "$SERVER_SSH:$DIR/"
 run ssh "${OPTS[@]}" "$SERVER_SSH" "cd $DIR && bash install.sh"
-echo "✔ Live at https://$DOMAIN"
+# Checked on the server itself, through Caddy and its real certificate: from abroad (GitHub) Iran drops the traffic.
+echo -n "▸ HTTPS"
+for i in $(seq 1 40); do
+  if run ssh "${OPTS[@]}" "$SERVER_SSH" "curl -fsS -m 10 -o /dev/null --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/"; then
+    echo " — OK"; echo "✔ Live at https://$DOMAIN"; exit 0
+  fi
+  echo -n "."; sleep 6
+done
+echo; run ssh "${OPTS[@]}" "$SERVER_SSH" "cd $DIR && docker compose logs --tail 15 caddy" || true
+echo "✘ No valid HTTPS at https://$DOMAIN yet (Iran blocks Let's Encrypt from abroad: set CADDY_TLS=cloudflare + CF_DNS_API_TOKEN, README → \"One server\")."
+exit 1

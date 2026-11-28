@@ -1,8 +1,9 @@
 name: Deploy to Cloudflare
 
+# Manual only since 2026-11-28: streetquest.remixt.app moved to the one server on Arvan (deploy-server.yml,
+# scripts/server-dns.sh detached it from the Worker). Running this would try to take the domain back
+# (wrangler.jsonc routes) — remove that route first if the Worker should run again beside the server.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

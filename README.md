@@ -1504,6 +1504,15 @@ players in Iran reach it without a VPN.
    other production keys to `.env.server` (Stripe, map tiles, VAPID, AI…, see `.env.example`) and run it again after
    any change. It builds the image for linux/amd64, copies it over SSH (Docker Hub and GHCR refuse Iran, so nothing is
    pulled there), installs Docker from the Ubuntu mirror on the first run and starts the stack.
+   **A server in Iran:** Let's Encrypt checks the domain by calling the server from abroad, and Iran drops that
+   traffic (so does GitHub's) — the sslip.io address never gets a certificate. Use a domain on Cloudflare DNS instead:
+   an A record to the server (DNS only, grey cloud), `SERVER_DOMAIN` (+ `SITE_DOMAIN`/URLs in `.env.server`), and in
+   `.env.server` `CADDY_TLS=cloudflare` + `CF_DNS_API_TOKEN` (Cloudflare → My Profile → API Tokens → "Edit zone DNS"
+   for that zone). Caddy (built with the Cloudflare DNS plugin, `docker/caddy.Dockerfile`) then proves the domain
+   with a TXT record and renews by itself. The deploy checks HTTPS on the server itself. `npm run server:dns` (CI runs
+   it on every deploy with `CF_DNS_API_TOKEN`, else `CLOUDFLARE_API_TOKEN`) makes that A record, detaching the name
+   from a Worker that holds it. Since 2026-11-28 streetquest.remixt.app is served this way from Arvan, and
+   "Deploy to Cloudflare" runs only by hand.
 4. Automatic: GitHub secrets `SERVER_SSH`, `SERVER_ENV` (= `.env.server`) and `SERVER_SSH_KEY` or `SERVER_SSH_PASSWORD`
    — then every push to `main` runs `Deploy to the server` (`.github/workflows/deploy-server.yml`).
 
