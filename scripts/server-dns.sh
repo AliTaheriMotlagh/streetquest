@@ -9,7 +9,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 env_of() { [ -f "${2:-.env}" ] && grep -E "^$1=" "${2:-.env}" | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' || true; }
 TOKEN=${CF_DNS_API_TOKEN:-$(env_of CF_DNS_API_TOKEN .env.server)}
+TOKEN=$(printf '%s' "${TOKEN:-}" | tr -d '[:space:]'); TOKEN=${TOKEN#Bearer}
 : "${TOKEN:?Set CF_DNS_API_TOKEN (env or .env.server)}"
+# Says what's wrong with a pasted token without showing it (an API token is 40 letters, digits, - and _).
+shape() { printf '%s chars' "${#TOKEN}"; [[ $TOKEN =~ ^[A-Za-z0-9_-]+$ ]] || printf ', with characters a token never has'; }
+v=$(curl -sS -m 30 https://api.cloudflare.com/client/v4/user/tokens/verify -H "Authorization: Bearer $TOKEN")
+jq -e '.success' >/dev/null <<<"$v" || { echo "✘ Cloudflare refuses the token ($(shape)): $(jq -c '.errors' <<<"$v"). Make an API token (My Profile → API Tokens, not the Global API Key or the token's ID) and set it again: gh secret set CF_DNS_API_TOKEN"; exit 1; }
 DOMAIN=${SERVER_DOMAIN:-$(env_of SITE_DOMAIN .env.server)}
 SERVER_SSH=${SERVER_SSH:-$(env_of SERVER_SSH)}
 IP=${SERVER_IP:-${SERVER_SSH#*@}}
