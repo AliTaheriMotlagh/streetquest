@@ -46,15 +46,16 @@ camera over roofs, scan floor, setback respawn, NPC store-kind lines — never s
 
 ## Now — run top-down (tools + best practice per step)
 
-0000. **One server on Arvan — streetquest.remixt.app moved there** (2026-11-28): box `root@37.152.178.0` (Ubuntu 26.04,
+0000. **One server on Arvan — LIVE at https://streetquest.remixt.app** (2026-11-28, verified: 200, /api/health ok, LE cert by DNS-01): box `root@37.152.178.0` (Ubuntu 26.04,
      2 vCPU, 2 GB, 28 GB; 22/80/443 open). Key `~/.ssh/arvan-streetquest.pem` (`SERVER_SSH_KEY_FILE` in .env).
      GitHub secrets `SERVER_SSH`, `SERVER_SSH_KEY`, `SERVER_ENV` (= .env.server: fresh secrets + VAPID/Neshan/
      PRODUCT3D_TOKEN, CADDY_TLS=cloudflare) → every push to main deploys; CI points the DNS (scripts/server-dns.sh,
      detaches the Worker custom domain) and Caddy gets the certificate by DNS-01 with `CF_DNS_API_TOKEN` (falls back
-     to CLOUDFLARE_API_TOKEN — that broad token then sits on the server: make a DNS-only one, `gh secret set
-     CF_DNS_API_TOKEN`). Why: from abroad Iran drops HTTP(S) to the box (Let's Encrypt and GitHub time out; SSH works).
+     to CLOUDFLARE_API_TOKEN). CF_DNS_API_TOKEN is a DNS-only token for remixt.app (also in .env). The user deleted the
+     streetquest Worker on Cloudflare. Why: from abroad Iran drops HTTP(S) to the box (Let's Encrypt and GitHub time out; SSH works).
      "Deploy to Cloudflare" is manual only now. Consequences to handle:
-     - [ ] Players outside Iran can't reach the site.
+     - [ ] Players outside Iran can't reach the site (unverified from a real foreign browser; GitHub/LE time out).
+     - [ ] Optional: TURN relay for video calls (/api/health: no CLOUDFLARE_TURN_KEY_ID).
      - [ ] product3d runner (GitHub, abroad) can't reach /api/product3d/work on the server — run it in Iran or proxy.
      - [ ] Empty DB: copy Neon's data once its quota resets (README → "One server").
      - [ ] Local `server:deploy` from the Mac: Docker Hub 403s (Node/Caddy now from mirrors), Mac disk was 100 % full
