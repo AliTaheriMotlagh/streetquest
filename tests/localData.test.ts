@@ -2,7 +2,7 @@
 // Torob and OpenStreetMap, open-now in the store's time zone, and store-name matching.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { clockOf, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, oneEach, openState, sameName, sameStore, snappfoodCode, snappfoodMenuUrl, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
+import { clockOf, divarCandidates, divarCityIn, latinDigits, MAX_STOCK, mergeTorobPlace, nameScore, oneEach, openState, sameName, sameStore, snappfoodCode, snappfoodMenuUrl, stockOf, weekFromOsm, weekFromSnappfood, weekFromTorob, zoneOf, type TorobPlace } from "@/lib/localData";
 
 const TEHRAN = { lat: 35.73, lng: 51.53 };
 /** A Tehran wall-clock moment (Iran has kept +03:30 all year since 2022). */
@@ -268,5 +268,28 @@ describe("one marker per store on the map", () => {
     assert.deepEqual(oneEach(places, (p) => p.name, taken).map((p) => p.id), ["p1", "p2", "p3", "p5", "p6"]);
     assert.deepEqual(oneEach(places, (p) => p.name).map((p) => p.id), ["p1", "p2", "p3", "p4", "p5", "p6"]);
     assert.deepEqual(oneEach([], (p: { name: string; lat: number; lng: number }) => p.name, taken), []);
+  });
+});
+
+describe("Divar: which city a point is in", () => {
+  // Divar's own centres, as /v8/places/cities gave them on 2026-11-28: Mashhad's is ~30 km north of the city,
+  // Zahedan's ~21 km off; Mashhad has neighbourhoods (at the right spots), Zahedan none.
+  const mashhad = { id: 3, lat: 36.5661, lng: 59.6604, r: 17522 }, zahedan = { id: 11, lat: 29.6852, lng: 60.7258, r: 10004 };
+  const tehran = { id: 1, lat: 35.703, lng: 51.4, r: 28339 }, karaj = { id: 2, lat: 35.84, lng: 50.94, r: 12000 };
+  const cities = [tehran, karaj, mashhad, zahedan];
+  const districts: Record<number, { lat: number; lng: number }[]> = { 1: [{ lat: 35.7, lng: 51.4 }], 2: [{ lat: 35.83, lng: 50.98 }], 3: [{ lat: 36.297, lng: 59.606 }, { lat: 36.33, lng: 59.55 }], 11: [] };
+  const of = async (id: number) => districts[id] ?? null;
+  const pick = async (lat: number, lng: number) => (await divarCityIn({ lat, lng }, divarCandidates({ lat, lng }, cities), of, 6000)).map((x) => x.c.id);
+  it("a point within a city's reach is in it (the nearest first)", async () => {
+    assert.deepEqual((await pick(35.6997, 51.338))[0], 1);
+  });
+  it("a city whose centre Divar puts far out, by its neighbourhoods (Mashhad)", async () => {
+    assert.deepEqual(await pick(36.2972, 59.6067), [3]);
+  });
+  it("a town without neighbourhoods, its centre off: the nearest town (Zahedan)", async () => {
+    assert.deepEqual(await pick(29.4963, 60.8629), [11]);
+  });
+  it("nowhere Divar knows: nothing", async () => {
+    assert.deepEqual(await pick(33.0, 56.0), []);
   });
 });

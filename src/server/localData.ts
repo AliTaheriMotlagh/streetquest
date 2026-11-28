@@ -30,7 +30,7 @@ import { prisma } from "../lib/db";
 import { Lru } from "../lib/lru";
 import { distanceM, type LatLng } from "../lib/geo";
 import {
-  baladPhonesOf, baladQueries, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealInfoOf, dealOf, dealOfPoi, dealReviewsOf, dealsNear, nearbyBox, type Deal, type DealInfo, type DealReviewPage, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, menuFromReadModel, type RmDetails, type RmMenu, type RmReview, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
+  baladPhonesOf, baladQueries, divarCandidates, divarCityIn, googlePhoneOf, mergePhones, phonesFrom, type GoogleSearch, type StorePhone, DIVAR_CATS, dealInfoOf, dealOf, dealOfPoi, dealReviewsOf, dealsNear, nearbyBox, type Deal, type DealInfo, type DealReviewPage, divarDetailOf, type DivarDetail, divarLink, pickBaladPoi, storePhone, type BaladSearch, isFoodCat, LINK_CHECKS, mergeTorobPlace, nameScore, normName, sameName, sellsOnSnappfood, snappfoodCode, snappfoodMenuUrl, menuFromReadModel, type RmDetails, type RmMenu, type RmReview, stockOf, torobLink, torobShopId, vendorKind, weekFromOsm, weekFromSnappfood, weekFromTorob,
   type DivarArea, type DivarCat, type DivarPost, type Menu, type Review, type ReviewPage, type StoreData, type StoreLink, type TorobItem, type TorobPlace, type TorobPlaceInfo, type TorobShop, type Vendor,
 } from "../lib/localData";
 import { t } from "../lib/i18n";
@@ -98,8 +98,6 @@ const SEARCH_CHECKS = 3;
 /** Divar neighbourhoods whose centre is this close are "around" the player (the nearest always is). */
 const DIVAR_NEAR_M = 2500;
 const DIVAR_MAX_AREAS = 5;
-/** A town is "here" within its radius (at least 5 km) plus this much. */
-const DIVAR_TOWN_SLACK_M = 5000;
 /** Small towns (no neighbourhoods on Divar) shown at once. */
 const DIVAR_MAX_TOWNS = 3;
 /** …unless even the nearest is this far: then the player isn't in a neighbourhood Divar knows. */
@@ -944,13 +942,9 @@ export async function divarPost(token: string): Promise<DivarDetail | null> {
 export async function divarAround(here: LatLng): Promise<DivarArea[]> {
   if (!inIran(here)) return [];
   const cities = (await divarCities()) ?? [];
-  // Divar's own centre of a town is often kilometres off (Chalus's is 7 km out at sea-side
-  // Hachirud): anywhere within its radius plus DIVAR_TOWN_SLACK_M counts as in it.
-  const reach = (c: { r: number }) => Math.max(c.r, 5000) + DIVAR_TOWN_SLACK_M;
-  const inReach = cities
-    .map((c) => ({ c, d: distanceM(here, c) }))
-    .filter((x) => x.d <= reach(x.c))
-    .sort((a, b) => a.d - b.d);
+  // Divar's own centre of a town is often kilometres off (Chalus's is 7 km out at sea-side Hachirud, Mashhad's
+  // 30 km): within its radius plus a slack counts as in it, and further out a city whose neighbourhoods are near.
+  const inReach = await divarCityIn(here, divarCandidates(here, cities), (id) => divarDistricts(id), DIVAR_NEAREST_MAX_M);
   const city = inReach[0]?.c;
   if (!city) return [];
   const list = (await divarDistricts(city.id)) ?? [];
@@ -998,7 +992,7 @@ export async function dealsAround(here: LatLng): Promise<Deal[]> {
 /** The fallback: Takhfifan's search by the neighbourhoods' names. */
 async function dealsBySearch(here: LatLng, root: string): Promise<Deal[]> {
   const cities = (await divarCities()) ?? [];
-  const city = cities.map((c) => ({ c, d: distanceM(here, c) })).filter((x) => x.d <= Math.max(x.c.r, 5000) + DIVAR_TOWN_SLACK_M).sort((a, b) => a.d - b.d)[0]?.c;
+  const city = (await divarCityIn(here, divarCandidates(here, cities), (id) => divarDistricts(id), DIVAR_NEAREST_MAX_M))[0]?.c;
   if (!city) return [];
   const districts = ((await divarDistricts(city.id)) ?? []).map((d) => ({ d, m: distanceM(here, d) })).sort((a, b) => a.m - b.m);
   const names = districts.length ? districts.filter((x, i) => i === 0 || x.m <= DEALS_NEAR_M).slice(0, DEALS_AREAS).map((x) => x.d.name) : [city.name];

@@ -856,3 +856,38 @@ export function menuFromReadModel(det: RmDetails | null, menu: RmMenu | null, re
       .slice(0, 40),
   };
 }
+
+// ---------------------------------------------------------------- Divar: which city a point is in
+/** A Divar city as its /v8/places/cities lists it: centre and radius (m). */
+export type DivarTown = { id: number; lat: number; lng: number; r: number };
+/** Anywhere within a town's radius plus this counts as in it (Divar's centres are often kilometres off). */
+export const DIVAR_TOWN_SLACK_M = 5000;
+const divarReach = (c: { r: number }) => Math.max(c.r, 5000) + DIVAR_TOWN_SLACK_M;
+/**
+ * Divar's cities around a point, nearest first: `near` within their reach; `wide` within twice it — for when nothing
+ * is near because Divar puts the city's centre far out (Mashhad's ~30 km north of the city, Zahedan's ~21 km;
+ * checked 2026-11-28). A `wide` city only counts when one of its neighbourhoods is near (or, without any, it is the
+ * nearest town) — `divarCityIn` decides with the districts.
+ */
+export function divarCandidates<T extends DivarTown>(here: { lat: number; lng: number }, cities: T[]): { near: { c: T; d: number }[]; wide: { c: T; d: number }[] } {
+  const all = cities.map((c) => ({ c, d: distanceM(here, c) })).sort((a, b) => a.d - b.d);
+  return { near: all.filter((x) => x.d <= divarReach(x.c)), wide: all.filter((x) => x.d <= 2 * divarReach(x.c)).slice(0, 3) };
+}
+/**
+ * The city a point is in, from `divarCandidates`: the nearest `near` one; else the first `wide` one with a neighbourhood
+ * within `nearestM` of the point, or the nearest `wide` town if it has no neighbourhoods at all. `districtsOf` loads a
+ * city's neighbourhoods (cached by the caller).
+ */
+export async function divarCityIn<T extends DivarTown>(
+  here: { lat: number; lng: number },
+  c: { near: { c: T; d: number }[]; wide: { c: T; d: number }[] },
+  districtsOf: (id: number) => Promise<{ lat: number; lng: number }[] | null>,
+  nearestM: number,
+): Promise<{ c: T; d: number }[]> {
+  if (c.near.length) return c.near;
+  for (const [i, x] of c.wide.entries()) {
+    const ds = (await districtsOf(x.c.id).catch(() => null)) ?? [];
+    if (ds.length ? ds.some((d) => distanceM(here, d) <= nearestM) : i === 0) return [x];
+  }
+  return [];
+}

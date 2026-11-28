@@ -1265,7 +1265,8 @@ mood scales XP; loot funds research; territory funds the army.
   Nowshahr, Ramsar & Tonekabon, Rasht & Anzali and Gorgan (`npm run city:pack -- sari babol amol qaemshahr royan chalus
   ramsar rasht gorgan`). In small towns Snappfood's vendors deliver only a short way, so the map reads the cells around
   you too and reaches 5 km; Divar's small towns (no neighbourhoods) show the nearest three together, even when Divar
-  puts a town's centre kilometres off.
+  puts a town's centre kilometres off; a city whose centre Divar puts far out (Mashhad's 30 km north) is found by its
+  neighbourhoods (`divarCityIn`, lib/localData.ts).
 - **Kish Island** — a city pack for the whole island (`npm run city:pack -- kish`) and a quick jump in explore mode
   (by the Pardis malls); the trip planner has its guide and checklist (above).
 - **Navigation** — 🧭 *Route* on any place card more than 150 m away draws a driving route (OSRM on OpenStreetMap,

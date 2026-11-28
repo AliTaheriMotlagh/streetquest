@@ -43,6 +43,9 @@ camera over roofs, scan floor, setback respawn, NPC store-kind lines — never s
 - [ ] **Torob refuses the Arvan server's IP** (490 in 0.07 s; 200 from a home line in Iran; no CORS, so phones can't
       read it either) → walk-in stores and Torob prices are empty on prod. Options: a partnership/API key with Torob, or
       the relay on a non-datacenter Iranian line. Never spoof a browser. The layer no longer hangs on it (waitTorob).
+- Checked across Iran 2026-11-28 (Mashhad, Tabriz, Zahedan, Ahvaz, Rasht, Kish): Snappfood 19–226 vendors, Takhfifan
+  2–120 deals everywhere. Divar was empty in Mashhad and Zahedan (Divar's own city centres 21–30 km off) → fixed with
+  `divarCityIn` (finds the city by its neighbourhoods); re-check those two after deploy.
 - [ ] **Bilbooard answers 403 everywhere** (server and the Mac) — its API changed or closed; re-probe the endpoint.
 - [ ] Outing prices for the new Kish activities are rough 1405 estimates — adjust when real quotes are known.
 - [ ] Ideas: guides for Qeshm, Shiraz, Isfahan, Mashhad (one `guide(...)` each); show guide places as a map layer
